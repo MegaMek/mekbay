@@ -181,6 +181,15 @@ export class UnitSvgMekService extends UnitSvgService {
             let destroyedHipsCount = 0;
             let destroyedLegActuatorsCount = 0;
 
+            if (this.unit.getHeat().current >= 9) {
+                console.log(critSlots);
+                const hasTripleStrengthMyomer = critSlots.some(slot => slot.name && slot.name.includes('Triple Strength Myomer'));
+                if (hasTripleStrengthMyomer) {
+                    walkValue += 2;
+                    console.log("Triple Strength Myomer activated: +2 Walk");
+                }
+            }
+            
             const checkLeg = (loc: string) => {
                 if (this.unit.isInternalLocDestroyed(loc)) {
                     destroyedLegsCount++;
