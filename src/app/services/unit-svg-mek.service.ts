@@ -185,7 +185,6 @@ export class UnitSvgMekService extends UnitSvgService {
                 const hasTripleStrengthMyomer = critSlots.some(slot => slot.name && slot.name.includes('Triple Strength Myomer'));
                 if (hasTripleStrengthMyomer) {
                     walkValue += 2;
-                    console.log("Triple Strength Myomer activated: +2 Walk");
                 }
             }
             
