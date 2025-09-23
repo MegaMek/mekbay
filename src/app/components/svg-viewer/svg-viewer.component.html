@@ -1,0 +1,18 @@
+<div #container class="svg-viewer-container" style="position:relative;">
+    <div #slides class="slides"></div>
+</div>
+
+<div #diffHeatMarker class="heat-diff-marker" 
+     [class.small]="interactionMode() === 'mouse'"
+     [hidden]="!diffHeatMarkerVisible()">
+    <div #diffHeatText class="heat-diff-text"></div>
+    <div #diffHeatArrow class="heat-diff-arrow"></div>
+</div>
+
+<div *ngIf="loadError()" class="error-container">
+    <div class="error-message">{{ loadError() }}</div>
+    <button (click)="retryLoad()" class="bt-button reload-button">
+        <span class="icon">&#x21bb;</span>
+        <span>Reload</span>
+    </button>
+</div>

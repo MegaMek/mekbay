@@ -1,0 +1,861 @@
+:root {
+    --background-color: #141414;
+    --background-color-menu: #292929;
+    --background-color-light: #313131;
+    --background-input: rgba(40, 40, 40, 0.5);
+    --background-highlight: #3D3D3D;
+    --background-highlight-bright: #7A7A7A;
+    --primary-color: #1976d2;
+    --border-color: #444;
+    --scrollbar-width: 6px;
+    --text-color: #ffffff;
+    --text-color-secondary: silver;
+    --bt-yellow: #EAAE3F;
+    --bt-yellow-strong: #FFAE16;
+    /* --bt-yellow-background: rgba(209, 175, 73, 0.2); */
+    --bt-yellow-background: #443912;
+    --bt-yellow-background-bright: #5f5018;
+    --bt-yellow-background-light: #FFCF73;
+    --bt-yellow-background-bright-transparent: #68540fee;
+    color: white;
+    scrollbar-color: #666 rgba(0, 0, 0, 0);
+    -webkit-tap-highlight-color: transparent;
+
+    --highlight-color: #f0f0f0;
+    --night-highlight-color: #555;
+
+    --damage-color: #F00;
+    --undamaged-highlight-color: #FEE;
+    --undamaged-night-highlight-color: #300;
+    --damaged-highlight-color: rgb(255, 105, 105);
+}
+
+html,
+body {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    margin: 0;
+    padding: 0;
+    background-color: var(--background-color-menu);
+    overflow: hidden;
+    overscroll-behavior: none;
+    font-family: 'Roboto', "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Symbol";
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    user-select: none;
+}
+
+a {
+    color: #fff;
+    text-decoration: underline;
+    transition: color 0.15s ease;
+}
+a:hover {
+    color: var(--bt-yellow);
+}
+
+:where(body, .searchbar-container, .adv-panel, .dropdown, .dropdown-item, .dropdown-viewport, .name, .year, .bv, .no-results) {
+    user-select: none;
+}
+
+/* Allow selection in input and textarea fields */
+input,
+textarea {
+    user-select: text;
+}
+
+.allow-select {
+    user-select: text;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #666;
+}
+
+.muted {
+    color: var(--text-color-secondary);
+}
+
+.modal-btn {
+    padding: 8px 36px;
+    font-size: 1.1em;
+    width: 140px;
+}
+
+@media screen and (max-width: 600px) {
+    .modal-btn {
+        padding: 8px 12px;
+        font-size: 1em;
+        width: 110px;
+    }
+}
+
+.framed-borders {
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    border-top: 1px solid white;
+    border-bottom: 1px solid white;
+    background-image:
+        linear-gradient(white, white), linear-gradient(white, white),
+        linear-gradient(white, white), linear-gradient(white, white);
+    background-size: 1px 12px, 1px 12px, 1px 12px, 1px 12px;
+    background-position: top left, top right, bottom left, bottom right;
+}
+
+.corner-borders {
+    transition: all 0.2s ease-in-out;    
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    background-image:
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666);
+    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+}
+
+.corner-borders.active,
+.corner-borders.open {
+    outline: none;
+    background-image:
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white);
+    background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+}
+
+
+.bt-input {
+    padding: 8px;
+    border: 1px transparent;
+    color: white;
+    background: var(--background-input);
+    box-sizing: border-box;
+    transition: all 0.2s ease-in-out;    
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    background-image:
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666);
+    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+}
+
+.bt-input:focus, .bt-input:focus-visible {
+    outline: none;
+    background-image:
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white);
+    background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+}
+
+.bt-input.error {
+    background-image:
+        linear-gradient(red, red),
+        linear-gradient(red, red),
+        linear-gradient(red, red),
+        linear-gradient(red, red),
+        linear-gradient(red, red),
+        linear-gradient(red, red),
+        linear-gradient(red, red),
+        linear-gradient(red, red);
+}
+
+.bt-input:hover {
+    background-color: var(--background-highlight);
+}
+
+.bt-input:focus {
+    background-color: var(--background-input);
+}
+
+.bt-select {
+    touch-action: manipulation;
+    cursor: pointer;
+    padding: 8px 20px 8px 8px;
+    border: 1px transparent;
+    box-sizing: border-box;
+    background: rgba(40, 40, 40);
+    color: white;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: all 0.2s ease-in-out;    
+    background-origin: border-box;;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23999999'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e"),  
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666);
+    background-repeat: no-repeat;
+    background-position: right 6px center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    background-size: 12px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+}
+
+
+.bt-select:focus, .bt-select:focus-visible, .bt-select.open {
+    outline: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23ffffff'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e"),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white);
+    background-size: 12px 12px, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+    background-position: right 6px center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+}
+
+.bt-select.has-value {
+    color: var(--bt-yellow);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23EAAE3F'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e"),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),        
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),        
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),        
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),        
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),        
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow));
+    border-color: var(--bt-yellow);
+}
+
+.bt-button {
+    cursor: pointer;
+    touch-action: manipulation;
+    display: block;
+    background: var(--background-input);
+    color: #bbb;
+    border: 1px solid white;
+    font-weight: bold;
+    box-sizing: border-box;
+    text-align: center;
+    border: 1px solid transparent;
+    transition: all 0.2s ease-in-out;
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    background-image:
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666);
+    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+}
+
+.bt-button:hover {    
+    background-color: var(--background-highlight);
+    color: white;
+    background-image:
+        linear-gradient(white, white), linear-gradient(white, white),
+        linear-gradient(white, white), linear-gradient(white, white),
+        linear-gradient(white, white), linear-gradient(white, white),
+        linear-gradient(white, white), linear-gradient(white, white);
+    background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+}
+
+.bt-button.danger {
+    color: #a00;
+    background-image:
+        linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),
+        linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),
+        linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),
+        linear-gradient(#a00, #a00), linear-gradient(#a00, #a00);
+}
+
+.bt-button.danger:hover {    
+    background-color: #300;
+    color: red;
+    background-image:
+        linear-gradient(red, red), linear-gradient(red, red),
+        linear-gradient(red, red), linear-gradient(red, red),
+        linear-gradient(red, red), linear-gradient(red, red),
+        linear-gradient(red, red), linear-gradient(red, red);
+}
+.bt-button:active {
+    background-color: var(--background-highlight-bright);
+}
+
+.bt-button[disabled] {
+    cursor: not-allowed;
+    color: #444;
+}
+
+/* Unit Card */
+.unit-card {
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    padding: 8px;
+    padding-left: 4px;
+}
+
+.unit-image-container {
+    height: 56px;
+    width: 65.33px; /* Maintains 72x84 aspect ratio at 56px height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.unit-image-container img {
+    height: 100%;
+    width: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.unit-data-container {
+    width: 100%;
+}
+
+
+.unit-card .primary-info {
+    container-type: inline-size;
+}
+
+.unit-card .secondary-info {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    color: var(--text-color-secondary);
+    font-size: 0.8em;
+    gap: 12px;
+}
+
+.unit-card .secondary-info .model {
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.unit-card .secondary-info .role {
+    font-style: italic;
+    flex-shrink: 0;
+    min-width: 0;
+    text-align: right;
+}
+
+.unit-card .third-info {
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+}
+
+.unit-card .third-info .info-area {
+    flex-wrap: wrap;
+    align-items: stretch;
+}
+
+.unit-card .info-area {
+    display: flex;
+    justify-content: start;
+    align-items: center;
+    margin-top: 4px;
+    gap: 4px;
+    font-size: 0.8em;
+    font-weight: normal;
+    color: white;
+}
+
+@container (max-width: 399px) {
+    .unit-card .info-area {
+        gap: 4px;
+    }
+}
+
+.unit-card .info-slot {
+    background-color: rgba(0,0,0,0.2);
+    padding: 2px 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 40px;
+    justify-content: start;
+}
+
+.unit-card .info-slot.numeric {
+    justify-content: end;
+}
+
+.unit-card .info-slot .icon {
+    width: 12px;
+    height: 12px;
+}
+
+/* Energy: #6082F6, background: #1a2030, inbetween: #35407a */
+.energy {
+    --type-color: #6082F6;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #35407a;
+    border-right: 1px solid #35407a;
+    border-bottom: 1px solid #35407a;
+    background: #1a2030;
+}
+
+/* Ballistic: #9482B4, background: #211a29, inbetween: #5e4d7c */
+.ballistic {
+    --type-color: #9482B4;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #5e4d7c;
+    border-right: 1px solid #5e4d7c;
+    border-bottom: 1px solid #5e4d7c;
+    background: #211a29;
+}
+
+/* Missile: #86C86E, background: #192617, inbetween: #3e7c36 */
+.missile {
+    --type-color: #86C86E;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #3e7c36;
+    border-right: 1px solid #3e7c36;
+    border-bottom: 1px solid #3e7c36;
+    background: #192617;
+}
+
+/* Artillery: #A35958, background: #231a18, inbetween: #6c3e34 */
+.artillery {
+    --type-color: #A35958;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #6c3e34;
+    border-right: 1px solid #6c3e34;
+    border-bottom: 1px solid #6c3e34;
+    background: #231a18;
+}
+
+/* Physical: #F8F455, background: #292918, inbetween: #b3b34a */
+.physical {
+    --type-color: #c2c727;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #b3b34a;
+    border-right: 1px solid #b3b34a;
+    border-bottom: 1px solid #b3b34a;
+    background: #292918;
+}
+
+/* Other: #EEC16F, background: #292313, inbetween: #a68e41 */
+.other {
+    --type-color: #d0a34f;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #a68e41;
+    border-right: 1px solid #a68e41;
+    border-bottom: 1px solid #a68e41;
+    background: #292313;
+}
+
+
+
+.mekbay-sheet {
+    background-color: #FFF;
+    display: block;
+    box-sizing: content-box;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.mekbay-sheet .damaged-strike { display: none; }
+.mekbay-sheet .damagedInventory .damaged-strike { display: block; }
+.mekbay-sheet .inventoryEntry > *:not(.inventoryEntryButton):not(.inventoryEntry) { pointer-events: none; }
+.mekbay-sheet .inventoryEntryButton { fill: transparent; }
+.mekbay-sheet .inventoryEntry:not(.interactive) { pointer-events: none; }
+
+.mekbay-sheet .inventoryEntry.damagedInventory .hitMod-rect,
+.mekbay-sheet .inventoryEntry.damagedInventory .hitMod-text { display: none; }
+.mekbay-sheet .interactive { cursor: pointer; touch-action: manipulation; }
+.mekbay-sheet .critGroup.locationDestroyed text { fill: var(--damage-color) !important; pointer-events: none; }
+.mekbay-sheet .damaged { fill: var(--damage-color) !important; }
+.mekbay-sheet .damaged path { fill: var(--damage-color) !important; }
+.mekbay-sheet .damaged text { fill: var(--damage-color) !important; }
+.mekbay-sheet .detached,
+.mekbay-sheet .detached > path { fill: gray !important; pointer-events: none; }
+.mekbay-sheet .pip.detached { stroke: silver; }
+.mekbay-sheet .detached path { fill: gray !important; pointer-events: none; }
+.mekbay-sheet .critGroup.detached text { fill: silver !important; pointer-events: none; }
+.mekbay-sheet .pip { stroke-linecap: square; vector-effect: non-scaling-stroke; }
+.mekbay-sheet .pip.damaged { fill: var(--damage-color) !important; }
+.mekbay-sheet .soldierPip.damaged { filter: opacity(0.3) !important; }
+.mekbay-sheet .pip.half { clip-path: polygon(50% -50%, 150% -50%, 150% 150%, 50% 150%) }
+
+.mekbay-sheet .damagedInventory, 
+.mekbay-sheet .damagedInventory text { fill: var(--damage-color) !important; }
+.mekbay-sheet .critSlot.damaged { fill: var(--damage-color) !important; text-decoration: line-through; }
+.mekbay-sheet .critLoc.damaged { fill: var(--damage-color) !important; }
+.mekbay-sheet .crewHit.damaged .crew-x { opacity: 1 !important; }
+
+@media screen {
+    .mekbay-sheet .clickPassthrough { pointer-events: none; }
+    .mekbay-sheet #heatScale text { pointer-events: none; }
+    .mekbay-sheet .picker-active text { text-decoration: underline !important; }
+
+    .mekbay-sheet .heatEffect.hot { fill: var(--damage-color) !important; font-weight: bold; }
+    .mekbay-sheet .heatEffect.hot.surpassed { fill: silver !important; font-weight: normal; }
+    .mekbay-sheet #heatScale .overflowFrame.hot { fill: var(--damage-color) !important; }
+
+    .mekbay-sheet #faded-arrow { stroke: #aaa; }
+    .mekbay-sheet .inventoryEntry.weakenedHitMod > .hitMod-rect { fill: var(--damage-color) !important; }
+    .mekbay-sheet .inventoryEntry.weakenedHitMod > .hitMod-text { fill: #fff !important; }
+
+    /* Skills */
+    .mekbay-sheet .skillValue { fill: #00f; }
+    .mekbay-sheet .customAmmoLoadout { fill: #00f; }
+
+    /* Armor and structure highlight */
+    .mekbay-sheet .selectable, .mekbay-sheet .selectable > path { cursor: pointer; touch-action: manipulation; transition: fill ease-out 0.2s; }
+    .mekbay-sheet .selectable:hover,
+    .mekbay-sheet .selectable:hover > path { fill: var(--undamaged-highlight-color) !important; }
+    .mekbay-sheet .selectable.damaged:hover,
+    .mekbay-sheet .selectable.damaged:hover > path { fill: var(--damaged-highlight-color) !important; }
+
+    .mekbay-sheet .critLoc.fresh:not(.damaged) { stroke: #03a9f4 !important; }
+    .mekbay-sheet .critLoc.damaged.fresh { fill: var(--damage-color) !important; stroke: #FF0 !important; stroke-width: 1.5px;
+        paint-order: stroke fill; stroke-linejoin: round; stroke-linecap: round;
+        vector-effect: non-scaling-stroke; }
+    .mekbay-sheet .pip.fresh:not(.damaged) { stroke: #03a9f4 !important; stroke-width: 1.5px; }
+    .mekbay-sheet .pip.damaged.fresh { fill: #FF0 !important; stroke: var(--damage-color) !important; stroke-width: 1.5px;
+        paint-order: stroke fill; }
+        
+    .mekbay-sheet .soldierPip.fresh { filter: brightness(1.1) saturate(100) hue-rotate(-140deg) !important; }
+    .mekbay-sheet .soldierPip.damaged.fresh { filter: brightness(1.1) saturate(100) hue-rotate(20deg) !important; }
+    
+    .mekbay-sheet .inventoryEntry:hover > .inventoryEntryButton { fill: var(--highlight-color); }
+    .mekbay-sheet .inventoryEntry:active > .inventoryEntryButton { filter: brightness(1.03); }
+    .mekbay-sheet .inventoryEntry.selected > .inventoryEntryButton { fill: var(--bt-yellow); }
+
+
+    .mekbay-sheet .hot.heat0 { fill: #FFFFFF !important; }
+    .mekbay-sheet .hot.heat1 { fill: #FFFFEE !important; }
+    .mekbay-sheet .hot.heat2 { fill: #FFFFDD !important; }
+    .mekbay-sheet .hot.heat3 { fill: #FFFFCC !important; }
+    .mekbay-sheet .hot.heat4 { fill: #FFFFBB !important; }
+    .mekbay-sheet .hot.heat5 { fill: #FFFFAA !important; }
+    .mekbay-sheet .hot.heat6 { fill: #FFFF99 !important; }
+    .mekbay-sheet .hot.heat7 { fill: #FFFF88 !important; }
+    .mekbay-sheet .hot.heat8 { fill: #FFFF77 !important; }
+    .mekbay-sheet .hot.heat9 { fill: #FFFF66 !important; }
+    .mekbay-sheet .hot.heat10 { fill: #FFFF55 !important; }
+    .mekbay-sheet .hot.heat11 { fill: #FFFF44 !important; }
+    .mekbay-sheet .hot.heat12 { fill: #FFFF33 !important; }
+    .mekbay-sheet .hot.heat13 { fill: #FFFF22 !important; }
+    .mekbay-sheet .hot.heat14 { fill: #FFFF11 !important; }
+    .mekbay-sheet .hot.heat15 { fill: #FFFF00 !important; }
+    .mekbay-sheet .hot.heat16 { fill: #FFEE00 !important; }
+    .mekbay-sheet .hot.heat17 { fill: #FFDD00 !important; }
+    .mekbay-sheet .hot.heat18 { fill: #FFCC00 !important; }
+    .mekbay-sheet .hot.heat19 { fill: #FFBB00 !important; }
+    .mekbay-sheet .hot.heat20 { fill: #FFAA00 !important; }
+    .mekbay-sheet .hot.heat21 { fill: #FF9900 !important; }
+    .mekbay-sheet .hot.heat22 { fill: #FF8800 !important; }
+    .mekbay-sheet .hot.heat23 { fill: #FF7700 !important; }
+    .mekbay-sheet .hot.heat24 { fill: #FF6600 !important; }
+    .mekbay-sheet .hot.heat25 { fill: #FF5500 !important; }
+    .mekbay-sheet .hot.heat26 { fill: #FF4400 !important; }
+    .mekbay-sheet .hot.heat27 { fill: #FF3300 !important; }
+    .mekbay-sheet .hot.heat28 { fill: #FF2200 !important; }
+    .mekbay-sheet .hot.heat29 { fill: #FF1100 !important; }
+    .mekbay-sheet .hot.heat30 { fill: #FF0000 !important; }
+
+    /* workaround to prevent Battle Armor text and images to steal the click event for the armor picker */
+    .mekbay-sheet #suit0 > text, .mekbay-sheet #suit0 > image,
+    .mekbay-sheet #suit1 > text, .mekbay-sheet #suit1 > image,
+    .mekbay-sheet #suit2 > text, .mekbay-sheet #suit2 > image,
+    .mekbay-sheet #suit3 > text, .mekbay-sheet #suit3 > image,
+    .mekbay-sheet #suit4 > text, .mekbay-sheet #suit4 > image,
+    .mekbay-sheet #suit5 > text, .mekbay-sheet #suit5 > image {
+        pointer-events: none;
+    }
+}
+
+/* Night mode */
+@media screen {
+    .night-mode .mekbay-sheet {
+        --svg-bg-color: #141414;
+        --svg-fg-color: #FFF;
+        --svg-fg-color-inv: #000;
+        background-color: var(--svg-bg-color);
+        color: var(--svg-fg-color);
+        fill: var(--svg-fg-color);
+    }
+
+    .night-mode .mekbay-sheet [fill="#000000" i],
+    .night-mode .mekbay-sheet [fill="#000" i],
+    .night-mode .mekbay-sheet [fill="black" i],
+    .night-mode .mekbay-sheet [style*="fill:#000000" i],
+    .night-mode .mekbay-sheet [style*="fill:black" i],
+    .night-mode .mekbay-sheet [style*="fill: #000000" i],
+    .night-mode .mekbay-sheet [style*="fill: black" i],
+    .night-mode .mekbay-sheet [style*="fill:#000" i],
+    .night-mode .mekbay-sheet [style*="fill: #000" i],
+    .night-mode .mekbay-sheet [style*="fill: rgb(0, 0, 0)" i] {
+        fill: var(--svg-fg-color) !important;
+    }
+
+    .night-mode .mekbay-sheet [stroke="#000000" i],
+    .night-mode .mekbay-sheet [stroke="#000" i],
+    .night-mode .mekbay-sheet [stroke="black" i],
+    .night-mode .mekbay-sheet [style*="stroke:#000000" i],
+    .night-mode .mekbay-sheet [style*="stroke:black" i],
+    .night-mode .mekbay-sheet [style*="stroke: #000000" i],
+    .night-mode .mekbay-sheet [style*="stroke: black" i],
+    .night-mode .mekbay-sheet [style*="stroke:#000" i],
+    .night-mode .mekbay-sheet [style*="stroke: #000" i],
+    .night-mode .mekbay-sheet [style*="stroke: rgb(0, 0, 0)" i] {
+        stroke: var(--svg-fg-color) !important;
+    }
+
+    .night-mode .mekbay-sheet [fill="#FFFFFF" i],
+    .night-mode .mekbay-sheet [fill="#FFF" i],
+    .night-mode .mekbay-sheet [fill="white" i],
+    .night-mode .mekbay-sheet [style*="fill:#FFFFFF" i],
+    .night-mode .mekbay-sheet [style*="fill:white" i],
+    .night-mode .mekbay-sheet [style*="fill: #FFFFFF" i],
+    .night-mode .mekbay-sheet [style*="fill: white" i],
+    .night-mode .mekbay-sheet [style*="fill:#FFF" i],
+    .night-mode .mekbay-sheet [style*="fill: #FFF" i],
+    .night-mode .mekbay-sheet [style*="fill: rgb(255, 255, 255)" i] {
+        fill: var(--svg-fg-color-inv) !important;
+    }
+
+    .night-mode .mekbay-sheet [stroke="#FFFFFF" i],
+    .night-mode .mekbay-sheet [stroke="#FFF" i],
+    .night-mode .mekbay-sheet [stroke="white" i],
+    .night-mode .mekbay-sheet [style*="stroke:#FFFFFF" i],
+    .night-mode .mekbay-sheet [style*="stroke:white" i],
+    .night-mode .mekbay-sheet [style*="stroke: #FFFFFF" i],
+    .night-mode .mekbay-sheet [style*="stroke: white" i],
+    .night-mode .mekbay-sheet [style*="stroke:#FFF" i],
+    .night-mode .mekbay-sheet [style*="stroke: #FFF" i],
+    .night-mode .mekbay-sheet [style*="stroke: rgb(255, 255, 255)" i] {
+        stroke: var(--svg-fg-color-inv) !important;
+    }
+
+    .night-mode .mekbay-sheet [fill="#c7c8ca" i],
+    .night-mode .mekbay-sheet [style*="fill:#c7c8ca" i],
+    .night-mode .mekbay-sheet [style*="fill: #c7c8ca" i] {
+        fill: #34373D !important;
+    }
+
+    .night-mode .mekbay-sheet [stroke="#c7c8ca" i],
+    .night-mode .mekbay-sheet [style*="stroke:#c7c8ca" i],
+    .night-mode .mekbay-sheet [style*="stroke: #c7c8ca" i] {
+        stroke: #34373D !important;
+    }
+
+    .night-mode .mekbay-sheet [fill="#c7c7c7" i],
+    .night-mode .mekbay-sheet [style*="fill:#c7c7c7" i],
+    .night-mode .mekbay-sheet [style*="fill: #c7c7c7" i] {
+        fill: #34373D !important;
+    }
+    .night-mode .mekbay-sheet [stroke="#c7c7c7" i],
+    .night-mode .mekbay-sheet [style*="stroke:#c7c7c7" i],
+    .night-mode .mekbay-sheet [style*="stroke: #c7c7c7" i] {
+        stroke: #34373D !important;
+    }
+        
+    .night-mode .mekbay-sheet .damaged { fill: var(--damage-color) !important; }
+    .night-mode .mekbay-sheet .damaged path { fill: var(--damage-color) !important; }
+    .night-mode .mekbay-sheet .damaged text { fill: var(--damage-color) !important; }
+    .night-mode .mekbay-sheet image { filter: invert(1) hue-rotate(180deg); }
+    
+    .night-mode .mekbay-sheet #faded-arrow { stroke: #666; }
+    .night-mode .mekbay-sheet .heatEffect.hot.surpassed { fill: #3f3f3f !important; }
+    
+    .night-mode .mekbay-sheet .damaged { fill: var(--damage-color) !important; }
+    .night-mode .mekbay-sheet .damaged path { fill: var(--damage-color) !important; }
+    .night-mode .mekbay-sheet .damaged text { fill: var(--damage-color) !important; }
+    
+    .night-mode .mekbay-sheet .detached,
+    .night-mode .mekbay-sheet .detached > path { fill: gray !important; pointer-events: none; }
+    .night-mode .mekbay-sheet .critGroup.detached text { fill: #3f3f3f !important; }
+    .night-mode .mekbay-sheet .pip.detached { stroke: gray; }
+    .night-mode .mekbay-sheet .pip.damaged { fill: var(--damage-color) !important; }
+    .night-mode .mekbay-sheet .pip.fresh:not(.damaged) { stroke: #03a9f4 !important; }
+    .night-mode .mekbay-sheet .pip.damaged.fresh { fill: #FF0 !important; stroke: var(--damage-color) !important; }
+
+    .night-mode .mekbay-sheet .soldierPip.damaged { filter: invert(1) opacity(0.3) !important; }
+    .night-mode .mekbay-sheet .soldierPip.damaged.fresh { filter: invert(1) brightness(0.6) saturate(100) hue-rotate(237deg) contrast(4) !important; }
+    .night-mode .mekbay-sheet .soldierPip.fresh { filter: invert(1) saturate(100) hue-rotate(10deg) !important; }
+
+    .night-mode .mekbay-sheet .skillValue { fill: #bbf; }
+    .night-mode .mekbay-sheet .customAmmoLoadout { fill: #bbf; }
+    
+    .night-mode .mekbay-sheet .inventoryEntry:hover > .inventoryEntryButton { fill: var(--night-highlight-color); }
+    .night-mode .mekbay-sheet .inventoryEntry.selected > .inventoryEntryButton { fill: var(--bt-yellow); }
+    .night-mode .mekbay-sheet .selectable:hover,
+    .night-mode .mekbay-sheet .selectable:hover > path { fill: var(--undamaged-night-highlight-color) !important; }
+    .night-mode .mekbay-sheet .selectable.damaged:hover,
+    .night-mode .mekbay-sheet .selectable.damaged:hover > path { fill: var(--damaged-highlight-color) !important; }
+    
+
+    .night-mode .mekbay-sheet .hot.heat0 { fill: #000000 !important; }
+    .night-mode .mekbay-sheet .hot.heat1 { fill: #090900 !important; }
+    .night-mode .mekbay-sheet .hot.heat2 { fill: #121200 !important; }
+    .night-mode .mekbay-sheet .hot.heat3 { fill: #1B1B00 !important; }
+    .night-mode .mekbay-sheet .hot.heat4 { fill: #242400 !important; }
+    .night-mode .mekbay-sheet .hot.heat5 { fill: #2D2D00 !important; }
+    .night-mode .mekbay-sheet .hot.heat6 { fill: #363600 !important; }
+    .night-mode .mekbay-sheet .hot.heat7 { fill: #3F3F00 !important; }
+    .night-mode .mekbay-sheet .hot.heat8 { fill: #484800 !important; }
+    .night-mode .mekbay-sheet .hot.heat9 { fill: #515100 !important; }
+    .night-mode .mekbay-sheet .hot.heat10 { fill: #5A5A00 !important; }
+    .night-mode .mekbay-sheet .hot.heat11 { fill: #636300 !important; }
+    .night-mode .mekbay-sheet .hot.heat12 { fill: #6C6C00 !important; }
+    .night-mode .mekbay-sheet .hot.heat13 { fill: #757500 !important; }
+    .night-mode .mekbay-sheet .hot.heat14 { fill: #7F7F00 !important; }
+    .night-mode .mekbay-sheet .hot.heat15 { fill: #888800 !important; }
+    .night-mode .mekbay-sheet .hot.heat16 { fill: #907F00 !important; }
+    .night-mode .mekbay-sheet .hot.heat17 { fill: #987600 !important; }
+    .night-mode .mekbay-sheet .hot.heat18 { fill: #A06D00 !important; }
+    .night-mode .mekbay-sheet .hot.heat19 { fill: #A86400 !important; }
+    .night-mode .mekbay-sheet .hot.heat20 { fill: #B05B00 !important; }
+    .night-mode .mekbay-sheet .hot.heat21 { fill: #B85200 !important; }
+    .night-mode .mekbay-sheet .hot.heat22 { fill: #C04900 !important; }
+    .night-mode .mekbay-sheet .hot.heat23 { fill: #C84000 !important; }
+    .night-mode .mekbay-sheet .hot.heat24 { fill: #D03700 !important; }
+    .night-mode .mekbay-sheet .hot.heat25 { fill: #D82E00 !important; }
+    .night-mode .mekbay-sheet .hot.heat26 { fill: #E02500 !important; }
+    .night-mode .mekbay-sheet .hot.heat27 { fill: #E81C00 !important; }
+    .night-mode .mekbay-sheet .hot.heat28 { fill: #F01300 !important; }
+    .night-mode .mekbay-sheet .hot.heat29 { fill: #F80A00 !important; }
+    .night-mode .mekbay-sheet .hot.heat30 { fill: #FF0000 !important; }
+}
+
+/* Printing */
+@media print {
+        
+    * {
+		print-color-adjust: exact;
+        -webkit-transition: none !important;
+        transition: none !important; 
+	}
+
+    .night-mode .mekbay-sheet,
+    .night-mode .mekbay-sheet * {
+        filter: none !important;
+    }
+
+    html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: white;
+        overflow: unset;
+    }
+
+    body.multipage-container-active *:not(#multipage-container):not(#multipage-container *) {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    .noprint,
+    .backdrop {
+        display: none !important;
+    }
+
+    force-builder-viewer,
+    .menu-overlay,
+    .header {
+        display: none !important;
+    }
+
+
+    body:not(.multipage-container-active) main,
+    body:not(.multipage-container-active) .app-container,
+    body:not(.multipage-container-active) .main-content,
+    body:not(.multipage-container-active) .content-area {
+        width: 8.5in !important;
+        height: 11in !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        left: 0;
+        top: 0;
+        display: block;
+        background: transparent !important;
+    }
+
+    body:not(.multipage-container-active) svg-viewer {
+        width: 8.5in !important;
+        height: 11in !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        top: 0 !important;
+        left: 0 !important;
+        display: block;
+        background: transparent !important;
+    }
+
+    body:not(.multipage-container-active) .svg-viewer-container {
+        width: 8.5in !important;
+        height: 11in !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: white !important;
+        display: block;
+    }
+
+    body:not(.multipage-container-active) .svg-viewer-container > svg {
+        display: block;
+        box-sizing: border-box;
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100%;
+        max-height: 100%;
+        transform: none !important;
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+
+    #faded-arrow,
+    #now-arrow {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    @page {
+        size: auto;
+        /* size: letter portrait; */
+        /* size: 612pt 792pt; */
+        /* margin: auto; */
+        /* margin: 8mm; */
+        /* margin: 0cm !important; */
+		padding: 0cm !important;
+        /* margin: 0cm !important; */
+		overflow: hidden;
+    }
+	
+}

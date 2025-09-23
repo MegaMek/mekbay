@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="527mm"
+   height="530mm"
+   viewBox="0 0 527 530"
+   version="1.1"
+   id="svg1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <g
+     id="layer1"
+     transform="translate(141,162)">
+    <path
+       id="path3-6"
+       style="fill:#ffffff;stroke:#ffffff;stroke-width:0.265"
+       d="M 123 -162 A 102 102 0 0 0 21 -60 A 102 102 0 0 0 36 -6.97 L -51.7 -6.97 L -141 368 L 386 368 L 302 -6.97 L 210 -6.97 A 102 102 0 0 0 225 -60 A 102 102 0 0 0 123 -162 z M 123 -129 A 68.5 68.5 0 0 1 192 -60 A 68.5 68.5 0 0 1 167 -6.97 L 79.8 -6.97 A 68.5 68.5 0 0 1 54.5 -60 A 68.5 68.5 0 0 1 123 -129 z " />
+  </g>
+</svg>

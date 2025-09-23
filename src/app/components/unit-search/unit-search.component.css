@@ -1,0 +1,276 @@
+.searchbar-container {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: stretch;
+    flex-direction: row;
+}
+
+.searchbar {
+    width: 100%;
+    font-size: 1rem;
+    height: 40px;
+    padding-left: 12px;
+    padding-right: 32px; /* Space for the cancel button */
+}
+
+.searchbar-cancel-btn {
+    position: absolute;
+    right: 54px;
+    top: 0;
+    bottom: 0;
+    margin: auto 0;
+    background: transparent;
+    border: none;
+    color: #999;
+    font-size: 1em;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0 6px;
+    height: 32px;
+    width: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    transition: color 0.2s;
+    line-height: 1;
+}
+
+.searchbar-cancel-btn:hover {
+    color: red;
+}
+
+.adv-btn {
+    margin-left: 8px;
+    color: #bbb;
+    cursor: pointer;
+    font-size: 1rem;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    width: 40px;
+    padding: 0;
+}
+
+.adv-btn:hover {
+    color: white;
+}
+
+.adv-btn.active {
+    color: var(--bt-yellow);
+    background-image:
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)), linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)), linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)), linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)), linear-gradient(var(--bt-yellow), var(--bt-yellow));
+    background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+}
+
+.adv-panel {
+    position: absolute;
+    box-sizing: border-box;
+    margin: 0;
+    background-color: #222;
+    color: white;
+    z-index: 1001;
+    padding: 16px;
+    overflow-y: auto;
+    min-width: 300px;
+    transition: all 0.2s ease-in-out;
+}
+
+.adv-panel .range-values {
+    color: var(--text-color-secondary);
+    font-size: 0.9em;
+}
+
+.adv-panel-content {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px 16px;
+}
+
+.results-dropdown {
+    position: absolute;
+    box-sizing: border-box;
+    margin: 0;
+    z-index: 1000;
+    background-color: #222;
+    container-type: inline-size;
+    padding: 1px;
+}
+
+.results-dropdown-content {
+    width: 100%;
+    height: 100%;
+    background-color: #222;
+    overflow: hidden;
+}
+
+.results-dropdown-item {
+    display: flex;
+    min-width: 0;
+    min-height: 75px;
+    box-sizing: border-box;
+    border-bottom: 1px solid #666;
+    font-size: 1em;
+    cursor: pointer;
+    flex-direction: row;
+    overflow-x: hidden;
+    gap: 4px;
+    align-items: center;
+}
+
+.results-dropdown-item:hover {
+    background: var(--background-highlight);
+}
+
+.results-dropdown-item.active {
+    background: var(--background-highlight);
+}
+
+.results-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.results-dropdown-viewport {
+    width: 100%;
+    height: calc(100% - 40px);
+    touch-action: pan-y;
+}
+
+.results-dropdown-item.no-results {
+  color: var(--text-color-secondary);
+  font-style: italic;
+  justify-content: center;
+  align-items: center;
+  display: flex;
+  height: 100%;
+  width: 100%;
+  min-height: 80px;
+}
+.results-dropdown-item.no-results:hover {
+    background-color: transparent;
+    cursor: default;
+}
+
+/* Limit the slider width */
+.slider-container {
+  max-width: 260px;
+  width: 100%;
+  min-width: 120px;
+  margin: 8px 0;
+  margin-left: 9px;
+  user-select: none;
+}
+
+.clear-btn {
+    width: 100%;
+    margin-bottom: 16px;
+    padding: 8px;
+}
+
+:host ::ng-deep .model b,
+:host ::ng-deep .chassis b {
+    font-weight: bolder;
+    color: var(--bt-yellow);
+}
+
+.results-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 40px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    font-size: 0.8em;
+    border-top: 1px solid #666;
+}
+
+.results-count {    
+    color: var(--text-color-secondary);
+    padding-left: 4px;
+    pointer-events: none;
+}
+
+.results-sort {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.results-sort .sort-select {
+    height: 32px;
+    padding: 0 4px;
+    background-color: #222;
+}
+
+.results-sort .sort-direction-btn {
+    background-color: #222;
+    height: 32px;
+    width: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;    
+    color: #bbb;
+    cursor: pointer;
+}
+
+.results-sort .sort-direction-btn:hover {
+    color: white;
+}
+
+.results-sort .sort-direction-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.unit-card .info-slot.sort-slot {
+    background-color: var(--bt-yellow-background);
+}
+
+.unit-card .role.sort-slot {
+    color: var(--bt-yellow-background-light);
+}
+
+.unit-card .info-slot-era {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    padding-top: 4px;
+}
+
+.unit-card .era-icon {
+    height: 19px;
+}
+
+.info-spanner {
+    flex: 1 1 auto;
+    min-width: 0px;
+}
+
+
+@container (min-width: 600px) {
+    .unit-card .primary-info {
+        display: flex;
+        flex-direction: row;
+        align-items: baseline;
+        justify-content: space-between;
+    }
+
+    .unit-card .primary-info .chassis {
+        flex-grow: 1;
+        min-width: 0;
+    }
+
+    .info-area {
+        flex-shrink: 0;
+        min-width: 0;
+    }
+}

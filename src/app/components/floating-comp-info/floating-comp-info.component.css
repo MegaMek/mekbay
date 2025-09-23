@@ -1,0 +1,47 @@
+
+.floating-comp-info {
+    position: fixed;
+    z-index: 9999;
+    color: #fff;
+    padding: 10px 14px;
+    box-shadow: 0 2px 12px #0008;
+    min-width: 220px;
+    max-width: 400px;
+    font-size: 0.95em;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.floating-comp-info .caption {
+    font-size: 1.3em;
+    padding-bottom: 4px;
+    font-weight: bold;
+}
+
+.equip-group {
+    margin-bottom: 10px;
+}
+.equip-group-title {
+    font-weight: bold;
+    margin-bottom: 4px;
+    color: var(--text-color-secondary);
+    font-size: 1em;
+}
+.equip-items {
+    margin-left: 8px;
+}
+.equip-item {
+    display: flex;
+    gap: 6px;
+    font-size: 0.95em;
+}
+.equip-label {
+    color: #aaa;
+}
+.equip-value {
+    color: #fff;
+}
+
+.floating-comp-info.visible {
+    opacity: 1;
+}

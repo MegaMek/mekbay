@@ -1,0 +1,13 @@
+<div *ngIf="showUpdate()" class="notification-container">
+    <div class="update-banner">
+        <div class="update-btn-container">
+            <button (click)="reloadForUpdate()" class="update-btn">
+                Update available!<br/>Click to reload.
+                <div class="progress-bar-container">
+                    <div class="progress-bar" [style.width]="(countdown() / 10) * 100 + '%'"></div>
+                </div>
+            </button>
+            <button (click)="cancelReload()" class="cancel-btn">X</button>
+        </div>
+    </div>
+</div>

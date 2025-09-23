@@ -1,0 +1,171 @@
+<div class="searchbar-container">
+    <input #searchInput class="bt-input searchbar" type="text" [disabled]="!this.filtersService.isDataReady()"
+        [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'" [value]="this.filtersService.search()"
+        (input)="setSearch(searchInput.value)" (focus)="onFocus()" (blur)="onBlur($event)" (keydown)="onKeydown($event)"
+        id="unit-search-input" autocomplete="off" />
+    <button *ngIf="this.filtersService.search().length > 0" class="searchbar-cancel-btn" type="button"
+        (click)="setSearch(''); searchInput.focus();" aria-label="Clear search" tabindex="-1">
+        &#10005;
+    </button>
+    <button #advBtn class="bt-button adv-btn" [class.active]="isAdvActive()" [disabled]="!this.filtersService.isDataReady()"
+        (click)="toggleAdv()"  (focus)="onFocus()" (blur)="onBlur($event)" title="Advanced Search" type="button">
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+            <path d="M4 4h16l-6 8v5l-4 3v-8z"/>
+        </svg>
+    </button>
+</div>
+<div #resultsDropdown 
+    class="results-dropdown framed-borders" 
+    [hidden]="!this.filtersService.isDataReady() || !resultsVisible()"
+    [ngStyle]="resultsDropdownStyle()"
+    (mousedown)="onFocus()"
+    (focusin)="onFocus()">
+    <div class="results-dropdown-content">
+    <ng-container *ngIf="this.filtersService.filteredUnits().length > 0; else noResults">
+        <cdk-virtual-scroll-viewport class="results-dropdown-viewport" 
+            [itemSize]="75"
+            minBufferPx="900" 
+            maxBufferPx="1350"
+            tabindex="0"
+            (keydown)="onKeydown($event)" (focus)="onFocus()" (blur)="onBlur()">
+            <div class="results-dropdown-item unit-card"
+                *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
+                [class.active]="activeIndex() === i" (mouseenter)="activeIndex.set(i)" (click)="onUnitClick(unit)">
+                <div class="unit-image-container">
+                    <img class="icon" [src]="getUnitImg(unit)" alt="{{ unit.model }} {{ unit.chassis }}" />
+                </div>
+                <div class="unit-data-container">
+                    <div class="secondary-info">
+                        <div class="model" [innerHTML]="highlight(unit.model)"></div>
+                        <div class="role" *ngIf="unit.role && (unit.role !== 'None')" [class.sort-slot]="this.filtersService.selectedSort() === 'role'">{{ unit.role }}</div>
+                    </div>
+                    <div class="primary-info">
+                        <div class="chassis" [innerHTML]="highlight(unit.chassis)"></div>
+                    </div>
+                    <div class="third-info">
+                        <div class="info-area">
+                            <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
+                                <span class="value">BV: {{ formatValue(unit.bv, true, true) }}</span>
+                            </div>
+                            <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
+                                <span class="value">{{ formatTons(unit.tons) }}</span>
+                                <img src="/images/weight.svg" class="icon" alt="Tonnage">
+                            </div>
+                            <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
+                                <span class="value">{{ unit.year }}</span>                    
+                                <img src="/images/calendar.svg" class="icon" alt="Year">
+                            </div>
+                            <ng-container *ngIf="getSortSlot(unit) as slot">
+                                <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
+                                    <span class="value">
+                                        <ng-container *ngIf="slot.label">{{ slot.label }}: </ng-container>{{ slot.value }}
+                                    </span>
+                                    <img *ngIf="slot.img" [src]="slot.img" class="icon" [alt]="slot.alt">
+                                </div>
+                            </ng-container>
+                        </div>
+                        <span class="info-spanner"></span>
+                        <div class="info-slot-era">
+                            <img *ngIf="getEraImg(unit)" [src]="getEraImg(unit)" class="icon era-icon" alt="Era" [title]="unit._era?.name" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </cdk-virtual-scroll-viewport>
+        
+        <div class="results-footer" *ngIf="this.filtersService.filteredUnits().length > 0">
+            <div class="results-count">
+                {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length === 1 ? '' : 's' }}
+            </div>
+            <div class="results-sort">
+                <select
+                    #sortSel
+                    class="bt-input sort-select"
+                    (change)="this.filtersService.setSortOrder(sortSel.value)">
+                    <option
+                        *ngFor="let opt of SORT_OPTIONS"
+                        [value]="opt.key"
+                        [selected]="opt.key === this.filtersService.selectedSort()">
+                        {{ opt.label }}
+                    </option>
+                </select><button
+                    type="button"
+                    class="bt-button sort-direction-btn"
+                    (click)="this.filtersService.setSortDirection(this.filtersService.selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
+                    [title]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
+                    [attr.aria-label]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+                    <ng-container *ngIf="this.filtersService.selectedSortDirection() === 'asc'; else descIcon">
+                        <!-- ASC -->
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true" role="img">
+                            <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </ng-container>
+                    <ng-template #descIcon>
+                        <!-- DESC -->
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true" role="img">
+                            <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </ng-template>
+                </button>
+            </div>
+        </div>
+    </ng-container>
+    <ng-template #noResults>
+        <div class="results-dropdown-item no-results">
+            No results
+        </div>
+    </ng-template>
+    </div>
+</div>
+<div #advPanel class="adv-panel framed-borders" [hidden]="!advOpen()" [ngStyle]="advPanelStyle()">
+    <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
+    <div class="adv-panel-content"
+         [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
+        <!-- Dropdown filters -->
+            <ng-container *ngFor="let conf of ADVANCED_FILTERS">
+                <ng-container *ngIf="this.filtersService.advOptions()[conf.key]?.type === 'dropdown'">
+                    <div class="filter-row" *ngIf="this.filtersService.advOptions()[conf.key] as optionsData">
+                        <multi-select-dropdown class="dropdown" *ngIf="optionsData.type === 'dropdown'"
+                            [label]="optionsData.label"
+                            [options]="optionsData.options"
+                            [selected]="optionsData.value"
+                            [multistate]="conf.multistate ?? false"
+                            (selectionChange)="setAdvFilter(conf.key, $event)">
+                        </multi-select-dropdown>
+                    </div>
+                </ng-container>
+            </ng-container>
+            <!-- <div></div> -->
+        <!-- Range Filters -->
+            <ng-container *ngFor="let conf of ADVANCED_FILTERS">
+                <ng-container *ngIf="this.filtersService.advOptions()[conf.key]?.type === 'range'">
+                    <div class="filter-row" *ngIf="this.filtersService.advOptions()[conf.key] as optionsData">
+                        <div class="range" *ngIf="optionsData.type === 'range'">
+                            <label>{{ optionsData.label }}
+                                    <span class="range-values">
+                                        ({{ formatValue(optionsData.value[0], false, true) }}~{{
+                                        formatValue(optionsData.value[1], false, true) }})
+                                    </span>
+                            </label>
+                            <range-slider
+                                [min]="optionsData.totalRange[0]"
+                                [max]="optionsData.totalRange[1]"
+                                [value]="optionsData.value"
+                                [availableRange]="optionsData.options"
+                                [interacted]="optionsData.interacted"
+                                [curve]="conf.curve ?? 1"
+                                (valueChange)="setAdvFilter(conf.key, $event)">
+                            </range-slider>
+                        </div>
+                    </div>
+                </ng-container>
+            </ng-container>
+    </div>
+</div>

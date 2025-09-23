@@ -1,0 +1,44 @@
+.option-row {
+  display: flex; 
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 0.5em;
+  gap: 0.5em;
+}
+.option-row select {
+  width: 50%;
+}
+
+.option-col {
+  display: flex;
+  flex-direction: column;
+  padding-left: 0.5em;
+  padding-right: 0.5em;
+}
+
+.option-col .option-row {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.description {
+  font-size: 0.8em;
+  color: var(--text-color-secondary);
+  transition: color 0.3s ease;
+}
+
+.description p {
+  margin-top: 0;
+  margin-bottom: 0.3em;
+}
+
+.error-msg {
+  color: #d32f2f;
+  font-size: 0.9em;
+  margin-bottom: 0.5em;
+}

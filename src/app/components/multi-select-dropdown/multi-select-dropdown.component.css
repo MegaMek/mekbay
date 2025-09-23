@@ -1,0 +1,224 @@
+:host {
+    display: block;
+    position: relative;
+    width: 100%;
+}
+
+.multi-select-container .display-area {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 38px;
+    cursor: pointer;
+    padding: 4px 8px;
+    box-sizing: border-box;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.label {
+    margin-right: 8px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    min-height: 30px; 
+}
+
+.pills-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    flex: 1;
+    margin-top: 6px;
+}
+
+.placeholder {
+    color: var(--text-color-secondary);
+    font-style: italic;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.pill {
+    background-color: var(--bt-yellow-background);
+    color: var(--bt-yellow);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.7em;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.pill-or {
+    background-color: var(--bt-yellow-background);
+    color: var(--bt-yellow);
+}
+.pill-and {
+    background-color: #d4f7d4;
+    color: #2e8b57;
+}
+.pill-not {
+    background-color: #ffd4d4;
+    color: #c00;
+}
+
+.remove-pill {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+    font-size: 1.2em;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+.remove-pill:hover {
+    opacity: 1;
+}
+
+.chevron {
+    transition: transform 0.2s ease-in-out;
+    margin-left: auto;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    min-height: 30px; 
+}
+
+.multi-select-container.open .chevron {
+    transform: rotate(180deg);
+}
+
+.options-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1001;
+    padding: 1px;
+    margin-top: 4px;
+    background-color: var(--background-color-menu);
+}
+
+.options-list {
+    position: relative;
+    width: 100%;    
+    max-height: 248px; 
+    overflow-y: auto;
+    background-color: var(--background-color-menu);
+}
+
+.option-item {
+    display: flex;
+    align-items: flex-start;
+    padding: 8px 12px;
+    cursor: pointer;
+    gap: 8px;
+}
+
+.option-item.selected-single {
+    background-color: var(--bt-yellow-background);
+    color: var(--bt-yellow);
+}
+
+.option-item:hover {
+    background-color: var(--background-color-light);
+}
+
+.option-item input[type="checkbox"] {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+
+.option-item.unavailable {
+    color: #666;
+}
+
+.custom-checkbox {
+    position: relative;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    background-color: transparent;
+    border: 1px solid silver;
+    border-radius: 2px;
+    flex-shrink: 0;
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+    text-align: center;
+    font-size: 1em;
+    line-height: 16px;
+}
+
+/* For normal checkbox */
+.custom-checkbox.checked {
+    background-color: var(--bt-yellow);
+    border-color: var(--bt-yellow);
+    color: #fff;
+}
+
+/* For multistate checkboxes */
+.checkbox-or {
+    background-color: var(--bt-yellow);
+    border-color: var(--bt-yellow);
+    color: #fff;
+}
+.checkbox-and {
+    background-color: #2e8b57;
+    border-color: #2e8b57;
+    color: #fff;
+}
+.checkbox-not {
+    background-color: #c00;
+    border-color: #c00;
+    color: #fff;
+}
+.checkbox-mark {
+    position: absolute;
+    left: 2px;
+    top: 0px;
+    width: 12px;
+    height: 16px;
+    font-size: 1em;
+    line-height: 16px;
+    text-align: center;
+    pointer-events: none;
+}
+
+.option-img {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+}
+
+.no-options {
+    padding: 8px 12px;
+    color: var(--text-color-secondary);
+    font-style: italic;
+}
+
+
+.filter-container {
+    padding: 6px;
+    background-color: transparent;
+    border-bottom: 1px solid #666;
+}
+
+.filter-input {
+    width: 100%;
+    padding: 6px 12px;
+    border: 0;
+    background-color: transparent;
+    color: var(--text-color);
+    box-sizing: border-box;
+}
+
+.filter-input:focus {
+    outline: none;
+}

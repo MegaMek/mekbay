@@ -1,0 +1,139 @@
+.footer {
+    width: 100%;
+    display: flex;
+    justify-content: space-around;
+    flex-direction: row;
+    gap: 8px;
+}
+
+:host ::ng-deep .modal-body {
+    padding: 0px !important;
+}
+
+.force-list {
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    gap: 4px;
+    overflow-y: auto;
+}
+.force-entry {
+    border: 1px solid transparent;
+    padding: 8px;
+    background: #0003;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+.force-entry:hover {
+    border-color: var(--border-color);
+    background: var(--background-highlight);
+}
+.force-entry.selected {
+    border-color: var(--bt-yellow);
+    background: var(--bt-yellow-background);
+}
+.force-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 0.7em;
+}
+.force-info {
+    display: flex;
+    flex-direction: column;
+    text-align: right;
+}
+.force-name {
+    font-weight: bold;
+    font-size: 1.1em;
+}
+.force-bv {
+    color: var(--text-color-secondary);
+    font-size: 0.8em;
+}
+
+.force-timestamp {
+    color: var(--text-color-secondary);
+    font-size: 0.8em;
+    margin-left: 1em;
+    text-align: right;
+}
+.cloud-icon {
+    width: 16px;
+    height: 16px;
+    vertical-align: text-bottom;
+    opacity: 0.8;
+}
+.unit-scroll {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+}
+.unit-square {
+    width: 90px;
+    height: 105px;
+    min-width: 90px;
+    background: #0003;
+    padding: 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+    padding: 4px;
+    box-sizing: border-box;
+}
+.unit-square.destroyed {
+    background-image: repeating-linear-gradient(
+        120deg,
+        #500 0px,
+        #500 12px,
+        #300 12px,
+        #300 24px
+    );
+    border-color: #d00;
+    opacity: 0.85;
+}
+
+.unit-icon {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    margin: 8px;
+}
+
+.unit-square.destroyed .unit-icon {
+    filter: grayscale(1) brightness(0.7) sepia(1) hue-rotate(-30deg) saturate(6) contrast(1.2);
+    transition: filter 0.3s;
+}
+
+.unit-model {
+    color: var(--text-color-secondary);
+    font-size: 0.7em;
+    text-align: center;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    display: block;
+}
+.unit-chassis {
+    font-size: 0.8em;
+    color: var(--text-color);
+    word-break: break-word;
+    text-align: center;
+}
+
+.loading-spinner {
+    text-align: center;
+    padding: 2em;
+    color: #aaa;
+}
+.empty-state {
+    text-align: center;
+    color: #aaa;
+    padding: 2em;
+}
+.modal-btn[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

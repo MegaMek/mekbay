@@ -1,0 +1,29 @@
+<div
+    #dialog
+    *ngIf="comp()"
+    class="floating-comp-info allow-select {{ typeClass }}"
+    [class.visible]="positioned"
+    [style.top.px]="pos().y"
+    [style.left.px]="pos().x">
+    <div class="caption">{{ name }}</div>
+    <div class="desc" *ngIf="desc">{{ desc }}</div>
+    <div><span class="muted">Type: </span>{{ typeLabel }}</div>
+    <div *ngIf="range"><span class="muted">Range: </span><span *ngIf="minRange && minRange > 0">[{{ minRange }}] </span>{{ range }}</div>
+    <div *ngIf="damage !== null"><span class="muted">Damage: </span>{{ damage }}</div>
+    <div *ngIf="rackSize !== null && rackSize > 0"><span class="muted">Rack Size: </span>{{ rackSize }}</div>
+    <div *ngIf="heat && heat > 0"><span class="muted">Heat: </span>{{ heat }}</div>
+    <hr *ngIf="equipment()">
+    <div *ngFor="let group of equipmentDisplay" class="equip-group-container">
+        <div class="equip-group">
+            <div class="equip-group-title">{{ group.group }}</div>
+            <div class="equip-items">
+                <div *ngFor="let item of group.items">
+                    <div *ngIf="item.value !== undefined && item.value !== ''" class="equip-item">
+                        <span class="equip-label">{{ item.label }}:</span>
+                        <span class="equip-value">{{ item.value }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

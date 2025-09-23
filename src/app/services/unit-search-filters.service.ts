@@ -1,0 +1,644 @@
+/*
+ * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
+import { Injectable, signal, computed, effect, inject } from '@angular/core';
+import { Unit } from '../models/units.model';
+import { DataService } from './data.service';
+import { MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+
+/*
+ * Author: Drake
+ */
+export interface SortOption {
+    key: string;
+    label: string;    
+    slotLabel?: string; // Optional label prefix to show in the slot (e.g., "BV")
+    slotIcon?: string;  // Optional icon for the slot (e.g., '/images/calendar.svg')
+
+}
+
+export enum AdvFilterType {
+    DROPDOWN = 'dropdown',
+    RANGE = 'range'
+}
+export interface AdvFilterConfig {
+    key: string;
+    label: string;
+    type: AdvFilterType;
+    options?: string[]; // For dropdowns, can be pre-defined options to define the order they should appear in
+    external?: boolean; // If true, this filter datasource is not from the local data, but from an external source (era, faction, etc.)
+    curve?: number; // for range sliders, defines the curve of the slider
+    ignoreValues?: any[]; // Values to ignore in the range filter, e.g. [-1] for heat/dissipation
+    multistate?: boolean; // if true, the filter (dropdown) can have multiple states (OR, AND, NOT)
+}
+
+interface FilterState {
+    [key: string]: {
+        value: any;
+        interactedWith: boolean;
+    };
+}
+
+type DropdownFilterOptions = {
+    type: 'dropdown';
+    label: string;
+    options: { name: string, img?: string }[];
+    value: string[];
+    interacted: boolean;
+};
+
+type RangeFilterOptions = {
+    type: 'range';
+    label: string;
+    totalRange: [number, number];
+    options: [number, number];
+    value: [number, number];
+    interacted: boolean;
+    curve?: number;
+};
+
+type AdvFilterOptions = DropdownFilterOptions | RangeFilterOptions;
+
+const DEFAULT_FILTER_CURVE = 0;
+
+function smartDropdownSort(options: string[], predefinedOrder?: string[]): string[] {
+    if (predefinedOrder && predefinedOrder.length > 0) {
+        const optionsSet = new Set(options);
+        const sortedOptions: string[] = [];
+        for (const predefinedOpt of predefinedOrder) {
+            if (predefinedOpt.endsWith('*')) {
+                const prefix = predefinedOpt.slice(0, -1);
+                // Smart sort for matching options
+                const matchingOptions = Array.from(optionsSet)
+                    .filter(o => typeof o === 'string' && o.startsWith(prefix))
+                    .sort((a, b) => naturalCompare(a, b));
+                for (const match of matchingOptions) {
+                    sortedOptions.push(match);
+                    optionsSet.delete(match);
+                }
+            } else if (optionsSet.has(predefinedOpt)) {
+                sortedOptions.push(predefinedOpt);
+                optionsSet.delete(predefinedOpt);
+            }
+        }
+        const remainingSorted = Array.from(optionsSet).sort(naturalCompare);
+        return [...sortedOptions, ...remainingSorted];
+    }
+    return options.sort(naturalCompare);
+}
+
+function naturalCompare(a: string, b: string): number {
+    const regex = /^([^\d]*)(\d+)?(.*)$/;
+    const matchA = a.match(regex);
+    const matchB = b.match(regex);
+
+    const prefixA = matchA ? (matchA[1] + (matchA[3] || '')).trim() : a;
+    const prefixB = matchB ? (matchB[1] + (matchB[3] || '')).trim() : b;
+    const numA = matchA && matchA[2] ? parseInt(matchA[2], 10) : NaN;
+    const numB = matchB && matchB[2] ? parseInt(matchB[2], 10) : NaN;
+
+    if (prefixA === prefixB) {
+        if (!isNaN(numA) && !isNaN(numB)) {
+            return numA - numB;
+        }
+        if (!isNaN(numA)) return -1;
+        if (!isNaN(numB)) return 1;
+        return a.localeCompare(b);
+    }
+    return prefixA.localeCompare(prefixB);
+}
+
+
+function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiStateSelection): Unit[] {
+    const orList = Object.entries(selection).filter(([_, state]) => state === 'or').map(([name]) => name);
+    const andList = Object.entries(selection).filter(([_, state]) => state === 'and').map(([name]) => name);
+    const notList = Object.entries(selection).filter(([_, state]) => state === 'not').map(([name]) => name);
+
+    return units.filter(u => {
+        const unitValues = (key === 'componentName')
+            ? u.comp.map(c => c.n)
+            : [(u as any)[key]];
+
+        // NOT: Exclude if any notList present
+        if (notList.some(n => unitValues.includes(n))) return false;
+
+        // AND: Must have all andList
+        if (andList.length && !andList.every(a => unitValues.includes(a))) return false;
+
+        // OR: If present, must have at least one
+        if (orList.length && !orList.some(o => unitValues.includes(o))) return false;
+
+        // If no OR/AND/NOT, allow all
+        return orList.length || andList.length || notList.length ? true : true;
+    });
+}
+
+export const ADVANCED_FILTERS: AdvFilterConfig[] = [
+    { key: 'era', label: 'Era', type: AdvFilterType.DROPDOWN, external: true },
+    { key: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true },
+    { key: 'type', label: 'Type', type: AdvFilterType.DROPDOWN },
+    { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN },
+    {
+        key: 'techBase', label: 'Tech', type: AdvFilterType.DROPDOWN,
+        options: ['Inner Sphere', 'Clan', 'Mixed']
+    },
+    { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN },
+    {
+        key: 'weightClass', label: 'Weight Class', type: AdvFilterType.DROPDOWN,
+        options: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*']
+    },
+    {
+        key: 'level', label: 'Rules', type: AdvFilterType.DROPDOWN,
+        options: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial']
+    },
+    { key: 'c3', label: 'Network', type: AdvFilterType.DROPDOWN },
+    { key: 'moveType', label: 'Motive', type: AdvFilterType.DROPDOWN },
+    { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true },
+    { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
+    { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
+    { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
+    // { key: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
+    { key: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
+    { key: 'internal', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
+    { key: '_mdSumNoPhysical', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
+    { key: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
+    { key: 'heat', label: 'Total Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1] },
+    { key: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1] },
+    { key: '_maxRange', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
+    { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9 },
+    { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9 },
+    { key: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9 },
+    { key: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
+    { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
+];
+
+export const SORT_OPTIONS: SortOption[] = [
+    { key: 'name', label: 'Name' },
+    ...ADVANCED_FILTERS
+        .filter(f => !['era', 'faction', 'componentName', 'source'].includes(f.key))
+        .map(f => ({ 
+            key: f.key, 
+            label: f.label,
+            slotLabel: f.label,
+            // slotIcon: f.slotIcon
+        }))
+];
+
+@Injectable({ providedIn: 'root' })
+export class UnitSearchFiltersService {
+    public dataService = inject(DataService);
+    ADVANCED_FILTERS = ADVANCED_FILTERS;
+    search = signal('');
+    filterState = signal<FilterState>({});
+    selectedSort = signal<string>('name');
+    selectedSortDirection = signal<'asc' | 'desc'>('asc');
+    private totalRangesCache: Record<string, [number, number]> = {};
+
+    constructor() {
+        effect(() => {
+            if (this.isDataReady()) {
+                this.calculateTotalRanges();
+            }
+        });
+    }
+
+    dynamicInternalLabel = computed(() => {
+        const units = this.filteredUnits();
+        if (units.length === 0) return 'Structure / Squad Size';
+        const hasInfantry = units.some(u => u.type === 'Infantry');
+        const hasNonInfantry = units.some(u => u.type !== 'Infantry');
+        if (hasInfantry && !hasNonInfantry) return 'Squad Size';
+        if (!hasInfantry) return 'Structural Integrity';
+        return 'Structure / Squad Size';
+    });
+
+    private calculateTotalRanges() {
+        const rangeFilters = ADVANCED_FILTERS.filter(f => f.type === AdvFilterType.RANGE);
+        for (const conf of rangeFilters) {
+            const allValues = this.getValidFilterValues(this.units, conf);
+            if (allValues.length > 0) {
+                this.totalRangesCache[conf.key] = [Math.min(...allValues), Math.max(...allValues)];
+            } else {
+                this.totalRangesCache[conf.key] = [0, 0];
+            }
+        }
+    }
+
+    get isDataReady() { return this.dataService.isDataReady; }
+    get units() { return this.isDataReady() ? this.dataService.getUnits() : []; }
+
+    public setSortOrder(key: string) {
+        this.selectedSort.set(key);
+    }
+
+    public setSortDirection(direction: 'asc' | 'desc') {
+        this.selectedSortDirection.set(direction);
+    }
+
+    private getUnitIdsForSelectedEras(selectedEraNames: string[]): Set<number> | null {
+        if (!selectedEraNames || selectedEraNames.length === 0) return null;
+        const unitIds = new Set<number>();
+        for (const eraName of selectedEraNames) {
+            const era = this.dataService.getEraByName(eraName);
+            if (era) {
+                (era.units as Set<number>).forEach(id => unitIds.add(id));
+            }
+        }
+        return unitIds;
+    }
+
+    private getUnitIdsForSelectedFactions(selectedFactionNames: string[], contextEraIds?: Set<number>): Set<number> | null {
+        if (!selectedFactionNames || selectedFactionNames.length === 0) return null;
+        const unitIds = new Set<number>();
+        for (const factionName of selectedFactionNames) {
+            const faction = this.dataService.getFactionByName(factionName);
+            if (faction) {
+                for (const eraIdStr in faction.eras) {
+                    const eraId = Number(eraIdStr);
+                    if (!contextEraIds || contextEraIds.has(eraId)) {
+                        (faction.eras[eraId] as Set<number>).forEach(id => unitIds.add(id));
+                    }
+                }
+            }
+        }
+        return unitIds;
+    }
+
+    private applyFilters(units: Unit[], state: FilterState): Unit[] {
+        let results = units;
+        const activeFilters = Object.entries(state)
+            .filter(([, s]) => s.interactedWith)
+            .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
+
+
+        // Handle external (ID-based) filters first
+        const selectedEraNames = activeFilters['era'] as string[] || [];
+        const selectedFactionNames = activeFilters['faction'] as string[] || [];
+
+        let eraUnitIds: Set<number> | null = null;
+        let factionUnitIds: Set<number> | null = null;
+        if (selectedFactionNames.length > 0) {
+            const selectedEraIds = new Set(this.dataService.getEras().filter(e => selectedEraNames.includes(e.name)).map(e => e.id));
+            factionUnitIds = this.getUnitIdsForSelectedFactions(selectedFactionNames, selectedEraIds.size > 0 ? selectedEraIds : undefined);
+        } else
+        if (selectedEraNames.length > 0) {
+            eraUnitIds = this.getUnitIdsForSelectedEras(selectedEraNames);
+        }
+
+        if (eraUnitIds || factionUnitIds) {
+            let finalIds: Set<number> | null;
+            if (eraUnitIds && factionUnitIds) {
+                finalIds = new Set([...eraUnitIds].filter(id => factionUnitIds!.has(id)));
+            } else {
+                finalIds = eraUnitIds || factionUnitIds;
+            }
+            results = results.filter(u => finalIds!.has(u.id));
+        }
+
+        // Handle standard (property-based) filters
+        for (const conf of ADVANCED_FILTERS) {
+            if (conf.external) continue;
+
+            const filterState = state[conf.key];
+            // Only apply filter if it has been interacted with
+            if (!filterState || !filterState.interactedWith) continue;
+
+            const val = filterState.value;
+            
+            if (conf.type === AdvFilterType.DROPDOWN && conf.multistate && val && typeof val === 'object') {
+                results = filterUnitsByMultiState(results, conf.key, val);
+                continue;
+            }
+            
+            if (conf.type === AdvFilterType.DROPDOWN && Array.isArray(val) && val.length > 0) {
+                results = results.filter(u => val.includes((u as any)[conf.key]));
+                continue;
+            }
+
+            if (conf.type === AdvFilterType.RANGE && Array.isArray(val)) {
+                results = results.filter(u => {
+                    const unitValue = (u as any)[conf.key];
+                    if (conf.ignoreValues && conf.ignoreValues.includes(unitValue)) 
+                    {
+                        if (val[0] === 0) return true; // If the range starts at 0, we allow -1 values
+                        return false; // Ignore this unit if it has an ignored value
+                    }
+                    return unitValue != null && unitValue >= val[0] && unitValue <= val[1];
+                });
+                continue;
+            }
+        }
+        return results;
+    }
+
+    // All filters applied
+    filteredUnits = computed(() => {
+        if (!this.isDataReady()) return [];
+
+        let results = this.units;
+        const query = this.search().trim().toLowerCase();
+        if (query) {
+            const words = Array.from(new Set(
+                query.split(/\s+/).filter(Boolean).map(w => DataService.removeAccents(w))
+            )).sort((a, b) => b.length - a.length);
+            results = results.filter(unit => this.matchesWords(unit, words));
+        }
+
+        results = this.applyFilters(results, this.filterState());
+
+        const sortKey = this.selectedSort();
+        const sortDirection = this.selectedSortDirection();
+
+        results.sort((a: Unit, b: Unit) => {
+            let comparison = 0;
+            if (sortKey === 'name') {
+                comparison = (a.chassis || '').localeCompare(b.chassis || '');
+                if (comparison === 0) {
+                    comparison = (a.model || '').localeCompare(b.model || '');
+                    if (comparison === 0) {
+                        comparison = (a.year || 0) - (b.year || 0);
+                    }
+                }
+            } else
+            if (sortKey in a && sortKey in b) {
+                const key = sortKey as keyof Unit;
+                const aValue = a[key];
+                const bValue = b[key];
+                if (typeof aValue === 'string' && typeof bValue === 'string') {
+                    comparison = aValue.localeCompare(bValue);
+                }
+                if (typeof aValue === 'number' && typeof bValue === 'number') {
+                    comparison = aValue - bValue;
+                }
+            }
+            if (sortDirection === 'desc') {
+                return -comparison;
+            }
+            return comparison;
+        });
+
+        return results;
+    });
+
+    // Advanced filter options
+    advOptions = computed(() => {
+        if (!this.isDataReady()) return {};
+
+        const result: Record<string, AdvFilterOptions> = {};
+        const state = this.filterState();
+
+        let baseUnits = this.units;
+        const query = this.search().trim().toLowerCase();
+        if (query) {
+            const words = Array.from(new Set(
+                query.split(/\s+/).filter(Boolean).map(w => DataService.removeAccents(w))
+            )).sort((a, b) => b.length - a.length);
+            baseUnits = baseUnits.filter(unit => this.matchesWords(unit, words));
+        }
+        const activeFilters = Object.entries(state)
+            .filter(([, s]) => s.interactedWith)
+            .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
+
+
+        // Handle external (ID-based) filters first
+        const selectedEraNames = activeFilters['era'] as string[] || [];
+        const selectedFactionNames = activeFilters['faction'] as string[] || [];
+
+        for (const conf of ADVANCED_FILTERS) {
+            let label = conf.label;
+            if (conf.key === 'internal') {
+                label = this.dynamicInternalLabel();
+            }
+            const contextState = { ...state };
+            delete contextState[conf.key];
+
+            let contextUnits = this.applyFilters(baseUnits, contextState);
+
+            if (conf.key === 'componentName') {
+                // Collect unique component names from filtered units (available ones)
+                const availableNames = Array.from(new Set(
+                    contextUnits.flatMap(u => u.comp.map(c => c.n)).filter(n => !!n)
+                ));
+                
+                // Apply current componentName 'and' filters to get names that would be available if selected
+                const currentComponentFilter = state[conf.key];
+                let filteredAvailableNames = availableNames;
+                if (currentComponentFilter?.interactedWith && currentComponentFilter.value) {
+                    const selection = currentComponentFilter.value as MultiStateSelection;
+                    const andList = Object.entries(selection).filter(([_, state]) => state === 'and').map(([name]) => name);
+                    const notList = Object.entries(selection).filter(([_, state]) => state === 'not').map(([name]) => name);
+                    
+                    if (andList.length > 0) {
+                        // Further filter units that have all 'and' components to see what other components are available
+                        const unitsWithAndComponents = contextUnits.filter(u => {
+                            const unitComponentNames = u.comp.map(c => c.n);
+                            // NOT: Exclude units that have any 'not' components
+                            if (notList.some(n => unitComponentNames.includes(n))) return false;
+                            // AND: Must have all 'and' components
+                            return andList.every(a => unitComponentNames.includes(a));
+                        });
+                        filteredAvailableNames = Array.from(new Set(
+                            unitsWithAndComponents.flatMap(u => u.comp.map(c => c.n)).filter(n => !!n)
+                        ));
+                    }
+                }
+                
+                const sortedNames = smartDropdownSort(availableNames);
+                
+                // Create options with availability flag
+                const optionsWithAvailability = sortedNames.map(name => ({
+                    name,
+                    available: filteredAvailableNames.includes(name)
+                }));
+
+                result[conf.key] = {
+                    type: 'dropdown',
+                    label,
+                    options: optionsWithAvailability,
+                    value: state[conf.key]?.interactedWith ? state[conf.key].value : [],
+                    interacted: state[conf.key]?.interactedWith ?? false
+                };
+                continue;
+            }
+            if (conf.type === AdvFilterType.DROPDOWN) {
+                let availableOptions: { name: string, img?: string }[] = [];
+                if (conf.external) {
+                    const contextUnitIds = new Set(contextUnits.filter(u => u.id !== -1).map(u => u.id));
+                    if (conf.key === 'era') {
+                        const selectedFactionsAvailableEraIds: Set<number> = new Set(
+                            this.dataService.getFactions()
+                                .filter(faction => selectedFactionNames.includes(faction.name))
+                                .flatMap(faction => Object.keys(faction.eras).map(Number))
+                        );
+                        availableOptions = this.dataService.getEras()
+                            .filter(era => {
+                                if (selectedFactionsAvailableEraIds.size > 0) {
+                                    if (!selectedFactionsAvailableEraIds.has(era.id)) return false;
+                                }
+                                return [...(era.units as Set<number>)].some(id => contextUnitIds.has(id))
+                            }).map(era => ({ name: era.name, img: era.img }));
+                    } else 
+                    if (conf.key === 'faction') {            
+                        const selectedEraIds: Set<number> = new Set(this.dataService.getEras().filter(e => selectedEraNames.includes(e.name)).map(e => e.id));
+                        availableOptions = this.dataService.getFactions()
+                            .filter(faction => {
+                                for (const eraIdStr in faction.eras) {
+                                    if (selectedEraIds.size > 0) {
+                                        if (!selectedEraIds.has(Number(eraIdStr))) continue;
+                                    }
+                                    if ([...(faction.eras[eraIdStr] as Set<number>)].some(id => contextUnitIds.has(id))) return true;
+                                }
+                                return false;
+                            })
+                            .map(faction => ({ name: faction.name, img: faction.img }));
+                    }
+                } else {
+                    const allOptions = Array.from(new Set(contextUnits.map(u => (u as any)[conf.key]).filter(v => v != null && v !== '')));
+                    const sortedOptions = smartDropdownSort(allOptions, conf.options);
+                    availableOptions = sortedOptions.map(name => ({ name }));
+                }
+                result[conf.key] = {
+                    type: 'dropdown',
+                    label,
+                    options: availableOptions,
+                    value: state[conf.key]?.interactedWith ? state[conf.key].value : [],
+                    interacted: state[conf.key]?.interactedWith ?? false
+                };
+            } else if (conf.type === AdvFilterType.RANGE) {
+                const totalRange = this.totalRangesCache[conf.key] || [0, 0];
+                const vals = this.getValidFilterValues(contextUnits, conf);
+                const availableRange = vals.length ? [Math.min(...vals), Math.max(...vals)] : totalRange;
+
+                let currentValue = state[conf.key]?.interactedWith ? state[conf.key].value : availableRange;
+
+                // Clamp both min and max to the available range, and ensure min <= max
+                let clampedMin = Math.max(availableRange[0], Math.min(currentValue[0], availableRange[1]));
+                let clampedMax = Math.min(availableRange[1], Math.max(currentValue[1], availableRange[0]));
+                if (clampedMin > clampedMax) [clampedMin, clampedMax] = [clampedMax, clampedMin];
+                currentValue = [clampedMin, clampedMax];
+
+                result[conf.key] = {
+                    type: 'range',
+                    label,
+                    totalRange: totalRange, // The absolute min/max for the track
+                    options: availableRange as [number, number], // The currently possible min/max
+                    value: currentValue,     // The user's selection
+                    interacted: state[conf.key]?.interactedWith ?? false
+                };
+            }
+        }
+        return result;
+    });
+
+    /**
+     * Checks if a unit chassis/model matches all the given words.
+     * @param unit The unit to check.
+     * @param words The words to match against the unit's properties, they must be sorted from longest to shortest
+     * @returns True if the unit matches all words, false otherwise.
+     */
+    private matchesWords(unit: Unit, words: string[]): boolean {
+        if (!words || words.length === 0) return true;
+        const text = `${unit._chassis ?? ''} ${unit._model ?? ''}`;
+        return this.tokensMatchNonOverlapping(text, words);
+    }
+
+    private tokensMatchNonOverlapping(text: string, tokens: string[]): boolean {
+        const hay = text;
+        const taken: Array<[number, number]> = [];
+        for (const token of tokens) {
+            if (!token) continue;
+            let start = 0;
+            let found = false;
+            while (start <= hay.length - token.length) {
+                const idx = hay.indexOf(token, start);
+                if (idx === -1) break;
+                const end = idx + token.length;
+                const overlaps = taken.some(([s, e]) => !(end <= s || idx >= e));
+                if (!overlaps) {
+                    taken.push([idx, end]);
+                    found = true;
+                    break;
+                }
+                start = idx + 1;
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
+
+    private getValidFilterValues(units: Unit[], conf: AdvFilterConfig): number[] {
+        let vals = units.map(u => (u as any)[conf.key]).filter(v => typeof v === 'number');
+        if (conf.ignoreValues && conf.ignoreValues.length > 0) {
+            vals = vals.filter(v => !conf.ignoreValues!.includes(v));
+        }
+        return vals;
+    }
+
+    setFilter(key: string, value: any) {
+        const conf = ADVANCED_FILTERS.find(f => f.key === key);
+        if (!conf) return;
+
+        let interacted = true;
+
+        if (conf.type === AdvFilterType.RANGE) {
+            // For range filters, if the value matches the full available range, it's not interacted.
+            const availableRange = this.advOptions()[key]?.options;
+            if (availableRange && value[0] === availableRange[0] && value[1] === availableRange[1]) {
+                interacted = false;
+            }
+        } else if (conf.type === AdvFilterType.DROPDOWN) {
+             if (conf.multistate) {
+                // For multistate dropdowns, check if all states are 'off' or object is empty
+                if (!value || typeof value !== 'object' || Object.keys(value).length === 0 ||
+                    Object.values(value).every(state => state === 'off')) {
+                    interacted = false;
+                }
+            } else {
+                // For regular dropdowns, if the value is an empty array, it's not interacted.
+                if (Array.isArray(value) && value.length === 0) {
+                    interacted = false;
+                }
+            }
+        }
+
+        this.filterState.update(current => ({
+            ...current,
+            [key]: { value, interactedWith: interacted }
+        }));
+    }
+
+    clearFilters() {
+        this.search.set('');
+        this.filterState.set({});
+    }
+}

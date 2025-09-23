@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   fill="#fff"
+   height="32"
+   width="32"
+   viewBox="0 0 72 56"
+   xml:space="preserve"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+<path
+   d="m 54.1,13.1 h 0.7 c 0.1,-4.66 0.9,-9.35 2.4,-13.902 l 0.4,-1.268 c 0.1,-0.5 0.6,-0.76 1.1,-0.76 0.5,0 1,0.38 1.1,0.76 l 0.4,1.268 C 61.7,3.75 62.5,8.44 62.6,13.1 h 0.6 v 8 l 1.9,5.1 V 55.6 H 52.2 V 26 l 1.9,-5 z"
+   id="path1"
+   style="fill:#ffffff;stroke-width:1.26556" />
+<path
+   d="M 65.1,56.7 H 52.2 v 1.7 h 12.9 z"
+   id="path2"
+   style="fill:#ffffff;stroke-width:1.26556" />
+<path
+   d="m 39.2,13.1 h 0.6 C 40,8.44 40.7,3.75 42.2,-0.802 l 0.4,-1.268 c 0.1,-0.5 0.7,-0.76 1.2,-0.76 0.5,0 1,0.38 1.1,0.76 l 0.4,1.268 C 46.8,3.75 47.6,8.44 47.7,13.1 h 0.6 v 8 l 1.9,5.1 v 29.4 h -13 V 26 l 1.9,-5 z"
+   id="path3"
+   style="fill:#ffffff;stroke-width:1.26556" />
+<path
+   d="m 50.2,56.7 h -13 v 1.7 h 12.9 v -1.7 z"
+   id="path4"
+   style="fill:#ffffff;stroke-width:1.26556" />
+<path
+   d="m 23.6,13.1 h 0.7 c 0.1,-4.66 0.9,-9.35 2.4,-13.902 l 0.4,-1.268 c 0.1,-0.5 0.6,-0.76 1.1,-0.76 0.5,0 1,0.38 1.1,0.76 l 0.4,1.268 C 31.2,3.75 32,8.44 32.1,13.1 h 0.6 v 8 l 1.9,5.1 V 55.6 H 21.7 V 26 l 1.9,-5 z"
+   id="path5"
+   style="fill:#ffffff;stroke-width:1.26556" />
+<path
+   d="M 34.6,56.7 H 21.7 v 1.7 h 12.9 z"
+   id="path6"
+   style="fill:#ffffff;stroke-width:1.26556" />
+<path
+   d="M 8.58,13.1 H 9.21 C 9.34,8.44 10.1,3.75 11.6,-0.802 L 12,-2.07 c 0.1,-0.5 0.6,-0.76 1.1,-0.76 0.5,0 1,0.38 1.2,0.76 l 0.4,1.268 C 16.2,3.75 16.9,8.44 17.1,13.1 h 0.6 v 8 l 1.9,5.1 V 55.6 H 6.55 V 26 l 1.9,-5 z"
+   id="path7"
+   style="fill:#ffffff;stroke-width:1.26556" />
+<path
+   d="M 19.6,56.7 H 6.55 v 1.7 H 19.6 Z"
+   id="path8"
+   style="fill:#ffffff;stroke-width:1.26556" />
+</svg>

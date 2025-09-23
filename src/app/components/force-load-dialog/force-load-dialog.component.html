@@ -1,0 +1,49 @@
+<base-dialog>
+    <div dialog-header>Load Force</div>
+    <div dialog-body>
+        <div *ngIf="loading()" class="loading-spinner">Loading forces...</div>
+        <div *ngIf="!loading() && forces().length === 0" class="empty-state">
+            No saved forces found.
+        </div>
+        <div *ngIf="!loading() && forces().length > 0" class="force-list">
+            <div
+                *ngFor="let force of forces(); trackBy: trackByInstanceId"
+                class="force-entry"
+                [class.selected]="selectedForce() === force"
+                (click)="selectForce(force)"
+                tabindex="0"
+            >
+                <div class="force-header">
+                    <span class="force-name">{{ force.name }}</span>
+                    <div class="force-info">
+                        <span class="force-timestamp"><img
+                [src]="force.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'"
+                class="cloud-icon"
+                alt="Cloud status"
+                title="{{ force.cloud ? 'Stored online' : 'Stored locally' }}"
+            /> {{ formatTimestamp(force) }}</span>
+                        <span class="force-bv">BV: {{ getTotalBV(force) | number }}</span>
+                    </div>
+                </div>
+                <div class="unit-scroll">
+                    <div class="unit-square" 
+                        [class.destroyed]="unit.destroyed"
+                        *ngFor="let unit of force.units()">
+                        <img 
+                            [src]="getUnitImg(unit)" 
+                            class="unit-icon" 
+                            alt="{{ unit.getUnit().chassis }} {{ unit.getUnit().model }}" 
+                            title="{{ unit.getUnit().chassis }} {{ unit.getUnit().model }}" />
+                        <div class="unit-model">{{ getCleanedModel(unit) }}</div>
+                        <div class="unit-chassis">{{ unit.getUnit().chassis }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div dialog-footer class="footer">
+        <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="!selectedForce()">LOAD</button>
+        <button class="modal-btn bt-button danger" (click)="onDelete();" [disabled]="!selectedForce()">DELETE</button>
+        <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
+    </div>
+</base-dialog>

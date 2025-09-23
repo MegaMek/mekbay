@@ -1,0 +1,33 @@
+<div #container class="slider-container">
+  <div class="slider-track" [class.active]="interacted()"></div>
+  <div class="slider-range" 
+       [style.left.%]="valueToPercent(left())"
+       [style.right.%]="100 - valueToPercent(right())">
+  </div>
+
+  <!-- Left Thumb -->
+  <div class="thumb thumb-left"
+       [style.left.%]="valueToPercent(left())"
+       [class.active]="isLeftThumbActive()"
+       (mousedown)="startDrag('min', $event)"
+       (touchstart)="startDrag('min', $event)"
+       (dblclick)="resetThumb('min', $event)"
+       (dbltap)="resetThumb('min', $event)">
+    <div class="thumb-label" *ngIf="dragging() === 'min'">
+      {{ formatValue(left()) }}
+    </div>
+  </div>
+
+  <!-- Right Thumb -->
+  <div class="thumb thumb-right"
+       [style.left.%]="valueToPercent(right())"
+       [class.active]="isRightThumbActive()"
+       (mousedown)="startDrag('max', $event)"
+       (touchstart)="startDrag('max', $event)"
+       (dblclick)="resetThumb('max', $event)"
+       (dbltap)="resetThumb('max', $event)">
+    <div class="thumb-label" *ngIf="dragging() === 'max'">
+      {{ formatValue(right()) }}
+    </div>
+  </div>
+</div>

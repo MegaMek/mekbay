@@ -1,0 +1,14 @@
+{
+    "web_apps": [
+        {
+            "web_app_identity": "https://mekbay.com",
+            "manifest": "https://mekbay.com/manifest.webmanifest",
+            "details": {
+                "paths": [
+                    "/*"
+                ],
+                "exclude_paths": []
+            }
+        }
+    ]
+}
