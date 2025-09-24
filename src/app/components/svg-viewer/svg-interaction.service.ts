@@ -395,7 +395,7 @@ export class SvgInteractionService {
                     });
                 }
 
-                const allowedValues = [0, 1, 2, 3, 5, 8, 10, 15, 20, -1, -2, -3, -5, -10, -20];
+                const allowedValues = [0, 1, 2, 3, 5, 7, 8, 10, 15, 20, -1, -2, -3, -5, -10, -20];
                 const calculateValues = () => {
                     let values: PickerChoice[] = [];
                     const startValue = - getHits() - consumedModularArmorPoints;
