@@ -298,18 +298,14 @@ export class UnitSvgMekService extends UnitSvgService {
             if (!this.unit.locations?.armor.has(loc)) {
                 return null;
             }
-            const destroyedShoulders = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Shoulder') && slot.destroyed).length;
-            const destroyedHands = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Hand') && slot.destroyed).length;
-            const destroyedUpperArms = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Upper Arm') && slot.destroyed).length;
-            const destroyedLowerArms = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Lower Arm') && slot.destroyed).length;
+            const destroyedHand = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Hand') && slot.destroyed);    
+            const destroyedShoulder = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Shoulder') && slot.destroyed);
             return {
-                canFire: destroyedShoulders == 0,
-                canPunch: destroyedHands == 0 && destroyedShoulders == 0 && destroyedUpperArms == 0 && destroyedLowerArms == 0,
-                canPush: destroyedHands == 0 && destroyedShoulders == 0,
-                fireMod: (destroyedUpperArms * 2) + (destroyedLowerArms)
+                canPunch: !destroyedShoulder,
+                canClub: !destroyedShoulder && !destroyedHand,
             };
         };
-        const locationsHitModifiers: { [key: string]: { canFire: boolean; canPunch: boolean; canPush: boolean; fireMod: number; } | null } = {
+        const locationsHitModifiers: { [key: string]: { canPunch: boolean; canClub: boolean } | null } = {
             'LA': getArmsModifiers('LA'),
             'RA': getArmsModifiers('RA'),
         };
@@ -336,22 +332,19 @@ export class UnitSvgMekService extends UnitSvgService {
                     entry.locations.forEach(loc => {
                         if (this.unit.isInternalLocDestroyed(loc)) {
                             isDamaged = true;
-                        } else
-                            if (locationsHitModifiers[loc]) {
-                                if (!locationsHitModifiers[loc].canPush) {
-                                    isDamaged = true;
-                                }
-                            }
+                        }
                     });
                 }
             } else {
-                entry.locations.forEach(loc => {
-                    if (locationsHitModifiers[loc]) {
-                        if (!locationsHitModifiers[loc].canFire) {
-                            isDamaged = true;
+                if (entry.equipment?.flags.has('F_CLUB')) {
+                    entry.locations.forEach(loc => {
+                        if (locationsHitModifiers[loc]) {
+                            if (!locationsHitModifiers[loc].canClub) {
+                                isDamaged = true;
+                            }
                         }
-                    }
-                });
+                    });
+                }
             }
             entry.destroyed = isDamaged;
             if (entry.el) {
@@ -386,13 +379,19 @@ export class UnitSvgMekService extends UnitSvgService {
             if (!this.unit.locations?.armor.has(loc)) {
                 return null;
             }
-            const destroyedUpperArms = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Upper Arm') && slot.destroyed).length;
-            const destroyedLowerArms = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Lower Arm') && slot.destroyed).length;
+            const destroyedShoulder = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Shoulder') && slot.destroyed);
+            const destroyedHand = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Hand') && slot.destroyed);    
+            const destroyedUpperArms = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Upper Arm') && slot.destroyed);
+            const destroyedLowerArms = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Lower Arm') && slot.destroyed);
+            
             return {
-                fireMod: (destroyedUpperArms * 2) + (destroyedLowerArms)
+                pushMod: destroyedShoulder ? 2 : 0,
+                punchMod: (destroyedHand ? 1 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0),
+                fireMod: destroyedShoulder ? 4 : (destroyedUpperArms ? 1 : 0) + (destroyedLowerArms ? 1 : 0),
+                clubMod: (destroyedHand ? 2 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0),
             };
         };
-        const locationsHitModifiers: { [key: string]: { fireMod: number; } | null } = {
+        const locationsHitModifiers: { [key: string]: { punchMod: number; fireMod: number; pushMod: number; clubMod: number; } | null } = {
             'LA': getArmsModifiers('LA'),
             'RA': getArmsModifiers('RA'),
         };
@@ -420,14 +419,35 @@ export class UnitSvgMekService extends UnitSvgService {
                             damageText.textContent = `${originalText}+${workingSpikes * 2}`;
                         }
                     }
+                } else if (entry.name == 'punch') {
+                    entry.locations.forEach(loc => {
+                        if (locationsHitModifiers[loc]) {
+                            additionalModifiers += locationsHitModifiers[loc].punchMod;
+                        }
+                    });
+                } else if (entry.name == 'push') {
+                    if (locationsHitModifiers['LA']) {
+                        additionalModifiers += locationsHitModifiers['LA'].pushMod;
+                    }
+                    if (locationsHitModifiers['RA']) {
+                        additionalModifiers += locationsHitModifiers['RA'].pushMod;
+                    }
                 }
             } else {
-                additionalModifiers += heatFireModifier + (destroyedSensors * 2);
-                entry.locations.forEach(loc => {
-                    if (locationsHitModifiers[loc]) {
-                        additionalModifiers += locationsHitModifiers[loc].fireMod;
-                    }
-                });
+                if (entry.equipment?.flags.has('F_CLUB')) {
+                    entry.locations.forEach(loc => {
+                        if (locationsHitModifiers[loc]) {
+                            additionalModifiers += locationsHitModifiers[loc].clubMod;
+                        }
+                    });
+                } else {
+                    additionalModifiers += heatFireModifier + (destroyedSensors * 2);
+                    entry.locations.forEach(loc => {
+                        if (locationsHitModifiers[loc]) {
+                            additionalModifiers += locationsHitModifiers[loc].fireMod;
+                        }
+                    });
+                }
                 if (destroyedTargetingComputers > 0) {
                     if (entry.equipment) {
                         const equipment = (entry.parent && entry.parent.equipment) ? entry.parent.equipment : entry.equipment;
