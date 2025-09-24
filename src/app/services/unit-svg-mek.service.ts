@@ -154,6 +154,8 @@ export class UnitSvgMekService extends UnitSvgService {
 
         let heatMoveModifier = 0;
         let destroyedLegsCount = 0;
+        let destroyedHipsCount = 0;
+        let destroyedLegActuatorsCount = 0;
         svg.querySelectorAll('.heatEffect.hot:not(.surpassed)').forEach(effectEl => {
             const move = parseInt(effectEl.getAttribute('h-move') as string);
             if (move && move < heatMoveModifier) {
@@ -179,8 +181,6 @@ export class UnitSvgMekService extends UnitSvgService {
             let originalJumpValue = this.unit.getUnit().jump;
             let walkValue = originalWalkValue;
             let jumpValue = originalJumpValue;
-            let destroyedHipsCount = 0;
-            let destroyedLegActuatorsCount = 0;
             
             const checkLeg = (loc: string) => {
                 if (this.unit.isInternalLocDestroyed(loc)) {
@@ -315,7 +315,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 isDamaged = true;
             }
             if (entry.physical) {
-                if (entry.name == 'kick' && destroyedLegsCount > 0) {
+                if (entry.name == 'kick' && (destroyedLegsCount > 0 || destroyedHipsCount > 0)) {
                     isDamaged = true;
                 } else if (entry.name == 'punch') {
                     entry.locations.forEach(loc => {
@@ -375,6 +375,39 @@ export class UnitSvgMekService extends UnitSvgService {
         // Determine which equipment is unusable and hit modifiers
         const destroyedSensors = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
         const destroyedTargetingComputers = critSlots.filter(slot => slot.name && slot.name.includes('Targeting Computer') && slot.destroyed).length;
+
+
+        const internalLocations = new Set<string>(this.unit.locations?.internal.keys() || []);
+            
+        let destroyedLegsCount = 0;
+        let destroyedHipsCount = 0;
+        let destroyedLegActuatorsCount = 0;
+        let destroyedFootsCount = 0;
+        
+        const checkLeg = (loc: string) => {
+            if (this.unit.isInternalLocDestroyed(loc)) {
+                destroyedLegsCount++;
+            } else {
+                destroyedHipsCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name === 'Hip' && slot.destroyed).length;
+                destroyedLegActuatorsCount += critSlots.filter(slot => slot.loc === loc && slot.name && (slot.name === 'Upper Leg' || slot.name === 'Lower Leg' || slot.name === 'Foot') && slot.destroyed).length;
+                destroyedFootsCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name === 'Foot' && slot.destroyed).length;
+            }
+        };
+        if (internalLocations.has('LL') && internalLocations.has('RL')) {
+            // Biped and Tripods
+            checkLeg('LL');
+            checkLeg('RL');
+        } else if (internalLocations.has('RLL') && internalLocations.has('FLL') && internalLocations.has('RRL') && internalLocations.has('FRL')) {
+            // Quadrupeds
+            checkLeg('RLL');
+            checkLeg('FLL');
+            checkLeg('RRL');
+            checkLeg('FRL');
+        } else {
+            //TODO: handle other cases (Tanks and stuffs)
+            return;
+        }
+
         const getArmsModifiers = (loc: string) => {
             if (!this.unit.locations?.armor.has(loc)) {
                 return null;
@@ -432,6 +465,8 @@ export class UnitSvgMekService extends UnitSvgService {
                     if (locationsHitModifiers['RA']) {
                         additionalModifiers += locationsHitModifiers['RA'].pushMod;
                     }
+                } else if (entry.name == 'kick') {
+                    additionalModifiers += destroyedFootsCount + (destroyedLegActuatorsCount * 2);
                 }
             } else {
                 if (entry.equipment?.flags.has('F_CLUB')) {
