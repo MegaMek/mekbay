@@ -508,6 +508,20 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
         }
     }
 
+    @HostListener('wheel', ['$event'])
+    onWheel(event: WheelEvent): void {
+        if (this.isDragging) return; // Don't handle wheel input while dragging
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        // Determine direction based on wheel delta
+        // Positive deltaY means scrolling down (should decrement)
+        // Negative deltaY means scrolling up (should increment)
+        const direction = event.deltaY > 0 ? 1 : -1;
+        this.incrementValue(direction);
+    }
+
     // Lifecycle hooks
     ngAfterViewInit(): void {
         this.setupEventListeners();
