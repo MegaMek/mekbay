@@ -309,6 +309,8 @@ export class UnitSvgMekService extends UnitSvgService {
             'LA': getArmsModifiers('LA'),
             'RA': getArmsModifiers('RA'),
         };
+        const cockpitLoc = critSlots.find(slot => slot.name === "Cockpit")?.loc ?? 'HD';
+        const destroyedSensorsCount = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
         this.unit.getInventory().forEach(entry => {
             let isDamaged = false;
             if (entry.critSlots.filter(slot => slot.destroyed).length > 0) {
@@ -344,6 +346,12 @@ export class UnitSvgMekService extends UnitSvgService {
                             }
                         }
                     });
+                } else {
+                    if (cockpitLoc === 'HD' && destroyedSensorsCount >= 2) {
+                        isDamaged = true;
+                    } else if (destroyedSensorsCount >= 3) {
+                        isDamaged = true;
+                    }
                 }
             }
             entry.destroyed = isDamaged;
@@ -373,7 +381,9 @@ export class UnitSvgMekService extends UnitSvgService {
         });
         const critSlots = this.unit.getCritSlots();
         // Determine which equipment is unusable and hit modifiers
-        const destroyedSensors = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
+        const cockpitLoc = critSlots.find(slot => slot.name === "Cockpit")?.loc ?? 'HD';
+        const destroyedSensorsCountInHD = critSlots.filter(slot => slot.loc === 'HD' && slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
+        const destroyedSensorsCount = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
         const destroyedTargetingComputers = critSlots.filter(slot => slot.name && slot.name.includes('Targeting Computer') && slot.destroyed).length;
 
 
@@ -439,6 +449,9 @@ export class UnitSvgMekService extends UnitSvgService {
                 }
                 return;
             };
+            if (cockpitLoc !== 'HD' && destroyedSensorsCountInHD >= 2) {
+                additionalModifiers += 4;
+            }
             if (entry.physical) {
                 if (entry.name == 'charge') {
                     const hasSpikes = critSlots.some(slot => slot.name && slot.name.includes('Spikes'));
@@ -476,7 +489,13 @@ export class UnitSvgMekService extends UnitSvgService {
                         }
                     });
                 } else {
-                    additionalModifiers += heatFireModifier + (destroyedSensors * 2);
+                    additionalModifiers += heatFireModifier;
+                    if (cockpitLoc === 'HD' && destroyedSensorsCount > 0) {
+                        additionalModifiers += (destroyedSensorsCount * 2);
+                    } else 
+                    if (cockpitLoc !== 'HD' && destroyedSensorsCountInHD < 2 && destroyedSensorsCount >= 1) {
+                        additionalModifiers += destroyedSensorsCount * 2;
+                    }
                     entry.locations.forEach(loc => {
                         if (locationsHitModifiers[loc]) {
                             additionalModifiers += locationsHitModifiers[loc].fireMod;
