@@ -37,7 +37,7 @@
 export class BVCalculatorUtil {
     // BattleTech BV 2.0 Skill Multiplier Table (Official Values)
     private static readonly BV2_SKILL_MATRIX = [
-        //     0     1     2     3     4     5     6     7     8
+    //     0     1     2     3     4     5     6     7     8
         [2.42, 2.31, 2.21, 2.10, 1.93, 1.75, 1.68, 1.59, 1.50], // Gunnery 0
         [2.21, 2.11, 2.02, 1.92, 1.76, 1.60, 1.54, 1.46, 1.38], // Gunnery 1
         [1.93, 1.85, 1.76, 1.68, 1.54, 1.40, 1.35, 1.28, 1.21], // Gunnery 2
@@ -72,7 +72,7 @@ export class BVCalculatorUtil {
      */
     static calculateAdjustedBV(baseBV: number, gunnerySkill: number, pilotingSkill: number): number {
         const multiplier = this.getSkillMultiplier(gunnerySkill, pilotingSkill);
-        return Math.ceil(baseBV * multiplier);
+        return Math.round(baseBV * multiplier);
     }
 
     /**
