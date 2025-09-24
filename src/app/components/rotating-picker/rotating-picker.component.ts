@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, HostListener } from '@angular/core';
 import { PickerComponent, PickerChoice, PickerValue, PickerInteractionType, PickerPosition } from '../picker/picker.interface';
 
 /*
@@ -46,6 +46,7 @@ const ROTATION_UPPER_LIMIT = 100;
 const START_ARROW_DEG = 0;
 const END_ARROW_DEG = 45;
 const ARROW_DISTANCE = 5;
+const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenation
 
 @Component({
     selector: 'rotating-picker',
@@ -61,6 +62,7 @@ const ARROW_DISTANCE = 5;
             [style.width.px]="diameter()"
             [style.height.px]="diameter()"
             style="z-index: 1000;"
+            tabindex="0"
             (contextmenu)="$event.preventDefault()"
             (pointerdown)="onPointerDown($event)" 
         >
@@ -165,6 +167,7 @@ const ARROW_DISTANCE = 5;
             font-family: 'Roboto', sans-serif;
             user-select: none;
             touch-action: none;
+            outline: none;
         }
         .rotating-picker-container.grabbing {
             cursor: grabbing;
@@ -346,7 +349,6 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
         return MIN_ROTATION_STEP_DEGREES + t * (MAX_ROTATION_STEP_DEGREES - MIN_ROTATION_STEP_DEGREES);
     });
 
-
     // Computed properties
     readonly diameter = computed(() => this.interactionType() === 'touch' ? ROTATING_PICKER_DIAMETER * 1.3 : ROTATING_PICKER_DIAMETER);
     readonly radius = computed(() => this.diameter() / 2);
@@ -454,6 +456,11 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
     private lastPointerAngle = 0;
     private accumulatedAngle = 0;
     private activePointerId: number | null = null;
+
+    // Keyboard input state
+    private keyboardInputBuffer = '';
+    private keyboardInputTimeout: number | null = null;
+
     constructor() {
         // Effect to initialize currentValue from selected signal
         effect(() => {
@@ -463,9 +470,64 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
         });
     }
 
+    // Keyboard event handlers
+    @HostListener('keydown', ['$event'])
+    onKeyDown(event: KeyboardEvent): void {
+        if (this.isDragging) return; // Don't handle keyboard input while dragging
+
+        // Handle arrow keys
+        if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            this.incrementValue(-1);
+            return;
+        } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            this.incrementValue(1);
+            return;
+        }
+
+        // Handle number input and minus sign
+        if (this.isValidInputCharacter(event.key)) {
+            event.preventDefault();
+            this.handleNumberInput(event.key);
+            return;
+        }
+
+        // Handle Enter key to confirm current value
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            this.pick(this.currentValue());
+            return;
+        }
+
+        // Handle Escape to cancel
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            this.cancel();
+            return;
+        }
+    }
+
+    @HostListener('wheel', ['$event'])
+    onWheel(event: WheelEvent): void {
+        if (this.isDragging) return; // Don't handle wheel input while dragging
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        // Determine direction based on wheel delta
+        // Positive deltaY means scrolling down (should decrement)
+        // Negative deltaY means scrolling up (should increment)
+        const direction = event.deltaY > 0 ? 1 : -1;
+        this.incrementValue(direction);
+    }
+
     // Lifecycle hooks
     ngAfterViewInit(): void {
         this.setupEventListeners();
+        // Focus the container to enable keyboard input
+        this.containerRef.nativeElement.focus();
+        
         const event = this.initialEvent();
         if (event && event.type === 'pointerdown') {
             const pickerEl = this.pickerRef.nativeElement;
@@ -486,6 +548,7 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
 
     ngOnDestroy(): void {
         this.cleanupEventListeners();
+        this.clearKeyboardInputTimeout();
     }
 
     pick(val: PickerValue): void {
@@ -500,6 +563,58 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
         if (event.button !== 0) return;
         if (this.activePointerId !== null) return; // Already handling a pointer
         this.initiateDrag(event);
+    }
+
+    // Keyboard input methods
+    private isValidInputCharacter(key: string): boolean {
+        return /^[0-9-]$/.test(key);
+    }
+
+    private handleNumberInput(key: string): void {
+        // Clear any existing timeout
+        this.clearKeyboardInputTimeout();
+
+        // Handle minus sign
+        if (key === '-') {
+            if (this.keyboardInputBuffer === '' || this.keyboardInputBuffer === '-') {
+                this.keyboardInputBuffer = this.keyboardInputBuffer === '-' ? '' : '-';
+            }
+            // If buffer already has numbers, ignore the minus sign
+            this.setKeyboardInputTimeout();
+            return;
+        }
+
+        // Handle digits
+        if (/^[0-9]$/.test(key)) {
+            this.keyboardInputBuffer += key;
+            const numericValue = parseInt(this.keyboardInputBuffer, 10);
+            
+            if (!isNaN(numericValue)) {
+                const clampedValue = this.clampValue(numericValue);
+                this.currentValue.set(clampedValue);
+            }
+            
+            this.setKeyboardInputTimeout();
+        }
+    }
+
+    private setKeyboardInputTimeout(): void {
+        this.keyboardInputTimeout = window.setTimeout(() => {
+            this.keyboardInputBuffer = '';
+            this.keyboardInputTimeout = null;
+        }, KEYBOARD_INPUT_TIMEOUT);
+    }
+
+    private clearKeyboardInputTimeout(): void {
+        if (this.keyboardInputTimeout !== null) {
+            clearTimeout(this.keyboardInputTimeout);
+            this.keyboardInputTimeout = null;
+        }
+    }
+
+    private incrementValue(direction: number): void {
+        const newValue = this.currentValue() + (direction * this.step());
+        this.currentValue.set(this.clampValue(newValue));
     }
 
     private initiateDrag(event: PointerEvent): void {
