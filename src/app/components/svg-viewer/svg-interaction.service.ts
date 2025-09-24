@@ -649,7 +649,8 @@ export class SvgInteractionService {
                                     delete critSlot.originalName;
                                 }
                                 critSlot.name = newAmmoValue.name;
-                                critSlot.totalAmmo = newAmmoValue.totalAmmo;
+                                totalAmmo = newAmmoValue.totalAmmo;
+                                critSlot.totalAmmo = totalAmmo;
                                 critSlot.eq = equipmentList[newAmmoValue.name];
                                 labelText = critSlot.eq.shortName;
                             }
