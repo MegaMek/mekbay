@@ -245,6 +245,17 @@ export class ForceBuilderService {
                     // Try to find an existing force with this instance ID in the storage.
                     loadedInstance = await this.dataService.getForce(instanceParam);
                     if (loadedInstance) {
+                        if (!loadedInstance.owned) {
+                            const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
+                                data: <ConfirmDialogData<string>>{
+                                    title: 'Shared Force',
+                                    message: 'This force is owned by another user. Editing will create a cloned force and will not affect the original.',
+                                    buttons: [
+                                        { label: 'DISMISS', value: 'dismiss' }
+                                    ]
+                                }
+                            });
+                        }
                         this.setForce(loadedInstance);
                         this.selectUnit(loadedInstance.units()[0] || null);
                     }
