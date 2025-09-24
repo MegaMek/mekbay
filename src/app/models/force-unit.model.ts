@@ -485,7 +485,7 @@ export class ForceUnit {
         if (this.c3Linked) {
             const c3Tax = C3NetworkUtil.calculateC3Tax(this, this.force.units());
             if (c3Tax > 0) {
-                bv *= 1 + c3Tax;
+                bv += c3Tax;
             }
         }
         if (this.unit.crewSize > 1) {

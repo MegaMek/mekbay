@@ -50,11 +50,13 @@ export class C3NetworkUtil {
         if (!currentUnit.c3Linked) {
             return 0;
         }
-        const linkedUnits = units.filter(unit => unit === currentUnit || (unit.c3Linked && this.isCompatibleForC3(currentUnit, unit))).length;
-        if (linkedUnits <= 1) {
+        const linkedUnits = units.filter(unit => unit === currentUnit 
+            || (unit.c3Linked && this.isCompatibleForC3(currentUnit, unit)))
+        if (linkedUnits.length <= 1) {
             return 0;
         }
-        return linkedUnits * TAX_RATE;
+        const totalBV = linkedUnits.reduce((sum, unit) => sum + unit.getUnit().bv, 0);
+        return Math.round(totalBV * TAX_RATE);
     }
 
     private static isCompatibleForC3(currentUnit: ForceUnit, unit: ForceUnit): boolean {

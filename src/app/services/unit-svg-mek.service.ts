@@ -171,6 +171,7 @@ export class UnitSvgMekService extends UnitSvgService {
             const destroyedJumpJetsCount = critSlots.filter(slot => slot.name && (slot.name.includes('Jump Jet') || slot.name.includes('JumpJet')) && slot.destroyed).length;
             const hasPartialWings = critSlots.some(slot => slot.name && slot.name.includes('PartialWing'));
             const internalLocations = new Set<string>(this.unit.locations?.internal.keys() || []);
+            const hasTripleStrengthMyomer = critSlots.some(slot => slot.name && slot.name.includes('Triple Strength Myomer'));
             const mpRunEl = svg.querySelector('#mpRun');
             const mpJumpEl = svg.querySelector('#mpJump');
             let originalWalkValue = this.unit.getUnit().walk;
@@ -180,7 +181,7 @@ export class UnitSvgMekService extends UnitSvgService {
             let jumpValue = originalJumpValue;
             let destroyedHipsCount = 0;
             let destroyedLegActuatorsCount = 0;
-
+            
             const checkLeg = (loc: string) => {
                 if (this.unit.isInternalLocDestroyed(loc)) {
                     destroyedLegsCount++;
@@ -228,11 +229,24 @@ export class UnitSvgMekService extends UnitSvgService {
                 return;
             }
             walkValue = Math.max(0, walkValue + heatMoveModifier);
-            mpWalkEl.textContent = walkValue.toString();
+            let maxWalkValue = walkValue;
             if (walkValue < originalWalkValue) {
                 mpWalkEl.classList.add('damaged');
             } else {
                 mpWalkEl.classList.remove('damaged');
+            }
+            const tripleStrengthMyomerMoveBonusActive = (this.unit.getHeat().current >= 9 && hasTripleStrengthMyomer);
+            if (tripleStrengthMyomerMoveBonusActive) {
+                // we add it after apply damaged/undamaged
+                walkValue += 2;
+                maxWalkValue += 2;
+            } else if (hasTripleStrengthMyomer) {
+                maxWalkValue += 1 - heatMoveModifier; // We add back the heatMoveModifier this way we simulate heat at 9+
+            }
+            if (walkValue != maxWalkValue) {
+                mpWalkEl.textContent = `${walkValue.toString()} [${maxWalkValue.toString()}]`;
+            } else {
+                mpWalkEl.textContent = walkValue.toString();
             }
             if (mpRunEl) {
                 const baseRunValue = Math.round(walkValue * 1.5);
@@ -241,18 +255,18 @@ export class UnitSvgMekService extends UnitSvgService {
                     runValueCoeff = 2.5;
                 } else if ((hasMASC && !destroyedMASC) || (hasSupercharger && !destroyedSupercharger)) {
                     runValueCoeff = 2;
+                }                
+                let maxRunValue = Math.round(walkValue * runValueCoeff);
+                if (hasTripleStrengthMyomer && !tripleStrengthMyomerMoveBonusActive) {
+                    // we recalculate it after apply damaged/undamaged
+                    maxRunValue = Math.round((walkValue + (1 - heatMoveModifier)) * runValueCoeff);
                 }
-                const maxRunValue = Math.round(walkValue * runValueCoeff);
                 if (baseRunValue != maxRunValue) {
                     mpRunEl.textContent = `${baseRunValue.toString()} [${maxRunValue.toString()}]`;
                 } else {
                     mpRunEl.textContent = baseRunValue.toString();
                 }
-                if (maxRunValue < originalRunValue) {
-                    mpRunEl.classList.add('damaged');
-                } else {
-                    mpRunEl.classList.remove('damaged');
-                }
+                mpRunEl.classList.toggle('damaged', mpWalkEl.classList.contains('damaged'));
             }
             if (mpJumpEl) {
                 if (destroyedJumpJetsCount === jumpJetsCount) {

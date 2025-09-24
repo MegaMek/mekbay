@@ -395,7 +395,7 @@ export class SvgInteractionService {
                     });
                 }
 
-                const allowedValues = [0, 1, 2, 3, 5, 8, 10, 15, 20, -1, -2, -3, -5, -10, -20];
+                const allowedValues = [0, 1, 2, 3, 5, 7, 8, 10, 15, 20, -1, -2, -3, -5, -10, -20];
                 const calculateValues = () => {
                     let values: PickerChoice[] = [];
                     const startValue = - getHits() - consumedModularArmorPoints;
@@ -405,6 +405,17 @@ export class SvgInteractionService {
                             values.push({ label: value.toString(), value: value });
                         }
                     }
+                    // Add intermediate values, starting from 50, 100, 200, 350, 500 and their negative counterparts
+                    const intermediateValues = [50, 100, 200, 350, 500];
+                    for (const value of intermediateValues) {
+                        if (value >= startValue && value <= endValue) {
+                            values.push({ label: value.toString(), value: value });
+                        }
+                        if (-value >= startValue && -value <= endValue) {
+                            values.push({ label: (-value).toString(), value: -value });
+                        }
+                    }
+
                     // Add startValue if it's not already included
                     if (!values.some(v => v.value === startValue)) {
                         values.push({ label: startValue.toString(), value: startValue });

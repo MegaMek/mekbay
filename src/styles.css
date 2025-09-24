@@ -797,7 +797,10 @@ hr {
     body:not(.multipage-container-active) main,
     body:not(.multipage-container-active) .app-container,
     body:not(.multipage-container-active) .main-content,
-    body:not(.multipage-container-active) .content-area {
+    body:not(.multipage-container-active) .content-area,
+    body:not(.multipage-container-active) svg-viewer,
+    body:not(.multipage-container-active) .svg-viewer-container,
+    body:not(.multipage-container-active) .svg-viewer-container .slides {
         width: 8.5in !important;
         height: 11in !important;
         padding: 0 !important;
@@ -808,27 +811,17 @@ hr {
         background: transparent !important;
     }
 
-    body:not(.multipage-container-active) svg-viewer {
-        width: 8.5in !important;
-        height: 11in !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        top: 0 !important;
-        left: 0 !important;
-        display: block;
-        background: transparent !important;
-    }
-
-    body:not(.multipage-container-active) .svg-viewer-container {
+    body:not(.multipage-container-active) .svg-viewer-container .slide {
         width: 8.5in !important;
         height: 11in !important;
         padding: 0 !important;
         margin: 0 !important;
         background: white !important;
         display: block;
+        transform: none !important;
     }
 
-    body:not(.multipage-container-active) .svg-viewer-container > svg {
+    body:not(.multipage-container-active) .svg-viewer-container .slide > svg {
         display: block;
         box-sizing: border-box;
         width: 100% !important;

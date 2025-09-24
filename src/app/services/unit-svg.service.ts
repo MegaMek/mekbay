@@ -642,7 +642,8 @@ export class UnitSvgService implements OnDestroy {
         let hasDoubleHeatsinks = false;
         const hsTypeElement = svg.getElementById('hsType');
         if (hsTypeElement) {
-            hasDoubleHeatsinks = hsTypeElement.textContent?.toLowerCase().includes('double') ?? false;
+            const hsTypeText = hsTypeElement.textContent?.toLowerCase() ?? '';
+            hasDoubleHeatsinks = hsTypeText.includes('double') || hsTypeText.includes('laser');
         }
 
         const heatSinkSlots = this.unit.getCritSlots().filter(slot =>

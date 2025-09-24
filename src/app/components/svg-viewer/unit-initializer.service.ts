@@ -151,7 +151,7 @@ export class UnitInitializerService {
      * @param svg The SVGSVGElement containing the crit slot definitions.
      */
     private initCritSlots(unit: ForceUnit, svg: SVGSVGElement): void {
-        const critSlotsEl = svg.querySelectorAll(`.critSlot[hittable="1"]`) as NodeListOf<SVGElement>;
+        const critSlotsEl = svg.querySelectorAll(`.critSlot`) as NodeListOf<SVGElement>;
         if (critSlotsEl.length === 0) return;
 
         const criticalSlots: CriticalSlot[] = [];
