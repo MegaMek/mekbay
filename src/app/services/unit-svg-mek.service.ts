@@ -386,15 +386,18 @@ export class UnitSvgMekService extends UnitSvgService {
         const destroyedSensorsCount = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
         const destroyedTargetingComputers = critSlots.filter(slot => slot.name && slot.name.includes('Targeting Computer') && slot.destroyed).length;
 
-
         const internalLocations = new Set<string>(this.unit.locations?.internal.keys() || []);
             
         let destroyedLegsCount = 0;
         let destroyedHipsCount = 0;
         let destroyedLegActuatorsCount = 0;
         let destroyedFootsCount = 0;
+        let destroyedLegAES = false;
         
         const checkLeg = (loc: string) => {
+            if (!destroyedLegAES) {
+                destroyedLegAES = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('AES') && slot.destroyed);
+            }
             if (this.unit.isInternalLocDestroyed(loc)) {
                 destroyedLegsCount++;
             } else {
@@ -419,6 +422,7 @@ export class UnitSvgMekService extends UnitSvgService {
         }
 
         const getArmsModifiers = (loc: string) => {
+            const destroyedAES = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('AES') && slot.destroyed);
             if (!this.unit.locations?.armor.has(loc)) {
                 return null;
             }
@@ -432,9 +436,10 @@ export class UnitSvgMekService extends UnitSvgService {
                 punchMod: (destroyedHand ? 1 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0),
                 fireMod: destroyedShoulder ? 4 : (destroyedUpperArms ? 1 : 0) + (destroyedLowerArms ? 1 : 0),
                 clubMod: (destroyedHand ? 2 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0),
+                singleArmMod: destroyedAES ? 1 : 0,
             };
         };
-        const locationsHitModifiers: { [key: string]: { punchMod: number; fireMod: number; pushMod: number; clubMod: number; } | null } = {
+        const locationsHitModifiers: { [key: string]: { punchMod: number; fireMod: number; pushMod: number; clubMod: number; singleArmMod: number } | null } = {
             'LA': getArmsModifiers('LA'),
             'RA': getArmsModifiers('RA'),
         };
@@ -451,6 +456,9 @@ export class UnitSvgMekService extends UnitSvgService {
             };
             if (cockpitLoc !== 'HD' && destroyedSensorsCountInHD >= 2) {
                 additionalModifiers += 4;
+            }
+            if (entry.locations.size === 1 && locationsHitModifiers[Array.from(entry.locations)[0]]) {
+                additionalModifiers += locationsHitModifiers[Array.from(entry.locations)[0]]!.singleArmMod;
             }
             if (entry.physical) {
                 if (entry.name == 'charge') {
@@ -479,6 +487,9 @@ export class UnitSvgMekService extends UnitSvgService {
                         additionalModifiers += locationsHitModifiers['RA'].pushMod;
                     }
                 } else if (entry.name == 'kick') {
+                    if (destroyedLegAES) {
+                        additionalModifiers += 1;
+                    }
                     additionalModifiers += destroyedFootsCount + (destroyedLegActuatorsCount * 2);
                 }
             } else {
