@@ -241,7 +241,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 walkValue += 2;
                 maxWalkValue += 2;
             } else if (hasTripleStrengthMyomer) {
-                maxWalkValue += 1; // We add only 
+                maxWalkValue += 1 - heatMoveModifier; // We add back the heatMoveModifier this way we simulate heat at 9+
             }
             if (walkValue != maxWalkValue) {
                 mpWalkEl.textContent = `${walkValue.toString()} [${maxWalkValue.toString()}]`;
@@ -259,7 +259,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 let maxRunValue = Math.round(walkValue * runValueCoeff);
                 if (hasTripleStrengthMyomer && !tripleStrengthMyomerMoveBonusActive) {
                     // we recalculate it after apply damaged/undamaged
-                    maxRunValue = Math.round((walkValue + 1) * runValueCoeff);
+                    maxRunValue = Math.round((walkValue + (1 - heatMoveModifier)) * runValueCoeff);
                 }
                 if (baseRunValue != maxRunValue) {
                     mpRunEl.textContent = `${baseRunValue.toString()} [${maxRunValue.toString()}]`;
