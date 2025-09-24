@@ -75,7 +75,7 @@ export class UnitSvgMekService extends UnitSvgService {
             const isAmmo = el.classList.contains('ammoSlot');
 
             if (isAmmo) {
-                const totalAmmo = parseInt(el.getAttribute('totalAmmo') || '0');
+                const totalAmmo = criticalSlot?.totalAmmo || parseInt(el.getAttribute('totalAmmo') || '0');
                 const textNode = el.querySelector('text');
                 if (textNode) {
                     let isCustomAmmoLoadout = false;

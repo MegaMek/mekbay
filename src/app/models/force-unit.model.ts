@@ -721,6 +721,7 @@ export interface CriticalSlot {
     loc?: string; // Location of the critical slot (HD, LT, RT, ...)
     slot?: number; // Slot number of the critical slot
     hits?: number; // How many hits did this location receive. If is an armored location, this is the number of hits it has taken
+    totalAmmo?: number; // If is an ammo slot: how much total ammo is in this slot.
     consumed?: number; // If is an ammo slot: how much ammo have been consumed. If is a F_MODULAR_ARMOR, is the armor points used
     destroyed?: boolean; // If this location is destroyed (can be from 0 hits if the structure is completely destroyed)
     originalName?: string; // saved original name in case we override the current name
