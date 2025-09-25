@@ -24,6 +24,7 @@
     --highlight-color: #f0f0f0;
     --night-highlight-color: #555;
 
+    --disabled-color: #888;
     --damage-color: #F00;
     --undamaged-highlight-color: #FEE;
     --undamaged-night-highlight-color: #300;
@@ -490,7 +491,7 @@ hr {
 
 .mekbay-sheet .damaged-strike { display: none; }
 .mekbay-sheet .disabledInventory .damaged-strike,
-.mekbay-sheet .damagedInventory .damaged-strike { display: block; stroke: var(--text-color-secondary); }
+.mekbay-sheet .damagedInventory .damaged-strike { display: block; stroke: var(--disabled-color); }
 .mekbay-sheet .inventoryEntry > *:not(.inventoryEntryButton):not(.inventoryEntry) { pointer-events: none; }
 .mekbay-sheet .inventoryEntryButton { fill: transparent; }
 .mekbay-sheet .inventoryEntry:not(.interactive) { pointer-events: none; }
@@ -515,7 +516,7 @@ hr {
 .mekbay-sheet .pip.half { clip-path: polygon(50% -50%, 150% -50%, 150% 150%, 50% 150%) }
 
 .mekbay-sheet .disabledInventory, 
-.mekbay-sheet .disabledInventory text { fill: var(--text-color-secondary) !important; }
+.mekbay-sheet .disabledInventory text { fill: var(--disabled-color) !important; }
 .mekbay-sheet .damagedInventory, 
 .mekbay-sheet .damagedInventory text { fill: var(--damage-color) !important; }
 .mekbay-sheet .critSlot.damaged { fill: var(--damage-color) !important; text-decoration: line-through; }
