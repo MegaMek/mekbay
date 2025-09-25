@@ -47,6 +47,7 @@
         linear-gradient(var(--text-color-secondary), var(--text-color-secondary));
     background-size: 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    outline: none;
 }
 
 .thumb-left {

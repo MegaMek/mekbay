@@ -518,13 +518,15 @@ export class SvgInteractionService {
             const svgEl = el as SVGElement;
             const loc = svgEl.getAttribute('loc');
             const slot = parseInt(svgEl.getAttribute('slot') as string);
-            const totalAmmo = parseInt(svgEl.getAttribute('totalAmmo') || '0');
+            const originalTotalAmmo = parseInt(svgEl.getAttribute('totalAmmo') || '0');
             let labelText = svgEl.textContent || '';
             if (svgEl.classList.contains('ammoSlot')) {
                 // for ammo, we remove the number at the end, example "Ammo (SRM 2) 5" should become "Ammo (SRM 2)"
                 labelText = labelText.replace(/\s\d+$/, '');
             }
             if (loc === null || slot === null) return;
+            const critSlot = unit.getCritSlot(loc, slot);
+            let totalAmmo = critSlot?.totalAmmo || originalTotalAmmo;
             const ammoToastId = `ammo-${unit.id}-${loc}-${slot}`;
             let lastAmountVariationTimestamp = 0;
             let amount = 0;
@@ -627,10 +629,11 @@ export class SvgInteractionService {
                                     }
                                 }
                             }
-                            const ref = this.dialog.open<{ name: string; quantity: number } | null>(SetAmmoDialogComponent, {
+                            const ref = this.dialog.open<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
                                 data: {
                                     currentAmmo: ammoItem,
                                     originalAmmo: originalAmmo,
+                                    originalTotalAmmo: originalTotalAmmo,
                                     ammoOptions: ammoOptions,
                                     quantity: totalAmmo - amountUsed,
                                     maxQuantity: totalAmmo
@@ -646,6 +649,8 @@ export class SvgInteractionService {
                                     delete critSlot.originalName;
                                 }
                                 critSlot.name = newAmmoValue.name;
+                                totalAmmo = newAmmoValue.totalAmmo;
+                                critSlot.totalAmmo = totalAmmo;
                                 critSlot.eq = equipmentList[newAmmoValue.name];
                                 labelText = critSlot.eq.shortName;
                             }

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { signal, computed, WritableSignal, EventEmitter, Injector } from '@angular/core';
+import { signal, computed, WritableSignal, EventEmitter, Injector, inject } from '@angular/core';
 import { BVCalculatorUtil } from "../utils/bv-calculator.util";
 import { DataService } from '../services/data.service'; 
 import { Unit } from "./units.model";
@@ -41,7 +41,8 @@ import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { C3NetworkUtil } from '../utils/c3-network.util';
-
+import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
+import { Dialog } from '@angular/cdk/dialog';
 /*
  * Author: Drake
  */
@@ -52,6 +53,7 @@ export class Force {
     units: WritableSignal<ForceUnit[]> = signal([]);
     loading: boolean = false;
     cloud?: boolean = false; // Indicates if this force is stored in the cloud
+    owned = true; // Indicates if the user owns this force (false if it's a shared force)
     public changed = new EventEmitter<void>();
     private _debounceTimer: any = null;
 
@@ -155,6 +157,7 @@ export class Force {
         force.loading = true;
         try {
             force.instanceId = data.instanceId;
+            force.owned = (data.owned !== false);
             const units: ForceUnit[] = [];
             for (const unitData of data.units) {
                 try {
@@ -718,6 +721,7 @@ export interface CriticalSlot {
     loc?: string; // Location of the critical slot (HD, LT, RT, ...)
     slot?: number; // Slot number of the critical slot
     hits?: number; // How many hits did this location receive. If is an armored location, this is the number of hits it has taken
+    totalAmmo?: number; // If is an ammo slot: how much total ammo is in this slot.
     consumed?: number; // If is an ammo slot: how much ammo have been consumed. If is a F_MODULAR_ARMOR, is the armor points used
     destroyed?: boolean; // If this location is destroyed (can be from 0 hits if the structure is completely destroyed)
     originalName?: string; // saved original name in case we override the current name

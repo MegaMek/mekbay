@@ -75,7 +75,7 @@ export class UnitSvgMekService extends UnitSvgService {
             const isAmmo = el.classList.contains('ammoSlot');
 
             if (isAmmo) {
-                const totalAmmo = parseInt(el.getAttribute('totalAmmo') || '0');
+                const totalAmmo = criticalSlot?.totalAmmo || parseInt(el.getAttribute('totalAmmo') || '0');
                 const textNode = el.querySelector('text');
                 if (textNode) {
                     let isCustomAmmoLoadout = false;
@@ -154,6 +154,8 @@ export class UnitSvgMekService extends UnitSvgService {
 
         let heatMoveModifier = 0;
         let destroyedLegsCount = 0;
+        let destroyedHipsCount = 0;
+        let destroyedLegActuatorsCount = 0;
         svg.querySelectorAll('.heatEffect.hot:not(.surpassed)').forEach(effectEl => {
             const move = parseInt(effectEl.getAttribute('h-move') as string);
             if (move && move < heatMoveModifier) {
@@ -179,8 +181,6 @@ export class UnitSvgMekService extends UnitSvgService {
             let originalJumpValue = this.unit.getUnit().jump;
             let walkValue = originalWalkValue;
             let jumpValue = originalJumpValue;
-            let destroyedHipsCount = 0;
-            let destroyedLegActuatorsCount = 0;
             
             const checkLeg = (loc: string) => {
                 if (this.unit.isInternalLocDestroyed(loc)) {
@@ -298,28 +298,26 @@ export class UnitSvgMekService extends UnitSvgService {
             if (!this.unit.locations?.armor.has(loc)) {
                 return null;
             }
-            const destroyedShoulders = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Shoulder') && slot.destroyed).length;
-            const destroyedHands = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Hand') && slot.destroyed).length;
-            const destroyedUpperArms = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Upper Arm') && slot.destroyed).length;
-            const destroyedLowerArms = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Lower Arm') && slot.destroyed).length;
+            const destroyedHand = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Hand') && slot.destroyed);    
+            const destroyedShoulder = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Shoulder') && slot.destroyed);
             return {
-                canFire: destroyedShoulders == 0,
-                canPunch: destroyedHands == 0 && destroyedShoulders == 0 && destroyedUpperArms == 0 && destroyedLowerArms == 0,
-                canPush: destroyedHands == 0 && destroyedShoulders == 0,
-                fireMod: (destroyedUpperArms * 2) + (destroyedLowerArms)
+                canPunch: !destroyedShoulder,
+                canClub: !destroyedShoulder && !destroyedHand,
             };
         };
-        const locationsHitModifiers: { [key: string]: { canFire: boolean; canPunch: boolean; canPush: boolean; fireMod: number; } | null } = {
+        const locationsHitModifiers: { [key: string]: { canPunch: boolean; canClub: boolean } | null } = {
             'LA': getArmsModifiers('LA'),
             'RA': getArmsModifiers('RA'),
         };
+        const cockpitLoc = critSlots.find(slot => slot.name === "Cockpit")?.loc ?? 'HD';
+        const destroyedSensorsCount = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
         this.unit.getInventory().forEach(entry => {
             let isDamaged = false;
             if (entry.critSlots.filter(slot => slot.destroyed).length > 0) {
                 isDamaged = true;
             }
             if (entry.physical) {
-                if (entry.name == 'kick' && destroyedLegsCount > 0) {
+                if (entry.name == 'kick' && (destroyedLegsCount > 0 || destroyedHipsCount > 0)) {
                     isDamaged = true;
                 } else if (entry.name == 'punch') {
                     entry.locations.forEach(loc => {
@@ -336,22 +334,25 @@ export class UnitSvgMekService extends UnitSvgService {
                     entry.locations.forEach(loc => {
                         if (this.unit.isInternalLocDestroyed(loc)) {
                             isDamaged = true;
-                        } else
-                            if (locationsHitModifiers[loc]) {
-                                if (!locationsHitModifiers[loc].canPush) {
-                                    isDamaged = true;
-                                }
-                            }
+                        }
                     });
                 }
             } else {
-                entry.locations.forEach(loc => {
-                    if (locationsHitModifiers[loc]) {
-                        if (!locationsHitModifiers[loc].canFire) {
-                            isDamaged = true;
+                if (entry.equipment?.flags.has('F_CLUB')) {
+                    entry.locations.forEach(loc => {
+                        if (locationsHitModifiers[loc]) {
+                            if (!locationsHitModifiers[loc].canClub) {
+                                isDamaged = true;
+                            }
                         }
+                    });
+                } else {
+                    if (cockpitLoc === 'HD' && destroyedSensorsCount >= 2) {
+                        isDamaged = true;
+                    } else if (destroyedSensorsCount >= 3) {
+                        isDamaged = true;
                     }
-                });
+                }
             }
             entry.destroyed = isDamaged;
             if (entry.el) {
@@ -380,19 +381,65 @@ export class UnitSvgMekService extends UnitSvgService {
         });
         const critSlots = this.unit.getCritSlots();
         // Determine which equipment is unusable and hit modifiers
-        const destroyedSensors = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
+        const cockpitLoc = critSlots.find(slot => slot.name === "Cockpit")?.loc ?? 'HD';
+        const destroyedSensorsCountInHD = critSlots.filter(slot => slot.loc === 'HD' && slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
+        const destroyedSensorsCount = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
         const destroyedTargetingComputers = critSlots.filter(slot => slot.name && slot.name.includes('Targeting Computer') && slot.destroyed).length;
+
+        const internalLocations = new Set<string>(this.unit.locations?.internal.keys() || []);
+            
+        let destroyedLegsCount = 0;
+        let destroyedHipsCount = 0;
+        let destroyedLegActuatorsCount = 0;
+        let destroyedFootsCount = 0;
+        let destroyedLegAES = false;
+        
+        const checkLeg = (loc: string) => {
+            if (!destroyedLegAES) {
+                destroyedLegAES = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('AES') && slot.destroyed);
+            }
+            if (this.unit.isInternalLocDestroyed(loc)) {
+                destroyedLegsCount++;
+            } else {
+                destroyedHipsCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name === 'Hip' && slot.destroyed).length;
+                destroyedLegActuatorsCount += critSlots.filter(slot => slot.loc === loc && slot.name && (slot.name === 'Upper Leg' || slot.name === 'Lower Leg' || slot.name === 'Foot') && slot.destroyed).length;
+                destroyedFootsCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name === 'Foot' && slot.destroyed).length;
+            }
+        };
+        if (internalLocations.has('LL') && internalLocations.has('RL')) {
+            // Biped and Tripods
+            checkLeg('LL');
+            checkLeg('RL');
+        } else if (internalLocations.has('RLL') && internalLocations.has('FLL') && internalLocations.has('RRL') && internalLocations.has('FRL')) {
+            // Quadrupeds
+            checkLeg('RLL');
+            checkLeg('FLL');
+            checkLeg('RRL');
+            checkLeg('FRL');
+        } else {
+            //TODO: handle other cases (Tanks and stuffs)
+            return;
+        }
+
         const getArmsModifiers = (loc: string) => {
+            const destroyedAES = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('AES') && slot.destroyed);
             if (!this.unit.locations?.armor.has(loc)) {
                 return null;
             }
-            const destroyedUpperArms = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Upper Arm') && slot.destroyed).length;
-            const destroyedLowerArms = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Lower Arm') && slot.destroyed).length;
+            const destroyedShoulder = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Shoulder') && slot.destroyed);
+            const destroyedHand = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Hand') && slot.destroyed);    
+            const destroyedUpperArms = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Upper Arm') && slot.destroyed);
+            const destroyedLowerArms = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Lower Arm') && slot.destroyed);
+            
             return {
-                fireMod: (destroyedUpperArms * 2) + (destroyedLowerArms)
+                pushMod: destroyedShoulder ? 2 : 0,
+                punchMod: (destroyedHand ? 1 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0),
+                fireMod: destroyedShoulder ? 4 : (destroyedUpperArms ? 1 : 0) + (destroyedLowerArms ? 1 : 0),
+                clubMod: (destroyedHand ? 2 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0),
+                singleArmMod: destroyedAES ? 1 : 0,
             };
         };
-        const locationsHitModifiers: { [key: string]: { fireMod: number; } | null } = {
+        const locationsHitModifiers: { [key: string]: { punchMod: number; fireMod: number; pushMod: number; clubMod: number; singleArmMod: number } | null } = {
             'LA': getArmsModifiers('LA'),
             'RA': getArmsModifiers('RA'),
         };
@@ -407,6 +454,12 @@ export class UnitSvgMekService extends UnitSvgService {
                 }
                 return;
             };
+            if (cockpitLoc !== 'HD' && destroyedSensorsCountInHD >= 2) {
+                additionalModifiers += 4;
+            }
+            if (entry.locations.size === 1 && locationsHitModifiers[Array.from(entry.locations)[0]]) {
+                additionalModifiers += locationsHitModifiers[Array.from(entry.locations)[0]]!.singleArmMod;
+            }
             if (entry.physical) {
                 if (entry.name == 'charge') {
                     const hasSpikes = critSlots.some(slot => slot.name && slot.name.includes('Spikes'));
@@ -420,14 +473,46 @@ export class UnitSvgMekService extends UnitSvgService {
                             damageText.textContent = `${originalText}+${workingSpikes * 2}`;
                         }
                     }
+                } else if (entry.name == 'punch') {
+                    entry.locations.forEach(loc => {
+                        if (locationsHitModifiers[loc]) {
+                            additionalModifiers += locationsHitModifiers[loc].punchMod;
+                        }
+                    });
+                } else if (entry.name == 'push') {
+                    if (locationsHitModifiers['LA']) {
+                        additionalModifiers += locationsHitModifiers['LA'].pushMod;
+                    }
+                    if (locationsHitModifiers['RA']) {
+                        additionalModifiers += locationsHitModifiers['RA'].pushMod;
+                    }
+                } else if (entry.name == 'kick') {
+                    if (destroyedLegAES) {
+                        additionalModifiers += 1;
+                    }
+                    additionalModifiers += destroyedFootsCount + (destroyedLegActuatorsCount * 2);
                 }
             } else {
-                additionalModifiers += heatFireModifier + (destroyedSensors * 2);
-                entry.locations.forEach(loc => {
-                    if (locationsHitModifiers[loc]) {
-                        additionalModifiers += locationsHitModifiers[loc].fireMod;
+                if (entry.equipment?.flags.has('F_CLUB')) {
+                    entry.locations.forEach(loc => {
+                        if (locationsHitModifiers[loc]) {
+                            additionalModifiers += locationsHitModifiers[loc].clubMod;
+                        }
+                    });
+                } else {
+                    additionalModifiers += heatFireModifier;
+                    if (cockpitLoc === 'HD' && destroyedSensorsCount > 0) {
+                        additionalModifiers += (destroyedSensorsCount * 2);
+                    } else 
+                    if (cockpitLoc !== 'HD' && destroyedSensorsCountInHD < 2 && destroyedSensorsCount >= 1) {
+                        additionalModifiers += destroyedSensorsCount * 2;
                     }
-                });
+                    entry.locations.forEach(loc => {
+                        if (locationsHitModifiers[loc]) {
+                            additionalModifiers += locationsHitModifiers[loc].fireMod;
+                        }
+                    });
+                }
                 if (destroyedTargetingComputers > 0) {
                     if (entry.equipment) {
                         const equipment = (entry.parent && entry.parent.equipment) ? entry.parent.equipment : entry.equipment;
