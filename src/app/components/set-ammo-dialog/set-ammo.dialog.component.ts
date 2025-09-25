@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, ViewChild, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, inject, ViewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { AmmoEquipment } from '../../models/equipment.model';
 
@@ -42,7 +42,6 @@ import { AmmoEquipment } from '../../models/equipment.model';
 export interface SetAmmoDialogData {
     currentAmmo: AmmoEquipment;
     originalAmmo: AmmoEquipment;
-    originalTotalAmmo: number;
     ammoOptions: AmmoEquipment[];
     quantity: number;
     maxQuantity: number;
@@ -59,7 +58,6 @@ export interface SetAmmoDialogData {
             <select
                 #inputNameRef
                 id="inputName"
-                (change)="onAmmoTypeChange($event)"
                 required
             >
                 <option
@@ -79,11 +77,11 @@ export interface SetAmmoDialogData {
                     [placeholder]="data.quantity"
                     [value]="data.quantity"
                     [attr.min]="0"
-                    [attr.max]="currentMaxQuantity()"
+                    [attr.max]="data.maxQuantity"
                     (keydown.enter)="submit()"
                     required
                 />
-                <span class="max-quantity">/{{ currentMaxQuantity() }}</span>
+                <span class="max-quantity">/{{ data.maxQuantity }}</span>
             </div>
         </div>
         <div dialog-actions>
@@ -216,49 +214,17 @@ export interface SetAmmoDialogData {
 })
 
 export class SetAmmoDialogComponent {
-    @ViewChild('inputNameRef') inputNameRef!: ElementRef<HTMLSelectElement>;
+    @ViewChild('inputNameRef') inputNameRef!: ElementRef<HTMLInputElement>;
     @ViewChild('inputQuantityRef') inputQuantityRef!: ElementRef<HTMLInputElement>;
-    public dialogRef: DialogRef<{name: string; quantity: number, totalAmmo: number} | null, SetAmmoDialogComponent> = inject(DialogRef);
+    public dialogRef: DialogRef<{name: string; quantity: number} | null, SetAmmoDialogComponent> = inject(DialogRef);
     readonly data: SetAmmoDialogData = inject(DIALOG_DATA);
     buttons: { label: string; value: 'ok' | 'cancel'; class?: string }[];
-    public totalKgAvailable: number;
-    
-    // Add a signal to track the currently selected ammo
-    private selectedAmmoName = signal(this.data.currentAmmo.internalName);
-    
-    // Computed property for current max quantity
-    public currentMaxQuantity = computed(() => {
-        const selectedAmmo = this.data.ammoOptions.find(
-            ammo => ammo.internalName === this.selectedAmmoName()
-        );
-        if (selectedAmmo) {
-            return Math.floor(this.totalKgAvailable / selectedAmmo.kgPerShot);
-        }
-        return this.data.maxQuantity;
-    });
 
     constructor() {
         this.buttons = [
             { label: 'OK', value: 'ok' },
             { label: 'CANCEL', value: 'cancel' }
         ];
-        this.totalKgAvailable = this.data.originalAmmo.kgPerShot * this.data.originalTotalAmmo;
-    }
-
-    // Add method to handle ammo type change
-    onAmmoTypeChange(event: Event) {
-        const selectElement = event.target as HTMLSelectElement;
-        const previousMaxQuantity = this.currentMaxQuantity();
-        this.selectedAmmoName.set(selectElement.value);
-        
-        // Reset quantity input to not exceed new max
-        const currentQuantity = Number(this.inputQuantityRef.nativeElement.value);
-        const newMaxQuantity = this.currentMaxQuantity();
-        if (currentQuantity === previousMaxQuantity) {
-            this.inputQuantityRef.nativeElement.value = newMaxQuantity.toString();
-        } else if (currentQuantity > newMaxQuantity) {
-            this.inputQuantityRef.nativeElement.value = newMaxQuantity.toString();
-        }
     }
 
     submit() {
@@ -277,7 +243,7 @@ export class SetAmmoDialogComponent {
         if (!selectedAmmo) {
             selectedAmmo = this.data.originalAmmo;
         }
-        this.dialogRef.close({ name: selectedAmmo.internalName, quantity: num, totalAmmo: num });
+        this.dialogRef.close({ name: selectedAmmo.internalName, quantity: num });
     }
 
     close() {

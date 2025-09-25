@@ -34,7 +34,6 @@
 import { Component, computed, Output, EventEmitter, HostBinding, HostListener, ElementRef, Renderer2, effect, ViewChild, Input, Signal, inject, ViewChildren, QueryList, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { LayoutService } from '../../services/layout.service';
 import { UnitSearchComponent } from '../unit-search/unit-search.component';
 import { Unit } from '../../models/units.model';
 import { ForceUnit } from '../../models/force-unit.model';
@@ -42,6 +41,9 @@ import { DragDropModule, CdkDragDrop } from '@angular/cdk/drag-drop'
 import { PopupMenuComponent } from '../../components/popup-menu/popup-menu.component';
 import { Dialog } from '@angular/cdk/dialog';
 import { UnitDetailsDialogComponent } from '../unit-details-dialog/unit-details-dialog.component';
+import { BreakpointService } from '../../services/shared/breakpoint-service';
+import { SidebarService } from '../../services/shared/sidebar-service';
+import { TouchInputService } from '../../services/shared/touch-input-service';
 
 /*
  * Author: Drake
@@ -61,7 +63,10 @@ const SWIPE_SNAP_THRESHOLD_PERCENT = 0.5;   // Menu snaps open/closed if dragged
 })
 export class ForceBuilderViewerComponent implements OnDestroy {
     protected forceBuilderService = inject(ForceBuilderService);
-    protected layoutService = inject(LayoutService);
+    breakpointService = inject(BreakpointService);
+    sidebarService = inject(SidebarService);
+    touchInputService = inject(TouchInputService);
+
     private elRef = inject(ElementRef<HTMLElement>);
     private renderer = inject(Renderer2);
     private dialog = inject(Dialog);
@@ -97,7 +102,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     @HostBinding('class.is-mobile-menu-open')
     get isMobileMenuOpen() {
-        return this.layoutService.isMobile() && this.layoutService.isMenuOpen();
+        return this.breakpointService.isMobile() && this.sidebarService.isOpen();
     }
     totalBv = computed(() => {
         return this.forceBuilderService.forceUnits().reduce((sum, unit) => sum + (unit.getBv()), 0);
@@ -106,7 +111,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     constructor() {
         effect(() => {
             // When the menu is closed, ensure the advanced search panel is also closed.
-            if (!this.layoutService.isMenuOpen()) {
+            if (!this.sidebarService.isOpen()) {
                 this.unitSearchComponent?.closeAdvPanel();
             }
         });
@@ -146,8 +151,8 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     selectUnit(unit: ForceUnit) {
         this.forceBuilderService.selectUnit(unit);
-        if (this.layoutService.isMobile()) {
-            this.layoutService.closeMenu();
+        if (this.breakpointService.isMobile()) {
+            this.sidebarService.closeMenu();
         }
     }
 
@@ -156,7 +161,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         await this.forceBuilderService.removeUnit(unit);
         // If this was the last unit, close the menu (offcanvas OFF mode)
         if (this.forceBuilderService.forceUnits().length === 0) {
-            this.layoutService.closeMenu();
+            this.sidebarService.closeMenu();
         }
     }
 
@@ -179,7 +184,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     }
 
     toggleMenu() {
-        this.layoutService.toggleMenu();
+        this.sidebarService.toggleMenu();
     }
 
     ngOnDestroy() {
@@ -215,7 +220,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     // --- Touch Gesture Handling ---
 
     completeDragGesture() {
-        this.layoutService.isMenuDragging.set(false); // <-- Release the lock
+        this.touchInputService.isMenuDragging.set(false); // <-- Release the lock
         this.cleanupTouchListeners(); // Clean up dynamic listeners
 
         // If there was no movement, it was a tap. Do nothing.
@@ -236,15 +241,15 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         const openRatio = (this.hostWidth + currentTranslateX) / this.hostWidth;
 
         if (openRatio > SWIPE_SNAP_THRESHOLD_PERCENT) {
-            this.layoutService.isMenuOpen.set(true);
+            this.sidebarService.openMenu();
         } else {
-            this.layoutService.isMenuOpen.set(false);
+            this.sidebarService.closeMenu();
         }
     }
 
     @HostListener('document:touchstart', ['$event'])
     onTouchStart(event: TouchEvent) {
-        if (!this.layoutService.isMobile() || this.isUnitDragging) return;
+        if (!this.breakpointService.isMobile() || this.isUnitDragging) return;
 
         if (this.unitSearchComponent?.advOpen()) {
             const advPanelEl = this.unitSearchComponent?.advPanel?.nativeElement;
@@ -256,7 +261,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
         const touchX = event.touches[0].clientX;
         const touchY = event.touches[0].clientY;
-        const menuIsOpen = this.layoutService.isMenuOpen();
+        const menuIsOpen = this.sidebarService.isOpen();
         const inActivationZone = touchX < window.innerWidth * SWIPE_ACTIVATION_ZONE_PERCENT;
         const onTheMenu = this.elRef.nativeElement.contains(event.target as Node);
         const isOnLipButton = (event.target as HTMLElement)?.classList?.contains('burger-lip-btn');
@@ -264,12 +269,12 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         if ((menuIsOpen && onTheMenu) || (!menuIsOpen && (inActivationZone || isOnLipButton))) {
             // Set initial menu open ratio based on current state
             if (menuIsOpen) {
-                this.layoutService.menuOpenRatio.set(1);
+                this.touchInputService.menuOpenRatio.set(1);
             } else {
-                this.layoutService.menuOpenRatio.set(0);
+                this.touchInputService.menuOpenRatio.set(0);
             }
             this.isDragging = true;
-            this.layoutService.isMenuDragging.set(true);
+            this.touchInputService.isMenuDragging.set(true);
             this.hasMoved = false; // Reset movement flag on new touch
             this.startX = touchX;
             this.startY = touchY;
@@ -288,7 +293,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         const currentY = event.touches[0].clientY;
         const deltaX = currentX - this.startX;
         const deltaY = currentY - this.startY;
-        const menuIsOpen = this.layoutService.isMenuOpen();
+        const menuIsOpen = this.sidebarService.isOpen();
 
         // If the movement is primarily vertical, cancel the drag
         if (menuIsOpen && (Math.abs(deltaY) > Math.abs(deltaX))) {
@@ -307,7 +312,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
         this.renderer.setStyle(this.elRef.nativeElement, 'transform', `translateX(${targetX}px)`);
         const openRatio = (this.hostWidth + targetX) / this.hostWidth;
-        this.layoutService.menuOpenRatio.set(openRatio);
+        this.touchInputService.menuOpenRatio.set(openRatio);
     }
 
     private onTouchEnd(event: TouchEvent) {
@@ -326,7 +331,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
             this.isDragging = false;
             this.renderer.removeClass(this.elRef.nativeElement, 'is-dragging');
             this.renderer.removeStyle(this.elRef.nativeElement, 'transform');
-            this.layoutService.isMenuDragging.set(false);
+            this.touchInputService.isMenuDragging.set(false);
             this.cleanupTouchListeners(); // Clean up listeners when unit drag starts
         }
     }
@@ -398,7 +403,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     // --- Lip vertical drag handlers ---
     onLipPointerDown(event: PointerEvent) {
-        if (!this.layoutService.isMobile()) return;
+        if (!this.breakpointService.isMobile()) return;
         if (!this.burgerLipBtn) return;
 
         const btnEl = this.burgerLipBtn.nativeElement;

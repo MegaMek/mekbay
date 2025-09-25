@@ -1,6 +1,6 @@
 <main>
     <div class="beta-band noprint" (click)="showBetaDialog();">BETA</div>
-    <div class="app-container" [class.menu-open]="this.layoutService.isMenuOpen()">
+    <div class="app-container" [class.menu-open]="this.sidebarService.isOpen()">
         <force-builder-viewer
             *ngIf="hasUnits()" (menuSelect)="onMenuSelected($event)">
         </force-builder-viewer>
@@ -33,7 +33,7 @@
         </div>
 
         <!-- Overlay to close the menu on mobile -->
-        <div class="menu-overlay" *ngIf="isOverlayVisible()" (click)="closeMenu()" [style.opacity]="this.layoutService.menuOpenRatio()">
+        <div class="menu-overlay" *ngIf="isOverlayVisible()" (click)="closeMenu()" [style.opacity]="this.touchInputService.menuOpenRatio()">
         </div>
     </div>
 </main>

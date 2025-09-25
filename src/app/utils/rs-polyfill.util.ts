@@ -515,20 +515,6 @@ export class RsPolyfillUtil {
                 }
             });
         }
-        const structureType = svg.getElementById('structureType')?.textContent || '';
-        if (structureType.includes('Reinforced')) {
-            const structurePips = svg.querySelectorAll('.pip.structure');
-            structurePips.forEach(pip => {
-                pip.classList.add('hardened');
-                const clone = pip.cloneNode(true) as SVGElement;
-                clone.classList.add('half');
-                if (pip.parentNode && pip.nextSibling) {
-                    pip.parentNode.insertBefore(clone, pip.nextSibling);
-                } else if (pip.parentNode) {
-                    pip.parentNode.appendChild(clone);
-                }
-            });
-        }
     };
 
     private static addHeatLevels(svg: SVGSVGElement): void {

@@ -6,35 +6,27 @@
   </div>
 
   <!-- Left Thumb -->
-  <div #leftThumb class="thumb thumb-left"
+  <div class="thumb thumb-left"
        [style.left.%]="valueToPercent(left())"
        [class.active]="isLeftThumbActive()"
-       [class.focused]="focusedThumb() === 'min'"
        (mousedown)="startDrag('min', $event)"
        (touchstart)="startDrag('min', $event)"
-       (focus)="onThumbFocus('min')"
-       (blur)="onThumbBlur()"
        (dblclick)="resetThumb('min', $event)"
-       (dbltap)="resetThumb('min', $event)"
-       tabindex="0">
-    <div class="thumb-label" *ngIf="dragging() === 'min' || focusedThumb() === 'min'">
+       (dbltap)="resetThumb('min', $event)">
+    <div class="thumb-label" *ngIf="dragging() === 'min'">
       {{ formatValue(left()) }}
     </div>
   </div>
 
   <!-- Right Thumb -->
-  <div #rightThumb class="thumb thumb-right"
+  <div class="thumb thumb-right"
        [style.left.%]="valueToPercent(right())"
        [class.active]="isRightThumbActive()"
-       [class.focused]="focusedThumb() === 'max'"
        (mousedown)="startDrag('max', $event)"
        (touchstart)="startDrag('max', $event)"
-       (focus)="onThumbFocus('max')"
-       (blur)="onThumbBlur()"
        (dblclick)="resetThumb('max', $event)"
-       (dbltap)="resetThumb('max', $event)"
-       tabindex="0">
-    <div class="thumb-label" *ngIf="dragging() === 'max' || focusedThumb() === 'max'">
+       (dbltap)="resetThumb('max', $event)">
+    <div class="thumb-label" *ngIf="dragging() === 'max'">
       {{ formatValue(right()) }}
     </div>
   </div>
