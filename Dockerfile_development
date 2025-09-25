@@ -1,0 +1,17 @@
+# https://hub.docker.com/_/node
+FROM node:24-alpine
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+
+# Install dependencies (full install for dev)
+RUN npm install
+
+RUN npm install -g @angular/cli
+
+COPY . .
+
+EXPOSE 4200
+
+CMD ["ng", "serve", "--host", "0.0.0.0", "--poll", "2000"]
