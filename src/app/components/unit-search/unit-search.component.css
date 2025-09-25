@@ -90,6 +90,17 @@
     font-size: 0.9em;
 }
 
+
+.adv-panel .range-values .clickable {
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.adv-panel .range-values .clickable:hover {
+    text-decoration: underline;
+    color: var(--bt-yellow);
+}
+
 .adv-panel-content {
     display: grid;
     grid-template-columns: 1fr;

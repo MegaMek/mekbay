@@ -619,7 +619,10 @@ export class DataService {
     }
 
     public async saveForce(force: Force): Promise<void> {
-        if (!force.instanceId) force.instanceId = crypto.randomUUID();
+        if (!force.instanceId || !force.owned) {
+            force.instanceId = crypto.randomUUID();
+            force.owned = true;
+        }
         const key = force.instanceId;
         await this.dbService.saveForce(force.serialize());
         await this.saveForceCloud(force);

@@ -155,8 +155,7 @@
                         <div class="range" *ngIf="optionsData.type === 'range'">
                             <label>{{ optionsData.label }}
                                     <span class="range-values">
-                                        ({{ formatValue(optionsData.value[0], false, true) }}~{{
-                                        formatValue(optionsData.value[1], false, true) }})
+                                        (<span class="range-value-min clickable" (click)="openRangeValueDialog(conf.key, 'min', optionsData.value[0], optionsData.options)">{{ formatValue(optionsData.value[0], false, true) }}</span>~<span class="range-value-max clickable" (click)="openRangeValueDialog(conf.key, 'max', optionsData.value[1], optionsData.options)">{{ formatValue(optionsData.value[1], false, true) }}</span>)
                                     </span>
                             </label>
                             <range-slider

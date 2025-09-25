@@ -95,11 +95,11 @@ export class ForceBuilderService {
 
         // Update URL to reflect the new force state
         if (updateUrl && this.urlStateInitialized) {
-            const unitNames = newForce.units().map(fu => fu.getUnit().name);
+            const unitParams = this.generateUnitParams(newForce.units());
             this.router.navigate([], {
                 relativeTo: this.route,
                 queryParams: {
-                    units: unitNames.length > 0 ? unitNames.join(',') : null,
+                    units: unitParams.length > 0 ? unitParams.join(',') : null,
                     name: newForce.name || null,
                     instance: newForce.instanceId || null
                 },
@@ -219,18 +219,43 @@ export class ForceBuilderService {
                 return;
             }
 
-            const unitNames = units.map(fu => fu.getUnit().name);
-
+            const unitParams = this.generateUnitParams(units);
             this.router.navigate([], {
                 relativeTo: this.route,
                 queryParams: {
-                    units: unitNames.length > 0 ? unitNames.join(',') : null,
+                    units: unitParams.length > 0 ? unitParams.join(',') : null,
                     name: this.force.instanceId ? (forceName || null) : null,
                     instance: this.force.instanceId || null
                 },
                 queryParamsHandling: 'merge',
                 replaceUrl: true
             });
+        });
+    }
+
+    private generateUnitParams(units: ForceUnit[]): string[] {
+        return units.map(fu => {
+            const unit = fu.getUnit();
+            const crewMembers = fu.getCrewMembers();
+            
+            let unitParam = unit.name;
+            
+            // Add crew skills
+            if (crewMembers.length > 0) {
+                const crewSkills: string[] = [];
+                
+                for (const crew of crewMembers) {
+                    const gunnery = crew.getSkill('gunnery');
+                    const piloting = crew.getSkill('piloting');
+                    crewSkills.push(`${gunnery}`, `${piloting}`);
+                }
+                
+                if (crewSkills.length > 0) {
+                    unitParam += ':' + crewSkills.join(':');
+                }
+            }
+            
+            return unitParam;
         });
     }
 
@@ -248,6 +273,17 @@ export class ForceBuilderService {
                     // Try to find an existing force with this instance ID in the storage.
                     loadedInstance = await this.dataService.getForce(instanceParam);
                     if (loadedInstance) {
+                        if (!loadedInstance.owned) {
+                            const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
+                                data: <ConfirmDialogData<string>>{
+                                    title: 'Shared Force',
+                                    message: 'This force is owned by another user. Editing will create a cloned force and will not affect the original.',
+                                    buttons: [
+                                        { label: 'DISMISS', value: 'dismiss' }
+                                    ]
+                                }
+                            });
+                        }
                         this.setForce(loadedInstance);
                         this.selectUnit(loadedInstance.units()[0] || null);
                     }
@@ -268,16 +304,9 @@ export class ForceBuilderService {
                             this.force.setName(forceNameParam);
                         }
                         if (unitsParam) {
-                            const unitNames = unitsParam.split(',');
-                            const allUnits = this.dataService.getUnits();
-                            const unitMap = new Map(allUnits.map(u => [u.name, u]));
-        
-                            const unitsToLoad = unitNames
-                                .map(name => unitMap.get(name))
-                                .filter((u): u is Unit => !!u);
-        
-                            if (unitsToLoad.length > 0) {
-                                const forceUnits = unitsToLoad.map(u => this.force.addUnit(u));
+                            const forceUnits = this.parseUnitsFromUrl(unitsParam);
+                            
+                            if (forceUnits.length > 0) {
                                 console.log(`ForceBuilderService: Loaded ${forceUnits.length} units from URL on startup.`);
                                 this.force.setUnits(forceUnits);
                                 this.selectUnit(forceUnits[0]);
@@ -294,6 +323,54 @@ export class ForceBuilderService {
                 this.urlStateInitialized = true;
             }
         });
+    }
+
+    private parseUnitsFromUrl(unitsParam: string): ForceUnit[] {
+        const unitParams = unitsParam.split(',');
+        const allUnits = this.dataService.getUnits();
+        const unitMap = new Map(allUnits.map(u => [u.name, u]));
+        const forceUnits: ForceUnit[] = [];
+
+        for (const unitParam of unitParams) {
+            const parts = unitParam.split(':');
+            const unitName = parts[0];
+            const unit = unitMap.get(unitName);
+            
+            if (!unit) {
+                console.warn(`Unit "${unitName}" not found in dataService`);
+                continue;
+            }
+
+            const forceUnit = this.force.addUnit(unit);
+            
+            // Parse crew skills if present
+            if (parts.length > 1) {
+                const crewSkills = parts.slice(1);
+                const crewMembers = forceUnit.getCrewMembers();
+                
+                // Process crew skills in pairs (gunnery, piloting)
+                for (let i = 0; i < crewSkills.length && i < crewMembers.length * 2; i += 2) {
+                    const crewIndex = Math.floor(i / 2);
+                    const gunnery = parseInt(crewSkills[i]);
+                    const piloting = parseInt(crewSkills[i + 1]);
+                    
+                    if (!isNaN(gunnery) && !isNaN(piloting) && crewMembers[crewIndex]) {
+                        // Temporarily disable saving during initialization
+                        forceUnit.disabledSaving = true;
+                        crewMembers[crewIndex].setSkill('gunnery', gunnery);
+                        crewMembers[crewIndex].setSkill('piloting', piloting);
+                        forceUnit.disabledSaving = false;
+                    }
+                }
+                
+                // Recalculate BV after setting crew skills
+                forceUnit.recalculateBv();
+            }
+            
+            forceUnits.push(forceUnit);
+        }
+
+        return forceUnits;
     }
 
     /**

@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, computed, OnDestroy, ElementRef, ViewChild, input, output, effect, ChangeDetectionStrategy } from '@angular/core';
+import { Component, signal, computed, OnDestroy, ElementRef, ViewChild, input, output, effect, ChangeDetectionStrategy, Host, HostListener } from '@angular/core';
 
 /*
  * Author: Drake
@@ -61,6 +61,7 @@ export class RangeSliderComponent implements OnDestroy {
     left = signal(0);
     right = signal(0);
     dragging = signal<'min' | 'max' | null>(null);
+    focusedThumb = signal<'min' | 'max' | null>(null);
 
     isLeftThumbActive = computed(() => {
         const [availableMin,] = this.availableRange() ?? [this.min(), this.max()];
@@ -73,6 +74,8 @@ export class RangeSliderComponent implements OnDestroy {
     });
 
     @ViewChild('container', { static: true }) containerRef!: ElementRef<HTMLDivElement>;
+    @ViewChild('leftThumb', { static: true }) leftThumbRef!: ElementRef<HTMLDivElement>;
+    @ViewChild('rightThumb', { static: true }) rightThumbRef!: ElementRef<HTMLDivElement>;
 
     constructor() {
         // Watch for changes to min, max, or value and update internal signals
@@ -140,6 +143,88 @@ export class RangeSliderComponent implements OnDestroy {
         return roundedVal.toString();
     }
 
+    onThumbFocus(which: 'min' | 'max') {
+        this.focusedThumb.set(which);
+    }
+
+    onThumbBlur() {
+        this.focusedThumb.set(null);
+    }
+
+    @HostListener('keydown', ['$event'])
+    onKeyDown(event: KeyboardEvent) {
+        const focused = this.focusedThumb();
+        if (!focused) return;
+
+        const [availableMin, availableMax] = this.availableRange() ?? [this.min(), this.max()];
+        let changed = false;
+
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+            const stepSize = event.key === 'ArrowDown' ? 10 : 1;
+            event.preventDefault();
+            if (focused === 'min') {
+                const newValue = Math.max(availableMin, this.left() - stepSize);
+                this.left.set(newValue);
+                if (newValue > this.right()) {
+                    this.right.set(newValue);
+                }
+            } else {
+                const newValue = Math.max(this.left(), this.right() - stepSize);
+                this.right.set(newValue);
+            }
+            changed = true;
+        } else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+            const stepSize = event.key === 'ArrowUp' ? 10 : 1;
+            event.preventDefault();
+            if (focused === 'min') {
+                const newValue = Math.min(this.right(), this.left() + stepSize);
+                this.left.set(newValue);
+            } else {
+                const newValue = Math.min(availableMax, this.right() + stepSize);
+                this.right.set(newValue);
+                if (newValue < this.left()) {
+                    this.left.set(newValue);
+                }
+            }
+            changed = true;
+        }
+
+        if (changed) {
+            this.valueChange.emit([this.left(), this.right()]);
+        }
+    }
+
+    @HostListener('wheel', ['$event'])
+    onWheel(event: WheelEvent) {
+        const focused = this.focusedThumb();
+        if (!focused) return;
+
+        event.preventDefault();
+        const [availableMin, availableMax] = this.availableRange() ?? [this.min(), this.max()];
+        const delta = event.deltaY > 0 ? -1 : 1;
+        let changed = false;
+
+        if (focused === 'min') {
+            const newValue = Math.max(availableMin, Math.min(this.right(), this.left() + delta));
+            this.left.set(newValue);
+            if (delta > 0 && newValue > this.right()) {
+                this.right.set(newValue);
+            }
+            changed = true;
+        } else {
+            const newValue = Math.max(this.left(), Math.min(availableMax, this.right() + delta));
+            this.right.set(newValue);
+            if (delta < 0 && newValue < this.left()) {
+                this.left.set(newValue);
+            }
+            changed = true;
+        }
+
+        if (changed) {
+            this.valueChange.emit([this.left(), this.right()]);
+        }
+    }
+
     resetThumb(which: 'min' | 'max', event: Event) {
         event.preventDefault();
         const [availableMin, availableMax] = this.availableRange() ?? [this.min(), this.max()];
@@ -160,6 +245,12 @@ export class RangeSliderComponent implements OnDestroy {
     startDrag(which: 'min' | 'max', event: MouseEvent | TouchEvent) {
         event.preventDefault();
         this.dragging.set(which);
+        this.focusedThumb.set(which);
+        if (which === 'min') {
+            this.leftThumbRef.nativeElement.focus();
+        } else {
+            this.rightThumbRef.nativeElement.focus();
+        }
         window.addEventListener('mousemove', this.onDragBound);
         window.addEventListener('touchmove', this.onDragBound, { passive: false });
         window.addEventListener('mouseup', this.onDragEndBound);

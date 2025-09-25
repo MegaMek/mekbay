@@ -13,6 +13,7 @@
         <div class="header-details-container">
             <div class="spanner"></div>
             <div class="header-details">
+                <div class="role" *ngIf="unit.role && unit.role != 'None'"><strong>{{ unit.role }}</strong></div>
                 <div class="info-slot numeric allow-select" title="Tonnage">
                     <span class="value">{{ formatThousands(unit.tons) }}</span>
                     <img src="/images/weight.svg" class="icon" alt="tons">
@@ -37,10 +38,8 @@
         </button>
         <!-- Basic Info -->
         <div class="basic-info-block allow-select">
-            <div><span class="muted">Type: </span><strong>{{ unit.type }}<span *ngIf="unit.subtype != unit.type"> - {{ unit.subtype }}</span></strong></div>
+            <div><strong>{{ unit.type }}<span *ngIf="unit.subtype != unit.type"> - {{ unit.subtype }}</span> - {{ unit.weightClass }}</strong></div>
             <div><span class="muted">BV: </span><strong>{{ formatThousands(unit.bv) }}</strong></div>
-            <div><span class="muted">Class: </span><strong>{{ unit.weightClass }}</strong></div>
-            <div *ngIf="unit.role && unit.role != 'None'"><span class="muted">Role: </span><strong>{{ unit.role }}</strong></div>
             <div><span class="muted">Tech: </span><strong>{{ unit.techBase }} | {{ unit.techRating }}</strong></div>
             <div *ngIf="unit.year"><span class="muted">Intro Year: </span><strong>{{ unit.year }}</strong> <img src="{{ getEraImg(unit) }}" class="era-icon" title="{{ unit._era?.name }}" /></div>
             <div *ngIf="unit.armorType"><span class="muted">Armor Type: </span><strong>{{ unit.armorType }}</strong></div>
@@ -48,8 +47,6 @@
             <div *ngIf="unit.engine"><span class="muted">Engine: </span><strong><span *ngIf="unit.engineRating">{{ unit.engineRating }} </span>{{ unit.engine }}</strong></div>
             <div *ngIf="unit.c3 && unit.c3 != 'None'"><span class="muted">Network: </span><strong>{{ unit.c3 }}</strong></div>
             <div><span class="muted">C-Bill Cost: </span><strong>{{ formatThousands(unit.cost) }}</strong></div>
-            <div *ngIf="unit.source"><span class="muted">Source: </span><strong>{{ unit.source }}</strong></div>
-            <div *ngIf="unit.id && unit.id > 0"><span class="muted">MUL ID: </span><a class="mul-link" target=_BLANK href="http://masterunitlist.info/Unit/Details/{{unit.id}}">{{ unit.id }}</a></div>
         </div>
         <div class="quirks-block" *ngIf="unit.quirks && unit.quirks.length > 0">
             <div class="quirks">
@@ -173,6 +170,13 @@
                 </div>
             </ng-template>
         </ng-template>
+
+        <div class="spanner"></div>
+
+        <div class="bottom-info">
+            <div class="bottom-left" *ngIf="unit.source"><span class="muted">Source: </span><strong>{{ unit.source }}</strong></div>
+            <div class="bottom-right" *ngIf="unit.id && unit.id > 0"><span class="muted">MUL ID: </span><a class="mul-link" target=_BLANK href="http://masterunitlist.info/Unit/Details/{{unit.id}}">{{ unit.id }}</a></div>
+        </div>
     </div>
     <div class="footer" dialog-footer>
         <button *ngIf="!hideAddButton" class="modal-btn bt-button" (click)="onAdd()">ADD</button>
