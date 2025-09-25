@@ -253,39 +253,47 @@ export class UnitSearchComponent implements OnDestroy {
     onKeydown(event: KeyboardEvent) {
         if (event.key === 'Escape') {
             event.stopPropagation();
-            this.closeAdvPanel();
-            this.searchInput?.nativeElement.blur();
+            if (this.advOpen()) {
+                this.closeAdvPanel();
+                this.searchInput?.nativeElement.focus();
+                return;
+            } else {
+                this.focused.set(false);
+                this.searchInput?.nativeElement.blur();
+            }
             return;
         }
-        const items = this.filtersService.filteredUnits();
-        if (items.length === 0) return;
-        const currentActiveIndex = this.activeIndex();
-        switch (event.key) {
-            case 'ArrowDown':
-                event.preventDefault();
-                const nextIndex = currentActiveIndex !== null ? Math.min(currentActiveIndex + 1, items.length - 1) : 0;
-                this.activeIndex.set(nextIndex);
-                this.scrollToIndex(nextIndex);
-                break;
-            case 'ArrowUp':
-                event.preventDefault();
-                if (currentActiveIndex !== null && currentActiveIndex > 0) {
-                    const prevIndex = currentActiveIndex - 1;
-                    this.activeIndex.set(prevIndex);
-                    this.scrollToIndex(prevIndex);
-                } else {
-                    this.activeIndex.set(null);
-                    this.searchInput?.nativeElement.focus();
-                }
-                break;
-            case 'Enter':
-                event.preventDefault();
-                if (currentActiveIndex !== null) {
-                    this.onUnitClick(items[currentActiveIndex]);
-                } else if (items.length > 0) {
-                    this.onUnitClick(items[0]);
-                }
-                break;
+        if (event.key in ['ArrowDown', 'ArrowUp', 'Enter']) {
+            const items = this.filtersService.filteredUnits();
+            if (items.length === 0) return;
+            const currentActiveIndex = this.activeIndex();
+            switch (event.key) {
+                case 'ArrowDown':
+                    event.preventDefault();
+                    const nextIndex = currentActiveIndex !== null ? Math.min(currentActiveIndex + 1, items.length - 1) : 0;
+                    this.activeIndex.set(nextIndex);
+                    this.scrollToIndex(nextIndex);
+                    break;
+                case 'ArrowUp':
+                    event.preventDefault();
+                    if (currentActiveIndex !== null && currentActiveIndex > 0) {
+                        const prevIndex = currentActiveIndex - 1;
+                        this.activeIndex.set(prevIndex);
+                        this.scrollToIndex(prevIndex);
+                    } else {
+                        this.activeIndex.set(null);
+                        this.searchInput?.nativeElement.focus();
+                    }
+                    break;
+                case 'Enter':
+                    event.preventDefault();
+                    if (currentActiveIndex !== null) {
+                        this.onUnitClick(items[currentActiveIndex]);
+                    } else if (items.length > 0) {
+                        this.onUnitClick(items[0]);
+                    }
+                    break;
+            }
         }
     }
 
