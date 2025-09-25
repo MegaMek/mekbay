@@ -490,8 +490,8 @@ hr {
 }
 
 .mekbay-sheet .damaged-strike { display: none; }
-.mekbay-sheet .disabledInventory .damaged-strike,
-.mekbay-sheet .damagedInventory .damaged-strike { display: block; stroke: var(--disabled-color); }
+.mekbay-sheet .disabledInventory .damaged-strike { display: block; stroke: var(--disabled-color); }
+.mekbay-sheet .damagedInventory .damaged-strike { display: block; stroke: var(--damage-color); }
 .mekbay-sheet .inventoryEntry > *:not(.inventoryEntryButton):not(.inventoryEntry) { pointer-events: none; }
 .mekbay-sheet .inventoryEntryButton { fill: transparent; }
 .mekbay-sheet .inventoryEntry:not(.interactive) { pointer-events: none; }
