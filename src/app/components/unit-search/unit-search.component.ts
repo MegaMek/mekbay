@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, ViewChild, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, signal, ViewChild, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, Host } from '@angular/core';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
@@ -88,6 +88,8 @@ export class UnitSearchComponent implements OnDestroy {
         height: '100%',
     });
     
+    overlayVisible = computed(() => this.advOpen() || this.resultsVisible());
+
     resultsVisible = computed(() => {
         return (this.focused() || this.advOpen() || this.unitDetailsDialogOpen()) &&
             (this.filtersService.search() || this.isAdvActive());
@@ -98,10 +100,7 @@ export class UnitSearchComponent implements OnDestroy {
     constructor() {
         effect(() => {
             if (this.advOpen()) {
-                this.updateAdvPanelPosition();     
-                document.addEventListener('click', this.documentClickHandler, true);       
-            } else {
-                document.removeEventListener('click', this.documentClickHandler, true);
+                this.updateAdvPanelPosition();  
             }
         });        
         effect(() => {
@@ -112,36 +111,18 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     ngOnDestroy() {
-        document.removeEventListener('click', this.documentClickHandler, true);
         this.resizeObserver?.disconnect();
     }
-
-    private documentClickHandler = (event: MouseEvent) => {
-        if (this.advOpen()) {
-            if (this.advBtn?.nativeElement.contains(event.target as Node)) {
-                return; // Clicked on the advanced button, handle it separately
-            }
-            if (!this.advPanel?.nativeElement.contains(event.target as Node)) {
-                this.closeAdvPanel();
-            }
-        }
-    };
-
-    onFocus() {
-        this.focused.set(true);
+    
+    closeAllPanels() {
+        this.focused.set(false);
+        this.advOpen.set(false);
+        this.activeIndex.set(null);
+        this.searchInput?.nativeElement.blur();
     }
 
-    onBlur(event?: FocusEvent) {
-        // If focus is moving to the search input or advBtn, don't set focused to false
-        const next = (event?.relatedTarget as HTMLElement) || document.activeElement;
-        if (
-            this.searchInput?.nativeElement === next ||
-            this.advBtn?.nativeElement === next ||
-            (next && this.resultsDropdown?.nativeElement.contains(next))
-        ) {
-            return;
-        }
-        this.focused.set(false);
+    onOverlayClick() {
+        this.closeAllPanels();
     }
 
     trackByUnitId(index: number, unit: Unit) {
@@ -161,6 +142,8 @@ export class UnitSearchComponent implements OnDestroy {
         this.advOpen.set(!this.advOpen());
         if (!this.advOpen()) {
             this.searchInput?.nativeElement.focus();
+        } else {
+            this.focused.set(true);
         }
     }
 
@@ -408,7 +391,6 @@ export class UnitSearchComponent implements OnDestroy {
             this.forceBuilderService.addUnit(unit);
             ref.close();
             this.searchInput?.nativeElement.blur();
-            this.focused.set(false);
             this.unitDetailsDialogOpen.set(false);
         });
         

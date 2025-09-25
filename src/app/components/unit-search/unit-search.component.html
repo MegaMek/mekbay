@@ -1,26 +1,31 @@
+
+<div class="overlay" 
+     [hidden]="!this.filtersService.isDataReady() || !overlayVisible()"
+     (click)="onOverlayClick()">
+</div>
+
 <div class="searchbar-container">
     <input #searchInput class="bt-input searchbar" type="text" [disabled]="!this.filtersService.isDataReady()"
         [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'" [value]="this.filtersService.search()"
-        (input)="setSearch(searchInput.value)" (focus)="onFocus()" (blur)="onBlur($event)" (keydown)="onKeydown($event)"
+        (input)="setSearch(searchInput.value)" (focus)="focused.set(true)" (keydown)="onKeydown($event)"
         id="unit-search-input" autocomplete="off" />
     <button *ngIf="this.filtersService.search().length > 0" class="searchbar-cancel-btn" type="button"
         (click)="setSearch(''); searchInput.focus();" aria-label="Clear search" tabindex="-1">
         &#10005;
     </button>
     <button #advBtn class="bt-button adv-btn" [class.active]="isAdvActive()" [disabled]="!this.filtersService.isDataReady()"
-        (click)="toggleAdv()"  (focus)="onFocus()" (blur)="onBlur($event)" title="Advanced Search" type="button">
+        (click)="toggleAdv()" title="Advanced Search" type="button">
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
             stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
             <path d="M4 4h16l-6 8v5l-4 3v-8z"/>
         </svg>
     </button>
 </div>
+
 <div #resultsDropdown 
     class="results-dropdown framed-borders" 
     [hidden]="!this.filtersService.isDataReady() || !resultsVisible()"
-    [ngStyle]="resultsDropdownStyle()"
-    (mousedown)="onFocus()"
-    (focusin)="onFocus()">
+    [ngStyle]="resultsDropdownStyle()">
     <div class="results-dropdown-content">
     <ng-container *ngIf="this.filtersService.filteredUnits().length > 0; else noResults">
         <cdk-virtual-scroll-viewport class="results-dropdown-viewport" 
@@ -28,7 +33,7 @@
             minBufferPx="900" 
             maxBufferPx="1350"
             tabindex="0"
-            (keydown)="onKeydown($event)" (focus)="onFocus()" (blur)="onBlur()">
+            (keydown)="onKeydown($event)">
             <div class="results-dropdown-item unit-card"
                 *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
                 [class.active]="activeIndex() === i" (mouseenter)="activeIndex.set(i)" (click)="onUnitClick(unit)">
