@@ -315,12 +315,13 @@ export class UnitSvgMekService extends UnitSvgService {
         const destroyedSensorsCount = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
         this.unit.getInventory().forEach(entry => {
             let isDamaged = false;
+            let isDisabled = false;
             if (entry.critSlots.filter(slot => slot.destroyed).length > 0) {
                 isDamaged = true;
             }
             if (entry.physical) {
                 if (entry.name == 'kick' && (destroyedLegsCount > 0 || destroyedHipsCount > 0)) {
-                    isDamaged = true;
+                    isDisabled = true;
                 } else if (entry.name == 'punch') {
                     entry.locations.forEach(loc => {
                         if (this.unit.isInternalLocDestroyed(loc)) {
@@ -328,14 +329,14 @@ export class UnitSvgMekService extends UnitSvgService {
                         } else
                             if (locationsHitModifiers[loc]) {
                                 if (!locationsHitModifiers[loc].canPunch) {
-                                    isDamaged = true;
+                                    isDisabled = true;
                                 }
                             }
                     });
                 } else if (entry.name == 'push') {
                     entry.locations.forEach(loc => {
                         if (this.unit.isInternalLocDestroyed(loc)) {
-                            isDamaged = true;
+                            isDisabled = true;
                         }
                     });
                 }
@@ -344,27 +345,25 @@ export class UnitSvgMekService extends UnitSvgService {
                     entry.locations.forEach(loc => {
                         if (locationsHitModifiers[loc]) {
                             if (!locationsHitModifiers[loc].canClub) {
-                                isDamaged = true;
+                                isDisabled = true;
                             }
                         }
                     });
                 } else {
                     if (cockpitLoc === 'HD' && destroyedSensorsCount >= 2) {
-                        isDamaged = true;
+                        isDisabled = true;
                     } else if (destroyedSensorsCount >= 3) {
-                        isDamaged = true;
+                        isDisabled = true;
                     }
                 }
             }
             entry.destroyed = isDamaged;
             if (entry.el) {
-                if (isDamaged) {
-                    entry.el.classList.add('damagedInventory');
-                    entry.el.classList.remove('interactive');
+                entry.el.classList.toggle('disabledInventory', isDisabled);
+                entry.el.classList.toggle('damagedInventory', isDamaged);
+                entry.el.classList.toggle('interactive', !isDamaged && !isDisabled);
+                if (isDamaged || isDisabled) {
                     entry.el.classList.remove('selected');
-                } else {
-                    entry.el.classList.remove('damagedInventory');
-                    entry.el.classList.add('interactive');
                 }
             }
         });
