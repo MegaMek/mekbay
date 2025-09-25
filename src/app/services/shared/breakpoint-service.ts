@@ -1,20 +1,14 @@
-import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
-import { computed, inject, Injectable, OnDestroy, signal, Signal, WritableSignal } from '@angular/core';
-import { distinctUntilChanged, Subject, takeUntil, tap } from 'rxjs';
+import { BreakpointObserver, Breakpoints, BreakpointState } from '@angular/cdk/layout';
+import { computed, effect, inject, Injectable, signal, Signal, WritableSignal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 
 @Injectable({
   providedIn: 'root'
 })
-export class BreakpointService implements OnDestroy {
+export class BreakpointService{
   private breakpointObserver = inject(BreakpointObserver);
-  private destroy$ = new Subject<void>();
-  readonly breakpoint$ = this.breakpointObserver
-    .observe([Breakpoints.Large, Breakpoints.Medium, Breakpoints.Small, Breakpoints.XSmall])
-    .pipe(
-      tap(value => console.log(value)),
-      distinctUntilChanged(),
-      takeUntil(this.destroy$)
-    );
+  readonly _breakpoint : Signal<BreakpointState | undefined> = toSignal(this.breakpointObserver
+    .observe([Breakpoints.Large, Breakpoints.Medium, Breakpoints.Small, Breakpoints.XSmall]));
 
   private _isTiny: WritableSignal<boolean> = signal(false);
   public  isTiny : Signal<boolean> = this._isTiny.asReadonly();
@@ -29,18 +23,12 @@ export class BreakpointService implements OnDestroy {
   public currentBreakpoint : Signal<string> = this._currentBreakpoint.asReadonly();
 
   constructor() {
-    this.breakpoint$
-      .subscribe(() => {
-        this.breakpointChecks()
-      });
+    effect(() => {
+        this.breakpointChecks(this._breakpoint());
+    });
   }
 
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
-  }
-
-  private breakpointChecks(): void {
+  private breakpointChecks(breakpointState : BreakpointState | undefined): void {
     this._isTiny.set(this.breakpointObserver.isMatched(Breakpoints.XSmall))
     this._isHandset.set(!!this.breakpointObserver.isMatched(Breakpoints.Tablet));
     this._isTablet.set(!!this.breakpointObserver.isMatched(Breakpoints.Handset));

@@ -1,5 +1,4 @@
 import { TestBed } from '@angular/core/testing';
-
 import { TouchInputService } from './touch-input-service';
 
 describe('TouchInputService', () => {
