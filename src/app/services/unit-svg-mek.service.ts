@@ -251,17 +251,21 @@ export class UnitSvgMekService extends UnitSvgService {
                 mpWalkEl.textContent = walkValue.toString();
             }
             if (mpRunEl) {
-                const baseRunValue = Math.round(walkValue * 1.5);
+                let finalRunValueModifier = 0;
+                if (this.unit.getUnit().armorType === 'Hardened') {
+                    finalRunValueModifier -= 1;
+                }
+                const baseRunValue = Math.round(walkValue * 1.5) + finalRunValueModifier;
                 let runValueCoeff = 1.5;
                 if (hasMASC && !destroyedMASC && hasSupercharger && !destroyedSupercharger) {
                     runValueCoeff = 2.5;
                 } else if ((hasMASC && !destroyedMASC) || (hasSupercharger && !destroyedSupercharger)) {
                     runValueCoeff = 2;
                 }                
-                let maxRunValue = Math.round(walkValue * runValueCoeff);
+                let maxRunValue = Math.round(walkValue * runValueCoeff) + finalRunValueModifier;
                 if (hasTripleStrengthMyomer && !tripleStrengthMyomerMoveBonusActive) {
                     // we recalculate it after apply damaged/undamaged
-                    maxRunValue = Math.round((walkValue + (1 - heatMoveModifier)) * runValueCoeff);
+                    maxRunValue = Math.round((walkValue + (1 - heatMoveModifier)) * runValueCoeff) + finalRunValueModifier;
                 }
                 if (baseRunValue != maxRunValue) {
                     mpRunEl.textContent = `${baseRunValue.toString()} [${maxRunValue.toString()}]`;
