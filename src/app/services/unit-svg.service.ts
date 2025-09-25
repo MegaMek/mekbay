@@ -772,14 +772,14 @@ export class UnitSvgService implements OnDestroy {
                     }
                 });
             }
-            if (entry.hitMod !== 'Vs') {
+            if (entry.baseHitMod !== 'Vs') {
                 const hitModifier = this.calculateHitModifiers(this.unit, entry, additionalModifiers);
                 if (hitModifier !== null) {
                     const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);
                     const hitModText = entry.el.querySelector(`:scope > .hitMod-text`);
                     if (hitModRect && hitModText) {
-                        const weakenedHitMod = (hitModifier > parseInt(entry.hitMod || '0'));
-                        if (hitModifier !== 0 || entry.hitMod === '+0' || weakenedHitMod) {
+                        const weakenedHitMod = (hitModifier > parseInt(entry.baseHitMod || '0'));
+                        if (hitModifier !== 0 || entry.baseHitMod === '+0' || weakenedHitMod) {
                             hitModRect.setAttribute('display', 'block');
                             hitModText.setAttribute('display', 'block');
                             const hitModTextValue = (hitModifier >= 0 ? '+' : '') + hitModifier.toString();
@@ -812,7 +812,7 @@ export class UnitSvgService implements OnDestroy {
                 }
             }
         }
-        let baseHitModValue = parseInt(entry.hitMod || '0');
+        let baseHitModValue = parseInt(entry.baseHitMod || '0');
         if (isNaN(baseHitModValue)) {
             return null; // Invalid hit modifier
         }

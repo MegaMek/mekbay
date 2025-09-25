@@ -269,9 +269,9 @@ export class UnitInitializerService {
                     locations = new Set(locText.split('/'));
                 }
             }
-            let hitMod = entryEl.getAttribute('hitMod');
+            let baseHitMod = entryEl.getAttribute('hitMod');
             if (entryEl.parentElement?.classList.contains('inventoryEntry')) {
-                hitMod = entryEl.parentElement.getAttribute('hitMod2');
+                baseHitMod = entryEl.parentElement.getAttribute('hitMod2');
             }
             // We remove the buttons in inventory for weapon enhancements (except RISC LASER)
             if (eq && eq.flags.has('F_WEAPON_ENHANCEMENT')) {
@@ -285,7 +285,7 @@ export class UnitInitializerService {
                 name: iPhysAtk || name,
                 locations: locations,
                 equipment: eq,
-                hitMod: (hitMod || '').replace('−', '-'),
+                baseHitMod: (baseHitMod || '').replace('−', '-'),
                 physical: !!iPhysAtk,
                 linkedWith: null,
                 parent: null,

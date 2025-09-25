@@ -194,7 +194,8 @@ export interface MountedEquipment {
     name: string;
     locations: Set<string>;
     equipment: null | Equipment;
-    hitMod: string;
+    baseHitMod: string;
+    hitModVariation?: null | number; // Temporary variable to calculate delta hit modifier
     physical: boolean;
     linkedWith: null | MountedEquipment[];
     parent: null | MountedEquipment;
