@@ -156,6 +156,7 @@ export class UnitSvgMekService extends UnitSvgService {
         let destroyedLegsCount = 0;
         let destroyedHipsCount = 0;
         let destroyedLegActuatorsCount = 0;
+        let destroyedFeetCount = 0;
         svg.querySelectorAll('.heatEffect.hot:not(.surpassed)').forEach(effectEl => {
             const move = parseInt(effectEl.getAttribute('h-move') as string);
             if (move && move < heatMoveModifier) {
@@ -187,7 +188,8 @@ export class UnitSvgMekService extends UnitSvgService {
                     destroyedLegsCount++;
                 } else {
                     destroyedHipsCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name === 'Hip' && slot.destroyed).length;
-                    destroyedLegActuatorsCount += critSlots.filter(slot => slot.loc === loc && slot.name && (slot.name === 'Upper Leg' || slot.name === 'Lower Leg' || slot.name === 'Foot') && slot.destroyed).length;
+                    destroyedLegActuatorsCount += critSlots.filter(slot => slot.loc === loc && slot.name && (slot.name === 'Upper Leg' || slot.name === 'Lower Leg') && slot.destroyed).length;
+                    destroyedFeetCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name === 'Foot' && slot.destroyed).length;
                 }
             };
 
@@ -199,7 +201,6 @@ export class UnitSvgMekService extends UnitSvgService {
                     // Apply hip damage effects
                     walkValue = Math.ceil(walkValue * 0.5);
                 }
-                walkValue -= destroyedLegActuatorsCount;
                 if (destroyedLegsCount == 1) {
                     walkValue = 1;
                     jumpValue = 0;
@@ -215,7 +216,6 @@ export class UnitSvgMekService extends UnitSvgService {
                 checkLeg('RRL');
                 checkLeg('FRL');
                 walkValue -= destroyedHipsCount;
-                walkValue -= destroyedLegActuatorsCount;
                 if (destroyedLegsCount == 1) {
                     walkValue = walkValue - 1;
                     jumpValue = 0;
@@ -228,6 +228,8 @@ export class UnitSvgMekService extends UnitSvgService {
                 //TODO: handle other cases (Tanks and stuffs)
                 return;
             }
+            walkValue -= destroyedLegActuatorsCount;
+            walkValue -= destroyedFeetCount;
             walkValue = Math.max(0, walkValue + heatMoveModifier);
             let maxWalkValue = walkValue;
             if (walkValue < originalWalkValue) {
@@ -391,7 +393,7 @@ export class UnitSvgMekService extends UnitSvgService {
         let destroyedLegsCount = 0;
         let destroyedHipsCount = 0;
         let destroyedLegActuatorsCount = 0;
-        let destroyedFootsCount = 0;
+        let destroyedFeetCount = 0;
         let destroyedLegAES = false;
         
         const checkLeg = (loc: string) => {
@@ -402,8 +404,8 @@ export class UnitSvgMekService extends UnitSvgService {
                 destroyedLegsCount++;
             } else {
                 destroyedHipsCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name === 'Hip' && slot.destroyed).length;
-                destroyedLegActuatorsCount += critSlots.filter(slot => slot.loc === loc && slot.name && (slot.name === 'Upper Leg' || slot.name === 'Lower Leg' || slot.name === 'Foot') && slot.destroyed).length;
-                destroyedFootsCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name === 'Foot' && slot.destroyed).length;
+                destroyedLegActuatorsCount += critSlots.filter(slot => slot.loc === loc && slot.name && (slot.name === 'Upper Leg' || slot.name === 'Lower Leg') && slot.destroyed).length;
+                destroyedFeetCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name === 'Foot' && slot.destroyed).length;
             }
         };
         if (internalLocations.has('LL') && internalLocations.has('RL')) {
@@ -490,7 +492,7 @@ export class UnitSvgMekService extends UnitSvgService {
                     if (destroyedLegAES) {
                         additionalModifiers += 1;
                     }
-                    additionalModifiers += destroyedFootsCount + (destroyedLegActuatorsCount * 2);
+                    additionalModifiers += destroyedFeetCount + (destroyedLegActuatorsCount * 2);
                 }
             } else {
                 if (entry.equipment?.flags.has('F_CLUB')) {

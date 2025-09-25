@@ -41,6 +41,8 @@ import { Unit } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Dialog } from '@angular/cdk/dialog';
 import { UnitDetailsDialogComponent } from '../unit-details-dialog/unit-details-dialog.component';
+import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
+import { firstValueFrom } from 'rxjs';
 
 /*
  * Author: Drake
@@ -330,45 +332,46 @@ export class UnitSearchComponent implements OnDestroy {
             .join('');
     }
 
-    openRangeValueDialog(filterKey: string, type: 'min' | 'max', currentValue: number, totalRange: [number, number]) {
+    async openRangeValueDialog(filterKey: string, type: 'min' | 'max', currentValue: number, totalRange: [number, number]) {
         const isMin = type === 'min';
         const currentFilter = this.filtersService.advOptions()[filterKey];
         const filterName = currentFilter?.label || filterKey;
         const message = `Enter the ${isMin ? 'minimum' : 'maximum'} ${filterName} value (${totalRange[0]} - ${totalRange[1]}):`;
         
-        const userInput = prompt(message, currentValue.toString());
+        const ref = this.dialog.open<number | null>(InputDialogComponent, {
+            data: {
+                title: filterName,
+                message: message,
+                inputType: 'number',
+                defaultValue: currentValue,
+                placeholder: currentValue.toString()
+            } as InputDialogData
+        });
+        let newValue = await firstValueFrom(ref.closed);
+        if (newValue === undefined || newValue === null || isNaN(Number(newValue))) return;
+                
+        if (newValue < totalRange[0]) {
+            newValue = totalRange[0];
+        } else if (newValue > totalRange[1]) {
+            newValue = totalRange[1];
+        }
         
-        if (userInput !== null) {
-            let newValue = parseFloat(userInput);
+        if (currentFilter && currentFilter.type === 'range') {
+            const currentRange = [...currentFilter.value] as [number, number];
             
-            if (isNaN(newValue)) {
-                alert('Please enter a valid number.');
-                return;
-            }
-            
-            if (newValue < totalRange[0]) {
-                newValue = totalRange[0];
-            } else if (newValue > totalRange[1]) {
-                newValue = totalRange[1];
-            }
-            
-            if (currentFilter && currentFilter.type === 'range') {
-                const currentRange = [...currentFilter.value] as [number, number];
-                
-                if (isMin) {
-                    if (newValue > currentRange[1]) {
-                        newValue = currentRange[1];
-                    }
-                    currentRange[0] = newValue;
-                } else {
-                    if (newValue < currentRange[0]) {
-                        newValue = currentRange[0];
-                    }
-                    currentRange[1] = newValue;
+            if (isMin) {
+                if (newValue > currentRange[1]) {
+                    newValue = currentRange[1];
                 }
-                
-                this.setAdvFilter(filterKey, currentRange);
+                currentRange[0] = newValue;
+            } else {
+                if (newValue < currentRange[0]) {
+                    newValue = currentRange[0];
+                }
+                currentRange[1] = newValue;
             }
+            
+            this.setAdvFilter(filterKey, currentRange);
         }
     }
 
