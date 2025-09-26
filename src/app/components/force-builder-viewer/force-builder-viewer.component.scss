@@ -236,7 +236,21 @@
     :host(.is-dragging) {
         transition: none;
     }
+    .force-units-list {
+        width: 100%;
+    }
 
+    .force-unit-item {
+        font-size: 1em;
+    }
+
+    .remove-btn {
+        font-size: 1.2em;
+    }
+
+    .total-bv {
+        font-size: 1.2em;
+    }
     .burger-lip-btn {
         position: absolute;
         bottom: 30px;
@@ -263,7 +277,7 @@
             linear-gradient(white, white), linear-gradient(white, white);
         background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px;
         background-position: top right, top right, bottom right, bottom right;
-    }
+    } 
     .burger-lip-btn:focus {
         outline: none;
     }
@@ -276,19 +290,4 @@
         font-weight: bold;
     }
 
-    .force-units-list {
-        width: 100%;
-    }
-
-    .force-unit-item {
-        font-size: 1em;
-    }
-
-    .remove-btn {
-        font-size: 1.2em;
-    }
-
-    .total-bv {
-        font-size: 1.2em;
-    }
 }
