@@ -35,7 +35,6 @@ import { computed } from "@angular/core";
 import { linkedLocs, uidTranslations } from "../components/svg-viewer/common";
 import { CriticalSlot, ForceUnit, MountedEquipment } from "../models/force-unit.model";
 import { UnitSvgService } from "./unit-svg.service";
-import { H } from "@angular/cdk/keycodes";
 
 /*
  * Author: Drake
@@ -415,6 +414,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 'LA': locationModifiers['LA']?.physWeaponMod || 0,
                 'RA': locationModifiers['RA']?.physWeaponMod || 0,
             },
+            canPush: !destroyedLA && !destroyedRA,
             canClub: (locationModifiers['LA']?.canPhysWeapon && !destroyedLA) && (locationModifiers['RA']?.canPhysWeapon && !destroyedRA),
             clubMod: (locationModifiers['LA']?.physWeaponMod || 0) + (locationModifiers['RA']?.physWeaponMod || 0),
             canFire: canFire,
@@ -461,7 +461,6 @@ export class UnitSvgMekService extends UnitSvgService {
                 mpJumpEl.classList.toggle('damaged', unitState.jumpImpaired);
             }
         }
-        const critSlots = this.unit.getCritSlots();
         this.unit.getInventory().forEach(entry => {
             let isDamaged = false;
             let isDisabled = false;
@@ -481,6 +480,7 @@ export class UnitSvgMekService extends UnitSvgService {
             if (entry.physical) {
                 switch (entry.name) {
                     case 'charge':
+                        const critSlots = this.unit.getCritSlots();
                         const hasSpikes = critSlots.some(slot => slot.name && slot.name.includes('Spikes'));
                         if (hasSpikes) {
                             const workingSpikes = critSlots.filter(slot => slot.name && slot.name.includes('Spikes') && !slot.destroyed).length;
@@ -510,6 +510,9 @@ export class UnitSvgMekService extends UnitSvgService {
                         hitMod += unitState.clubMod;
                         break;
                     case 'push':
+                        if (!unitState.canPush) {
+                            isDisabled = true;
+                        }
                         hitMod += unitState.pushMod || 0;
                         break;
                     case 'kick':
