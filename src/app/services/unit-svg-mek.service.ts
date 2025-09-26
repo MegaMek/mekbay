@@ -202,7 +202,9 @@ export class UnitSvgMekService extends UnitSvgService {
             checkLeg('RRL');
             checkLeg('FRL');
         }
-   
+      
+        let destroyedArmActuatorsCount = { 'LA': 0, 'RA': 0 };
+
         // Capabilities
         const getArmsModifiers = (loc: string) => {
             const destroyedAES = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('AES') && slot.destroyed);
@@ -212,9 +214,12 @@ export class UnitSvgMekService extends UnitSvgService {
 
             const destroyedShoulder = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Shoulder') && slot.destroyed);
             const destroyedHand = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Hand') && slot.destroyed);    
-            const destroyedUpperArms = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Upper Arm') && slot.destroyed);
-            const destroyedLowerArms = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Lower Arm') && slot.destroyed);
-            
+            const destroyedUpperArmsCount = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Upper Arm') && slot.destroyed).length;
+            const destroyedLowerArmsCount = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Lower Arm') && slot.destroyed).length;
+            const destroyedUpperArms = destroyedUpperArmsCount > 0;
+            const destroyedLowerArms = destroyedLowerArmsCount > 0;
+            destroyedArmActuatorsCount[loc as ArmLocation] += destroyedUpperArmsCount + destroyedLowerArmsCount;
+
             return {
                 canPunch: !destroyedShoulder,
                 canPhysWeapon: !destroyedShoulder && !destroyedHand,
@@ -250,6 +255,7 @@ export class UnitSvgMekService extends UnitSvgService {
             destroyedHipsCount,
             destroyedLegActuatorsCount,
             destroyedFeetCount,
+            destroyedArmActuatorsCount,
             locationModifiers: locationModifiers,
         };
     });
@@ -483,25 +489,47 @@ export class UnitSvgMekService extends UnitSvgService {
                         const critSlots = this.unit.getCritSlots();
                         const hasSpikes = critSlots.some(slot => slot.name && slot.name.includes('Spikes'));
                         if (hasSpikes) {
-                            const workingSpikes = critSlots.filter(slot => slot.name && slot.name.includes('Spikes') && !slot.destroyed).length;
-                            const damageText = entry.el.querySelector(`:scope > .damage > text`);
-                            if (damageText) {
-                                let originalText = damageText.textContent || '';
-                                originalText = originalText.replace(/\+\d+$/, '');
-                                damageText.textContent = ``;
-                                damageText.textContent = `${originalText}+${workingSpikes * 2}`;
+                            const spikesCount = critSlots.filter(slot => slot.name && slot.name.includes('Spikes')).length;
+                            const workingSpikesCount = critSlots.filter(slot => slot.name && slot.name.includes('Spikes') && !slot.destroyed).length;
+                            const chargeDamageEl = entry.el.querySelector(`:scope > .damage > text`);
+                            if (chargeDamageEl) {
+                                let originalText = chargeDamageEl.textContent || '';
+                                originalText = originalText.replace(/\+\d+$/, ''); // Remove any previous spike bonus, format is 10/hex+12
+                                if (originalText) {
+                                    let spikesBonusDamage = workingSpikesCount * 2;
+                                    chargeDamageEl.textContent = `${originalText}+${spikesBonusDamage}`;
+                                    chargeDamageEl.classList.toggle('damaged', spikesCount > workingSpikesCount);
+                                }
                             }
                         }
                         break;
                     case 'punch':
-                        entry.locations.forEach(loc => {
-                            if (loc in unitState.canPunch && !unitState.canPunch[loc as "LA" | "RA"]) {
-                                isDisabled = true;
+                        const loc = Array.from(entry.locations)[0]?.toString() as ArmLocation; // We assume punch is only one location
+                        if (loc in unitState.canPunch && !unitState.canPunch[loc]) {
+                            isDisabled = true;
+                        }
+                        if (loc in unitState.punchMod) {
+                            hitMod += unitState.punchMod[loc];
+                        }
+                        const punchDamageEl = entry.el.querySelector(`:scope > .damage > text`);
+                        if (punchDamageEl) {
+                            let originalText = punchDamageEl.getAttribute('originalText');
+                            if (originalText === undefined || originalText === null) {
+                                originalText = punchDamageEl.textContent || '';
+                                punchDamageEl.setAttribute('originalText', originalText);
                             }
-                            if (loc in unitState.punchMod) {
-                                hitMod += unitState.punchMod[loc as "LA" | "RA"];
+                            if (originalText) {
+                                let baseDamage = parseInt(originalText);
+                                let damage = baseDamage;
+                                for (let i = 0; i < systemStatus.destroyedArmActuatorsCount[loc]; i++) {
+                                    damage = Math.floor(damage * 0.5);
+                                }
+                                if (damage < 1) damage = 1;
+                                punchDamageEl.textContent = `${damage}`;
+                                punchDamageEl.classList.toggle('damaged', damage < baseDamage);
                             }
-                        });
+
+                        }
                         break;
                     case 'club':
                         if (!unitState.canClub) {
@@ -520,6 +548,24 @@ export class UnitSvgMekService extends UnitSvgService {
                             isDisabled = true;
                         }
                         hitMod += unitState.kickMod;
+                        const kickDamageEl = entry.el.querySelector(`:scope > .damage > text`);
+                        if (kickDamageEl) {
+                            let originalText = kickDamageEl.getAttribute('originalText');
+                            if (originalText === undefined || originalText === null) {
+                                originalText = kickDamageEl.textContent || '';
+                                kickDamageEl.setAttribute('originalText', originalText);
+                            }
+                            if (originalText) {
+                                let baseDamage = parseInt(originalText);
+                                let damage = baseDamage;
+                                for (let i = 0; i < systemStatus.destroyedLegActuatorsCount; i++) {
+                                    damage = Math.floor(damage * 0.5);
+                                }
+                                if (damage < 1) damage = 1;
+                                kickDamageEl.textContent = `${damage}`;
+                                kickDamageEl.classList.toggle('damaged', damage < baseDamage);
+                            }
+                        }
                         break;
                 }
             } else {
