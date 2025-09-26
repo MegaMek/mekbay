@@ -246,6 +246,7 @@ export class UnitSvgMekService extends UnitSvgService {
             destroyedPartialWings,
             internalLocations,
             hasTripleStrengthMyomer,
+            tripleStrengthMyomerMoveBonusActive: (this.unit.getHeat().current >= 9 && hasTripleStrengthMyomer),
             cockpitLoc,
             destroyedSensorsCountInHD,
             destroyedSensorsCount,
@@ -328,8 +329,7 @@ export class UnitSvgMekService extends UnitSvgService {
         }
         walkValue = Math.max(0, walkValue);
         let maxWalkValue = walkValue;
-        const tripleStrengthMyomerMoveBonusActive = (this.unit.getHeat().current >= 9 && systemsStatus.hasTripleStrengthMyomer);
-        if (tripleStrengthMyomerMoveBonusActive) {
+        if (systemsStatus.tripleStrengthMyomerMoveBonusActive) {
             // we add it after apply damaged/undamaged
             walkValue += 2;
             maxWalkValue += 2;
@@ -338,20 +338,20 @@ export class UnitSvgMekService extends UnitSvgService {
         }
 
         // Run MP
+        const hasWorkingMASC = systemsStatus.hasMASC && !systemsStatus.destroyedMASC;
+        const hasWorkingSupercharger = systemsStatus.hasSupercharger && !systemsStatus.destroyedSupercharger;
         const armorModifierOnRun = (this.unit.getUnit().armorType === 'Hardened') ? -1 : 0;
         let runValue = Math.round(walkValue * 1.5) + armorModifierOnRun;
         let runValueCoeff = 1.5;
-        if (systemsStatus.hasMASC && !systemsStatus.destroyedMASC && systemsStatus.hasSupercharger && !systemsStatus.destroyedSupercharger) {
+        if (hasWorkingMASC && hasWorkingSupercharger) {
             runValueCoeff = 2.5;
-        } else if ((systemsStatus.hasMASC && !systemsStatus.destroyedMASC) || (systemsStatus.hasSupercharger && !systemsStatus.destroyedSupercharger)) {
+        } else if ((hasWorkingMASC) || (hasWorkingSupercharger)) {
             runValueCoeff = 2;
-        }                
-        let maxRunValue;
-        if (systemsStatus.hasTripleStrengthMyomer && !tripleStrengthMyomerMoveBonusActive) {
+        }               
+        let maxRunValue = Math.round(walkValue * runValueCoeff) + armorModifierOnRun;
+        if (systemsStatus.hasTripleStrengthMyomer && !systemsStatus.tripleStrengthMyomerMoveBonusActive) {
             // we recalculate it after apply damaged/undamaged
             maxRunValue = Math.round((walkValue + (1 - heatMoveModifier)) * runValueCoeff) + armorModifierOnRun;
-        } else {
-            maxRunValue = Math.round(walkValue * runValueCoeff) + armorModifierOnRun;
         }
 
         // Jump MP
@@ -523,8 +523,11 @@ export class UnitSvgMekService extends UnitSvgService {
                                 let damage = baseDamage;
                                 for (let i = 0; i < systemStatus.destroyedArmActuatorsCount[loc]; i++) {
                                     damage = Math.floor(damage * 0.5);
+                                    if (damage < 1) damage = 1;
                                 }
-                                if (damage < 1) damage = 1;
+                                if (systemStatus.tripleStrengthMyomerMoveBonusActive) {
+                                    damage *= 2;
+                                }
                                 punchDamageEl.textContent = `${damage}`;
                                 punchDamageEl.classList.toggle('damaged', damage < baseDamage);
                             }
@@ -536,6 +539,23 @@ export class UnitSvgMekService extends UnitSvgService {
                             isDisabled = true;
                         }
                         hitMod += unitState.clubMod;
+                        const clubDamageEl = entry.el.querySelector(`:scope > .damage > text`);
+                        if (clubDamageEl) {
+                            let originalText = clubDamageEl.getAttribute('originalText');
+                            if (originalText === undefined || originalText === null) {
+                                originalText = clubDamageEl.textContent || '';
+                                clubDamageEl.setAttribute('originalText', originalText);
+                            }
+                            if (originalText) {
+                                let baseDamage = parseInt(originalText);
+                                let damage = baseDamage;
+                                if (systemStatus.tripleStrengthMyomerMoveBonusActive) {
+                                    damage *= 2;
+                                }
+                                clubDamageEl.textContent = `${damage}`;
+                                clubDamageEl.classList.toggle('damaged', damage < baseDamage);
+                            }
+                        }
                         break;
                     case 'push':
                         if (!unitState.canPush) {
@@ -560,8 +580,11 @@ export class UnitSvgMekService extends UnitSvgService {
                                 let damage = baseDamage;
                                 for (let i = 0; i < systemStatus.destroyedLegActuatorsCount; i++) {
                                     damage = Math.floor(damage * 0.5);
+                                    if (damage < 1) damage = 1;
                                 }
-                                if (damage < 1) damage = 1;
+                                if (systemStatus.tripleStrengthMyomerMoveBonusActive) {
+                                    damage *= 2;
+                                }
                                 kickDamageEl.textContent = `${damage}`;
                                 kickDamageEl.classList.toggle('damaged', damage < baseDamage);
                             }
