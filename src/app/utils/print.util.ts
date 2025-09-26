@@ -212,8 +212,9 @@ export class PrintUtil {
                     box-sizing: border-box;
                     width: 100% !important;
                     height: 100% !important;
-                    max-width: 100%;
-                    max-height: 100%;
+                    max-width: calc(100% - 0.32in);
+                    max-height: calc(100% - 0.32in);
+                    margin: 0.16in;
                     transform: none !important;
                     page-break-inside: avoid;
                     break-inside: avoid;

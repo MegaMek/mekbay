@@ -832,11 +832,12 @@ hr {
         box-sizing: border-box;
         width: 100% !important;
         height: 100% !important;
-        max-width: 100%;
-        max-height: 100%;
+        max-width: calc(100% - 0.32in);
+        max-height: calc(100% - 0.32in);
         transform: none !important;
         page-break-inside: avoid;
         break-inside: avoid;
+        margin: 0.16in;
     }
 
     #faded-arrow,
@@ -851,7 +852,7 @@ hr {
         /* size: 612pt 792pt; */
         /* margin: auto; */
         /* margin: 8mm; */
-        /* margin: 0cm !important; */
+        margin: 0cm;
 		padding: 0cm !important;
         /* margin: 0cm !important; */
 		overflow: hidden;
