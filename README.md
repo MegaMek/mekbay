@@ -50,6 +50,27 @@ ng build
 
 This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
 
+### Docker
+
+To build and run a comparable Docker development environment with automatic reloading when you
+modify source files:
+
+```shell
+docker build -t mekbay:development -f Dockerfile_development .
+docker run -p 4200:4200 -v $(pwd):/usr/src/app -v /usr/src/app/node_modules mekbay:development
+```
+
+Open [http://localhost:4200](http://localhost:4200)
+
+To build and run a production ready Docker container:
+
+```shell
+docker build -t mekbay:production .
+docker run -p 8080:80 mekbay:production
+```
+
+Open [http://localhost:8080](http://localhost:8080)
+
 ## Support
 
 For questions, issues, or feature requests, please:
