@@ -271,7 +271,6 @@ export class UnitSvgMekService extends UnitSvgService {
         let heatMoveModifier = 0;
         let heatFireModifier = 0;
         let moveImpaired = false;
-        let jumpImpaired = false;
         
         const systemsStatus = this.systemsStatus();
         const internalLocations = new Set<string>(this.unit.locations?.internal.keys() || []);
@@ -397,7 +396,7 @@ export class UnitSvgMekService extends UnitSvgService {
             maxWalk: maxWalkValue,
             run: runValue,
             maxRun: maxRunValue,
-            jumpImpaired: jumpImpaired,
+            jumpImpaired: (jumpValue < unit.jump),
             jump: jumpValue,
             canKick: systemsStatus.destroyedLegsCount === 0 && systemsStatus.destroyedHipsCount === 0,
             kickMod: (systemsStatus.destroyedLegActuatorsCount * 2) + (systemsStatus.destroyedFeetCount) + (systemsStatus.destroyedLegAES ? 1 : 0),
