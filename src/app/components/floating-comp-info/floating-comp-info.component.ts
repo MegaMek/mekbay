@@ -217,6 +217,8 @@ export class FloatingCompInfoComponent implements AfterViewInit {
             if (bYear === null) return -1;
             return aYear - bYear;
         });
+
+        const ratingString = `${eq.base} | ${this.unit().techBase == 'Clan' ? eq.rating.clan : eq.rating.is}`;
         const result = [
             {
                 group: 'General',
@@ -233,7 +235,7 @@ export class FloatingCompInfoComponent implements AfterViewInit {
                 group: 'Technology',
                 items: [
                     { label: 'Level', value: eq.level },
-                    { label: 'Rating', value: this.unit().techBase == 'Clan' ? eq.rating.clan : eq.rating.is },
+                    { label: 'Rating', value: ratingString },
                 ]
             }
         ];

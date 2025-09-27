@@ -347,9 +347,7 @@
 }
 
 .component-data {
-    display: grid;
-    grid-auto-rows: min-content;
-    grid-template-columns: max-content 1fr;
+    display: flex;
     padding: 8px;
     min-width: 160px;
     width: 100%;
@@ -408,6 +406,7 @@
     color: #fff;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex-grow: 1;
 }
 
 .comp-details {
