@@ -285,7 +285,6 @@ export class UnitSvgMekService extends UnitSvgService {
             }
             if (systemsStatus.destroyedLegsCount == 1) {
                 walkValue = 1;
-                jumpValue = 0;
                 moveImpaired = true;
             }
         } else if (internalLocations.has('RLL') && internalLocations.has('FLL') && internalLocations.has('RRL') && internalLocations.has('FRL')) {
@@ -296,13 +295,11 @@ export class UnitSvgMekService extends UnitSvgService {
             }
             if (systemsStatus.destroyedLegsCount == 1) {
                 walkValue = walkValue - 1;
-                jumpValue = 0;
                 moveImpaired = true;
             }
         }
         if (systemsStatus.destroyedLegsCount >= 2) {
             walkValue = 0;
-            jumpValue = 0;
             moveImpaired = true;
         }
         walkValue -= systemsStatus.destroyedLegActuatorsCount;
