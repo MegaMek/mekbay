@@ -744,8 +744,8 @@ export class UnitDetailsDialogComponent {
         const equipmentList = this.dataService.getEquipment(this.unit.type);
         for (const original of this.unit.comp) {
             if (original.t === 'HIDDEN') continue;
-            if (!original.eq) {
-                original.eq = equipmentList[original.id];
+            if (original.eq === undefined) {
+                original.eq = equipmentList[original.id] ?? null;
             }
             // Split multi-location components (e.g., "LA/LT")
             if (splitMultiloc && original.l && original.l.includes('/')) {
