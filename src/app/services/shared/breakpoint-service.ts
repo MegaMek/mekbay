@@ -10,37 +10,24 @@ export class BreakpointService{
   readonly _breakpoint : Signal<BreakpointState | undefined> = toSignal(this.breakpointObserver
     .observe([Breakpoints.Large, Breakpoints.Medium, Breakpoints.Small, Breakpoints.XSmall]));
 
-  private _isTiny: WritableSignal<boolean> = signal(false);
-  public  isTiny : Signal<boolean> = this._isTiny.asReadonly();
   private _isHandset: WritableSignal<boolean> = signal(false);
   public isHandset : Signal<boolean> = this._isHandset.asReadonly();
-  private _isTablet: WritableSignal<boolean> = signal(false);
-  public isTablet : Signal<boolean> = this._isTablet.asReadonly();
-  private _isWeb: WritableSignal<boolean> = signal(false);
-  public isWeb: Signal<boolean> = computed(() => !this._isTablet() && !this.isHandset());
-  public isMobile: Signal<boolean> = computed(() => this._isTablet() || this.isHandset());
-  private _currentBreakpoint: WritableSignal<string> = signal('Unknown');
-  public currentBreakpoint : Signal<string> = this._currentBreakpoint.asReadonly();
+  private _isTabletPortrait: WritableSignal<boolean> = signal(false);
+  public isTabletPortrait : Signal<boolean> = this._isTabletPortrait.asReadonly();
+  public isMobile: Signal<boolean> = computed(() => this._isTabletPortrait() || this.isHandset());
 
   constructor() {
     effect(() => {
         this.breakpointChecks(this._breakpoint());
     });
+
+    effect(() => {
+      document.documentElement.classList.toggle('mobile-mode', this.isMobile());
+    });
   }
 
   private breakpointChecks(breakpointState : BreakpointState | undefined): void {
-    this._isTiny.set(this.breakpointObserver.isMatched(Breakpoints.XSmall))
-    this._isHandset.set(!!this.breakpointObserver.isMatched(Breakpoints.Tablet));
-    this._isTablet.set(!!this.breakpointObserver.isMatched(Breakpoints.Handset));
-    this._isWeb.set(!!this.breakpointObserver.isMatched(Breakpoints.Web));
-    if (this.breakpointObserver.isMatched(Breakpoints.Handset)) {
-      this._currentBreakpoint.set('Handset');
-    } else if (this.breakpointObserver.isMatched(Breakpoints.Tablet)) {
-      this._currentBreakpoint.set('Tablet');
-    } else if (this.breakpointObserver.isMatched(Breakpoints.Web)) {
-      this._currentBreakpoint.set('Web');
-    } else {
-      this._currentBreakpoint.set('Unknown');
-    }
+    this._isHandset.set(!!this.breakpointObserver.isMatched(Breakpoints.Handset));
+    this._isTabletPortrait.set(!!this.breakpointObserver.isMatched(Breakpoints.TabletPortrait));
   }
 }

@@ -17,6 +17,7 @@ export class TouchInputService {
   private readonly platformId: object = inject(PLATFORM_ID);
 
   constructor() {
+        this.isTouchInput.set(('ontouchstart' in window) || navigator.maxTouchPoints > 0);
         // Setup browser-only listeners and media query, cleaned up via onCleanup when the service is destroyed.
         effect((onCleanup) => {
             if (!isPlatformBrowser(this.platformId)) return;
