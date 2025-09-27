@@ -173,7 +173,6 @@ export class UnitSvgService implements OnDestroy {
     protected updateAllDisplays() {
         if (!this.unit.svg()) return;
         // Read all reactive state properties to ensure they are tracked by the effect.
-        const bv = this.unit.getBv();
         const crew = this.unit.getCrewMembers();
         const heat = this.unit.getHeat();
         const critSlots = this.unit.getCritSlots();
@@ -181,7 +180,7 @@ export class UnitSvgService implements OnDestroy {
         const inventory = this.unit.getInventory();
         
         // Update all displays
-        this.updateBVDisplay(bv);
+        this.updateBVDisplay();
         this.updateCrewDisplay(crew);
         this.updateCritLocDisplay(critSlots);
         this.updateHeatDisplay(heat);
@@ -282,12 +281,18 @@ export class UnitSvgService implements OnDestroy {
         }
     }
 
-    protected updateBVDisplay(bv: number) {
+    protected updateBVDisplay() {
         const svg = this.unit.svg();
         if (!svg) return;
         const bvElement = svg.querySelector('#bv');
         if (bvElement) {
-            bvElement.textContent = bv.toString();
+            const bv = this.unit.getBv();
+            const originalBv = this.unit.getUnit().bv || 0;
+            if (bv !== originalBv) {
+                bvElement.textContent = `${bv} (${originalBv})`;
+            } else {
+                bvElement.textContent = bv.toString();
+            }
         }
     }
 

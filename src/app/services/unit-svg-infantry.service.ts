@@ -42,12 +42,11 @@ export class UnitSvgInfantryService extends UnitSvgService {
     protected override updateAllDisplays() {
         if (!this.unit.svg()) return;
         // Read all reactive state properties to ensure they are tracked by the effect.
-        const bv = this.unit.getBv();
         const crew = this.unit.getCrewMembers();
         const locations = this.unit.getLocations();
 
         // Update all displays
-        this.updateBVDisplay(bv);
+        this.updateBVDisplay();
         this.updateCrewDisplay(crew);
         this.updateTroopsDisplay();
         this.updateInventory();
