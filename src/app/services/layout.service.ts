@@ -31,8 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, signal, effect, PLATFORM_ID, inject } from '@angular/core';
-import { isPlatformBrowser } from '@angular/common';
+import { Injectable, signal, effect, PLATFORM_ID, inject, computed } from '@angular/core';
 
 /*
  * Author: Drake
@@ -42,8 +41,11 @@ import { isPlatformBrowser } from '@angular/common';
 })
 export class LayoutService {
     /** A signal that is true if the viewport matches mobile breakpoints. */
-    public isMobile = signal(false);
-    public isTiny = signal(false);
+    private isPortraitOrientation = signal(false);
+    private mobileQueryMatches = signal(false);
+    public isMobile = computed(() => {
+        return  this.mobileQueryMatches() || this.isPortraitOrientation();
+    });
     /** A signal representing the open state of the mobile menu. */
     public isMenuOpen = signal(false);
     public isMenuDragging = signal(false);
@@ -55,52 +57,41 @@ export class LayoutService {
     private readonly platformId: object = inject(PLATFORM_ID);
 
     constructor() {
-        // Setup browser-only listeners and media query, cleaned up via onCleanup when the service is destroyed.
         effect((onCleanup) => {
-            if (!isPlatformBrowser(this.platformId)) return;
-
-            // This media query combines the CDK's Breakpoints.XSmall and Breakpoints.Small
-            // (max-width: 599.98px) OR (min-width: 600px) and (max-width: 959.98px)
-            // which simplifies to (max-width: 959.98px)
-            const mobileQuery = '(max-width: 959.98px)';
-            const mobileQueryList = window.matchMedia(mobileQuery);
-
-            const tinyQuery = '(max-width: 599.98px)';
-            const tinyQueryList = window.matchMedia(tinyQuery);
-
-            // Initial values
-            this.isMobile.set(mobileQueryList.matches);
-            this.isTiny.set(tinyQueryList.matches);
             this.isTouchInput.set(('ontouchstart' in window) || navigator.maxTouchPoints > 0);
+            const mediaQuery = window.matchMedia('(max-width: 959.98px)');
 
-            // Media query change listener
-            const mobileQueryListener = (event: MediaQueryListEvent) => {
-                this.isMobile.set(event.matches);
+            // Initialize current state
+            this.mobileQueryMatches.set(mediaQuery.matches);
+            this.updateOrientation();
+            
+            // Listen for media query changes
+            const mediaQueryHandler = (event: MediaQueryListEvent) => {
+                this.mobileQueryMatches.set(event.matches);
             };
-            mobileQueryList.addEventListener('change', mobileQueryListener);
-
-            const tinyQueryListener = (event: MediaQueryListEvent) => {
-                this.isTiny.set(event.matches);
+            
+            // Listen for orientation changes
+            const orientationHandler = () => {
+                this.updateOrientation();
             };
-            tinyQueryList.addEventListener('change', tinyQueryListener);
 
             // Global input listeners
             window.addEventListener('touchstart', this.setTouchInput, { passive: true, capture: true });
             window.addEventListener('touchend', this.updateTouchPoints, { passive: true, capture: true });
             window.addEventListener('touchcancel', this.updateTouchPoints, { passive: true, capture: true });
             window.addEventListener('mousedown', this.setMouseInput, { passive: true, capture: true });
+            window.addEventListener('orientationchange', orientationHandler, { passive: true, capture: true });
+            window.addEventListener('resize', orientationHandler, { passive: true, capture: true });
+            mediaQuery.addEventListener('change', mediaQueryHandler);
 
             onCleanup(() => {
                 window.removeEventListener('touchstart', this.setTouchInput, { capture: true });
                 window.removeEventListener('touchend', this.updateTouchPoints, { capture: true });
                 window.removeEventListener('touchcancel', this.updateTouchPoints, { capture: true });
-                window.removeEventListener('mousedown', this.setMouseInput, { capture: true });
-                if (mobileQueryList && mobileQueryListener) {
-                    mobileQueryList.removeEventListener('change', mobileQueryListener);
-                }
-                if (tinyQueryList && tinyQueryListener) {
-                    tinyQueryList.removeEventListener('change', tinyQueryListener);
-                }
+                window.removeEventListener('mousedown', this.setMouseInput, { capture: true });    
+                window.removeEventListener('orientationchange', orientationHandler, { capture: true });
+                window.removeEventListener('resize', orientationHandler, { capture: true });
+                mediaQuery.removeEventListener('change', mediaQueryHandler);
             });
         });
 
@@ -114,6 +105,14 @@ export class LayoutService {
         effect(() => {
             document.documentElement.classList.toggle('touch-mode', this.isTouchInput());
         });
+        effect(() => {
+            document.documentElement.classList.toggle('mobile-mode', this.isMobile());
+        });
+    }
+
+    private updateOrientation() {
+        const isPortrait = window.screen.height > window.screen.width;
+        this.isPortraitOrientation.set(isPortrait);
     }
 
     /** Toggles the mobile menu's open/closed state. */

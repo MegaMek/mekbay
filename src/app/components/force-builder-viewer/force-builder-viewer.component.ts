@@ -57,7 +57,7 @@ const SWIPE_SNAP_THRESHOLD_PERCENT = 0.5;   // Menu snaps open/closed if dragged
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule, UnitSearchComponent, DragDropModule, PopupMenuComponent],
     templateUrl: './force-builder-viewer.component.html',
-    styleUrls: ['./force-builder-viewer.component.css']
+    styleUrls: ['./force-builder-viewer.component.scss']
 })
 export class ForceBuilderViewerComponent implements OnDestroy {
     protected forceBuilderService = inject(ForceBuilderService);

@@ -37,6 +37,7 @@
     cursor: pointer;
     transition: color 0.3s ease;
 }
+
 .force-name:hover {
     color: var(--bt-yellow);
 }
@@ -204,8 +205,7 @@
     transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
 }
 
-/* --- Mobile Off-Canvas Styles --- */
-@media (max-width: 959.98px) {
+:host-context(html.mobile-mode) {
     :host {
         position: fixed;
         top: 0;
