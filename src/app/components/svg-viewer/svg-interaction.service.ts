@@ -44,10 +44,10 @@ import { RadialPickerComponent } from '../radial-picker/radial-picker.component'
 import { LinearPickerComponent } from '../linear-picker/linear-picker.component';
 import { RotatingPickerComponent } from '../rotating-picker/rotating-picker.component';
 import { ToastService } from '../../services/toast.service';
-import { LayoutService } from '../../services/layout.service';
 import { SetAmmoDialogComponent, SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
 import { DataService } from '../../services/data.service';
 import { AmmoEquipment } from '../../models/equipment.model';
+import { TouchInputService } from '../../services/shared/touch-input-service';
 
 /*
  * Author: Drake
@@ -70,7 +70,7 @@ export class SvgInteractionService {
     private dialog = inject(Dialog);
     private zoomPanService = inject(SvgZoomPanService);
     private toastService = inject(ToastService);
-    private layoutService = inject(LayoutService);
+    touchInputService = inject(TouchInputService);
 
     private containerRef!: ElementRef<HTMLDivElement>;
     private unit = signal<ForceUnit | null>(null);
@@ -267,7 +267,7 @@ export class SvgInteractionService {
     ) {
         el.addEventListener('pointerdown', (event: PointerEvent) => {
             if (!this.unit()) return;
-            if (event.pointerType === 'touch' && !this.layoutService.isSingleTouch()) {
+            if (event.pointerType === 'touch' && !this.touchInputService.isSingleTouch()) {
                 return;
             }
             event.stopPropagation();
@@ -518,15 +518,13 @@ export class SvgInteractionService {
             const svgEl = el as SVGElement;
             const loc = svgEl.getAttribute('loc');
             const slot = parseInt(svgEl.getAttribute('slot') as string);
-            const originalTotalAmmo = parseInt(svgEl.getAttribute('totalAmmo') || '0');
+            const totalAmmo = parseInt(svgEl.getAttribute('totalAmmo') || '0');
             let labelText = svgEl.textContent || '';
             if (svgEl.classList.contains('ammoSlot')) {
                 // for ammo, we remove the number at the end, example "Ammo (SRM 2) 5" should become "Ammo (SRM 2)"
                 labelText = labelText.replace(/\s\d+$/, '');
             }
             if (loc === null || slot === null) return;
-            const critSlot = unit.getCritSlot(loc, slot);
-            let totalAmmo = critSlot?.totalAmmo || originalTotalAmmo;
             const ammoToastId = `ammo-${unit.id}-${loc}-${slot}`;
             let lastAmountVariationTimestamp = 0;
             let amount = 0;
@@ -629,11 +627,10 @@ export class SvgInteractionService {
                                     }
                                 }
                             }
-                            const ref = this.dialog.open<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
+                            const ref = this.dialog.open<{ name: string; quantity: number } | null>(SetAmmoDialogComponent, {
                                 data: {
                                     currentAmmo: ammoItem,
                                     originalAmmo: originalAmmo,
-                                    originalTotalAmmo: originalTotalAmmo,
                                     ammoOptions: ammoOptions,
                                     quantity: totalAmmo - amountUsed,
                                     maxQuantity: totalAmmo
@@ -649,8 +646,6 @@ export class SvgInteractionService {
                                     delete critSlot.originalName;
                                 }
                                 critSlot.name = newAmmoValue.name;
-                                totalAmmo = newAmmoValue.totalAmmo;
-                                critSlot.totalAmmo = totalAmmo;
                                 critSlot.eq = equipmentList[newAmmoValue.name];
                                 labelText = critSlot.eq.shortName;
                             }

@@ -32,8 +32,9 @@
  */
 
 import { Injectable, ElementRef, signal, WritableSignal, Injector, inject } from '@angular/core';
-import { LayoutService } from '../../services/layout.service';
+
 import { SvgInteractionService } from './svg-interaction.service';
+import { TouchInputService } from '../../services/shared/touch-input-service';
 
 /*
  * Author: Drake
@@ -77,7 +78,7 @@ export interface SwipeCallbacks {
 
 @Injectable()
 export class SvgZoomPanService {
-    private layoutService = inject(LayoutService);
+    private touchInputService = inject(TouchInputService);
     private injector = inject(Injector);
 
     private static readonly NON_INTERACTIVE_SELECTORS = [
@@ -270,7 +271,7 @@ export class SvgZoomPanService {
         // if (this.isPickerOpen()) return; // Prevent interaction if picker is open but creates problems with the pickers on pointerdown
 
         // Prevent panning if the sidebar menu is being dragged
-        if (this.layoutService.isMenuDragging()) return;
+        if (this.touchInputService.isMenuDragging()) return;
 
         if (event.button !== 0) return; // Only handle left button
 
@@ -291,13 +292,13 @@ export class SvgZoomPanService {
     }
 
     private onPointerMove(event: PointerEvent) {
-        if (this.layoutService.isMultiTouch()) {
+        if (this.touchInputService.isMultiTouch()) {
             this.interactionService.removePicker();
         }
 
         if (this.isPickerOpen()) return;
 
-        if (this.layoutService.isMenuDragging()) {
+        if (this.touchInputService.isMenuDragging()) {
             this.state.isPanning = false;
             this.state.isSwiping = false;
             return;
@@ -361,7 +362,7 @@ export class SvgZoomPanService {
         // if (this.isPickerOpen()) return;
 
         // Prevent pinch-zoom if the sidebar menu is being dragged
-        if (this.layoutService.isMenuDragging()) return;
+        if (this.touchInputService.isMenuDragging()) return;
 
         if (event.touches.length === 1) {
             const touch = event.touches[0];
@@ -404,7 +405,7 @@ export class SvgZoomPanService {
     private onTouchMove(event: TouchEvent) {
         if (this.isPickerOpen()) return;
 
-        if (this.layoutService.isMenuDragging()) {
+        if (this.touchInputService.isMenuDragging()) {
             this.state.isPanning = false;
             this.state.isSwiping = false;
             return;

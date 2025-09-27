@@ -806,7 +806,7 @@ export class UnitSvgService implements OnDestroy {
                     return null; // Skip calculation for weapon enhancements (except RISC Module)
                 }
             }
-            if ((!entry.equipment.range || entry.equipment.range == '-') && !entry.equipment.flags.has('F_CLUB')) {
+            if (!entry.equipment.range || entry.equipment.range == '-') {
                 if (!entry.parent || !entry.parent.equipment || !entry.parent.equipment.range || entry.parent.equipment.range == '-') {
                     return null; // No range defined not by itself, not by parent, skip calculate hit modifier
                 }

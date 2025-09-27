@@ -323,49 +323,6 @@ export class UnitSearchComponent implements OnDestroy {
             .join('');
     }
 
-    async openRangeValueDialog(filterKey: string, type: 'min' | 'max', currentValue: number, totalRange: [number, number]) {
-        const isMin = type === 'min';
-        const currentFilter = this.filtersService.advOptions()[filterKey];
-        const filterName = currentFilter?.label || filterKey;
-        const message = `Enter the ${isMin ? 'minimum' : 'maximum'} ${filterName} value (${totalRange[0]} - ${totalRange[1]}):`;
-        
-        const ref = this.dialog.open<number | null>(InputDialogComponent, {
-            data: {
-                title: filterName,
-                message: message,
-                inputType: 'number',
-                defaultValue: currentValue,
-                placeholder: currentValue.toString()
-            } as InputDialogData
-        });
-        let newValue = await firstValueFrom(ref.closed);
-        if (newValue === undefined || newValue === null || isNaN(Number(newValue))) return;
-                
-        if (newValue < totalRange[0]) {
-            newValue = totalRange[0];
-        } else if (newValue > totalRange[1]) {
-            newValue = totalRange[1];
-        }
-        
-        if (currentFilter && currentFilter.type === 'range') {
-            const currentRange = [...currentFilter.value] as [number, number];
-            
-            if (isMin) {
-                if (newValue > currentRange[1]) {
-                    newValue = currentRange[1];
-                }
-                currentRange[0] = newValue;
-            } else {
-                if (newValue < currentRange[0]) {
-                    newValue = currentRange[0];
-                }
-                currentRange[1] = newValue;
-            }
-            
-            this.setAdvFilter(filterKey, currentRange);
-        }
-    }
-
     private escapeHtml(s: string): string {
         return s
             .replace(/&/g, '&amp;')
