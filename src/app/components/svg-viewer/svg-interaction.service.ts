@@ -44,10 +44,10 @@ import { RadialPickerComponent } from '../radial-picker/radial-picker.component'
 import { LinearPickerComponent } from '../linear-picker/linear-picker.component';
 import { RotatingPickerComponent } from '../rotating-picker/rotating-picker.component';
 import { ToastService } from '../../services/toast.service';
-import { LayoutService } from '../../services/layout.service';
 import { SetAmmoDialogComponent, SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
 import { DataService } from '../../services/data.service';
 import { AmmoEquipment } from '../../models/equipment.model';
+import { TouchInputService } from '../../services/shared/touch-input-service';
 
 /*
  * Author: Drake
@@ -70,7 +70,7 @@ export class SvgInteractionService {
     private dialog = inject(Dialog);
     private zoomPanService = inject(SvgZoomPanService);
     private toastService = inject(ToastService);
-    private layoutService = inject(LayoutService);
+    touchInputService = inject(TouchInputService);
 
     private containerRef!: ElementRef<HTMLDivElement>;
     private unit = signal<ForceUnit | null>(null);
@@ -267,7 +267,7 @@ export class SvgInteractionService {
     ) {
         el.addEventListener('pointerdown', (event: PointerEvent) => {
             if (!this.unit()) return;
-            if (event.pointerType === 'touch' && !this.layoutService.isSingleTouch()) {
+            if (event.pointerType === 'touch' && !this.touchInputService.isSingleTouch()) {
                 return;
             }
             event.stopPropagation();

@@ -21,7 +21,7 @@
                 (cdkDragEnded)="onUnitDragEnd()"
                 cdkDragLockAxis="y"
                 cdkDragBoundary=".scrollable-content"
-                [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
+                [cdkDragStartDelay]="touchInputService.isTouchInput() ? 200 : 0">
                 <div class="unit-image-container">
                     <img class="icon unit-icon" [src]="getUnitImg(unit)" alt="{{ unit.getUnit().model }} {{ unit.getUnit().chassis }}" />
                 </div>
@@ -81,11 +81,11 @@
 
     <!-- Burger button that acts as a "lip" on mobile -->
     <button
-        *ngIf="layoutService.isMobile()"
+        *ngIf="breakpointService.isMobile()"
         #burgerLipBtn
         class="burger-lip-btn"
         (pointerdown)="onLipPointerDown($event)"
         (click)="onLipClick($event)">
-        <span class="burger-icon">{{ layoutService.isMenuOpen() ? '«' : '»' }}</span>
+        <span class="burger-icon">{{ sidebarService.isOpen() ? '«' : '»' }}</span>
     </button>
 </div>
