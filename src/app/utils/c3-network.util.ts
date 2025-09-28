@@ -37,26 +37,29 @@ import { ForceUnit } from "../models/force-unit.model";
  * Author: Drake
  */
 const TAX_RATE = 0.05;
+const BOOSTED_TAX_RATE = 0.07;
 const COMPATIBLE_NETWORKS = [
     ['C3 Master', 'C3 Slave', 'C3BS (Master)', 'C3 Emergency Master', 'C3 Boosted Slave', 'BC3'],
     ['C3i', 'BC3i'],
     ['Naval C3'],
     ['Nova CEWS'],
-]
-    
+];
+const BOOSTED_COMPUTERS = ['C3BS (Master)', 'C3 Boosted Slave'];
+
 export class C3NetworkUtil {
 
     public static calculateC3Tax(currentUnit: ForceUnit, units: ForceUnit[]): number {
         if (!currentUnit.c3Linked) {
             return 0;
         }
-        const linkedUnits = units.filter(unit => unit === currentUnit 
+        const linkedUnits = units.filter(unit => unit === currentUnit
             || (unit.c3Linked && this.isCompatibleForC3(currentUnit, unit)))
         if (linkedUnits.length <= 1) {
             return 0;
         }
         const totalBV = linkedUnits.reduce((sum, unit) => sum + unit.getUnit().bv, 0);
-        return Math.round(totalBV * TAX_RATE);
+        const boosted = BOOSTED_COMPUTERS.includes(currentUnit.getUnit().c3)
+        return Math.round(totalBV * (boosted ? BOOSTED_TAX_RATE : TAX_RATE));
     }
 
     private static isCompatibleForC3(currentUnit: ForceUnit, unit: ForceUnit): boolean {
