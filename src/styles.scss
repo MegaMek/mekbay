@@ -614,156 +614,164 @@ hr {
 
 /* Night mode */
 @media screen {
-    .night-mode .mekbay-sheet {
-        --svg-bg-color: #141414;
-        --svg-fg-color: #FFF;
-        --svg-fg-color-inv: #000;
-        background-color: var(--svg-bg-color);
-        color: var(--svg-fg-color);
-        fill: var(--svg-fg-color);
-    }
-
-    .night-mode .mekbay-sheet [fill="#000000" i],
-    .night-mode .mekbay-sheet [fill="#000" i],
-    .night-mode .mekbay-sheet [fill="black" i],
-    .night-mode .mekbay-sheet [style*="fill:#000000" i],
-    .night-mode .mekbay-sheet [style*="fill:black" i],
-    .night-mode .mekbay-sheet [style*="fill: #000000" i],
-    .night-mode .mekbay-sheet [style*="fill: black" i],
-    .night-mode .mekbay-sheet [style*="fill:#000" i],
-    .night-mode .mekbay-sheet [style*="fill: #000" i],
-    .night-mode .mekbay-sheet [style*="fill: rgb(0, 0, 0)" i] {
-        fill: var(--svg-fg-color) !important;
-    }
-
-    .night-mode .mekbay-sheet [stroke="#000000" i],
-    .night-mode .mekbay-sheet [stroke="#000" i],
-    .night-mode .mekbay-sheet [stroke="black" i],
-    .night-mode .mekbay-sheet [style*="stroke:#000000" i],
-    .night-mode .mekbay-sheet [style*="stroke:black" i],
-    .night-mode .mekbay-sheet [style*="stroke: #000000" i],
-    .night-mode .mekbay-sheet [style*="stroke: black" i],
-    .night-mode .mekbay-sheet [style*="stroke:#000" i],
-    .night-mode .mekbay-sheet [style*="stroke: #000" i],
-    .night-mode .mekbay-sheet [style*="stroke: rgb(0, 0, 0)" i] {
-        stroke: var(--svg-fg-color) !important;
-    }
-
-    .night-mode .mekbay-sheet [fill="#FFFFFF" i],
-    .night-mode .mekbay-sheet [fill="#FFF" i],
-    .night-mode .mekbay-sheet [fill="white" i],
-    .night-mode .mekbay-sheet [style*="fill:#FFFFFF" i],
-    .night-mode .mekbay-sheet [style*="fill:white" i],
-    .night-mode .mekbay-sheet [style*="fill: #FFFFFF" i],
-    .night-mode .mekbay-sheet [style*="fill: white" i],
-    .night-mode .mekbay-sheet [style*="fill:#FFF" i],
-    .night-mode .mekbay-sheet [style*="fill: #FFF" i],
-    .night-mode .mekbay-sheet [style*="fill: rgb(255, 255, 255)" i] {
-        fill: var(--svg-fg-color-inv) !important;
-    }
-
-    .night-mode .mekbay-sheet [stroke="#FFFFFF" i],
-    .night-mode .mekbay-sheet [stroke="#FFF" i],
-    .night-mode .mekbay-sheet [stroke="white" i],
-    .night-mode .mekbay-sheet [style*="stroke:#FFFFFF" i],
-    .night-mode .mekbay-sheet [style*="stroke:white" i],
-    .night-mode .mekbay-sheet [style*="stroke: #FFFFFF" i],
-    .night-mode .mekbay-sheet [style*="stroke: white" i],
-    .night-mode .mekbay-sheet [style*="stroke:#FFF" i],
-    .night-mode .mekbay-sheet [style*="stroke: #FFF" i],
-    .night-mode .mekbay-sheet [style*="stroke: rgb(255, 255, 255)" i] {
-        stroke: var(--svg-fg-color-inv) !important;
-    }
-
-    .night-mode .mekbay-sheet [fill="#c7c8ca" i],
-    .night-mode .mekbay-sheet [style*="fill:#c7c8ca" i],
-    .night-mode .mekbay-sheet [style*="fill: #c7c8ca" i] {
-        fill: #34373D !important;
-    }
-
-    .night-mode .mekbay-sheet [stroke="#c7c8ca" i],
-    .night-mode .mekbay-sheet [style*="stroke:#c7c8ca" i],
-    .night-mode .mekbay-sheet [style*="stroke: #c7c8ca" i] {
-        stroke: #34373D !important;
-    }
-
-    .night-mode .mekbay-sheet [fill="#c7c7c7" i],
-    .night-mode .mekbay-sheet [style*="fill:#c7c7c7" i],
-    .night-mode .mekbay-sheet [style*="fill: #c7c7c7" i] {
-        fill: #34373D !important;
-    }
-    .night-mode .mekbay-sheet [stroke="#c7c7c7" i],
-    .night-mode .mekbay-sheet [style*="stroke:#c7c7c7" i],
-    .night-mode .mekbay-sheet [style*="stroke: #c7c7c7" i] {
-        stroke: #34373D !important;
-    }
+    .night-mode {
+        .mekbay-sheet {
+            --svg-bg-color: #141414;
+            --svg-fg-color: #FFF;
+            --svg-fg-color-inv: #000;
+            background-color: var(--svg-bg-color);
+            color: var(--svg-fg-color);
+            fill: var(--svg-fg-color);
+        }
         
-    .night-mode .mekbay-sheet .damaged { fill: var(--damage-color) !important; }
-    .night-mode .mekbay-sheet .damaged path { fill: var(--damage-color) !important; }
-    .night-mode .mekbay-sheet .damaged text { fill: var(--damage-color) !important; }
-    .night-mode .mekbay-sheet image { filter: invert(1) hue-rotate(180deg); }
-    
-    .night-mode .mekbay-sheet #faded-arrow { stroke: #666; }
-    .night-mode .mekbay-sheet .heatEffect.hot.surpassed { fill: #3f3f3f !important; }
-    
-    .night-mode .mekbay-sheet .damaged { fill: var(--damage-color) !important; }
-    .night-mode .mekbay-sheet .damaged path { fill: var(--damage-color) !important; }
-    .night-mode .mekbay-sheet .damaged text { fill: var(--damage-color) !important; }
-    
-    .night-mode .mekbay-sheet .detached,
-    .night-mode .mekbay-sheet .detached > path { fill: gray !important; pointer-events: none; }
-    .night-mode .mekbay-sheet .critGroup.detached text { fill: #3f3f3f !important; }
-    .night-mode .mekbay-sheet .pip.detached { stroke: gray; }
-    .night-mode .mekbay-sheet .pip.damaged { fill: var(--damage-color) !important; }
-    .night-mode .mekbay-sheet .pip.fresh:not(.damaged) { stroke: #03a9f4 !important; }
-    .night-mode .mekbay-sheet .pip.damaged.fresh { fill: #FF0 !important; stroke: var(--damage-color) !important; }
+        [fill="#000000" i],
+        [fill="#000" i],
+        [fill="black" i],
+        [style*="fill:#000000" i],
+        [style*="fill:black" i],
+        [style*="fill: #000000" i],
+        [style*="fill: black" i],
+        [style*="fill:#000" i],
+        [style*="fill: #000" i],
+        [style*="fill: rgb(0, 0, 0)" i] {
+            fill: var(--svg-fg-color) !important;
+        }
 
-    .night-mode .mekbay-sheet .soldierPip.damaged { filter: invert(1) opacity(0.3) !important; }
-    .night-mode .mekbay-sheet .soldierPip.damaged.fresh { filter: invert(1) brightness(0.6) saturate(100) hue-rotate(237deg) contrast(4) !important; }
-    .night-mode .mekbay-sheet .soldierPip.fresh { filter: invert(1) saturate(100) hue-rotate(10deg) !important; }
+        [stroke="#000000" i],
+        [stroke="#000" i],
+        [stroke="black" i],
+        [style*="stroke:#000000" i],
+        [style*="stroke:black" i],
+        [style*="stroke: #000000" i],
+        [style*="stroke: black" i],
+        [style*="stroke:#000" i],
+        [style*="stroke: #000" i],
+        [style*="stroke: rgb(0, 0, 0)" i] {
+            stroke: var(--svg-fg-color) !important;
+        }
 
-    .night-mode .mekbay-sheet .skillValue { fill: #bbf; }
-    .night-mode .mekbay-sheet .customAmmoLoadout { fill: #bbf; }
-    
-    .night-mode .mekbay-sheet .inventoryEntry:hover > .inventoryEntryButton { fill: var(--night-highlight-color); }
-    .night-mode .mekbay-sheet .inventoryEntry.selected > .inventoryEntryButton { fill: var(--bt-yellow); }
-    .night-mode .mekbay-sheet .selectable:hover,
-    .night-mode .mekbay-sheet .selectable:hover > path { fill: var(--undamaged-night-highlight-color) !important; }
-    .night-mode .mekbay-sheet .selectable.damaged:hover,
-    .night-mode .mekbay-sheet .selectable.damaged:hover > path { fill: var(--damaged-highlight-color) !important; }
-    
+        [fill="#FFFFFF" i],
+        [fill="#FFF" i],
+        [fill="white" i],
+        [style*="fill:#FFFFFF" i],
+        [style*="fill:white" i],
+        [style*="fill: #FFFFFF" i],
+        [style*="fill: white" i],
+        [style*="fill:#FFF" i],
+        [style*="fill: #FFF" i],
+        [style*="fill: rgb(255, 255, 255)" i] {
+            fill: var(--svg-fg-color-inv) !important;
+        }
 
-    .night-mode .mekbay-sheet .hot.heat0 { fill: #000000 !important; }
-    .night-mode .mekbay-sheet .hot.heat1 { fill: #090900 !important; }
-    .night-mode .mekbay-sheet .hot.heat2 { fill: #121200 !important; }
-    .night-mode .mekbay-sheet .hot.heat3 { fill: #1B1B00 !important; }
-    .night-mode .mekbay-sheet .hot.heat4 { fill: #242400 !important; }
-    .night-mode .mekbay-sheet .hot.heat5 { fill: #2D2D00 !important; }
-    .night-mode .mekbay-sheet .hot.heat6 { fill: #363600 !important; }
-    .night-mode .mekbay-sheet .hot.heat7 { fill: #3F3F00 !important; }
-    .night-mode .mekbay-sheet .hot.heat8 { fill: #484800 !important; }
-    .night-mode .mekbay-sheet .hot.heat9 { fill: #515100 !important; }
-    .night-mode .mekbay-sheet .hot.heat10 { fill: #5A5A00 !important; }
-    .night-mode .mekbay-sheet .hot.heat11 { fill: #636300 !important; }
-    .night-mode .mekbay-sheet .hot.heat12 { fill: #6C6C00 !important; }
-    .night-mode .mekbay-sheet .hot.heat13 { fill: #757500 !important; }
-    .night-mode .mekbay-sheet .hot.heat14 { fill: #7F7F00 !important; }
-    .night-mode .mekbay-sheet .hot.heat15 { fill: #888800 !important; }
-    .night-mode .mekbay-sheet .hot.heat16 { fill: #907F00 !important; }
-    .night-mode .mekbay-sheet .hot.heat17 { fill: #987600 !important; }
-    .night-mode .mekbay-sheet .hot.heat18 { fill: #A06D00 !important; }
-    .night-mode .mekbay-sheet .hot.heat19 { fill: #A86400 !important; }
-    .night-mode .mekbay-sheet .hot.heat20 { fill: #B05B00 !important; }
-    .night-mode .mekbay-sheet .hot.heat21 { fill: #B85200 !important; }
-    .night-mode .mekbay-sheet .hot.heat22 { fill: #C04900 !important; }
-    .night-mode .mekbay-sheet .hot.heat23 { fill: #C84000 !important; }
-    .night-mode .mekbay-sheet .hot.heat24 { fill: #D03700 !important; }
-    .night-mode .mekbay-sheet .hot.heat25 { fill: #D82E00 !important; }
-    .night-mode .mekbay-sheet .hot.heat26 { fill: #E02500 !important; }
-    .night-mode .mekbay-sheet .hot.heat27 { fill: #E81C00 !important; }
-    .night-mode .mekbay-sheet .hot.heat28 { fill: #F01300 !important; }
-    .night-mode .mekbay-sheet .hot.heat29 { fill: #F80A00 !important; }
-    .night-mode .mekbay-sheet .hot.heat30 { fill: #FF0000 !important; }
+        [stroke="#FFFFFF" i],
+        [stroke="#FFF" i],
+        [stroke="white" i],
+        [style*="stroke:#FFFFFF" i],
+        [style*="stroke:white" i],
+        [style*="stroke: #FFFFFF" i],
+        [style*="stroke: white" i],
+        [style*="stroke:#FFF" i],
+        [style*="stroke: #FFF" i],
+        [style*="stroke: rgb(255, 255, 255)" i] {
+            stroke: var(--svg-fg-color-inv) !important;
+        }
+
+        [fill="#c7c8ca" i],
+        [style*="fill:#c7c8ca" i],
+        [style*="fill: #c7c8ca" i] {
+            fill: #34373D !important;
+        }
+
+        [stroke="#c7c8ca" i],
+        [style*="stroke:#c7c8ca" i],
+        [style*="stroke: #c7c8ca" i] {
+            stroke: #34373D !important;
+        }
+
+        [fill="#c7c7c7" i],
+        [style*="fill:#c7c7c7" i],
+        [style*="fill: #c7c7c7" i] {
+            fill: #34373D !important;
+        }
+        [stroke="#c7c7c7" i],
+        [style*="stroke:#c7c7c7" i],
+        [style*="stroke: #c7c7c7" i] {
+            stroke: #34373D !important;
+        }
+
+        [fill="#bbb" i],
+        [style*="fill:#bbb" i] {
+            fill: #444 !important;
+        }
+        
+        .damaged { fill: var(--damage-color) !important; }
+        .damaged path { fill: var(--damage-color) !important; }
+        .damaged text { fill: var(--damage-color) !important; }
+        image { filter: invert(1) hue-rotate(180deg); }
+        
+        #faded-arrow { stroke: #666; }
+        .heatEffect.hot.surpassed { fill: #3f3f3f !important; }
+        
+        .damaged { fill: var(--damage-color) !important; }
+        .damaged path { fill: var(--damage-color) !important; }
+        .damaged text { fill: var(--damage-color) !important; }
+        
+        .detached,
+        .detached > path { fill: gray !important; pointer-events: none; }
+        .critGroup.detached text { fill: #3f3f3f !important; }
+        .pip.detached { stroke: gray; }
+        .pip.damaged { fill: var(--damage-color) !important; }
+        .pip.fresh:not(.damaged) { stroke: #03a9f4 !important; }
+        .pip.damaged.fresh { fill: #FF0 !important; stroke: var(--damage-color) !important; }
+
+        .soldierPip.damaged { filter: invert(1) opacity(0.3) !important; }
+        .soldierPip.damaged.fresh { filter: invert(1) brightness(0.6) saturate(100) hue-rotate(237deg) contrast(4) !important; }
+        .soldierPip.fresh { filter: invert(1) saturate(100) hue-rotate(10deg) !important; }
+
+        .skillValue { fill: #bbf; }
+        .customAmmoLoadout { fill: #bbf; }
+        
+        .inventoryEntry:hover > .inventoryEntryButton { fill: var(--night-highlight-color); }
+        .inventoryEntry.selected > .inventoryEntryButton { fill: var(--bt-yellow); }
+        .selectable:hover,
+        .selectable:hover > path { fill: var(--undamaged-night-highlight-color) !important; }
+        .selectable.damaged:hover,
+        .selectable.damaged:hover > path { fill: var(--damaged-highlight-color) !important; }
+        
+
+        .hot.heat0 { fill: #000000 !important; }
+        .hot.heat1 { fill: #090900 !important; }
+        .hot.heat2 { fill: #121200 !important; }
+        .hot.heat3 { fill: #1B1B00 !important; }
+        .hot.heat4 { fill: #242400 !important; }
+        .hot.heat5 { fill: #2D2D00 !important; }
+        .hot.heat6 { fill: #363600 !important; }
+        .hot.heat7 { fill: #3F3F00 !important; }
+        .hot.heat8 { fill: #484800 !important; }
+        .hot.heat9 { fill: #515100 !important; }
+        .hot.heat10 { fill: #5A5A00 !important; }
+        .hot.heat11 { fill: #636300 !important; }
+        .hot.heat12 { fill: #6C6C00 !important; }
+        .hot.heat13 { fill: #757500 !important; }
+        .hot.heat14 { fill: #7F7F00 !important; }
+        .hot.heat15 { fill: #888800 !important; }
+        .hot.heat16 { fill: #907F00 !important; }
+        .hot.heat17 { fill: #987600 !important; }
+        .hot.heat18 { fill: #A06D00 !important; }
+        .hot.heat19 { fill: #A86400 !important; }
+        .hot.heat20 { fill: #B05B00 !important; }
+        .hot.heat21 { fill: #B85200 !important; }
+        .hot.heat22 { fill: #C04900 !important; }
+        .hot.heat23 { fill: #C84000 !important; }
+        .hot.heat24 { fill: #D03700 !important; }
+        .hot.heat25 { fill: #D82E00 !important; }
+        .hot.heat26 { fill: #E02500 !important; }
+        .hot.heat27 { fill: #E81C00 !important; }
+        .hot.heat28 { fill: #F01300 !important; }
+        .hot.heat29 { fill: #F80A00 !important; }
+        .hot.heat30 { fill: #FF0000 !important; }
+
+    }
 }
 
 /* Printing */
@@ -805,46 +813,51 @@ hr {
         display: none !important;
     }
 
+    body:not(.multipage-container-active) {
+        main,
+        .app-container,
+        .main-content,
+        .content-area,
+        svg-viewer,
+        .svg-viewer-container,
+        .svg-viewer-container .slides {
+            width: 8.5in !important;
+            height: 11in !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            left: 0;
+            top: 0;
+            display: block;
+            background: transparent !important;
+        }
 
-    body:not(.multipage-container-active) main,
-    body:not(.multipage-container-active) .app-container,
-    body:not(.multipage-container-active) .main-content,
-    body:not(.multipage-container-active) .content-area,
-    body:not(.multipage-container-active) svg-viewer,
-    body:not(.multipage-container-active) .svg-viewer-container,
-    body:not(.multipage-container-active) .svg-viewer-container .slides {
-        width: 8.5in !important;
-        height: 11in !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        left: 0;
-        top: 0;
-        display: block;
-        background: transparent !important;
-    }
+        .svg-viewer-container {
+            .slide {
+                width: 8.5in !important;
+                height: 11in !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                background: white !important;
+                display: block;
+                transform: none !important;
+                
+                > svg {
+                    display: block;
+                    box-sizing: border-box;
+                    width: 100% !important;
+                    height: 100% !important;
+                    max-width: calc(100% - 0.32in);
+                    max-height: calc(100% - 0.32in);
+                    transform: none !important;
+                    page-break-inside: avoid;
+                    break-inside: avoid;
+                    margin: 0.16in;
+                }
+            }
+        }
 
-    body:not(.multipage-container-active) .svg-viewer-container .slide {
-        width: 8.5in !important;
-        height: 11in !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        background: white !important;
-        display: block;
-        transform: none !important;
     }
-
-    body:not(.multipage-container-active) .svg-viewer-container .slide > svg {
-        display: block;
-        box-sizing: border-box;
-        width: 100% !important;
-        height: 100% !important;
-        max-width: calc(100% - 0.32in);
-        max-height: calc(100% - 0.32in);
-        transform: none !important;
-        page-break-inside: avoid;
-        break-inside: avoid;
-        margin: 0.16in;
-    }
+    
 
     #faded-arrow,
     #now-arrow {
