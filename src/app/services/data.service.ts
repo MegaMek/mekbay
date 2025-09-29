@@ -460,7 +460,6 @@ export class DataService {
                         localData = store.preprocess(localData);
                     }
                 }
-                console.log(`Checking ${store.key} version...`);
                 const etag = await this.getRemoteETag(`${store.key}.json`);
                 if (localData && localData.etag === etag) {
                     this.data[store.key as keyof LocalStore] = localData;
@@ -528,7 +527,7 @@ export class DataService {
                         }
                         this.data[remoteStore.key as keyof LocalStore] = processedData;
                         await remoteStore.putInLocalStorage(data); // Save original data with etag
-                        console.log(`Downloaded and saved ${remoteStore.key} successfully.`);
+                        console.log(`${remoteStore.key} updated. (ETag: ${etag})`);
                         resolve();
                     } catch (error) {
                         reject(error);
