@@ -26,4 +26,4 @@ jobs:
       - name: Load Secrets
         run: echo "machine ${{ secrets.FTP_HOST }} login ${{ secrets.FTP_USER }} password ${{ secrets.FTP_PASSWORD }}" > ~/.netrc
       - name: Upload Folder (with cleanup)
-        run: lftp -e "mirror --parallel=100 -R --delete --verbose ./dist/browser/ ./mekbay/; quit" ${{ secrets.FTP_HOST }}
+        run: lftp -e "mirror --parallel=100 -R --delete --verbose --no-perms ./dist/browser/ ./mekbay/; quit" ${{ secrets.FTP_HOST }}
