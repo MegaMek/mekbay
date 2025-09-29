@@ -1,4 +1,4 @@
-name: FTP Deploy
+name: CD/CI Release
 run-name: Deploy MekBay to mekbay.com
 on:
   push:
@@ -20,10 +20,13 @@ jobs:
           npm install
           npm run build
       - name: Get LFTP
-        run: sudo apt install lftp
+        run: sudo apt-get install -y --no-install-recommends lftp
       - name: Configure LFTP
         run: mkdir ~/.lftp && echo "set ssl:verify-certificate false;" >> ~/.lftp/rc
       - name: Load Secrets
         run: echo "machine ${{ secrets.FTP_HOST }} login ${{ secrets.FTP_USER }} password ${{ secrets.FTP_PASSWORD }}" > ~/.netrc
-      - name: Upload Folder
-        run: lftp -e "mirror --parallel=100 -R ./dist/browser/ ./mekbay/" ${{ secrets.FTP_HOST }}
+      - name: Upload Folder (with cleanup)  
+        run: |
+          lftp -c "set ftp:list-options -a; 
+          open -u ${{ secrets.FTP_USER }},${{ secrets.FTP_PASSWORD }} ${{ secrets.FTP_HOST }};
+          mirror --parallel=100 -R --delete --no-perms --verbose ./dist/browser/ ./mekbay/"
