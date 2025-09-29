@@ -20,7 +20,7 @@ jobs:
           npm install
           npm run build
       - name: Get LFTP
-        run: sudo apt install lftp
+        run: sudo apt-get install -y --no-install-recommends lftp
       - name: Configure LFTP
         run: mkdir ~/.lftp && echo "set ssl:verify-certificate false;" >> ~/.lftp/rc
       - name: Load Secrets
