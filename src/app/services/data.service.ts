@@ -464,7 +464,7 @@ export class DataService {
                 const etag = await this.getRemoteETag(`${store.key}.json`);
                 if (localData && localData.etag === etag) {
                     this.data[store.key as keyof LocalStore] = localData;
-                    console.log(`${store.key} is up to date.`);
+                    console.log(`${store.key} is up to date. (ETag: ${etag})`);
                     return;
                 }
                 await this.fetchFromRemote(store);
@@ -516,7 +516,7 @@ export class DataService {
             }).subscribe({
                 next: async (response) => {
                     try {
-                        const etag = response.headers.get('ETag') || '';
+                        const etag = response.headers.get('ETag') || crypto.randomUUID(); // Fallback to random UUID if no ETag
                         const data = response.body;
                         if (!data) {
                             throw new Error(`No body received for ${remoteStore.key}`);
