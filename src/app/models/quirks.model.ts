@@ -42,5 +42,6 @@ export interface Quirk {
 
 export interface Quirks {
     version: string;
+    etag: string;
     quirks: Quirk[];
 }

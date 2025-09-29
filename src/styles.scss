@@ -1,0 +1,1109 @@
+:root {
+    --background-color: #141414;
+    --background-color-menu: #292929;
+    --background-color-light: #313131;
+    --background-input: rgba(40, 40, 40, 0.5);
+    --background-highlight: #3D3D3D;
+    --background-highlight-bright: #7A7A7A;
+    --primary-color: #1976d2;
+    --border-color: #444;
+    --scrollbar-width: 6px;
+    --text-color: #ffffff;
+    --text-color-secondary: silver;
+    --bt-yellow: #EAAE3F;
+    --bt-yellow-strong: #FFAE16;
+    /* --bt-yellow-background: rgba(209, 175, 73, 0.2); */
+    --bt-yellow-background: #443912;
+    --bt-yellow-background-bright: #5f5018;
+    --bt-yellow-background-light: #FFCF73;
+    --bt-yellow-background-bright-transparent: #68540fee;
+    color: white;
+    scrollbar-color: #666 rgba(0, 0, 0, 0);
+    -webkit-tap-highlight-color: transparent;
+
+    --highlight-color: #f0f0f0;
+    --night-highlight-color: #555;
+
+    --disabled-color: #888;
+    --damage-color: #F00;
+    --undamaged-highlight-color: #FEE;
+    --undamaged-night-highlight-color: #300;
+    --damaged-highlight-color: rgb(255, 105, 105);
+}
+
+html,
+body {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    margin: 0;
+    padding: 0;
+    background-color: var(--background-color-menu);
+    overflow: hidden;
+    overscroll-behavior: none;
+    font-family: 'Roboto', "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Symbol";
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    user-select: none;
+}
+
+a {
+    color: #fff;
+    text-decoration: underline;
+    transition: color 0.15s ease;
+
+    &:hover {
+        color: var(--bt-yellow);
+    }
+}
+
+:where(body, .searchbar-container, .adv-panel, .dropdown, .dropdown-item, .dropdown-viewport, .name, .year, .bv, .no-results) {
+    user-select: none;
+}
+
+/* Allow selection in input and textarea fields */
+input,
+textarea {
+    user-select: text;
+}
+
+.allow-select {
+    user-select: text;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid #666;
+}
+
+.muted {
+    color: var(--text-color-secondary);
+}
+
+.modal-btn {
+    padding: 8px 36px;
+    font-size: 1.1em;
+    width: 140px;
+
+    @media screen and (max-width: 600px) {
+        padding: 8px 12px;
+        font-size: 1em;
+        width: 110px;
+    }
+}
+
+.overlay-backdrop,
+.cdk-overlay-dark-backdrop {
+    background-color: rgba(0, 0, 0, 0.5);
+    transition: opacity 400ms cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.framed-borders {
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    border-top: 1px solid white;
+    border-bottom: 1px solid white;
+    background-image:
+        linear-gradient(white, white), linear-gradient(white, white),
+        linear-gradient(white, white), linear-gradient(white, white);
+    background-size: 1px 12px, 1px 12px, 1px 12px, 1px 12px;
+    background-position: top left, top right, bottom left, bottom right;
+}
+
+.corner-borders {
+    transition: all 0.2s ease-in-out;
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    background-image:
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666);
+    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+
+    &.active,
+    &.open {
+        outline: none;
+        background-image:
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white);
+        background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+        background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    }
+}
+
+
+.bt-input {
+    padding: 8px;
+    border: 1px transparent;
+    color: white;
+    background: var(--background-input);
+    box-sizing: border-box;
+    transition: all 0.2s ease-in-out;
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    background-image:
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666);
+    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+
+    &:focus,
+    &:focus-visible {
+        outline: none;
+        background-image:
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white);
+        background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+        background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    }
+
+    &.error {
+        background-image:
+            linear-gradient(red, red),
+            linear-gradient(red, red),
+            linear-gradient(red, red),
+            linear-gradient(red, red),
+            linear-gradient(red, red),
+            linear-gradient(red, red),
+            linear-gradient(red, red),
+            linear-gradient(red, red);
+    }
+
+    &:hover {
+        background-color: var(--background-highlight);
+    }
+
+    &:focus {
+        background-color: var(--background-input);
+    }
+}
+
+.bt-select {
+    touch-action: manipulation;
+    cursor: pointer;
+    padding: 8px 20px 8px 8px;
+    border: 1px transparent;
+    box-sizing: border-box;
+    background: rgba(40, 40, 40);
+    color: white;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: all 0.2s ease-in-out;
+    background-origin: border-box;
+    ;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23999999'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e"),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666);
+    background-repeat: no-repeat;
+    background-position: right 6px center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    background-size: 12px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+
+
+    &:focus,
+    &:focus-visible,
+    &.open {
+        outline: none;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23ffffff'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e"),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white);
+        background-size: 12px 12px, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+        background-position: right 6px center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    }
+
+    &.has-value {
+        color: var(--bt-yellow);
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23EAAE3F'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e"),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow));
+        border-color: var(--bt-yellow);
+    }
+}
+
+.bt-button {
+    cursor: pointer;
+    touch-action: manipulation;
+    display: block;
+    background: var(--background-input);
+    color: #bbb;
+    border: 1px solid white;
+    font-weight: bold;
+    box-sizing: border-box;
+    text-align: center;
+    border: 1px solid transparent;
+    transition: all 0.2s ease-in-out;
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    background-image:
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666);
+    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+
+    &:hover {
+        background-color: var(--background-highlight);
+        color: white;
+        background-image:
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white);
+        background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+        background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    }
+
+    &.danger {
+        color: #a00;
+        background-image:
+            linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),
+            linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),
+            linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),
+            linear-gradient(#a00, #a00), linear-gradient(#a00, #a00);
+
+        &:hover {
+            background-color: #300;
+            color: red;
+            background-image:
+                linear-gradient(red, red), linear-gradient(red, red),
+                linear-gradient(red, red), linear-gradient(red, red),
+                linear-gradient(red, red), linear-gradient(red, red),
+                linear-gradient(red, red), linear-gradient(red, red);
+        }
+    }
+
+    &:active {
+        background-color: var(--background-highlight-bright);
+    }
+
+    &[disabled] {
+        cursor: not-allowed;
+        color: #444;
+    }
+}
+
+/* Unit Card */
+.unit-card {
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    padding: 8px;
+    padding-left: 4px;
+
+    .primary-info {
+        container-type: inline-size;
+    }
+
+    .secondary-info {
+        display: flex;
+        flex-direction: row;
+        align-items: baseline;
+        justify-content: space-between;
+        color: var(--text-color-secondary);
+        font-size: 0.8em;
+        gap: 12px;
+
+        .model {
+            flex-grow: 1;
+            min-width: 0;
+        }
+
+        .role {
+            font-style: italic;
+            flex-shrink: 0;
+            min-width: 0;
+            text-align: right;
+        }
+    }
+
+    .third-info {
+        display: flex;
+        flex-direction: row;
+        gap: 4px;
+
+        .info-area {
+            flex-wrap: wrap;
+            align-items: stretch;
+        }
+    }
+
+    .info-area {
+        display: flex;
+        justify-content: start;
+        align-items: center;
+        margin-top: 4px;
+        gap: 4px;
+        font-size: 0.8em;
+        font-weight: normal;
+        color: white;
+    }
+
+    .info-slot {
+        background-color: rgba(0, 0, 0, 0.2);
+        padding: 2px 4px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 40px;
+        justify-content: start;
+
+        &.numeric {
+            justify-content: end;
+        }
+
+        .icon {
+            width: 12px;
+            height: 12px;
+        }
+    }
+}
+
+.unit-image-container {
+    height: 56px;
+    width: 65.33px;
+    /* Maintains 72x84 aspect ratio at 56px height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    img {
+        height: 100%;
+        width: 100%;
+        object-fit: contain;
+        display: block;
+    }
+}
+
+.unit-data-container {
+    width: 100%;
+}
+
+@container (max-width: 399px) {
+    .unit-card .info-area {
+        gap: 4px;
+    }
+}
+
+/* Energy: #6082F6, background: #1a2030, inbetween: #35407a */
+.energy {
+    --type-color: #6082F6;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #35407a;
+    border-right: 1px solid #35407a;
+    border-bottom: 1px solid #35407a;
+    background: #1a2030;
+}
+
+/* Ballistic: #9482B4, background: #211a29, inbetween: #5e4d7c */
+.ballistic {
+    --type-color: #9482B4;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #5e4d7c;
+    border-right: 1px solid #5e4d7c;
+    border-bottom: 1px solid #5e4d7c;
+    background: #211a29;
+}
+
+/* Missile: #86C86E, background: #192617, inbetween: #3e7c36 */
+.missile {
+    --type-color: #86C86E;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #3e7c36;
+    border-right: 1px solid #3e7c36;
+    border-bottom: 1px solid #3e7c36;
+    background: #192617;
+}
+
+/* Artillery: #A35958, background: #231a18, inbetween: #6c3e34 */
+.artillery {
+    --type-color: #A35958;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #6c3e34;
+    border-right: 1px solid #6c3e34;
+    border-bottom: 1px solid #6c3e34;
+    background: #231a18;
+}
+
+/* Physical: #F8F455, background: #292918, inbetween: #b3b34a */
+.physical {
+    --type-color: #c2c727;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #b3b34a;
+    border-right: 1px solid #b3b34a;
+    border-bottom: 1px solid #b3b34a;
+    background: #292918;
+}
+
+/* Other: #EEC16F, background: #292313, inbetween: #a68e41 */
+.other {
+    --type-color: #d0a34f;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #a68e41;
+    border-right: 1px solid #a68e41;
+    border-bottom: 1px solid #a68e41;
+    background: #292313;
+}
+
+
+
+.mekbay-sheet {
+    background-color: #FFF;
+    display: block;
+    box-sizing: content-box;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+
+    .damaged-strike {
+        display: none;
+    }
+
+    .disabledInventory .damaged-strike {
+        display: block;
+        stroke: var(--disabled-color);
+    }
+
+    .damagedInventory .damaged-strike {
+        display: block;
+        stroke: var(--damage-color);
+    }
+
+    .inventoryEntry > *:not(.inventoryEntryButton):not(.inventoryEntry) {
+        pointer-events: none;
+    }
+
+    .inventoryEntryButton {
+        fill: transparent;
+    }
+
+    .inventoryEntry:not(.interactive) {
+        pointer-events: none;
+    }
+
+    .inventoryEntry.disabledInventory {
+        .hitMod-rect,
+        .hitMod-text {
+            display: none;
+        }
+    }
+
+    .inventoryEntry.damagedInventory {
+        .hitMod-rect,
+        .hitMod-text {
+            display: none;
+        }
+    }
+
+    .interactive {
+        cursor: pointer;
+        touch-action: manipulation;
+    }
+
+    .critGroup.locationDestroyed text {
+        fill: var(--damage-color) !important;
+        pointer-events: none;
+    }
+
+    .damaged {
+        fill: var(--damage-color) !important;
+
+        path {
+            fill: var(--damage-color) !important;
+        }
+
+        text {
+            fill: var(--damage-color) !important;
+        }
+    }
+
+    .detached,
+    .detached > path {
+        fill: gray !important;
+        pointer-events: none;
+    }
+
+    .pip.detached {
+        stroke: silver;
+    }
+
+    .detached path {
+        fill: gray !important;
+        pointer-events: none;
+    }
+
+    .critGroup.detached text {
+        fill: silver !important;
+        pointer-events: none;
+    }
+
+    .pip {
+        stroke-linecap: square;
+        vector-effect: non-scaling-stroke;
+
+        &.damaged {
+            fill: var(--damage-color) !important;
+        }
+
+        &.half {
+            clip-path: polygon(50% -50%, 150% -50%, 150% 150%, 50% 150%)
+        }
+    }
+
+    .soldierPip.damaged {
+        filter: opacity(0.3) !important;
+    }
+
+    .disabledInventory,
+    .disabledInventory text {
+        fill: var(--disabled-color) !important;
+    }
+
+    .damagedInventory,
+    .damagedInventory text {
+        fill: var(--damage-color) !important;
+    }
+
+    .critSlot.damaged {
+        fill: var(--damage-color) !important;
+        text-decoration: line-through;
+    }
+
+    .critLoc.damaged {
+        fill: var(--damage-color) !important;
+    }
+
+    .crewHit.damaged .crew-x {
+        opacity: 1 !important;
+    }
+}
+
+@media screen {
+    .mekbay-sheet {
+        .clickPassthrough {
+            pointer-events: none;
+        }
+
+        #heatScale text {
+            pointer-events: none;
+        }
+
+        .picker-active text {
+            text-decoration: underline !important;
+        }
+
+        .heatEffect.hot {
+            fill: var(--damage-color) !important;
+            font-weight: bold;
+
+            &.surpassed {
+                fill: silver !important;
+                font-weight: normal;
+            }
+        }
+
+        #heatScale .overflowFrame.hot {
+            fill: var(--damage-color) !important;
+        }
+
+        #faded-arrow {
+            stroke: #aaa;
+        }
+
+        .inventoryEntry.weakenedHitMod > .hitMod-rect {
+            fill: var(--damage-color) !important;
+        }
+
+        .inventoryEntry.weakenedHitMod > .hitMod-text {
+            fill: #fff !important;
+        }
+
+        /* Skills */
+        .skillValue {
+            fill: #00f;
+        }
+
+        .customAmmoLoadout {
+            fill: #00f;
+        }
+
+        /* Armor and structure highlight */
+        .selectable,
+        .selectable > path {
+            cursor: pointer;
+            touch-action: manipulation;
+            transition: fill ease-out 0.2s;
+        }
+
+        .selectable:hover,
+        .selectable:hover > path {
+            fill: var(--undamaged-highlight-color) !important;
+        }
+
+        .selectable.damaged:hover,
+        .selectable.damaged:hover > path {
+            fill: var(--damaged-highlight-color) !important;
+        }
+
+        .critLoc.fresh:not(.damaged) {
+            stroke: #03a9f4 !important;
+        }
+
+        .critLoc.damaged.fresh {
+            fill: var(--damage-color) !important;
+            stroke: #FF0 !important;
+            stroke-width: 1.5px;
+            paint-order: stroke fill;
+            stroke-linejoin: round;
+            stroke-linecap: round;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .pip.fresh:not(.damaged) {
+            stroke: #03a9f4 !important;
+            stroke-width: 1.5px;
+        }
+
+        .pip.damaged.fresh {
+            fill: #FF0 !important;
+            stroke: var(--damage-color) !important;
+            stroke-width: 1.5px;
+            paint-order: stroke fill;
+        }
+
+        .soldierPip.fresh {
+            filter: brightness(1.1) saturate(100) hue-rotate(-140deg) !important;
+        }
+
+        .soldierPip.damaged.fresh {
+            filter: brightness(1.1) saturate(100) hue-rotate(20deg) !important;
+        }
+
+        .inventoryEntry {
+            &:hover > .inventoryEntryButton {
+                fill: var(--highlight-color);
+            }
+
+            &:active > .inventoryEntryButton {
+                filter: brightness(1.03);
+            }
+
+            &.selected > .inventoryEntryButton {
+                fill: var(--bt-yellow);
+            }
+        }
+
+        .hot {
+            &.heat0 { fill: #FFFFFF !important; }
+            &.heat1 { fill: #FFFFEE !important; }
+            &.heat2 { fill: #FFFFDD !important; }
+            &.heat3 { fill: #FFFFCC !important; }
+            &.heat4 { fill: #FFFFBB !important; }
+            &.heat5 { fill: #FFFFAA !important; }
+            &.heat6 { fill: #FFFF99 !important; }
+            &.heat7 { fill: #FFFF88 !important; }
+            &.heat8 { fill: #FFFF77 !important; }
+            &.heat9 { fill: #FFFF66 !important; }
+            &.heat10 { fill: #FFFF55 !important; }
+            &.heat11 { fill: #FFFF44 !important; }
+            &.heat12 { fill: #FFFF33 !important; }
+            &.heat13 { fill: #FFFF22 !important; }
+            &.heat14 { fill: #FFFF11 !important; }
+            &.heat15 { fill: #FFFF00 !important; }
+            &.heat16 { fill: #FFEE00 !important; }
+            &.heat17 { fill: #FFDD00 !important; }
+            &.heat18 { fill: #FFCC00 !important; }
+            &.heat19 { fill: #FFBB00 !important; }
+            &.heat20 { fill: #FFAA00 !important; }
+            &.heat21 { fill: #FF9900 !important; }
+            &.heat22 { fill: #FF8800 !important; }
+            &.heat23 { fill: #FF7700 !important; }
+            &.heat24 { fill: #FF6600 !important; }
+            &.heat25 { fill: #FF5500 !important; }
+            &.heat26 { fill: #FF4400 !important; }
+            &.heat27 { fill: #FF3300 !important; }
+            &.heat28 { fill: #FF2200 !important; }
+            &.heat29 { fill: #FF1100 !important; }
+            &.heat30 { fill: #FF0000 !important; }
+        }
+
+        /* workaround to prevent Battle Armor text and images to steal the click event for the armor picker */
+        #suit0 > text,
+        #suit0 > image,
+        #suit1 > text,
+        #suit1 > image,
+        #suit2 > text,
+        #suit2 > image,
+        #suit3 > text,
+        #suit3 > image,
+        #suit4 > text,
+        #suit4 > image,
+        #suit5 > text,
+        #suit5 > image {
+            pointer-events: none;
+        }
+    }
+}
+
+/* Night mode */
+@media screen {
+    .night-mode .mekbay-sheet {
+        --svg-bg-color: #141414;
+        --svg-fg-color: #FFF;
+        --svg-fg-color-inv: #000;
+        background-color: var(--svg-bg-color);
+        color: var(--svg-fg-color);
+        fill: var(--svg-fg-color);
+
+        [fill="#000000" i],
+        [fill="#000" i],
+        [fill="black" i],
+        [style*="fill:#000000" i],
+        [style*="fill:black" i],
+        [style*="fill: #000000" i],
+        [style*="fill: black" i],
+        [style*="fill:#000" i],
+        [style*="fill: #000" i],
+        [style*="fill: rgb(0, 0, 0)" i] {
+            fill: var(--svg-fg-color) !important;
+        }
+
+        [stroke="#000000" i],
+        [stroke="#000" i],
+        [stroke="black" i],
+        [style*="stroke:#000000" i],
+        [style*="stroke:black" i],
+        [style*="stroke: #000000" i],
+        [style*="stroke: black" i],
+        [style*="stroke:#000" i],
+        [style*="stroke: #000" i],
+        [style*="stroke: rgb(0, 0, 0)" i] {
+            stroke: var(--svg-fg-color) !important;
+        }
+
+        [fill="#FFFFFF" i],
+        [fill="#FFF" i],
+        [fill="white" i],
+        [style*="fill:#FFFFFF" i],
+        [style*="fill:white" i],
+        [style*="fill: #FFFFFF" i],
+        [style*="fill: white" i],
+        [style*="fill:#FFF" i],
+        [style*="fill: #FFF" i],
+        [style*="fill: rgb(255, 255, 255)" i] {
+            fill: var(--svg-fg-color-inv) !important;
+        }
+
+        [stroke="#FFFFFF" i],
+        [stroke="#FFF" i],
+        [stroke="white" i],
+        [style*="stroke:#FFFFFF" i],
+        [style*="stroke:white" i],
+        [style*="stroke: #FFFFFF" i],
+        [style*="stroke: white" i],
+        [style*="stroke:#FFF" i],
+        [style*="stroke: #FFF" i],
+        [style*="stroke: rgb(255, 255, 255)" i] {
+            stroke: var(--svg-fg-color-inv) !important;
+        }
+
+        [fill="#c7c8ca" i],
+        [style*="fill:#c7c8ca" i],
+        [style*="fill: #c7c8ca" i] {
+            fill: #34373D !important;
+        }
+
+        [stroke="#c7c8ca" i],
+        [style*="stroke:#c7c8ca" i],
+        [style*="stroke: #c7c8ca" i] {
+            stroke: #34373D !important;
+        }
+
+        [fill="#c7c7c7" i],
+        [style*="fill:#c7c7c7" i],
+        [style*="fill: #c7c7c7" i] {
+            fill: #34373D !important;
+        }
+
+        [stroke="#c7c7c7" i],
+        [style*="stroke:#c7c7c7" i],
+        [style*="stroke: #c7c7c7" i] {
+            stroke: #34373D !important;
+        }
+
+        [fill="#bbb" i],
+        [style*="fill:#bbb" i] {
+            fill: #444 !important;
+        }
+
+        .damaged {
+            fill: var(--damage-color) !important;
+
+            path {
+                fill: var(--damage-color) !important;
+            }
+
+            text {
+                fill: var(--damage-color) !important;
+            }
+        }
+
+        image {
+            filter: invert(1) hue-rotate(180deg);
+        }
+
+        #faded-arrow {
+            stroke: #666;
+        }
+
+        .heatEffect.hot.surpassed {
+            fill: #3f3f3f !important;
+        }
+
+        .detached,
+        .detached > path {
+            fill: gray !important;
+            pointer-events: none;
+        }
+
+        .critGroup.detached text {
+            fill: #3f3f3f !important;
+        }
+
+        .pip.detached {
+            stroke: gray;
+        }
+
+        .pip.damaged {
+            fill: var(--damage-color) !important;
+        }
+
+        .pip.fresh:not(.damaged) {
+            stroke: #03a9f4 !important;
+        }
+
+        .pip.damaged.fresh {
+            fill: #FF0 !important;
+            stroke: var(--damage-color) !important;
+        }
+
+        .soldierPip.damaged {
+            filter: invert(1) opacity(0.3) !important;
+        }
+
+        .soldierPip.damaged.fresh {
+            filter: invert(1) brightness(0.6) saturate(100) hue-rotate(237deg) contrast(4) !important;
+        }
+
+        .soldierPip.fresh {
+            filter: invert(1) saturate(100) hue-rotate(10deg) !important;
+        }
+
+        .skillValue {
+            fill: #bbf;
+        }
+
+        .customAmmoLoadout {
+            fill: #bbf;
+        }
+
+        .inventoryEntry:hover > .inventoryEntryButton {
+            fill: var(--night-highlight-color);
+        }
+
+        .inventoryEntry.selected > .inventoryEntryButton {
+            fill: var(--bt-yellow);
+        }
+
+        .selectable:hover,
+        .selectable:hover > path {
+            fill: var(--undamaged-night-highlight-color) !important;
+        }
+
+        .selectable.damaged:hover,
+        .selectable.damaged:hover > path {
+            fill: var(--damaged-highlight-color) !important;
+        }
+
+
+        .hot {
+            &.heat0 { fill: #000000 !important; }
+            &.heat1 { fill: #090900 !important; }
+            &.heat2 { fill: #121200 !important; }
+            &.heat3 { fill: #1B1B00 !important; }
+            &.heat4 { fill: #242400 !important; }
+            &.heat5 { fill: #2D2D00 !important; }
+            &.heat6 { fill: #363600 !important; }
+            &.heat7 { fill: #3F3F00 !important; }
+            &.heat8 { fill: #484800 !important; }
+            &.heat9 { fill: #515100 !important; }
+            &.heat10 { fill: #5A5A00 !important; }
+            &.heat11 { fill: #636300 !important; }
+            &.heat12 { fill: #6C6C00 !important; }
+            &.heat13 { fill: #757500 !important; }
+            &.heat14 { fill: #7F7F00 !important; }
+            &.heat15 { fill: #888800 !important; }
+            &.heat16 { fill: #907F00 !important; }
+            &.heat17 { fill: #987600 !important; }
+            &.heat18 { fill: #A06D00 !important; }
+            &.heat19 { fill: #A86400 !important; }
+            &.heat20 { fill: #B05B00 !important; }
+            &.heat21 { fill: #B85200 !important; }
+            &.heat22 { fill: #C04900 !important; }
+            &.heat23 { fill: #C84000 !important; }
+            &.heat24 { fill: #D03700 !important; }
+            &.heat25 { fill: #D82E00 !important; }
+            &.heat26 { fill: #E02500 !important; }
+            &.heat27 { fill: #E81C00 !important; }
+            &.heat28 { fill: #F01300 !important; }
+            &.heat29 { fill: #F80A00 !important; }
+            &.heat30 { fill: #FF0000 !important; }
+        }
+    }
+}
+
+/* Printing */
+@media print {
+
+    * {
+        print-color-adjust: exact;
+        -webkit-transition: none !important;
+        transition: none !important;
+    }
+
+    .night-mode .mekbay-sheet,
+    .night-mode .mekbay-sheet * {
+        filter: none !important;
+    }
+
+    html,
+    body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: white;
+        overflow: unset;
+    }
+
+    body.multipage-container-active *:not(#multipage-container):not(#multipage-container *) {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    .noprint,
+    .backdrop {
+        display: none !important;
+    }
+
+    force-builder-viewer,
+    .menu-overlay,
+    .header {
+        display: none !important;
+    }
+
+
+    body:not(.multipage-container-active) {
+        main,
+        .app-container,
+        .main-content,
+        .content-area,
+        svg-viewer,
+        .svg-viewer-container,
+        .svg-viewer-container .slides {
+            width: 8.5in !important;
+            height: 11in !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            left: 0;
+            top: 0;
+            display: block;
+            background: transparent !important;
+        }
+
+        .svg-viewer-container .slide {
+            width: 8.5in !important;
+            height: 11in !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: white !important;
+            display: block;
+            transform: none !important;
+
+            > svg {
+                display: block;
+                box-sizing: border-box;
+                width: 100% !important;
+                height: 100% !important;
+                max-width: calc(100% - 0.32in);
+                max-height: calc(100% - 0.32in);
+                transform: none !important;
+                page-break-inside: avoid;
+                break-inside: avoid;
+                margin: 0.16in;
+            }
+        }
+    }
+
+    #faded-arrow,
+    #now-arrow {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    @page {
+        size: auto;
+        /* size: letter portrait; */
+        /* size: 612pt 792pt; */
+        /* margin: auto; */
+        /* margin: 8mm; */
+        margin: 0cm;
+        padding: 0cm !important;
+        /* margin: 0cm !important; */
+        overflow: hidden;
+    }
+
+}

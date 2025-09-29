@@ -47,14 +47,13 @@ export class UnitSvgMekService extends UnitSvgService {
     protected override updateAllDisplays() {
         if (!this.unit.svg()) return;
         // Read all reactive state properties to ensure they are tracked by the effect.
-        const bv = this.unit.getBv();
         const crew = this.unit.getCrewMembers();
         const heat = this.unit.getHeat();
         const critSlots = this.unit.getCritSlots();
         const locations = this.unit.getLocations();
         const inventory = this.unit.getInventory();
         // Update all displays
-        this.updateBVDisplay(bv);
+        this.updateBVDisplay();
         this.updateCrewDisplay(crew);
         this.updateHeatDisplay(heat);
         this.updateCritSlotDisplay(critSlots);
@@ -95,7 +94,7 @@ export class UnitSvgMekService extends UnitSvgService {
                     const key = text.startsWith("Ammo ") ? text.substring(5) : text;
                     ammoProfile.set(
                         key,
-                        !criticalSlot.destroyed ? (ammoProfile.get(key) ?? 0) + remainingAmmo : 0
+                        (ammoProfile.get(key) ?? 0) + (criticalSlot.destroyed ? 0 : remainingAmmo)
                     );
                 }
             }
@@ -271,7 +270,6 @@ export class UnitSvgMekService extends UnitSvgService {
         let heatMoveModifier = 0;
         let heatFireModifier = 0;
         let moveImpaired = false;
-        let jumpImpaired = false;
         
         const systemsStatus = this.systemsStatus();
         const internalLocations = new Set<string>(this.unit.locations?.internal.keys() || []);
@@ -285,7 +283,6 @@ export class UnitSvgMekService extends UnitSvgService {
             }
             if (systemsStatus.destroyedLegsCount == 1) {
                 walkValue = 1;
-                jumpValue = 0;
                 moveImpaired = true;
             }
         } else if (internalLocations.has('RLL') && internalLocations.has('FLL') && internalLocations.has('RRL') && internalLocations.has('FRL')) {
@@ -296,13 +293,11 @@ export class UnitSvgMekService extends UnitSvgService {
             }
             if (systemsStatus.destroyedLegsCount == 1) {
                 walkValue = walkValue - 1;
-                jumpValue = 0;
                 moveImpaired = true;
             }
         }
         if (systemsStatus.destroyedLegsCount >= 2) {
             walkValue = 0;
-            jumpValue = 0;
             moveImpaired = true;
         }
         walkValue -= systemsStatus.destroyedLegActuatorsCount;
@@ -400,7 +395,7 @@ export class UnitSvgMekService extends UnitSvgService {
             maxWalk: maxWalkValue,
             run: runValue,
             maxRun: maxRunValue,
-            jumpImpaired: jumpImpaired,
+            jumpImpaired: (jumpValue < unit.jump),
             jump: jumpValue,
             canKick: systemsStatus.destroyedLegsCount === 0 && systemsStatus.destroyedHipsCount === 0,
             kickMod: (systemsStatus.destroyedLegActuatorsCount * 2) + (systemsStatus.destroyedFeetCount) + (systemsStatus.destroyedLegAES ? 1 : 0),

@@ -1,5 +1,5 @@
 
-<div class="overlay" 
+<div class="overlay-backdrop" 
      [hidden]="!this.filtersService.isDataReady() || !overlayVisible()"
      (click)="onOverlayClick()">
 </div>
@@ -38,7 +38,7 @@
                 *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
                 [class.active]="activeIndex() === i" (mouseenter)="activeIndex.set(i)" (click)="onUnitClick(unit)">
                 <div class="unit-image-container">
-                    <img class="icon" [src]="getUnitImg(unit)" alt="{{ unit.model }} {{ unit.chassis }}" />
+                    <img class="icon" [src]="getUnitImg(unit)" (error)="$event.target.src = '/images/unknown.png'" alt="{{ unit.model }} {{ unit.chassis }}" />
                 </div>
                 <div class="unit-data-container">
                     <div class="secondary-info">

@@ -36,7 +36,6 @@ import { HttpClient } from '@angular/common/http';
 import { Unit, UnitComponent, Units } from '../models/units.model';
 import { Faction, Factions } from '../models/factions.model';
 import { Era, Eras } from '../models/eras.model';
-import { Version } from '../models/version.model';
 import { DbService } from './db.service';
 import { ADVANCED_FILTERS, AdvFilterType } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
@@ -138,6 +137,7 @@ export class DataService {
             preprocess: (data: EquipmentData): EquipmentData => {
                 const newData: EquipmentData = {
                     version: data.version,
+                    etag: data.etag,
                     equipment: {}
                 };
                 for (const unitType of Object.keys(data.equipment)) {
@@ -434,13 +434,11 @@ export class DataService {
         };
     }
 
-    private async getRemoteVersion(): Promise<Version> {
-        return await new Promise<Version>((resolve, reject) => {
-            this.http.get<Version>(this.remoteVersionUrl).subscribe({
-                next: resolve,
-                error: reject
-            });
-        });
+    private async getRemoteETag(filename: string): Promise<string> {
+        const src = `https://db.mekbay.com/${filename}`;
+        const resp = await fetch(src, { method: 'HEAD' });
+        const etag = resp.headers.get('ETag') || '';
+        return etag;
     }
 
     private postprocessData(): void {
@@ -454,7 +452,6 @@ export class DataService {
 
     public async checkForUpdate(): Promise<void> {
         try {
-            const remoteVersion = await this.getRemoteVersion();
             const updatePromises = this.remoteStores.map(async (store) => {
                 let localData = this.data[store.key as keyof LocalStore];
                 if (!localData) {
@@ -463,10 +460,10 @@ export class DataService {
                         localData = store.preprocess(localData);
                     }
                 }
-                console.log(`Checking ${store.key} version...`);
-                if (localData && localData.version === remoteVersion[store.key as keyof Version]) {
+                const etag = await this.getRemoteETag(`${store.key}.json`);
+                if (localData && localData.etag === etag) {
                     this.data[store.key as keyof LocalStore] = localData;
-                    console.log(`${store.key} is up to date.`);
+                    console.log(`${store.key} is up to date. (ETag: ${etag})`);
                     return;
                 }
                 await this.fetchFromRemote(store);
@@ -508,23 +505,29 @@ export class DataService {
         }
     }
 
-    private async fetchFromRemote<T>(remoteStore: RemoteStore<T>): Promise<void> {
+    private async fetchFromRemote<T extends object>(remoteStore: RemoteStore<T>): Promise<void> {
         this.isDownloading.set(true);
         console.log(`Downloading ${remoteStore.key}...`);
         return new Promise<void>((resolve, reject) => {
             this.http.get<T>(remoteStore.url, {
                 reportProgress: false,
-                observe: 'body',
+                observe: 'response',
             }).subscribe({
-                next: async (data) => {
+                next: async (response) => {
                     try {
+                        const etag = response.headers.get('ETag') || crypto.randomUUID(); // Fallback to random UUID if no ETag
+                        const data = response.body;
+                        if (!data) {
+                            throw new Error(`No body received for ${remoteStore.key}`);
+                        }
+                        (data as any).etag = etag;
                         let processedData = data;
                         if (remoteStore.preprocess) {
                             processedData = remoteStore.preprocess(data);
                         }
                         this.data[remoteStore.key as keyof LocalStore] = processedData;
-                        await remoteStore.putInLocalStorage(data);
-                        console.log(`Downloaded and saved ${remoteStore.key} successfully.`);
+                        await remoteStore.putInLocalStorage(data); // Save original data with etag
+                        console.log(`${remoteStore.key} updated. (ETag: ${etag})`);
                         resolve();
                     } catch (error) {
                         reject(error);
@@ -539,12 +542,17 @@ export class DataService {
     }
 
     public async getSheet(sheetFileName: string): Promise<SVGSVGElement> {
-        const sheet: SVGSVGElement | null = await this.dbService.getSheet(sheetFileName);
+        const etag = await this.fetchSheetETag(sheetFileName);
+        const sheet: SVGSVGElement | null = await this.dbService.getSheet(sheetFileName, etag);
         if (sheet) {
             console.log(`Sheet ${sheetFileName} found in cache.`);
             return sheet;
         }
         return this.fetchAndCacheSheet(sheetFileName);
+    }
+
+    private async fetchSheetETag(sheetFileName: string): Promise<string> {
+        return this.getRemoteETag(`sheets/${sheetFileName}`);
     }
 
     private async fetchAndCacheSheet(sheetFileName: string): Promise<SVGSVGElement> {
@@ -554,6 +562,7 @@ export class DataService {
         if (!resp.ok) {
             throw new Error(`Failed to fetch SVG: ${resp.statusText}`);
         }
+        const etag = resp.headers.get('ETag') || crypto.randomUUID(); // Fallback to random UUID if no ETag
         const svgText = await resp.text();
         const parser = new DOMParser();
         const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
@@ -567,7 +576,7 @@ export class DataService {
             throw new Error('Invalid SVG content: Failed to find the SVG root element after parsing.');
         }
         RsPolyfillUtil.fixSvg(svgElement);
-        await this.dbService.saveSheet(sheetFileName, svgElement);
+        await this.dbService.saveSheet(sheetFileName, svgElement, etag);
         console.log(`Sheet ${sheetFileName} fetched and cached.`);
         return svgElement;
     }

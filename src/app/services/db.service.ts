@@ -58,13 +58,12 @@ const FORCE_STORE = 'forceStore';
 const OPTIONS_KEY = 'options';
 const QUIRKS_KEY = 'quirks';
 
-const SHEETS_CACHE_EXPIRATION_MS = 60 * 60 * 1000; //60 * 60 * 1000; // 1 hour
-const MAX_SHEET_CACHE_COUNT = 1000; // Max number of sheets to cache
+const MAX_SHEET_CACHE_COUNT = 2000; // Max number of sheets to cache
 
 export interface StoredSheet {
     key: string;
     timestamp: number; // Timestamp of when the sheet was saved
-    hash: string; // Hash of the sheet content for integrity checks
+    etag: string; // ETag for the sheet content for cache validation
     content: Blob; // The compressed XML content of the sheet
     size: number; // Size of the blob in bytes
 }
@@ -307,13 +306,13 @@ export class DbService {
         });
     }
 
-    public async getSheet(key: string): Promise<SVGSVGElement | null> {
+    public async getSheet(key: string, etag: string): Promise<SVGSVGElement | null> {
         const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
         if (!storedData) {
             return null;
         }
-        const isExpired = (Date.now() - storedData.timestamp) > SHEETS_CACHE_EXPIRATION_MS;
-        if (!navigator.onLine || !isExpired) {
+        const isSameEtag = storedData.etag === etag;
+        if (isSameEtag || !navigator.onLine) {
             try {
                 const decompressedStream = storedData.content.stream().pipeThrough(new DecompressionStream('gzip'));
                 const decompressedString = await new Response(decompressedStream).text();
@@ -326,10 +325,10 @@ export class DbService {
                 return null;
             }
         }
-        return null; // If expired and offline, return null
+        return null; // If we detect that we are online and the etag is different, return null to force a refresh
     }
 
-    public async saveSheet(key: string, sheet: SVGSVGElement): Promise<void> {
+    public async saveSheet(key: string, sheet: SVGSVGElement, etag: string): Promise<void> {
         const serializer = new XMLSerializer();
         const contentString = serializer.serializeToString(sheet);
         const compressedStream = new Blob([contentString]).stream().pipeThrough(new CompressionStream('gzip'));
@@ -337,24 +336,13 @@ export class DbService {
         const data: StoredSheet = {
             key: key,
             timestamp: Date.now(),
-            hash: await this.computeSHA256(sheet),
+            etag: etag,
             content: compressedBlob,
             size: compressedBlob.size,
         };
         this.saveDataToStore(data, key, SHEETS_STORE).then(() => {
             this.cullOldSheets();
         });
-    }
-
-    private async computeSHA256(svg: SVGSVGElement): Promise<string> {
-        const serializer = new XMLSerializer();
-        const xmlString = serializer.serializeToString(svg);
-        const encoder = new TextEncoder();
-        const data = encoder.encode(xmlString);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        return hashHex;
     }
 
     private async cullOldSheets(): Promise<void> {

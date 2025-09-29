@@ -2,7 +2,7 @@
     <div dialog-header class="header"> 
         <div class="header-group">
             <div class="header-era">
-                <img src="{{ getUnitImg(unit) }}" class="icon" alt="{{ unit.model }} {{ unit.chassis }}" />
+                <img src="{{ getUnitImg(unit) }}" (error)="$event.target.src = '/images/unknown.png'" class="icon" alt="{{ unit.model }} {{ unit.chassis }}" />
             </div>
             <div class="header-name-group">
                 <div class="header-model allow-select">{{ unit.model }}</div>
@@ -129,6 +129,7 @@
                                 <div class="comp-title">
                                     <span class="comp-qty">{{ comp.q }}×</span>
                                     <span class="comp-name">{{ comp.n }}</span>
+                                    <span *ngIf="unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All'" class="tech-base">{{ comp.eq.base == 'IS' ? 'IS' : 'C'  }}</span>
                                 </div>
                             </div>
                         </ng-template>
@@ -164,6 +165,7 @@
                             <div class="comp-title">
                                 <span class="comp-qty">{{ comp.q }}×</span>
                                 <span class="comp-name">{{ comp.n }}</span>
+                                <span *ngIf="unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All'" class="tech-base">{{ comp.eq.base == 'IS' ? 'IS' : 'C'  }}</span>
                             </div>
                         </div>
                     </div>
