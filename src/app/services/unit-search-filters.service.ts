@@ -55,7 +55,7 @@ export interface AdvFilterConfig {
     key: string;
     label: string;
     type: AdvFilterType;
-    options?: string[]; // For dropdowns, can be pre-defined options to define the order they should appear in
+    sortOptions?: string[]; // For dropdowns, can be pre-defined sort order, supports wildcard '*' at the end for prefix matching
     external?: boolean; // If true, this filter datasource is not from the local data, but from an external source (era, faction, etc.)
     curve?: number; // for range sliders, defines the curve of the slider
     ignoreValues?: any[]; // Values to ignore in the range filter, e.g. [-1] for heat/dissipation
@@ -145,9 +145,13 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
     const notList = Object.entries(selection).filter(([_, state]) => state === 'not').map(([name]) => name);
 
     return units.filter(u => {
-        const unitValues = (key === 'componentName')
-            ? u.comp.map(c => c.n)
-            : [(u as any)[key]];
+        let unitValues: any[];
+        if (key === 'componentName') {
+            unitValues = u.comp.map(c => c.n);
+        } else {
+            const propValue = (u as any)[key];
+            unitValues = Array.isArray(propValue) ? propValue : [propValue];
+        }
 
         // NOT: Exclude if any notList present
         if (notList.some(n => unitValues.includes(n))) return false;
@@ -170,20 +174,21 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN },
     {
         key: 'techBase', label: 'Tech', type: AdvFilterType.DROPDOWN,
-        options: ['Inner Sphere', 'Clan', 'Mixed']
+        sortOptions: ['Inner Sphere', 'Clan', 'Mixed']
     },
     { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN },
     {
         key: 'weightClass', label: 'Weight Class', type: AdvFilterType.DROPDOWN,
-        options: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*']
+        sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*']
     },
     {
         key: 'level', label: 'Rules', type: AdvFilterType.DROPDOWN,
-        options: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial']
+        sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial']
     },
     { key: 'c3', label: 'Network', type: AdvFilterType.DROPDOWN },
     { key: 'moveType', label: 'Motive', type: AdvFilterType.DROPDOWN },
     { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true },
+    { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true },
     { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
     { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
     { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
@@ -444,10 +449,14 @@ export class UnitSearchFiltersService {
 
             let contextUnits = this.applyFilters(baseUnits, contextState);
 
-            if (conf.key === 'componentName') {
+            if (conf.key === 'componentName' || conf.key === 'quirks') {
                 // Collect unique component names from filtered units (available ones)
                 const availableNames = Array.from(new Set(
-                    contextUnits.flatMap(u => u.comp.map(c => c.n)).filter(n => !!n)
+                    contextUnits.flatMap(u => {
+                        if (conf.key === 'componentName') return u.comp.map(c => c.n);
+                        if (conf.key === 'quirks') return u.quirks || [];
+                        return [];
+                    }).filter(n => !!n)
                 ));
                 
                 // Apply current componentName 'and' filters to get names that would be available if selected
@@ -461,14 +470,18 @@ export class UnitSearchFiltersService {
                     if (andList.length > 0) {
                         // Further filter units that have all 'and' components to see what other components are available
                         const unitsWithAndComponents = contextUnits.filter(u => {
-                            const unitComponentNames = u.comp.map(c => c.n);
+                            const unitComponentNames = (conf.key === 'componentName') ? u.comp.map(c => c.n) : (u.quirks || []);
                             // NOT: Exclude units that have any 'not' components
                             if (notList.some(n => unitComponentNames.includes(n))) return false;
                             // AND: Must have all 'and' components
                             return andList.every(a => unitComponentNames.includes(a));
                         });
                         filteredAvailableNames = Array.from(new Set(
-                            unitsWithAndComponents.flatMap(u => u.comp.map(c => c.n)).filter(n => !!n)
+                            unitsWithAndComponents.flatMap(u => {
+                                if (conf.key === 'componentName') return u.comp.map(c => c.n);
+                                if (conf.key === 'quirks') return u.quirks || [];
+                                return [];
+                            }).filter(n => !!n)
                         ));
                     }
                 }
@@ -524,7 +537,7 @@ export class UnitSearchFiltersService {
                     }
                 } else {
                     const allOptions = Array.from(new Set(contextUnits.map(u => (u as any)[conf.key]).filter(v => v != null && v !== '')));
-                    const sortedOptions = smartDropdownSort(allOptions, conf.options);
+                    const sortedOptions = smartDropdownSort(allOptions, conf.sortOptions);
                     availableOptions = sortedOptions.map(name => ({ name }));
                 }
                 result[conf.key] = {
