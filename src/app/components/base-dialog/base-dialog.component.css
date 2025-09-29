@@ -67,6 +67,10 @@
 .modal-header {
     border-bottom: 2px solid #fff;
 
+    &.tabbed {
+        border-bottom: 2px solid #666;
+    }
+
     ::ng-deep .title {
         display: flex;
         justify-content: center;
@@ -103,12 +107,8 @@
     color: var(--text-color);
     border-bottom-color: var(--accent-color);
     }
-
 }
 
-.modal-header.tabbed {
-  border-bottom: 2px solid #666 ;
-}
 
 .tab-content {
   padding-top: 0.5em;
@@ -128,23 +128,17 @@
     font-size: 1em;
 }
 
-@media (max-width: 425px) {
+@media (max-width: 680px) {
     .modal {
         width: 100%;
         max-width: 100%;
-        height: 100%;
-        max-height: 100%;
         margin-left: unset;
         margin-right: unset;
     }
 }
-@media (max-height: 425px) {
+@media (max-height: 680px) {
     .modal {
-        width: 100%;
-        max-width: 100%;
         height: 100%;
         max-height: 100%;
-        margin-left: unset;
-        margin-right: unset;
     }
 }

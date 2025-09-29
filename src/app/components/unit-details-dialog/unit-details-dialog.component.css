@@ -45,7 +45,6 @@
     justify-content: left;
     align-items: stretch;
     flex-direction: row;
-    width: 100%;
     gap: 0px 8px;
     position: relative;
     min-height: 48px;
