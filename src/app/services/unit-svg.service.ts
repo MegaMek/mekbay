@@ -561,10 +561,12 @@ export class UnitSvgService implements OnDestroy {
         });
 
         // Structure (internal) pips
+        const hasCTPips = !!svg.querySelector(`.structure.pip[loc="CT"]`);
         const structurePips = svg.querySelectorAll(`.structure.pip`);
         structurePips.forEach(pip => {
             const loc = pip.getAttribute('loc');
             if (!loc) return;
+            if (loc == 'SI' && hasCTPips) return; // Skip structural integrity, they are represented by CT damage
             if (internalRemaining[loc] === undefined) {
                 internalRemaining[loc] = locations[loc]?.internal || 0;
             }

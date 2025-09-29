@@ -783,5 +783,37 @@ export class UnitSvgMekService extends UnitSvgService {
         // Normal armor and structure handling
         super.updateArmorDisplay(initial);
 
+        // if we have SI pips, this is a LAM, we fill them with the CT
+        const lamStructuralIntegrityPips = svg.querySelectorAll(`.structure.pip[loc="SI"]`);
+        if (lamStructuralIntegrityPips.length > 0) {
+            const locations = this.unit.getLocations();
+            let structuralIntegrityDamageRemaining = locations['CT']?.internal || 0;
+            lamStructuralIntegrityPips.forEach(pip => {
+                if (structuralIntegrityDamageRemaining > 0) {
+                    if (!pip.classList.contains('damaged')) {
+                        pip.classList.add('damaged');
+                        if (!initial) {
+                            pip.classList.add('fresh');
+                        }
+                    } else if (pip.classList.contains('fresh')) {
+                        pip.classList.remove('fresh');
+                    }
+                    structuralIntegrityDamageRemaining--;
+                } else {
+                    if (pip.classList.contains('damaged')) {
+                        pip.classList.remove('damaged');
+                        if (!initial) {
+                            pip.classList.add('fresh');
+                        }
+                    } else
+                        if (pip.classList.contains('fresh')) {
+                            pip.classList.remove('fresh');
+                        }
+                }
+            });
+        }
+
+
+
     }
 }
