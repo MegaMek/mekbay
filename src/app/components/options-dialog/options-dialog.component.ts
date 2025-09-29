@@ -120,6 +120,8 @@ export class OptionsDialogComponent {
                 const keys = await window.caches.keys();
                 await Promise.all(keys.map(key => window.caches.delete(key)));
             }
+
+            window.location.reload();
         }
     }
 
