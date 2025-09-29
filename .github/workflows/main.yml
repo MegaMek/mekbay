@@ -26,4 +26,4 @@ jobs:
       - name: Load Secrets
         run: echo "machine ${{ secrets.FTP_HOST }} login ${{ secrets.FTP_USER }} password ${{ secrets.FTP_PASSWORD }}" > ~/.netrc
       - name: Upload Folder
-        run: lftp -e "mirror --parallel=100 -R ./dist/browser ./mekbay/" ${{ secrets.FTP_HOST }}
+        run: lftp -e "mirror --parallel=100 -R ./dist/browser/ ./mekbay/" ${{ secrets.FTP_HOST }}
