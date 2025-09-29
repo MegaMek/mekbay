@@ -111,11 +111,15 @@ export class OptionsDialogComponent {
         input.select();
     }
 
-    onPurgeCache() {
+    async onPurgeCache() {
         if (confirm('Are you sure you want to delete all cached record sheets? They will be redownloaded as needed.')) {
-            this.dbService.clearSheetsStore().then(() => {
-                this.updateSheetCacheSize();
-            });
+            await this.dbService.clearSheetsStore();
+            this.updateSheetCacheSize();
+
+            if ('caches' in window) {
+                const keys = await window.caches.keys();
+                await Promise.all(keys.map(key => window.caches.delete(key)));
+            }
         }
     }
 
