@@ -49,7 +49,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
     ],
     template: `
     <base-dialog>
-      <div dialog-header>License & Legal Notice</div>
+      <div dialog-header><div class="title">License & Legal Notice</div></div>
       <div dialog-body>
         <p>
             <strong>MekBay</strong> is part of <strong>MegaMek</strong>: an open-source, non-profit, fan-made project and is not affiliated with Catalyst Game Labs, The Topps Company, Inc., or Microsoft Corporation.

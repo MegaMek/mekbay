@@ -31,19 +31,31 @@
  * affiliated with Microsoft.
  */
 
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { CommonModule } from '@angular/common';
 
 /*
  * Author: Drake
  */
 @Component({
     selector: 'base-dialog',
+    standalone: true,
+    imports: [CommonModule],
+    changeDetection: ChangeDetectionStrategy.OnPush,
     styleUrls: ['./base-dialog.component.css'],
     template: `
     <div class="modal-flex-center">
       <div class="modal">
-        <div class="modal-header">
+        <div class="modal-header" [class.tabbed]="isTabbed()">
           <ng-content select="[dialog-header]"></ng-content>
+          <div *ngIf="isTabbed()" class="tab-header">
+            <button *ngFor="let tab of tabs()" 
+                    class="tab-button" 
+                    [class.active]="tab === activeTab()" 
+                    (click)="onTabClick(tab)">
+              {{ tab }}
+            </button>
+          </div>
         </div>
         <div class="modal-body">
           <ng-content select="[dialog-body]"></ng-content>
@@ -56,4 +68,12 @@ import { Component } from '@angular/core';
   `
 })
 export class BaseDialogComponent {
+    tabs = input<string[]>([]);
+    activeTab = input<string>();
+    isTabbed = computed(() => this.tabs().length > 0);
+    activeTabChange = output<string>();
+
+    onTabClick(tab: string) {
+        this.activeTabChange.emit(tab);
+    }
 }

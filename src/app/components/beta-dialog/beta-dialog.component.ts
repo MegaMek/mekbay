@@ -49,7 +49,7 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
     ],
     template: `
     <base-dialog>
-        <div dialog-header>Beta Notice</div>
+        <div dialog-header><div class="title">Beta Notice</div></div>
         <div dialog-body>
             <p>This is a development and internal beta version of MekBay.</p>
             <p>It may contain bugs and issues that need to be resolved, and things might break unexpectedly.</p>

@@ -31,11 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { OptionsService } from '../../services/options.service';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { DbService } from '../../services/db.service';
 
 /*
  * Author: Drake
@@ -49,15 +50,35 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
     styleUrls: ['./options-dialog.component.css']
 })
 export class OptionsDialogComponent {
-    public optionsService = inject(OptionsService);
+    optionsService = inject(OptionsService);
+    dbService = inject(DbService);
     dialogRef = inject(DialogRef<OptionsDialogComponent>);
-    data = inject(DIALOG_DATA, { optional: true });
+    
+    tabs = ['General', 'Advanced'];
+    activeTab = signal(this.tabs[0]);
 
     userUuid = '';
     userUuidError = '';
+    sheetCacheSize = signal(0);
 
     constructor() {
         this.userUuid = this.optionsService.options().uuid;
+        this.updateSheetCacheSize();
+    }
+
+    updateSheetCacheSize() {
+        this.dbService.getSheetsStoreSize().then(size => {
+            this.sheetCacheSize.set(size);
+        });
+    }
+
+    formatBytes(bytes: number, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
     }
 
     onClose() {
@@ -88,6 +109,14 @@ export class OptionsDialogComponent {
     selectAll(event: FocusEvent) {
         const input = event.target as HTMLInputElement;
         input.select();
+    }
+
+    onPurgeCache() {
+        if (confirm('Are you sure you want to delete all cached record sheets? They will be redownloaded as needed.')) {
+            this.dbService.clearSheetsStore().then(() => {
+                this.updateSheetCacheSize();
+            });
+        }
     }
 
     onUserUuidKeydown(event: KeyboardEvent) {

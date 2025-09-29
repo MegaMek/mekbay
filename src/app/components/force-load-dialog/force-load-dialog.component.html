@@ -1,5 +1,5 @@
 <base-dialog>
-    <div dialog-header>Load Force</div>
+    <div dialog-header><div class="title">Load Force</div></div>
     <div dialog-body>
         <div *ngIf="loading()" class="loading-spinner">Loading forces...</div>
         <div *ngIf="!loading() && forces().length === 0" class="empty-state">

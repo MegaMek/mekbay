@@ -102,6 +102,9 @@ export class UnitDetailsDialogComponent {
     private data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     @Output() add = new EventEmitter<Unit>();
 
+    tabs = ['General', 'Factions'];
+    activeTab = signal(this.tabs[0]);
+
     unitList: Unit[] = this.data.unitList;
     hideAddButton = this.data.hideAddButton;
     unitIndex = this.data.unitIndex;
@@ -122,6 +125,7 @@ export class UnitDetailsDialogComponent {
     groupedBays: Array<{ l: string, p: number, bays: UnitComponent[] }> = [];
     components: UnitComponent[] = [];
     componentsForMatrix: UnitComponent[] = [];
+    factionAvailability: { eraName: string, eraImg?: string, factions: { name: string, img: string }[] }[] = [];
 
     // For hover info
     hoveredComp = signal<UnitComponent | null>(null);
@@ -186,6 +190,39 @@ export class UnitDetailsDialogComponent {
         this.componentsForMatrix = this.getComponents(true);
         this.baysByLocCache.clear();
         this.buildMatrixLayout();
+        this.updateFactionAvailability();
+    }
+
+    private updateFactionAvailability() {
+        if (!this.unit) {
+            this.factionAvailability = [];
+            return;
+        }
+
+        const unitId = this.unit.id;
+        const allEras = this.dataService.getEras().sort((a, b) => (a.years.from || 0) - (b.years.from || 0));
+        const allFactions = this.dataService.getFactions();
+        const availability: { eraName: string, eraImg?: string, factions: { name: string, img: string }[] }[] = [];
+
+        for (const era of allEras) {
+            const factionsInEra: { name: string, img: string }[] = [];
+            for (const faction of allFactions) {
+                const factionEras = faction.eras[era.id];
+                if (factionEras && (factionEras as Set<number>).has(unitId)) {
+                    factionsInEra.push({ name: faction.name, img: faction.img });
+                }
+            }
+
+            if (factionsInEra.length > 0) {
+                factionsInEra.sort((a, b) => a.name.localeCompare(b.name));
+                availability.push({
+                    eraName: era.name,
+                    eraImg: era.img,
+                    factions: factionsInEra
+                });
+            }
+        }
+        this.factionAvailability = availability;
     }
         
     private normalizeLoc(loc: string): string {

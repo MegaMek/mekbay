@@ -65,18 +65,57 @@
 }
 
 .modal-header {
-    display: flex;
-    justify-content: center;
-    align-items: center;
     border-bottom: 2px solid #fff;
-    padding: 8px;
-    font-weight: bold;
-    font-size: 1.3em;
-    text-transform: uppercase;
+
+    ::ng-deep .title {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 8px;
+        font-weight: bold;
+        font-size: 1.3em;
+        text-transform: uppercase;
+    }
+    
+    .tab-header {
+    display: flex;
+    flex-direction: row;
+    font-size: 1em;
+    margin-bottom: -2px;
+    }
+
+    .tab-button {
+    background: none;
+    border: none;
+    color: var(--text-color-secondary);
+    padding: 0.5em 1em;
+    cursor: pointer;
+    font-size: 1em;
+    border-bottom: 2px solid transparent;
+    transition: color 0.3s ease, border-color 0.3s ease;
+    }
+
+    .tab-button:hover {
+    color: var(--text-color);
+    }
+
+    .tab-button.active {
+    color: var(--text-color);
+    border-bottom-color: var(--accent-color);
+    }
+
+}
+
+.modal-header.tabbed {
+  border-bottom: 2px solid #666 ;
+}
+
+.tab-content {
+  padding-top: 0.5em;
 }
 
 .modal-body {
-    padding: 1.5em;
+    padding: 0.5em;
     flex-grow: 1;
     overflow-y: auto;
 }
@@ -89,13 +128,6 @@
     font-size: 1em;
 }
 
-@media (max-width: 768px) {
-    .modal-body {
-        padding: 0.5em;
-    }
-}
-
-
 @media (max-width: 425px) {
     .modal {
         width: 100%;
@@ -104,9 +136,6 @@
         max-height: 100%;
         margin-left: unset;
         margin-right: unset;
-    }
-    .modal-body {
-        padding: 0.5em;
     }
 }
 @media (max-height: 425px) {

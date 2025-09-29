@@ -345,6 +345,48 @@ export class DbService {
         });
     }
 
+    public async clearSheetsStore(): Promise<void> {
+        const db = await this.dbPromise;
+        return new Promise<void>((resolve, reject) => {
+            const transaction = db.transaction(SHEETS_STORE, 'readwrite');
+            const store = transaction.objectStore(SHEETS_STORE);
+            const request = store.clear();
+
+            request.onsuccess = () => {
+                resolve();
+            };
+
+            request.onerror = () => {
+                reject(request.error);
+            };
+        });
+    }
+
+    public async getSheetsStoreSize(): Promise<number> {
+        const db = await this.dbPromise;
+        return new Promise<number>((resolve, reject) => {
+            const transaction = db.transaction(SHEETS_STORE, 'readonly');
+            const store = transaction.objectStore(SHEETS_STORE);
+            const request = store.openCursor();
+            let totalSize = 0;
+
+            request.onsuccess = () => {
+                const cursor = request.result;
+                if (cursor) {
+                    const storedSheet = cursor.value as StoredSheet;
+                    totalSize += storedSheet.size || 0;
+                    cursor.continue();
+                } else {
+                    resolve(totalSize);
+                }
+            };
+
+            request.onerror = () => {
+                reject(request.error);
+            };
+        });
+    }
+
     private async cullOldSheets(): Promise<void> {
         const db = await this.dbPromise;
         const transaction = db.transaction(SHEETS_STORE, 'readwrite');

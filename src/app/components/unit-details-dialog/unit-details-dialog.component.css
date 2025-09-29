@@ -50,8 +50,9 @@
     position: relative;
     min-height: 48px;
     flex-wrap: wrap;
-    padding-left: 8px;
-    padding-right: 8px;
+    padding: 8px;
+    font-weight: bold;
+    font-size: 1.3em;
 }
 
 .header-group {
@@ -587,4 +588,40 @@
 .bottom-left a:hover,
 .bottom-right a:hover {
     text-decoration: underline;
+}
+
+.faction-availability-list {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 16px;
+    overflow-y: auto;
+    flex-grow: 1;
+    align-items: baseline;
+}
+
+.era-name {
+    white-space: nowrap;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.era-icon {
+    height: 1.2em;
+    vertical-align: middle;
+    position: relative;
+    top: 4px;
+    margin-bottom: -4px;
+}
+
+.faction-list {
+    line-height: 1.4;
+}
+
+.no-factions {
+    text-align: center;
+    color: var(--text-color-secondary);
+    margin-top: 24px;
+    grid-column: 1 / -1;
 }

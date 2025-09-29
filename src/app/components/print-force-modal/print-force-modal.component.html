@@ -1,5 +1,5 @@
 <base-dialog (closed)="onClose()">
-  <div dialog-header>PRINT FORCE</div>
+  <div dialog-header><div class="title">PRINT FORCE</div></div>
   <div dialog-body>
     <div *ngIf="loading()" class="message">Loading sheets...</div>
     <div *ngIf="!loading() && svgStrings().length == 0" class="message">Nothing to print!</div>
