@@ -44,5 +44,6 @@ export interface Faction {
 
 export interface Factions {
     version: string;
+    etag: string;
     factions: Faction[];
 }

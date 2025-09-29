@@ -111,5 +111,6 @@ export interface Unit {
 
 export interface Units {
     version: string;
+    etag: string;
     units: Unit[];
 }

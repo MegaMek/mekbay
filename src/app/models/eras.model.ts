@@ -49,5 +49,6 @@ export interface Era {
 
 export interface Eras {
     version: string;
+    etag: string;
     eras: Era[];
 }

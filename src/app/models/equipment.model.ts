@@ -110,6 +110,7 @@ export interface EquipmentUnitType {
 
 export interface EquipmentData {
     version: string;
+    etag: string;
     equipment: {
         [unitType: string]: EquipmentUnitType;
     };

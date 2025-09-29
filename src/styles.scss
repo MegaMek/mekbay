@@ -874,6 +874,11 @@ hr {
             stroke: #34373D !important;
         }
 
+        [fill="#bbb" i],
+        [style*="fill:#bbb" i] {
+            fill: #444 !important;
+        }
+
         .damaged {
             fill: var(--damage-color) !important;
 
