@@ -60,6 +60,7 @@ export interface AdvFilterConfig {
     curve?: number; // for range sliders, defines the curve of the slider
     ignoreValues?: any[]; // Values to ignore in the range filter, e.g. [-1] for heat/dissipation
     multistate?: boolean; // if true, the filter (dropdown) can have multiple states (OR, AND, NOT)
+    countable?: boolean; // if true, show amount next to options
 }
 
 interface FilterState {
@@ -140,30 +141,95 @@ function naturalCompare(a: string, b: string): number {
 
 
 function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiStateSelection): Unit[] {
-    const orList = Object.entries(selection).filter(([_, state]) => state === 'or').map(([name]) => name);
-    const andList = Object.entries(selection).filter(([_, state]) => state === 'and').map(([name]) => name);
-    const notList = Object.entries(selection).filter(([_, state]) => state === 'not').map(([name]) => name);
+    const orList: Array<{name: string, count: number}> = [];
+    const andList: Array<{name: string, count: number}> = [];
+    const notSet = new Set<string>();
+    
+    for (const [name, selectionValue] of Object.entries(selection)) {
+        const { state, count } = selectionValue;
+        if (state === 'or') orList.push({ name, count });
+        else if (state === 'and') andList.push({ name, count });
+        else if (state === 'not') notSet.add(name);
+    }
 
-    return units.filter(u => {
-        let unitValues: any[];
-        if (key === 'componentName') {
-            unitValues = u.comp.map(c => c.n);
+    // Early return if no filters
+    if (orList.length === 0 && andList.length === 0 && notSet.size === 0) {
+        return units;
+    }
+    
+    const needsQuantityCounting = [...orList, ...andList].some(item => item.count > 1);
+    const isComponentFilter = key === 'componentName';
+
+    // Pre-create Sets for faster lookup
+    const orMap = new Map(orList.map(item => [item.name, item.count]));
+    const andMap = new Map(andList.map(item => [item.name, item.count]));
+
+    return units.filter(unit => {
+        let unitData: { names: Set<string>; counts?: Map<string, number> };
+
+         if (isComponentFilter) {
+            // Use cached component data for performance
+            const cached = getUnitComponentData(unit);
+            unitData = {
+                names: cached.componentNames,
+                counts: needsQuantityCounting ? cached.componentCounts : undefined
+            };
         } else {
-            const propValue = (u as any)[key];
-            unitValues = Array.isArray(propValue) ? propValue : [propValue];
+            const propValue = (unit as any)[key];
+            const unitValues = Array.isArray(propValue) ? propValue : [propValue];
+            const names = new Set(unitValues.filter(v => v != null));
+            
+            unitData = { names };
+            if (needsQuantityCounting) {
+                const counts = new Map<string, number>();
+                for (const value of unitValues) {
+                    if (value != null) {
+                        counts.set(value, (counts.get(value) || 0) + 1);
+                    }
+                }
+                unitData.counts = counts;
+            }
+        }
+        
+        if (notSet.size > 0) {
+            for (const notName of notSet) {
+                if (unitData.names.has(notName)) return false;
+            }
         }
 
-        // NOT: Exclude if any notList present
-        if (notList.some(n => unitValues.includes(n))) return false;
+        // AND: Must have all items with sufficient quantity
+        if (andMap.size > 0) {
+            if (needsQuantityCounting && unitData.counts) {
+                for (const [name, requiredCount] of andMap) {
+                    if ((unitData.counts.get(name) || 0) < requiredCount) return false;
+                }
+            } else {
+                for (const [name] of andMap) {
+                    if (!unitData.names.has(name)) return false;
+                }
+            }
+        }
 
-        // AND: Must have all andList
-        if (andList.length && !andList.every(a => unitValues.includes(a))) return false;
+        // OR: Must have at least one with sufficient quantity
+        if (orMap.size > 0) {
+            if (needsQuantityCounting && unitData.counts) {
+                for (const [name, requiredCount] of orMap) {
+                    if ((unitData.counts.get(name) || 0) >= requiredCount) {
+                        return true;
+                    }
+                }
+                return false;
+            } else {
+                for (const [name] of orMap) {
+                    if (unitData.names.has(name)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
 
-        // OR: If present, must have at least one
-        if (orList.length && !orList.some(o => unitValues.includes(o))) return false;
-
-        // If no OR/AND/NOT, allow all
-        return orList.length || andList.length || notList.length ? true : true;
+        return true;
     });
 }
 
@@ -187,7 +253,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     },
     { key: 'c3', label: 'Network', type: AdvFilterType.DROPDOWN },
     { key: 'moveType', label: 'Motive', type: AdvFilterType.DROPDOWN },
-    { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true },
+    { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true },
     { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true },
     { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
     { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
@@ -219,6 +285,29 @@ export const SORT_OPTIONS: SortOption[] = [
         }))
 ];
 
+const unitComponentCache = new WeakMap<Unit, {
+    componentNames: Set<string>;
+    componentCounts: Map<string, number>;
+}>();
+
+function getUnitComponentData(unit: Unit) {
+    let cached = unitComponentCache.get(unit);
+    if (!cached) {
+        const componentNames = new Set<string>();
+        const componentCounts = new Map<string, number>();
+        
+        for (const component of unit.comp) {
+            const name = component.n;
+            componentNames.add(name);
+            componentCounts.set(name, (componentCounts.get(name) || 0) + component.q);
+        }
+        
+        cached = { componentNames, componentCounts };
+        unitComponentCache.set(unit, cached);
+    }
+    return cached;
+}
+
 @Injectable({ providedIn: 'root' })
 export class UnitSearchFiltersService {
     public dataService = inject(DataService);
@@ -228,6 +317,7 @@ export class UnitSearchFiltersService {
     selectedSort = signal<string>('name');
     selectedSortDirection = signal<'asc' | 'desc'>('asc');
     private totalRangesCache: Record<string, [number, number]> = {};
+    private availableNamesCache = new Map<string, string[]>();
 
     constructor() {
         effect(() => {
@@ -261,6 +351,12 @@ export class UnitSearchFiltersService {
 
     get isDataReady() { return this.dataService.isDataReady; }
     get units() { return this.isDataReady() ? this.dataService.getUnits() : []; }
+
+    private getCacheKey(units: Unit[], state: FilterState): string {
+        const activeKeys = Object.keys(state).filter(k => state[k]?.interactedWith).sort();
+        const values = activeKeys.map(k => JSON.stringify(state[k].value));
+        return `${units.length}-${activeKeys.join(',')}-${values.join('|')}`;
+    }
 
     public setSortOrder(key: string) {
         this.selectedSort.set(key);
@@ -430,12 +526,11 @@ export class UnitSearchFiltersService {
             )).sort((a, b) => b.length - a.length);
             baseUnits = baseUnits.filter(unit => this.matchesWords(unit, words));
         }
+
         const activeFilters = Object.entries(state)
             .filter(([, s]) => s.interactedWith)
             .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
 
-
-        // Handle external (ID-based) filters first
         const selectedEraNames = activeFilters['era'] as string[] || [];
         const selectedFactionNames = activeFilters['faction'] as string[] || [];
 
@@ -446,144 +541,206 @@ export class UnitSearchFiltersService {
             }
             const contextState = { ...state };
             delete contextState[conf.key];
-
             let contextUnits = this.applyFilters(baseUnits, contextState);
 
             if (conf.multistate && conf.type === AdvFilterType.DROPDOWN) {
-                // Collect unique values from the array property or componentName
-                const availableNames = Array.from(new Set(
-                    contextUnits.flatMap(u => {
-                        if (conf.key === 'componentName') {
-                            return u.comp.map(c => c.n);
-                        } else {
-                            const propValue = (u as any)[conf.key];
-                            return Array.isArray(propValue) ? propValue : [];
-                        }
-                    }).filter(n => !!n)
-                ));
-                
-                // Apply current filter's 'and' filters to get names that would be available if selected
+                const isComponentFilter = conf.key === 'componentName';
                 const currentFilter = state[conf.key];
+                const hasQuantityFilters = conf.countable && isComponentFilter
+                    && currentFilter?.interactedWith && currentFilter.value &&
+                    Object.values(currentFilter.value as MultiStateSelection).some(selection => selection.count > 1);
+
+                const namesCacheKey = `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}`;
+                let availableNames = this.availableNamesCache.get(namesCacheKey);
+                if (!availableNames) {
+                    // Collect unique values efficiently
+                    const nameSet = new Set<string>();
+                    
+                    if (isComponentFilter) {
+                        for (const unit of contextUnits) {
+                            for (const component of unit.comp) {
+                                nameSet.add(component.n);
+                            }
+                        }
+                    } else {
+                        for (const unit of contextUnits) {
+                            const propValue = (unit as any)[conf.key];
+                            const values = Array.isArray(propValue) ? propValue : [propValue];
+                            for (const value of values) {
+                                if (value) nameSet.add(value);
+                            }
+                        }
+                    }
+                    
+                    availableNames = Array.from(nameSet);
+                    this.availableNamesCache.set(namesCacheKey, availableNames);
+                }
+
                 let filteredAvailableNames = availableNames;
+                
                 if (currentFilter?.interactedWith && currentFilter.value) {
                     const selection = currentFilter.value as MultiStateSelection;
-                    const andList = Object.entries(selection).filter(([_, state]) => state === 'and').map(([name]) => name);
-                    const notList = Object.entries(selection).filter(([_, state]) => state === 'not').map(([name]) => name);
+                    const andEntries = Object.entries(selection).filter(([_, sel]) => sel.state === 'and');
                     
-                    if (andList.length > 0) {
-                        // Further filter units that have all 'and' items to see what other items are available
-                        const unitsWithAndItems = contextUnits.filter(u => {
-                            let unitValues: any[];
-                            if (conf.key === 'componentName') {
-                                unitValues = u.comp.map(c => c.n);
-                            } else {
-                                const propValue = (u as any)[conf.key];
-                                unitValues = Array.isArray(propValue) ? propValue : [];
-                            }
-                            // NOT: Exclude units that have any 'not' items
-                            if (notList.some(n => unitValues.includes(n))) return false;
-                            // AND: Must have all 'and' items
-                            return andList.every(a => unitValues.includes(a));
-                        });
-                        filteredAvailableNames = Array.from(new Set(
-                            unitsWithAndItems.flatMap(u => {
-                                if (conf.key === 'componentName') {
-                                    return u.comp.map(c => c.n);
-                                } else {
-                                    const propValue = (u as any)[conf.key];
-                                    return Array.isArray(propValue) ? propValue : [];
-                                }
-                            }).filter(n => !!n)
-                        ));
-                    }
-                }
-                
-                const sortedNames = smartDropdownSort(availableNames);
-                
-                // Create options with availability flag
-                const optionsWithAvailability = sortedNames.map(name => ({
-                    name,
-                    available: filteredAvailableNames.includes(name)
-                }));
-
-                result[conf.key] = {
-                    type: 'dropdown',
-                    label,
-                    options: optionsWithAvailability,
-                    value: state[conf.key]?.interactedWith ? state[conf.key].value : [],
-                    interacted: state[conf.key]?.interactedWith ?? false
-                };
-                continue;
-            }
-            if (conf.type === AdvFilterType.DROPDOWN) {
-                let availableOptions: { name: string, img?: string }[] = [];
-                if (conf.external) {
-                    const contextUnitIds = new Set(contextUnits.filter(u => u.id !== -1).map(u => u.id));
-                    if (conf.key === 'era') {
-                        const selectedFactionsAvailableEraIds: Set<number> = new Set(
-                            this.dataService.getFactions()
-                                .filter(faction => selectedFactionNames.includes(faction.name))
-                                .flatMap(faction => Object.keys(faction.eras).map(Number))
+                    if (andEntries.length > 0) {
+                        const andMap = new Map(andEntries.map(([name, sel]) => [name, sel.count]));
+                        const notSet = new Set(
+                            Object.entries(selection)
+                                .filter(([_, sel]) => sel.state === 'not')
+                                .map(([name]) => name)
                         );
-                        availableOptions = this.dataService.getEras()
-                            .filter(era => {
-                                if (selectedFactionsAvailableEraIds.size > 0) {
-                                    if (!selectedFactionsAvailableEraIds.has(era.id)) return false;
+                        
+                        // Pre-filter units that satisfy AND conditions
+                        const validUnits = contextUnits.filter(unit => {
+                            if (isComponentFilter) {
+                                const cached = getUnitComponentData(unit);
+                                
+                                // Check NOT conditions
+                                for (const notName of notSet) {
+                                    if (cached.componentNames.has(notName)) return false;
                                 }
-                                return [...(era.units as Set<number>)].some(id => contextUnitIds.has(id))
-                            }).map(era => ({ name: era.name, img: era.img }));
-                    } else 
-                    if (conf.key === 'faction') {            
-                        const selectedEraIds: Set<number> = new Set(this.dataService.getEras().filter(e => selectedEraNames.includes(e.name)).map(e => e.id));
-                        availableOptions = this.dataService.getFactions()
-                            .filter(faction => {
-                                for (const eraIdStr in faction.eras) {
-                                    if (selectedEraIds.size > 0) {
-                                        if (!selectedEraIds.has(Number(eraIdStr))) continue;
-                                    }
-                                    if ([...(faction.eras[eraIdStr] as Set<number>)].some(id => contextUnitIds.has(id))) return true;
+                                
+                                // Check AND conditions
+                                for (const [name, requiredCount] of andMap) {
+                                    if ((cached.componentCounts.get(name) || 0) < requiredCount) return false;
                                 }
-                                return false;
-                            })
-                            .map(faction => ({ name: faction.name, img: faction.img }));
+                            } else {
+                                // Handle other properties (simplified for brevity)
+                                const propValue = (unit as any)[conf.key];
+                                const values = Array.isArray(propValue) ? propValue : [propValue];
+                                const valueSet = new Set(values);
+                                
+                                for (const notName of notSet) {
+                                    if (valueSet.has(notName)) return false;
+                                }
+                                
+                                for (const [name] of andMap) {
+                                    if (!valueSet.has(name)) return false;
+                                }
+                            }
+                            return true;
+                        });
+                        
+                        // Collect available names from valid units
+                        const filteredNameSet = new Set<string>();
+                        for (const unit of validUnits) {
+                            if (isComponentFilter) {
+                                for (const component of unit.comp) {
+                                    filteredNameSet.add(component.n);
+                                }
+                            } else {
+                                const propValue = (unit as any)[conf.key];
+                                const values = Array.isArray(propValue) ? propValue : [propValue];
+                                for (const value of values) {
+                                    if (value) filteredNameSet.add(value);
+                                }
+                            }
+                        }
+                        filteredAvailableNames = Array.from(filteredNameSet);
                     }
-                } else {
-                    const allOptions = Array.from(new Set(contextUnits.map(u => (u as any)[conf.key]).filter(v => v != null && v !== '')));
-                    const sortedOptions = smartDropdownSort(allOptions, conf.sortOptions);
-                    availableOptions = sortedOptions.map(name => ({ name }));
                 }
-                result[conf.key] = {
-                    type: 'dropdown',
-                    label,
-                    options: availableOptions,
-                    value: state[conf.key]?.interactedWith ? state[conf.key].value : [],
-                    interacted: state[conf.key]?.interactedWith ?? false
+            
+            const sortedNames = smartDropdownSort(availableNames);
+            const filteredSet = new Set(filteredAvailableNames);
+            
+            // Create options with availability flag and count
+            const optionsWithAvailability = sortedNames.map(name => {
+                const option: { name: string; available: boolean; count?: number } = {
+                    name,
+                    available: filteredSet.has(name)
                 };
-            } else if (conf.type === AdvFilterType.RANGE) {
-                const totalRange = this.totalRangesCache[conf.key] || [0, 0];
-                const vals = this.getValidFilterValues(contextUnits, conf);
-                const availableRange = vals.length ? [Math.min(...vals), Math.max(...vals)] : totalRange;
+                
+                // Add count only if needed and for component filters
+                if (hasQuantityFilters) {
+                    let totalCount = 0;
+                    for (const unit of contextUnits) {
+                        const cached = getUnitComponentData(unit);
+                        totalCount += cached.componentCounts.get(name) || 0;
+                    }
+                    option.count = totalCount;
+                }
+                
+                return option;
+            });
 
-                let currentValue = state[conf.key]?.interactedWith ? state[conf.key].value : availableRange;
-
-                // Clamp both min and max to the available range, and ensure min <= max
-                let clampedMin = Math.max(availableRange[0], Math.min(currentValue[0], availableRange[1]));
-                let clampedMax = Math.min(availableRange[1], Math.max(currentValue[1], availableRange[0]));
-                if (clampedMin > clampedMax) [clampedMin, clampedMax] = [clampedMax, clampedMin];
-                currentValue = [clampedMin, clampedMax];
-
-                result[conf.key] = {
-                    type: 'range',
-                    label,
-                    totalRange: totalRange, // The absolute min/max for the track
-                    options: availableRange as [number, number], // The currently possible min/max
-                    value: currentValue,     // The user's selection
-                    interacted: state[conf.key]?.interactedWith ?? false
-                };
-            }
+            result[conf.key] = {
+                type: 'dropdown',
+                label,
+                options: optionsWithAvailability,
+                value: state[conf.key]?.interactedWith ? state[conf.key].value : {},
+                interacted: state[conf.key]?.interactedWith ?? false
+            };
+            continue;
         }
-        return result;
-    });
+        if (conf.type === AdvFilterType.DROPDOWN) {
+            let availableOptions: { name: string, img?: string }[] = [];
+            if (conf.external) {
+                const contextUnitIds = new Set(contextUnits.filter(u => u.id !== -1).map(u => u.id));
+                if (conf.key === 'era') {
+                    const selectedFactionsAvailableEraIds: Set<number> = new Set(
+                        this.dataService.getFactions()
+                            .filter(faction => selectedFactionNames.includes(faction.name))
+                            .flatMap(faction => Object.keys(faction.eras).map(Number))
+                    );
+                    availableOptions = this.dataService.getEras()
+                        .filter(era => {
+                            if (selectedFactionsAvailableEraIds.size > 0) {
+                                if (!selectedFactionsAvailableEraIds.has(era.id)) return false;
+                            }
+                            return [...(era.units as Set<number>)].some(id => contextUnitIds.has(id))
+                        }).map(era => ({ name: era.name, img: era.img }));
+                } else 
+                if (conf.key === 'faction') {
+                    const selectedEraIds: Set<number> = new Set(this.dataService.getEras().filter(e => selectedEraNames.includes(e.name)).map(e => e.id));
+                    availableOptions = this.dataService.getFactions()
+                        .filter(faction => {
+                            for (const eraIdStr in faction.eras) {
+                                if (selectedEraIds.size > 0) {
+                                    if (!selectedEraIds.has(Number(eraIdStr))) continue;
+                                }
+                                if ([...(faction.eras[eraIdStr] as Set<number>)].some(id => contextUnitIds.has(id))) return true;
+                            }
+                            return false;
+                        })
+                        .map(faction => ({ name: faction.name, img: faction.img }));
+                }
+            } else {
+                const allOptions = Array.from(new Set(contextUnits.map(u => (u as any)[conf.key]).filter(v => v != null && v !== '')));
+                const sortedOptions = smartDropdownSort(allOptions, conf.sortOptions);
+                availableOptions = sortedOptions.map(name => ({ name }));
+            }
+            result[conf.key] = {
+                type: 'dropdown',
+                label,
+                options: availableOptions,
+                value: state[conf.key]?.interactedWith ? state[conf.key].value : [],
+                interacted: state[conf.key]?.interactedWith ?? false
+            };
+        } else if (conf.type === AdvFilterType.RANGE) {
+            const totalRange = this.totalRangesCache[conf.key] || [0, 0];
+            const vals = this.getValidFilterValues(contextUnits, conf);
+            const availableRange = vals.length ? [Math.min(...vals), Math.max(...vals)] : totalRange;
+
+            let currentValue = state[conf.key]?.interactedWith ? state[conf.key].value : availableRange;
+
+            // Clamp both min and max to the available range, and ensure min <= max
+            let clampedMin = Math.max(availableRange[0], Math.min(currentValue[0], availableRange[1]));
+            let clampedMax = Math.min(availableRange[1], Math.max(currentValue[1], availableRange[0]));
+            if (clampedMin > clampedMax) [clampedMin, clampedMax] = [clampedMax, clampedMin];
+            currentValue = [clampedMin, clampedMax];
+
+            result[conf.key] = {
+                type: 'range',
+                label,
+                totalRange: totalRange,
+                options: availableRange as [number, number],
+                value: currentValue,
+                interacted: state[conf.key]?.interactedWith ?? false
+            };
+        }
+    }
+    return result;
+});
 
     /**
      * Checks if a unit chassis/model matches all the given words.
@@ -642,10 +799,10 @@ export class UnitSearchFiltersService {
                 interacted = false;
             }
         } else if (conf.type === AdvFilterType.DROPDOWN) {
-             if (conf.multistate) {
+            if (conf.multistate) {
                 // For multistate dropdowns, check if all states are 'off' or object is empty
                 if (!value || typeof value !== 'object' || Object.keys(value).length === 0 ||
-                    Object.values(value).every(state => state === 'off')) {
+                    Object.values(value).every((selectionValue: any) => selectionValue.state === 'off')) {
                     interacted = false;
                 }
             } else {

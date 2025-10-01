@@ -222,3 +222,16 @@
 .filter-input:focus {
     outline: none;
 }
+
+.quantity-input {
+    margin-left: auto;
+}
+
+.quantity-input .quantity-field {
+    width: 40px;
+    border: 1px solid #ccc;
+    padding: 1px;
+    background-color: transparent;
+    outline: none;
+    color: var(--text-color);
+}

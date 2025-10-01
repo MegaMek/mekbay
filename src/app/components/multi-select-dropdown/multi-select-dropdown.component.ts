@@ -41,10 +41,13 @@ export interface DropdownOption {
     name: string;
     img?: string;
     available?: boolean;
+    count?: number;
 }
 
 export type MultiState = 'off' | 'or' | 'and' | 'not';
-export type MultiStateSelection = { [option: string]: MultiState };
+export interface MultiStateSelection {
+  [key: string]: { state: MultiState; count: number };
+}
 
 @Component({
     selector: 'multi-select-dropdown',
@@ -61,6 +64,7 @@ export class MultiSelectDropdownComponent {
     label = input<string>('');
     multiselect = input<boolean>(true);
     multistate = input<boolean>(false);
+    countable = input<boolean>(false);
     options = input<readonly DropdownOption[]>([]);
     selected = input<MultiStateSelection | string[]>([]);
     
@@ -73,10 +77,10 @@ export class MultiSelectDropdownComponent {
         if (this.multistate()) {
             const sel = (this.selected() as MultiStateSelection) || {};
             return Object.entries(sel)
-                .filter(([_, state]) => state !== 'off')
-                .map(([name, state]) => ({ name, state }));
+                .filter(([_, selection]) => selection.state !== 'off')
+                .map(([name, selection]) => ({ name, state: selection.state, count: selection.count }));
         }
-        return (this.selected() as readonly string[] || []).map((name: string) => ({ name, state: 'or' }));
+        return (this.selected() as readonly string[] || []).map((name: string) => ({ name, state: 'or' as MultiState, count: 1 }));
     });
 
     filteredOptions = computed(() => {
@@ -120,9 +124,9 @@ export class MultiSelectDropdownComponent {
         if (this.multistate()) {
             const sel = this.selected();
             const currentSelection: MultiStateSelection = (sel && !Array.isArray(sel)) ? { ...sel } : {};
-            const currentState: MultiState = currentSelection[optionName] || 'off';
+            const current = currentSelection[optionName] || { state: 'off' as MultiState, count: 1 };
             let nextState: MultiState;
-            switch (currentState) {
+            switch (current.state) {
                 case 'off': nextState = 'or'; break;
                 case 'or': nextState = 'and'; break;
                 case 'and': nextState = 'not'; break;
@@ -132,7 +136,7 @@ export class MultiSelectDropdownComponent {
             if (nextState === 'off') {
                 delete currentSelection[optionName];
             } else {
-                currentSelection[optionName] = nextState;
+                currentSelection[optionName] = { state: nextState, count: current.count };
             }
             this.selectionChange.emit(currentSelection);
         } else {
@@ -146,6 +150,46 @@ export class MultiSelectDropdownComponent {
                 newSelection.push(optionName);
             }
             this.selectionChange.emit(newSelection);
+        }
+    }
+
+    getState(optionName: string): MultiState {
+        if (this.multistate()) {
+            const sel = this.selected() as MultiStateSelection;
+            return sel[optionName]?.state || 'off';
+        }
+        return this.isSelected(optionName) ? 'or' : 'off';
+    }
+
+    getCount(optionName: string): number {
+        if (this.multistate()) {
+            const sel = this.selected() as MultiStateSelection;
+            return sel[optionName]?.count || 1;
+        }
+        return 1;
+    }
+
+    setCount(optionName: string, count: number) {
+        if (!this.countable() || !this.multistate()) return;
+        
+        const sel = this.selected() as MultiStateSelection;
+        const currentSelection: MultiStateSelection = { ...sel };
+        const current = currentSelection[optionName];
+        
+        if (current && (current.state === 'and' || current.state === 'or')) {
+            currentSelection[optionName] = { 
+                state: current.state, 
+                count: Math.max(1, count) 
+            };
+            this.selectionChange.emit(currentSelection);
+        }
+    }
+ 
+    onQuantityInput(optionName: string, event: Event) {
+        const inputElement = event.target as HTMLInputElement;
+        const value = parseInt(inputElement.value, 10);
+        if (!isNaN(value)) {
+            this.setCount(optionName, value);
         }
     }
 
@@ -171,11 +215,16 @@ export class MultiSelectDropdownComponent {
 
     isSelected(optionName: string): MultiState | boolean {
         if (this.multistate()) {
-            const sel = this.selected();
-            const currentSelection: MultiStateSelection = (sel && !Array.isArray(sel)) ? { ...sel } : {};
-            return currentSelection[optionName] || 'off';
+            const sel = this.selected() as MultiStateSelection;
+            return sel[optionName]?.state || 'off';
         }
         return this.selectedOptions().some(o => o.name === optionName);
+        // if (this.multistate()) {
+        //     const sel = this.selected();
+        //     const currentSelection: MultiStateSelection = (sel && !Array.isArray(sel)) ? { ...sel } : {};
+        //     return currentSelection[optionName].state || 'off';
+        // }
+        // return this.selectedOptions().some(o => o.name === optionName);
     }
 
     trackByName(index: number, option: DropdownOption): string {
