@@ -84,6 +84,7 @@ export interface Unit {
     source: string;
     role: string;
     armorType: string;
+    structureType: string;
     armor: number;
     internal: number;
     heat: number;

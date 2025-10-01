@@ -350,6 +350,14 @@ export class DataService {
                     const armorType: UnitComponent = { q: 1, n: armorName, id: armorName, l: 'Armor', t: 'HIDDEN', p: -1 };
                     unit.comp.push(armorType);
                 }
+                if (unit.structureType) {
+                    let structureName = unit.structureType;
+                    if (!structureName.endsWith(' Structure')) {
+                        structureName += ' Structure';
+                    }
+                    const structureType: UnitComponent = { q: 1, n: structureName, id: structureName, l: 'Structure', t: 'HIDDEN', p: -1 };
+                    unit.comp.push(structureType);
+                }
                 if (unit.engine) {
                     let engineName = unit.engine;
                     if (!engineName.endsWith(' Engine')) {
