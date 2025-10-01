@@ -449,38 +449,50 @@ export class UnitSearchFiltersService {
 
             let contextUnits = this.applyFilters(baseUnits, contextState);
 
-            if (conf.key === 'componentName' || conf.key === 'quirks') {
-                // Collect unique component names from filtered units (available ones)
+            if (conf.multistate && conf.type === AdvFilterType.DROPDOWN) {
+                // Collect unique values from the array property or componentName
                 const availableNames = Array.from(new Set(
                     contextUnits.flatMap(u => {
-                        if (conf.key === 'componentName') return u.comp.map(c => c.n);
-                        if (conf.key === 'quirks') return u.quirks || [];
-                        return [];
+                        if (conf.key === 'componentName') {
+                            return u.comp.map(c => c.n);
+                        } else {
+                            const propValue = (u as any)[conf.key];
+                            return Array.isArray(propValue) ? propValue : [];
+                        }
                     }).filter(n => !!n)
                 ));
                 
-                // Apply current componentName 'and' filters to get names that would be available if selected
-                const currentComponentFilter = state[conf.key];
+                // Apply current filter's 'and' filters to get names that would be available if selected
+                const currentFilter = state[conf.key];
                 let filteredAvailableNames = availableNames;
-                if (currentComponentFilter?.interactedWith && currentComponentFilter.value) {
-                    const selection = currentComponentFilter.value as MultiStateSelection;
+                if (currentFilter?.interactedWith && currentFilter.value) {
+                    const selection = currentFilter.value as MultiStateSelection;
                     const andList = Object.entries(selection).filter(([_, state]) => state === 'and').map(([name]) => name);
                     const notList = Object.entries(selection).filter(([_, state]) => state === 'not').map(([name]) => name);
                     
                     if (andList.length > 0) {
-                        // Further filter units that have all 'and' components to see what other components are available
-                        const unitsWithAndComponents = contextUnits.filter(u => {
-                            const unitComponentNames = (conf.key === 'componentName') ? u.comp.map(c => c.n) : (u.quirks || []);
-                            // NOT: Exclude units that have any 'not' components
-                            if (notList.some(n => unitComponentNames.includes(n))) return false;
-                            // AND: Must have all 'and' components
-                            return andList.every(a => unitComponentNames.includes(a));
+                        // Further filter units that have all 'and' items to see what other items are available
+                        const unitsWithAndItems = contextUnits.filter(u => {
+                            let unitValues: any[];
+                            if (conf.key === 'componentName') {
+                                unitValues = u.comp.map(c => c.n);
+                            } else {
+                                const propValue = (u as any)[conf.key];
+                                unitValues = Array.isArray(propValue) ? propValue : [];
+                            }
+                            // NOT: Exclude units that have any 'not' items
+                            if (notList.some(n => unitValues.includes(n))) return false;
+                            // AND: Must have all 'and' items
+                            return andList.every(a => unitValues.includes(a));
                         });
                         filteredAvailableNames = Array.from(new Set(
-                            unitsWithAndComponents.flatMap(u => {
-                                if (conf.key === 'componentName') return u.comp.map(c => c.n);
-                                if (conf.key === 'quirks') return u.quirks || [];
-                                return [];
+                            unitsWithAndItems.flatMap(u => {
+                                if (conf.key === 'componentName') {
+                                    return u.comp.map(c => c.n);
+                                } else {
+                                    const propValue = (u as any)[conf.key];
+                                    return Array.isArray(propValue) ? propValue : [];
+                                }
                             }).filter(n => !!n)
                         ));
                     }
