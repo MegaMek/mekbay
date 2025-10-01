@@ -169,7 +169,7 @@ export class UnitSearchComponent implements OnDestroy {
         const top = containerRect.bottom + gap + window.scrollY;
         let height;
         if (this.filtersService.filteredUnits().length > 0) {
-            const availableHeight = window.innerHeight - top - 10; // 10px margin from bottom
+            const availableHeight = window.innerHeight - top - (window.innerHeight > 600 ? 50 : 10); // variable bottom based on vertical estate
             height = `${availableHeight}px`;
         } else {
             height = 'auto';
