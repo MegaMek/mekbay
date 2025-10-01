@@ -211,7 +211,8 @@ export class ForceUnit {
     private unit: Unit; // Original unit data
     force: Force;
     id: string;
-    svg: WritableSignal<SVGSVGElement | null> = signal(null); // SVG representation of the unit
+    svgs: WritableSignal<SVGSVGElement[]> = signal([]); // Array of all loaded SVGs
+    currentSheetIndex: WritableSignal<number> = signal(0); // Current sheet index
     private svgService: UnitSvgService | null = null;
     private loadingPromise: Promise<void> | null = null;
     viewState: {
@@ -233,6 +234,17 @@ export class ForceUnit {
     private isLoaded: boolean = false;
     public disabledSaving: boolean = false;
 
+    getCurrentSvg = computed(() => {
+        const svgs = this.svgs();
+        const index = this.currentSheetIndex();
+        return svgs[index] || null;
+    });
+
+    getFrontSvg = computed(() => {
+        const svgs = this.svgs();
+        return svgs[0] || null;
+    });
+    
     constructor(unit: Unit,
         force: Force,
         dataService: DataService,
@@ -257,7 +269,8 @@ export class ForceUnit {
             crew[i] = new CrewMember(i, this);
         }
         this.state.crew.set(crew);
-    }    
+    }
+
     public async load() {
         if (this.isLoaded) return;
         if (this.loadingPromise) {
@@ -272,6 +285,7 @@ export class ForceUnit {
             this.loadingPromise = null;
         }
     }
+
     private async performLoad() {
         switch (this.unit.type) {
             case 'Mek':
@@ -285,53 +299,81 @@ export class ForceUnit {
         }
         await this.svgService.loadAndInitialize();
     }
+
     destroy() {
         if (this.svgService) {
             this.svgService.ngOnDestroy();
             this.svgService = null;
         }
-        this.svg.set(null);
+        this.svgs.set([]);
         this.loadingPromise = null;
     }
     get modified(): boolean {
         return this.state.modified();
     }
+
+    getSheetCount(): number {
+        return this.unit.sheets.length;
+    }
+
+    switchToSheet(sheetIndex: number): void {
+        if (sheetIndex >= 0 && sheetIndex < this.getSheetCount()) {
+            this.currentSheetIndex.set(sheetIndex);
+        }
+    }
+
+    switchToNextSheet(): void {
+        const currentIndex = this.currentSheetIndex();
+        const nextIndex = (currentIndex + 1) % this.getSheetCount();
+        this.switchToSheet(nextIndex);
+    }
+
     setModified() {
         if (this.disabledSaving) return;
         this.state.modified.set(true);
         this.force.emitChanged();
     }
+
     get destroyed(): boolean {
         return this.state.destroyed();
     }
+
     setDestroyed(destroyed: boolean) {
         this.state.destroyed.set(destroyed);
     }
+
     get c3Linked(): boolean {
         return this.state.c3Linked();
     }
+
     setC3Linked(linked: boolean) {
         this.state.c3Linked.set(linked);
         this.setModified();
         this.force.refreshUnits();
     }
+
     getUnit(): Unit {
         return this.unit;
     }
+
     getHeat = this.state.heat;
+
     setHeat(heat: number) {
         const storedHeat = this.state.heat();
         if (heat === storedHeat.current) return; // No change
         this.state.heat.set({ current: heat, previous: storedHeat.current });
         this.setModified();
     }
+
     getCritSlots = this.state.crits;
+
     setCritSlots(critSlots: CriticalSlot[], initialization: boolean = false) {
         this.state.crits.set(critSlots);
         if (!initialization) {
             this.setModified();
         }
     }
+
     getCritSlotsAsMatrix(): Record<string, CriticalSlot[]> {
         const critSlotMatrix: Record<string, CriticalSlot[]> = {};
         this.getCritSlots().forEach(value => {
@@ -343,9 +385,11 @@ export class ForceUnit {
         });
         return critSlotMatrix;
     }
+
     getCritSlot(loc: string, slot: number): CriticalSlot | null {
         return this.state.crits().find(c => c.loc === loc && c.slot === slot) || null;
     }
+
     setCritSlot(slot: CriticalSlot) {
         const crits = [...this.state.crits()];
         const existingIndex = crits.findIndex(c => c.loc === slot.loc && c.slot === slot.slot);
@@ -356,9 +400,11 @@ export class ForceUnit {
         }
         this.setCritSlots(crits);
     }
+
     getCritLoc(name: string): CriticalSlot | null {
         return this.state.crits().find(c => c.name === name) || null;
     }
+
     setCritLoc(loc: CriticalSlot) {
         const crits = [...this.state.crits()];
         const existingIndex = crits.findIndex(c => c.name === loc.name);
@@ -369,13 +415,16 @@ export class ForceUnit {
         }
         this.setCritSlots(crits);
     }
+
     getInventory = this.state.inventory;
+
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
         this.state.inventory.set(inventory);
         if (!initialization) {
             this.setModified();
         }
     }
+
     setInventoryEntry(inventoryEntry: MountedEquipment) {
         const inventory = [...this.state.inventory()];
         const existingIndex = inventory.findIndex(item => item.id === inventoryEntry.id);
@@ -386,21 +435,26 @@ export class ForceUnit {
         }
         this.setInventory(inventory);
     }
+
     getLocations = this.state.locations;
+
     setLocations(locations: Record<string, LocationData>, initialization: boolean = false) {
         this.state.locations.set(locations);
         if (!initialization) {
             this.setModified();
         }
     }
+
     getArmorPoints(loc: string, rear?: boolean): number {
         const locKey = rear ? `${loc}-rear` : loc;
         return this.locations?.armor.get(locKey)?.points || 0;
     }
+
     getArmorHits(loc: string, rear?: boolean): number {
         const locKey = rear ? `${loc}-rear` : loc;
         return this.state.locations()[locKey]?.armor || 0;
     }
+
     addArmorHits(loc: string, hits: number, rear?: boolean) {
         const locKey = rear ? `${loc}-rear` : loc;
         const locations = { ...this.state.locations() };
@@ -415,6 +469,7 @@ export class ForceUnit {
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
         this.setModified();
     }
+
     setArmorHits(loc: string, hits: number, rear?: boolean) {
         const locKey = rear ? `${loc}-rear` : loc;
         const locations = { ...this.state.locations() };
@@ -425,12 +480,15 @@ export class ForceUnit {
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
         this.setModified();
     }
+
     getInternalPoints(loc: string): number {
         return this.locations?.internal.get(loc)?.points || 0;
     }
+
     getInternalHits(loc: string): number {
         return this.state.locations()[loc]?.internal || 0;
     }
+
     addInternalHits(loc: string, hits: number) {
         const locations = { ...this.state.locations() };
         if (locations[loc] === undefined) {
@@ -443,6 +501,7 @@ export class ForceUnit {
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
         this.setModified();
     }
+
     setInternalHits(loc: string, hits: number) {
         const locations = { ...this.state.locations() };
         if (locations[loc] === undefined) {
@@ -452,17 +511,20 @@ export class ForceUnit {
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
         this.setModified();
     }
+
     isArmorLocDestroyed(loc: string, rear: boolean = false): boolean {
         const locKey = rear ? `${loc}-rear` : loc;
         if (!this.locations?.armor.has(locKey)) return false;
         const hits = this.getArmorHits(loc, rear);
         return hits >= this.getArmorPoints(loc, rear);
     }
+
     isInternalLocDestroyed(loc: string): boolean {
         if (!this.locations?.internal.has(loc)) return false;
         const hits = this.getInternalHits(loc);
         return hits >= this.getInternalPoints(loc);
     }
+
     getBv = computed<number>(() => {
         const adjustedBv = this.state.adjustedBv();
         if (adjustedBv !== null) {
@@ -470,10 +532,13 @@ export class ForceUnit {
         }
         return this.unit.bv;
     })
+
     getCrewMembers = this.state.crew;
+
     getCrewMember(crewId: number): CrewMember {
         return this.state.crew()[crewId];
     }
+
     setCrewMember(crewId: number, crewMember: CrewMember) {
         const crew = [...this.state.crew()];
         crew[crewId] = crewMember;
@@ -481,6 +546,7 @@ export class ForceUnit {
         this.recalculateBv();
         this.setModified();
     }
+
     recalculateBv() {
         const pilot = this.getCrewMember(0);
         let gunnery = pilot.getSkill('gunnery');
@@ -510,7 +576,7 @@ export class ForceUnit {
     };
 
     public hasDirectInventory(): boolean {
-        return (!this.svg()?.querySelector('.critSlot')) && (this.getUnit().type !== 'Infantry') || false;
+        return (!this.getFrontSvg()?.querySelector('.critSlot')) && (this.getUnit().type !== 'Infantry') || false;
     }
 
     public serialize(): any {

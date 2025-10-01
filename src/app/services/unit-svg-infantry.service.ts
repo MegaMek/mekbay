@@ -40,7 +40,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
     // BattleArmor-specific SVG handling logic goes here
 
     protected override updateAllDisplays() {
-        if (!this.unit.svg()) return;
+        if (!this.unit.getFrontSvg()) return;
         // Read all reactive state properties to ensure they are tracked by the effect.
         const crew = this.unit.getCrewMembers();
         const locations = this.unit.getLocations();
@@ -54,7 +54,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
     }
 
     protected override evaluateDestroyed(): void {
-        const svg = this.unit.svg();
+        const svg = this.unit.getFrontSvg();
         if (!svg) return;
 
         const armorLocs = new Set<string>(this.unit.locations?.armor.keys() || []);
@@ -81,7 +81,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
     }
 
     protected override updateArmorDisplay(initial: boolean = false) {
-        const svg = this.unit.svg();
+        const svg = this.unit.getFrontSvg();
         if (!svg) return;
 
         const armorPips = Array.from(svg.querySelectorAll(`.armor.pip`)).reverse();
@@ -130,7 +130,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
     }
 
     protected updateTroopsDisplay() {
-        const svg = this.unit.svg();
+        const svg = this.unit.getFrontSvg();
         if (!svg) return;
 
         const hasTroops = svg.getElementById('soldier_1');
@@ -159,7 +159,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
     }
 
     protected override updateInventory() {
-        const svg = this.unit.svg();
+        const svg = this.unit.getFrontSvg();
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
             if (entry.el) {

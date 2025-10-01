@@ -58,61 +58,65 @@ export class PrintUtil {
         // Gather all SVGs as strings
         const svgStrings: string[] = [];
         for (const unit of forceUnits) {
-            let svg;
+            let svgs: SVGSVGElement[] | null = null;
             if (!clean) {
                 // dirty sheet if we want to print unit damage and pilot
                 await unit.load(); // ensure is loaded
-                svg = unit.svg();
+                svgs = unit.svgs();
             }
-            if (!svg) {
-                svg = await dataService.getSheet(unit.getUnit().sheets[0]);
+            if (!svgs) {
+                svgs = [];
+                for (const sheet of unit.getUnit().sheets) {
+                    const svg = await dataService.getSheet(sheet);
+                    svgs.push(svg);
+                }
             }
             
             await this.nextAnimationFrames(2);
 
-            // Ensure font-size has units
-            svg.querySelectorAll('[style]').forEach(el => {
-                const style = el.getAttribute('style');
-                if (style && /font-size\s*:\s*\d+(\.\d+)?(\s*;|;|$)/i.test(style)) {
-                    const fixed = style.replace(
-                        /font-size\s*:\s*(\d+(\.\d+)?)(?!\s*[a-zA-Z%])(\s*;?)/gi,
-                        (match, num, _, tail) => `font-size: ${num}px${tail || ''}`
-                    );
-                    if (fixed !== style) {
-                        el.setAttribute('style', fixed);
+            for (const svg of svgs) {
+                // Ensure font-size has units
+                svg.querySelectorAll('[style]').forEach(el => {
+                    const style = el.getAttribute('style');
+                    if (style && /font-size\s*:\s*\d+(\.\d+)?(\s*;|;|$)/i.test(style)) {
+                        const fixed = style.replace(
+                            /font-size\s*:\s*(\d+(\.\d+)?)(?!\s*[a-zA-Z%])(\s*;?)/gi,
+                            (match, num, _, tail) => `font-size: ${num}px${tail || ''}`
+                        );
+                        if (fixed !== style) {
+                            el.setAttribute('style', fixed);
+                        }
                     }
+                });
+                // Inline external images so they are guaranteed to render
+                await this.embedExternalImages(svg);
+                // Serialize, sanitize outer svg tag, ensure namespaces/viewBox
+                const serializer = new XMLSerializer();
+                let svgString = serializer.serializeToString(svg);
+                svgString = svgString.replace(
+                    /^<svg([^>]*)>/,
+                    (match, attrs) => {
+                        let cleanedAttrs = attrs;
+                            // .replace(/\sclass="[^"]*"/g, '')
+                            // .replace(/\sstyle="[^"]*"/g, '')
+                            // .replace(/\s(width|height|preserveAspectRatio)="[^"]*"/g, '')
+                            // .replace(/\s+$/, '');
+                        if (!/viewBox=/.test(cleanedAttrs)) {
+                            cleanedAttrs += ' viewBox="0 0 612 792"';
+                        }
+                        if (!/xmlns=/.test(cleanedAttrs)) {
+                            cleanedAttrs += ' xmlns="http://www.w3.org/2000/svg"';
+                        }
+                        if (!/xmlns:xlink=/.test(cleanedAttrs)) {
+                            cleanedAttrs += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
+                        }
+                        return `<svg${cleanedAttrs}>`;
+                    }
+                );
+                if (svgString) {
+                    svgStrings.push(svgString);
                 }
-            });
-
-            // Inline external images so they are guaranteed to render
-            await this.embedExternalImages(svg);
-
-            // Serialize, sanitize outer svg tag, ensure namespaces/viewBox
-            const serializer = new XMLSerializer();
-            let svgString = serializer.serializeToString(svg);
-            svgString = svgString.replace(
-                /^<svg([^>]*)>/,
-                (match, attrs) => {
-                    let cleanedAttrs = attrs;
-                        // .replace(/\sclass="[^"]*"/g, '')
-                        // .replace(/\sstyle="[^"]*"/g, '')
-                        // .replace(/\s(width|height|preserveAspectRatio)="[^"]*"/g, '')
-                        // .replace(/\s+$/, '');
-                    if (!/viewBox=/.test(cleanedAttrs)) {
-                        cleanedAttrs += ' viewBox="0 0 612 792"';
-                    }
-                    if (!/xmlns=/.test(cleanedAttrs)) {
-                        cleanedAttrs += ' xmlns="http://www.w3.org/2000/svg"';
-                    }
-                    if (!/xmlns:xlink=/.test(cleanedAttrs)) {
-                        cleanedAttrs += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
-                    }
-                    return `<svg${cleanedAttrs}>`;
-                }
-            );
-            if (svgString) {
-                svgStrings.push(svgString);
-            }
+            };
         }
         await this.generateMultipagePrintContainer(svgStrings, forceUnits, originalHeats, triggerPrint);
     }

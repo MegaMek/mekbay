@@ -1128,7 +1128,7 @@ export class SvgInteractionService {
     private updateHeatHighlight(heatValue: number) {
         const unit = this.unit();
         if (!unit) return;
-        const svg = unit.svg();
+        const svg = unit.getCurrentSvg();
         if (!svg) return;
 
         let highestHeatVal = -Infinity;

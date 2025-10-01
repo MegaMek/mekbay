@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, input, ElementRef, ViewChild, AfterViewInit, OnDestroy, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, ElementRef, ViewChild, AfterViewInit, OnDestroy, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, computed, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceUnit } from '../../models/force-unit.model';
 import { SvgZoomPanService, SwipeCallbacks } from './svg-zoom-pan.service';
@@ -71,6 +71,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     containerHeight = 0;
 
     private unitChangeEffectRef: EffectRef | null = null;
+    private sheetChangeEffectRef: EffectRef | null = null;
     private currentSvg = signal<SVGSVGElement | null>(null);
 
     // Slides/swipe state
@@ -98,27 +99,51 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         return this.interactionService.getState().diffHeatMarkerVisible;
     }
 
+    hasMultipleSheets = computed(() => {
+        const unit = this.unit();
+        return unit ? unit.getSheetCount() > 1 : false;
+    });
+
+    currentSheetName = computed(() => {
+        const unit = this.unit();
+        if (!unit || unit.getSheetCount() < 2) return '';
+        const index = unit.currentSheetIndex();
+        return index === 0 ? 'Front' : 'Back';
+    });
+
     private resizeTimeout: any = null;
 
     constructor() {
-
         // Watch for unit changes using effect instead of ngOnChanges
         let previousUnit: ForceUnit | null = null;
         this.unitChangeEffectRef = effect(async () => {
-            // If there was a previous unit, save its view state
             const currentUnit = this.unit();
             await currentUnit?.load();
-            const svg = currentUnit?.svg() ?? null;
 
             // If there was a previous unit, save its view state
             if (previousUnit && previousUnit !== currentUnit) {
                 this.saveViewState(previousUnit);
             }
-            this.interactionService.updateUnit(currentUnit);
             
+            this.interactionService.updateUnit(currentUnit);
             this.displaySvg();
-
             previousUnit = currentUnit;
+        }, { injector: this.injector });
+
+        this.sheetChangeEffectRef = effect(() => {
+        const currentUnit = this.unit();
+        if (currentUnit) {
+            // Only track the sheet index change, not the unit change
+            const sheetIndex = currentUnit.currentSheetIndex();
+            
+            // Use untracked to read the unit without making this effect depend on unit changes
+            untracked(() => {
+                const svg = currentUnit.getCurrentSvg();
+                this.currentSvg.set(svg);
+                this.displaySvg();
+                console.log('Sheet changed to index', sheetIndex);
+            });
+        }
         }, { injector: this.injector });
     }
 
@@ -206,6 +231,9 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (this.unitChangeEffectRef) {
             this.unitChangeEffectRef.destroy();
         }
+        if (this.sheetChangeEffectRef) {
+            this.sheetChangeEffectRef.destroy();
+        }
 
         // Cleanup services
         this.interactionService.cleanup();
@@ -229,7 +257,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             return; // No unit selected
         }
 
-        const svg = currentUnit.svg();
+        const svg = currentUnit.getCurrentSvg();
         if (svg) {
             // Wrap current svg in a slide
             const slide = this.createSlide();
@@ -253,12 +281,26 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         }
     }
 
+    switchToNextSheet(): void {
+        const unit = this.unit();
+        if (unit && unit.getSheetCount() > 1) {
+            // Save current view state before switching
+            this.saveViewState(unit);
+            unit.switchToNextSheet();
+        }
+    }
+
     retryLoad() {
-        this.unit()?.load();
+        const unit = this.unit();
+        if (unit) {
+            // Force reload
+            unit.svgs.set([]);
+            unit.load();
+        }
     }
 
     protected updateDimensions() {
-        const svg = this.unit()?.svg();
+        const svg = this.unit()?.getCurrentSvg();
         const container = this.containerRef.nativeElement;
 
         if (svg) {
@@ -326,11 +368,11 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
             if (prevUnit) {
                 await prevUnit.load();
-                prevSvg = prevUnit.svg() ?? null;
+                prevSvg = prevUnit.getFrontSvg() ?? null;
             }
             if (nextUnit) {
                 await nextUnit.load();
-                nextSvg = nextUnit.svg() ?? null;
+                nextSvg = nextUnit.getFrontSvg() ?? null;
             }
         }
 
@@ -446,6 +488,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
                 translateX: currentViewState.translateX,
                 translateY: currentViewState.translateY
             };
+            this.prevUnit!.currentSheetIndex.set(0); // Always show front sheet when switching
             // Animate commit to prev (current -> right, prev -> center)
             this.setSlideX(this.currentSlideEl, width, true);
             if (this.prevSlideEl) this.setSlideX(this.prevSlideEl, 0, true);
@@ -468,6 +511,8 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
                 translateX: currentViewState.translateX,
                 translateY: currentViewState.translateY
             };
+            this.nextUnit!.currentSheetIndex.set(0); // Always show front sheet when switching
+
             
             // Animate commit to next (current -> left, next -> center)
             this.setSlideX(this.currentSlideEl, -width, true);

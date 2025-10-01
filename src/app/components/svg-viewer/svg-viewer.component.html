@@ -16,3 +16,13 @@
         <span>Reload</span>
     </button>
 </div>
+
+<div class="sheet-switcher" *ngIf="hasMultipleSheets()">
+  <button 
+    type="button" 
+    class="sheet-switch-btn"
+    (click)="switchToNextSheet()"
+    [title]="'Switch to ' + (unit()?.currentSheetIndex() === 0 ? 'back' : 'front') + ' side'">
+    <span class="sheet-label">{{ currentSheetName() }}</span>
+  </button>
+</div>

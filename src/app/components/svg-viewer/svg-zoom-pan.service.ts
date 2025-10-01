@@ -111,6 +111,7 @@ export class SvgZoomPanService {
         prevTouchCenter: { x: 0, y: 0 },
     };
 
+    private currentSvg: SVGSVGElement | null = null;
     private containerRef!: ElementRef<HTMLDivElement>;
     private svgDimensions = { width: 0, height: 0 };
     private containerDimensions = { width: 0, height: 0 };
@@ -170,6 +171,9 @@ export class SvgZoomPanService {
     }
 
     setupEventListeners(svg: SVGSVGElement) {
+        this.removeEventListeners();
+        // Store reference to current SVG
+        this.currentSvg = svg;
         // Mouse wheel zoom
         svg.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
 
@@ -197,6 +201,27 @@ export class SvgZoomPanService {
                 this.resetView();
             }
         });
+        this.applyTransform();
+    }
+
+    private removeEventListeners() {
+        if (this.currentSvg) {
+            // Remove all event listeners from the previous SVG
+            this.currentSvg.removeEventListener('wheel', this.onWheel.bind(this));
+            this.currentSvg.removeEventListener('pointerdown', this.onPointerDown.bind(this));
+            this.currentSvg.removeEventListener('pointermove', this.onPointerMove.bind(this));
+            this.currentSvg.removeEventListener('pointerup', this.onPointerUp.bind(this));
+            this.currentSvg.removeEventListener('pointerleave', this.onPointerUp.bind(this));
+            this.currentSvg.removeEventListener('pointercancel', this.onPointerUp.bind(this));
+            this.currentSvg.removeEventListener('touchstart', this.onTouchStart.bind(this));
+            this.currentSvg.removeEventListener('touchmove', this.onTouchMove.bind(this));
+            this.currentSvg.removeEventListener('touchend', this.onTouchEnd.bind(this));
+        }
+    }
+
+    cleanup() {
+        this.removeEventListeners();
+        this.currentSvg = null;
     }
 
     private calculateMinScale() {
@@ -237,8 +262,7 @@ export class SvgZoomPanService {
 
     private onWheel(event: WheelEvent) {
         event.preventDefault();
-        const svg = this.containerRef.nativeElement.querySelector('svg');
-        if (!svg) return;
+        if (!this.currentSvg) return;
 
         const mx = event.offsetX;
         const my = event.offsetY;
@@ -538,10 +562,9 @@ export class SvgZoomPanService {
     }
 
     private applyTransform() {
-        const svg = this.containerRef.nativeElement.querySelector('svg');
-        if (svg) {
-            (svg as any).style.transform = `translate(${this.state.translate.x}px,${this.state.translate.y}px) scale(${this.state.scale})`;
-            (svg as any).style.transformOrigin = 'top left';
+        if (this.currentSvg) {
+            (this.currentSvg as any).style.transform = `translate(${this.state.translate.x}px,${this.state.translate.y}px) scale(${this.state.scale})`;
+            (this.currentSvg as any).style.transformOrigin = 'top left';
         }
     }
 

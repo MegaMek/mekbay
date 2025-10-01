@@ -60,52 +60,71 @@ export class UnitSvgService implements OnDestroy {
     ) { }
 
     public async loadAndInitialize(): Promise<void> {
-        if (this.unit.svg()) {
+        if (this.unit.svgs().length > 0) {
             // Already loaded
             return;
         }
 
         try {
-            const svg = await this.dataService.getSheet(this.unit.getUnit().sheets[0]);
+            const sheets = this.unit.getUnit().sheets;
+            const loadedSvgs: SVGSVGElement[] = [];
 
-            // Do basic setup that doesn't require the DOM
-            this.initializeSvg(svg);
-
-            // Create a hidden container to temporarily render the SVG for calculations
-            const hiddenContainer = document.createElement('div');
-            hiddenContainer.style.position = 'absolute';
-            hiddenContainer.style.left = '-9999px';
-            hiddenContainer.style.top = '-9999px';
-            hiddenContainer.style.visibility = 'hidden';
-            document.body.appendChild(hiddenContainer);
-
-            try {
-                // Append SVG to the hidden container to allow DOM calculations
-                hiddenContainer.appendChild(svg);
-                await this._waitForSvgLayout(svg);
-
-                RsPolyfillUtil.addMissingClasses(this.unit.getUnit(), svg);
-                this.unitInitializer.initializeUnitIfNeeded(this.unit, svg);
-
-                this.unit.svg.set(svg);
-                this.updateArmorDisplay(true);
-                this.updateAllDisplays();
-                this.updateDestroyedOverlayDisplay(this.unit.destroyed);
-
-            } finally {
-                // Clean up: remove the SVG from the hidden container and the container itself
-                if (hiddenContainer.contains(svg)) {
-                    hiddenContainer.removeChild(svg);
-                }
-                document.body.removeChild(hiddenContainer);
+            // Load all available sheets
+            for (let i = 0; i < sheets.length; i++) {
+                const svg = await this.loadSheet(sheets[i], i);
+                loadedSvgs.push(svg);
             }
 
-            // Set up the effect to keep the SVG updated
+            // Set all loaded SVGs
+            this.unit.svgs.set(loadedSvgs);
+
+            // Set up the effect to keep the SVGs updated
             this.setupDataEffect();
         } catch (error) {
             console.error(`Failed to load or initialize SVG for ${this.unit.getUnit().name}`, error);
-            this.unit.svg.set(null);
+            this.unit.svgs.set([]);
         }
+    }
+    private async loadSheet(sheetPath: string, sheetIndex: number): Promise<SVGSVGElement> {
+        const svg = await this.dataService.getSheet(sheetPath);
+
+        // Do basic setup that doesn't require the DOM
+        this.initializeSvg(svg);
+
+        // Create a hidden container to temporarily render the SVG for calculations
+        const hiddenContainer = document.createElement('div');
+        hiddenContainer.style.position = 'absolute';
+        hiddenContainer.style.left = '-9999px';
+        hiddenContainer.style.top = '-9999px';
+        hiddenContainer.style.visibility = 'hidden';
+        document.body.appendChild(hiddenContainer);
+
+        try {
+            // Append SVG to the hidden container to allow DOM calculations
+            hiddenContainer.appendChild(svg);
+            await this._waitForSvgLayout(svg);
+
+            RsPolyfillUtil.addMissingClasses(this.unit.getUnit(), svg);
+            this.unitInitializer.initializeUnitIfNeeded(this.unit, svg);
+
+            this.initializeSheetDisplays(svg);
+
+        } finally {
+            // Clean up: remove the SVG from the hidden container and the container itself
+            if (hiddenContainer.contains(svg)) {
+                hiddenContainer.removeChild(svg);
+            }
+            document.body.removeChild(hiddenContainer);
+        }
+
+        return svg;
+    }
+
+    private initializeSheetDisplays(svg: SVGSVGElement): void {
+        // Initialize displays that need to be set once per sheet
+        this.updateArmorDisplayForSvg(svg, true);
+        this.updateAllDisplaysForSvg(svg);
+        this.updateDestroyedOverlayDisplayForSvg(svg, this.unit.destroyed);
     }
 
     private _waitForSvgLayout(svg: SVGSVGElement): Promise<void> {
@@ -171,7 +190,14 @@ export class UnitSvgService implements OnDestroy {
     }
 
     protected updateAllDisplays() {
-        if (!this.unit.svg()) return;
+        // Update all loaded SVGs
+        const svgs = this.unit.svgs();
+        svgs.forEach(svg => this.updateAllDisplaysForSvg(svg));
+    }
+
+    protected updateAllDisplaysForSvg(svg: SVGSVGElement) {
+        if (!svg) return;
+        
         // Read all reactive state properties to ensure they are tracked by the effect.
         const crew = this.unit.getCrewMembers();
         const heat = this.unit.getHeat();
@@ -179,14 +205,14 @@ export class UnitSvgService implements OnDestroy {
         const locations = this.unit.getLocations();
         const inventory = this.unit.getInventory();
         
-        // Update all displays
-        this.updateBVDisplay();
-        this.updateCrewDisplay(crew);
-        this.updateCritLocDisplay(critSlots);
-        this.updateHeatDisplay(heat);
-        this.updateHeatSinkPips();
-        this.updateInventory();
-        this.updateHitMod();
+        // Update all displays for this specific SVG
+        this.updateBVDisplayForSvg(svg);
+        this.updateCrewDisplayForSvg(svg, crew);
+        this.updateCritLocDisplayForSvg(svg, critSlots);
+        this.updateHeatDisplayForSvg(svg, heat);
+        this.updateHeatSinkPipsForSvg(svg);
+        this.updateInventoryForSvg(svg);
+        this.updateHitModForSvg(svg);
     }
     
     private setupDataEffect(): void {
@@ -224,12 +250,12 @@ export class UnitSvgService implements OnDestroy {
             this.destroyEffectRef.destroy();
             this.destroyEffectRef = null;
         }
-        this.unit.svg.set(null); // Clear SVG on destruction
+        this.unit.svgs.set([]); // Clear SVG on destruction
         console.log(`UnitSvgService for ${this.unit.getUnit().name} destroyed.`);
     }
 
     protected evaluateDestroyed() {
-        const svg = this.unit.svg();
+        const svg = this.unit.getFrontSvg();
         if (!svg) return;
         let destroyed = false;
         if (svg.querySelector('.critLoc')) {
@@ -253,7 +279,11 @@ export class UnitSvgService implements OnDestroy {
     }
 
     protected updateDestroyedOverlayDisplay(destroyed?: boolean) {
-        const svg = this.unit.svg();
+        const svgs = this.unit.svgs();
+        svgs.forEach(svg => this.updateDestroyedOverlayDisplayForSvg(svg, destroyed));
+    }
+
+    protected updateDestroyedOverlayDisplayForSvg(svg: SVGSVGElement, destroyed?: boolean) {
         if (!svg) return;
 
         let destroyedOverlay = svg.querySelector('#destroyed-overlay') as SVGElement | null;
@@ -282,7 +312,11 @@ export class UnitSvgService implements OnDestroy {
     }
 
     protected updateBVDisplay() {
-        const svg = this.unit.svg();
+        const svgs = this.unit.svgs();
+        svgs.forEach(svg => this.updateBVDisplayForSvg(svg));
+    }
+
+    protected updateBVDisplayForSvg(svg: SVGSVGElement) {
         if (!svg) return;
         const bvElement = svg.querySelector('#bv');
         if (bvElement) {
@@ -297,7 +331,11 @@ export class UnitSvgService implements OnDestroy {
     }
 
     protected updateCrewDisplay(crew: CrewMember[]) {
-        const svg = this.unit.svg();
+        const svgs = this.unit.svgs();
+        svgs.forEach(svg => this.updateCrewDisplayForSvg(svg, crew));
+    }
+
+    protected updateCrewDisplayForSvg(svg: SVGSVGElement, crew: CrewMember[]) {
         if (!svg) return;
 
         crew.forEach(member => {
@@ -339,7 +377,11 @@ export class UnitSvgService implements OnDestroy {
     }
 
     protected updateCritLocDisplay(critLocs: CriticalSlot[]) {
-        const svg = this.unit.svg();
+        const svgs = this.unit.svgs();
+        svgs.forEach(svg => this.updateCritLocDisplayForSvg(svg, critLocs));
+    }
+
+    protected updateCritLocDisplayForSvg(svg: SVGSVGElement, critLocs: CriticalSlot[]) {
         if (!svg) return;
         if (!svg.querySelector('.critLoc')) return;
 
@@ -364,7 +406,11 @@ export class UnitSvgService implements OnDestroy {
     }
 
     protected updateHeatDisplay(heat: { current: number, previous: number }) {
-        const svg = this.unit.svg();
+        const svgs = this.unit.svgs();
+        svgs.forEach(svg => this.updateHeatDisplayForSvg(svg, heat));
+    }
+
+    protected updateHeatDisplayForSvg(svg: SVGSVGElement, heat: { current: number, previous: number }) {
         if (!svg) return;
 
         if (!svg.getElementById('heatScale')) return;
@@ -509,7 +555,7 @@ export class UnitSvgService implements OnDestroy {
     }
 
     private getHeatElementFromValue(value: number): SVGElement | null {
-        const svg = this.unit.svg();
+        const svg = this.unit.getFrontSvg();
         if (!svg) return null;
         if (value > 30) {
             return svg.querySelector('#heatScale .overflowButton') as SVGElement | null;
@@ -517,9 +563,12 @@ export class UnitSvgService implements OnDestroy {
         return svg.querySelector(`#heatScale .heat[heat="${value}"]`) as SVGElement | null;
     }
 
-
     protected updateArmorDisplay(initial: boolean = false) {
-        const svg = this.unit.svg();
+        const svgs = this.unit.svgs();
+        svgs.forEach(svg => this.updateArmorDisplayForSvg(svg, initial));
+    }
+
+    protected updateArmorDisplayForSvg(svg: SVGSVGElement, initial: boolean = false) {
         if (!svg) return;
 
         const armorPips = svg.querySelectorAll(`.armor.pip`);
@@ -643,7 +692,11 @@ export class UnitSvgService implements OnDestroy {
     }
 
     protected updateHeatSinkPips() {
-        const svg = this.unit.svg();
+        const svgs = this.unit.svgs();
+        svgs.forEach(svg => this.updateHeatSinkPipsForSvg(svg));
+    }
+
+    protected updateHeatSinkPipsForSvg(svg: SVGSVGElement) {
         if (!svg) return;
 
         let hasDoubleHeatsinks = false;
@@ -745,7 +798,11 @@ export class UnitSvgService implements OnDestroy {
     }
 
     protected updateHitMod() {
-        const svg = this.unit.svg();
+        const svgs = this.unit.svgs();
+        svgs.forEach(svg => this.updateHitModForSvg(svg));
+    }
+
+    protected updateHitModForSvg(svg: SVGSVGElement) {
         if (!svg) return;
 
         let heatFireModifier = 0;
@@ -829,7 +886,11 @@ export class UnitSvgService implements OnDestroy {
     }
 
     protected updateInventory() {
-        const svg = this.unit.svg();
+        const svgs = this.unit.svgs();
+        svgs.forEach(svg => this.updateInventoryForSvg(svg));
+    }
+
+    protected updateInventoryForSvg(svg: SVGSVGElement) {
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
             if (entry.destroyed) {

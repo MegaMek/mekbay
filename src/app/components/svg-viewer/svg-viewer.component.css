@@ -124,3 +124,56 @@ svg {
     font-size: 1.2em;
     line-height: 1;
 }
+
+.sheet-switcher {
+    position: fixed;
+    bottom: 0px;
+    right: 0px;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    z-index: 30;
+}
+
+.sheet-switch-btn {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.15) 50%);
+    border: none;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: all 0.2s ease;
+    overflow: hidden;
+}
+
+.sheet-switch-btn:hover {
+    background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.25) 50%);
+
+}
+
+.sheet-switch-btn:active {
+    background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.35) 50%);
+}
+
+.sheet-label {
+    position: absolute;
+    bottom: 16px;
+    right: 9px;
+    color: white;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transform: rotate(-45deg);
+    transform-origin: center center;
+    white-space: nowrap;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    text-align: center;
+}

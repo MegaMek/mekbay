@@ -45,7 +45,7 @@ export class UnitSvgMekService extends UnitSvgService {
     // Mek-specific SVG handling logic goes here
 
     protected override updateAllDisplays() {
-        if (!this.unit.svg()) return;
+        if (!this.unit.getFrontSvg()) return;
         // Read all reactive state properties to ensure they are tracked by the effect.
         const crew = this.unit.getCrewMembers();
         const heat = this.unit.getHeat();
@@ -63,7 +63,7 @@ export class UnitSvgMekService extends UnitSvgService {
     }
 
     private updateCritSlotDisplay(criticalSlots: CriticalSlot[]) {
-        const svg = this.unit.svg();
+        const svg = this.unit.getFrontSvg();
         if (!svg) return;
         const ammoProfile = new Map<string, number>();
         criticalSlots.forEach(criticalSlot => {
@@ -261,7 +261,7 @@ export class UnitSvgMekService extends UnitSvgService {
     });
 
     private unitState = computed(() => {
-        const svg = this.unit.svg();
+        const svg = this.unit.getFrontSvg();
         if (!svg) return;
         const unit = this.unit.getUnit();
         if (!unit) return;
@@ -434,7 +434,7 @@ export class UnitSvgMekService extends UnitSvgService {
     });
     
     protected override updateInventory() {
-        const svg = this.unit.svg();
+        const svg = this.unit.getFrontSvg();
         if (!svg) return;
         const systemStatus = this.systemsStatus();
         const unitState = this.unitState();
@@ -647,7 +647,7 @@ export class UnitSvgMekService extends UnitSvgService {
     }
 
     protected override updateHitMod() {
-        const svg = this.unit.svg();
+        const svg = this.unit.getFrontSvg();
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
             const hitModifier = this.calculateHitModifiers(this.unit, entry, entry.hitModVariation || 0);
@@ -676,7 +676,7 @@ export class UnitSvgMekService extends UnitSvgService {
     }
 
     protected override evaluateDestroyed(): void {
-        const svg = this.unit.svg();
+        const svg = this.unit.getFrontSvg();
         if (!svg) return;
 
         const internalLocs = new Set<string>(this.unit.locations?.internal.keys() || []);
@@ -730,7 +730,7 @@ export class UnitSvgMekService extends UnitSvgService {
     }
 
     protected override updateArmorDisplay(initial: boolean = false) {
-        const svg = this.unit.svg();
+        const svg = this.unit.getFrontSvg();
         if (!svg) return;
 
         // Shields
