@@ -462,6 +462,11 @@
     cursor: pointer;
     transition: color 0.15s;
     outline: none;
+    padding: 6px 1px;
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .nav-arrow-left {
@@ -476,7 +481,7 @@
     color: var(--text-color);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 680px) {
     .header {
         padding-left: 0px;
         padding-right: 0px;

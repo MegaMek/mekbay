@@ -22,21 +22,6 @@
         </div>
     </div>
     <div dialog-body class="dialog-body">
-        <button
-            *ngIf="hasPrev"
-            class="nav-arrow nav-arrow-left"
-            (click)="onPrev()"
-            aria-label="Previous Unit">
-            &#10094;
-        </button>
-        <button
-            *ngIf="hasNext"
-            class="nav-arrow nav-arrow-right"
-            (click)="onNext()"
-            aria-label="Next Unit">
-            &#10095;
-        </button>
-        
         <div class="tab-content" *ngIf="activeTab() === 'General'">
             <!-- Basic Info -->
             <div class="basic-info-block allow-select">
@@ -210,6 +195,20 @@
         <button class="modal-btn bt-button" (click)="onClose()">CLOSE</button>
     </div>
 </base-dialog>
+<button
+    *ngIf="hasPrev"
+    class="nav-arrow nav-arrow-left"
+    (click)="onPrev()"
+    aria-label="Previous Unit">
+    &#10094;
+</button>
+<button
+    *ngIf="hasNext"
+    class="nav-arrow nav-arrow-right"
+    (click)="onNext()"
+    aria-label="Next Unit">
+    &#10095;
+</button>
  <floating-comp-info
     [unit]="unit"
     [comp]="hoveredComp()"
