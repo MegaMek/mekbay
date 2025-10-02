@@ -92,6 +92,7 @@ type RangeFilterOptions = {
 type AdvFilterOptions = DropdownFilterOptions | RangeFilterOptions;
 
 const DEFAULT_FILTER_CURVE = 0;
+const FACTION_EXTINCT = 3;
 
 function smartDropdownSort(options: string[], predefinedOrder?: string[]): string[] {
     if (predefinedOrder && predefinedOrder.length > 0) {
@@ -360,12 +361,6 @@ export class UnitSearchFiltersService {
     get isDataReady() { return this.dataService.isDataReady; }
     get units() { return this.isDataReady() ? this.dataService.getUnits() : []; }
 
-    private getCacheKey(units: Unit[], state: FilterState): string {
-        const activeKeys = Object.keys(state).filter(k => state[k]?.interactedWith).sort();
-        const values = activeKeys.map(k => JSON.stringify(state[k].value));
-        return `${units.length}-${activeKeys.join(',')}-${values.join('|')}`;
-    }
-
     public setSortOrder(key: string) {
         this.selectedSort.set(key);
     }
@@ -377,10 +372,18 @@ export class UnitSearchFiltersService {
     private getUnitIdsForSelectedEras(selectedEraNames: string[]): Set<number> | null {
         if (!selectedEraNames || selectedEraNames.length === 0) return null;
         const unitIds = new Set<number>();
+    
+        const extinctFaction = this.dataService.getFactions().find(f => f.id === FACTION_EXTINCT);
+        
         for (const eraName of selectedEraNames) {
             const era = this.dataService.getEraByName(eraName);
             if (era) {
-                (era.units as Set<number>).forEach(id => unitIds.add(id));
+                const extinctUnitIdsForEra = extinctFaction?.eras[era.id] as Set<number> || new Set<number>();
+                (era.units as Set<number>).forEach(id => {
+                    if (!extinctUnitIdsForEra.has(id)) {
+                        unitIds.add(id);
+                    }
+                });
             }
         }
         return unitIds;
