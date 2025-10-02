@@ -14,7 +14,7 @@
             <!-- Empty state -->
             <div *ngIf="!hasUnits()" class="empty-state-container">
                 <img src="/images/logo.png" alt="Mekbay Logo" class="empty-state-logo">
-                <unit-search></unit-search>
+                <unit-search [autoFocus]="true"></unit-search>
                 <div class="spinner-container" *ngIf="this.dataService.isDownloading() || this.dataService.isCloudForceLoading()">
                     <div class="spinner">
                         <div class="ring"></div>

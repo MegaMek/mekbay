@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, ViewChild, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, Host } from '@angular/core';
+import { Component, signal, ViewChild, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, Host, input } from '@angular/core';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
@@ -71,6 +71,7 @@ export class UnitSearchComponent implements OnDestroy {
     @ViewChild('advPanel') advPanel?: ElementRef<HTMLElement>;
     @ViewChild('resultsDropdown') resultsDropdown?: ElementRef<HTMLElement>;
 
+    autoFocus = input(false);
     advOpen = signal(false);
     focused = signal(false);
     activeIndex = signal<number | null>(null);
@@ -106,6 +107,15 @@ export class UnitSearchComponent implements OnDestroy {
         effect(() => {
             if (this.resultsVisible()) {
                 this.updateResultsDropdownPosition();
+            }
+        });
+        effect(() => {
+            if (this.autoFocus() && 
+                this.filtersService.isDataReady() && 
+                this.searchInput?.nativeElement) {
+                setTimeout(() => {
+                    this.searchInput?.nativeElement.focus();
+                }, 0);
             }
         });
     }
@@ -183,7 +193,7 @@ export class UnitSearchComponent implements OnDestroy {
         afterNextRender(() => {
             this.viewport?.checkViewportSize();
         }, { injector: this.injector });
-    }
+}
 
     updateAdvPanelPosition() {
         if (!this.advBtn) return;
