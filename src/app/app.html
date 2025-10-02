@@ -1,5 +1,4 @@
 <main>
-    <div class="beta-band noprint" (click)="showBetaDialog();">BETA</div>
     <div class="app-container" [class.menu-open]="this.layoutService.isMenuOpen()">
         <force-builder-viewer
             *ngIf="hasUnits()" (menuSelect)="onMenuSelected($event)">
@@ -7,13 +6,18 @@
 
         <div class="main-content">
 
-            <div class="content-area">
+            <div *ngIf="hasUnits()" class="content-area">
                 <svg-viewer [unit]="selectedUnit()"></svg-viewer>
             </div>
 
             <!-- Empty state -->
             <div *ngIf="!hasUnits()" class="empty-state-container">
-                <img src="/images/logo.png" alt="Mekbay Logo" class="empty-state-logo">
+                <popup-menu [class.hidden]="!this.dataService.isDataReady()" class="popup-menu-button" [options]="popupMenuOptions"
+                    (menuSelect)="onMenuSelected($event)"></popup-menu>
+                <div class="empty-state-logo">
+                    <img src="/images/logo.png" alt="Mekbay Logo">
+                    <div class="beta-notice noprint" (click)="showBetaDialog();">BETA</div>
+                </div>
                 <unit-search [autoFocus]="true"></unit-search>
                 <div class="spinner-container" *ngIf="this.dataService.isDownloading() || this.dataService.isCloudForceLoading()">
                     <div class="spinner">
@@ -27,8 +31,6 @@
                 <div class="footer">
                     <span class="footer-text" style="cursor:pointer" (click)="showLicenseDialog();">Mekbay is an open-source, fan-made project not affiliated with Catalyst Game Labs or The Topps Company, Inc. BattleTech and related marks are trademarks of The Topps Company, Inc. All rights reserved.</span>
                 </div>
-                <popup-menu class="popup-menu-button" [options]="popupMenuOptions"
-                    (menuSelect)="onMenuSelected($event)"></popup-menu>
             </div>
         </div>
 

@@ -20,6 +20,11 @@
   box-shadow: 0 2px 8px #000a;
 }
 
+.popup-menu.show-below {
+  bottom: auto;
+  top: 100%;
+}
+
 .popup-menu button {
   background: none;
   border: none;

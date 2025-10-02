@@ -76,7 +76,7 @@ import { UpdateButtonComponent } from './components/update-button/update-button.
         UpdateButtonComponent
     ],
     templateUrl: './app.html',
-    styleUrl: './app.css'
+    styleUrl: './app.scss'
 })
 export class App implements OnInit {
     private swUpdate = inject(SwUpdate);

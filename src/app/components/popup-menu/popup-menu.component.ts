@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, signal, effect, input, output, OnDestroy, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ElementRef, signal, effect, input, output, OnDestroy, inject, ChangeDetectionStrategy, afterNextRender, computed, viewChild } from '@angular/core';
 
 /*
  * Author: Drake
@@ -56,7 +56,26 @@ export class PopupMenuComponent implements OnDestroy {
     options = input<PopupMenuOption[]>([]);
     menuSelect = output<string>();
     
+    private _menuElement = viewChild<ElementRef>('popupMenu');
+    private _buttonElement = viewChild<ElementRef>('popupBtn');
+
     isOpen = signal(false);
+    
+    showBelow = computed(() => {
+        if (!this.isOpen()) return false;
+        
+        const button = this._buttonElement()?.nativeElement;
+        const menu = this._menuElement()?.nativeElement;
+        
+        if (!button || !menu) return false;
+        
+        const buttonRect = button.getBoundingClientRect();
+        const menuHeight = menu.offsetHeight;
+        const spaceAbove = buttonRect.top;
+        const spaceBelow = window.innerHeight - buttonRect.bottom;
+        
+        return spaceAbove < menuHeight && spaceBelow > spaceAbove;
+    });
     
     constructor() {
         effect(() => {
@@ -84,7 +103,6 @@ export class PopupMenuComponent implements OnDestroy {
     }
 
     toggleMenu() {
-        const open = !this.isOpen();
-        this.isOpen.set(open);
+        this.isOpen.set(!this.isOpen());
     }
 }
