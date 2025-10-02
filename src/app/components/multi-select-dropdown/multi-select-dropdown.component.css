@@ -234,4 +234,5 @@
     background-color: transparent;
     outline: none;
     color: var(--text-color);
+    text-align: center;
 }
