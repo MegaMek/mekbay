@@ -42,7 +42,7 @@ import { ForceNamerUtil } from '../utils/force-namer.util';
 import { Dialog } from '@angular/cdk/dialog';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { firstValueFrom } from 'rxjs';
-import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
+import { RenameForceDialogComponent, RenameForceDialogData } from '../components/rename-force-dialog/rename-force-dialog.component';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 
 /*
@@ -131,13 +131,13 @@ export class ForceBuilderService {
     }
 
     async promptChangeForceName() {
-        const ref = this.dialog.open<string | null>(InputDialogComponent, {
+        const ref = this.dialog.open<string | null>(RenameForceDialogComponent, {
             data: {
                 message: 'Force Name',
                 inputType: 'text',
                 defaultValue: this.force.name,
                 placeholder: 'Name'
-            } as InputDialogData
+            } as RenameForceDialogData
         });
         const newName = await firstValueFrom(ref.closed);
         if (newName && newName !== null) {
@@ -491,12 +491,24 @@ export class ForceBuilderService {
 
     private generateForceNameIfNeeded() {
         if (!this.force.instanceId) {
-            this.force.setName(ForceNamerUtil.generateForceName({
-                units: this.forceUnits(),
-                factions: this.dataService.getFactions(),
-                eras: this.dataService.getEras()
-            }), false);
+            this.force.setName(this.generateForceName(), false);
         }
+    }
+
+    public generateForceName(): string {
+        return ForceNamerUtil.generateForceName({
+            units: this.forceUnits(),
+            factions: this.dataService.getFactions(),
+            eras: this.dataService.getEras()
+        });
+    }
+
+    public getAllFactionsAvailable(): [string, number][] {
+        return ForceNamerUtil.getAvailableFactions(
+            this.forceUnits(),
+            this.dataService.getFactions(),
+            this.dataService.getEras()
+        );
     }
 
     /**

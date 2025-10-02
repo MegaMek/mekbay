@@ -7,6 +7,11 @@
     width: 100vw;
     overflow: hidden;
     position: relative;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
 }
 
 .main-content {
@@ -24,7 +29,6 @@
     overflow: hidden;
 }
 
-/* --- New Empty State Styles --- */
 .empty-state-container {
     display: flex;
     flex-direction: column;
@@ -91,8 +95,7 @@ svg-viewer {
     right: 0;
     bottom: 0;
     background-color: rgba(0, 0, 0, 0.5);
-    z-index: 998;
-    /* Below the sidebar */
+    z-index: 998; /* Below the sidebar */
     opacity: 1;
 }
 

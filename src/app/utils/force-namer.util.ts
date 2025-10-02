@@ -122,19 +122,16 @@ interface ForceNameOptions {
 }
 
 export class ForceNamerUtil {
-    static generateForceName({ units, factions, eras }: ForceNameOptions): string {
-        if (!units || units.length === 0) return 'Unnamed Force';
 
-        // Find the unit with the highest year
+    public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[]): [string, number][] {
         const maxYearUnit = units.reduce((a, b) => a.getUnit().year > b.getUnit().year ? a : b);
         const maxYear = maxYearUnit.getUnit().year;
-    
         const era = eras.find(e =>
             (e.years.from === undefined || maxYear >= e.years.from) &&
             (e.years.to === undefined || maxYear <= e.years.to)
         );
-        if (!era) return `Unknown Force`;
-
+        if (!era) return [];
+        
         // Count units per faction by matching unit.source to faction.name
         const factionCounts: Record<string, number> = {};
         for (const unit of units) {
@@ -151,13 +148,20 @@ export class ForceNamerUtil {
         }
         // Find the faction with the most units
         const unitCount = units.length;
-        let factionName: string | null = null;
+        
         const validFactions = Object.entries(factionCounts)
             .filter(([_, count]) => count / unitCount >= 0.8);
         const sortedFactions = validFactions.sort((a, b) => b[1] - a[1]);
-        const topCount = sortedFactions.length > 0 ? sortedFactions[0][1] : 0;
-        const topFactions = sortedFactions.filter(([_, count]) => count === topCount);
-            
+        return sortedFactions;
+    }
+
+    private static getMajorityFaction(units: ForceUnit[], factions: Faction[], eras: Era[]): string {
+        const availableFactions = this.getAvailableFactions(units, factions, eras);
+        if (availableFactions.length === 0) return `Unknown Force`;
+
+        const topCount = availableFactions.length > 0 ? availableFactions[0][1] : 0;
+        const topFactions = availableFactions.filter(([_, count]) => count === topCount);
+        let factionName: string;
         if (topFactions.length > 0 && topCount > 0) {
             // Pick one randomly if multiple share the top count
             const randomIndex = Math.floor(Math.random() * topFactions.length);
@@ -165,7 +169,13 @@ export class ForceNamerUtil {
         } else {
             factionName = 'Mercenary';
         }
-        
+        return factionName;
+    }
+
+    static generateForceName({ units, factions, eras }: ForceNameOptions): string {
+        if (!units || units.length === 0) return 'Unnamed Force';
+        const factionName = this.getMajorityFaction(units, factions, eras);
+        const unitCount = units.length;
         let forceType: ForceType;
         if (factionName === 'ComStar' || factionName === 'Word of Blake') {
             forceType = getForceType(unitCount, '', factionName);
