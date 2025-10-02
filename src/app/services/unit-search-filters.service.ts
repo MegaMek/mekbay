@@ -35,6 +35,7 @@ import { Injectable, signal, computed, effect, inject } from '@angular/core';
 import { Unit } from '../models/units.model';
 import { DataService } from './data.service';
 import { MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import { ActivatedRoute, Router } from '@angular/router';
 
 /*
  * Author: Drake
@@ -311,6 +312,9 @@ function getUnitComponentData(unit: Unit) {
 @Injectable({ providedIn: 'root' })
 export class UnitSearchFiltersService {
     public dataService = inject(DataService);
+    private router = inject(Router);
+    private route = inject(ActivatedRoute);
+    
     ADVANCED_FILTERS = ADVANCED_FILTERS;
     search = signal('');
     filterState = signal<FilterState>({});
@@ -318,6 +322,7 @@ export class UnitSearchFiltersService {
     selectedSortDirection = signal<'asc' | 'desc'>('asc');
     private totalRangesCache: Record<string, [number, number]> = {};
     private availableNamesCache = new Map<string, string[]>();
+    private urlStateInitialized = false;
 
     constructor() {
         effect(() => {
@@ -325,6 +330,9 @@ export class UnitSearchFiltersService {
                 this.calculateTotalRanges();
             }
         });
+        
+        this.loadFiltersFromUrlOnStartup();
+        this.updateUrlOnFiltersChange();
     }
 
     dynamicInternalLabel = computed(() => {
@@ -786,6 +794,237 @@ export class UnitSearchFiltersService {
         return vals;
     }
 
+    private loadFiltersFromUrlOnStartup() {
+        effect(() => {
+            const isDataReady = this.dataService.isDataReady();
+            if (isDataReady && !this.urlStateInitialized) {
+                const params = this.route.snapshot.queryParamMap;
+                
+                // Load search query
+                const searchParam = params.get('q');
+                if (searchParam) {
+                    this.search.set(decodeURIComponent(searchParam));
+                }
+                
+                // Load sort settings
+                const sortParam = params.get('sort');
+                if (sortParam) {
+                    this.selectedSort.set(sortParam);
+                }
+                
+                const sortDirParam = params.get('sortDir');
+                if (sortDirParam === 'desc' || sortDirParam === 'asc') {
+                    this.selectedSortDirection.set(sortDirParam);
+                }
+                
+                // Load filters
+                const filtersParam = params.get('filters');
+                if (filtersParam) {
+                    try {
+                        const decodedFilters = decodeURIComponent(filtersParam);
+                        const parsedFilters = this.parseCompactFiltersFromUrl(decodedFilters);
+                        this.filterState.set(parsedFilters);
+                    } catch (error) {
+                        console.warn('Failed to parse filters from URL:', error);
+                    }
+                }
+                
+                this.urlStateInitialized = true;
+            }
+        });
+    }
+
+    private updateUrlOnFiltersChange() {
+        effect(() => {
+            const search = this.search();
+            const filterState = this.filterState();
+            const selectedSort = this.selectedSort();
+            const selectedSortDirection = this.selectedSortDirection();
+
+            if (!this.urlStateInitialized) {
+                return;
+            }
+
+            const currentParams = this.route.snapshot.queryParamMap;
+            const queryParams: any = {};
+
+            // Preserve existing non-filter parameters
+            currentParams.keys.forEach(key => {
+                if (!['q', 'sort', 'sortDir', 'filters'].includes(key)) {
+                    queryParams[key] = currentParams.get(key);
+                }
+            });
+            
+            // Add search query if present
+            if (search.trim()) {
+                queryParams.q = encodeURIComponent(search.trim());
+            }
+            
+            // Add sort if not default
+            if (selectedSort !== 'name') {
+                queryParams.sort = selectedSort;
+            }
+            
+            // Add sort direction if not default
+            if (selectedSortDirection !== 'asc') {
+                queryParams.sortDir = selectedSortDirection;
+            }
+            
+            // Add filters if any are active
+            const filtersParam = this.generateCompactFiltersParam(filterState);
+            if (filtersParam) {
+                queryParams.filters = filtersParam;
+            }
+
+            this.router.navigate([], {
+                relativeTo: this.route,
+                queryParams: Object.keys(queryParams).length > 0 ? queryParams : {},
+                queryParamsHandling: 'replace',
+                replaceUrl: true
+            });
+        });
+    }
+
+    private generateCompactFiltersParam(state: FilterState): string | null {
+        const parts: string[] = [];
+        
+        for (const [key, filterState] of Object.entries(state)) {
+            if (!filterState.interactedWith) continue;
+            
+            const conf = ADVANCED_FILTERS.find(f => f.key === key);
+            if (!conf) continue;
+            
+            if (conf.type === AdvFilterType.RANGE) {
+                const [min, max] = filterState.value;
+                parts.push(`${key}:${min}-${max}`);
+            } else if (conf.type === AdvFilterType.DROPDOWN) {
+                if (conf.multistate) {
+                    const selection = filterState.value as MultiStateSelection;
+                    const subParts: string[] = [];
+                    
+                    for (const [name, selectionValue] of Object.entries(selection)) {
+                        if (selectionValue.state !== 'off') {
+                            // URL encode names that might contain spaces or special characters
+                            let part = encodeURIComponent(name);
+                            
+                            // Use single characters for states
+                            if (selectionValue.state === 'and') part += '.';
+                            else if (selectionValue.state === 'not') part += '!';
+                            // 'or' state is default, no suffix needed
+
+                            
+                            if (selectionValue.count > 1) {
+                                part += `~${selectionValue.count}`;
+                            }
+                            subParts.push(part);
+                        }
+                    }
+                    
+                    if (subParts.length > 0) {
+                        parts.push(`${key}:${subParts.join(',')}`);
+                    }
+                } else {
+                    const values = filterState.value as string[];
+                    if (values.length > 0) {
+                        // URL encode each value to handle spaces and special characters
+                        const encodedValues = values.map(v => encodeURIComponent(v));
+                        parts.push(`${key}:${encodedValues.join(',')}`);
+                    }
+                }
+            }
+        }
+        
+        return parts.length > 0 ? parts.join('|') : null;
+    }
+
+    private parseCompactFiltersFromUrl(filtersParam: string): FilterState {
+        const filterState: FilterState = {};
+        
+        try {
+            const parts = filtersParam.split('|');
+            
+            for (const part of parts) {
+                const colonIndex = part.indexOf(':');
+                if (colonIndex === -1) continue;
+                
+                const key = part.substring(0, colonIndex);
+                const valueStr = part.substring(colonIndex + 1);
+                
+                const conf = ADVANCED_FILTERS.find(f => f.key === key);
+                if (!conf) continue;
+                
+                if (conf.type === AdvFilterType.RANGE) {
+                    const dashIndex = valueStr.indexOf('-');
+                    if (dashIndex !== -1) {
+                        const min = parseFloat(valueStr.substring(0, dashIndex));
+                        const max = parseFloat(valueStr.substring(dashIndex + 1));
+                        if (!isNaN(min) && !isNaN(max)) {
+                            filterState[key] = {
+                                value: [min, max],
+                                interactedWith: true
+                            };
+                        }
+                    }
+                } else if (conf.type === AdvFilterType.DROPDOWN) {
+                    if (conf.multistate) {
+                        const selection: MultiStateSelection = {};
+                        const items = valueStr.split(',');
+                        
+                        for (const item of items) {
+                            let encodedName = item;
+                            let state: MultiState = 'or';
+                            let count = 1;
+                            
+                            // Parse state suffix
+                            if (item.endsWith('.')) {
+                                state = 'and';
+                                encodedName = item.slice(0, -1);
+                            } else if (item.endsWith('!')) {
+                                state = 'not';
+                                encodedName = item.slice(0, -1);
+                            } else {
+                                state = 'or'; // default state
+                            }
+                            
+                            // Parse count
+                            const starIndex = encodedName.indexOf('~');
+                            if (starIndex !== -1) {
+                                count = parseInt(encodedName.substring(starIndex + 1)) || 1;
+                                encodedName = encodedName.substring(0, starIndex);
+                            }
+                            
+                            // Decode the name to restore spaces and special characters
+                            const name = decodeURIComponent(encodedName);
+                            selection[name] = { state, count };
+                        }
+                        
+                        if (Object.keys(selection).length > 0) {
+                            filterState[key] = {
+                                value: selection,
+                                interactedWith: true
+                            };
+                        }
+                    } else {
+                        // Decode each value to restore spaces and special characters
+                        const values = valueStr.split(',')
+                            .filter(Boolean)
+                            .map(v => decodeURIComponent(v));
+                        if (values.length > 0) {
+                            filterState[key] = {
+                                value: values,
+                                interactedWith: true
+                            };
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to parse compact filters from URL:', error);
+        }
+        
+        return filterState;
+    }
+
     setFilter(key: string, value: any) {
         const conf = ADVANCED_FILTERS.find(f => f.key === key);
         if (!conf) return;
@@ -819,8 +1058,15 @@ export class UnitSearchFiltersService {
         }));
     }
 
+    // Override search setter to handle URL updates
+    setSearch(query: string) {
+        this.search.set(query);
+    }
+
     clearFilters() {
         this.search.set('');
         this.filterState.set({});
+        this.selectedSort.set('name');
+        this.selectedSortDirection.set('asc');
     }
 }

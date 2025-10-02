@@ -136,7 +136,8 @@ export class MultiSelectDropdownComponent {
             if (nextState === 'off') {
                 delete currentSelection[optionName];
             } else {
-                currentSelection[optionName] = { state: nextState, count: current.count };
+                const count = nextState === 'not' ? 1 : current.count;
+                currentSelection[optionName] = { state: nextState, count };
             }
             this.selectionChange.emit(currentSelection);
         } else {

@@ -12,7 +12,7 @@
                     'pill-and': option.state === 'and',
                     'pill-not': option.state === 'not'
                   }">
-                {{ option.name }}{{ option.count > 1 ? ' (' + option.count + ')' : '' }}
+                {{ option.name }}{{ (option.count > 1) ? ' (' + option.count + ')' : '' }}
                 <button class="remove-pill" (click)="removeOption(option.name, $event)">&#10005;</button>
             </span>
         </div>
