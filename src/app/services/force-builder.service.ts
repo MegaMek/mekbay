@@ -37,13 +37,14 @@ import { Unit } from '../models/units.model';
 import { Force, ForceUnit } from '../models/force-unit.model';
 import { DbService } from './db.service';
 import { DataService } from './data.service';
-import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { Dialog } from '@angular/cdk/dialog';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { firstValueFrom } from 'rxjs';
 import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
+import { BreakpointService } from './shared/breakpoint-service';
+import { SidebarService } from './shared/sidebar-service';
 
 /*
  * Author: Drake
@@ -53,7 +54,9 @@ import { UnitInitializerService } from '../components/svg-viewer/unit-initialize
 })
 export class ForceBuilderService {
     private dataService = inject(DataService);
-    private layoutService = inject(LayoutService);
+    breakpointService = inject(BreakpointService);
+    sidebarService = inject(SidebarService)
+
     private router = inject(Router);
     private route = inject(ActivatedRoute);
     private dialog = inject(Dialog);
@@ -307,8 +310,8 @@ export class ForceBuilderService {
                                 console.log(`ForceBuilderService: Loaded ${forceUnits.length} units from URL on startup.`);
                                 this.force.setUnits(forceUnits);
                                 this.selectUnit(forceUnits[0]);
-                                if (this.layoutService.isMobile()) {
-                                    this.layoutService.openMenu();
+                                if (this.breakpointService.isMobile()) {
+                                    this.sidebarService.openMenu();
                                 }
                             }
                         }

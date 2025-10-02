@@ -41,7 +41,6 @@ import { DataService } from './services/data.service';
 import { DbService } from './services/db.service';
 import { ForceBuilderService } from './services/force-builder.service';
 import { Unit } from './models/units.model';
-import { LayoutService } from './services/layout.service';
 import { LayoutModule } from '@angular/cdk/layout';
 import { UnitDetailsDialogComponent } from './components/unit-details-dialog/unit-details-dialog.component';
 import { OptionsService } from './services/options.service';
@@ -56,6 +55,9 @@ import { Dialog } from '@angular/cdk/dialog';
 import { BetaDialogComponent } from './components/beta-dialog/beta-dialog.component';
 import { ForceLoadDialogComponent } from './components/force-load-dialog/force-load-dialog.component';
 import { UpdateButtonComponent } from './components/update-button/update-button.component';
+import { BreakpointService } from './services/shared/breakpoint-service';
+import { SidebarService } from './services/shared/sidebar-service';
+import { TouchInputService } from './services/shared/touch-input-service';
 
 
 /*
@@ -82,11 +84,14 @@ export class App implements OnInit {
     private swUpdate = inject(SwUpdate);
     protected dataService = inject(DataService);
     private forceBuilderService = inject(ForceBuilderService);
-    protected layoutService = inject(LayoutService);
     private wsService = inject(WsService);
     private dialog = inject(Dialog);
     private toastService = inject(ToastService);
     private optionsService = inject(OptionsService);
+    breakpointService = inject(BreakpointService);
+    sidebarService = inject(SidebarService);
+    touchInputService = inject(TouchInputService);
+
     @ViewChild(ForceBuilderViewerComponent) forceBuilderViewer?: ForceBuilderViewerComponent;
 
     private lastUpdateCheck: number = 0;
@@ -95,7 +100,7 @@ export class App implements OnInit {
     protected updateAvailable = signal(false);
 
     isOverlayVisible = computed(() => {
-        return this.layoutService.isMobile() && (this.layoutService.isMenuOpen() || this.layoutService.isMenuDragging());
+        return this.breakpointService.isMobile() && (this.sidebarService.isOpen() || this.touchInputService.isMenuDragging());
     });
 
     popupMenuOptions = [
@@ -232,18 +237,18 @@ export class App implements OnInit {
     }
 
     toggleMenu() {
-        this.layoutService.toggleMenu();
+        this.sidebarService.toggleMenu();
     }
 
     closeMenu() {
-        this.layoutService.closeMenu();
+        this.sidebarService.closeMenu();
     }
 
     async onMenuSelected(option: string) {
         switch (option) {
             case 'new': {
                 if (await this.forceBuilderService.createNewForce()) {
-                    this.layoutService.closeMenu();
+                    this.sidebarService.closeMenu();
                 }
                 break;
             }
