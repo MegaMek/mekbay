@@ -110,7 +110,7 @@ export interface SetAmmoDialogData {
         }
 
         :host-context(.cdk-overlay-pane) {
-            transform: translateY(-10dvh);
+            transform: translateY(-10vh);
         }
 
         .content {
