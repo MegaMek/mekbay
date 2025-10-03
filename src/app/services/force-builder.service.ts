@@ -508,7 +508,7 @@ export class ForceBuilderService {
             this.forceUnits(),
             this.dataService.getFactions(),
             this.dataService.getEras()
-        );
+        ) ?? [];
     }
 
     /**

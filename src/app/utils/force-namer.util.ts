@@ -123,14 +123,14 @@ interface ForceNameOptions {
 
 export class ForceNamerUtil {
 
-    public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[]): [string, number][] {
+    public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[]): [string, number][] | null {
         const maxYearUnit = units.reduce((a, b) => a.getUnit().year > b.getUnit().year ? a : b);
         const maxYear = maxYearUnit.getUnit().year;
         const era = eras.find(e =>
             (e.years.from === undefined || maxYear >= e.years.from) &&
             (e.years.to === undefined || maxYear <= e.years.to)
         );
-        if (!era) return [];
+        if (!era) return null;
         
         // Count units per faction by matching unit.source to faction.name
         const factionCounts: Record<string, number> = {};
@@ -157,7 +157,8 @@ export class ForceNamerUtil {
 
     private static getMajorityFaction(units: ForceUnit[], factions: Faction[], eras: Era[]): string {
         const availableFactions = this.getAvailableFactions(units, factions, eras);
-        if (availableFactions.length === 0) return `Unknown Force`;
+        if (!availableFactions) return 'Unknown Force';
+        if (availableFactions.length === 0) return 'Mercenary';
 
         const topCount = availableFactions.length > 0 ? availableFactions[0][1] : 0;
         const topFactions = availableFactions.filter(([_, count]) => count === topCount);
