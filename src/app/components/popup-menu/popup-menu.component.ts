@@ -55,27 +55,10 @@ export class PopupMenuComponent implements OnDestroy {
     private _eref = inject(ElementRef);
     options = input<PopupMenuOption[]>([]);
     menuSelect = output<string>();
-    
-    private _menuElement = viewChild<ElementRef>('popupMenu');
-    private _buttonElement = viewChild<ElementRef>('popupBtn');
 
     isOpen = signal(false);
     
-    showBelow = computed(() => {
-        if (!this.isOpen()) return false;
-        
-        const button = this._buttonElement()?.nativeElement;
-        const menu = this._menuElement()?.nativeElement;
-        
-        if (!button || !menu) return false;
-        
-        const buttonRect = button.getBoundingClientRect();
-        const menuHeight = menu.offsetHeight;
-        const spaceAbove = buttonRect.top;
-        const spaceBelow = window.innerHeight - buttonRect.bottom;
-        
-        return spaceAbove < menuHeight && spaceBelow > spaceAbove;
-    });
+    showBelow = input<boolean>(false);
     
     constructor() {
         effect(() => {

@@ -151,16 +151,13 @@ svg-viewer {
 .popup-menu-button {
     position: absolute;
     top: 16px;
-    top: max(16px, env(safe-area-inset-top, 0px) + 8px);
-    right: 16px;
-    right: max(16px, env(safe-area-inset-right, 0px) + 16px);
     right: 16px;
     pointer-events: auto;
     opacity: 1;
     transition: opacity 0.3s ease;
 }
 
-.popup-menu-button.hidden {
+.popup-menu-button.disabled {
     pointer-events: none;
     opacity: 0.3;
 }

@@ -12,7 +12,7 @@
 
             <!-- Empty state -->
             <div *ngIf="!hasUnits()" class="empty-state-container">
-                <popup-menu [class.hidden]="!this.dataService.isDataReady()" class="popup-menu-button" [options]="popupMenuOptions"
+                <popup-menu [showBelow]="true" [class.disabled]="!this.dataService.isDataReady()" class="popup-menu-button" [options]="popupMenuOptions"
                     (menuSelect)="onMenuSelected($event)"></popup-menu>
                 <div class="empty-state-logo">
                     <img src="/images/logo.png" alt="Mekbay Logo">
