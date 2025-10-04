@@ -43,6 +43,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { UnitDetailsDialogComponent } from '../unit-details-dialog/unit-details-dialog.component';
 import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
 import { firstValueFrom } from 'rxjs';
+import { LayoutService } from '../../services/layout.service';
 
 /*
  * Author: Drake
@@ -56,11 +57,12 @@ import { firstValueFrom } from 'rxjs';
     styleUrl: './unit-search.component.css',
 })
 export class UnitSearchComponent implements OnDestroy {
+    public layoutService = inject(LayoutService);
     public filtersService = inject(UnitSearchFiltersService);
     private forceBuilderService = inject(ForceBuilderService);
     private injector = inject(Injector);
     private dialog = inject(Dialog);
-    
+
     public readonly ADVANCED_FILTERS = ADVANCED_FILTERS;
     public readonly AdvFilterType = AdvFilterType;
     public readonly SORT_OPTIONS = SORT_OPTIONS;
@@ -72,6 +74,7 @@ export class UnitSearchComponent implements OnDestroy {
     @ViewChild('resultsDropdown') resultsDropdown?: ElementRef<HTMLElement>;
 
     autoFocus = input(false);
+    expandedView = signal<boolean>(false);
     advOpen = signal(false);
     focused = signal(false);
     activeIndex = signal<number | null>(null);
@@ -88,12 +91,19 @@ export class UnitSearchComponent implements OnDestroy {
         width: '100%',
         height: '100%',
     });
-    
-    overlayVisible = computed(() => this.advOpen() || this.resultsVisible());
+
+    overlayVisible = computed(() => this.advOpen() || this.resultsVisible() || this.expandedView());
 
     resultsVisible = computed(() => {
+        if (this.expandedView()) {
+            return true;
+        }
         return (this.focused() || this.advOpen() || this.unitDetailsDialogOpen()) &&
             (this.filtersService.search() || this.isAdvActive());
+    });
+
+    itemSize = computed(() => {
+        return (this.expandedView() && this.layoutService.isMobile()) ? 150 : 75;
     });
 
     private resizeObserver?: ResizeObserver;
@@ -101,7 +111,7 @@ export class UnitSearchComponent implements OnDestroy {
     constructor() {
         effect(() => {
             if (this.advOpen()) {
-                this.updateAdvPanelPosition();  
+                this.updateAdvPanelPosition();
             }
         });
         effect(() => {
@@ -110,20 +120,32 @@ export class UnitSearchComponent implements OnDestroy {
             }
         });
         effect(() => {
-            if (this.autoFocus() && 
-                this.filtersService.isDataReady() && 
+            if (this.autoFocus() &&
+                this.filtersService.isDataReady() &&
                 this.searchInput?.nativeElement) {
                 setTimeout(() => {
                     this.searchInput?.nativeElement.focus();
                 }, 0);
             }
         });
+        afterNextRender(() => {
+            const expanded = this.expandedView();
+            const container = document.querySelector('.searchbar-container') as HTMLElement;
+            if (container) {
+                this.resizeObserver = new ResizeObserver(() => {
+                    if (this.resultsVisible() && !expanded) {
+                        this.updateResultsDropdownPosition();
+                    }
+                });
+                this.resizeObserver.observe(container);
+            }
+        }, { injector: this.injector });
     }
 
     ngOnDestroy() {
         this.resizeObserver?.disconnect();
     }
-    
+
     closeAllPanels() {
         this.focused.set(false);
         this.advOpen.set(false);
@@ -132,18 +154,19 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     onOverlayClick() {
+        if (this.expandedView()) return;
         this.closeAllPanels();
     }
 
     trackByUnitId(index: number, unit: Unit) {
         return unit.name;
     }
-    
+
     setSearch(val: string) {
         this.filtersService.search.set(val);
         this.activeIndex.set(null);
-    }    
-    
+    }
+
     closeAdvPanel() {
         this.advOpen.set(false);
     }
@@ -168,19 +191,34 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     updateResultsDropdownPosition() {
-        const container = document.querySelector('.searchbar-container') as HTMLElement;
-        if (!container) return;
-
-        const containerRect = container.getBoundingClientRect();
         const gap = 5;
-        const dropdownWidth = containerRect.width;
+        let dropdownWidth: number;
+        let top: number;
 
-        // Calculate TOTAL dropdown height
-        const top = containerRect.bottom + gap + window.scrollY;
+        if (this.expandedView()) {
+            // When expanded, container is fixed at top with 4px margins
+            // Calculate position based on the expanded state, not current DOM position
+            dropdownWidth = window.innerWidth - 8; // 4px left + 4px right margin
+            top = 4 + 40 + gap; // top margin + searchbar height + gap
+        } else {
+            // Normal mode: use actual container position
+            const container = document.querySelector('.searchbar-container') as HTMLElement;
+            if (!container) return;
+            
+            const containerRect = container.getBoundingClientRect();
+            dropdownWidth = containerRect.width;
+            top = containerRect.bottom + gap + window.scrollY;
+        }
+
         let height;
         if (this.filtersService.filteredUnits().length > 0) {
-            const availableHeight = window.innerHeight - top - (window.innerHeight > 600 ? 50 : 10); // variable bottom based on vertical estate
-            height = `${availableHeight}px`;
+            if (this.expandedView()) {
+                const availableHeight = window.innerHeight - top - 4;
+                height = `${availableHeight}px`;
+            } else {
+                const availableHeight = window.innerHeight - top - (window.innerHeight > 600 ? 50 : 10);
+                height = `${availableHeight}px`;
+            }
         } else {
             height = 'auto';
         }
@@ -190,10 +228,11 @@ export class UnitSearchComponent implements OnDestroy {
             width: `${dropdownWidth}px`,
             height: height
         });
+
         afterNextRender(() => {
             this.viewport?.checkViewportSize();
         }, { injector: this.injector });
-}
+    }
 
     updateAdvPanelPosition() {
         if (!this.advBtn) return;
@@ -204,7 +243,7 @@ export class UnitSearchComponent implements OnDestroy {
         const gap = 5;
         const spaceToRight = window.innerWidth - buttonRect.right - gap - 10;
         const hasSpaceForDouble = spaceToRight >= doublePanelWidth;
-        
+
         let panelWidth = singlePanelWidth;
         let columns = 1;
         if (hasSpaceForDouble) {
@@ -260,6 +299,7 @@ export class UnitSearchComponent implements OnDestroy {
         return Object.values(state).some(s => s.interactedWith);
     }
 
+    @HostListener('keydown', ['$event'])
     onKeydown(event: KeyboardEvent) {
         if (event.key === 'Escape') {
             event.stopPropagation();
@@ -268,6 +308,10 @@ export class UnitSearchComponent implements OnDestroy {
                 this.searchInput?.nativeElement.focus();
                 return;
             } else {
+                if (this.expandedView()) {
+                    this.expandedView.set(false);
+                    return;
+                }
                 this.focused.set(false);
                 this.searchInput?.nativeElement.blur();
             }
@@ -338,7 +382,7 @@ export class UnitSearchComponent implements OnDestroy {
         const currentFilter = this.filtersService.advOptions()[filterKey];
         const filterName = currentFilter?.label || filterKey;
         const message = `Enter the ${isMin ? 'minimum' : 'maximum'} ${filterName} value (${totalRange[0]} - ${totalRange[1]}):`;
-        
+
         const ref = this.dialog.open<number | null>(InputDialogComponent, {
             data: {
                 title: filterName,
@@ -350,16 +394,16 @@ export class UnitSearchComponent implements OnDestroy {
         });
         let newValue = await firstValueFrom(ref.closed);
         if (newValue === undefined || newValue === null || isNaN(Number(newValue))) return;
-                
+
         if (newValue < totalRange[0]) {
             newValue = totalRange[0];
         } else if (newValue > totalRange[1]) {
             newValue = totalRange[1];
         }
-        
+
         if (currentFilter && currentFilter.type === 'range') {
             const currentRange = [...currentFilter.value] as [number, number];
-            
+
             if (isMin) {
                 if (newValue > currentRange[1]) {
                     newValue = currentRange[1];
@@ -371,7 +415,7 @@ export class UnitSearchComponent implements OnDestroy {
                 }
                 currentRange[1] = newValue;
             }
-            
+
             this.setAdvFilter(filterKey, currentRange);
         }
     }
@@ -411,7 +455,7 @@ export class UnitSearchComponent implements OnDestroy {
             this.searchInput?.nativeElement.blur();
             this.unitDetailsDialogOpen.set(false);
         });
-        
+
         this.advOpen.set(false);
         this.activeIndex.set(null);
         (document.activeElement as HTMLElement)?.blur();

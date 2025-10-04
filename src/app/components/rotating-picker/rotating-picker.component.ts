@@ -485,14 +485,22 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
             this.incrementValue(1);
             return;
         }
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            this.incrementValue(10);
+            return;
+        } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            this.incrementValue(-10);
+            return;
+        }
 
         // Handle number input and minus sign
-        if (this.isValidInputCharacter(event.key)) {
+        if (this.isValidInputCharacter(event.key) || event.key === 'Backspace') {
             event.preventDefault();
             this.handleNumberInput(event.key);
             return;
         }
-
         // Handle Enter key to confirm current value
         if (event.key === 'Enter') {
             event.preventDefault();
@@ -574,6 +582,26 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
         // Clear any existing timeout
         this.clearKeyboardInputTimeout();
 
+        if (key === 'Backspace') {
+            if (this.keyboardInputBuffer.length === 0) {
+                // If we have nothing in the buffer, start from current value
+                this.keyboardInputBuffer = this.currentValue().toString();
+            }
+            if (this.keyboardInputBuffer.length > 0) {
+                this.keyboardInputBuffer = this.keyboardInputBuffer.slice(0, -1);
+                if (this.keyboardInputBuffer === '' || this.keyboardInputBuffer === '-') {
+                    this.currentValue.set(0);
+                } else {
+                    const numericValue = parseInt(this.keyboardInputBuffer, 10);
+                    if (!isNaN(numericValue)) {
+                        const clampedValue = this.clampValue(numericValue);
+                        this.currentValue.set(clampedValue);
+                    }
+                }
+            }
+            this.setKeyboardInputTimeout();
+            return;
+        }
         // Handle minus sign
         if (key === '-') {
             if (this.keyboardInputBuffer === '' || this.keyboardInputBuffer === '-') {
@@ -599,6 +627,7 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
     }
 
     private setKeyboardInputTimeout(): void {
+        this.clearKeyboardInputTimeout();
         this.keyboardInputTimeout = window.setTimeout(() => {
             this.keyboardInputBuffer = '';
             this.keyboardInputTimeout = null;

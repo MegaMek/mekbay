@@ -7,12 +7,22 @@
     z-index: 4;
 }
 
+.searchbar-container.expanded {
+    position: fixed;
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    width: calc(100vw - 8px);
+    z-index: 10;
+    background-color: #222;
+}
+
 .searchbar {
     width: 100%;
     font-size: 1rem;
     height: 40px;
     padding-left: 12px;
-    padding-right: 32px; /* Space for the cancel button */
+    padding-right: 32px;
 }
 
 .searchbar-cancel-btn {
@@ -107,13 +117,20 @@
     gap: 4px 16px;
 }
 
-.overlay-backdrop {
+.search-overlay  {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
     z-index: 1;
+    pointer-events: none;
+}
+.search-overlay:not([hidden]) {
+    pointer-events: auto;
+}
+.search-overlay.expanded {
+    background-color: var(--background-color-menu);
 }
 
 .results-dropdown {
@@ -126,17 +143,34 @@
     padding: 1px;
 }
 
+.results-dropdown.expanded {
+    position: fixed;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    width: calc(100vw - 8px) !important;
+}
+
 .results-dropdown-content {
     width: 100%;
     height: 100%;
     background-color: #222;
-    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.results-dropdown-viewport {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    touch-action: pan-y;
 }
 
 .results-dropdown-item {
     display: flex;
     min-width: 0;
-    min-height: 75px;
+    min-height: var(--item-size, 75px);
     box-sizing: border-box;
     border-bottom: 1px solid #666;
     font-size: 1em;
@@ -157,12 +191,6 @@
 
 .results-dropdown-item:last-child {
     border-bottom: none;
-}
-
-.results-dropdown-viewport {
-    width: 100%;
-    height: calc(100% - 40px);
-    touch-action: pan-y;
 }
 
 .results-dropdown-item.no-results {
@@ -211,6 +239,7 @@
     box-sizing: border-box;
     font-size: 0.8em;
     border-top: 1px solid #666;
+    flex-shrink: 0;
 }
 
 .results-count {    
@@ -231,7 +260,7 @@
     background-color: #222;
 }
 
-.results-sort .sort-direction-btn {
+.results-footer .bt-button {
     background-color: #222;
     height: 32px;
     width: 32px;
@@ -243,11 +272,11 @@
     cursor: pointer;
 }
 
-.results-sort .sort-direction-btn:hover {
+.results-footer .bt-button:hover {
     color: white;
 }
 
-.results-sort .sort-direction-btn svg {
+.results-footer .bt-button svg {
     width: 18px;
     height: 18px;
 }

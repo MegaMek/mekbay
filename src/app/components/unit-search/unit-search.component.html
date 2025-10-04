@@ -1,13 +1,16 @@
 
-<div class="overlay-backdrop" 
-     [hidden]="!this.filtersService.isDataReady() || !overlayVisible()"
-     (click)="onOverlayClick()">
+<div class="search-overlay overlay-backdrop" 
+    [class.expanded]="this.expandedView()"
+    [hidden]="!this.filtersService.isDataReady() || !overlayVisible()"
+    (click)="onOverlayClick()">
 </div>
 
-<div class="searchbar-container">
+<div class="searchbar-container" 
+    [class.expanded]="this.expandedView()"
+>
     <input #searchInput class="bt-input searchbar" type="text" [disabled]="!this.filtersService.isDataReady()"
-        [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'" [value]="this.filtersService.search()"
-        (input)="setSearch(searchInput.value)" (focus)="focused.set(true)" (keydown)="onKeydown($event)"
+        [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'" [value]="this.filtersService.search()"    
+        (input)="setSearch(searchInput.value)" (focus)="focused.set(true)"
         id="unit-search-input" autocomplete="off" />
     <button *ngIf="this.filtersService.search().length > 0" class="searchbar-cancel-btn" type="button"
         (click)="setSearch(''); searchInput.focus();" aria-label="Clear search" tabindex="-1">
@@ -24,16 +27,17 @@
 
 <div #resultsDropdown 
     class="results-dropdown framed-borders" 
+    [class.expanded]="this.expandedView()"
     [hidden]="!this.filtersService.isDataReady() || !resultsVisible()"
     [ngStyle]="resultsDropdownStyle()">
     <div class="results-dropdown-content">
     <ng-container *ngIf="this.filtersService.filteredUnits().length > 0; else noResults">
         <cdk-virtual-scroll-viewport class="results-dropdown-viewport" 
-            [itemSize]="75"
+            [itemSize]="this.itemSize()"
+            [style.--item-size.px]="this.itemSize()"
             minBufferPx="900" 
             maxBufferPx="1350"
-            tabindex="0"
-            (keydown)="onKeydown($event)">
+            tabindex="0">
             <div class="results-dropdown-item unit-card"
                 *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
                 [class.active]="activeIndex() === i" (mouseenter)="activeIndex.set(i)" (click)="onUnitClick(unit)">
@@ -80,6 +84,25 @@
         </cdk-virtual-scroll-viewport>
         
         <div class="results-footer" *ngIf="this.filtersService.filteredUnits().length > 0">
+            <div class="results-expand">
+                <button
+                    type="button"
+                    class="bt-button expand-btn"
+                    (click)="expandedView.set(!expandedView())"
+                    [title]="this.expandedView() ? 'Collapse View' : 'Expand View'"
+                    [attr.aria-label]="this.expandedView() ? 'Collapse View' : 'Expand View'">
+                    <ng-container *ngIf="this.expandedView(); else expandView">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true" role="img">
+                        <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </ng-container>
+                    <ng-template #expandView>
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true" role="img">
+                        <path d="M14 10L21 3M21 3H15M21 3V9M10 14L3 21M3 21H9M3 21L3 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </ng-template>
+                </button>
+            </div>
             <div class="results-count">
                 {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length === 1 ? '' : 's' }}
             </div>
