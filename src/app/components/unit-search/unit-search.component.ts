@@ -504,7 +504,6 @@ export class UnitSearchComponent implements OnDestroy {
     private getDisplaySortKey(): string {
         const key = this.filtersService.selectedSort();
         // These keys are shown in the main unit card, we don't need to repeat them in the slot
-        console.log(key);
         if (['name', 'bv', 'tons', 'year', 'role'].includes(key)) {
             return '';
         }
