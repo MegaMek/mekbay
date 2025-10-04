@@ -59,7 +59,7 @@ export class LayoutService {
     constructor() {
         effect((onCleanup) => {
             this.isTouchInput.set(('ontouchstart' in window) || navigator.maxTouchPoints > 0);
-            const mediaQuery = window.matchMedia('(max-width: 767.98px)');
+            const mediaQuery = window.matchMedia('(max-width: 899.98px)');
 
             // Initialize current state
             this.mobileQueryMatches.set(mediaQuery.matches);
