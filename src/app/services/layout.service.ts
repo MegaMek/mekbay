@@ -111,7 +111,7 @@ export class LayoutService {
     }
 
     private updateOrientation() {
-        const isPortrait = window.screen.height > window.screen.width;
+        const isPortrait = window.innerHeight > window.innerWidth;
         this.isPortraitOrientation.set(isPortrait);
     }
 
