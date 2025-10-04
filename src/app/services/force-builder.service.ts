@@ -503,12 +503,12 @@ export class ForceBuilderService {
         });
     }
 
-    public getAllFactionsAvailable(): [string, number][] {
+    public getAllFactionsAvailable(): Map<string, number> | null {
         return ForceNamerUtil.getAvailableFactions(
             this.forceUnits(),
             this.dataService.getFactions(),
             this.dataService.getEras()
-        ) ?? [];
+        );
     }
 
     /**

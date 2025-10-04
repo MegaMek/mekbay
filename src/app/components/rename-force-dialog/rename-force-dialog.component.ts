@@ -244,11 +244,11 @@ export class RenameForceDialogComponent {
     private computeFactionsText(): string | null {
         const factions = this.forceBuilder.getAllFactionsAvailable();
         const totalUnits = this.forceBuilder.forceUnits().length;
-        if (!totalUnits || factions.length === 0) {
+        if (!totalUnits || !factions || factions.size === 0) {
             return null;
         }
-        const formatted = factions.map(([name, count]) => {
-            const percent = Math.round((count / totalUnits) * 100);
+        const formatted = Array.from(factions.entries()).sort((a, b) => b[1] - a[1]).map(([name, percentage]) => {
+            const percent = Math.round(percentage * 100);
             if (percent < 100) {
                 return `${name} (${percent}%)`;
             } else {

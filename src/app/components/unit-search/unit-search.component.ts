@@ -103,7 +103,7 @@ export class UnitSearchComponent implements OnDestroy {
             if (this.advOpen()) {
                 this.updateAdvPanelPosition();  
             }
-        });        
+        });
         effect(() => {
             if (this.resultsVisible()) {
                 this.updateResultsDropdownPosition();

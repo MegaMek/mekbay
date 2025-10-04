@@ -92,7 +92,7 @@ type RangeFilterOptions = {
 type AdvFilterOptions = DropdownFilterOptions | RangeFilterOptions;
 
 const DEFAULT_FILTER_CURVE = 0;
-const FACTION_EXTINCT = 3;
+export const FACTION_EXTINCT = 3;
 
 function smartDropdownSort(options: string[], predefinedOrder?: string[]): string[] {
     if (predefinedOrder && predefinedOrder.length > 0) {

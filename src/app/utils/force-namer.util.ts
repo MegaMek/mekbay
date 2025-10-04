@@ -35,6 +35,7 @@ import { Unit } from '../models/units.model';
 import { ForceUnit } from '../models/force-unit.model';
 import { Faction, Factions } from '../models/factions.model';
 import { Era } from '../models/eras.model';
+import { FACTION_EXTINCT } from '../services/unit-search-filters.service';
 
 /*
  * Author: Drake
@@ -121,56 +122,70 @@ interface ForceNameOptions {
     eras: Era[];
 }
 
+const MIN_UNITS_PERCENTAGE = 0.7;
+
 export class ForceNamerUtil {
 
-    public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[]): [string, number][] | null {
-        const maxYearUnit = units.reduce((a, b) => a.getUnit().year > b.getUnit().year ? a : b);
-        const maxYear = maxYearUnit.getUnit().year;
-        const era = eras.find(e =>
-            (e.years.from === undefined || maxYear >= e.years.from) &&
-            (e.years.to === undefined || maxYear <= e.years.to)
+    public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[]): Map<string, number> | null {
+        if (!units?.length) return null;
+        const referenceYear = units.reduce(
+            (max, u) => Math.max(max, u.getUnit().year),
+            Number.NEGATIVE_INFINITY
         );
-        if (!era) return null;
-        
-        // Count units per faction by matching unit.source to faction.name
-        const factionCounts: Record<string, number> = {};
-        for (const unit of units) {
-            for (const faction of factions) {
+        // All eras that include referenceYear or occur after it
+        const erasInOrAfter = eras.filter(e => referenceYear <= (e.years.to ?? Number.POSITIVE_INFINITY));
+
+        if (erasInOrAfter.length === 0) return null;
+        const unitIds = new Set(units.map(u => u.getUnit().id));
+        const totalUnits = units.length;
+
+        const results: Map<string, number> = new Map();
+
+        for (const faction of factions) {
+            if (faction.id === FACTION_EXTINCT) continue;
+
+            let highestPercentage = 0;
+            for (const era of erasInOrAfter) {
+
                 const eraUnitIds = faction.eras[era.id];
-                if (eraUnitIds &&
-                    (eraUnitIds instanceof Set
-                        ? eraUnitIds.has(unit.getUnit().id)
-                        : eraUnitIds.includes(unit.getUnit().id))
-                ) {
-                    factionCounts[faction.name] = (factionCounts[faction.name] || 0) + 1;
+                if (!eraUnitIds) continue;
+
+                let count = 0;
+                if (eraUnitIds instanceof Set) {
+                    for (const id of unitIds) {
+                        if (eraUnitIds.has(id)) count++;
+                    }
+                } else {
+                    for (const id of unitIds) {
+                        if (eraUnitIds.includes(id)) count++;
+                    }
+                }
+
+                if (count > 0) {
+                    highestPercentage = Math.max(highestPercentage, count / totalUnits);
                 }
             }
+
+            if (highestPercentage >= MIN_UNITS_PERCENTAGE) {
+                results.set(faction.name, highestPercentage);
+            }
         }
-        // Find the faction with the most units
-        const unitCount = units.length;
-        
-        const validFactions = Object.entries(factionCounts)
-            .filter(([_, count]) => count / unitCount >= 0.8);
-        const sortedFactions = validFactions.sort((a, b) => b[1] - a[1]);
-        return sortedFactions;
+        return results;
     }
 
     private static getMajorityFaction(units: ForceUnit[], factions: Faction[], eras: Era[]): string {
         const availableFactions = this.getAvailableFactions(units, factions, eras);
         if (!availableFactions) return 'Unknown Force';
-        if (availableFactions.length === 0) return 'Mercenary';
 
-        const topCount = availableFactions.length > 0 ? availableFactions[0][1] : 0;
-        const topFactions = availableFactions.filter(([_, count]) => count === topCount);
-        let factionName: string;
-        if (topFactions.length > 0 && topCount > 0) {
-            // Pick one randomly if multiple share the top count
-            const randomIndex = Math.floor(Math.random() * topFactions.length);
-            factionName = topFactions[randomIndex][0];
-        } else {
-            factionName = 'Mercenary';
-        }
-        return factionName;
+        const entries = Array.from(availableFactions.entries());
+        if (entries.length === 0) return 'Mercenary';
+
+        const topCount = Math.max(...entries.map(([, c]) => c));
+        const topFactions = entries.filter(([, c]) => c === topCount).map(([name]) => name);
+
+        return topFactions.length === 1
+            ? topFactions[0]
+            : topFactions[Math.floor(Math.random() * topFactions.length)];
     }
 
     static generateForceName({ units, factions, eras }: ForceNameOptions): string {
