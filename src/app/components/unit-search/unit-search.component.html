@@ -65,6 +65,14 @@
                                 <span class="value">{{ unit.year }}</span>                    
                                 <img src="/images/calendar.svg" class="icon" alt="Year">
                             </div>
+                            <ng-container *ngIf="this.expandedView()">
+                                <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'techBase'">
+                                    <span class="value">{{ unit.techBase }}</span>
+                                </div>
+                                <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'level'">
+                                    <span class="value">{{ unit.level }}</span>                  
+                                </div>
+                            </ng-container>
                             <ng-container *ngIf="getSortSlot(unit) as slot">
                                 <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
                                     <span class="value">

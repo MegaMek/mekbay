@@ -103,7 +103,7 @@ export class UnitSearchComponent implements OnDestroy {
     });
 
     itemSize = computed(() => {
-        return (this.expandedView() && this.layoutService.isMobile()) ? 150 : 75;
+        return (this.expandedView() && this.layoutService.isMobile()) ? 75 : 75;
     });
 
     private resizeObserver?: ResizeObserver;
@@ -504,8 +504,14 @@ export class UnitSearchComponent implements OnDestroy {
     private getDisplaySortKey(): string {
         const key = this.filtersService.selectedSort();
         // These keys are shown in the main unit card, we don't need to repeat them in the slot
-        if (key === 'name' || key === 'bv' || key === 'tons' || key === 'year' || key === 'role') {
+        console.log(key);
+        if (['name', 'bv', 'tons', 'year', 'role'].includes(key)) {
             return '';
+        }
+        if (this.expandedView()) {
+            if (['techBase', 'level'].includes(key)) {
+                return '';
+            }
         }
         return key;
     }
