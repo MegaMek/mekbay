@@ -37,8 +37,7 @@
         <!-- Overlay to close the menu on mobile -->
         <div class="menu-overlay" *ngIf="isOverlayVisible()" (click)="closeMenu()" [style.opacity]="this.layoutService.menuOpenRatio()">
         </div>
+        <update-button [updateAvailable]="updateAvailable()"></update-button>
+        <app-toasts></app-toasts>
     </div>
 </main>
-
-<update-button [updateAvailable]="updateAvailable()"></update-button>
-<app-toasts></app-toasts>

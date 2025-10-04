@@ -2,7 +2,6 @@
     position: fixed;
     --base-bottom-spacing: 24px;
     bottom: var(--base-bottom-spacing);
-    bottom: calc(var(--base-bottom-spacing) + env(safe-area-inset-bottom));
     right: 24px;
     gap: 12px;
     z-index: 10000;
