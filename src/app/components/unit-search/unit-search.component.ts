@@ -76,6 +76,7 @@ export class UnitSearchComponent implements OnDestroy {
     autoFocus = input(false);
     expandedView = signal<boolean>(false);
     advOpen = signal(false);
+    advPanelDocked = computed(() => this.expandedView() && this.advOpen() && this.layoutService.windowWidth() >= 1280);
     focused = signal(false);
     activeIndex = signal<number | null>(null);
     private unitDetailsDialogOpen = signal(false);
@@ -112,6 +113,7 @@ export class UnitSearchComponent implements OnDestroy {
         effect(() => {
             if (this.advOpen()) {
                 this.updateAdvPanelPosition();
+                this.updateResultsDropdownPosition();
             }
         });
         effect(() => {
@@ -198,12 +200,16 @@ export class UnitSearchComponent implements OnDestroy {
         const gap = 5;
         let dropdownWidth: number;
         let top: number;
+        let right: string | undefined;
 
         if (this.expandedView()) {
             // When expanded, container is fixed at top with 4px margins
             // Calculate position based on the expanded state, not current DOM position
             dropdownWidth = window.innerWidth - 8; // 4px left + 4px right margin
             top = 4 + 40 + gap; // top margin + searchbar height + gap
+            if (this.advPanelDocked()) {
+                right = `308px`;
+            }
         } else {
             // Normal mode: use actual container position
             const container = document.querySelector('.searchbar-container') as HTMLElement;
@@ -230,7 +236,8 @@ export class UnitSearchComponent implements OnDestroy {
         this.resultsDropdownStyle.set({
             top: `${top}px`,
             width: `${dropdownWidth}px`,
-            height: height
+            height: height,
+            ...(right && { right })
         });
 
         afterNextRender(() => {
@@ -263,12 +270,12 @@ export class UnitSearchComponent implements OnDestroy {
             // Display on the RIGHT side of the button
             left = buttonRect.right + gap;
             top = buttonRect.top + window.scrollY;
-            availableHeight = window.innerHeight - top - 10;
+            availableHeight = window.innerHeight - top - 4;
         } else {
             // Display UNDER the button, aligned to the right
             left = buttonRect.right - panelWidth + window.scrollX;
             top = buttonRect.bottom + gap + window.scrollY;
-            availableHeight = window.innerHeight - top - 10;
+            availableHeight = window.innerHeight - top - 4;
             left = Math.max(10, left);
         }
 
@@ -460,7 +467,9 @@ export class UnitSearchComponent implements OnDestroy {
             this.unitDetailsDialogOpen.set(false);
         });
 
-        this.advOpen.set(false);
+        if (!this.advPanelDocked()) {
+            this.advOpen.set(false);
+        }
         this.activeIndex.set(null);
         (document.activeElement as HTMLElement)?.blur();
     }

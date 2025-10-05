@@ -41,7 +41,6 @@ import { Injectable, signal, effect, PLATFORM_ID, inject, computed } from '@angu
 })
 export class LayoutService {
     /** A signal that is true if the viewport matches mobile breakpoints. */
-    private isPortraitOrientation = signal(false);
     private mobileQueryMatches = signal(false);
     public isMobile = computed(() => {
         return  this.mobileQueryMatches() || this.isPortraitOrientation();
@@ -53,6 +52,9 @@ export class LayoutService {
     public isTouchInput = signal(false);
     public activeTouchPoints = signal(0);
     private lastTouchTime = 0;
+    public windowWidth = signal(typeof window !== 'undefined' ? window.innerWidth : 1280);
+    public windowHeight = signal(typeof window !== 'undefined' ? window.innerHeight : 800);
+    public isPortraitOrientation = computed(() => this.windowHeight() > this.windowWidth());
 
     private readonly platformId: object = inject(PLATFORM_ID);
 
@@ -63,7 +65,6 @@ export class LayoutService {
 
             // Initialize current state
             this.mobileQueryMatches.set(mediaQuery.matches);
-            this.updateOrientation();
             
             // Listen for media query changes
             const mediaQueryHandler = (event: MediaQueryListEvent) => {
@@ -71,8 +72,9 @@ export class LayoutService {
             };
             
             // Listen for orientation changes
-            const orientationHandler = () => {
-                this.updateOrientation();
+            const resizeHandler = () => {
+                this.windowWidth.set(window.innerWidth);
+                this.windowHeight.set(window.innerHeight);
             };
 
             // Global input listeners
@@ -80,8 +82,8 @@ export class LayoutService {
             window.addEventListener('touchend', this.updateTouchPoints, { passive: true, capture: true });
             window.addEventListener('touchcancel', this.updateTouchPoints, { passive: true, capture: true });
             window.addEventListener('mousedown', this.setMouseInput, { passive: true, capture: true });
-            window.addEventListener('orientationchange', orientationHandler, { passive: true, capture: true });
-            window.addEventListener('resize', orientationHandler, { passive: true, capture: true });
+            window.addEventListener('orientationchange', resizeHandler, { passive: true, capture: true });
+            window.addEventListener('resize', resizeHandler, { passive: true, capture: true });
             mediaQuery.addEventListener('change', mediaQueryHandler);
 
             onCleanup(() => {
@@ -89,8 +91,8 @@ export class LayoutService {
                 window.removeEventListener('touchend', this.updateTouchPoints, { capture: true });
                 window.removeEventListener('touchcancel', this.updateTouchPoints, { capture: true });
                 window.removeEventListener('mousedown', this.setMouseInput, { capture: true });    
-                window.removeEventListener('orientationchange', orientationHandler, { capture: true });
-                window.removeEventListener('resize', orientationHandler, { capture: true });
+                window.removeEventListener('orientationchange', resizeHandler, { capture: true });
+                window.removeEventListener('resize', resizeHandler, { capture: true });
                 mediaQuery.removeEventListener('change', mediaQueryHandler);
             });
         });
@@ -108,11 +110,6 @@ export class LayoutService {
         effect(() => {
             document.documentElement.classList.toggle('mobile-mode', this.isMobile());
         });
-    }
-
-    private updateOrientation() {
-        const isPortrait = window.innerHeight > window.innerWidth;
-        this.isPortraitOrientation.set(isPortrait);
     }
 
     /** Toggles the mobile menu's open/closed state. */

@@ -92,7 +92,6 @@
     padding: 16px;
     overflow-y: auto;
     min-width: 300px;
-    transition: all 0.2s ease-in-out;
 }
 
 .adv-panel .range-values {
@@ -149,6 +148,11 @@
     right: 4px;
     bottom: 4px;
     width: calc(100vw - 8px) !important;
+}
+
+.results-dropdown[style*="right:"] {
+    left: 4px;
+    width: auto !important;
 }
 
 .results-dropdown-content {
