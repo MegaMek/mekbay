@@ -167,6 +167,10 @@
     box-sizing: border-box;
 }
 
+.basic-info-block img {
+    margin-top: -4px;
+}
+
 .quirks {
     display: flex;
     flex-direction: row;
