@@ -14,17 +14,19 @@
             <div *ngIf="!hasUnits()" class="empty-state-container">
                 <popup-menu [showBelow]="true" [class.disabled]="!this.dataService.isDataReady()" class="popup-menu-button" [options]="popupMenuOptions"
                     (menuSelect)="onMenuSelected($event)"></popup-menu>
-                <div class="empty-state-logo">
-                    <img src="/images/logo.png" alt="Mekbay Logo">
-                    <div class="beta-notice noprint" (click)="showBetaDialog();">BETA</div>
-                </div>
-                <unit-search [autoFocus]="true"></unit-search>
-                <div class="spinner-container" *ngIf="this.dataService.isDownloading() || this.dataService.isCloudForceLoading()">
-                    <div class="spinner">
-                        <div class="ring"></div>
+                <div class="main-search">
+                    <div class="empty-state-logo">
+                        <img src="/images/logo.png" alt="Mekbay Logo">
+                        <div class="beta-notice noprint" (click)="showBetaDialog();">BETA</div>
                     </div>
-                    <div>
-                        Downloading data...
+                    <unit-search [autoFocus]="true"></unit-search>
+                    <div class="spinner-container" *ngIf="this.dataService.isDownloading() || this.dataService.isCloudForceLoading()">
+                        <div class="spinner">
+                            <div class="ring"></div>
+                        </div>
+                        <div>
+                            Downloading data...
+                        </div>
                     </div>
                 </div>
 

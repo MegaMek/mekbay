@@ -5,6 +5,7 @@
     /* Use dynamic viewport height to account for browser UI */
     height: 100dvh;
     width: 100vw;
+    width: 100dvw;
     overflow: hidden;
     position: relative;
     box-sizing: border-box;
@@ -34,11 +35,25 @@
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
-    padding-top: 15vh;
     height: 100%;
     width: 100%;
     gap: 30px;
     box-sizing: border-box;
+}
+
+.main-search {
+    margin-top: max(8%, 100px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    gap: 30px;
+    box-sizing: border-box;
+
+    @media (max-height: 400px) {
+        margin-top: 20px;
+    }
 }
 
 .footer {
