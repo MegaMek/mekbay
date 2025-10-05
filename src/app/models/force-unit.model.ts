@@ -41,8 +41,7 @@ import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { C3NetworkUtil } from '../utils/c3-network.util';
-import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
-import { Dialog } from '@angular/cdk/dialog';
+import { generateUUID } from '../services/ws.service';
 /*
  * Author: Drake
  */
@@ -239,7 +238,7 @@ export class ForceUnit {
         unitInitializer: UnitInitializerService,
         injector: Injector
     ) {
-        this.id = crypto.randomUUID();
+        this.id = generateUUID();
         this.force = force;
         this.unit = structuredClone(unit);
         this.viewState = {

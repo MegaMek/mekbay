@@ -37,6 +37,7 @@ import { OptionsService } from '../../services/options.service';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DbService } from '../../services/db.service';
+import { generateUUID } from '../../services/ws.service';
 
 /*
  * Author: Drake
@@ -139,7 +140,7 @@ export class OptionsDialogComponent {
         const trimmed = this.userUuid.trim();
         if (trimmed.length === 0) {
             // Generate a new UUID if input is empty
-            this.userUuid = crypto.randomUUID();
+            this.userUuid = generateUUID();
             this.userUuid = await this.optionsService.getOrCreateUuid(true);
         } else if (trimmed.length < 10 || trimmed.length > 40) {
             this.userUuidError = 'User Identifier must be between 10 and 40 characters long.';

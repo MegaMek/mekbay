@@ -34,7 +34,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
 import { Options } from '../models/options.model';
-import { WsService } from './ws.service';
+import { generateUUID, WsService } from './ws.service';
 
 /*
  * Author: Drake
@@ -79,7 +79,7 @@ export class OptionsService {
     public async getOrCreateUuid(forceNew: boolean = false): Promise<string> {
         let options = await this.dbService.getOptions();
         if (forceNew || !options || !options.uuid || options.uuid.trim().length === 0) {
-            const newUuid = crypto.randomUUID();
+            const newUuid = generateUUID();
             if (!options) options = {};
             options.uuid = newUuid;
             await this.dbService.saveOptions(options as Options);

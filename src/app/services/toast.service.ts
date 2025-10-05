@@ -32,6 +32,7 @@
  */
 
 import { Injectable, signal } from '@angular/core';
+import { generateUUID } from './ws.service';
 
 /*
  * Author: Drake
@@ -52,7 +53,7 @@ export class ToastService {
     private timeouts = new Map<string, any>();
 
     show(message: string, type: Toast['type'], id?: string): string {
-        const toastId = id || crypto.randomUUID();
+        const toastId = id || generateUUID();
         let toasts = this.toastsSignal();
         
         // If ID provided, check if toast already exists

@@ -36,6 +36,20 @@ import { Injectable, signal } from '@angular/core';
 /*
  * Author: Drake
  */
+
+export function generateUUID(): string {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            return crypto.randomUUID();
+        }
+        
+        // Fallback for non-secure contexts
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
 @Injectable({
     providedIn: 'root'
 })
@@ -44,7 +58,7 @@ export class WsService {
     private wsUrl = 'wss://mekbay.com/ws';
     private wsReady?: Promise<void>;
     private wsReadyResolver: (() => void) | null = null;
-    private wsSessionId = crypto.randomUUID();
+    private wsSessionId = generateUUID();
     private subscriptions: Map<string, (data: any) => void> = new Map();
 
     public wsConnected = signal<boolean>(false);
@@ -150,14 +164,14 @@ export class WsService {
 
     public send(payload: object): void {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-        const requestId = crypto.randomUUID();
+        const requestId = generateUUID();
         const message = { ...payload, sessionId: this.getSessionId(), requestId };
         this.ws.send(JSON.stringify(message));
     }
 
     public async sendAndWaitForResponse(payload: object): Promise<any | null> {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return null;
-        const requestId = crypto.randomUUID();
+        const requestId = generateUUID();
         const message = { ...payload, sessionId: this.getSessionId(), requestId };
         const ws = this.ws;
         ws.send(JSON.stringify(message));

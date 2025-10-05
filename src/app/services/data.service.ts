@@ -41,7 +41,7 @@ import { ADVANCED_FILTERS, AdvFilterType } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, IAmmo, IEquipment, IWeapon, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { Quirk, Quirks } from '../models/quirks.model';
-import { WsService } from './ws.service';
+import { generateUUID, WsService } from './ws.service';
 import { OptionsService } from './options.service';
 import { Force } from '../models/force-unit.model';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
@@ -523,7 +523,7 @@ export class DataService {
             }).subscribe({
                 next: async (response) => {
                     try {
-                        const etag = response.headers.get('ETag') || crypto.randomUUID(); // Fallback to random UUID if no ETag
+                        const etag = response.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
                         const data = response.body;
                         if (!data) {
                             throw new Error(`No body received for ${remoteStore.key}`);
@@ -570,7 +570,7 @@ export class DataService {
         if (!resp.ok) {
             throw new Error(`Failed to fetch SVG: ${resp.statusText}`);
         }
-        const etag = resp.headers.get('ETag') || crypto.randomUUID(); // Fallback to random UUID if no ETag
+        const etag = resp.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
         const svgText = await resp.text();
         const parser = new DOMParser();
         const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
@@ -637,7 +637,7 @@ export class DataService {
 
     public async saveForce(force: Force): Promise<void> {
         if (!force.instanceId || !force.owned) {
-            force.instanceId = crypto.randomUUID();
+            force.instanceId = generateUUID();
             force.owned = true;
         }
         const key = force.instanceId;
