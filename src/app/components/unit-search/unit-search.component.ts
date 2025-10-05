@@ -74,7 +74,7 @@ export class UnitSearchComponent implements OnDestroy {
     @ViewChild('resultsDropdown') resultsDropdown?: ElementRef<HTMLElement>;
 
     autoFocus = input(false);
-    expandedView = signal<boolean>(false);
+    expandedView = this.filtersService.expandedView;
     advOpen = signal(false);
     advPanelDocked = computed(() => this.expandedView() && this.advOpen() && this.layoutService.windowWidth() >= 1280);
     focused = signal(false);

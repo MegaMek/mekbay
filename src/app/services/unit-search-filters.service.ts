@@ -321,6 +321,7 @@ export class UnitSearchFiltersService {
     filterState = signal<FilterState>({});
     selectedSort = signal<string>('name');
     selectedSortDirection = signal<'asc' | 'desc'>('asc');
+    expandedView = signal(false);
     private totalRangesCache: Record<string, [number, number]> = {};
     private availableNamesCache = new Map<string, string[]>();
     private urlStateInitialized = false;
@@ -803,6 +804,11 @@ export class UnitSearchFiltersService {
             if (isDataReady && !this.urlStateInitialized) {
                 const params = this.route.snapshot.queryParamMap;
                 
+                const expandedParam = params.get('expanded');
+                if (expandedParam === 'true') {
+                    this.expandedView.set(true);
+                }
+
                 // Load search query
                 const searchParam = params.get('q');
                 if (searchParam) {
@@ -843,6 +849,7 @@ export class UnitSearchFiltersService {
             const filterState = this.filterState();
             const selectedSort = this.selectedSort();
             const selectedSortDirection = this.selectedSortDirection();
+            const expanded = this.expandedView();
 
             if (!this.urlStateInitialized) {
                 return;
@@ -853,7 +860,7 @@ export class UnitSearchFiltersService {
 
             // Preserve existing non-filter parameters
             currentParams.keys.forEach(key => {
-                if (!['q', 'sort', 'sortDir', 'filters'].includes(key)) {
+                if (!['q', 'sort', 'sortDir', 'filters', 'expanded'].includes(key)) {
                     queryParams[key] = currentParams.get(key);
                 }
             });
@@ -877,6 +884,10 @@ export class UnitSearchFiltersService {
             const filtersParam = this.generateCompactFiltersParam(filterState);
             if (filtersParam) {
                 queryParams.filters = filtersParam;
+            }
+
+            if (expanded) {
+                queryParams.expanded = 'true';
             }
 
             this.router.navigate([], {
