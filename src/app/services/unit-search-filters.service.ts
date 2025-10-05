@@ -817,7 +817,7 @@ export class UnitSearchFiltersService {
                 
                 // Load sort settings
                 const sortParam = params.get('sort');
-                if (sortParam) {
+                if (sortParam && SORT_OPTIONS.some(opt => opt.key === sortParam)) {
                     this.selectedSort.set(sortParam);
                 }
                 
@@ -829,18 +829,86 @@ export class UnitSearchFiltersService {
                 // Load filters
                 const filtersParam = params.get('filters');
                 if (filtersParam) {
-                    try {
-                        const decodedFilters = decodeURIComponent(filtersParam);
-                        const parsedFilters = this.parseCompactFiltersFromUrl(decodedFilters);
-                        this.filterState.set(parsedFilters);
-                    } catch (error) {
-                        console.warn('Failed to parse filters from URL:', error);
+                try {
+                    const decodedFilters = decodeURIComponent(filtersParam);
+                    const parsedFilters = this.parseCompactFiltersFromUrl(decodedFilters);
+                    const validFilters: FilterState = {};
+                    
+                    for (const [key, state] of Object.entries(parsedFilters)) {
+                        const conf = ADVANCED_FILTERS.find(f => f.key === key);
+                        if (!conf) continue; // Skip unknown filter keys
+                        
+                        if (conf.type === AdvFilterType.DROPDOWN) {
+                            // Get all available values for this dropdown
+                            const availableValues = this.getAvailableDropdownValues(conf);
+                            
+                            if (conf.multistate) {
+                                const selection = state.value as MultiStateSelection;
+                                const validSelection: MultiStateSelection = {};
+                                
+                                for (const [name, selectionValue] of Object.entries(selection)) {
+                                    if (availableValues.has(name)) {
+                                        validSelection[name] = selectionValue;
+                                    }
+                                }
+                                
+                                if (Object.keys(validSelection).length > 0) {
+                                    validFilters[key] = { value: validSelection, interactedWith: true };
+                                }
+                            } else {
+                                const values = state.value as string[];
+                                const validValues = values.filter(v => availableValues.has(v));
+                                
+                                if (validValues.length > 0) {
+                                    validFilters[key] = { value: validValues, interactedWith: true };
+                                }
+                            }
+                        } else {
+                            // For range filters, just keep them as-is
+                            // They'll be clamped automatically by advOptions
+                            validFilters[key] = state;
+                        }
                     }
+                    this.filterState.set(validFilters);
+                } catch (error) {
+                    console.warn('Failed to parse filters from URL:', error);
+                }
                 }
                 
                 this.urlStateInitialized = true;
             }
         });
+    }
+
+    private getAvailableDropdownValues(conf: AdvFilterConfig): Set<string> {
+        const values = new Set<string>();
+        
+        if (conf.external) {
+            if (conf.key === 'era') {
+                this.dataService.getEras().forEach(era => values.add(era.name));
+            } else if (conf.key === 'faction') {
+                this.dataService.getFactions().forEach(faction => values.add(faction.name));
+            }
+        } else {
+            if (conf.key === 'componentName') {
+                for (const unit of this.units) {
+                    for (const component of unit.comp) {
+                        values.add(component.n);
+                    }
+                }
+            } else {
+                for (const unit of this.units) {
+                    const propValue = (unit as any)[conf.key];
+                    if (Array.isArray(propValue)) {
+                        propValue.forEach(v => { if (v != null && v !== '') values.add(v); });
+                    } else if (propValue != null && propValue !== '') {
+                        values.add(propValue);
+                    }
+                }
+            }
+        }
+        
+        return values;
     }
 
     private updateUrlOnFiltersChange() {
