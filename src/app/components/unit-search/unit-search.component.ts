@@ -129,11 +129,15 @@ export class UnitSearchComponent implements OnDestroy {
             }
         });
         afterNextRender(() => {
-            const expanded = this.expandedView();
+            // We use a ResizeObserver to track changes to the search bar container size,
+            // so we can update the dropdown/panel positions accordingly.
             const container = document.querySelector('.searchbar-container') as HTMLElement;
             if (container) {
                 this.resizeObserver = new ResizeObserver(() => {
-                    if (this.resultsVisible() && !expanded) {
+                    if (this.advOpen()) {
+                        this.updateAdvPanelPosition();
+                    }
+                    if (this.resultsVisible() && !this.expandedView()) {
                         this.updateResultsDropdownPosition();
                     }
                 });
