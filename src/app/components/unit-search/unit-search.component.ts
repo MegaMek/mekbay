@@ -79,7 +79,7 @@ export class UnitSearchComponent implements OnDestroy {
     autoFocus = input(false);
     expandedView = this.filtersService.expandedView;
     advOpen = signal(false);
-    advPanelDocked = computed(() => this.expandedView() && this.advOpen() && this.layoutService.windowWidth() >= 1280);
+    advPanelDocked = computed(() => this.expandedView() && this.advOpen() && this.layoutService.windowWidth() >= 900);
     focused = signal(false);
     activeIndex = signal<number | null>(null);
     private unitDetailsDialogOpen = signal(false);
