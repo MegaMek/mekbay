@@ -279,13 +279,13 @@
                         <span class="info-label muted">Engine:</span>
                         <span class="info-value"><span *ngIf="unit.engineRating">{{ unit.engineRating }} </span>{{ unit.engine }}</span>
                     </div>
-                    <div class="info-item" *ngIf="unit.c3 && unit.c3 !== 'None'">
-                        <span class="info-label muted">Network:</span>
-                        <span class="info-value">{{ unit.c3 }}</span>
-                    </div>
                     <div class="info-item" *ngIf="unit.walk">
                         <span class="info-label muted">Movement:</span>
                         <span class="info-value">{{ unit.walk }}/{{ unit.run }}<ng-container *ngIf="unit.jump">/{{ unit.jump }}</ng-container></span>
+                    </div>
+                    <div class="info-item" *ngIf="unit.c3 && unit.c3 !== 'None'">
+                        <span class="info-label muted">Network:</span>
+                        <span class="info-value">{{ unit.c3 }}</span>
                     </div>
                 </div>
 
