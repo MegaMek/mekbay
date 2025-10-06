@@ -379,6 +379,9 @@ export class ForceBuilderService {
     addUnit(unit: Unit) {
         const newForceUnit = this.force.addUnit(unit);
         this.selectUnit(newForceUnit);
+        if (this.force.units().length === 1) {
+            this.layoutService.openMenu();
+        }
         this.generateForceNameIfNeeded();
     }
 
