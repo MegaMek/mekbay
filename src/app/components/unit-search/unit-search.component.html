@@ -1,4 +1,3 @@
-
 <div class="search-overlay overlay-backdrop" 
     [class.expanded]="this.expandedView()"
     [hidden]="!this.filtersService.isDataReady() || !overlayVisible()"
@@ -41,53 +40,54 @@
             <div class="results-dropdown-item unit-card"
                 *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
                 [class.active]="activeIndex() === i" (mouseenter)="activeIndex.set(i)" (click)="onUnitClick(unit)">
-                <div class="unit-image-container">
-                    <img class="icon" [src]="getUnitImg(unit)" (error)="$event.target.src = '/images/unknown.png'" alt="{{ unit.model }} {{ unit.chassis }}" />
-                </div>
-                <div class="unit-data-container">
-                    <div class="secondary-info">
-                        <div class="model" [innerHTML]="highlight(unit.model)"></div>
-                        <div class="role" *ngIf="unit.role && (unit.role !== 'None')" [class.sort-slot]="this.filtersService.selectedSort() === 'role'">{{ unit.role }}</div>
+                
+                <ng-container *ngIf="this.expandedView(); else compactView">
+                    <ng-container *ngTemplateOutlet="expandedView; context: { unit: unit }"></ng-container>
+                </ng-container>
+                
+                <!-- Compact View Template -->
+                <ng-template #compactView>
+                    <div class="unit-image-container">
+                        <img class="icon" [src]="getUnitImg(unit)" (error)="$event.target.src = '/images/unknown.png'" alt="{{ unit.model }} {{ unit.chassis }}" />
                     </div>
-                    <div class="primary-info">
-                        <div class="chassis" [innerHTML]="highlight(unit.chassis)"></div>
-                    </div>
-                    <div class="third-info">
-                        <div class="info-area">
-                            <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
-                                <span class="value">BV: {{ formatValue(unit.bv, true, true) }}</span>
-                            </div>
-                            <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
-                                <span class="value">{{ formatTons(unit.tons) }}</span>
-                                <img src="/images/weight.svg" class="icon" alt="Tonnage">
-                            </div>
-                            <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
-                                <span class="value">{{ unit.year }}</span>                    
-                                <img src="/images/calendar.svg" class="icon" alt="Year">
-                            </div>
-                            <ng-container *ngIf="this.expandedView()">
-                                <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'techBase'">
-                                    <span class="value">{{ unit.techBase }}</span>
-                                </div>
-                                <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'level'">
-                                    <span class="value">{{ unit.level }}</span>                  
-                                </div>
-                            </ng-container>
-                            <ng-container *ngIf="getSortSlot(unit) as slot">
-                                <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
-                                    <span class="value">
-                                        <ng-container *ngIf="slot.label">{{ slot.label }}: </ng-container>{{ slot.value }}
-                                    </span>
-                                    <img *ngIf="slot.img" [src]="slot.img" class="icon" [alt]="slot.alt">
-                                </div>
-                            </ng-container>
+                    <div class="unit-data-container">
+                        <div class="secondary-info">
+                            <div class="model" [innerHTML]="highlight(unit.model)"></div>
+                            <div class="role" *ngIf="unit.role && (unit.role !== 'None')" [class.sort-slot]="this.filtersService.selectedSort() === 'role'">{{ unit.role }}</div>
                         </div>
-                        <span class="info-spanner"></span>
-                        <div class="info-slot-era">
-                            <img *ngIf="getEraImg(unit)" [src]="getEraImg(unit)" class="icon era-icon" alt="Era" [title]="unit._era?.name" />
+                        <div class="primary-info">
+                            <div class="chassis" [innerHTML]="highlight(unit.chassis)"></div>
+                        </div>
+                        <div class="third-info">
+                            <div class="info-area">
+                                <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
+                                    <span class="value">BV: {{ formatValue(unit.bv, true, true) }}</span>
+                                </div>
+                                <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
+                                    <span class="value">{{ formatTons(unit.tons) }}</span>
+                                    <img src="/images/weight.svg" class="icon" alt="Tonnage">
+                                </div>
+                                <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
+                                    <span class="value">{{ unit.year }}</span>                    
+                                    <img src="/images/calendar.svg" class="icon" alt="Year">
+                                </div>
+                                <ng-container *ngIf="getSortSlot(unit) as slot">
+                                    <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
+                                        <span class="value">
+                                            <ng-container *ngIf="slot.label">{{ slot.label }}: </ng-container>{{ slot.value }}
+                                        </span>
+                                        <img *ngIf="slot.img" [src]="slot.img" class="icon" [alt]="slot.alt">
+                                    </div>
+                                </ng-container>
+                            </div>
+                            <span class="info-spanner"></span>
+                            <div class="info-slot-era">
+                                <img *ngIf="getEraImg(unit)" [src]="getEraImg(unit)" class="icon era-icon" alt="Era" [title]="unit._era?.name" />
+                            </div>
                         </div>
                     </div>
-                </div>
+                </ng-template>
+
             </div>
         </cdk-virtual-scroll-viewport>
         
@@ -96,7 +96,7 @@
                 <button
                     type="button"
                     class="bt-button expand-btn"
-                    (click)="expandedView.set(!expandedView())"
+                    (click)="this.expandedView.set(!this.expandedView())"
                     [title]="this.expandedView() ? 'Collapse View' : 'Expand View'"
                     [attr.aria-label]="this.expandedView() ? 'Collapse View' : 'Expand View'">
                     <ng-container *ngIf="this.expandedView(); else expandView">
@@ -209,3 +209,115 @@
             </ng-container>
     </div>
 </div>
+
+
+
+<ng-template #expandedView let-unit="unit">
+    <div class="expanded-unit-card">
+        <!-- Header Section -->
+        <div class="expanded-header">
+            <div class="expanded-image">
+                <img class="icon" [src]="getUnitImg(unit)" (error)="$event.target.src = '/images/unknown.png'" alt="{{ unit.model }} {{ unit.chassis }}" />
+            </div>
+            <div class="expanded-title">
+                <div class="expanded-model" [innerHTML]="highlight(unit.model)"></div>
+                <div class="expanded-chassis" [innerHTML]="highlight(unit.chassis)"></div>
+            </div>
+            <div class="expanded-subtitle">
+                <div class="subtitle-line role" *ngIf="unit.role && unit.role !== 'None'">{{ unit.role }}</div>
+                <div class="subtitle-line">
+                    <span>{{ unit.type }}<span *ngIf="unit.subtype && unit.subtype !== unit.type"> - {{ unit.subtype }}</span></span>
+                    <span> • {{ unit.weightClass }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="expanded-content">
+            <!-- Left Column: Basic Info & Stats -->
+            <div class="expanded-basic">
+                <!-- Basic Info Grid -->
+                <div class="expanded-basic-info">
+                    <div class="info-item">
+                        <span class="info-label muted">BV:</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">{{ formatValue(unit.bv, true, false) }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Tons:</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">{{ formatTons(unit.tons) }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Tech:</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'techBase'">{{ unit.techBase }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Intro Year: </span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">{{ unit.year }} <img [src]="getEraImg(unit)" class="era-icon" alt="Era" [title]="unit._era?.name" /></span>
+                        
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Rules:</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'level'">{{ unit.level }}</span>
+                    </div>
+                    <div class="info-item" *ngIf="unit.cost">
+                        <span class="info-label muted">C-Bill:</span>
+                        <span class="info-value">{{ formatValue(unit.cost, true, false) }}</span>
+                    </div>
+                    <div class="info-item" *ngIf="unit.armorType">
+                        <span class="info-label muted">Armor:</span>
+                        <span class="info-value">{{ unit.armorType }}</span>
+                    </div>
+                    <div class="info-item" *ngIf="unit.structureType">
+                        <span class="info-label muted">Structure:</span>
+                        <span class="info-value">{{ unit.structureType }}</span>
+                    </div>
+                    <div class="info-item" *ngIf="unit.moveType">
+                        <span class="info-label muted">Motive:</span>
+                        <span class="info-value">{{ unit.moveType }}</span>
+                    </div>
+                    <div class="info-item" *ngIf="unit.engine">
+                        <span class="info-label muted">Engine:</span>
+                        <span class="info-value"><span *ngIf="unit.engineRating">{{ unit.engineRating }} </span>{{ unit.engine }}</span>
+                    </div>
+                    <div class="info-item" *ngIf="unit.c3 && unit.c3 !== 'None'">
+                        <span class="info-label muted">Network:</span>
+                        <span class="info-value">{{ unit.c3 }}</span>
+                    </div>
+                    <div class="info-item" *ngIf="unit.walk">
+                        <span class="info-label muted">Movement:</span>
+                        <span class="info-value">{{ unit.walk }}/{{ unit.run }}<ng-container *ngIf="unit.jump">/{{ unit.jump }}</ng-container></span>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="expanded-stats">
+                <!-- Stat Bars -->
+                <div class="stat-bars-columns" *ngIf="getStatBarSpecs(unit) as specs">
+                    <div class="stat-bar-row" *ngFor="let spec of specs">
+                        <div class="stat-bar">
+                            <div class="stat-bar-fill" [style.width.%]="getStatPercent(spec.value, spec.max)"></div>
+                        </div>
+                        <span class="stat-label">{{ spec.label }}</span>
+                        <span class="stat-value">{{ spec.value }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="expanded-right">
+                <!-- Right Column: Components -->
+                <div class="components-header">Equipment</div>
+                <div class="expanded-components" *ngIf="unit.comp && unit.comp.length > 0">
+                    <div class="components-pills">
+                        <div class="component-pill" 
+                            *ngFor="let comp of getExpandedComponents(unit)"
+                            [ngClass]="getTypeClass(comp.t)">
+                            <span class="pill-qty">{{ comp.q }}×</span>
+                            <span class="pill-name">{{ comp.n }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</ng-template>

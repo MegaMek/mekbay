@@ -37,13 +37,15 @@ import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrollin
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { UnitSearchFiltersService, ADVANCED_FILTERS, SORT_OPTIONS, AdvFilterType, SortOption } from '../../services/unit-search-filters.service';
-import { Unit } from '../../models/units.model';
+import { Unit, UnitComponent } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Dialog } from '@angular/cdk/dialog';
 import { UnitDetailsDialogComponent } from '../unit-details-dialog/unit-details-dialog.component';
 import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
 import { firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
+import { getWeaponTypeCSSClass, weaponTypes } from '../../utils/equipment.util';
+import { DataService, DOES_NOT_TRACK } from '../../services/data.service';
 
 /*
  * Author: Drake
@@ -59,6 +61,7 @@ import { LayoutService } from '../../services/layout.service';
 export class UnitSearchComponent implements OnDestroy {
     public layoutService = inject(LayoutService);
     public filtersService = inject(UnitSearchFiltersService);
+    public dataService = inject(DataService);
     private forceBuilderService = inject(ForceBuilderService);
     private injector = inject(Injector);
     private dialog = inject(Dialog);
@@ -104,7 +107,7 @@ export class UnitSearchComponent implements OnDestroy {
     });
 
     itemSize = computed(() => {
-        return (this.expandedView() && this.layoutService.isMobile()) ? 75 : 75;
+        return (this.expandedView() && this.layoutService.isMobile()) ? 400 : 75;
     });
 
     private resizeObserver?: ResizeObserver;
@@ -553,4 +556,67 @@ export class UnitSearchComponent implements OnDestroy {
             numeric
         };
     }
+
+    getExpandedComponents(unit: Unit): UnitComponent[] {
+        if (!unit?.comp) return [];
+        // Filter out HIDDEN components and aggregate by name
+        const aggregated = new Map<string, UnitComponent>();
+        for (const comp of unit.comp) {
+            if (comp.t === 'HIDDEN') continue;
+            const key = comp.n || '';
+            if (aggregated.has(key)) {
+                const existing = aggregated.get(key)!;
+                existing.q = (existing.q || 1) + (comp.q || 1);
+            } else {
+                aggregated.set(key, { ...comp });
+            }
+        }
+        return Array.from(aggregated.values())
+            .sort((a, b) => {
+                if (a.n === b.n) return 0;
+                if (a.n === undefined) return 1;
+                if (b.n === undefined) return -1;
+                return a.n.localeCompare(b.n);
+            });
+    }
+    
+    getTypeColor(typeCode: string): string {
+        const found = weaponTypes.find(t => t.code === typeCode);
+        return found ? found.color : '#ccc';
+    }
+
+    getTypeClass(typeCode: string): string {
+        return getWeaponTypeCSSClass(typeCode);
+    }
+
+    getStatBarSpecs(unit: Unit): Array<{ label: string, value: number, max: number }> {
+    const maxStats = this.dataService.getUnitTypeMaxStats(unit.type);
+
+    const statDefs = [
+        { key: 'armor', label: 'Armor', value: unit.armor, max: maxStats.armor[1] },
+        { key: 'internal', label: unit.type === 'Infantry' ? 'Squad size' : 'Structure', value: unit.internal, max: maxStats.internal[1] },
+        { key: 'alphaNoPhysical', label: 'Firepower', value: unit._mdSumNoPhysical, max: maxStats.alphaNoPhysicalNoOneshots[1] },
+        { key: 'dpt', label: 'Damage/Turn', value: unit.dpt, max: maxStats.dpt[1] },
+        { key: 'maxRange', label: 'Range', value: unit._maxRange, max: maxStats.maxRange[1] },
+        { key: 'heat', label: 'Heat', value: unit.heat, max: maxStats.heat[1] },
+        { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, max: maxStats.dissipation[1] },
+        { key: 'runMP', label: 'Speed', value: unit.run, max: maxStats.runMP[1] },
+        { key: 'jumpMP', label: 'Jump', value: unit.jump, max: maxStats.jumpMP[1] },
+    ];
+
+    return statDefs.filter(def => {
+        const statMaxArr = maxStats[def.key as keyof typeof maxStats] as [number, number];
+        if (def.value === undefined || def.value === null || def.value === -1) return false;
+        if (!statMaxArr) return false;
+        if (statMaxArr[0] === statMaxArr[1]) return false;
+        if (statMaxArr[0] === 0 && DOES_NOT_TRACK === statMaxArr[1] && DOES_NOT_TRACK === def.value) return false;
+        return true;
+    });
+    }
+
+    getStatPercent(value: number, max: number): number {
+        if (max === 0) return 0;
+        return Math.min((value / max) * 100, 100);
+    }
+
 }
