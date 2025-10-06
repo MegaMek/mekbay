@@ -347,11 +347,10 @@
     display: flex;
     gap: 12px;
     align-items: flex-start;
+    flex-wrap: wrap;
 }
 
 .expanded-title {
-    flex: 1;
-    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -359,6 +358,7 @@
 
 .expanded-image {
     flex-shrink: 0;
+    order: -1;
 }
 
 .expanded-image .icon {
@@ -385,7 +385,8 @@
     color: var(--text-color-secondary);
     text-align: right;
     align-items: flex-end;
-    flex-shrink: 0;
+    min-width: 0;
+    margin-left: auto;
 }
 
 .role {

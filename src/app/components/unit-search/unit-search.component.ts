@@ -107,7 +107,7 @@ export class UnitSearchComponent implements OnDestroy {
     });
 
     itemSize = computed(() => {
-        return (this.expandedView() && this.layoutService.isMobile()) ? 400 : 75;
+        return (this.expandedView() && this.layoutService.isMobile()) ? 75 : 75;
     });
 
     private resizeObserver?: ResizeObserver;
