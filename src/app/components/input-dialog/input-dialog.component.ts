@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, inject, Inject, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 
 /*
@@ -153,7 +153,7 @@ export interface InputDialogData {
 })
 
 export class InputDialogComponent {
-    @ViewChild('inputRef') inputRef!: ElementRef<HTMLInputElement>;
+    inputRef = viewChild.required<ElementRef<HTMLInputElement>>('inputRef');
     public dialogRef: DialogRef<string | number | null, InputDialogComponent> = inject(DialogRef);
     readonly data: InputDialogData = inject(DIALOG_DATA);
     buttons: { label: string; value: 'ok' | 'cancel'; class?: string }[];
@@ -166,7 +166,7 @@ export class InputDialogComponent {
     }
 
     submit() {
-        const value = this.inputRef.nativeElement.value;
+        const value = this.inputRef().nativeElement.value;
         if (this.data.inputType === 'number') {
             const num = Number(value);
             if (isNaN(num)) return;

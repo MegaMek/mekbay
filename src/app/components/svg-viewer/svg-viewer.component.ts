@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, input, ElementRef, ViewChild, AfterViewInit, OnDestroy, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, ElementRef, AfterViewInit, OnDestroy, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceUnit } from '../../models/force-unit.model';
 import { SvgZoomPanService, SwipeCallbacks } from './svg-zoom-pan.service';
@@ -58,11 +58,11 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     private forceBuilder = inject(ForceBuilderService);
     unit = input<ForceUnit | null>(null);
 
-    @ViewChild('container', { static: true }) containerRef!: ElementRef<HTMLDivElement>;
-    @ViewChild('slides', { static: true }) slidesRef!: ElementRef<HTMLDivElement>;
-    @ViewChild('diffHeatMarker', { static: true }) diffHeatMarkerRef!: ElementRef<HTMLDivElement>;
-    @ViewChild('diffHeatArrow', { static: true }) diffHeatArrowRef!: ElementRef<HTMLDivElement>;
-    @ViewChild('diffHeatText', { static: true }) diffHeatTextRef!: ElementRef<HTMLDivElement>;
+    containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
+    slidesRef = viewChild.required<ElementRef<HTMLDivElement>>('slides');
+    diffHeatMarkerRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatMarker');
+    diffHeatArrowRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatArrow');
+    diffHeatTextRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatText');
 
     loadError = signal<string | null>(null);
     svgWidth = 0;
@@ -137,7 +137,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         // Monitor container size changes
         if ('ResizeObserver' in window) {
             const resizeObserver = new ResizeObserver(() => this.handleResize());
-            resizeObserver.observe(this.containerRef.nativeElement);
+            resizeObserver.observe(this.containerRef().nativeElement);
         }
 
         const swipeCallbacks: SwipeCallbacks = {
@@ -147,14 +147,14 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         };
 
         // Initialize services
-        this.zoomPanService.initialize(this.containerRef, this.isPickerOpen, swipeCallbacks);
+        this.zoomPanService.initialize(this.containerRef(), this.isPickerOpen, swipeCallbacks);
         this.interactionService.initialize(
-            this.containerRef,
+            this.containerRef(),
             this.unit(),
             this.injector,
-            this.diffHeatMarkerRef,
-            this.diffHeatArrowRef,
-            this.diffHeatTextRef
+            this.diffHeatMarkerRef(),
+            this.diffHeatArrowRef(),
+            this.diffHeatTextRef()
         );
 
         // Monitor picker open state
@@ -214,7 +214,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
     displaySvg(): void {
         const currentUnit = this.unit();
-        const slides = this.slidesRef.nativeElement;
+        const slides = this.slidesRef().nativeElement;
         slides.innerHTML = ''; // Clear previous slides
         this.currentSvg.set(null);
         this.loadError.set(null);
@@ -259,7 +259,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
     protected updateDimensions() {
         const svg = this.unit()?.svg();
-        const container = this.containerRef.nativeElement;
+        const container = this.containerRef().nativeElement;
 
         if (svg) {
             const widthAttr = svg.width.baseVal;
@@ -279,7 +279,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     }
     
     protected handleResize() {
-        const container = this.containerRef.nativeElement;
+        const container = this.containerRef().nativeElement;
 
         // Update container dimensions
         this.containerWidth = container.clientWidth;
@@ -341,7 +341,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     }
 
     private ensureNeighborSlides(direction: 'prev' | 'next') {
-        const slides = this.slidesRef.nativeElement;
+        const slides = this.slidesRef().nativeElement;
         const width = this.containerWidth;
         const state = this.zoomPanService.getState();
         if (direction === 'prev') {
@@ -506,7 +506,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         this.swipeActive = false;
         this.swipeOffsetX = 0;
 
-        const slides = this.slidesRef.nativeElement;
+        const slides = this.slidesRef().nativeElement;
 
         // Remove neighbor slides from DOM if present
         if (this.prevSlideEl && this.prevSlideEl.parentElement === slides) {

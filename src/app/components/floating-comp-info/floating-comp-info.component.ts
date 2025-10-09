@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { AfterViewInit, Component, ElementRef, input, signal, SimpleChanges, ViewChild, effect, inject, ChangeDetectionStrategy } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, input, signal, SimpleChanges, ViewChild, effect, inject, ChangeDetectionStrategy, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
@@ -58,8 +58,7 @@ export class FloatingCompInfoComponent implements AfterViewInit {
     unit = input.required<Unit>();
     comp = input<UnitComponent | null>(null);
     hoverRect = input<DOMRect | null>(null);
-    
-    @ViewChild('dialog', { static: false }) dialogRef!: ElementRef<HTMLDivElement>;
+    dialogRef = viewChild<ElementRef<HTMLDivElement>>('dialog');
 
     pos = signal<{ x: number, y: number }>({ x: 0, y: 0 });
     equipment = signal<any>(null);
@@ -96,7 +95,7 @@ export class FloatingCompInfoComponent implements AfterViewInit {
 
     ngAfterViewChecked(): void {
         // Try to position after every view check until successful
-        if (!this.positioned && this.comp() && this.hoverRect() && this.dialogRef) {
+        if (!this.positioned && this.comp() && this.hoverRect() && this.dialogRef()) {
             this.updatePosition();
         }
     }
@@ -104,12 +103,14 @@ export class FloatingCompInfoComponent implements AfterViewInit {
     updatePosition() {
         const currentComp = this.comp();
         const currentHoverRect = this.hoverRect();
-        
-        if (!currentComp || !currentHoverRect || !this.dialogRef || !this.dialogRef.nativeElement) return;
-        
+
+        if (!currentComp || !currentHoverRect) return;
+        const dialogRef = this.dialogRef();
+        if (!dialogRef || !dialogRef.nativeElement) return;
+
         setTimeout(() => {
             const hoverRect = currentHoverRect;
-            const el = this.dialogRef.nativeElement;
+            const el = dialogRef.nativeElement;
             const rect = el.getBoundingClientRect();
             const vw = window.innerWidth;
             const vh = window.innerHeight;

@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, ViewChild, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { AmmoEquipment } from '../../models/equipment.model';
 
@@ -216,8 +216,8 @@ export interface SetAmmoDialogData {
 })
 
 export class SetAmmoDialogComponent {
-    @ViewChild('inputNameRef') inputNameRef!: ElementRef<HTMLSelectElement>;
-    @ViewChild('inputQuantityRef') inputQuantityRef!: ElementRef<HTMLInputElement>;
+    inputNameRef = viewChild.required<ElementRef<HTMLSelectElement>>('inputNameRef');
+    inputQuantityRef = viewChild.required<ElementRef<HTMLInputElement>>('inputQuantityRef');
     public dialogRef: DialogRef<{name: string; quantity: number, totalAmmo: number} | null, SetAmmoDialogComponent> = inject(DialogRef);
     readonly data: SetAmmoDialogData = inject(DIALOG_DATA);
     buttons: { label: string; value: 'ok' | 'cancel'; class?: string }[];
@@ -252,21 +252,22 @@ export class SetAmmoDialogComponent {
         this.selectedAmmoName.set(selectElement.value);
         
         // Reset quantity input to not exceed new max
-        const currentQuantity = Number(this.inputQuantityRef.nativeElement.value);
+        const nativeEl = this.inputQuantityRef().nativeElement;
+        const currentQuantity = Number(nativeEl.value);
         const newMaxQuantity = this.currentMaxQuantity();
         if (currentQuantity === previousMaxQuantity) {
-            this.inputQuantityRef.nativeElement.value = newMaxQuantity.toString();
+            nativeEl.value = newMaxQuantity.toString();
         } else if (currentQuantity > newMaxQuantity) {
-            this.inputQuantityRef.nativeElement.value = newMaxQuantity.toString();
+            nativeEl.value = newMaxQuantity.toString();
         }
     }
 
     submit() {
-        const selectedInternalName = this.inputNameRef.nativeElement.value;
+        const selectedInternalName = this.inputNameRef().nativeElement.value;
         let selectedAmmo = this.data.ammoOptions.find(
             ammo => ammo.internalName === selectedInternalName
         );
-        let quantity = this.inputQuantityRef.nativeElement.value;
+        let quantity = this.inputQuantityRef().nativeElement.value;
         let num: number;
         if (quantity === '') {
             num = this.data.quantity;

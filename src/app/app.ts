@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, OnInit, Signal, signal, HostListener, ViewChild, inject, effect, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, OnInit, signal, HostListener, inject, effect, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
@@ -87,7 +87,6 @@ export class App implements OnInit {
     private dialog = inject(Dialog);
     private toastService = inject(ToastService);
     private optionsService = inject(OptionsService);
-    @ViewChild(ForceBuilderViewerComponent) forceBuilderViewer?: ForceBuilderViewerComponent;
 
     private lastUpdateCheck: number = 0;
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour

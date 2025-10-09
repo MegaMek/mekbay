@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, signal, computed, inject, output, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ElementRef, AfterViewInit, OnDestroy, signal, computed, output, ChangeDetectionStrategy, viewChild } from '@angular/core';
 import { PickerChoice, PickerComponent, PickerValue } from '../picker/picker.interface';
 
 /*
@@ -319,7 +319,7 @@ export class RadialPickerComponent implements AfterViewInit, OnDestroy, PickerCo
 
     hoveredChoice = signal<PickerChoice | null>(null);
 
-    @ViewChild('picker') pickerRef!: ElementRef<HTMLDivElement>;
+    pickerRef = viewChild.required<ElementRef<HTMLDivElement>>('picker');
 
     // Computed properties
     readonly selectedChoice = computed(() => {
@@ -633,8 +633,9 @@ export class RadialPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         window.addEventListener('mousedown', this.handleOutsideClick, { capture: true });
         window.addEventListener('touchmove', this.onTouchMove, { passive: false });
         
-        this.pickerRef?.nativeElement?.addEventListener('pointerdown', this.onPointerDownInside, { capture: true });
-        this.pickerRef?.nativeElement?.addEventListener('contextmenu', (event: MouseEvent) => {
+        const nativeElement = this.pickerRef().nativeElement;
+        nativeElement.addEventListener('pointerdown', this.onPointerDownInside, { capture: true });
+        nativeElement.addEventListener('contextmenu', (event: MouseEvent) => {
             event.preventDefault();
         });
     }
@@ -649,7 +650,7 @@ export class RadialPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         window.removeEventListener('mousedown', this.handleOutsideClick, true);
         window.removeEventListener('touchmove', this.onTouchMove);
         
-        this.pickerRef?.nativeElement?.removeEventListener('pointerdown', this.onPointerDownInside, { capture: true });
+        this.pickerRef().nativeElement?.removeEventListener('pointerdown', this.onPointerDownInside, { capture: true });
     }
 
     private readonly onPointerDownInside = (): void => {
@@ -689,7 +690,7 @@ export class RadialPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         
         if (sector) {
             // Find the choice by checking which sector this is
-            const allSectors = Array.from(this.pickerRef.nativeElement.querySelectorAll('.radial-sector'));
+            const allSectors = Array.from(this.pickerRef().nativeElement.querySelectorAll('.radial-sector'));
             const sectorIndex = allSectors.indexOf(sector);
             const choice = this.values()[sectorIndex];
             

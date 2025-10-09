@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, ViewChild, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, Host, input } from '@angular/core';
+import { Component, signal, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild } from '@angular/core';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
@@ -70,11 +70,11 @@ export class UnitSearchComponent implements OnDestroy {
     public readonly AdvFilterType = AdvFilterType;
     public readonly SORT_OPTIONS = SORT_OPTIONS;
 
-    @ViewChild(CdkVirtualScrollViewport) viewport?: CdkVirtualScrollViewport;
-    @ViewChild('searchInput') searchInput?: ElementRef<HTMLInputElement>;
-    @ViewChild('advBtn') advBtn?: ElementRef<HTMLButtonElement>;
-    @ViewChild('advPanel') advPanel?: ElementRef<HTMLElement>;
-    @ViewChild('resultsDropdown') resultsDropdown?: ElementRef<HTMLElement>;
+    viewport = viewChild.required(CdkVirtualScrollViewport);
+    searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
+    advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
+    advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
+    resultsDropdown = viewChild<ElementRef<HTMLElement>>('resultsDropdown');
 
     autoFocus = input(false);
     expandedView = this.filtersService.expandedView;
@@ -127,9 +127,9 @@ export class UnitSearchComponent implements OnDestroy {
         effect(() => {
             if (this.autoFocus() &&
                 this.filtersService.isDataReady() &&
-                this.searchInput?.nativeElement) {
+                this.searchInput().nativeElement) {
                 setTimeout(() => {
-                    this.searchInput?.nativeElement.focus();
+                    this.searchInput().nativeElement.focus();
                 }, 0);
             }
         });
@@ -159,7 +159,7 @@ export class UnitSearchComponent implements OnDestroy {
         this.focused.set(false);
         this.advOpen.set(false);
         this.activeIndex.set(null);
-        this.searchInput?.nativeElement.blur();
+        this.searchInput().nativeElement.blur();
     }
 
     onOverlayClick() {
@@ -183,7 +183,7 @@ export class UnitSearchComponent implements OnDestroy {
     toggleAdv() {
         this.advOpen.set(!this.advOpen());
         if (!this.advOpen()) {
-            this.searchInput?.nativeElement.focus();
+            this.searchInput().nativeElement.focus();
         } else {
             this.focused.set(true);
         }
@@ -244,14 +244,15 @@ export class UnitSearchComponent implements OnDestroy {
         });
 
         afterNextRender(() => {
-            this.viewport?.checkViewportSize();
+            this.viewport().checkViewportSize();
         }, { injector: this.injector });
     }
 
     updateAdvPanelPosition() {
-        if (!this.advBtn) return;
+        const advBtn = this.advBtn();
+        if (!advBtn) return;
 
-        const buttonRect = this.advBtn.nativeElement.getBoundingClientRect();
+        const buttonRect = advBtn.nativeElement.getBoundingClientRect();
         const singlePanelWidth = 300;
         const doublePanelWidth = 600;
         const gap = 5;
@@ -315,11 +316,12 @@ export class UnitSearchComponent implements OnDestroy {
 
     @HostListener('keydown', ['$event'])
     onKeydown(event: KeyboardEvent) {
+        const searchInput = this.searchInput();
         if (event.key === 'Escape') {
             event.stopPropagation();
             if (this.advOpen()) {
                 this.closeAdvPanel();
-                this.searchInput?.nativeElement.focus();
+                searchInput.nativeElement.focus();
                 return;
             } else {
                 if (this.expandedView()) {
@@ -327,7 +329,7 @@ export class UnitSearchComponent implements OnDestroy {
                     return;
                 }
                 this.focused.set(false);
-                this.searchInput?.nativeElement.blur();
+                searchInput.nativeElement.blur();
             }
             return;
         }
@@ -350,7 +352,7 @@ export class UnitSearchComponent implements OnDestroy {
                         this.scrollToIndex(prevIndex);
                     } else {
                         this.activeIndex.set(null);
-                        this.searchInput?.nativeElement.focus();
+                        searchInput.nativeElement.focus();
                     }
                     break;
                 case 'Enter':
@@ -366,7 +368,7 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     private scrollToIndex(index: number) {
-        this.viewport?.scrollToIndex(index, 'smooth');
+        this.viewport().scrollToIndex(index, 'smooth');
     }
 
     highlight(text: string): string {
@@ -466,7 +468,7 @@ export class UnitSearchComponent implements OnDestroy {
         ref.componentInstance?.add.subscribe(unit => {
             this.forceBuilderService.addUnit(unit);
             ref.close();
-            this.searchInput?.nativeElement.blur();
+            this.searchInput().nativeElement.blur();
             this.unitDetailsDialogOpen.set(false);
         });
 

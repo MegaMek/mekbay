@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, HostListener, ElementRef, computed, input, signal, ViewChild, output, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, HostListener, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 /*
@@ -59,7 +59,7 @@ export interface MultiStateSelection {
 })
 export class MultiSelectDropdownComponent {
     private elementRef = inject(ElementRef);
-    @ViewChild('filterInput') filterInputRef?: ElementRef<HTMLInputElement>;
+    filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
     
     label = input<string>('');
     multiselect = input<boolean>(true);
@@ -109,8 +109,11 @@ export class MultiSelectDropdownComponent {
         this.isOpen.set(!this.isOpen());
         this.filterText.set('');        
         setTimeout(() => {
-            if (this.isOpen() && this.filterInputRef?.nativeElement) {
-                this.filterInputRef.nativeElement.focus();
+            if (this.isOpen()) {
+                const inputEl = this.filterInput()?.nativeElement;
+                if (inputEl) {
+                    inputEl.focus();
+                }
             }
         });
     }

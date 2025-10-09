@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, signal, output, computed, DestroyRef, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ElementRef, AfterViewInit, OnDestroy, signal, output, computed, DestroyRef, inject, ChangeDetectionStrategy, viewChild } from '@angular/core';
 import { PickerComponent, PickerChoice, PickerValue } from '../picker/picker.interface';
 
 /*
@@ -238,7 +238,7 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
 
     hoveredChoice = signal<PickerChoice | null>(null);
 
-    @ViewChild('picker') pickerRef!: ElementRef<HTMLDivElement>;
+    pickerRef = viewChild.required<ElementRef<HTMLDivElement>>('picker');
 
     // Computed properties
     readonly selectedChoice = computed(() => {
@@ -294,7 +294,7 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
     // Lifecycle hooks
     ngAfterViewInit(): void {
         requestAnimationFrame(() => {
-            if (this.pickerRef?.nativeElement) {
+            if (this.pickerRef()?.nativeElement) {
                 this.centerSelectedCell();
             }
         });
@@ -317,9 +317,9 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
 
         window.addEventListener('pointerdown', this.handleOutsideClick, { capture: true });
         window.addEventListener('touchmove', this.onTouchMove, { passive: false });
-        
-        this.pickerRef?.nativeElement?.addEventListener('pointerdown', this.onPointerDownInside, { capture: true });
-        this.pickerRef?.nativeElement?.addEventListener('contextmenu', (event: MouseEvent) => {
+
+        this.pickerRef()?.nativeElement?.addEventListener('pointerdown', this.onPointerDownInside, { capture: true });
+        this.pickerRef()?.nativeElement?.addEventListener('contextmenu', (event: MouseEvent) => {
             event.preventDefault();
         });
     }
@@ -333,12 +333,12 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         window.removeEventListener('pointerup', this.pointerUpListener, true);
         window.removeEventListener('pointerdown', this.handleOutsideClick, true);
         window.removeEventListener('touchmove', this.onTouchMove);
-        
-        this.pickerRef?.nativeElement?.removeEventListener('pointerdown', this.onPointerDownInside, { capture: true });
+
+        this.pickerRef()?.nativeElement?.removeEventListener('pointerdown', this.onPointerDownInside, { capture: true });
     }
 
     private centerSelectedCell(): void {
-        const picker = this.pickerRef.nativeElement;
+        const picker = this.pickerRef()?.nativeElement;
         const cells = Array.from(picker.querySelectorAll('.value-cell')) as HTMLElement[];
         const selectedValue = this.selected();
         const selectedIdx = selectedValue !== null ? this.values().findIndex(choice => choice.value === selectedValue) : -1;
@@ -470,7 +470,7 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         
         if (cell) {
             // Find the choice by checking which cell this is
-            const allCells = Array.from(this.pickerRef.nativeElement.querySelectorAll('.value-cell'));
+            const allCells = Array.from(this.pickerRef()?.nativeElement.querySelectorAll('.value-cell'));
             const cellIndex = allCells.indexOf(cell);
             const choice = this.values()[cellIndex];
             

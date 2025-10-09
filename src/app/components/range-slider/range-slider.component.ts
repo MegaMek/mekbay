@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, computed, OnDestroy, ElementRef, ViewChild, input, output, effect, ChangeDetectionStrategy, Host, HostListener } from '@angular/core';
+import { Component, signal, computed, OnDestroy, ElementRef, input, output, effect, ChangeDetectionStrategy, HostListener, viewChild } from '@angular/core';
 
 /*
  * Author: Drake
@@ -73,9 +73,9 @@ export class RangeSliderComponent implements OnDestroy {
         return this.dragging() === 'max' || this.right() < availableMax;
     });
 
-    @ViewChild('container', { static: true }) containerRef!: ElementRef<HTMLDivElement>;
-    @ViewChild('leftThumb', { static: true }) leftThumbRef!: ElementRef<HTMLDivElement>;
-    @ViewChild('rightThumb', { static: true }) rightThumbRef!: ElementRef<HTMLDivElement>;
+    containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
+    leftThumbRef = viewChild.required<ElementRef<HTMLDivElement>>('leftThumb');
+    rightThumbRef = viewChild.required<ElementRef<HTMLDivElement>>('rightThumb');
 
     constructor() {
         // Watch for changes to min, max, or value and update internal signals
@@ -247,9 +247,9 @@ export class RangeSliderComponent implements OnDestroy {
         this.dragging.set(which);
         this.focusedThumb.set(which);
         if (which === 'min') {
-            this.leftThumbRef.nativeElement.focus();
+            this.leftThumbRef().nativeElement.focus();
         } else {
-            this.rightThumbRef.nativeElement.focus();
+            this.rightThumbRef().nativeElement.focus();
         }
         window.addEventListener('mousemove', this.onDragBound);
         window.addEventListener('touchmove', this.onDragBound, { passive: false });
@@ -262,7 +262,7 @@ export class RangeSliderComponent implements OnDestroy {
         event.preventDefault();
         clearTimeout(this.debounceTimer);
 
-        const rect = this.containerRef.nativeElement.getBoundingClientRect();
+        const rect = this.containerRef().nativeElement.getBoundingClientRect();
         const clientX = (event instanceof MouseEvent) ? event.clientX : event.touches[0].clientX;
         let percent = (clientX - rect.left) / rect.width;
         percent = Math.max(0, Math.min(1, percent));

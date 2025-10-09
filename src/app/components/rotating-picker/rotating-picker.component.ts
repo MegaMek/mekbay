@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, HostListener } from '@angular/core';
+import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, HostListener, viewChild } from '@angular/core';
 import { PickerComponent, PickerChoice, PickerValue, PickerInteractionType, PickerPosition } from '../picker/picker.interface';
 
 /*
@@ -307,9 +307,9 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
     `]
 })
 export class RotatingPickerComponent implements AfterViewInit, OnDestroy, PickerComponent {
-    @ViewChild('container') containerRef!: ElementRef<HTMLDivElement>;
-    @ViewChild('picker') pickerRef!: ElementRef<SVGElement>;
-    
+    containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
+    pickerRef = viewChild.required<ElementRef<SVGElement>>('picker');
+
     interactionType = signal<PickerInteractionType>('mouse');
     title = signal<string | null>(null);
     values = signal<PickerChoice[]>([]); // We will use only the min/max value of it...
@@ -534,11 +534,11 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
     ngAfterViewInit(): void {
         this.setupEventListeners();
         // Focus the container to enable keyboard input
-        this.containerRef.nativeElement.focus();
+        this.containerRef().nativeElement.focus();
         
         const event = this.initialEvent();
         if (event && event.type === 'pointerdown') {
-            const pickerEl = this.pickerRef.nativeElement;
+            const pickerEl = this.pickerRef().nativeElement;
             const syntheticEvent = new PointerEvent('pointerdown', {
                 pointerId: event.pointerId,
                 clientX: event.clientX,
@@ -648,9 +648,10 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
 
     private initiateDrag(event: PointerEvent): void {
         this.activePointerId = event.pointerId;
+        const nativeEl = this.pickerRef().nativeElement;
         // Capture the pointer on the picker element itself to ensure subsequent events are routed correctly.
         try {
-            this.pickerRef.nativeElement.setPointerCapture(this.activePointerId);
+            nativeEl.setPointerCapture(this.activePointerId);
         } catch (e) {
             // Failed to capture pointer
             this.activePointerId = null;
@@ -661,9 +662,9 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
         event.stopPropagation();
         // We don't start dragging immediately. We wait for the pointer to move into the donut.
         // Add listeners that will handle the state transition.
-        this.pickerRef.nativeElement.addEventListener('pointermove', this.onPointerMove);
-        this.pickerRef.nativeElement.addEventListener('pointerup', this.onPointerUp, { once: true });
-        this.pickerRef.nativeElement.addEventListener('pointercancel', this.onPointerUp, { once: true });
+        nativeEl.addEventListener('pointermove', this.onPointerMove);
+        nativeEl.addEventListener('pointerup', this.onPointerUp, { once: true });
+        nativeEl.addEventListener('pointercancel', this.onPointerUp, { once: true });
 
         // Check if the initial event is already in a valid drag position
         this.onPointerMove(event);
@@ -675,7 +676,7 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
 
         if (!this.isDragging) {
             // Check if we should START dragging
-            const pickerRect = this.pickerRef.nativeElement.getBoundingClientRect();
+            const pickerRect = this.pickerRef().nativeElement.getBoundingClientRect();
             const centerX = pickerRect.left + pickerRect.width / 2;
             const centerY = pickerRect.top + pickerRect.height / 2;
             const distance = Math.sqrt(Math.pow(event.clientX - centerX, 2) + Math.pow(event.clientY - centerY, 2));
@@ -683,7 +684,7 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
             if (distance >= this.innerRadius() && distance <= this.radius()) {
                 // Pointer has entered the donut, start the drag!
                 this.isDragging = true;
-                this.containerRef.nativeElement.classList.add('grabbing');
+                this.containerRef().nativeElement.classList.add('grabbing');
                 this.lastPointerAngle = this.getPointerAngle(event);
                 this.accumulatedAngle = 0;
             } else {
@@ -740,9 +741,9 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
             this.activePointerId = null;
         }
         this.isDragging = false;
-        this.containerRef.nativeElement.classList.remove('grabbing');
-        this.pickerRef.nativeElement.removeEventListener('pointermove', this.onPointerMove);
-        this.pickerRef.nativeElement.removeEventListener('pointercancel', this.onPointerUp);
+        this.containerRef().nativeElement.classList.remove('grabbing');
+        this.pickerRef().nativeElement.removeEventListener('pointermove', this.onPointerMove);
+        this.pickerRef().nativeElement.removeEventListener('pointercancel', this.onPointerUp);
     };
 
     private readonly handleOutsideClick = (ev: MouseEvent): void => {
@@ -759,15 +760,16 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
 
     private cleanupEventListeners(): void {
         window.removeEventListener('pointerdown', this.handleOutsideClick, true);
-        if (this.pickerRef?.nativeElement) {
-            this.pickerRef.nativeElement.removeEventListener('pointermove', this.onPointerMove);
-            this.pickerRef.nativeElement.removeEventListener('pointerup', this.onPointerUp);
-            this.pickerRef.nativeElement.removeEventListener('pointercancel', this.onPointerUp);
+        const nativeEl = this.pickerRef().nativeElement;
+        if (nativeEl) {
+            nativeEl.removeEventListener('pointermove', this.onPointerMove);
+            nativeEl.removeEventListener('pointerup', this.onPointerUp);
+            nativeEl.removeEventListener('pointercancel', this.onPointerUp);
         }
     }
 
     private getPointerAngle(event: PointerEvent): number {
-        const pickerRect = this.pickerRef.nativeElement.getBoundingClientRect();
+        const pickerRect = this.pickerRef().nativeElement.getBoundingClientRect();
         const centerX = pickerRect.left + pickerRect.width / 2;
         const centerY = pickerRect.top + pickerRect.height / 2;
         const angleRad = Math.atan2(event.clientY - centerY, event.clientX - centerX);

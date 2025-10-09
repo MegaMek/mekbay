@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, inject, Inject, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
 
@@ -215,7 +215,7 @@ export interface RenameForceDialogData {
 })
 
 export class RenameForceDialogComponent {
-    @ViewChild('inputRef') inputRef!: ElementRef<HTMLInputElement>;
+    inputRef = viewChild.required<ElementRef<HTMLInputElement>>('inputRef');
     public dialogRef: DialogRef<string | number | null, RenameForceDialogComponent> = inject(DialogRef);
     readonly data: RenameForceDialogData = inject(DIALOG_DATA);
     private forceBuilder = inject(ForceBuilderService);
@@ -230,15 +230,17 @@ export class RenameForceDialogComponent {
     }
 
     submit() {
-        const value = this.inputRef.nativeElement.value;
+        const value = this.inputRef().nativeElement.value;
         this.dialogRef.close(value);
     }
 
     fillRandomName() {
         const randomName = this.forceBuilder.generateForceName();
-        this.inputRef.nativeElement.value = randomName;
-        this.inputRef.nativeElement.focus();
-        this.inputRef.nativeElement.select();
+        const nativeEl = this.inputRef().nativeElement;
+        if (!nativeEl) return;
+        nativeEl.value = randomName;
+        nativeEl.focus();
+        nativeEl.select();
     }
 
     private computeFactionsText(): string | null {

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, Output, EventEmitter, HostBinding, HostListener, ElementRef, Renderer2, effect, ViewChild, Input, Signal, inject, ViewChildren, QueryList, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, HostBinding, HostListener, ElementRef, Renderer2, effect, inject, OnDestroy, ChangeDetectionStrategy, viewChild, viewChildren, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
@@ -65,12 +65,11 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     private elRef = inject(ElementRef<HTMLElement>);
     private renderer = inject(Renderer2);
     private dialog = inject(Dialog);
-    @Output() menuSelect = new EventEmitter<string>();
-    @ViewChild(UnitSearchComponent) private unitSearchComponent?: UnitSearchComponent;
-    @ViewChild('scrollableContent') private scrollableContent?: ElementRef<HTMLDivElement>;
-    @ViewChildren('forceUnitItem', { read: ElementRef }) forceUnitItems!: QueryList<ElementRef<HTMLElement>>;
-    @ViewChild('burgerLipBtn') private burgerLipBtn?: ElementRef<HTMLButtonElement>; // <-- add
-
+    menuSelect = output<string>();
+    private unitSearchComponent = viewChild(UnitSearchComponent);
+    private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
+    forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
+    private burgerLipBtn = viewChild<ElementRef<HTMLButtonElement>>('burgerLipBtn');
 
     // --- Gesture State ---
     private isDragging = false;
@@ -107,7 +106,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         effect(() => {
             // When the menu is closed, ensure the advanced search panel is also closed.
             if (!this.layoutService.isMenuOpen()) {
-                this.unitSearchComponent?.closeAdvPanel();
+                this.unitSearchComponent()?.closeAdvPanel();
             }
         });
 
@@ -126,14 +125,14 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         if (event.key === 'ArrowDown') {
             if (index < units.length - 1) {
                 event.preventDefault();
-                const next = this.forceUnitItems?.get(index + 1);
+                const next = this.forceUnitItems()?.[index + 1];
                 next?.nativeElement.focus();
                 this.selectUnit(units[index + 1]);
             }
         } else if (event.key === 'ArrowUp') {
             if (index > 0) {
                 event.preventDefault();
-                const prev = this.forceUnitItems?.get(index - 1);
+                const prev = this.forceUnitItems()?.[index - 1];
                 prev?.nativeElement.focus();
                 this.selectUnit(units[index - 1]);
             }
@@ -246,8 +245,8 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     onTouchStart(event: TouchEvent) {
         if (!this.layoutService.isMobile() || this.isUnitDragging) return;
 
-        if (this.unitSearchComponent?.advOpen()) {
-            const advPanelEl = this.unitSearchComponent?.advPanel?.nativeElement;
+        if (this.unitSearchComponent()?.advOpen()) {
+            const advPanelEl = this.unitSearchComponent()?.advPanel()?.nativeElement;
             // If the touch is inside the panel, block the swipe gesture.
             if (advPanelEl && advPanelEl.contains(event.target as Node)) {
                 return;
@@ -376,7 +375,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     }
 
     private scrollToUnit(id: string) {
-        const scrollContainer = this.scrollableContent?.nativeElement;
+        const scrollContainer = this.scrollableContent()?.nativeElement;
         if (!scrollContainer) return;
         const unitElement = scrollContainer.querySelector(`#unit-${CSS.escape(id)}`) as HTMLElement;
         if (unitElement) {
@@ -399,9 +398,10 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     // --- Lip vertical drag handlers ---
     onLipPointerDown(event: PointerEvent) {
         if (!this.layoutService.isMobile()) return;
-        if (!this.burgerLipBtn) return;
+        const lipBtn = this.burgerLipBtn();
+        if (!lipBtn) return;
 
-        const btnEl = this.burgerLipBtn.nativeElement;
+        const btnEl = lipBtn.nativeElement;
         this.isLipDragging = true;
         this.lipMoved = false;
         this.ignoreNextLipClick = false;
@@ -431,9 +431,10 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     private onLipPointerMove(event: PointerEvent) {
         if (!this.isLipDragging || event.pointerId !== this.lipPointerId) return;
-        if (!this.burgerLipBtn) return;
+        const lipBtn = this.burgerLipBtn();
+        if (!lipBtn) return;
 
-        const btnEl = this.burgerLipBtn.nativeElement;
+        const btnEl = lipBtn.nativeElement;
 
         const deltaY = event.clientY - this.lipStartY;
         const proposedTop = this.lipStartTop + deltaY;
@@ -459,14 +460,15 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     private onLipPointerUp(event: PointerEvent) {
         if (!this.isLipDragging || event.pointerId !== this.lipPointerId) return;
-        if (!this.burgerLipBtn) return;
+        const lipBtn = this.burgerLipBtn();
+        if (!lipBtn) return;
 
         // If the lip actually moved, suppress the subsequent click
         if (this.lipMoved) {
             this.ignoreNextLipClick = true;
         }
 
-        const btnEl = this.burgerLipBtn.nativeElement;
+        const btnEl = lipBtn.nativeElement;
         try { btnEl.releasePointerCapture(event.pointerId); } catch {}
 
         this.isLipDragging = false;
