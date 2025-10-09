@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { AfterViewInit, Component, ElementRef, input, signal, SimpleChanges, ViewChild, effect, inject, ChangeDetectionStrategy, viewChild } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, input, signal, SimpleChanges, ViewChild, effect, inject, ChangeDetectionStrategy, viewChild, afterNextRender } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
@@ -84,7 +84,7 @@ export class FloatingCompInfoComponent implements AfterViewInit {
             this.comp();
             this.hoverRect();
             this.positioned = false;
-            this.updatePosition();
+            requestAnimationFrame(() => this.updatePosition());
         });
     }
 
@@ -108,27 +108,25 @@ export class FloatingCompInfoComponent implements AfterViewInit {
         const dialogRef = this.dialogRef();
         if (!dialogRef || !dialogRef.nativeElement) return;
 
-        setTimeout(() => {
-            const hoverRect = currentHoverRect;
-            const el = dialogRef.nativeElement;
-            const rect = el.getBoundingClientRect();
-            const vw = window.innerWidth;
-            const vh = window.innerHeight;
-            let x = hoverRect.x + hoverRect.width - 2;
-            let y = hoverRect.y;
+        const hoverRect = currentHoverRect;
+        const el = dialogRef.nativeElement;
+        const rect = el.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        let x = hoverRect.x + hoverRect.width - 2;
+        let y = hoverRect.y;
 
-            if (x + rect.width > vw) {
-                const leftX = hoverRect.x - rect.width + 2;
-                x = leftX >= 0 ? leftX : Math.max(0, vw - rect.width);
-            }
-            if (y + rect.height > vh) {
-                y = Math.max(0, vh - rect.height - 8);
-            }
-            if (x < 0) x = 0;
-            if (y < 0) y = 0;
-            this.pos.set({ x, y });
-            this.positioned = true;
-        }, 0);
+        if (x + rect.width > vw) {
+            const leftX = hoverRect.x - rect.width + 2;
+            x = leftX >= 0 ? leftX : Math.max(0, vw - rect.width);
+        }
+        if (y + rect.height > vh) {
+            y = Math.max(0, vh - rect.height - 8);
+        }
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        this.pos.set({ x, y });
+        this.positioned = true;
     }
 
     onMouseEnter() {
