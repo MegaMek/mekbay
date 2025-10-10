@@ -331,22 +331,30 @@ export class UnitSvgMekService extends UnitSvgService {
         } else if (systemsStatus.hasTripleStrengthMyomer) {
             maxWalkValue += 1 - heatMoveModifier; // We add back the heatMoveModifier this way we simulate heat at 9+
         }
+        walkValue = Math.max(0, walkValue);
 
         // Run MP
         const hasWorkingMASC = systemsStatus.hasMASC && !systemsStatus.destroyedMASC;
         const hasWorkingSupercharger = systemsStatus.hasSupercharger && !systemsStatus.destroyedSupercharger;
         const armorModifierOnRun = (this.unit.getUnit().armorType === 'Hardened') ? -1 : 0;
-        let runValue = Math.round(walkValue * 1.5) + armorModifierOnRun;
-        let runValueCoeff = 1.5;
-        if (hasWorkingMASC && hasWorkingSupercharger) {
-            runValueCoeff = 2.5;
-        } else if ((hasWorkingMASC) || (hasWorkingSupercharger)) {
-            runValueCoeff = 2;
-        }               
-        let maxRunValue = Math.round(walkValue * runValueCoeff) + armorModifierOnRun;
-        if (systemsStatus.hasTripleStrengthMyomer && !systemsStatus.tripleStrengthMyomerMoveBonusActive) {
-            // we recalculate it after apply damaged/undamaged
-            maxRunValue = Math.round((walkValue + (1 - heatMoveModifier)) * runValueCoeff) + armorModifierOnRun;
+        let runValue;
+        let maxRunValue;
+        if (walkValue === 0) {
+            runValue = 0;
+            maxRunValue = 0;
+        } else {
+            runValue = Math.round(walkValue * 1.5) + armorModifierOnRun;
+            let runValueCoeff = 1.5;
+            if (hasWorkingMASC && hasWorkingSupercharger) {
+                runValueCoeff = 2.5;
+            } else if ((hasWorkingMASC) || (hasWorkingSupercharger)) {
+                runValueCoeff = 2;
+            }
+            maxRunValue = Math.round(walkValue * runValueCoeff) + armorModifierOnRun;
+            if (systemsStatus.hasTripleStrengthMyomer && !systemsStatus.tripleStrengthMyomerMoveBonusActive) {
+                // we recalculate it after apply damaged/undamaged
+                maxRunValue = Math.round((walkValue + (1 - heatMoveModifier)) * runValueCoeff) + armorModifierOnRun;
+            }
         }
 
         // Jump MP
