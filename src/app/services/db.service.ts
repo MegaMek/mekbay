@@ -47,7 +47,7 @@ import { Injector } from '@angular/core';
  * Author: Drake
  */
 const DB_NAME = 'mekbay';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const DB_STORE = 'store';
 const UNITS_KEY = 'units';
 const EQUIPMENT_KEY = 'equipment';
@@ -55,6 +55,7 @@ const FACTIONS_KEY = 'factions';
 const ERAS_KEY = 'eras';
 const SHEETS_STORE = 'sheetsStore';
 const FORCE_STORE = 'forceStore';
+const TAGS_STORE = 'tagsStore';
 const OPTIONS_KEY = 'options';
 const QUIRKS_KEY = 'quirks';
 
@@ -66,6 +67,10 @@ export interface StoredSheet {
     etag: string; // ETag for the sheet content for cache validation
     content: Blob; // The compressed XML content of the sheet
     size: number; // Size of the blob in bytes
+}
+
+export interface StoredTags {
+    [unitName: string]: string[];
 }
 
 @Injectable({
@@ -88,6 +93,7 @@ export class DbService {
                 this.createStoreIfMissing(db, transaction, DB_STORE);
                 this.createStoreIfMissing(db, transaction, SHEETS_STORE, 'timestamp');
                 this.createStoreIfMissing(db, transaction, FORCE_STORE, 'timestamp');
+                this.createStoreIfMissing(db, transaction, TAGS_STORE);
             };
 
             request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
@@ -233,6 +239,14 @@ export class DbService {
 
     public async saveQuirks(quirksData: Quirks): Promise<void> {
         return await this.saveDataFromDBStore(quirksData, QUIRKS_KEY);
+    }
+
+    public async getTags(): Promise<StoredTags | null> {
+        return await this.getDataFromStore<StoredTags>('main', TAGS_STORE);
+    }
+
+    public async saveTags(tags: StoredTags): Promise<void> {
+        return await this.saveDataToStore(tags, 'main', TAGS_STORE);
     }
 
     public async getForce(instanceId: string): Promise<Force | null> {

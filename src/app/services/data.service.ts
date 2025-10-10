@@ -36,7 +36,7 @@ import { HttpClient } from '@angular/common/http';
 import { Unit, UnitComponent, Units } from '../models/units.model';
 import { Faction, Factions } from '../models/factions.model';
 import { Era, Eras } from '../models/eras.model';
-import { DbService } from './db.service';
+import { DbService, StoredTags } from './db.service';
 import { ADVANCED_FILTERS, AdvFilterType } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, IAmmo, IEquipment, IWeapon, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
@@ -126,6 +126,7 @@ export class DataService {
                     }
                     unit._era = foundEra; // Attach era object for fast lookup
                 }
+                this.loadUnitTags(data.units);
                 return data;
             }
         },
@@ -755,5 +756,29 @@ export class DataService {
         };
         const response = await this.wsService.sendAndWaitForResponse(payload);
         return response;
+    }
+    
+    private async loadUnitTags(units: Unit[]): Promise<void> {
+        const storedTags = await this.dbService.getTags();
+        if (!storedTags) return;
+
+        for (const unit of units) {
+            const tags = storedTags[unit.name];
+            if (tags && tags.length > 0) {
+                unit._tags = tags;
+            }
+        }
+    }
+    
+    public async saveUnitTags(units: Unit[]): Promise<void> {
+        const tagsToSave: StoredTags = {};
+        
+        for (const unit of units) {
+            if (unit._tags && unit._tags.length > 0) {
+                tagsToSave[unit.name] = unit._tags;
+            }
+        }
+        
+        await this.dbService.saveTags(tagsToSave);
     }
 }

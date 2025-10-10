@@ -69,7 +69,7 @@
                                 </div>
                                 <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
                                     <span class="value">{{ unit.year }}</span>                    
-                                    <img src="/images/calendar.svg" class="icon" alt="Year">
+                                    <img [src]="getEraImg(unit)" class="icon era-icon" alt="Intro Year and Era" [title]="unit._era?.name" />
                                 </div>
                                 <ng-container *ngIf="getSortSlot(unit) as slot">
                                     <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
@@ -81,8 +81,20 @@
                                 </ng-container>
                             </div>
                             <span class="info-spanner"></span>
-                            <div class="info-slot-era">
-                                <img *ngIf="getEraImg(unit)" [src]="getEraImg(unit)" class="icon era-icon" alt="Era" [title]="unit._era?.name" />
+                            <div class="info-slot-tags">
+                                <a class="add-tag-btn" 
+                                   (click)="onAddTag(unit, $event)"
+                                   title="Add tag"
+                                   aria-label="Add tag">
+                                    <svg *ngIf="!unit._tags || unit._tags.length === 0" fill="none" stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                                        <path d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z" stroke-width="1.5"/>
+                                        <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
+                                    <ng-container *ngIf="unit._tags && unit._tags.length > 0">
+                                        <span class="tags-counter">{{ unit._tags.length }}</span>
+                                        <svg fill="var(--bt-yellow)" width="24px" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z"/></svg>
+                                    </ng-container>
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -228,6 +240,20 @@
                 <div class="subtitle-line">
                     <span>{{ unit.type }}<span *ngIf="unit.subtype && unit.subtype !== unit.type"> - {{ unit.subtype }}</span></span>
                     <span> • {{ unit.weightClass }}</span>
+                </div>
+                <div class="subtitle-line">
+                    <div class="info-slot-tags">
+                        <span class="tag" *ngFor="let tag of unit._tags">{{ tag }}</span>
+                        <a class="add-tag-btn" 
+                            (click)="onAddTag(unit, $event)"
+                            title="Add tag"
+                            aria-label="Add tag">
+                            <svg fill="none" stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                                <path d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z" stroke-width="1.5"/>
+                                <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

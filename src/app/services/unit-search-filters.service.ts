@@ -258,6 +258,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true },
     { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true },
     { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
+    { key: '_tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
     { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
     { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
     // { key: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
@@ -325,6 +326,7 @@ export class UnitSearchFiltersService {
     private totalRangesCache: Record<string, [number, number]> = {};
     private availableNamesCache = new Map<string, string[]>();
     private urlStateInitialized = false;
+    private tagsCacheKey = signal('');
 
     constructor() {
         effect(() => {
@@ -537,6 +539,7 @@ export class UnitSearchFiltersService {
 
         const result: Record<string, AdvFilterOptions> = {};
         const state = this.filterState();
+        const _tagsCacheKey = this.tagsCacheKey();
 
         let baseUnits = this.units;
         const query = this.search().trim().toLowerCase();
@@ -574,12 +577,16 @@ export class UnitSearchFiltersService {
 
             if (conf.multistate && conf.type === AdvFilterType.DROPDOWN) {
                 const isComponentFilter = conf.key === 'componentName';
+                const isTagsFilter = conf.key === '_tags';
                 const currentFilter = state[conf.key];
                 const hasQuantityFilters = conf.countable && isComponentFilter
                     && currentFilter?.interactedWith && currentFilter.value &&
                     Object.values(currentFilter.value as MultiStateSelection).some(selection => selection.count > 1);
 
-                const namesCacheKey = `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}`;
+                const namesCacheKey = isTagsFilter 
+                    ? `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}-${_tagsCacheKey}`
+                    : `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}`;
+                
                 let availableNames = this.availableNamesCache.get(namesCacheKey);
                 if (!availableNames) {
                     // Collect unique values efficiently
@@ -1167,5 +1174,37 @@ export class UnitSearchFiltersService {
         this.filterState.set({});
         this.selectedSort.set('name');
         this.selectedSortDirection.set('asc');
+    }
+
+    // Collect all unique tags from all units
+    getAllTags(): string[] {
+        const allUnits = this.dataService.getUnits();
+        const existingTags = new Set<string>();
+        
+        for (const u of allUnits) {
+            if (u._tags) {
+                u._tags.forEach(tag => existingTags.add(tag));
+            }
+        }
+        // Convert to sorted array
+        return Array.from(existingTags).sort((a, b) => 
+            a.toLowerCase().localeCompare(b.toLowerCase())
+        );
+    }
+
+    public invalidateTagsCache(): void {
+        // Update cache key to trigger recomputation of advOptions
+        this.tagsCacheKey.set(Date.now().toString());
+        
+        // Clear any cached tag-related data
+        for (const [key] of this.availableNamesCache) {
+            if (key.includes('_tags')) {
+                this.availableNamesCache.delete(key);
+            }
+        }
+    }
+
+    public async saveTagsToStorage(): Promise<void> {
+        await this.dataService.saveUnitTags(this.dataService.getUnits());
     }
 }

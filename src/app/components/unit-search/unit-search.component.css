@@ -301,7 +301,9 @@
 }
 
 .unit-card .era-icon {
-    height: 19px;
+    margin: -3px -4px -4px -2px;
+    height: 17px;
+    width: 17px;
 }
 
 .info-spanner {

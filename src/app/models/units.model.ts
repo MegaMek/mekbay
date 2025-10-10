@@ -108,6 +108,7 @@ export interface Unit {
     _mdSumNoPhysical: number; // Max damage sum for all weapons except physical
     _mdSumNoPhysicalNoOneshots: number; // Max damage sum for all weapons except physical, ignoring oneshots
     _era?: Era; // Cached era for this unit
+    _tags: string[]; // Cached tags for this unit
 }
 
 export interface Units {
