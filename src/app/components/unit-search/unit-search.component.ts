@@ -375,12 +375,22 @@ export class UnitSearchComponent implements OnDestroy {
         const search = this.filtersService.search().trim();
         if (!search) return this.escapeHtml(text);
 
-        // Unique, non-empty words sorted by length desc to prefer longer matches
-        const words = Array.from(new Set(search.split(/\s+/).filter(Boolean)));
-        if (words.length === 0) return this.escapeHtml(text);
+        // Split by commas or semicolons to get OR groups
+        const orGroups = search.split(/[,;]/).map(g => g.trim()).filter(Boolean);
+        
+        // Collect all words from all OR groups
+        const allWords = new Set<string>();
+        for (const group of orGroups) {
+            group.split(/\s+/).filter(Boolean).forEach(word => allWords.add(word));
+        }
+
+        if (allWords.size === 0) return this.escapeHtml(text);
 
         const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const pattern = words.map(escapeRegExp).sort((a, b) => b.length - a.length).join('|');
+        const pattern = Array.from(allWords)
+            .map(escapeRegExp)
+            .sort((a, b) => b.length - a.length)
+            .join('|');
         const regex = new RegExp(`(${pattern})`, 'gi');
 
         // Split on matches, then escape each part; wrap only the matches
