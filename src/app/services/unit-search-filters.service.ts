@@ -541,10 +541,19 @@ export class UnitSearchFiltersService {
         let baseUnits = this.units;
         const query = this.search().trim().toLowerCase();
         if (query) {
-            const words = Array.from(new Set(
-                query.split(/\s+/).filter(Boolean).map(w => DataService.removeAccents(w))
-            )).sort((a, b) => b.length - a.length);
-            baseUnits = baseUnits.filter(unit => this.matchesWords(unit, words));
+            
+            // Split by commas or semicolons for OR logic
+            const orGroups = query.split(/[,;]/).map(g => g.trim()).filter(Boolean);
+            
+            baseUnits = baseUnits.filter(unit => {
+                // Unit matches if it matches ANY of the OR groups
+                return orGroups.some(group => {
+                    const words = Array.from(new Set(
+                        group.split(/\s+/).filter(Boolean).map(w => DataService.removeAccents(w))
+                    )).sort((a, b) => b.length - a.length);
+                    return this.matchesWords(unit, words);
+                });
+            });
         }
 
         const activeFilters = Object.entries(state)
