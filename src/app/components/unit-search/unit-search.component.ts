@@ -171,6 +171,10 @@ export class UnitSearchComponent implements OnDestroy {
         return unit.name;
     }
 
+    focusInput() {
+        this.searchInput().nativeElement.focus();
+    }
+
     setSearch(val: string) {
         this.filtersService.search.set(val);
         this.activeIndex.set(null);

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, OnInit, signal, HostListener, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef } from '@angular/core';
+import { Component, computed, OnInit, signal, HostListener, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
@@ -90,6 +90,7 @@ export class App implements OnInit {
     private toastService = inject(ToastService);
     private optionsService = inject(OptionsService);
     public unitSearchFilter = inject(UnitSearchFiltersService);
+    public injector = inject(Injector);
 
     private lastUpdateCheck: number = 0;
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
@@ -125,6 +126,14 @@ export class App implements OnInit {
         effect(() => {
             const colorMode = this.optionsService.options().sheetsColor;
             document.documentElement.classList.toggle('night-mode', (colorMode === 'night'));
+        });
+        effect(() => {
+            const unitSearchComponent = this.unitSearchComponentRef();
+            if (unitSearchComponent && this.dataService.isDataReady()) {
+                afterNextRender(() => {
+                    unitSearchComponent.focusInput();
+                }, { injector: this.injector });
+            }
         });
         effect(() => {
             const unitSearchContainer = this.unitSearchContainer();
