@@ -315,6 +315,27 @@ hr {
                 linear-gradient(red, red), linear-gradient(red, red);
         }
     }
+        
+    &.primary {
+        color: rgb(154, 154, 255);
+        background-image:
+            linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)), linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)),
+            linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)), linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)),
+            linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)), linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)),
+            linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)), linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)),
+            linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)), linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255));
+
+        &:hover {
+            background-color: #003;
+            color: rgb(242, 242, 255);
+            background-image:
+                linear-gradient(rgb(81, 81, 255), rgb(81, 81, 255)), linear-gradient(rgb(81, 81, 255), rgb(81, 81, 255)),
+                linear-gradient(rgb(81, 81, 255), rgb(81, 81, 255)), linear-gradient(rgb(81, 81, 255), rgb(81, 81, 255)),
+                linear-gradient(rgb(81, 81, 255), rgb(81, 81, 255)), linear-gradient(rgb(81, 81, 255), rgb(81, 81, 255)),
+                linear-gradient(rgb(81, 81, 255), rgb(81, 81, 255)), linear-gradient(rgb(81, 81, 255), rgb(81, 81, 255)),
+                linear-gradient(rgb(81, 81, 255), rgb(81, 81, 255)), linear-gradient(rgb(81, 81, 255), rgb(81, 81, 255));
+        }
+    }
 
     &:active {
         background-color: var(--background-highlight-bright);

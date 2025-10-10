@@ -520,7 +520,7 @@ export class ForceBuilderService {
                 title: 'Repair All Units',
                 message: 'Are you sure you want to repair all units? This will reset all damage and status effects on every unit in the force.',
                 buttons: [
-                    { label: 'YES', value: 'yes' },
+                    { label: 'YES', value: 'yes', class: 'primary' },
                     { label: 'NO', value: 'no' }
                 ]
             }
