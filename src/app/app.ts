@@ -128,14 +128,6 @@ export class App implements OnInit {
             document.documentElement.classList.toggle('night-mode', (colorMode === 'night'));
         });
         effect(() => {
-            const unitSearchComponent = this.unitSearchComponentRef();
-            if (unitSearchComponent && this.dataService.isDataReady()) {
-                afterNextRender(() => {
-                    unitSearchComponent.focusInput();
-                }, { injector: this.injector });
-            }
-        });
-        effect(() => {
             const unitSearchContainer = this.unitSearchContainer();
             if (unitSearchContainer) {
                 if (this.unitSearchPortal?.isAttached) {
