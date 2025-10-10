@@ -598,6 +598,7 @@
     text-decoration: underline;
 }
 
+/* Factions Tab */
 .faction-availability-list {
     display: flex;
     flex-direction: column;
@@ -637,4 +638,86 @@
     color: var(--text-color-secondary);
     margin-top: 24px;
     grid-column: 1 / -1;
+}
+
+/* Fluff Tab */.fluff-content {
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 16px;
+    overflow-y: auto;
+    flex-grow: 1;
+}
+
+.fluff-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fluff-section.inline {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 8px;
+    align-items: baseline;
+}
+
+.fluff-section.inline .fluff-label {
+    white-space: nowrap;
+}
+
+.fluff-label {
+    font-weight: bold;
+    color: var(--text-color);
+    font-size: 1.1em;
+}
+
+.fluff-value {
+    color: var(--text-color-secondary);
+    line-height: 1.4;
+}
+
+.fluff-text {
+    color: var(--text-color-secondary);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.fluff-short-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px 16px;
+}
+
+.no-fluff {
+    text-align: center;
+    color: var(--text-color-secondary);
+    margin-top: 24px;
+}
+
+@media (max-width: 768px) {
+    .fluff-content {
+        padding: 12px;
+        gap: 12px;
+    }
+    
+    .fluff-label {
+        font-size: 1em;
+    }
+    
+    .fluff-text {
+        font-size: 0.95em;
+    }
+    
+    .fluff-short-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 425px) {
+    .fluff-content {
+        padding: 8px;
+        gap: 10px;
+    }
 }

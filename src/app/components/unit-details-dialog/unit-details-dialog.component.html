@@ -190,6 +190,56 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Fluff -->
+        <div class="tab-content" *ngIf="activeTab() === 'Fluff'">
+            <div class="fluff-content allow-select">
+                <ng-container *ngIf="unit.fluff; else noFluff">
+                    <div class="fluff-short-row" *ngIf="unit.fluff.manufacturer || unit.fluff.primaryFactory">
+                        <div class="fluff-section inline" *ngIf="unit.fluff.manufacturer">
+                            <div class="fluff-label">Manufacturer:</div>
+                            <div class="fluff-value">{{ unit.fluff.manufacturer }}</div>
+                        </div>
+                        
+                        <div class="fluff-section inline" *ngIf="unit.fluff.primaryFactory">
+                            <div class="fluff-label">Primary Factory:</div>
+                            <div class="fluff-value">{{ unit.fluff.primaryFactory }}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="fluff-section" *ngIf="unit.fluff.capabilities">
+                        <div class="fluff-label">Capabilities:</div>
+                        <div class="fluff-text">{{ unit.fluff.capabilities }}</div>
+                    </div>
+                    
+                    <div class="fluff-section" *ngIf="unit.fluff.overview">
+                        <div class="fluff-label">Overview:</div>
+                        <div class="fluff-text">{{ unit.fluff.overview }}</div>
+                    </div>
+                    
+                    <div class="fluff-section" *ngIf="unit.fluff.deployment">
+                        <div class="fluff-label">Deployment:</div>
+                        <div class="fluff-text">{{ unit.fluff.deployment }}</div>
+                    </div>
+                    
+                    <div class="fluff-section" *ngIf="unit.fluff.history">
+                        <div class="fluff-label">History:</div>
+                        <div class="fluff-text">{{ unit.fluff.history }}</div>
+                    </div>
+                    
+                    <div class="fluff-section" *ngIf="unit.fluff.notes">
+                        <div class="fluff-label">Notes:</div>
+                        <div class="fluff-text">{{ unit.fluff.notes }}</div>
+                    </div>
+                </ng-container>
+                
+                <ng-template #noFluff>
+                    <div class="no-fluff">
+                        No fluff information available for this unit.
+                    </div>
+                </ng-template>
+            </div>
+        </div>
     </div>
     <div class="footer" dialog-footer>
         <button *ngIf="!hideAddButton" class="modal-btn bt-button" (click)="onAdd()">ADD</button>

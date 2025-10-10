@@ -102,7 +102,7 @@ export class UnitDetailsDialogComponent {
     private data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     @Output() add = new EventEmitter<Unit>();
 
-    tabs = ['General', 'Factions'];
+    tabs = ['General', 'Factions', 'Fluff'];
     activeTab = signal(this.tabs[0]);
 
     unitList: Unit[] = this.data.unitList;
