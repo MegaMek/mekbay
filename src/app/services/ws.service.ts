@@ -31,7 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, signal } from '@angular/core';
+import { inject, Injectable, signal } from '@angular/core';
+import { UserStateService } from './userState.service';
 
 /*
  * Author: Drake
@@ -62,6 +63,7 @@ export class WsService {
     private subscriptions: Map<string, (data: any) => void> = new Map();
 
     public wsConnected = signal<boolean>(false);
+    private userStateService = inject(UserStateService);
 
     private globalErrorHandler: ((message: string) => void) | null = null;
 
@@ -92,10 +94,11 @@ export class WsService {
         if (this.ws) this.ws.close();
         this.ws = new WebSocket(this.wsUrl);
 
-        this.ws.onopen = () => {
+        this.ws.onopen = async () => {
             this.wsConnected.set(true);
             this.resolveWsReady();
-            this.send({ action: 'register', sessionId: this.wsSessionId });
+            const uuid = await this.userStateService.getOrCreateUuid();
+            this.send({ action: 'register', sessionId: this.wsSessionId, uuid });
         };
 
         this.ws.onclose = () => {

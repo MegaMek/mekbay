@@ -219,8 +219,8 @@ export class DbService {
         return await this.saveDataFromDBStore(erasData, ERAS_KEY);
     }
 
-    public async getOptions(): Promise<any | null> {
-        return await this.getDataFromDBStore<any>(OPTIONS_KEY);
+    public async getOptions(): Promise<Options | null> {
+        return await this.getDataFromDBStore<Options>(OPTIONS_KEY);
     }
     
     public async saveOptions(options: Options): Promise<void> {

@@ -32,51 +32,47 @@
  */
 
 import { inject, Injectable, signal } from '@angular/core';
-import { DbService } from './db.service';
+import { generateUUID } from './ws.service';
 import { Options } from '../models/options.model';
-import { UserStateService } from './userState.service';
+import { DbService } from './db.service';
 
 /*
  * Author: Drake
  */
 @Injectable({ providedIn: 'root' })
-export class OptionsService {
+export class UserStateService {
+    public isRegistered = signal<boolean>(false);
+    public uuid = signal<string>('');
     private dbService = inject(DbService);
-    private userStateService = inject(UserStateService);
-
-    public options = signal<Options>({
-        uuid: '', // Will be set in constructor
-        sheetsColor: 'normal',
-        pickerStyle: 'default',
-        quickActions: 'disabled'
-    });
 
     constructor() {
-        this.initOptions();
-    }
-
-    async initOptions() {
-        const uuid = await this.getOrCreateUuid();
-        const saved = await this.dbService.getOptions();
-        this.options.set({
-            uuid,
-            sheetsColor: saved?.sheetsColor ?? 'normal',
-            pickerStyle: saved?.pickerStyle ?? 'default',
-            quickActions: saved?.quickActions ?? 'disabled'
-        });
-    }
-
-    async setOption<K extends keyof Options>(key: K, value: Options[K]) {
-        const updated = { ...this.options(), [key]: value };
-        this.options.set(updated);
-        await this.dbService.saveOptions(updated);
+        this.initUserState();
     }
     
-    /**
-     * Retrieves the current user UUID from options.
-     * If missing, generates a new one, saves it, and returns it.
-     */
-    public async getOrCreateUuid(forceNew: boolean = false): Promise<string> {
-        return await this.userStateService.getOrCreateUuid(forceNew);
+    async initUserState() {
+        const uuid = await this.getOrCreateUuid();
+        this.uuid.set(uuid);
     }
+    
+    public async getOrCreateUuid(forceNew: boolean = false): Promise<string> {
+        let options = await this.dbService.getOptions();
+        if (forceNew || !options || !options.uuid || options.uuid.trim().length === 0) {
+            const newUuid = generateUUID();
+            await this.setUuid(newUuid);
+            return newUuid;
+        }
+        return options.uuid;
+    }
+
+    public async setUuid(newUuid: string) {
+        const trimmed = newUuid.trim();
+        if (trimmed.length < 10 || trimmed.length > 40) {
+            throw new Error('User Identifier must be between 10 and 40 characters long.');
+        }
+        let options = await this.dbService.getOptions();
+        options = { ...options, uuid: trimmed } as Options;
+        await this.dbService.saveOptions(options);
+        this.uuid.set(trimmed);
+    }
+
 }

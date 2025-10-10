@@ -37,7 +37,7 @@ import { OptionsService } from '../../services/options.service';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DbService } from '../../services/db.service';
-import { generateUUID } from '../../services/ws.service';
+import { UserStateService } from '../../services/userState.service';
 
 /*
  * Author: Drake
@@ -54,6 +54,7 @@ export class OptionsDialogComponent {
     optionsService = inject(OptionsService);
     dbService = inject(DbService);
     dialogRef = inject(DialogRef<OptionsDialogComponent>);
+    userStateService = inject(UserStateService);
     
     tabs = ['General', 'Advanced'];
     activeTab = signal(this.tabs[0]);
@@ -140,16 +141,16 @@ export class OptionsDialogComponent {
         const trimmed = this.userUuid.trim();
         if (trimmed.length === 0) {
             // Generate a new UUID if input is empty
-            this.userUuid = generateUUID();
-            this.userUuid = await this.optionsService.getOrCreateUuid(true);
-        } else if (trimmed.length < 10 || trimmed.length > 40) {
-            this.userUuidError = 'User Identifier must be between 10 and 40 characters long.';
-            return;
-        } else {
-            this.userUuid = trimmed;
+            this.userUuid = await this.userStateService.getOrCreateUuid(true);
         }
+        this.userUuid = trimmed;
         this.userUuidError = '';
-        await this.optionsService.setOption('uuid', this.userUuid);
-        window.location.reload();
+        try {
+            await this.userStateService.setUuid(this.userUuid);
+            window.location.reload();
+        } catch (e: any) {
+            this.userUuidError = e?.message || 'An unknown error occurred.';
+            return;
+        }
     }
 }
