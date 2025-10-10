@@ -214,8 +214,11 @@ export class App implements OnInit {
 
     beforeUnloadHandler = (event: BeforeUnloadEvent) => {
         if (this.forceBuilderService.forceUnits().length > 0) {
-            event.preventDefault();
-            return '';
+            if (!this.forceBuilderService.force.instanceId) {
+                // We have units but we don't have an instanceId? This is not yet saved.
+                event.preventDefault();
+                return '';
+            }
         }
         // No units, allow navigation without warning
         return undefined;
