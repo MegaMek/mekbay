@@ -728,9 +728,9 @@ export class UnitSearchComponent implements OnDestroy {
                 if (!newTag || newTag.trim().length === 0) {
                     return;
                 }
-                if (newTag.length > 10) {
-                    // Limit tag length to 10 characters
-                    alert('Tag is too long. Maximum length is 10 characters.');
+                if (newTag.length > 16) {
+                    // Limit tag length to 16 characters
+                    alert('Tag is too long. Maximum length is 16 characters.');
                     return;
                 }
                 
