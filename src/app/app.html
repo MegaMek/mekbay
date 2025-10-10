@@ -1,15 +1,19 @@
 <main>
     <div class="app-container" [class.menu-open]="this.layoutService.isMenuOpen()">
         <force-builder-viewer
-            *ngIf="hasUnits()" (menuSelect)="onMenuSelected($event)">
+            *ngIf="hasUnits()" 
+            [unitSearchPortal]="unitSearchPortalForceBuilder()"
+            [unitSearchComponent]="unitSearchComponentRef()"
+            (menuSelect)="onMenuSelected($event)">
         </force-builder-viewer>
-
+        <div class="extended-search-container">
+            <div [cdkPortalOutlet]="unitSearchPortalExtended"></div>
+        </div>
         <div class="main-content">
 
             <div *ngIf="hasUnits()" class="content-area">
                 <svg-viewer [unit]="selectedUnit()"></svg-viewer>
             </div>
-
             <!-- Empty state -->
             <div *ngIf="!hasUnits()" class="empty-state-container">
                 <popup-menu [showBelow]="true" [class.disabled]="!this.dataService.isDataReady()" class="popup-menu-button" [options]="popupMenuOptions"
@@ -19,7 +23,9 @@
                         <img src="/images/logo.png" alt="Mekbay Logo">
                         <div class="beta-notice noprint" (click)="showBetaDialog();">BETA</div>
                     </div>
-                    <unit-search [autoFocus]="true"></unit-search>
+                    <div class="search-container">
+                        <div [cdkPortalOutlet]="unitSearchPortalMain"></div>
+                    </div>
                     <div class="spinner-container" *ngIf="this.dataService.isDownloading() || this.dataService.isCloudForceLoading()">
                         <div class="spinner">
                             <div class="ring"></div>
@@ -41,5 +47,8 @@
         </div>
         <update-button [updateAvailable]="updateAvailable()"></update-button>
         <app-toasts></app-toasts>
+        <div #unitSearchContainer>
+            <unit-search></unit-search>
+        </div>
     </div>
 </main>

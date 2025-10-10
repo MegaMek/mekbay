@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild } from '@angular/core';
+import { Component, signal, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, untracked } from '@angular/core';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
@@ -70,7 +70,7 @@ export class UnitSearchComponent implements OnDestroy {
     public readonly AdvFilterType = AdvFilterType;
     public readonly SORT_OPTIONS = SORT_OPTIONS;
 
-    viewport = viewChild.required(CdkVirtualScrollViewport);
+    viewport = viewChild(CdkVirtualScrollViewport);
     searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
@@ -244,7 +244,7 @@ export class UnitSearchComponent implements OnDestroy {
         });
 
         afterNextRender(() => {
-            this.viewport().checkViewportSize();
+            this.viewport()?.checkViewportSize();
         }, { injector: this.injector });
     }
 
@@ -368,7 +368,7 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     private scrollToIndex(index: number) {
-        this.viewport().scrollToIndex(index, 'smooth');
+        this.viewport()?.scrollToIndex(index, 'smooth');
     }
 
     highlight(text: string): string {
@@ -466,6 +466,10 @@ export class UnitSearchComponent implements OnDestroy {
         });
 
         ref.componentInstance?.add.subscribe(unit => {
+            if (!this.forceBuilderService.hasUnits()) {
+                // If this is the first unit being added, close the search panel
+                this.closeAllPanels();
+            }
             this.forceBuilderService.addUnit(unit);
             ref.close();
             this.searchInput().nativeElement.blur();

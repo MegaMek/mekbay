@@ -514,6 +514,28 @@ export class ForceBuilderService {
         );
     }
 
+    public async repairAllUnits() {
+        const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
+            data: <ConfirmDialogData<string>>{
+                title: 'Repair All Units',
+                message: 'Are you sure you want to repair all units? This will reset all damage and status effects on every unit in the force.',
+                buttons: [
+                    { label: 'YES', value: 'yes' },
+                    { label: 'NO', value: 'no' }
+                ]
+            }
+        });
+        const result = await firstValueFrom(dialogRef.closed);
+        
+        if (result === 'yes') {
+            this.forceUnits().forEach(fu => {
+                fu.repairAll();
+            });
+            return true;
+        }
+        return false;
+    }
+
     /**
      * Handles remote updates to the force from the database.
      * This method is called when the WebSocket receives a message

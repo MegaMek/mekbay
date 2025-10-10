@@ -508,6 +508,49 @@ export class ForceUnit {
         }
     };
 
+    public repairAll() {
+        // Set crew members hits to 0
+        const crew = this.state.crew().map(crewMember => {
+            if (crewMember.getHits() > 0) {
+                crewMember.setHits(0);
+            }
+            return crewMember;
+        });
+        this.state.crew.set(crew);
+        // Clear all crits
+        const crits = this.state.crits().map(crit => {
+            if (crit.destroyed) {
+                crit.destroyed = false;
+            }
+            if (crit.hits) {
+                crit.hits = 0;
+            }
+            if (crit.consumed) {
+                crit.consumed = 0;
+            }
+            return { ...crit };
+        });
+        this.state.crits.set(crits);
+        // Clear all damage
+        this.state.locations.set({});
+        // Clear heat
+        this.state.heat.set({ current: 0, previous: 0 });
+        // Clear destroyed state
+        this.state.destroyed.set(false);
+        // Clear inventory destroyed items
+        const inventory = this.state.inventory().map(item => {
+            if (item.destroyed) {
+                item.destroyed = false;
+            }
+            if (item.consumed) {
+                item.consumed = 0;
+            }
+            return { ...item };
+        });
+        this.state.inventory.set(inventory);
+        this.setModified();
+    }
+
     public hasDirectInventory(): boolean {
         return (!this.svg()?.querySelector('.critSlot')) && (this.getUnit().type !== 'Infantry') || false;
     }

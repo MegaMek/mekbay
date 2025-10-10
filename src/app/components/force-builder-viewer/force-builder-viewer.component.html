@@ -1,7 +1,7 @@
 <div class="force-viewer-container">
     <div class="header">
         <img class="logo" src="/images/logo.png" alt="Mekbay">
-        <unit-search></unit-search>
+        <div [cdkPortalOutlet]="unitSearchPortal()"></div>
     </div>
     <div class="force-name" (click)="promptChangeForceName()">{{ forceName() }}</div>
     <div #scrollableContent class="scrollable-content">
@@ -72,7 +72,7 @@
         </div>
         <popup-menu class="popup-menu-button" [options]="[
             { label: 'New Force', value: 'new' },
-            { label: 'Rename Force', value: 'rename' },
+            { label: 'Repair Force', value: 'repairAll' },
             { label: 'Load Force', value: 'load' },
             { label: 'Print All', value: 'print' },
             { separator: true },

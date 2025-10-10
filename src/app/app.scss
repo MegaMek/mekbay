@@ -93,9 +93,13 @@
     }
 }
 
-.empty-state-container unit-search {
+.empty-state-container .search-container {
     width: 90%;
     max-width: 600px;
+}
+
+.extended-search-container {
+    z-index: 200;
 }
 
 svg-viewer {
@@ -110,7 +114,7 @@ svg-viewer {
     right: 0;
     bottom: 0;
     background-color: rgba(0, 0, 0, 0.5);
-    z-index: 998; /* Below the sidebar */
+    z-index: 99; /* Below the sidebar */
     opacity: 1;
 }
 

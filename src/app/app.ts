@@ -31,14 +31,13 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, OnInit, signal, HostListener, inject, effect, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, OnInit, signal, HostListener, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { SvgViewerComponent } from './components/svg-viewer/svg-viewer.component';
 import { ForceBuilderViewerComponent } from './components/force-builder-viewer/force-builder-viewer.component';
 import { DataService } from './services/data.service';
-import { DbService } from './services/db.service';
 import { ForceBuilderService } from './services/force-builder.service';
 import { Unit } from './models/units.model';
 import { LayoutService } from './services/layout.service';
@@ -56,6 +55,8 @@ import { Dialog } from '@angular/cdk/dialog';
 import { BetaDialogComponent } from './components/beta-dialog/beta-dialog.component';
 import { ForceLoadDialogComponent } from './components/force-load-dialog/force-load-dialog.component';
 import { UpdateButtonComponent } from './components/update-button/update-button.component';
+import { UnitSearchFiltersService } from './services/unit-search-filters.service';
+import { DomPortal, PortalModule } from '@angular/cdk/portal';
 
 
 /*
@@ -68,12 +69,13 @@ import { UpdateButtonComponent } from './components/update-button/update-button.
     imports: [
         CommonModule,
         ToastsComponent,
-        UnitSearchComponent,
         SvgViewerComponent,
         ForceBuilderViewerComponent,
         LayoutModule,
         PopupMenuComponent,
-        UpdateButtonComponent
+        UpdateButtonComponent,
+        UnitSearchComponent,
+        PortalModule
     ],
     templateUrl: './app.html',
     styleUrl: './app.scss'
@@ -87,11 +89,20 @@ export class App implements OnInit {
     private dialog = inject(Dialog);
     private toastService = inject(ToastService);
     private optionsService = inject(OptionsService);
+    public unitSearchFilter = inject(UnitSearchFiltersService);
 
     private lastUpdateCheck: number = 0;
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
     protected title = 'mekbay';
     protected updateAvailable = signal(false);
+
+    private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
+    public readonly unitSearchComponentRef = viewChild(UnitSearchComponent);
+    private readonly forceBuilderViewer = viewChild(ForceBuilderViewerComponent);
+    protected unitSearchPortal!: DomPortal<ElementRef>;
+    protected unitSearchPortalMain!: DomPortal<any>;
+    protected unitSearchPortalExtended!: DomPortal<any>;
+    protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
 
     isOverlayVisible = computed(() => {
         return this.layoutService.isMobile() && (this.layoutService.isMenuOpen() || this.layoutService.isMenuDragging());
@@ -115,9 +126,26 @@ export class App implements OnInit {
             const colorMode = this.optionsService.options().sheetsColor;
             document.documentElement.classList.toggle('night-mode', (colorMode === 'night'));
         });
+        effect(() => {
+            const unitSearchContainer = this.unitSearchContainer();
+            if (unitSearchContainer) {
+                if (this.unitSearchPortal?.isAttached) {
+                    this.unitSearchPortal.detach();
+                }
+                this.unitSearchPortal = new DomPortal(unitSearchContainer);
+                if (this.unitSearchFilter.expandedView()) {
+                    this.unitSearchPortalExtended = this.unitSearchPortal;
+                } else {
+                    if (this.hasUnits()) {
+                        this.unitSearchPortalForceBuilder.set(this.unitSearchPortal);
+                    } else {
+                        this.unitSearchPortalMain = this.unitSearchPortal;
+                    }
+                }
+            }
+        });
     }
 
-    
     hasUnits = computed(() => this.forceBuilderService.forceUnits().length > 0);
     selectedUnit = computed(() => this.forceBuilderService.selectedUnit());
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
@@ -248,6 +276,12 @@ export class App implements OnInit {
             }
             case 'rename': {
                 this.forceBuilderService.promptChangeForceName();
+                break;
+            }
+            case 'repairAll': {
+                if (await this.forceBuilderService.repairAllUnits()) {
+                    this.toastService.show(`Repaired all units.`, 'info');
+                }
                 break;
             }
             case 'load': {

@@ -31,17 +31,17 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, HostBinding, HostListener, ElementRef, Renderer2, effect, inject, OnDestroy, ChangeDetectionStrategy, viewChild, viewChildren, output } from '@angular/core';
+import { Component, computed, HostBinding, HostListener, ElementRef, Renderer2, effect, inject, OnDestroy, ChangeDetectionStrategy, viewChild, viewChildren, output, input, contentChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { UnitSearchComponent } from '../unit-search/unit-search.component';
-import { Unit } from '../../models/units.model';
 import { ForceUnit } from '../../models/force-unit.model';
 import { DragDropModule, CdkDragDrop } from '@angular/cdk/drag-drop'
 import { PopupMenuComponent } from '../../components/popup-menu/popup-menu.component';
 import { Dialog } from '@angular/cdk/dialog';
 import { UnitDetailsDialogComponent } from '../unit-details-dialog/unit-details-dialog.component';
+import { Portal, PortalModule } from '@angular/cdk/portal';
 
 /*
  * Author: Drake
@@ -55,7 +55,7 @@ const SWIPE_SNAP_THRESHOLD_PERCENT = 0.5;   // Menu snaps open/closed if dragged
     selector: 'force-builder-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, UnitSearchComponent, DragDropModule, PopupMenuComponent],
+    imports: [CommonModule, PortalModule, DragDropModule, PopupMenuComponent],
     templateUrl: './force-builder-viewer.component.html',
     styleUrls: ['./force-builder-viewer.component.scss']
 })
@@ -65,8 +65,9 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     private elRef = inject(ElementRef<HTMLElement>);
     private renderer = inject(Renderer2);
     private dialog = inject(Dialog);
+    unitSearchPortal = input<Portal<any>>();
+    unitSearchComponent = input<UnitSearchComponent>();
     menuSelect = output<string>();
-    private unitSearchComponent = viewChild(UnitSearchComponent);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
     forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
     private burgerLipBtn = viewChild<ElementRef<HTMLButtonElement>>('burgerLipBtn');
