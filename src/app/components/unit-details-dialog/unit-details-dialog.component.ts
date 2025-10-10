@@ -88,6 +88,11 @@ const MATRIX_ALIGNMENT: Record<string, MatrixSpec> = {
     ],
 };
 
+interface ManufacturerInfo {
+    manufacturer: string;
+    factory: string;
+}
+
 @Component({
     selector: 'unit-details-dialog',
     standalone: true,
@@ -995,5 +1000,46 @@ export class UnitDetailsDialogComponent {
             }
         }
         this.touch = { startX: 0, startY: 0, endX: 0, endY: 0 };
+    }
+
+    getManufacturerFactoryPairs(): ManufacturerInfo[] {
+        if (!this.unit.fluff) return [];
+    
+        const manufacturers = this.unit.fluff.manufacturer?.split(',').map(m => m.trim()) || [];
+        const factories = this.unit.fluff.primaryFactory?.split(',').map(f => f.trim()) || [];
+        
+        const manufacturerMap = new Map<string, string[]>();
+        const maxLen = Math.max(manufacturers.length, factories.length);
+        
+        // Build map of manufacturer -> factories
+        for (let i = 0; i < maxLen; i++) {
+            const mfg = manufacturers[i] || '';
+            const factory = factories[i] || '';
+            
+            if (mfg) {
+                if (!manufacturerMap.has(mfg)) {
+                    manufacturerMap.set(mfg, []);
+                }
+                if (factory) {
+                    manufacturerMap.get(mfg)!.push(factory);
+                }
+            } else if (factory) {
+                // Factory without manufacturer
+                if (!manufacturerMap.has('')) {
+                    manufacturerMap.set('', []);
+                }
+                manufacturerMap.get('')!.push(factory);
+            }
+        }
+        
+        const pairs: ManufacturerInfo[] = [];
+        manufacturerMap.forEach((factoryList, mfg) => {
+            pairs.push({
+                manufacturer: mfg,
+                factory: factoryList.join(', ')
+            });
+        });
+        
+        return pairs;
     }
 }

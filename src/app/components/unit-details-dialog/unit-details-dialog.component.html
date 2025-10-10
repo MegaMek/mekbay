@@ -195,15 +195,14 @@
         <div class="tab-content" *ngIf="activeTab() === 'Fluff'">
             <div class="fluff-content allow-select">
                 <ng-container *ngIf="unit.fluff; else noFluff">
-                    <div class="fluff-short-row" *ngIf="unit.fluff.manufacturer || unit.fluff.primaryFactory">
-                        <div class="fluff-section inline" *ngIf="unit.fluff.manufacturer">
-                            <div class="fluff-label">Manufacturer:</div>
-                            <div class="fluff-value">{{ unit.fluff.manufacturer }}</div>
-                        </div>
-                        
-                        <div class="fluff-section inline" *ngIf="unit.fluff.primaryFactory">
-                            <div class="fluff-label">Primary Factory:</div>
-                            <div class="fluff-value">{{ unit.fluff.primaryFactory }}</div>
+                    <!-- Manufacturer & Factory -->
+                    <div class="manufacturer-list" *ngIf="unit.fluff.manufacturer || unit.fluff.primaryFactory">
+                        <div class="fluff-label">Manufacturer:</div>
+                        <div class="manufacturer-entries">
+                            <div class="manufacturer-entry" *ngFor="let pair of getManufacturerFactoryPairs()">
+                                <span class="manufacturer-name" *ngIf="pair.manufacturer">{{ pair.manufacturer }}</span>
+                                <span class="factory-location" *ngIf="pair.factory">({{ pair.factory }})</span>
+                            </div>
                         </div>
                     </div>
                     

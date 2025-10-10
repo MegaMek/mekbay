@@ -69,7 +69,7 @@ export interface Unit {
     chassis: string;
     model: string;
     year: number;
-    weightClass: number;
+    weightClass: string;
     tons: number;
     bv: number;
     pv: number;
@@ -79,6 +79,7 @@ export interface Unit {
     techRating: string;
     type: string;
     subtype: string;
+    omni: number;
     engine: string;
     engineRating: number;
     source: string;
@@ -100,6 +101,15 @@ export interface Unit {
     crewSize: number;
     quirks: string[];
     icon: string;
+    fluff?: {
+        manufacturer?: string;
+        primaryFactory?: string;
+        capabilities?: string;
+        overview?: string;
+        deployment?: string;
+        history?: string;
+        notes?: string;
+    };
     sheets: string[];
     _chassis?: string; // For pre-compiled search
     _model?: string; // For pre-compiled search
