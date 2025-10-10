@@ -42,9 +42,9 @@ import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, IAmmo, IEquipment, IWeapon, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { Quirk, Quirks } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
-import { OptionsService } from './options.service';
 import { Force } from '../models/force-unit.model';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
+import { UserStateService } from './userState.service';
 
 /*
  * Author: Drake
@@ -85,7 +85,7 @@ export class DataService {
     private http = inject(HttpClient);
     private dbService = inject(DbService);
     private wsService = inject(WsService);
-    private optionsService = inject(OptionsService);
+    private userStateService = inject(UserStateService);
     private unitInitializer = inject(UnitInitializerService);
     
     isDataReady = signal(false);
@@ -698,7 +698,7 @@ export class DataService {
         // Delete from cloud
         const ws = await this.canUseCloud();
         if (ws) {
-            const uuid = await this.optionsService.getOrCreateUuid();
+            const uuid = this.userStateService.uuid();
             const payload = {
                 action: 'delForce',
                 uuid,
@@ -712,7 +712,7 @@ export class DataService {
         const ws = await this.canUseCloud();
         if (!ws) return [];
         const forces: Force[] = [];
-        const uuid = await this.optionsService.getOrCreateUuid();
+        const uuid = this.userStateService.uuid();
         const payload = {
             action: 'listForces',
             uuid,
@@ -735,7 +735,7 @@ export class DataService {
     private async saveForceCloud(force: Force): Promise<void> {
         const ws = await this.canUseCloud();
         if (!ws) return;
-        const uuid = await this.optionsService.getOrCreateUuid();
+        const uuid = this.userStateService.uuid();
         const payload = {
             action: 'saveForce',
             uuid,
@@ -747,7 +747,7 @@ export class DataService {
     private async getForceCloud(instanceId: string): Promise<any | null> {
         const ws = await this.canUseCloud();
         if (!ws) return null;
-        const uuid = await this.optionsService.getOrCreateUuid();
+        const uuid = this.userStateService.uuid();
         const payload = {
             action: 'getForce',
             uuid,

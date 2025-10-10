@@ -45,7 +45,6 @@ export class OptionsService {
     private userStateService = inject(UserStateService);
 
     public options = signal<Options>({
-        uuid: '', // Will be set in constructor
         sheetsColor: 'normal',
         pickerStyle: 'default',
         quickActions: 'disabled'
@@ -56,10 +55,8 @@ export class OptionsService {
     }
 
     async initOptions() {
-        const uuid = await this.getOrCreateUuid();
         const saved = await this.dbService.getOptions();
         this.options.set({
-            uuid,
             sheetsColor: saved?.sheetsColor ?? 'normal',
             pickerStyle: saved?.pickerStyle ?? 'default',
             quickActions: saved?.quickActions ?? 'disabled'
@@ -70,13 +67,5 @@ export class OptionsService {
         const updated = { ...this.options(), [key]: value };
         this.options.set(updated);
         await this.dbService.saveOptions(updated);
-    }
-    
-    /**
-     * Retrieves the current user UUID from options.
-     * If missing, generates a new one, saves it, and returns it.
-     */
-    public async getOrCreateUuid(forceNew: boolean = false): Promise<string> {
-        return await this.userStateService.getOrCreateUuid(forceNew);
     }
 }

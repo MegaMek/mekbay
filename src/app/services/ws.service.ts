@@ -97,7 +97,7 @@ export class WsService {
         this.ws.onopen = async () => {
             this.wsConnected.set(true);
             this.resolveWsReady();
-            const uuid = await this.userStateService.getOrCreateUuid();
+            const uuid = this.userStateService.uuid();
             this.send({ action: 'register', sessionId: this.wsSessionId, uuid });
         };
 

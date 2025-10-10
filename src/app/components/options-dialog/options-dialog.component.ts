@@ -64,7 +64,7 @@ export class OptionsDialogComponent {
     sheetCacheSize = signal(0);
 
     constructor() {
-        this.userUuid = this.optionsService.options().uuid;
+        this.userUuid = this.userStateService.uuid();
         this.updateSheetCacheSize();
     }
 
@@ -131,7 +131,7 @@ export class OptionsDialogComponent {
         if (event.key === 'Escape') {
             event.preventDefault();
             event.stopPropagation();
-            this.userUuid = this.optionsService.options().uuid;
+            this.userUuid = this.userStateService.uuid();
             this.userUuidError = '';
             (event.target as HTMLInputElement).blur();
         }
