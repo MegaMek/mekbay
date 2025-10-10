@@ -80,38 +80,52 @@
         font-size: 1.3em;
         text-transform: uppercase;
     }
-    
+
     .tab-header {
-    display: flex;
-    flex-direction: row;
-    font-size: 1em;
-    margin-bottom: -2px;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 1em;
+        margin-bottom: -2px;
+    }
+
+    .tab-buttons {
+        display: flex;
+        flex-direction: row;
+    }
+
+    .tab-actions {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        margin-right: 0.5em;
     }
 
     .tab-button {
-    background: none;
-    border: none;
-    color: var(--text-color-secondary);
-    padding: 0.5em 1em;
-    cursor: pointer;
-    font-size: 1em;
-    border-bottom: 2px solid transparent;
-    transition: color 0.3s ease, border-color 0.3s ease;
+        background: none;
+        border: none;
+        color: var(--text-color-secondary);
+        padding: 0.5em 1em;
+        cursor: pointer;
+        font-size: 1em;
+        border-bottom: 2px solid transparent;
+        transition: color 0.3s ease, border-color 0.3s ease;
     }
 
     .tab-button:hover {
-    color: var(--text-color);
+        color: var(--text-color);
     }
 
     .tab-button.active {
-    color: var(--text-color);
-    border-bottom-color: var(--accent-color);
+        color: var(--text-color);
+        border-bottom-color: var(--accent-color);
     }
 }
 
 
 .tab-content {
-  padding-top: 0.5em;
+    padding-top: 0.5em;
 }
 
 .modal-body {
@@ -136,6 +150,7 @@
         margin-right: unset;
     }
 }
+
 @media (max-height: 680px) {
     .modal {
         height: 100%;
