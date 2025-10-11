@@ -789,3 +789,27 @@
         gap: 10px;
     }
 }
+
+.fluff-bg-image {
+    position: absolute;
+    top: -100px;
+    right: -100px;
+    width: 800px;
+    height: auto;
+    object-fit: cover;
+    object-position: right center;
+    filter: invert(1) hue-rotate(180deg) opacity(0.1) brightness(1) contrast(1) blur(0.5px);
+    mix-blend-mode: lighten;
+    pointer-events: none;
+    z-index: -1;
+}
+
+:host ::ng-deep .modal.fluff-background {
+    position: relative;
+    overflow: hidden;
+}
+
+:host ::ng-deep .modal.fluff-background > *:not(.fluff-bg-image) {
+    position: relative;
+    z-index: 1;
+}

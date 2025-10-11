@@ -1,4 +1,5 @@
 <base-dialog [tabs]="tabs" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)" (closed)="onClose()">
+    
     <div dialog-header class="header"> 
         <div class="header-group">
             <div class="header-icon-container">
@@ -23,6 +24,11 @@
     <div tab-actions>
     </div>
     <div dialog-body class="dialog-body">
+        <img 
+        *ngIf="fluffImageUrl()"
+        [src]="fluffImageUrl()"
+        class="fluff-bg-image"
+        alt="">
         <div class="tab-content" *ngIf="activeTab() === 'General'">
             <!-- Basic Info -->
             <div class="basic-info-block allow-select">
@@ -212,40 +218,39 @@
                             alt="{{ unit.model }} {{ unit.chassis }}" />
                     </div>
 
-                    <!-- Manufacturer & Factory -->
-                    <div class="manufacturer-list" *ngIf="unit.fluff.manufacturer || unit.fluff.primaryFactory">
-                        <div class="fluff-label">Manufacturer:</div>
-                        <div class="manufacturer-entries">
-                            <div class="manufacturer-entry" *ngFor="let pair of getManufacturerFactoryPairs()">
-                                <span class="manufacturer-name" *ngIf="pair.manufacturer">{{ pair.manufacturer }}</span>
-                                <span class="factory-location" *ngIf="pair.factory">({{ pair.factory }})</span>
-                            </div>
-                        </div>
+                    <div class="fluff-section" *ngIf="unit.fluff.manufacturer">
+                        <div class="fluff-label">Manufacturers:</div>
+                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.manufacturer) }}</div>
+                    </div>
+                    
+                    <div class="fluff-section" *ngIf="unit.fluff.primaryFactory">
+                        <div class="fluff-label">Primary Factories:</div>
+                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.primaryFactory) }}</div>
                     </div>
                     
                     <div class="fluff-section" *ngIf="unit.fluff.capabilities">
                         <div class="fluff-label">Capabilities:</div>
-                        <div class="fluff-text">{{ unit.fluff.capabilities }}</div>
+                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.capabilities) }}</div>
                     </div>
                     
                     <div class="fluff-section" *ngIf="unit.fluff.overview">
                         <div class="fluff-label">Overview:</div>
-                        <div class="fluff-text">{{ unit.fluff.overview }}</div>
+                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.overview) }}</div>
                     </div>
                     
                     <div class="fluff-section" *ngIf="unit.fluff.deployment">
                         <div class="fluff-label">Deployment:</div>
-                        <div class="fluff-text">{{ unit.fluff.deployment }}</div>
+                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.deployment) }}</div>
                     </div>
                     
                     <div class="fluff-section" *ngIf="unit.fluff.history">
                         <div class="fluff-label">History:</div>
-                        <div class="fluff-text">{{ unit.fluff.history }}</div>
+                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.history) }}</div>
                     </div>
                     
                     <div class="fluff-section" *ngIf="unit.fluff.notes">
                         <div class="fluff-label">Notes:</div>
-                        <div class="fluff-text">{{ unit.fluff.notes }}</div>
+                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.notes) }}</div>
                     </div>
                 </ng-container>
                 

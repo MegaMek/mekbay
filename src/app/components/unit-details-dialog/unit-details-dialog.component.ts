@@ -220,6 +220,7 @@ export class UnitDetailsDialogComponent {
         this.fluffImageUrl.set(null);
         
         if (this.unit?.fluff?.img) {
+            if (this.unit.fluff.img.endsWith('hud.png')) return; // Ignore HUD images
             this.fluffImageUrl.set(`https://db.mekbay.com/images/fluff/${this.unit.fluff.img}`);
         }
     }
@@ -1071,5 +1072,33 @@ export class UnitDetailsDialogComponent {
         });
         
         return pairs;
+    }
+
+    public sanitizeFluffHtml(text: string | undefined): string {
+        if (!text) return '';
+        
+        // Replace <p> tags with double newlines for paragraph breaks
+        let sanitized = text.replace(/<p>/gi, '\n\n');
+        sanitized = sanitized.replace(/<\/p>/gi, '');
+        
+        // Strip all remaining HTML tags
+        sanitized = sanitized.replace(/<[^>]*>/g, '');
+        
+        // Decode common HTML entities
+        sanitized = sanitized
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'");
+        
+        // Clean up excessive whitespace and newlines
+        sanitized = sanitized
+            .replace(/\n{3,}/g, '\n\n') // Max 2 consecutive newlines
+            .replace(/[ \t]+/g, ' ')     // Normalize spaces
+            .trim();
+        
+        return sanitized;
     }
 }
