@@ -36,6 +36,7 @@ import { Unit } from '../models/units.model';
 import { DataService } from './data.service';
 import { MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { ActivatedRoute, Router } from '@angular/router';
+import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 
 /*
  * Author: Drake
@@ -318,6 +319,8 @@ export class UnitSearchFiltersService {
     private route = inject(ActivatedRoute);
     
     ADVANCED_FILTERS = ADVANCED_FILTERS;
+    pilotGunnerySkill = signal(4);
+    pilotPilotingSkill = signal(5);
     search = signal('');
     filterState = signal<FilterState>({});
     selectedSort = signal<string>('name');
@@ -334,7 +337,14 @@ export class UnitSearchFiltersService {
                 this.calculateTotalRanges();
             }
         });
-        
+        effect(() => {
+            const gunnery = this.pilotGunnerySkill();
+            const piloting = this.pilotPilotingSkill();
+            
+            if (this.isDataReady() && this.advOptions()['bv']) {
+                this.recalculateBVRange();
+            }
+        });
         this.loadFiltersFromUrlOnStartup();
         this.updateUrlOnFiltersChange();
     }
@@ -349,14 +359,60 @@ export class UnitSearchFiltersService {
         return 'Structure / Squad Size';
     });
 
+    
+    private recalculateBVRange() {
+        const units = this.units;
+        if (units.length === 0) return;
+
+        const bvValues = units
+            .map(u => this.getAdjustedBV(u))
+            .filter(bv => bv > 0)
+            .sort((a, b) => a - b);
+
+        if (bvValues.length === 0) return;
+
+        const min = bvValues[0];
+        const max = bvValues[bvValues.length - 1];
+
+        // Update the totalRangesCache which the computed signal depends on
+        this.totalRangesCache['bv'] = [min, max];
+        
+        // Adjust current filter value to fit within new range if it exists
+        const currentFilter = this.filterState()['bv'];
+        if (currentFilter?.interactedWith) {
+            const currentValue = currentFilter.value as [number, number];
+            const adjustedValue: [number, number] = [
+                Math.max(min, currentValue[0]),
+                Math.min(max, currentValue[1])
+            ];
+            
+            // Only update if the value actually changed
+            if (adjustedValue[0] !== currentValue[0] || adjustedValue[1] !== currentValue[1]) {
+                this.setFilter('bv', adjustedValue);
+            }
+        }
+    }
+
     private calculateTotalRanges() {
         const rangeFilters = ADVANCED_FILTERS.filter(f => f.type === AdvFilterType.RANGE);
         for (const conf of rangeFilters) {
-            const allValues = this.getValidFilterValues(this.units, conf);
-            if (allValues.length > 0) {
-                this.totalRangesCache[conf.key] = [Math.min(...allValues), Math.max(...allValues)];
+            if (conf.key === 'bv') {
+                // Special handling for BV to use adjusted values
+                const bvValues = this.units
+                    .map(u => this.getAdjustedBV(u))
+                    .filter(bv => bv > 0);
+                if (bvValues.length > 0) {
+                    this.totalRangesCache['bv'] = [Math.min(...bvValues), Math.max(...bvValues)];
+                } else {
+                    this.totalRangesCache['bv'] = [0, 0];
+                }
             } else {
-                this.totalRangesCache[conf.key] = [0, 0];
+                const allValues = this.getValidFilterValues(this.units, conf);
+                if (allValues.length > 0) {
+                    this.totalRangesCache[conf.key] = [Math.min(...allValues), Math.max(...allValues)];
+                } else {
+                    this.totalRangesCache[conf.key] = [0, 0];
+                }
             }
         }
     }
@@ -461,15 +517,23 @@ export class UnitSearchFiltersService {
             }
 
             if (conf.type === AdvFilterType.RANGE && Array.isArray(val)) {
-                results = results.filter(u => {
-                    const unitValue = (u as any)[conf.key];
-                    if (conf.ignoreValues && conf.ignoreValues.includes(unitValue)) 
-                    {
-                        if (val[0] === 0) return true; // If the range starts at 0, we allow -1 values
-                        return false; // Ignore this unit if it has an ignored value
-                    }
-                    return unitValue != null && unitValue >= val[0] && unitValue <= val[1];
-                });
+                // Special handling for BV range to use adjusted values
+                if (conf.key === 'bv') {
+                    results = results.filter(u => {
+                        const adjustedBV = this.getAdjustedBV(u);
+                        return adjustedBV >= val[0] && adjustedBV <= val[1];
+                    });
+                } else {
+                    results = results.filter(u => {
+                        const unitValue = (u as any)[conf.key];
+                        if (conf.ignoreValues && conf.ignoreValues.includes(unitValue)) 
+                        {
+                            if (val[0] === 0) return true; // If the range starts at 0, we allow -1 values
+                            return false; // Ignore this unit if it has an ignored value
+                        }
+                        return unitValue != null && unitValue >= val[0] && unitValue <= val[1];
+                    });
+                }
                 continue;
             }
         }
@@ -512,6 +576,12 @@ export class UnitSearchFiltersService {
                         comparison = (a.year || 0) - (b.year || 0);
                     }
                 }
+            } else
+            if (sortKey === 'bv') {
+                // Use adjusted BV for sorting
+                const aBv = this.getAdjustedBV(a);
+                const bBv = this.getAdjustedBV(b);
+                comparison = aBv - bBv;
             } else
             if (sortKey in a && sortKey in b) {
                 const key = sortKey as keyof Unit;
@@ -754,7 +824,17 @@ export class UnitSearchFiltersService {
             };
         } else if (conf.type === AdvFilterType.RANGE) {
             const totalRange = this.totalRangesCache[conf.key] || [0, 0];
-            const vals = this.getValidFilterValues(contextUnits, conf);
+            
+            // Special handling for BV to use adjusted values
+            let vals: number[];
+            if (conf.key === 'bv') {
+                vals = contextUnits
+                    .map(u => this.getAdjustedBV(u))
+                    .filter(bv => bv > 0);
+            } else {
+                vals = this.getValidFilterValues(contextUnits, conf);
+            }
+            
             const availableRange = vals.length ? [Math.min(...vals), Math.max(...vals)] : totalRange;
 
             let currentValue = state[conf.key]?.interactedWith ? state[conf.key].value : availableRange;
@@ -853,52 +933,72 @@ export class UnitSearchFiltersService {
                 // Load filters
                 const filtersParam = params.get('filters');
                 if (filtersParam) {
-                try {
-                    const decodedFilters = decodeURIComponent(filtersParam);
-                    const parsedFilters = this.parseCompactFiltersFromUrl(decodedFilters);
-                    const validFilters: FilterState = {};
-                    
-                    for (const [key, state] of Object.entries(parsedFilters)) {
-                        const conf = ADVANCED_FILTERS.find(f => f.key === key);
-                        if (!conf) continue; // Skip unknown filter keys
+                    try {
+                        const decodedFilters = decodeURIComponent(filtersParam);
+                        const parsedFilters = this.parseCompactFiltersFromUrl(decodedFilters);
+                        const validFilters: FilterState = {};
                         
-                        if (conf.type === AdvFilterType.DROPDOWN) {
-                            // Get all available values for this dropdown
-                            const availableValues = this.getAvailableDropdownValues(conf);
+                        for (const [key, state] of Object.entries(parsedFilters)) {
+                            const conf = ADVANCED_FILTERS.find(f => f.key === key);
+                            if (!conf) continue; // Skip unknown filter keys
                             
-                            if (conf.multistate) {
-                                const selection = state.value as MultiStateSelection;
-                                const validSelection: MultiStateSelection = {};
+                            if (conf.type === AdvFilterType.DROPDOWN) {
+                                // Get all available values for this dropdown
+                                const availableValues = this.getAvailableDropdownValues(conf);
                                 
-                                for (const [name, selectionValue] of Object.entries(selection)) {
-                                    if (availableValues.has(name)) {
-                                        validSelection[name] = selectionValue;
+                                if (conf.multistate) {
+                                    const selection = state.value as MultiStateSelection;
+                                    const validSelection: MultiStateSelection = {};
+                                    
+                                    for (const [name, selectionValue] of Object.entries(selection)) {
+                                        if (availableValues.has(name)) {
+                                            validSelection[name] = selectionValue;
+                                        }
+                                    }
+                                    
+                                    if (Object.keys(validSelection).length > 0) {
+                                        validFilters[key] = { value: validSelection, interactedWith: true };
+                                    }
+                                } else {
+                                    const values = state.value as string[];
+                                    const validValues = values.filter(v => availableValues.has(v));
+                                    
+                                    if (validValues.length > 0) {
+                                        validFilters[key] = { value: validValues, interactedWith: true };
                                     }
                                 }
-                                
-                                if (Object.keys(validSelection).length > 0) {
-                                    validFilters[key] = { value: validSelection, interactedWith: true };
-                                }
                             } else {
-                                const values = state.value as string[];
-                                const validValues = values.filter(v => availableValues.has(v));
-                                
-                                if (validValues.length > 0) {
-                                    validFilters[key] = { value: validValues, interactedWith: true };
-                                }
+                                // For range filters, just keep them as-is
+                                // They'll be clamped automatically by advOptions
+                                validFilters[key] = state;
                             }
-                        } else {
-                            // For range filters, just keep them as-is
-                            // They'll be clamped automatically by advOptions
-                            validFilters[key] = state;
+                        }
+                        this.filterState.set(validFilters);
+                    } catch (error) {
+                        console.warn('Failed to parse filters from URL:', error);
+                    }
+                }
+
+                if (params.has('gunnery')) {
+                    const gunneryParam = params.get('gunnery');
+                    if (gunneryParam) {
+                        const gunnery = parseInt(gunneryParam);
+                        if (!isNaN(gunnery) && gunnery >= 0 && gunnery <= 8) {
+                            this.pilotGunnerySkill.set(gunnery);
                         }
                     }
-                    this.filterState.set(validFilters);
-                } catch (error) {
-                    console.warn('Failed to parse filters from URL:', error);
-                }
                 }
                 
+                if (params.has('piloting')) {
+                    const pilotingParam = params.get('piloting');
+                    if (pilotingParam) {
+                        const piloting = parseInt(pilotingParam);
+                        if (!isNaN(piloting) && piloting >= 0 && piloting <= 8) {
+                            this.pilotPilotingSkill.set(piloting);
+                        }
+                    }
+                }
+
                 this.urlStateInitialized = true;
             }
         });
@@ -942,6 +1042,8 @@ export class UnitSearchFiltersService {
             const selectedSort = this.selectedSort();
             const selectedSortDirection = this.selectedSortDirection();
             const expanded = this.expandedView();
+            const gunnery = this.pilotGunnerySkill();
+            const piloting = this.pilotPilotingSkill();
 
             if (!this.urlStateInitialized) {
                 return;
@@ -952,7 +1054,7 @@ export class UnitSearchFiltersService {
 
             // Preserve existing non-filter parameters
             currentParams.keys.forEach(key => {
-                if (!['q', 'sort', 'sortDir', 'filters', 'expanded'].includes(key)) {
+                if (!['q', 'sort', 'sortDir', 'filters', 'expanded', 'gunnery', 'piloting'].includes(key)) {
                     queryParams[key] = currentParams.get(key);
                 }
             });
@@ -976,6 +1078,13 @@ export class UnitSearchFiltersService {
             const filtersParam = this.generateCompactFiltersParam(filterState);
             if (filtersParam) {
                 queryParams.filters = filtersParam;
+            }
+
+            if (gunnery !== 4) {
+                queryParams.gunnery = gunnery;
+            }
+            if (piloting !== 5) {
+                queryParams.piloting = piloting;
             }
 
             if (expanded) {
@@ -1174,6 +1283,8 @@ export class UnitSearchFiltersService {
         this.filterState.set({});
         this.selectedSort.set('name');
         this.selectedSortDirection.set('asc');
+        this.pilotGunnerySkill.set(4);
+        this.pilotPilotingSkill.set(5);
     }
 
     // Collect all unique tags from all units
@@ -1206,5 +1317,22 @@ export class UnitSearchFiltersService {
 
     public async saveTagsToStorage(): Promise<void> {
         await this.dataService.saveUnitTags(this.dataService.getUnits());
+    }
+   
+    setPilotSkills(gunnery: number, piloting: number) {
+        this.pilotGunnerySkill.set(gunnery);
+        this.pilotPilotingSkill.set(piloting);
+    }
+
+    getAdjustedBV(unit: Unit): number {
+        const gunnery = this.pilotGunnerySkill();
+        const piloting = this.pilotPilotingSkill();
+        
+        // Use default skills - no adjustment needed
+        if (gunnery === 4 && piloting === 5) {
+            return unit.bv;
+        }
+        
+        return BVCalculatorUtil.calculateAdjustedBV(unit.bv, gunnery, piloting);
     }
 }

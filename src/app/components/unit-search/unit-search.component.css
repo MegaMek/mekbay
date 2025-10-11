@@ -222,10 +222,17 @@
   user-select: none;
 }
 
+.adv-panel-header {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px 16px;
+    margin-bottom: 16px;
+}
+
 .clear-btn {
     width: 100%;
-    margin-bottom: 16px;
     padding: 8px;
+    margin-bottom: 0;
 }
 
 :host ::ng-deep .model b,
@@ -573,4 +580,37 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 200px;
+}
+
+/* Pilot skills */
+.pilot-skills-section {
+    margin-bottom: 0;
+    padding: 12px;
+    background-color: var(--background-color-menu);
+}
+
+.pilot-skills-controls {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.skill-control {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+}
+
+.skill-control label {
+    color: var(--text-color-secondary);
+    white-space: nowrap;
+    font-size: 0.9em;
+}
+
+.skill-select {
+    height: 32px;
+    padding: 0 4px;
+    background-color: #222;
+    flex: 1;
 }

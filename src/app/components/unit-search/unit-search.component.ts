@@ -757,6 +757,22 @@ export class UnitSearchComponent implements OnDestroy {
             await this.filtersService.saveTagsToStorage();
             this.filtersService.invalidateTagsCache();
             this.cdr.markForCheck();
-        });
+        });    
+    }
+    
+    setPilotSkill(type: 'gunnery' | 'piloting', value: number) {
+        const currentGunnery = this.filtersService.pilotGunnerySkill();
+        const currentPiloting = this.filtersService.pilotPilotingSkill();
+        if (type === 'gunnery') {
+            this.filtersService.setPilotSkills(value, currentPiloting);
+        } else {
+            this.filtersService.setPilotSkills(currentGunnery, value);
+        }
+        
+        this.activeIndex.set(null);
+    }
+
+    getDisplayBV(unit: Unit): number {
+        return this.filtersService.getAdjustedBV(unit);
     }
 }

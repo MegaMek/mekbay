@@ -61,7 +61,7 @@
                         <div class="third-info">
                             <div class="info-area">
                                 <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
-                                    <span class="value">BV: {{ formatValue(unit.bv, true, true) }}</span>
+                                    <span class="value">BV: {{ formatValue(getDisplayBV(unit), true, true) }}</span>
                                 </div>
                                 <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
                                     <span class="value">{{ formatTons(unit.tons) }}</span>
@@ -177,7 +177,39 @@
     [ngStyle]="advPanelStyle()"
     [class.docked]="advPanelDocked()"
     >
-    <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
+    <div class="adv-panel-header"
+         [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
+        <div class="pilot-skills-section framed-borders">
+            <div class="pilot-skills-controls">
+                <div class="skill-control">
+                    <label for="gunnery-skill">Gunnery:</label>
+                    <select 
+                        id="gunnery-skill"
+                        class="bt-input skill-select"
+                        [value]="this.filtersService.pilotGunnerySkill()"
+                        (change)="setPilotSkill('gunnery', +$any($event.target).value)">
+                        <option *ngFor="let i of [0,1,2,3,4,5,6,7,8]" 
+                            [value]="i" 
+                            [selected]="i === this.filtersService.pilotGunnerySkill()">{{ i }}</option>
+    
+                    </select>
+                </div>
+                <div class="skill-control">
+                    <label for="piloting-skill">Piloting:</label>
+                    <select 
+                        id="piloting-skill"
+                        class="bt-input skill-select"
+                        [value]="this.filtersService.pilotPilotingSkill()"
+                        (change)="setPilotSkill('piloting', +$any($event.target).value)">                
+                        <option *ngFor="let i of [0,1,2,3,4,5,6,7,8]" 
+                            [value]="i" 
+                            [selected]="i === this.filtersService.pilotPilotingSkill()">{{ i }}</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
+    </div>
     <div class="adv-panel-content"
          [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
             <!-- Dropdown filters -->
@@ -265,7 +297,7 @@
                 <div class="expanded-basic-info">
                     <div class="info-item">
                         <span class="info-label muted">BV:</span>
-                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">{{ formatValue(unit.bv, true, false) }}</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">{{ formatValue(getDisplayBV(unit), true, false) }}</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">Tons:</span>
