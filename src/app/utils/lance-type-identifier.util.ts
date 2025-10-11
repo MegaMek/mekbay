@@ -46,6 +46,7 @@ export interface LanceTypeDefinition {
     category: 'Inner Sphere' | 'Clan' | 'Special';
     validator: (units: ForceUnit[]) => boolean;
     idealRole?: string;
+    minUnits?: number;
     exclusiveFaction?: string;
 }
 
@@ -87,8 +88,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Air Lance',
             description: 'Lance of ground units plus two aerospace/conventional fighters',
             category: 'Special',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 const fighters = units.filter(u => u.getUnit().subtype === 'Aerospace Fighter' || u.getUnit().subtype === 'Conventional Fighter');
                 const groundUnits = units.filter(u => u.getUnit().type !== 'Aero' && u.getUnit().type !== 'Infantry');
                 
@@ -108,8 +109,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Anti-\'Mech Lance',
             description: 'All infantry units for urban and anti-mech warfare',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 return units.every(u => u.getUnit().type === 'Infantry');
             }
         },
@@ -121,8 +122,8 @@ export class LanceTypeIdentifierUtil {
             description: 'Heavy firepower and armor powerhouse formation',
             category: 'Inner Sphere',
             idealRole: 'Juggernaut',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 
                 const heavyOrLarger = units.filter(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) >= 3);
                 const hasLight = units.some(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) === 0);
@@ -148,8 +149,8 @@ export class LanceTypeIdentifierUtil {
             category: 'Inner Sphere',
             exclusiveFaction: 'Free Worlds League',
             idealRole: 'Juggernaut',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 
                 const allMediumOrLarger = units.every(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) >= 1);
                 const hasEnoughArmor = units.every(u => u.getUnit().armor >= 105);
@@ -166,8 +167,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Fast Assault Lance',
             description: 'Mobile assault formation with speed advantage',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // Fast assault requirement
                 const fastUnits = units.every(u => u.getUnit().walk >= 5 || u.getUnit().jump > 0);
                 
@@ -181,8 +182,8 @@ export class LanceTypeIdentifierUtil {
             description: 'Ambush specialists for heavy terrain',
             category: 'Inner Sphere',
             idealRole: 'Ambusher',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // At least 50% must be Ambusher or Juggernaut role
                 const ambusherOrJuggernaut = units.filter(u => u.getUnit().role === 'Ambusher' 
                                                             || u.getUnit().role === 'Juggernaut');
@@ -197,8 +198,8 @@ export class LanceTypeIdentifierUtil {
             description: 'Line troops with balanced firepower and armor',
             category: 'Inner Sphere',
             idealRole: 'Brawler',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 
                 const heavyOrLarger = units.filter(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) >= 3);
                 // If the Battle Lance consists of combat vehicles, there must be at least two matched pairs (same unit) of heavy units.
@@ -218,8 +219,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Light Battle Lance',
             description: 'Fast light formation for reconnaissance and skirmishing',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 
                 const lightUnits = units.filter(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) === 0);
                 const hasAssault = units.some(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) === 4);
@@ -239,8 +240,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Medium Battle Lance',
             description: 'Medium weight balanced formation',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 
                 const mediumUnits = units.filter(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) === 1);
                 const hasAssault = units.some(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) === 4);
@@ -257,9 +258,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Heavy Battle Lance',
             description: 'Heavy weight powerhouse formation',
             category: 'Inner Sphere',
-            validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
-                
+            minUnits: 4,
+            validator: (units: ForceUnit[]) => {                
                 const heavyOrLarger = units.filter(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) >= 3);
                 const hasLight = units.some(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) === 0);
                 if (isOnlyCombatVehicles(units)) {
@@ -298,10 +298,9 @@ export class LanceTypeIdentifierUtil {
             name: 'Berserker/Close Combat Lance',
             description: 'Close combat specialists for physical attacks',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // Same as battle lance but focused on close combat. I don't use the 'parent' to avoid priority issues.
-                if (units.length < 3) return false;
-                
                 const heavyOrLarger = units.filter(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) >= 3);
                 // If the Battle Lance consists of combat vehicles, there must be at least two matched pairs (same unit) of heavy units.
                 if (isOnlyCombatVehicles(units)) {
@@ -322,8 +321,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Command Lance',
             description: 'Diverse formation built around force commander',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // At least 50 percent of the units in this Formation must have one of the following Unit Roles: Sniper, Missile Boat, Skirmisher, or Juggernaut.
                 const hasRequiredRoles = units.filter(u => ['Sniper', 'Missile Boat', 'Skirmisher', 'Juggernaut'].includes(u.getUnit().role));
 
@@ -339,9 +338,8 @@ export class LanceTypeIdentifierUtil {
             description: 'Kurita synchronized formation of identical units',
             category: 'Inner Sphere',
             exclusiveFaction: 'Draconis Combine',
-            validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
-                
+            minUnits: 4,
+            validator: (units: ForceUnit[]) => {                
                 // All units must be same weight class
                 const firstWeight = LanceTypeIdentifierUtil.getWeightClass(units[0].getUnit());
                 const sameWeight = units.every(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) === firstWeight);
@@ -360,8 +358,8 @@ export class LanceTypeIdentifierUtil {
             description: 'Formation of command vehicle units',
             category: 'Inner Sphere',
             exclusiveFaction: 'Draconis Combine',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // One pair of (identical) vehicles needs to have the Sniper, Missile Boat, Skirmisher, or Juggernaut Unit Roles
                 if (!isOnlyCombatVehicles(units)) return false;
                 // find the pairs of vehicles and check if they have the required roles
@@ -381,8 +379,8 @@ export class LanceTypeIdentifierUtil {
             description: 'Long-range firepower specialists',
             category: 'Inner Sphere',
             idealRole: 'Missile Boat',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // At least 75 percent of the units in this Formation must have either the Missile Boat or Sniper Unit Roles.
                 const hasRequiredRoles = units.filter(u => ['Missile Boat', 'Sniper'].includes(u.getUnit().role));;
                 return hasRequiredRoles.length >= Math.floor(units.length * 0.75);
@@ -395,8 +393,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Anti-Air Lance',
             description: 'Air defense specialists',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 //  at least two units in an Anti-Air Lance must possess an LBX autocannon, a standard autocannon, an artillery weapon, or the Anti-Aircraft Targeting Quirk
                 const hasAntiAir = units.filter(u => LanceTypeIdentifierUtil.hasLBXAutocannon(u.getUnit()) || 
                     LanceTypeIdentifierUtil.hasAutocannon(u.getUnit()));
@@ -411,8 +409,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Artillery Fire Lance',
             description: 'Artillery support specialists',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 const hasArtillery = units.filter(u => LanceTypeIdentifierUtil.hasArtillery(u.getUnit()));
                 return hasArtillery.length >= 2;
             }
@@ -423,8 +421,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Direct Fire Lance',
             description: 'Direct fire heavy weapons',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // At least two units in this Formation must be heavy or larger
                 const heavyOrLarger = units.filter(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) >= 3);
                 
@@ -440,9 +438,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Fire Support Lance',
             description: 'Indirect fire specialists',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
-                
                 const indirectCapable = units.filter(u => LanceTypeIdentifierUtil.hasLRM(u.getUnit()) || 
                     LanceTypeIdentifierUtil.hasArtillery(u.getUnit()));
 
@@ -455,8 +452,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Light Fire Lance',
             description: 'Light units with coordinated long-range fire',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // No unit of heavy weight or larger may be included. 
                 const noHeavy = units.every(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) < 3);
                 // At least 50 percent of the units in this Formation must have either the Missile Boat or Sniper Unit Roles. 
@@ -492,8 +489,8 @@ export class LanceTypeIdentifierUtil {
             description: 'Fast scout hunters with firepower',
             category: 'Inner Sphere',
             idealRole: 'Striker',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 //All units in this Formation must be light or medium
                 const lightOrMedium = units.every(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) <= 1);
                 // At least 75 percent of the units in this Formation must have a Walk/Cruise speed of 6 or more
@@ -510,8 +507,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Probe Lance',
             description: 'Mobile reconnaissance force',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // No units of assault weight or larger may be included
                 const noAssault = units.every(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) < 4);
                 // 75 percent of the units in this Formation must have a Walk/Cruise speed of 6 or more
@@ -527,8 +524,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Sweep Lance',
             description: 'Fast medium-range sweeping force',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // All units in this Formation must be light or medium
                 const lightOrMedium = units.every(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) <= 1);
                 // Walk/Cruise speed of 5 or more
@@ -547,8 +544,8 @@ export class LanceTypeIdentifierUtil {
             description: 'Fast reconnaissance specialists',
             category: 'Inner Sphere',
             idealRole: 'Scout',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // All units in this Formation must possess a minimum Walk/Cruise speed of 5
                 const fastUnits = units.every(u => u.getUnit().walk >= 5);
                 // At least two units in this Formation must have the Scout or Striker Unit Roles
@@ -562,8 +559,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Heavy Recon Lance',
             description: 'Armored reconnaissance formation',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // All units in this Formation must have a Walk/Cruise speed of 4 or more
                 const fastUnits = units.every(u => u.getUnit().walk >= 4);
                 // and at least two must have a Walk/Cruise of 5 or more;
@@ -581,8 +578,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Light Recon Lance',
             description: 'Ultra-fast light reconnaissance',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // All units in this Formation must be light
                 const allLight = units.every(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) === 0);
                 // with a minimum Walk/Cruise speed of 6
@@ -600,8 +597,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Security Lance',
             description: 'Installation defense specialists',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // At least one unit in this Formation must have the Scout or Striker Unit Role
                 const hasScoutOrStriker = units.some(u => u.getUnit().role === 'Scout' || u.getUnit().role === 'Striker');
                 // and at least one unit must have the Sniper or Missile Boat Unit Role
@@ -619,8 +616,8 @@ export class LanceTypeIdentifierUtil {
             description: 'Fast mobile firepower',
             category: 'Inner Sphere',
             idealRole: 'Striker',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // All units in a Striker/Cavalry Lance must have a minimum Walk/Cruise speed of 5, or a Jump movement of 4
                 const fastUnits = units.every(u => u.getUnit().walk >= 5 || u.getUnit().jump >= 4);
                 // No units in a Striker/Cavalry Lance may be of assault weight class or above
@@ -638,8 +635,8 @@ export class LanceTypeIdentifierUtil {
             category: 'Inner Sphere',
             exclusiveFaction: 'Free Worlds League',
             idealRole: 'Striker',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // All units must have a minimum Walk/Cruise speed of 5
                 const fastUnits = units.every(u => u.getUnit().walk >= 5);
                 return fastUnits;
@@ -651,8 +648,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Heavy Striker/Cavalry Lance',
             description: 'Heavy fast-moving formation',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // All units in this Formation must have a minimum Walk/Cruise speed of 4
                 const fastUnits = units.every(u => u.getUnit().walk >= 4);
                 // At least three units must be heavy or larger
@@ -672,6 +669,7 @@ export class LanceTypeIdentifierUtil {
             name: 'Horde',
             description: 'Mass light unit swarm tactics',
             category: 'Inner Sphere',
+            minUnits: 5,
             validator: (units: ForceUnit[]) => {
                 // The Formation must consist of five to ten units; 
                 if (units.length < 5 || units.length > 10) return false;
@@ -689,8 +687,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Light Striker/Cavalry Lance',
             description: 'Fast light mobile force',
             category: 'Inner Sphere',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // All units in this Formation must have a minimum Walk/Cruise speed of 5
                 const fastUnits = units.every(u => u.getUnit().walk >= 5);
                 // No unit may be heavy or larger
@@ -710,8 +708,8 @@ export class LanceTypeIdentifierUtil {
             description: 'Terrain warfare specialists',
             category: 'Inner Sphere',
             idealRole: 'Skirmisher',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // No unit in this Formation may be assault weight or larger
                 const noAssault = units.every(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) < 4);
                 return noAssault;
@@ -737,8 +735,8 @@ export class LanceTypeIdentifierUtil {
             description: 'City fighting specialists',
             category: 'Inner Sphere',
             idealRole: 'Ambusher',
+            minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // At least 50 percent of the units in this Formation must have jump movement or be infantry (Conventional or Battle Armor)
                 const jumpOrInfantry = units.filter(u => u.getUnit().jump > 0 || u.getUnit().type === 'Infantry');
                 // At least 50 percent of the units in this Formation must have a maximum Walk/Cruise speed of 4.
@@ -755,8 +753,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Aerospace Superiority Squadron',
             description: 'Air superiority specialists',
             category: 'Inner Sphere',
+            minUnits: 6,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 // Has to be aerospace units only
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
                 // More than 50 percent of the Formation’s units must have the Interceptor or Fast Dogfighter Unit Roles.
@@ -771,8 +769,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Electronic Warfare Squadron',
             description: 'Electronic warfare specialists',
             category: 'Inner Sphere',
+            minUnits: 6,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
                 // Electronic Warfare squadrons do not have 
                 // a Unit Role requirement, but more than 50 percent of the 
@@ -798,8 +796,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Fire Support Squadron',
             description: 'Fire support specialists',
             category: 'Inner Sphere',
+            minUnits: 6,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
                 // At least 50 percent of the units in this Formation 
                 // must have the Fire Support Unit Role. The remainder must have the 
@@ -816,8 +814,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Interceptor Squadron',
             description: 'Interceptor specialists',
             category: 'Inner Sphere',
+            minUnits: 6,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
                 // More than 50 percent of the units in this Formation must have the Interceptor Unit Role
                 const hasInterceptorRole = units.filter(u => u.getUnit().role === 'Interceptor');
@@ -831,8 +829,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Strike Squadron',
             description: 'Strike specialists',
             category: 'Inner Sphere',
+            minUnits: 6,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
                 // More than 50 percent of the units in this Formation must have the Attack or Dogfighter Unit Roles.
                 const hasAttackRole = units.filter(u => u.getUnit().role && u.getUnit().role.includes('Attack'));
@@ -848,8 +846,8 @@ export class LanceTypeIdentifierUtil {
             name: 'Transport Squadron',
             description: 'Transport specialists',
             category: 'Inner Sphere',
+            minUnits: 6,
             validator: (units: ForceUnit[]) => {
-                if (units.length < 3) return false;
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
                 // More than 50 percent of the units in this Formation must have the Transport Unit Role.
                 const hasTransportRole = units.filter(u => u.getUnit().role && u.getUnit().role.includes('Transport'));
@@ -875,8 +873,11 @@ export class LanceTypeIdentifierUtil {
         
         // Now validate this definition itself
         try {
+            if (definition.minUnits && units.length < definition.minUnits) {
+                return false;
+            }
             // Before we scan for ideal role, if all units match that role then we don't have to validate at all, is already ideal
-            if (definition.idealRole && units.length > 3) {
+            if (definition.idealRole) {
                 const allMatchIdeal = units.every(u => u.getUnit().role === definition.idealRole);
                 if (allMatchIdeal) {
                     return true;
