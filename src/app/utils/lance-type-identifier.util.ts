@@ -88,6 +88,7 @@ export class LanceTypeIdentifierUtil {
             description: 'Lance of ground units plus two aerospace/conventional fighters',
             category: 'Special',
             validator: (units: ForceUnit[]) => {
+                if (units.length < 3) return false;
                 const fighters = units.filter(u => u.getUnit().subtype === 'Aerospace Fighter' || u.getUnit().subtype === 'Conventional Fighter');
                 const groundUnits = units.filter(u => u.getUnit().type !== 'Aero' && u.getUnit().type !== 'Infantry');
                 
@@ -108,7 +109,8 @@ export class LanceTypeIdentifierUtil {
             description: 'All infantry units for urban and anti-mech warfare',
             category: 'Inner Sphere',
             validator: (units: ForceUnit[]) => {
-                return units.length >= 1 && units.every(u => u.getUnit().type === 'Infantry');
+                if (units.length < 3) return false;
+                return units.every(u => u.getUnit().type === 'Infantry');
             }
         },
 
