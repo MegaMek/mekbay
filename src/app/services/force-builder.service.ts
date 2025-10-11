@@ -375,9 +375,30 @@ export class ForceBuilderService {
      * modifications to the original object, and it's set as the
      * currently selected unit.
      * @param unit The unit to add.
+     * @param gunnerySkill Optional gunnery skill to set for the crew
+     * @param pilotingSkill Optional piloting skill to set for the crew
      */
-    addUnit(unit: Unit) {
+    addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number) {
         const newForceUnit = this.force.addUnit(unit);
+        
+        // Set crew skills if provided
+        if (gunnerySkill !== undefined || pilotingSkill !== undefined) {
+            const crewMembers = newForceUnit.getCrewMembers();
+            newForceUnit.disabledSaving = true;
+            
+            for (const crew of crewMembers) {
+                if (gunnerySkill !== undefined) {
+                    crew.setSkill('gunnery', gunnerySkill);
+                }
+                if (pilotingSkill !== undefined) {
+                    crew.setSkill('piloting', pilotingSkill);
+                }
+            }
+            
+            newForceUnit.disabledSaving = false;
+            newForceUnit.recalculateBv();
+        }
+        
         this.selectUnit(newForceUnit);
         if (this.force.units().length === 1) {
             this.layoutService.openMenu();

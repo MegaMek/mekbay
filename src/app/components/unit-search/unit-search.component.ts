@@ -474,7 +474,9 @@ export class UnitSearchComponent implements OnDestroy {
             data: {
                 unitList: filteredUnits,
                 unitIndex: filteredUnitIndex,
-                hideAddButton: false
+                hideAddButton: false,
+                gunnerySkill: this.filtersService.pilotGunnerySkill(),
+                pilotingSkill: this.filtersService.pilotPilotingSkill()
             }
         });
         this.unitDetailsDialogOpen.set(true);
@@ -488,7 +490,11 @@ export class UnitSearchComponent implements OnDestroy {
                 // If this is the first unit being added, close the search panel
                 this.closeAllPanels();
             }
-            this.forceBuilderService.addUnit(unit);
+            this.forceBuilderService.addUnit(
+                unit,
+                this.filtersService.pilotGunnerySkill(),
+                this.filtersService.pilotPilotingSkill()
+            );
             ref.close();
             this.searchInput().nativeElement.blur();
             this.unitDetailsDialogOpen.set(false);

@@ -39,6 +39,7 @@ import { FloatingCompInfoComponent } from '../floating-comp-info/floating-comp-i
 import { weaponTypes, getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { DataService, UnitTypeMaxStats, DOES_NOT_TRACK } from '../../services/data.service';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 
 /*
  * Author: Drake
@@ -47,6 +48,8 @@ export interface UnitDetailsDialogData {
     unitList: Unit[];
     unitIndex: number;
     hideAddButton: boolean;
+    gunnerySkill?: number;
+    pilotingSkill?: number;
 }
 
 // Define the matrix layouts by unit type.
@@ -113,6 +116,8 @@ export class UnitDetailsDialogComponent {
     unitList: Unit[] = this.data.unitList;
     hideAddButton = this.data.hideAddButton;
     unitIndex = this.data.unitIndex;
+    gunnerySkill?: number = this.data.gunnerySkill;
+    pilotingSkill?: number = this.data.pilotingSkill;
 
     maxStats: UnitTypeMaxStats[string] = {
         armor: [0, 0],
@@ -141,6 +146,17 @@ export class UnitDetailsDialogComponent {
 
     get unit(): Unit {
         return this.unitList[this.unitIndex];
+    }
+
+    getAdjustedBV(): number | null {
+        if (this.gunnerySkill === undefined || this.pilotingSkill === undefined) {
+            return null;
+        }
+        return BVCalculatorUtil.calculateAdjustedBV(this.unit.bv, this.gunnerySkill, this.pilotingSkill);
+    }
+
+    hasNonDefaultSkills(): boolean {
+        return this.gunnerySkill !== 4 || this.pilotingSkill !== 5;
     }
 
     get weaponTypes() {

@@ -28,7 +28,16 @@
             <!-- Basic Info -->
             <div class="basic-info-block allow-select">
                 <div><strong>{{ unit.type }}<span *ngIf="unit.subtype != unit.type"> - {{ unit.subtype }}</span> - {{ unit.weightClass }}</strong></div>
-                <div><span class="muted">BV: </span><strong>{{ formatThousands(unit.bv) }}</strong></div>
+                <div>
+                    <span class="muted">BV: </span>
+                    <ng-container *ngIf="getAdjustedBV() !== null && hasNonDefaultSkills(); else defaultBV">
+                        <strong>{{ formatThousands(getAdjustedBV()!) }}</strong>
+                        <span class="muted"> ({{ formatThousands(unit.bv) }})</span>
+                    </ng-container>
+                    <ng-template #defaultBV>
+                        <strong>{{ formatThousands(unit.bv) }}</strong>
+                    </ng-template>
+                </div>
                 <div><span class="muted">Tech: </span><strong>{{ unit.techBase }} | {{ unit.techRating }}</strong></div>
                 <div *ngIf="unit.year"><span class="muted">Intro Year: </span><strong>{{ unit.year }}</strong> <img src="{{ getEraImg(unit) }}" class="era-icon" title="{{ unit._era?.name }}" /></div>
                 <div *ngIf="unit.armorType"><span class="muted">Armor Type: </span><strong>{{ unit.armorType }}</strong></div>
