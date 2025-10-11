@@ -652,7 +652,7 @@
 }
 
 /* Fluff Tab */
-:host ::ng-deep .modal.activetab-lore .modal-body {
+:host ::ng-deep .modal.activetab-intel .modal-body {
     background-color: #04F1;
 }
 

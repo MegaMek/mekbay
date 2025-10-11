@@ -205,8 +205,8 @@
             </div>
         </div>
 
-        <!-- Lore -->
-        <div class="tab-content" *ngIf="activeTab() === 'Lore'">
+        <!-- Intel -->
+        <div class="tab-content" *ngIf="activeTab() === 'Intel'">
             <div class="fluff-content allow-select">
                 <ng-container *ngIf="unit.fluff; else noFluff">
                     <!-- Fluff Image -->
@@ -256,7 +256,7 @@
                 
                 <ng-template #noFluff>
                     <div class="no-fluff">
-                        No lore information available for this unit.
+                        No intel available for this unit.
                     </div>
                 </ng-template>
             </div>
