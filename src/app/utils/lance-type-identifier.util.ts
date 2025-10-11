@@ -1001,19 +1001,19 @@ export class LanceTypeIdentifierUtil {
     }
 
     private static hasAutocannon(unit: Unit): boolean {
-        return unit.comp?.some(c => c.id?.toLowerCase().includes('autocannon') || c.id?.toLowerCase().includes('ac/')) || false;
+        return unit.comp?.some(c => c.n?.includes('AC/')) || false;
     }
 
     private static hasLBXAutocannon(unit: Unit): boolean {
-        return unit.comp?.some(c => c.id?.toLowerCase().includes('lbx') || c.id?.toLowerCase().includes('lb ')) || false;
+        return unit.comp?.some(c => c.n?.includes('LB ')) || false;
     }
 
     private static hasLRM(unit: Unit): boolean {
-        return unit.comp?.some(c => c.id?.toLowerCase().includes('lrm')) || false;
+        return unit.comp?.some(c => c.n?.includes('LRM')) || false;
     }
 
     private static hasSRM(unit: Unit): boolean {
-        return unit.comp?.some(c => c.id?.toLowerCase().includes('srm')) || false;
+        return unit.comp?.some(c => c.n?.includes('SRM')) || false;
     }
 
     private static hasArtillery(unit: Unit): boolean {
