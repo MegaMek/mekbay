@@ -682,7 +682,7 @@
 }
 
 .fluff-image-container {
-    width: 300px;
+    height: min(500px, 50vh);
     float: right;
     display: flex;
     align-items: center;
@@ -698,10 +698,6 @@
     display: block;
     filter: invert(1) sepia(1) hue-rotate(160deg) saturate(0.3) brightness(0.9) contrast(1.15);
     mix-blend-mode: lighten;
-}
-
-.fluff-content:has(.fluff-image-container:only-child) .fluff-image {
-    max-height: min(500px, 50vh);
 }
 
 .fluff-section {
