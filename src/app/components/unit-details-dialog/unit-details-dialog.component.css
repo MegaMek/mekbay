@@ -645,6 +645,8 @@
 .no-factions {
     text-align: center;
     color: var(--text-color-secondary);
+    margin-left: auto;
+    margin-right: auto;
     margin-top: 24px;
     grid-column: 1 / -1;
 }
@@ -760,7 +762,6 @@
 
 @media (max-width: 768px) {
     .fluff-content {
-        padding: 12px;
         gap: 12px;
     }
     
