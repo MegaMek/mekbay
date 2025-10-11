@@ -45,7 +45,7 @@ import { CommonModule } from '@angular/common';
     styleUrls: ['./base-dialog.component.css'],
     template: `
     <div class="modal-flex-center">
-      <div class="modal">
+      <div class="modal" [ngClass]="modalClassFromTab()">
         <div class="modal-header" [class.tabbed]="isTabbed()">
           <ng-content select="[dialog-header]"></ng-content>
           <div *ngIf="isTabbed()" class="tab-header">
@@ -80,5 +80,11 @@ export class BaseDialogComponent {
 
     onTabClick(tab: string) {
         this.activeTabChange.emit(tab);
+    }
+    
+    modalClassFromTab(): string {
+        const tab = this.activeTab();
+        if (!tab) return '';
+        return `activetab-${tab.toLowerCase()}`;
     }
 }

@@ -650,6 +650,10 @@
 }
 
 /* Fluff Tab */
+:host ::ng-deep .modal.activetab-fluff .modal-body {
+    background-color: #04F1;
+}
+
 .fluff-content {
     display: block;
     padding: 16px;
@@ -690,7 +694,7 @@
     max-width: 100%;
     max-height: 100%;
     display: block;
-    filter: invert(1) hue-rotate(180deg) saturate(0) brightness(0.9) contrast(1.15);
+    filter: invert(1) sepia(1) hue-rotate(160deg) saturate(0.3) brightness(0.9) contrast(1.15);
     mix-blend-mode: lighten;
 }
 
@@ -798,7 +802,7 @@
     height: auto;
     object-fit: cover;
     object-position: right center;
-    filter: invert(1) hue-rotate(180deg) opacity(0.1) brightness(1) contrast(1) blur(0.5px);
+    filter: invert(1) saturate(0) opacity(0.1) brightness(1) contrast(1) blur(0.5px);
     mix-blend-mode: lighten;
     pointer-events: none;
     z-index: -1;
