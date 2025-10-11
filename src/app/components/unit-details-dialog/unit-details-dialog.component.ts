@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, Input, Output, EventEmitter, OnChanges, SimpleChanges, inject, signal, HostListener, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, HostListener, ChangeDetectionStrategy, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { Unit, UnitComponent } from '../../models/units.model';
@@ -108,7 +108,7 @@ export class UnitDetailsDialogComponent {
     private dataService = inject(DataService);
     private dialogRef = inject(DialogRef<UnitDetailsDialogComponent>);
     private data = inject(DIALOG_DATA) as UnitDetailsDialogData;
-    @Output() add = new EventEmitter<Unit>();
+    add = output<Unit>();
 
     tabs = ['General', 'Factions', 'Fluff'];
     activeTab = signal(this.tabs[0]);
@@ -136,6 +136,7 @@ export class UnitDetailsDialogComponent {
     components: UnitComponent[] = [];
     componentsForMatrix: UnitComponent[] = [];
     factionAvailability: { eraName: string, eraImg?: string, factions: { name: string, img: string }[] }[] = [];
+    fluffImageUrl = signal<string | null>(null);
 
     // For hover info
     hoveredComp = signal<UnitComponent | null>(null);
@@ -212,6 +213,19 @@ export class UnitDetailsDialogComponent {
         this.baysByLocCache.clear();
         this.buildMatrixLayout();
         this.updateFactionAvailability();
+        this.updateFluffImage();
+    }
+
+    private updateFluffImage() {
+        this.fluffImageUrl.set(null);
+        
+        if (this.unit?.fluff?.img) {
+            this.fluffImageUrl.set(`https://db.mekbay.com/images/fluff/${this.unit.fluff.img}`);
+        }
+    }
+
+    onFluffImageError() {
+        this.fluffImageUrl.set(null);
     }
 
     private updateFactionAvailability() {

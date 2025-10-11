@@ -102,6 +102,7 @@ export interface Unit {
     quirks: string[];
     icon: string;
     fluff?: {
+        img?: string;
         manufacturer?: string;
         primaryFactory?: string;
         capabilities?: string;

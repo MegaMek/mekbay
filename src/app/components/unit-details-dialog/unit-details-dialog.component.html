@@ -1,7 +1,7 @@
 <base-dialog [tabs]="tabs" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)" (closed)="onClose()">
     <div dialog-header class="header"> 
         <div class="header-group">
-            <div class="header-era">
+            <div class="header-icon-container">
                 <img src="{{ getUnitImg(unit) }}" (error)="$event.target.src = '/images/unknown.png'" class="icon" alt="{{ unit.model }} {{ unit.chassis }}" />
             </div>
             <div class="header-name-group">
@@ -9,7 +9,6 @@
                 <div class="header-chassis allow-select">{{ unit.chassis }}</div>
             </div>
         </div>
-        <div class="spanner"></div>
         <div class="header-details-container">
             <div class="spanner"></div>
             <div class="header-details">
@@ -204,6 +203,15 @@
         <div class="tab-content" *ngIf="activeTab() === 'Fluff'">
             <div class="fluff-content allow-select">
                 <ng-container *ngIf="unit.fluff; else noFluff">
+                    <!-- Fluff Image -->
+                    <div class="fluff-image-container" *ngIf="fluffImageUrl()">
+                        <img 
+                            [src]="fluffImageUrl()" 
+                            class="fluff-image"
+                            (error)="onFluffImageError()"
+                            alt="{{ unit.model }} {{ unit.chassis }}" />
+                    </div>
+
                     <!-- Manufacturer & Factory -->
                     <div class="manufacturer-list" *ngIf="unit.fluff.manufacturer || unit.fluff.primaryFactory">
                         <div class="fluff-label">Manufacturer:</div>
