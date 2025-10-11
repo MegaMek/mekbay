@@ -738,7 +738,7 @@ export class LanceTypeIdentifierUtil {
             category: 'Inner Sphere',
             idealRole: 'Ambusher',
             validator: (units: ForceUnit[]) => {
-                if (units.length < 1) return false;
+                if (units.length < 3) return false;
                 // At least 50 percent of the units in this Formation must have jump movement or be infantry (Conventional or Battle Armor)
                 const jumpOrInfantry = units.filter(u => u.getUnit().jump > 0 || u.getUnit().type === 'Infantry');
                 // At least 50 percent of the units in this Formation must have a maximum Walk/Cruise speed of 4.
@@ -876,7 +876,7 @@ export class LanceTypeIdentifierUtil {
         // Now validate this definition itself
         try {
             // Before we scan for ideal role, if all units match that role then we don't have to validate at all, is already ideal
-            if (definition.idealRole) {
+            if (definition.idealRole && units.length > 3) {
                 const allMatchIdeal = units.every(u => u.getUnit().role === definition.idealRole);
                 if (allMatchIdeal) {
                     return true;
@@ -907,8 +907,7 @@ export class LanceTypeIdentifierUtil {
                     if (definition.category !== techBase) {
                         continue;
                     }
-                } 
-
+                }
                 if (this.validateDefinition(definition, units)) {
                     matches.push(definition);
                 }
@@ -925,7 +924,6 @@ export class LanceTypeIdentifierUtil {
      */
     public static getBestMatch(units: ForceUnit[], techBase: string, factionName: string): LanceTypeDefinition | null {
         const matches = this.identifyLanceTypes(units, techBase, factionName);
-
         if (matches.length === 0) return null;
         
         // Prioritize faction-specific lance types that match the current faction

@@ -106,12 +106,9 @@ function getBestLanceType(units: ForceUnit[], techBase: string, factionName: str
 }
 
 function getForceType(units: ForceUnit[], techBase: string, factionName: string): ForceType {
-    const lanceTypes = identifyLanceTypes(units, techBase, factionName);
-    if (lanceTypes.length > 0) {
-        const bestLance = getBestLanceType(units, techBase, factionName);
-        if (bestLance) {
-            return bestLance.name as ForceType;
-        }
+    const bestLance = getBestLanceType(units, techBase, factionName);
+    if (bestLance) {
+        return bestLance.name as ForceType;
     }
     let configs: ForceTypeRange[] = [];
     if (factionName === 'ComStar' || factionName === 'Word of Blake') {
