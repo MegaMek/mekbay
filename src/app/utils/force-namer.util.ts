@@ -106,10 +106,6 @@ function getBestLanceType(units: ForceUnit[], techBase: string, factionName: str
 }
 
 function getForceType(units: ForceUnit[], techBase: string, factionName: string): ForceType {
-    const bestLance = getBestLanceType(units, techBase, factionName);
-    if (bestLance) {
-        return bestLance.name as ForceType;
-    }
     let configs: ForceTypeRange[] = [];
     if (factionName === 'ComStar' || factionName === 'Word of Blake') {
         configs = COMSTAR_FORCE_TYPES;
@@ -255,15 +251,24 @@ export class ForceNamerUtil {
     static generateForceName({ units, factions, eras }: ForceNameOptions): string {
         if (!units || units.length === 0) return 'Unnamed Force';
         const factionName = this.pickFaction(units, factions, eras);
-        let forceType: ForceType;
+        let forceType: string;
         if (factionName === 'ComStar' || factionName === 'Word of Blake') {
             forceType = getForceType(units, '', factionName);
+            const bestLance = getBestLanceType(units, '', factionName);
+            if (bestLance) {
+                const formationType = bestLance.name as ForceType;
+                forceType = forceType + ' - ' + formationType.replace(/\Lance/g, '').trim();
+            }
         } else {
             // Find the majority tech base
-            let majorityTechBase = this.getTechBase(units);
+            const majorityTechBase = this.getTechBase(units);
             forceType = getForceType(units, majorityTechBase, factionName);
+            const bestLance = getBestLanceType(units, majorityTechBase, factionName);
+            if (bestLance) {
+                const formationType = bestLance.name as ForceType;
+                forceType = formationType.replace(/Lance/g, forceType);
+            }
         }
-
         return `${factionName} ${forceType}`;
     }
 
