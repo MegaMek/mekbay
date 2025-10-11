@@ -74,9 +74,13 @@ export interface RenameForceDialogData {
                     aria-label="Generate random force name"
                 ></button>
             </div>
+            <details class="faction-accordion" *ngIf="formationsText">
+                <summary>Formations ({{ formationsText.length }})</summary>
+                <p>{{ formationsText.join(', ') }}</p>
+            </details>
             <details class="faction-accordion" *ngIf="factionsText">
-                <summary>Factions</summary>
-                <p>{{ factionsText }}</p>
+                <summary>Factions ({{ factionsText.length }})</summary>
+                <p>{{ factionsText.join(', ') }}</p>
             </details>
         </div>
         <div dialog-actions>
@@ -220,6 +224,7 @@ export class RenameForceDialogComponent {
     readonly data: RenameForceDialogData = inject(DIALOG_DATA);
     private forceBuilder = inject(ForceBuilderService);
     factionsText = this.computeFactionsText();
+    formationsText = this.computeFormationsText();
     buttons: { label: string; value: 'ok' | 'cancel'; class?: string }[];
 
     constructor() {
@@ -243,7 +248,7 @@ export class RenameForceDialogComponent {
         nativeEl.select();
     }
 
-    private computeFactionsText(): string | null {
+    private computeFactionsText(): string[] | null {
         const factions = this.forceBuilder.getAllFactionsAvailable();
         const totalUnits = this.forceBuilder.forceUnits().length;
         if (!totalUnits || !factions || factions.size === 0) {
@@ -257,7 +262,15 @@ export class RenameForceDialogComponent {
                 return name;
             }
         });
-        return formatted.join(', ');
+        return formatted;
+    }
+
+    private computeFormationsText(): string[] | null {
+        const formations = this.forceBuilder.getAllFormationsAvailable();
+        if (!formations || formations.length === 0) {
+            return null;
+        }
+        return formations;
     }
 
     close(value: null) {

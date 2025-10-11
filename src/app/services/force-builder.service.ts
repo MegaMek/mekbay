@@ -514,6 +514,14 @@ export class ForceBuilderService {
         );
     }
 
+    public getAllFormationsAvailable(): string[] | null {
+        return ForceNamerUtil.getAvailableFormations(
+            this.forceUnits(),
+            this.dataService.getFactions(),
+            this.dataService.getEras()
+        );
+    }
+
     public async repairAllUnits() {
         const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
             data: <ConfirmDialogData<string>>{

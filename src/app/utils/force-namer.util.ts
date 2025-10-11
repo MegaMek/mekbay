@@ -36,6 +36,7 @@ import { ForceUnit } from '../models/force-unit.model';
 import { Faction, Factions } from '../models/factions.model';
 import { Era } from '../models/eras.model';
 import { FACTION_EXTINCT } from '../services/unit-search-filters.service';
+import { LanceTypeDefinition, LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 
 /*
  * Author: Drake
@@ -96,8 +97,22 @@ const COMSTAR_FORCE_TYPES: ForceTypeRange[] = [
     { type: 'Level V', min: 6*6*6*6, max: 6*6*6*6 },
 ];
 
+function identifyLanceTypes(units: ForceUnit[], techBase: string, factionName: string): LanceTypeDefinition[] {
+    return LanceTypeIdentifierUtil.identifyLanceTypes(units, techBase, factionName);
+}
 
-function getForceType(unitCount: number, techBase: string, factionName: string): ForceType {
+function getBestLanceType(units: ForceUnit[], techBase: string, factionName: string): LanceTypeDefinition | null {
+    return LanceTypeIdentifierUtil.getBestMatch(units, techBase, factionName);
+}
+
+function getForceType(units: ForceUnit[], techBase: string, factionName: string): ForceType {
+    const lanceTypes = identifyLanceTypes(units, techBase, factionName);
+    if (lanceTypes.length > 0) {
+        const bestLance = getBestLanceType(units, techBase, factionName);
+        if (bestLance) {
+            return bestLance.name as ForceType;
+        }
+    }
     let configs: ForceTypeRange[] = [];
     if (factionName === 'ComStar' || factionName === 'Word of Blake') {
         configs = COMSTAR_FORCE_TYPES;
@@ -109,7 +124,7 @@ function getForceType(unitCount: number, techBase: string, factionName: string):
     }
     // Find the first matching force type by unit count
     for (const cfg of configs) {
-        if (unitCount >= cfg.min && unitCount <= cfg.max) {
+        if (units.length >= cfg.min && units.length <= cfg.max) {
             return cfg.type;
         }
     }
@@ -126,6 +141,19 @@ const MIN_UNITS_PERCENTAGE = 0.7;
 
 export class ForceNamerUtil {
 
+    public static getAvailableFormations(units: ForceUnit[], factions: Faction[], eras: Era[]): string[] | null {
+        let majorityTechBase = this.getTechBase(units);
+        const availableFactions = this.getAvailableFactions(units, factions, eras);
+        const availableFactionsText = availableFactions ? Array.from(availableFactions.keys()).join(', ') : '';
+        const lanceTypes: Set<string> = new Set();
+
+        const identified = identifyLanceTypes(units, majorityTechBase, availableFactionsText);
+        for (const lt of identified) {
+            lanceTypes.add(lt.name);
+        }
+        return lanceTypes.size > 0 ? Array.from(lanceTypes) : null;
+    }
+
     public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[]): Map<string, number> | null {
         if (!units?.length) return null;
         const referenceYear = units.reduce(
@@ -136,7 +164,7 @@ export class ForceNamerUtil {
         const erasInOrAfter = eras.filter(e => referenceYear <= (e.years.to ?? Number.POSITIVE_INFINITY));
 
         if (erasInOrAfter.length === 0) return null;
-        const unitIds = new Set(units.map(u => u.getUnit().id));
+        const unitIds = units.map(u => u.getUnit().id);
         const totalUnits = units.length;
 
         const results: Map<string, number> = new Map();
@@ -173,50 +201,70 @@ export class ForceNamerUtil {
         return results;
     }
 
-    private static getMajorityFaction(units: ForceUnit[], factions: Faction[], eras: Era[]): string {
+    private static pickFaction(units: ForceUnit[], factions: Faction[], eras: Era[]): string {
         const availableFactions = this.getAvailableFactions(units, factions, eras);
         if (!availableFactions) return 'Unknown Force';
 
         const entries = Array.from(availableFactions.entries());
         if (entries.length === 0) return 'Mercenary';
 
-        const topCount = Math.max(...entries.map(([, c]) => c));
-        const topFactions = entries.filter(([, c]) => c === topCount).map(([name]) => name);
+        
+        // If only one faction, return it
+        if (entries.length === 1) return entries[0][0];
 
-        return topFactions.length === 1
-            ? topFactions[0]
-            : topFactions[Math.floor(Math.random() * topFactions.length)];
+        // Calculate total weight for weighted random selection
+        const totalWeight = entries.reduce((sum, [, percentage]) => sum + percentage, 0);
+
+        // Generate a random number between 0 and totalWeight
+        const random = Math.random() * totalWeight;
+
+        // Select faction based on weighted probability
+        let cumulativeWeight = 0;
+        for (const [name, percentage] of entries) {
+            cumulativeWeight += percentage;
+            if (random <= cumulativeWeight) {
+                return name;
+            }
+        }
+
+        // Fallback to the last faction (shouldn't reach here normally)
+        return entries[entries.length - 1][0];
+    }
+
+    static getTechBase(units: ForceUnit[]): string {
+        const techBaseCounts: Record<string, number> = {};
+        for (const unit of units) {
+            const techBase = unit.getUnit().techBase;
+            if (techBase === 'Mixed') {
+                // Count Mixed units for both Clan and Inner Sphere
+                techBaseCounts['Clan'] = (techBaseCounts['Clan'] || 0) + 1;
+                techBaseCounts['Inner Sphere'] = (techBaseCounts['Inner Sphere'] || 0) + 1;
+            } else {
+                techBaseCounts[techBase] = (techBaseCounts[techBase] || 0) + 1;
+            }
+        }
+        // Find the majority tech base
+        let majorityTechBase = 'Inner Sphere';
+        let maxTechBaseCount = 0;
+        for (const [tb, count] of Object.entries(techBaseCounts)) {
+            if (count > maxTechBaseCount) {
+                majorityTechBase = tb;
+                maxTechBaseCount = count;
+            }
+        }
+        return majorityTechBase;
     }
 
     static generateForceName({ units, factions, eras }: ForceNameOptions): string {
         if (!units || units.length === 0) return 'Unnamed Force';
-        const factionName = this.getMajorityFaction(units, factions, eras);
-        const unitCount = units.length;
+        const factionName = this.pickFaction(units, factions, eras);
         let forceType: ForceType;
         if (factionName === 'ComStar' || factionName === 'Word of Blake') {
-            forceType = getForceType(unitCount, '', factionName);
+            forceType = getForceType(units, '', factionName);
         } else {
-            const techBaseCounts: Record<string, number> = {};
-            for (const unit of units) {
-                const techBase = unit.getUnit().techBase;
-                if (techBase === 'Mixed') {
-                    // Count Mixed units for both Clan and Inner Sphere
-                    techBaseCounts['Clan'] = (techBaseCounts['Clan'] || 0) + 1;
-                    techBaseCounts['Inner Sphere'] = (techBaseCounts['Inner Sphere'] || 0) + 1;
-                } else {
-                    techBaseCounts[techBase] = (techBaseCounts[techBase] || 0) + 1;
-                }
-            }
             // Find the majority tech base
-            let majorityTechBase = 'Inner Sphere';
-            let maxTechBaseCount = 0;
-            for (const [tb, count] of Object.entries(techBaseCounts)) {
-                if (count > maxTechBaseCount) {
-                    majorityTechBase = tb;
-                    maxTechBaseCount = count;
-                }
-            }
-            forceType = getForceType(unitCount, majorityTechBase, factionName);
+            let majorityTechBase = this.getTechBase(units);
+            forceType = getForceType(units, majorityTechBase, factionName);
         }
 
         return `${factionName} ${forceType}`;
