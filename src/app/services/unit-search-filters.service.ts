@@ -326,6 +326,7 @@ export class UnitSearchFiltersService {
     selectedSort = signal<string>('name');
     selectedSortDirection = signal<'asc' | 'desc'>('asc');
     expandedView = signal(false);
+    advOpen = signal(false);
     private totalRangesCache: Record<string, [number, number]> = {};
     private availableNamesCache = new Map<string, string[]>();
     private urlStateInitialized = false;

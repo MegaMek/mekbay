@@ -82,7 +82,7 @@ export class UnitSearchComponent implements OnDestroy {
 
     autoFocus = input(false);
     expandedView = this.filtersService.expandedView;
-    advOpen = signal(false);
+    advOpen = this.filtersService.advOpen;
     advPanelDocked = computed(() => this.expandedView() && this.advOpen() && this.layoutService.windowWidth() >= 900);
     focused = signal(false);
     activeIndex = signal<number | null>(null);
@@ -193,6 +193,7 @@ export class UnitSearchComponent implements OnDestroy {
             this.layoutService.isMobile();
             if (this.expandedView()) {
                 this.layoutService.windowWidth();
+                this.filtersService.advOpen();
             }
             this.filtersService.filteredUnits();
             debouncedUpdateHeights();
