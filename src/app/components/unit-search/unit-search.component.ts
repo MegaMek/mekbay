@@ -122,11 +122,13 @@ export class UnitSearchComponent implements OnDestroy {
     constructor() {
         effect(() => {
             if (this.advOpen()) {
+                this.advPanelUserColumns();
                 this.updateAdvPanelPosition();
                 this.updateResultsDropdownPosition();
             }
         });
         effect(() => {
+            this.advPanelUserColumns();
             if (this.resultsVisible()) {
                 this.updateResultsDropdownPosition();
             }
@@ -138,14 +140,6 @@ export class UnitSearchComponent implements OnDestroy {
                 setTimeout(() => {
                     this.searchInput().nativeElement.focus();
                 }, 0);
-            }
-        });
-        effect(() => {
-            if (!this.advPanelDocked() || !this.expandedView()) {
-                if (this.advPanelUserColumns() !== null) {
-                    this.advPanelUserColumns.set(null);
-                    this.updateAdvPanelPosition();
-                }
             }
         });
         afterNextRender(() => {
@@ -322,7 +316,13 @@ export class UnitSearchComponent implements OnDestroy {
         const spaceToRight = window.innerWidth - buttonRect.right - gap - 10;
 
         // Use user override if set, else auto
-        let columns: 1 | 2 = this.advPanelUserColumns() ?? (spaceToRight >= doublePanelWidth ? 2 : 1);
+        let columns = (spaceToRight >= doublePanelWidth ? 2 : 1);
+        if (this.expandedView() && this.advPanelDocked()) {
+            const columnsCountOverride = this.advPanelUserColumns();
+            if (columnsCountOverride) {
+                columns = columnsCountOverride;
+            }
+        }
         let panelWidth = columns === 2 ? doublePanelWidth : singlePanelWidth;
 
         let left: number;
@@ -832,6 +832,16 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     /* Adv Panel Dragging */
+    onAdvPanelDragHandleClick(event: MouseEvent) {
+        event.stopPropagation();
+        event.preventDefault();
+        if (!this.advPanelDocked() || !this.expandedView()) return;
+        // Toggle between 1 and 2 columns
+        const current = this.advPanelUserColumns() || 1;
+        const next = current === 1 ? 2 : 1;
+        this.advPanelUserColumns.set(next);
+    }
+
     onAdvPanelDragStart(event: MouseEvent) {
         if (!this.advPanelDocked() || !this.expandedView()) return;
         event.preventDefault();
@@ -853,8 +863,6 @@ export class UnitSearchComponent implements OnDestroy {
         } else {
             this.advPanelUserColumns.set(1);
         }
-        this.updateAdvPanelPosition();
-        this.updateResultsDropdownPosition();
     };
 
     onAdvPanelDragEnd = () => {

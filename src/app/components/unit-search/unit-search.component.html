@@ -180,7 +180,7 @@
     <div 
         *ngIf="this.expandedView() && this.advPanelDocked()" 
         class="adv-panel-drag-handle"
-        (mousedown)="onAdvPanelDragStart($event)">
+        (mousedown)="onAdvPanelDragStart($event)" (click)="onAdvPanelDragHandleClick($event)">
         <div class="drag-bar"></div>
     </div>
     <div class="adv-panel-header"
