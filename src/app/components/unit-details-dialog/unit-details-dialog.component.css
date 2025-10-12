@@ -614,9 +614,8 @@
     padding: 16px;
     gap: 8px 16px;
     overflow-y: auto;
-    flex-grow: 1;
     align-items: baseline;
-
+    
     @media (min-width: 768px) {
         display: grid;
         grid-template-columns: auto 1fr;
