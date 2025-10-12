@@ -1171,10 +1171,10 @@ export class UnitSearchFiltersService {
                 if (!conf) continue;
                 
                 if (conf.type === AdvFilterType.RANGE) {
-                    const dashIndex = valueStr.indexOf('-');
-                    if (dashIndex !== -1) {
-                        const min = parseFloat(valueStr.substring(0, dashIndex));
-                        const max = parseFloat(valueStr.substring(dashIndex + 1));
+                    const match = valueStr.match(/^(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$/);
+                    if (match) {
+                        const min = parseFloat(match[1]);
+                        const max = parseFloat(match[2]);
                         if (!isNaN(min) && !isNaN(max)) {
                             filterState[key] = {
                                 value: [min, max],
