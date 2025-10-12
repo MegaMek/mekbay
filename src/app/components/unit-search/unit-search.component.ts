@@ -84,6 +84,7 @@ export class UnitSearchComponent implements OnDestroy {
     expandedView = this.filtersService.expandedView;
     advOpen = this.filtersService.advOpen;
     advPanelDocked = computed(() => this.expandedView() && this.advOpen() && this.layoutService.windowWidth() >= 900);
+    advPanelUserColumns = signal<1 | 2 | null>(null);
     focused = signal(false);
     activeIndex = signal<number | null>(null);
     private unitDetailsDialogOpen = signal(false);
@@ -114,6 +115,9 @@ export class UnitSearchComponent implements OnDestroy {
 
     private resizeObserver?: ResizeObserver;
     private tagSelectorOverlayRef?: OverlayRef;
+    private advPanelDragActive = false;
+    private advPanelDragStartX = 0;
+    private advPanelDragStartWidth = 0;
 
     constructor() {
         effect(() => {
@@ -134,6 +138,14 @@ export class UnitSearchComponent implements OnDestroy {
                 setTimeout(() => {
                     this.searchInput().nativeElement.focus();
                 }, 0);
+            }
+        });
+        effect(() => {
+            if (!this.advPanelDocked() || !this.expandedView()) {
+                if (this.advPanelUserColumns() !== null) {
+                    this.advPanelUserColumns.set(null);
+                    this.updateAdvPanelPosition();
+                }
             }
         });
         afterNextRender(() => {
@@ -194,6 +206,7 @@ export class UnitSearchComponent implements OnDestroy {
             if (this.expandedView()) {
                 this.layoutService.windowWidth();
                 this.filtersService.advOpen();
+                this.advPanelUserColumns();
             }
             this.filtersService.filteredUnits();
             debouncedUpdateHeights();
@@ -260,7 +273,8 @@ export class UnitSearchComponent implements OnDestroy {
             dropdownWidth = window.innerWidth - 8; // 4px left + 4px right margin
             top = 4 + 40 + gap; // top margin + searchbar height + gap
             if (this.advPanelDocked()) {
-                right = `308px`;
+                const advPanelWidth = this.advPanelStyle().width;
+                right = advPanelWidth ? `${parseInt(advPanelWidth, 10) + 8}px` : `308px`;
             }
         } else {
             // Normal mode: use actual container position
@@ -306,26 +320,20 @@ export class UnitSearchComponent implements OnDestroy {
         const doublePanelWidth = 600;
         const gap = 5;
         const spaceToRight = window.innerWidth - buttonRect.right - gap - 10;
-        const hasSpaceForDouble = spaceToRight >= doublePanelWidth;
 
-        let panelWidth = singlePanelWidth;
-        let columns = 1;
-        if (hasSpaceForDouble) {
-            panelWidth = doublePanelWidth;
-            columns = 2;
-        }
+        // Use user override if set, else auto
+        let columns: 1 | 2 = this.advPanelUserColumns() ?? (spaceToRight >= doublePanelWidth ? 2 : 1);
+        let panelWidth = columns === 2 ? doublePanelWidth : singlePanelWidth;
 
         let left: number;
         let top: number;
         let availableHeight: number;
 
         if (spaceToRight >= panelWidth) {
-            // Display on the RIGHT side of the button
             left = buttonRect.right + gap;
             top = buttonRect.top + window.scrollY;
             availableHeight = window.innerHeight - top - 4;
         } else {
-            // Display UNDER the button, aligned to the right
             left = buttonRect.right - panelWidth + window.scrollX;
             top = buttonRect.bottom + gap + window.scrollY;
             availableHeight = window.innerHeight - top - 4;
@@ -822,4 +830,36 @@ export class UnitSearchComponent implements OnDestroy {
     getDisplayBV(unit: Unit): number {
         return this.filtersService.getAdjustedBV(unit);
     }
+
+    /* Adv Panel Dragging */
+    onAdvPanelDragStart(event: MouseEvent) {
+        if (!this.advPanelDocked() || !this.expandedView()) return;
+        event.preventDefault();
+        this.advPanelDragActive = true;
+        this.advPanelDragStartX = event.clientX;
+        this.advPanelDragStartWidth = parseInt(this.advPanelStyle().width, 10) || 300;
+
+        window.addEventListener('mousemove', this.onAdvPanelDragMove);
+        window.addEventListener('mouseup', this.onAdvPanelDragEnd);
+    }
+
+    onAdvPanelDragMove = (event: MouseEvent) => {
+        if (!this.advPanelDragActive) return;
+        const delta = event.clientX - this.advPanelDragStartX;
+        const newWidth = this.advPanelDragStartWidth - delta;
+        // Snap to 1 or 2 columns
+        if (newWidth > 450) {
+            this.advPanelUserColumns.set(2);
+        } else {
+            this.advPanelUserColumns.set(1);
+        }
+        this.updateAdvPanelPosition();
+        this.updateResultsDropdownPosition();
+    };
+
+    onAdvPanelDragEnd = () => {
+        this.advPanelDragActive = false;
+        window.removeEventListener('mousemove', this.onAdvPanelDragMove);
+        window.removeEventListener('mouseup', this.onAdvPanelDragEnd);
+    };
 }
