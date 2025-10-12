@@ -35,7 +35,6 @@ import { Injectable, signal, effect, computed, OnDestroy, Injector, inject } fro
 import { Router, ActivatedRoute } from '@angular/router';
 import { Unit } from '../models/units.model';
 import { Force, ForceUnit } from '../models/force-unit.model';
-import { DbService } from './db.service';
 import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
@@ -44,6 +43,7 @@ import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm
 import { firstValueFrom } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData } from '../components/rename-force-dialog/rename-force-dialog.component';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
+import { DialogsService } from './dialogs.service';
 
 /*
  * Author: Drake
@@ -57,6 +57,7 @@ export class ForceBuilderService {
     private router = inject(Router);
     private route = inject(ActivatedRoute);
     private dialog = inject(Dialog);
+    private dialogsService = inject(DialogsService);
     private unitInitializer = inject(UnitInitializerService);
     private injector = inject(Injector);
 
@@ -271,15 +272,7 @@ export class ForceBuilderService {
                     loadedInstance = await this.dataService.getForce(instanceParam);
                     if (loadedInstance) {
                         if (!loadedInstance.owned) {
-                            const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
-                                data: <ConfirmDialogData<string>>{
-                                    title: 'Shared Force',
-                                    message: 'This force is owned by another user. Editing will create a cloned force and will not affect the original.',
-                                    buttons: [
-                                        { label: 'DISMISS', value: 'dismiss' }
-                                    ]
-                                }
-                            });
+                            await this.dialogsService.showNotice('This force is owned by another user. Editing will create a cloned force and will not affect the original.', 'Shared Force');
                         }
                         this.setForce(loadedInstance);
                         this.selectUnit(loadedInstance.units()[0] || null);

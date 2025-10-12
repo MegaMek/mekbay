@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, Inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 
 /*
@@ -65,7 +65,7 @@ export interface ConfirmDialogData<T = any> {
             <button
                 *ngFor="let btn of data.buttons"
                 (click)="close(btn.value)"
-                class="bt-button {{ btn.class }}"
+                class="bt-button" [ngClass]="btn.class"
                 >
                 {{ btn.label }}
             </button>
@@ -82,6 +82,10 @@ export interface ConfirmDialogData<T = any> {
             width: 100vw;
             pointer-events: auto;
             padding: 16px;
+        }
+
+        .cdk-overlay-pane.danger :host {
+            background-color: #4d0400;
         }
 
         :host-context(.cdk-overlay-pane) {

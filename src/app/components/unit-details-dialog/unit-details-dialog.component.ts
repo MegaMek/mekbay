@@ -40,6 +40,7 @@ import { weaponTypes, getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { DataService, UnitTypeMaxStats, DOES_NOT_TRACK } from '../../services/data.service';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { ToastService } from '../../services/toast.service';
 
 /*
  * Author: Drake
@@ -108,6 +109,7 @@ export class UnitDetailsDialogComponent {
     private dataService = inject(DataService);
     private dialogRef = inject(DialogRef<UnitDetailsDialogComponent>);
     private data = inject(DIALOG_DATA) as UnitDetailsDialogData;
+    private toastService = inject(ToastService);
     add = output<Unit>();
 
     tabs = ['General', 'Intel', 'Factions'];
@@ -961,7 +963,7 @@ export class UnitDetailsDialogComponent {
             });
         } else {
             this.copyToClipboard(shareText);
-            alert('Unit info copied to clipboard!');
+            this.toastService.show('Unit link copied to clipboard.', 'success');
         }
     }
 
@@ -971,11 +973,14 @@ export class UnitDetailsDialogComponent {
         } else {
             // fallback for older browsers
             const textarea = document.createElement('textarea');
-            textarea.value = text;
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
+            try {
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+            } finally {
+                document.body.removeChild(textarea);
+            }
         }
     }
 

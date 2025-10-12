@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, signal } from '@angular/core';
-import { Unit, Units } from '../models/units.model';
+import { inject, Injectable } from '@angular/core';
+import { Units } from '../models/units.model';
 import { Eras } from '../models/eras.model';
 import { Factions } from '../models/factions.model';
 import { Options } from '../models/options.model';
@@ -42,6 +42,8 @@ import { Force } from '../models/force-unit.model';
 import { DataService } from './data.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { Injector } from '@angular/core';
+import { DialogsService } from './dialogs.service';
+
 
 /*
  * Author: Drake
@@ -78,6 +80,7 @@ export interface StoredTags {
 })
 export class DbService {
     private dbPromise: Promise<IDBDatabase>;
+    private dialogsService = inject(DialogsService);
 
     constructor() {
         this.dbPromise = this.initIndexedDb();
@@ -98,8 +101,8 @@ export class DbService {
 
             request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
             request.onerror = (event) => reject((event.target as IDBOpenDBRequest).error);
-            request.onblocked = () => {
-                alert('Database upgrade blocked. Please close other tabs of this app and reload.');
+            request.onblocked = async () => {
+                await this.dialogsService.showError('Database upgrade blocked. Please close other tabs of this app and reload.', 'Database Upgrade Blocked');
                 reject('IndexedDB upgrade blocked');
             };
         });

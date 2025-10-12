@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, untracked, ChangeDetectorRef } from '@angular/core';
+import { Component, signal, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef } from '@angular/core';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
@@ -49,6 +49,7 @@ import { firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
 import { getWeaponTypeCSSClass, weaponTypes } from '../../utils/equipment.util';
 import { DataService, DOES_NOT_TRACK } from '../../services/data.service';
+import { DialogsService } from '../../services/dialogs.service';
 
 @Component({
     selector: 'unit-search',
@@ -65,6 +66,7 @@ export class UnitSearchComponent implements OnDestroy {
     private forceBuilderService = inject(ForceBuilderService);
     private injector = inject(Injector);
     private dialog = inject(Dialog);
+    private dialogsService = inject(DialogsService);
     private overlay = inject(Overlay);
     private cdr = inject(ChangeDetectorRef);
 
@@ -736,7 +738,7 @@ export class UnitSearchComponent implements OnDestroy {
                 }
                 if (newTag.length > 16) {
                     // Limit tag length to 16 characters
-                    alert('Tag is too long. Maximum length is 16 characters.');
+                    await this.dialogsService.showError('Tag is too long. Maximum length is 16 characters.', 'Invalid Tag');
                     return;
                 }
                 
