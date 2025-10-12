@@ -189,12 +189,13 @@ export class App implements OnInit {
         if (this.dataService.isDataReady()) {
             const params = new URLSearchParams(window.location.search);
             const sharedUnitName = params.get('shareUnit');
+            const tab = params.get('tab') ?? undefined;
             if (sharedUnitName) {
                 // Find the unit by model name (decode first)
                 const unitNameDecoded = decodeURIComponent(sharedUnitName);
                 const unit = this.dataService.getUnitByName(unitNameDecoded);
                 if (unit) {
-                    this.showSingleUnitDetails(unit);
+                    this.showSingleUnitDetails(unit, tab);
                 }
             }
         }
@@ -233,7 +234,7 @@ export class App implements OnInit {
         this.dialog.open(BetaDialogComponent);
     }
 
-    showSingleUnitDetails(unit: Unit) {
+    showSingleUnitDetails(unit: Unit, tab?: string) {
         const ref = this.dialog.open(UnitDetailsDialogComponent, {
             data: {
                 unitList: [unit],
@@ -250,11 +251,21 @@ export class App implements OnInit {
             ref.close();
             this.removeShareUnitParam();
         });
+
+        // Restore tab if provided
+        if (tab && ref.componentInstance) {
+            afterNextRender(() => {
+                if (ref.componentInstance?.tabs.includes(tab)) {
+                    ref.componentInstance.activeTab.set(tab);
+                }
+            }, { injector: this.injector });
+        }
     }
 
     removeShareUnitParam() {
         const params = new URLSearchParams(window.location.search);
         params.delete('shareUnit');
+        params.delete('tab');
         const newUrl =
             window.location.pathname +
             (params.toString() ? '?' + params.toString() : '') +
