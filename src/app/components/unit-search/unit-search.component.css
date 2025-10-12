@@ -441,7 +441,7 @@
     gap: 12px;
 }
 
-@media (min-width: 768px) {
+@container (min-width: 768px) {
     .expanded-content {
         grid-template-columns: 1.3fr 1fr;
     }
@@ -450,7 +450,7 @@
     }
 }
 
-@media (min-width: 1024px) {
+@container (min-width: 1024px) {
     .expanded-content {
         grid-template-columns: 1.6fr 1fr 1fr;
     }
