@@ -110,9 +110,7 @@ export class UnitSearchComponent implements OnDestroy {
             (this.filtersService.search() || this.isAdvActive());
     });
 
-    itemSize = computed(() => {
-        return (this.expandedView() && this.layoutService.isMobile()) ? 75 : 75;
-    });
+    itemSize = signal(75);
 
     private resizeObserver?: ResizeObserver;
     private tagSelectorOverlayRef?: OverlayRef;
@@ -154,11 +152,51 @@ export class UnitSearchComponent implements OnDestroy {
                 this.resizeObserver.observe(container);
             }
         }, { injector: this.injector });
+        this.setupItemHeightTracking();
     }
 
     ngOnDestroy() {
         this.resizeObserver?.disconnect();
         this.tagSelectorOverlayRef?.dispose();
+    }
+
+    private setupItemHeightTracking() {
+        let debounceTimer: any;
+        const DEBOUNCE_MS = 80;
+        
+        const debouncedUpdateHeights = () => {
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
+            debounceTimer = setTimeout(() => {
+                afterNextRender(() => {
+                    updateHeights();
+                }, { injector: this.injector });
+            }, DEBOUNCE_MS);
+        };
+
+        const updateHeights = () => {
+            const dropdown = this.resultsDropdown()?.nativeElement;
+            if (!dropdown) return;
+            const items = dropdown.querySelectorAll('.results-dropdown-item:not(.no-results)');
+            if (items.length === 0) return;
+            const heights = Array.from(items).slice(0, 100).map(el => (el as HTMLElement).offsetHeight);
+            let avg = Math.round(heights.reduce((a, b) => a + b, 0) / heights.length);
+            const currentAvg = this.itemSize();
+            if (currentAvg !== avg) {
+                this.itemSize.set(avg);
+            }
+        };
+
+        effect(() => {
+            if (!this.resultsVisible()) return;
+            this.layoutService.isMobile();
+            if (this.expandedView()) {
+                this.layoutService.windowWidth();
+            }
+            this.filtersService.filteredUnits();
+            debouncedUpdateHeights();
+        });
     }
 
     closeAllPanels() {

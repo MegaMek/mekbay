@@ -174,7 +174,7 @@
 .results-dropdown-item {
     display: flex;
     min-width: 0;
-    min-height: var(--item-size, 75px);
+    min-height: 75px;
     box-sizing: border-box;
     border-bottom: 1px solid #666;
     font-size: 1em;

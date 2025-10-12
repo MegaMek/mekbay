@@ -69,7 +69,7 @@
                                 </div>
                                 <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
                                     <span class="value">{{ unit.year }}</span>                    
-                                    <img [src]="getEraImg(unit)" class="icon era-icon" alt="Intro Year and Era" [title]="unit._era?.name" />
+                                    <img *ngIf="getEraImg(unit)" [src]="getEraImg(unit)" class="icon era-icon" alt="Intro Year and Era" [title]="unit._era?.name" />
                                 </div>
                                 <ng-container *ngIf="getSortSlot(unit) as slot">
                                     <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
@@ -309,7 +309,7 @@
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">Intro Year: </span>
-                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">{{ unit.year }} <img [src]="getEraImg(unit)" class="era-icon" alt="Era" [title]="unit._era?.name" /></span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">{{ unit.year }} <img *ngIf="getEraImg(unit)" [src]="getEraImg(unit)" class="era-icon" alt="Era" [title]="unit._era?.name" /></span>
                         
                     </div>
                     <div class="info-item">

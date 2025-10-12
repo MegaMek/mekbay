@@ -44,7 +44,7 @@
                     </ng-template>
                 </div>
                 <div><span class="muted">Tech: </span><strong>{{ unit.techBase }} | {{ unit.techRating }}</strong></div>
-                <div *ngIf="unit.year"><span class="muted">Intro Year: </span><strong>{{ unit.year }}</strong> <img src="{{ getEraImg(unit) }}" class="era-icon" title="{{ unit._era?.name }}" /></div>
+                <div *ngIf="unit.year"><span class="muted">Intro Year: </span><strong>{{ unit.year }}</strong> <img *ngIf="getEraImg(unit)" [src]="getEraImg(unit)" class="era-icon" title="{{ unit._era?.name }}" /></div>
                 <div *ngIf="unit.armorType"><span class="muted">Armor Type: </span><strong>{{ unit.armorType }}</strong></div>
                 <div *ngIf="unit.structureType"><span class="muted">Structure Type: </span><strong>{{ unit.structureType }}</strong></div>
                 <div *ngIf="unit.moveType"><span class="muted">Motive Type: </span><strong>{{ unit.moveType }}</strong></div>
