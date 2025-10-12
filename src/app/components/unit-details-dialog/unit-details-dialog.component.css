@@ -713,41 +713,11 @@
     display: block;
 }
 
-.fluff-value {
-    color: var(--text-color-secondary);
-    line-height: 1.4;
-}
-
 .fluff-text {
     color: var(--text-color-secondary);
     line-height: 1.6;
     white-space: pre-wrap;
     word-wrap: break-word;
-}
-
-.manufacturer-list {
-    display: block;
-    margin-bottom: 16px;
-}
-
-.manufacturer-entries {
-    display: block;
-}
-
-.manufacturer-entry {
-    color: var(--text-color-secondary);
-    line-height: 1.4;
-    margin-bottom: 4px;
-}
-
-.manufacturer-name {
-    font-weight: 500;
-}
-
-.factory-location {
-    color: var(--text-color-secondary);
-    opacity: 0.8;
-    margin-left: 4px;
 }
 
 .no-fluff {
