@@ -269,6 +269,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
     { key: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1] },
     { key: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1] },
+    { key: '_dissipationEfficiency', label: 'Dissipation Efficiency', type: AdvFilterType.RANGE, curve: 1 },
     { key: '_maxRange', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
     { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9 },
     { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9 },

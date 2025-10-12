@@ -56,6 +56,7 @@ export interface UnitTypeMaxStats {
         internal: [number, number],
         heat: [number, number],
         dissipation: [number, number],
+        dissipationEfficiency: [number, number],
         runMP: [number, number],
         jumpMP: [number, number],
         alphaNoPhysical: [number, number],
@@ -326,6 +327,7 @@ export class DataService {
                 internal: number[],
                 heat: number[],
                 dissipation: number[],
+                dissipationEfficiency: number[],
                 runMP: number[],
                 jumpMP: number[],
                 alphaNoPhysical: number[],
@@ -342,6 +344,7 @@ export class DataService {
             unit._mdSumNoPhysical = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp) : 0;
             unit._mdSumNoPhysicalNoOneshots = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp, true) : 0;
             unit._maxRange = unit.comp ? this.weaponsMaxRange(unit, unit.comp) : 0;
+            unit._dissipationEfficiency = (unit.heat && unit.dissipation) ? unit.dissipation - unit.heat : 0;
             if (unit.comp) {
                 if (unit.armorType) {
                     let armorName = unit.armorType;
@@ -376,6 +379,7 @@ export class DataService {
                     internal: [],
                     heat: [],
                     dissipation: [],
+                    dissipationEfficiency: [],
                     runMP: [],
                     jumpMP: [],
                     alphaNoPhysical: [],
@@ -388,6 +392,7 @@ export class DataService {
             statsByType[t].internal.push(unit.internal || 0);
             statsByType[t].heat.push(unit.heat || 0);
             statsByType[t].dissipation.push(unit.dissipation || 0);
+            statsByType[t].dissipationEfficiency.push((unit._dissipationEfficiency || 0));
             statsByType[t].runMP.push(unit.run || 0);
             statsByType[t].jumpMP.push(unit.jump || 0);
             statsByType[t].alphaNoPhysical.push(unit._mdSumNoPhysical || 0);
@@ -411,6 +416,9 @@ export class DataService {
                 dissipation: [
                     Math.min(...stats.dissipation, 0),
                     Math.max(...stats.dissipation, 0)],
+                dissipationEfficiency: [
+                    Math.min(...stats.dissipationEfficiency, 0),
+                    Math.max(...stats.dissipationEfficiency, 0)],
                 runMP: [
                     Math.min(...stats.runMP, 0),
                     Math.max(...stats.runMP, 0)],

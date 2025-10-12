@@ -126,6 +126,7 @@ export class UnitDetailsDialogComponent {
         internal: [0, 0],
         heat: [0, 0],
         dissipation: [0, 0],
+        dissipationEfficiency: [0, 0],
         runMP: [0, 0],
         jumpMP: [0, 0],
         alphaNoPhysical: [0, 0],

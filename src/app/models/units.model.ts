@@ -116,6 +116,7 @@ export interface Unit {
     _model?: string; // For pre-compiled search
     _displayType: string;
     _maxRange: number; // Max range of any weapon on this unit
+    _dissipationEfficiency: number; // Dissipation - Heat
     _mdSumNoPhysical: number; // Max damage sum for all weapons except physical
     _mdSumNoPhysicalNoOneshots: number; // Max damage sum for all weapons except physical, ignoring oneshots
     _era?: Era; // Cached era for this unit
