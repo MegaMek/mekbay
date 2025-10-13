@@ -58,6 +58,7 @@ export interface UnitTypeMaxStats {
         dissipation: [number, number],
         dissipationEfficiency: [number, number],
         runMP: [number, number],
+        run2MP: [number, number],
         jumpMP: [number, number],
         alphaNoPhysical: [number, number],
         alphaNoPhysicalNoOneshots: [number, number],
@@ -329,6 +330,7 @@ export class DataService {
                 dissipation: number[],
                 dissipationEfficiency: number[],
                 runMP: number[],
+                run2MP: number[],
                 jumpMP: number[],
                 alphaNoPhysical: number[],
                 alphaNoPhysicalNoOneshots: number[],
@@ -381,6 +383,7 @@ export class DataService {
                     dissipation: [],
                     dissipationEfficiency: [],
                     runMP: [],
+                    run2MP: [],
                     jumpMP: [],
                     alphaNoPhysical: [],
                     alphaNoPhysicalNoOneshots: [],
@@ -394,6 +397,7 @@ export class DataService {
             statsByType[t].dissipation.push(unit.dissipation || 0);
             statsByType[t].dissipationEfficiency.push((unit._dissipationEfficiency || 0));
             statsByType[t].runMP.push(unit.run || 0);
+            statsByType[t].run2MP.push(unit.run2 || 0);
             statsByType[t].jumpMP.push(unit.jump || 0);
             statsByType[t].alphaNoPhysical.push(unit._mdSumNoPhysical || 0);
             statsByType[t].alphaNoPhysicalNoOneshots.push(unit._mdSumNoPhysicalNoOneshots || 0);
@@ -422,6 +426,9 @@ export class DataService {
                 runMP: [
                     Math.min(...stats.runMP, 0),
                     Math.max(...stats.runMP, 0)],
+                run2MP: [
+                    Math.min(...stats.run2MP, 0),
+                    Math.max(...stats.run2MP, 0)],
                 jumpMP: [
                     Math.min(...stats.jumpMP, 0),
                     Math.max(...stats.jumpMP, 0)],
@@ -447,7 +454,7 @@ export class DataService {
 
     public getUnitTypeMaxStats(type: string) {
         return this.unitTypeMaxStats[type] || {
-            armor: 0, internal: 0, heat: 0, dissipation: 0, runMP: 0, jumpMP: 0, alphaNoPhysical: 0, alphaNoPhysicalNoOneshots: 0
+            armor: 0, internal: 0, heat: 0, dissipation: 0, dissipationEfficiency: 0, runMP: 0, run2MP: 0, jumpMP: 0, alphaNoPhysical: 0, alphaNoPhysicalNoOneshots: 0
         };
     }
 

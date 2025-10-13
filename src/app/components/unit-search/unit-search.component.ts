@@ -679,7 +679,7 @@ export class UnitSearchComponent implements OnDestroy {
         { key: 'maxRange', label: 'Range', value: unit._maxRange, max: maxStats.maxRange[1] },
         { key: 'heat', label: 'Heat', value: unit.heat, max: maxStats.heat[1] },
         { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, max: maxStats.dissipation[1] },
-        { key: 'runMP', label: 'Top Speed', value: unit.run, max: maxStats.runMP[1] },
+        { key: 'runMP', label: 'Top Speed', value: unit.run2, max: maxStats.run2MP[1] },
         { key: 'jumpMP', label: 'Jump', value: unit.jump, max: maxStats.jumpMP[1] },
     ];
 

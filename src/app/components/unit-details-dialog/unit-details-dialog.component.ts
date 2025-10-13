@@ -128,6 +128,7 @@ export class UnitDetailsDialogComponent {
         dissipation: [0, 0],
         dissipationEfficiency: [0, 0],
         runMP: [0, 0],
+        run2MP: [0, 0],
         jumpMP: [0, 0],
         alphaNoPhysical: [0, 0],
         alphaNoPhysicalNoOneshots: [0, 0],
@@ -205,7 +206,7 @@ export class UnitDetailsDialogComponent {
             { key: 'maxRange', label: 'Range', value: this.unit._maxRange, max: this.maxStats.maxRange[1] },
             { key: 'heat', label: 'Heat', value: this.unit.heat, max: this.maxStats.heat[1] },
             { key: 'dissipation', label: 'Dissipation', value: this.unit.dissipation, max: this.maxStats.dissipation[1] },
-            { key: 'runMP', label: 'Top Speed', value: this.unit.run, max: this.maxStats.runMP[1] },
+            { key: 'runMP', label: 'Top Speed', value: this.unit.run2, max: this.maxStats.run2MP[1] },
             { key: 'jumpMP', label: 'Jump', value: this.unit.jump, max: this.maxStats.jumpMP[1] },
         ];
         this.statBarSpecs = statDefs.filter((def, idx) => {

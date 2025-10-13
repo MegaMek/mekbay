@@ -92,7 +92,8 @@ export interface Unit {
     dissipation: number;
     moveType: string;
     walk: number;
-    run: number;
+    run: number; // Without MASC systems
+    run2: number; // With MASC systems
     jump: number;
     c3: string;
     dpt: number;
