@@ -10,39 +10,22 @@
 
 @keyframes tv-vertical-expand {
     0% {
-        opacity: 0;
-        transform: scaleY(0.02) scaleX(0.1);
-        filter: brightness(2) blur(2px);
+        opacity: 0.5;
+        transform: scaleY(0.01) scaleX(0.1);
+        filter: brightness(3);
     }
-
-    30% {
-        opacity: 1;
-        transform: scaleY(0.02) scaleX(1);
-        filter: brightness(1.5) blur(1.5px);
-    }
-
     40% {
-        transform: scaleY(0.07) scaleX(1);
-        filter: brightness(1.2) blur(1px);
+        opacity: 1;
+        transform: scaleY(0.01) scaleX(1);
+        filter: brightness(4);
     }
 
     55% {
-        transform: scaleY(0.3) scaleX(1);
         filter: none;
-    }
-
-    60% {
-        transform: scaleY(0.7) scaleX(1);
-    }
-
-    80% {
-        transform: scaleY(1.05) scaleX(1);
     }
 
     100% {
-        opacity: 1;
         transform: scaleY(1) scaleX(1);
-        filter: none;
     }
 }
 
