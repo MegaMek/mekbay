@@ -417,6 +417,7 @@
 .tech-base {
     width: 24px;
     height: 24px;
+    margin: -2px -2px -4px 0px;
     display: inline-block;
     vertical-align: middle;
     opacity: 0.9;

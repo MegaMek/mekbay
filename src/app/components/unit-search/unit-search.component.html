@@ -378,7 +378,9 @@
                         <div class="expanded-components">
                             <div class="components-pills">
                                 <div class="component-pill" *ngFor="let comp of componentsList"
-                                    [ngClass]="getTypeClass(comp.t)" (mouseenter)="onCompMouseEnter(unit, comp, $event)"
+                                    [ngClass]="getTypeClass(comp.t)" 
+                                    (click)="$event.preventDefault(); $event.stopPropagation()"
+                                    (mouseenter)="onCompMouseEnter(unit, comp, $event)"
                                     (mouseleave)="onCompMouseLeave()">
                                     <span class="pill-qty">{{ comp.q }}×</span>
                                     <span class="pill-name">{{ comp.n }}</span>
@@ -391,7 +393,9 @@
                     <ng-container *ngIf="ammoList.length > 0">
                         <div class="ammo-list"><span class="info-label muted">Ammo: </span>
                             <ng-container *ngFor="let comp of ammoList; let last = last">
-                                <span class="ammo-pill" (mouseenter)="onCompMouseEnter(unit, comp, $event)"
+                                <span class="ammo-pill" 
+                                    (click)="$event.preventDefault(); $event.stopPropagation()"
+                                    (mouseenter)="onCompMouseEnter(unit, comp, $event)"
                                     (mouseleave)="onCompMouseLeave()">({{ comp.n }}) {{ comp.q }}</span><span
                                     *ngIf="!last">, </span>
                             </ng-container>

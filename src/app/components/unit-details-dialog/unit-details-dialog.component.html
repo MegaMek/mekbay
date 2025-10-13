@@ -1,5 +1,4 @@
-<base-dialog [tabs]="tabs" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)" (closed)="onClose()">
-
+<base-dialog #baseDialog [tabs]="tabs" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)" (closed)="onClose()">
     <div dialog-header class="header">
         <div class="header-group">
             <div class="header-icon-container">

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, signal, HostListener, ChangeDetectionStrategy, output } from '@angular/core';
+import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStrategy, output, viewChild, afterNextRender, effect, WritableSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { Unit, UnitComponent } from '../../models/units.model';
@@ -113,13 +113,14 @@ export class UnitDetailsDialogComponent {
     private data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     private toastService = inject(ToastService);
     add = output<Unit>();
+    baseDialogRef = viewChild('baseDialog', { read: ElementRef });
 
     tabs = ['General', 'Intel', 'Factions'];
     activeTab = signal(this.tabs[0]);
 
     unitList: Unit[] = this.data.unitList;
     hideAddButton = this.data.hideAddButton;
-    unitIndex = this.data.unitIndex;
+    unitIndex = signal(this.data.unitIndex);
     gunnerySkill?: number = this.data.gunnerySkill;
     pilotingSkill?: number = this.data.pilotingSkill;
 
@@ -135,9 +136,8 @@ export class UnitDetailsDialogComponent {
     private isCompHovered = false;
     private isFloatingHovered = false;
     
-
     get unit(): Unit {
-        return this.unitList[this.unitIndex];
+        return this.unitList[this.unitIndex()];
     }
 
     getAdjustedBV(): number | null {
@@ -162,8 +162,11 @@ export class UnitDetailsDialogComponent {
     private areaNameToCodes = new Map<string, string[]>();
 
     constructor() {
-        this.updateCachedData();
-        this.updateUseMatrixLayout();
+        effect(() => {
+            this.unit; // Re-run when unit changes
+            this.canHaveThreeCols(); // Re-run when window size changes
+            this.updateCachedData();
+        });
     }
 
     private baysByLocCache = new Map<string, UnitComponent[]>();
@@ -593,14 +596,16 @@ export class UnitDetailsDialogComponent {
     }
 
     private canHaveThreeCols(): boolean {
-        return window.innerWidth >= 820;
+        const modal = this.baseDialogRef()?.nativeElement.querySelector('.modal') as HTMLElement | null;
+        return modal ? modal.clientWidth >= 780 : window.innerWidth >= 780;
     }
 
     private updateUseMatrixLayout() {
         const hasMatrix = !!this.getMatrixForUnit();
         this.useMatrixLayout.set(hasMatrix && this.canHaveThreeCols());
     }
-        private buildAreaCaches() {
+        
+    private buildAreaCaches() {
         this.baysForArea.clear();
         this.compsForArea.clear();
         for (const area of this.matrixAreaCodes) {
@@ -720,22 +725,24 @@ export class UnitDetailsDialogComponent {
     }
     
     get hasPrev(): boolean {
-        return this.unitList && this.unitIndex > 0;
+        return this.unitList && this.unitIndex() > 0;
     }
+
     get hasNext(): boolean {
-        return this.unitList && this.unitIndex < this.unitList.length - 1;
+        return this.unitList && this.unitIndex() < this.unitList.length - 1;
     }
 
     onPrev() {
         if (this.hasPrev) {
-            this.unitIndex--;
-            this.updateCachedData();
+            this.onFloatingMouseLeave();
+            this.unitIndex.set(this.unitIndex() - 1);
         }
     }
+
     onNext() {
         if (this.hasNext) {
-            this.unitIndex++;
-            this.updateCachedData();
+            this.onFloatingMouseLeave();
+            this.unitIndex.set(this.unitIndex() + 1);
         }
     }
 
