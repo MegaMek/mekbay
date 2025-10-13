@@ -777,12 +777,6 @@
     }
 }
 
-@container (max-width: 500px) {
-    .stat-label {
-        font-size: 0.8em;
-    }
-}
-
 @container (max-width: 380px) {
     .stat-bars-columns {
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
