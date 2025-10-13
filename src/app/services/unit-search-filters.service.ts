@@ -357,7 +357,7 @@ export class UnitSearchFiltersService {
         const hasInfantry = units.some(u => u.type === 'Infantry');
         const hasNonInfantry = units.some(u => u.type !== 'Infantry');
         if (hasInfantry && !hasNonInfantry) return 'Squad Size';
-        if (!hasInfantry) return 'Structural Integrity';
+        if (!hasInfantry) return 'Structure';
         return 'Structure / Squad Size';
     });
 

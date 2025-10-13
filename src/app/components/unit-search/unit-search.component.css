@@ -634,3 +634,13 @@
     background-color: #222;
     flex: 1;
 }
+
+.ammo-list {
+    margin-top: 4px;
+    font-size: 0.85em;
+}
+
+.ammo-pill {
+    white-space: nowrap;
+    line-height: 1.4em;
+}

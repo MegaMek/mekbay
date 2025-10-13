@@ -42,6 +42,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { ToastService } from '../../services/toast.service';
 import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
+import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 
 /*
  * Author: Drake
@@ -102,7 +103,7 @@ interface ManufacturerInfo {
     selector: 'unit-details-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, FloatingCompInfoComponent, StatBarSpecsPipe],
+    imports: [CommonModule, BaseDialogComponent, FloatingCompInfoComponent, StatBarSpecsPipe, FilterAmmoPipe],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css']
 })
@@ -155,7 +156,7 @@ export class UnitDetailsDialogComponent {
     }
 
     // Matrix layout state
-    useMatrixLayout = false;
+    useMatrixLayout = signal(false);
     gridAreas = '';
     matrixAreaCodes: string[] = [];
     private areaNameToCodes = new Map<string, string[]>();
@@ -241,7 +242,7 @@ export class UnitDetailsDialogComponent {
             this.gridAreas = '';
             this.matrixAreaCodes = [];
             this.areaNameToCodes.clear();
-            this.useMatrixLayout = false;
+            this.useMatrixLayout.set(false);
             this.baysForArea.clear();
             this.compsForArea.clear();
             return;
@@ -295,7 +296,7 @@ export class UnitDetailsDialogComponent {
             this.gridAreas = '';
             this.matrixAreaCodes = [];
             this.areaNameToCodes.clear();
-            this.useMatrixLayout = false;
+            this.useMatrixLayout.set(false);
             return;
         }
 
@@ -597,7 +598,7 @@ export class UnitDetailsDialogComponent {
 
     private updateUseMatrixLayout() {
         const hasMatrix = !!this.getMatrixForUnit();
-        this.useMatrixLayout = hasMatrix && this.canHaveThreeCols();
+        this.useMatrixLayout.set(hasMatrix && this.canHaveThreeCols());
     }
         private buildAreaCaches() {
         this.baysForArea.clear();
@@ -777,17 +778,18 @@ export class UnitDetailsDialogComponent {
         return found ? found.img : '/images/crate.svg';
     }
 
-    getComponents(splitMultiloc: boolean): UnitComponent[] {
+    getComponents(isForMatrix: boolean): UnitComponent[] {
         if (!this.unit?.comp) return [];
         const expanded: UnitComponent[] = [];
         const equipmentList = this.dataService.getEquipment(this.unit.type);
         for (const original of this.unit.comp) {
+            if (!isForMatrix && original.t === 'X') continue; // Exclude Ammo for normal view
             if (original.t === 'HIDDEN') continue;
             if (original.eq === undefined) {
                 original.eq = equipmentList[original.id] ?? null;
             }
             // Split multi-location components (e.g., "LA/LT")
-            if (splitMultiloc && original.l && original.l.includes('/')) {
+            if (isForMatrix && original.l && original.l.includes('/')) {
                 const locs = original.l.split('/').map(s => s.trim()).filter(Boolean);
                 for (const loc of locs) {
                     expanded.push({

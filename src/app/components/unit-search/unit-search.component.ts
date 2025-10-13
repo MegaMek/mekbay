@@ -52,19 +52,20 @@ import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { FloatingCompInfoComponent } from '../floating-comp-info/floating-comp-info.component';
 import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
+import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 
 @Pipe({
     name: 'expandedComponents',
     pure: true // Pure pipes are only called when the input changes
 })
 export class ExpandedComponentsPipe implements PipeTransform {
-    transform(components: UnitComponent[], show: 'all' | 'standard' = 'standard'): UnitComponent[] {
+    transform(components: UnitComponent[]): UnitComponent[] {
+        if (!components) return [];
+        if (components.length === 0) return [];
         const aggregated = new Map<string, UnitComponent>();
         for (const comp of components) {
             if (comp.t === 'HIDDEN') continue; // Hide hidden components
-            if (show === 'standard') {
-                if (comp.t === 'X') continue; // Hide Ammo
-            }
+            if (comp.t === 'X') continue; // Hide Ammo
             const key = comp.n || '';
             if (aggregated.has(key)) {
                 const existing = aggregated.get(key)!;
@@ -78,12 +79,11 @@ export class ExpandedComponentsPipe implements PipeTransform {
     }
 }
 
-
 @Component({
     selector: 'unit-search',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, MultiSelectDropdownComponent, ExpandedComponentsPipe, StatBarSpecsPipe, FloatingCompInfoComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, MultiSelectDropdownComponent, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, FloatingCompInfoComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.css',
 })

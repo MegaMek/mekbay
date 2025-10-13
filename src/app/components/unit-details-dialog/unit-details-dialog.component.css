@@ -688,6 +688,14 @@
     z-index: 1;
 }
 
+.ammo-list {
+    margin-bottom: 8px;
+}
+
+.ammo-pill {
+    white-space: nowrap;
+    line-height: 1.4em;
+}
 
 @container (max-width: 768px) {
     .fluff-image-container {
