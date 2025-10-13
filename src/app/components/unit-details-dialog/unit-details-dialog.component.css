@@ -414,6 +414,13 @@
     flex-grow: 1;
 }
 
+.tech-base {
+    width: 24px;
+    height: 24px;
+    display: inline-block;
+    vertical-align: middle;
+}
+
 .comp-details {
     display: flex;
     gap: 12px;

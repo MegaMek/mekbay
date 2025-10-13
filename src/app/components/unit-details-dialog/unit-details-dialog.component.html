@@ -136,7 +136,8 @@
                                         <span class="comp-qty">{{ comp.q }}×</span>
                                         <span class="comp-name">{{ comp.n }}</span>
                                         <span *ngIf="unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All'"
-                                            class="tech-base">{{ comp.eq.base == 'IS' ? 'IS' : 'C' }}</span>
+                                            class="tech-base"><img src="/images/component-{{ comp.eq.base == 'IS' ? 'is' : 'clan' }}.svg" alt="{{ comp.eq.base == 'IS' ? 'IS' : 'Clan' }}" />
+                                        </span>
                                     </div>
                                 </div>
                             </ng-template>
@@ -171,7 +172,8 @@
                                     <span class="comp-qty">{{ comp.q }}×</span>
                                     <span class="comp-name">{{ comp.n }}</span>
                                     <span *ngIf="unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All'"
-                                        class="tech-base">{{ comp.eq.base == 'IS' ? 'IS' : 'C' }}</span>
+                                        class="tech-base"><img src="/images/component-{{ comp.eq.base == 'IS' ? 'is' : 'clan' }}.svg" alt="{{ comp.eq.base == 'IS' ? 'IS' : 'Clan' }}" />
+                                    </span>
                                 </div>
                             </div>
                         </div>

@@ -1,0 +1,9 @@
+<svg width="24" height="24" viewBox="0 0 24 24" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+    <rect width="24" height="24" fill="white" mask="url(#knockout)"/>
+    <mask id="knockout">
+        <rect width="24" height="24" fill="white"/>
+        <text x="50%" y="50%" text-anchor="middle" dy=".35em"
+            font-size="14" font-family="sans-serif" font-weight="bold"
+            fill="black">IS</text>
+    </mask>
+</svg>
