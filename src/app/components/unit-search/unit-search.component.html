@@ -356,10 +356,10 @@
 
             <div class="expanded-stats">
                 <!-- Stat Bars -->
-                <div class="stat-bars-columns" *ngIf="getStatBarSpecs(unit) as specs">
-                    <div class="stat-bar-row" *ngFor="let spec of specs">
+                <div class="stat-bars-columns">
+                    <div class="stat-bar-row" *ngFor="let spec of (unit | statBarSpecs)">
                         <div class="stat-bar">
-                            <div class="stat-bar-fill" [style.width.%]="getStatPercent(spec.value, spec.max)"></div>
+                            <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
                         </div>
                         <span class="stat-label">{{ spec.label }}</span>
                         <span class="stat-value">{{ spec.value }}</span>
@@ -373,8 +373,10 @@
                 <div class="expanded-components" *ngIf="unit.comp && unit.comp.length > 0">
                     <div class="components-pills">
                         <div class="component-pill" 
-                            *ngFor="let comp of getExpandedComponents(unit)"
-                            [ngClass]="getTypeClass(comp.t)">
+                            *ngFor="let comp of unit.comp | expandedComponents"
+                            [ngClass]="getTypeClass(comp.t)"
+                            (mouseenter)="onCompMouseEnter(unit, comp, $event)"
+                            (mouseleave)="onCompMouseLeave()">
                             <span class="pill-qty">{{ comp.q }}×</span>
                             <span class="pill-name">{{ comp.n }}</span>
                         </div>
@@ -384,3 +386,10 @@
         </div>
     </div>
 </ng-template>
+<floating-comp-info
+    [unit]="hoveredUnit()"
+    [comp]="hoveredComp()"
+    [hoverRect]="hoverRect()"
+    (mouseenter)="onFloatingMouseEnter()"
+    (mouseleave)="onFloatingMouseLeave()">
+</floating-comp-info>

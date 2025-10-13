@@ -41,6 +41,7 @@ import { DataService, UnitTypeMaxStats, DOES_NOT_TRACK } from '../../services/da
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { ToastService } from '../../services/toast.service';
+import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
 
 /*
  * Author: Drake
@@ -101,7 +102,7 @@ interface ManufacturerInfo {
     selector: 'unit-details-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, FloatingCompInfoComponent],
+    imports: [CommonModule, BaseDialogComponent, FloatingCompInfoComponent, StatBarSpecsPipe],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css']
 })
@@ -121,21 +122,6 @@ export class UnitDetailsDialogComponent {
     gunnerySkill?: number = this.data.gunnerySkill;
     pilotingSkill?: number = this.data.pilotingSkill;
 
-    maxStats: UnitTypeMaxStats[string] = {
-        armor: [0, 0],
-        internal: [0, 0],
-        heat: [0, 0],
-        dissipation: [0, 0],
-        dissipationEfficiency: [0, 0],
-        runMP: [0, 0],
-        run2MP: [0, 0],
-        jumpMP: [0, 0],
-        alphaNoPhysical: [0, 0],
-        alphaNoPhysicalNoOneshots: [0, 0],
-        maxRange: [0, 0],
-        dpt: [0, 0]
-    };
-    statBarSpecs: Array<{ key: string, label: string, value: number, max: number }> = [];
     groupedBays: Array<{ l: string, p: number, bays: UnitComponent[] }> = [];
     components: UnitComponent[] = [];
     componentsForMatrix: UnitComponent[] = [];
@@ -175,7 +161,7 @@ export class UnitDetailsDialogComponent {
     private areaNameToCodes = new Map<string, string[]>();
 
     constructor() {
-        this.updateStats();
+        this.updateCachedData();
         this.updateUseMatrixLayout();
     }
 
@@ -186,40 +172,7 @@ export class UnitDetailsDialogComponent {
     trackByBay = (i: number, bay: UnitComponent) => `${bay.n}|${bay.t}|${bay.l}`;
     trackByComp = (i: number, comp: UnitComponent) => `${comp.n}|${comp.t}|${comp.l}`;
 
-    updateStats() {
-        this.maxStats = this.dataService.getUnitTypeMaxStats(this.unit.type);
-
-        // const armorLabel = this.unit.armorType ? `Armor (${this.unit.armorType.replace(/armor/i,'').trim()})` : 'Armor';
-        const armorLabel = 'Armor';
-        let structureLabel;
-        if (this.unit.type === 'Infantry') {
-            structureLabel = 'Squad size';
-        } else {
-            // structureLabel = this.unit.structureType ? `Structure (${this.unit.structureType.replace(/structure/i,'').trim()})` : 'Structure';
-            structureLabel = 'Structure';
-        }
-        const statDefs = [
-            { key: 'armor', label: armorLabel, value: this.unit.armor, max: this.maxStats.armor[1] },
-            { key: 'internal', label: structureLabel, value: this.unit.internal, max: this.maxStats.internal[1] },
-            // Here we use _mdSumNoPhysicalNoOneshots for max so that the stat bar reflects the max without oneshots even if we are counting them anyway
-            // This allows to have a decent stat bar even if the unit has no oneshot weapons (TODO: maybe we should not consider oneshots at all even in the filters?)
-            { key: 'alphaNoPhysical', label: 'Firepower', value: this.unit._mdSumNoPhysical, max: this.maxStats.alphaNoPhysicalNoOneshots[1] },
-            { key: 'dpt', label: 'Damage/Turn', value: this.unit.dpt, max: this.maxStats.dpt[1] },
-            { key: 'maxRange', label: 'Range', value: this.unit._maxRange, max: this.maxStats.maxRange[1] },
-            { key: 'heat', label: 'Heat', value: this.unit.heat, max: this.maxStats.heat[1] },
-            { key: 'dissipation', label: 'Dissipation', value: this.unit.dissipation, max: this.maxStats.dissipation[1] },
-            { key: 'runMP', label: 'Top Speed', value: this.unit.run2, max: this.maxStats.run2MP[1] },
-            { key: 'jumpMP', label: 'Jump', value: this.unit.jump, max: this.maxStats.jumpMP[1] },
-        ];
-        this.statBarSpecs = statDefs.filter((def, idx) => {
-            const statMaxArr = this.maxStats[def.key as keyof typeof this.maxStats] as [number, number];
-            if (def.value === undefined || def.value === null || def.value == -1) return false; // Skip if value is not defined
-            if (!statMaxArr) return false;
-            if (statMaxArr[0] == statMaxArr[1]) return false;// If min/max are the same, don't show
-            if (statMaxArr[0] == 0 && DOES_NOT_TRACK == statMaxArr[1] && DOES_NOT_TRACK == def.value) return false; // Special case for stats that don't track
-            return true;
-        });
-
+    updateCachedData() {
         this.groupedBays = this.getGroupedBaysByLocation();
         this.components = this.getComponents(false);
         this.componentsForMatrix = this.getComponents(true);
@@ -775,13 +728,13 @@ export class UnitDetailsDialogComponent {
     onPrev() {
         if (this.hasPrev) {
             this.unitIndex--;
-            this.updateStats();
+            this.updateCachedData();
         }
     }
     onNext() {
         if (this.hasNext) {
             this.unitIndex++;
-            this.updateStats();
+            this.updateCachedData();
         }
     }
 
@@ -917,17 +870,12 @@ export class UnitDetailsDialogComponent {
         return result;
     }
 
-    getStatPercent(val: number, max: number): number {
-        if (!max) return 0;
-        return Math.max(0, Math.min(100, Math.round((val / max) * 100)));
-    }
-
     formatThousands(value: number): string {
         if (value === undefined || value === null) return '';
         return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
-        onCompMouseEnter(comp: UnitComponent, event: MouseEvent) {
+    onCompMouseEnter(comp: UnitComponent, event: MouseEvent) {
         this.isCompHovered = true;
         if (this.hoveredComp() !== comp) {
             this.hoveredComp.set(comp);

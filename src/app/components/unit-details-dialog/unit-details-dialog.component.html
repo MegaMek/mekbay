@@ -65,9 +65,9 @@
             </div>
             <!-- Stat Progress Bars -->
             <div class="stat-bars-columns">
-                <div class="stat-bar-row" *ngFor="let spec of statBarSpecs">
+                <div class="stat-bar-row" *ngFor="let spec of (unit | statBarSpecs)">
                     <div class="stat-bar">
-                        <div class="stat-bar-fill" [style.width.%]="getStatPercent(spec.value, spec.max)"></div>
+                        <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
                     </div>
                     <span class="stat-label">{{ spec.label }}</span>
                     <span class="stat-value">{{ spec.value }}</span>

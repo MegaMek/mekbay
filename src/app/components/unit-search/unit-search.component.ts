@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef } from '@angular/core';
+import { Component, signal, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, Pipe, PipeTransform } from '@angular/core';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
@@ -48,14 +48,39 @@ import { TagSelectorComponent } from '../tag-selector/tag-selector.component';
 import { firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
 import { getWeaponTypeCSSClass, weaponTypes } from '../../utils/equipment.util';
-import { DataService, DOES_NOT_TRACK } from '../../services/data.service';
+import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { FloatingCompInfoComponent } from '../floating-comp-info/floating-comp-info.component';
+import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
+
+@Pipe({
+  name: 'expandedComponents',
+  pure: true // Pure pipes are only called when the input changes
+})
+export class ExpandedComponentsPipe implements PipeTransform {
+  transform(components: UnitComponent[]): UnitComponent[] {
+    const aggregated = new Map<string, UnitComponent>();
+    for (const comp of components) {
+      if (comp.t === 'HIDDEN') continue;
+      const key = comp.n || '';
+      if (aggregated.has(key)) {
+        const existing = aggregated.get(key)!;
+        existing.q = (existing.q || 1) + (comp.q || 1);
+      } else {
+        aggregated.set(key, { ...comp });
+      }
+    }
+    return Array.from(aggregated.values())
+      .sort((a, b) => (a.n ?? '').localeCompare(b.n ?? ''));
+  }
+}
+
 
 @Component({
     selector: 'unit-search',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, MultiSelectDropdownComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, MultiSelectDropdownComponent, ExpandedComponentsPipe, StatBarSpecsPipe, FloatingCompInfoComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.css',
 })
@@ -118,6 +143,13 @@ export class UnitSearchComponent implements OnDestroy {
     private advPanelDragActive = false;
     private advPanelDragStartX = 0;
     private advPanelDragStartWidth = 0;
+
+    /* Hover state for component info popup */
+    hoveredUnit = signal<Unit | null>(null);
+    hoveredComp = signal<UnitComponent | null>(null);
+    hoverRect = signal<DOMRect | null>(null);
+    private isCompHovered = false;
+    private isFloatingHovered = false;
 
     constructor() {
         effect(() => {
@@ -635,29 +667,6 @@ export class UnitSearchComponent implements OnDestroy {
             numeric
         };
     }
-
-    getExpandedComponents(unit: Unit): UnitComponent[] {
-        if (!unit?.comp) return [];
-        // Filter out HIDDEN components and aggregate by name
-        const aggregated = new Map<string, UnitComponent>();
-        for (const comp of unit.comp) {
-            if (comp.t === 'HIDDEN') continue;
-            const key = comp.n || '';
-            if (aggregated.has(key)) {
-                const existing = aggregated.get(key)!;
-                existing.q = (existing.q || 1) + (comp.q || 1);
-            } else {
-                aggregated.set(key, { ...comp });
-            }
-        }
-        return Array.from(aggregated.values())
-            .sort((a, b) => {
-                if (a.n === b.n) return 0;
-                if (a.n === undefined) return 1;
-                if (b.n === undefined) return -1;
-                return a.n.localeCompare(b.n);
-            });
-    }
     
     getTypeColor(typeCode: string): string {
         const found = weaponTypes.find(t => t.code === typeCode);
@@ -666,36 +675,6 @@ export class UnitSearchComponent implements OnDestroy {
 
     getTypeClass(typeCode: string): string {
         return getWeaponTypeCSSClass(typeCode);
-    }
-
-    getStatBarSpecs(unit: Unit): Array<{ label: string, value: number, max: number }> {
-    const maxStats = this.dataService.getUnitTypeMaxStats(unit.type);
-
-    const statDefs = [
-        { key: 'armor', label: 'Armor', value: unit.armor, max: maxStats.armor[1] },
-        { key: 'internal', label: unit.type === 'Infantry' ? 'Squad size' : 'Structure', value: unit.internal, max: maxStats.internal[1] },
-        { key: 'alphaNoPhysical', label: 'Firepower', value: unit._mdSumNoPhysical, max: maxStats.alphaNoPhysicalNoOneshots[1] },
-        { key: 'dpt', label: 'Damage/Turn', value: unit.dpt, max: maxStats.dpt[1] },
-        { key: 'maxRange', label: 'Range', value: unit._maxRange, max: maxStats.maxRange[1] },
-        { key: 'heat', label: 'Heat', value: unit.heat, max: maxStats.heat[1] },
-        { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, max: maxStats.dissipation[1] },
-        { key: 'runMP', label: 'Top Speed', value: unit.run2, max: maxStats.run2MP[1] },
-        { key: 'jumpMP', label: 'Jump', value: unit.jump, max: maxStats.jumpMP[1] },
-    ];
-
-    return statDefs.filter(def => {
-        const statMaxArr = maxStats[def.key as keyof typeof maxStats] as [number, number];
-        if (def.value === undefined || def.value === null || def.value === -1) return false;
-        if (!statMaxArr) return false;
-        if (statMaxArr[0] === statMaxArr[1]) return false;
-        if (statMaxArr[0] === 0 && DOES_NOT_TRACK === statMaxArr[1] && DOES_NOT_TRACK === def.value) return false;
-        return true;
-    });
-    }
-
-    getStatPercent(value: number, max: number): number {
-        if (max === 0) return 0;
-        return Math.min((value / max) * 100, 100);
     }
 
     async onAddTag(unit: Unit, event: MouseEvent) {
@@ -870,4 +849,41 @@ export class UnitSearchComponent implements OnDestroy {
         window.removeEventListener('mousemove', this.onAdvPanelDragMove);
         window.removeEventListener('mouseup', this.onAdvPanelDragEnd);
     };
+
+    /* Component Hovering for Expanded View */
+    onCompMouseEnter(unit: Unit, comp: UnitComponent, event: MouseEvent) {
+        this.isCompHovered = true;
+        if (this.hoveredComp() !== comp) {
+            console.log(this.hoveredComp(), '->', comp);
+            this.hoveredUnit.set(unit);
+            this.hoveredComp.set(comp);
+            const container = event.currentTarget as HTMLElement;
+            this.hoverRect.set(container.getBoundingClientRect());
+        }
+    }
+
+    onCompMouseLeave() {
+        this.isCompHovered = false;
+        // Defer to next tick to allow floating window mouseenter to fire first if moving to it
+        setTimeout(() => this.updateFloatingVisibility(), 0);
+    }
+
+    onFloatingMouseEnter() {
+        this.isFloatingHovered = true;
+    }
+
+    onFloatingMouseLeave() {
+        this.isFloatingHovered = false;
+        // Defer to next tick to allow comp mouseenter to fire first if moving to it
+        setTimeout(() => this.updateFloatingVisibility(), 0);
+    }
+
+    private updateFloatingVisibility() {
+        if (!this.isCompHovered && !this.isFloatingHovered) {
+            this.hoveredUnit.set(null);
+            this.hoveredComp.set(null);
+            this.hoverRect.set(null);
+        }
+    }
+
 }

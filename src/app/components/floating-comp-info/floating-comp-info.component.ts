@@ -55,10 +55,10 @@ import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 })
 export class FloatingCompInfoComponent implements AfterViewInit {
     private dataService = inject(DataService);
-    unit = input.required<Unit>();
+    unit = input.required<Unit | null>();
     comp = input<UnitComponent | null>(null);
     hoverRect = input<DOMRect | null>(null);
-    dialogRef = viewChild<ElementRef<HTMLDivElement>>('dialog');
+    floatingDialog = viewChild<ElementRef<HTMLDivElement>>('floatingDialog');
 
     pos = signal<{ x: number, y: number }>({ x: 0, y: 0 });
     equipment = signal<any>(null);
@@ -70,7 +70,7 @@ export class FloatingCompInfoComponent implements AfterViewInit {
             const currentComp = this.comp();
             const currentUnit = this.unit();
             
-            if (currentComp?.id && currentUnit?.type) {
+            if (currentUnit && currentComp?.id && currentUnit?.type) {
                 const eq = this.dataService.getEquipment(currentUnit.type)[currentComp.id];
                 this.equipment.set(eq || null);
             } else {
@@ -95,7 +95,7 @@ export class FloatingCompInfoComponent implements AfterViewInit {
 
     ngAfterViewChecked(): void {
         // Try to position after every view check until successful
-        if (!this.positioned && this.comp() && this.hoverRect() && this.dialogRef()) {
+        if (!this.positioned && this.comp() && this.hoverRect() && this.floatingDialog()) {
             this.updatePosition();
         }
     }
@@ -105,11 +105,11 @@ export class FloatingCompInfoComponent implements AfterViewInit {
         const currentHoverRect = this.hoverRect();
 
         if (!currentComp || !currentHoverRect) return;
-        const dialogRef = this.dialogRef();
-        if (!dialogRef || !dialogRef.nativeElement) return;
+        const floatingDialog = this.floatingDialog();
+        if (!floatingDialog || !floatingDialog.nativeElement) return;
 
         const hoverRect = currentHoverRect;
-        const el = dialogRef.nativeElement;
+        const el = floatingDialog.nativeElement;
         const rect = el.getBoundingClientRect();
         const vw = window.innerWidth;
         const vh = window.innerHeight;
@@ -175,6 +175,8 @@ export class FloatingCompInfoComponent implements AfterViewInit {
     }
 
     computeEquipmentDisplay(): Array<{ group: string, items: Array<{ label: string, value: any }> }> {
+        const unit = this.unit();
+        if (!unit) return [];
         const eq = this.equipment();
         if (!eq) return [];
         const parseYear = (val: any): number | null => {
@@ -189,7 +191,7 @@ export class FloatingCompInfoComponent implements AfterViewInit {
             return null;
         };
         let dates;
-        switch (this.unit().techBase) {
+        switch (unit.techBase) {
             case 'Clan':
                 dates = eq.dates?.clan ?? {};
                 break;
@@ -217,7 +219,7 @@ export class FloatingCompInfoComponent implements AfterViewInit {
             return aYear - bYear;
         });
 
-        const ratingString = `${eq.base} | ${this.unit().techBase == 'Clan' ? eq.rating.clan : eq.rating.is}`;
+        const ratingString = `${eq.base} | ${unit.techBase == 'Clan' ? eq.rating.clan : eq.rating.is}`;
         const result = [
             {
                 group: 'General',
