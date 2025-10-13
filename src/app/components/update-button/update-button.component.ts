@@ -30,8 +30,9 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
-import { ChangeDetectionStrategy, Component, signal, input, computed, effect } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal, input, computed, effect, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { App } from '../../app';
 
 /*
  * Author: Drake
@@ -45,9 +46,13 @@ import { CommonModule } from '@angular/common';
     styleUrls: ['./update-button.component.css']
 })
 export class UpdateButtonComponent {
+    public START_COUNTDOWN = 60; // seconds
+    public WARNING_THRESHOLD = 10; // seconds
     updateAvailable = input<boolean>(false);
-    countdown = signal(10);
+    countdown = signal(this.START_COUNTDOWN);
     isVisible = signal(false);
+    pulse = signal(false);
+    private app = inject(App);
     private countdownInterval?: ReturnType<typeof setInterval>;
 
     showUpdate = computed(() => this.updateAvailable() && this.isVisible());
@@ -67,12 +72,16 @@ export class UpdateButtonComponent {
         if (this.countdownInterval) {
             return;
         }
-        this.countdown.set(10);
+        this.countdown.set(this.START_COUNTDOWN);
         this.countdownInterval = setInterval(() => {
             if (this.countdown() > 0) {
                 this.countdown.set(this.countdown() - 1);
+                if (this.countdown() <= this.WARNING_THRESHOLD) {
+                    this.triggerPulse();
+                }
             } else {
-                this.countdownInterval = undefined;
+                this.app.removeBeforeUnloadHandler();
+                this.cancelReload();
                 this.reloadForUpdate();
             }
         }, 1000);
@@ -88,5 +97,10 @@ export class UpdateButtonComponent {
             clearInterval(this.countdownInterval);
             this.countdownInterval = undefined;
         }
+    }
+
+    triggerPulse() {
+        this.pulse.set(false);
+        setTimeout(() => this.pulse.set(true), 10);
     }
 }

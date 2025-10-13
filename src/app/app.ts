@@ -201,8 +201,12 @@ export class App implements OnInit {
         }
     }
 
-    ngOnDestroy() {
+    public removeBeforeUnloadHandler() {
         window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+    }
+
+    ngOnDestroy() {
+        this.removeBeforeUnloadHandler();
     }
 
     beforeUnloadHandler = (event: BeforeUnloadEvent) => {
