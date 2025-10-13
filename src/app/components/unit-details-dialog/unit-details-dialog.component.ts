@@ -189,12 +189,14 @@ export class UnitDetailsDialogComponent {
     updateStats() {
         this.maxStats = this.dataService.getUnitTypeMaxStats(this.unit.type);
 
-        const armorLabel = this.unit.armorType ? `Armor (${this.unit.armorType.replace(/armor/i,'').trim()})` : 'Armor';
+        // const armorLabel = this.unit.armorType ? `Armor (${this.unit.armorType.replace(/armor/i,'').trim()})` : 'Armor';
+        const armorLabel = 'Armor';
         let structureLabel;
         if (this.unit.type === 'Infantry') {
             structureLabel = 'Squad size';
         } else {
-            structureLabel = this.unit.structureType ? `Structure (${this.unit.structureType.replace(/structure/i,'').trim()})` : 'Structure';
+            // structureLabel = this.unit.structureType ? `Structure (${this.unit.structureType.replace(/structure/i,'').trim()})` : 'Structure';
+            structureLabel = 'Structure';
         }
         const statDefs = [
             { key: 'armor', label: armorLabel, value: this.unit.armor, max: this.maxStats.armor[1] },
