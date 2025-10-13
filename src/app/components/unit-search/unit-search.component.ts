@@ -54,25 +54,28 @@ import { FloatingCompInfoComponent } from '../floating-comp-info/floating-comp-i
 import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
 
 @Pipe({
-  name: 'expandedComponents',
-  pure: true // Pure pipes are only called when the input changes
+    name: 'expandedComponents',
+    pure: true // Pure pipes are only called when the input changes
 })
 export class ExpandedComponentsPipe implements PipeTransform {
-  transform(components: UnitComponent[]): UnitComponent[] {
-    const aggregated = new Map<string, UnitComponent>();
-    for (const comp of components) {
-      if (comp.t === 'HIDDEN') continue;
-      const key = comp.n || '';
-      if (aggregated.has(key)) {
-        const existing = aggregated.get(key)!;
-        existing.q = (existing.q || 1) + (comp.q || 1);
-      } else {
-        aggregated.set(key, { ...comp });
-      }
+    transform(components: UnitComponent[], show: 'all' | 'standard' = 'standard'): UnitComponent[] {
+        const aggregated = new Map<string, UnitComponent>();
+        for (const comp of components) {
+            if (comp.t === 'HIDDEN') continue; // Hide hidden components
+            if (show === 'standard') {
+                if (comp.t === 'X') continue; // Hide Ammo
+            }
+            const key = comp.n || '';
+            if (aggregated.has(key)) {
+                const existing = aggregated.get(key)!;
+                existing.q = (existing.q || 1) + (comp.q || 1);
+            } else {
+                aggregated.set(key, { ...comp });
+            }
+        }
+        return Array.from(aggregated.values())
+            .sort((a, b) => (a.n ?? '').localeCompare(b.n ?? ''));
     }
-    return Array.from(aggregated.values())
-      .sort((a, b) => (a.n ?? '').localeCompare(b.n ?? ''));
-  }
 }
 
 
@@ -201,7 +204,7 @@ export class UnitSearchComponent implements OnDestroy {
     private setupItemHeightTracking() {
         let debounceTimer: any;
         const DEBOUNCE_MS = 80;
-        
+
         const debouncedUpdateHeights = () => {
             if (debounceTimer) {
                 clearTimeout(debounceTimer);
@@ -306,7 +309,7 @@ export class UnitSearchComponent implements OnDestroy {
             // Normal mode: use actual container position
             const container = document.querySelector('.searchbar-container') as HTMLElement;
             if (!container) return;
-            
+
             const containerRect = container.getBoundingClientRect();
             dropdownWidth = containerRect.width;
             top = containerRect.bottom + gap + window.scrollY;
@@ -466,7 +469,7 @@ export class UnitSearchComponent implements OnDestroy {
 
         // Split by commas or semicolons to get OR groups
         const orGroups = search.split(/[,;]/).map(g => g.trim()).filter(Boolean);
-        
+
         // Collect all words from all OR groups
         const allWords = new Set<string>();
         for (const group of orGroups) {
@@ -667,7 +670,7 @@ export class UnitSearchComponent implements OnDestroy {
             numeric
         };
     }
-    
+
     getTypeColor(typeCode: string): string {
         const found = weaponTypes.find(t => t.code === typeCode);
         return found ? found.color : '#ccc';
@@ -679,10 +682,10 @@ export class UnitSearchComponent implements OnDestroy {
 
     async onAddTag(unit: Unit, event: MouseEvent) {
         event.stopPropagation();
-        
+
         // Collect all unique tags from all units
         const tagOptions = this.filtersService.getAllTags();
-        
+
         // Create overlay positioned near the click
         const target = event.target as HTMLElement;
         const positionStrategy = this.overlay.position()
@@ -713,11 +716,11 @@ export class UnitSearchComponent implements OnDestroy {
 
         const portal = new ComponentPortal(TagSelectorComponent, null, this.injector);
         const componentRef = this.tagSelectorOverlayRef.attach(portal);
-        
+
         // Pass data to the component
         componentRef.instance.tags = tagOptions;
         componentRef.instance.assignedTags = unit._tags || [];
-        
+
         // Handle backdrop click to close
         this.tagSelectorOverlayRef.backdropClick().subscribe(() => {
             this.tagSelectorOverlayRef?.dispose();
@@ -732,7 +735,7 @@ export class UnitSearchComponent implements OnDestroy {
                     unit._tags.splice(index, 1);
                     // Update the component's assigned tags
                     componentRef.instance.assignedTags = unit._tags || [];
-                    
+
                     await this.filtersService.saveTagsToStorage();
                     this.filtersService.invalidateTagsCache();
                     this.cdr.markForCheck();
@@ -755,9 +758,9 @@ export class UnitSearchComponent implements OnDestroy {
                         placeholder: 'Enter tag...'
                     } as InputDialogData
                 });
-                
+
                 const newTag = await firstValueFrom(newTagRef.closed);
-                
+
                 // User cancelled or entered empty string
                 if (!newTag || newTag.trim().length === 0) {
                     return;
@@ -767,33 +770,33 @@ export class UnitSearchComponent implements OnDestroy {
                     await this.dialogsService.showError('Tag is too long. Maximum length is 16 characters.', 'Invalid Tag');
                     return;
                 }
-                
+
                 selectedTag = newTag;
             }
-            
+
             const trimmedTag = selectedTag.trim();
-            
+
             // Initialize tags array if it doesn't exist
             if (!unit._tags) {
                 unit._tags = [];
             }
-            
+
             // Check if tag already exists (case-insensitive)
             if (unit._tags.some(tag => tag.toLowerCase() === trimmedTag.toLowerCase())) {
                 // Tag already exists, don't add duplicate
                 return;
             }
-            
+
             // Add the tag
             unit._tags.push(trimmedTag);
             this.cdr.markForCheck();
-            
+
             await this.filtersService.saveTagsToStorage();
             this.filtersService.invalidateTagsCache();
             this.cdr.markForCheck();
-        });    
+        });
     }
-    
+
     setPilotSkill(type: 'gunnery' | 'piloting', value: number) {
         const currentGunnery = this.filtersService.pilotGunnerySkill();
         const currentPiloting = this.filtersService.pilotPilotingSkill();
@@ -802,7 +805,7 @@ export class UnitSearchComponent implements OnDestroy {
         } else {
             this.filtersService.setPilotSkills(currentGunnery, value);
         }
-        
+
         this.activeIndex.set(null);
     }
 

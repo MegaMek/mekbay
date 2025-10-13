@@ -46,6 +46,8 @@ export const weaponTypes: Array<{ code: string, color: string, name: string, img
     ];
 
 export function getWeaponTypeCSSClass(typeCode: string): string {
+    if (typeCode === 'HIDDEN') return '';
+    if (typeCode === 'X') return 'ammo'; // We don't have it in the list above, maybe should be added?
     const found = weaponTypes.find(t => t.code === typeCode);
     return found ? found.name.toLowerCase() : 'other';
 }

@@ -509,6 +509,16 @@ hr {
     background: #292313;
 }
 
+/* Ammo: #CCCCCC, background: #272727, inbetween: #999999 */
+.ammo {
+    --type-color: #ccc;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #999;
+    border-right: 1px solid #999;
+    border-bottom: 1px solid #999;
+    background: #272727;
+}
+
 /* Tags */
 
 .info-slot-tags {

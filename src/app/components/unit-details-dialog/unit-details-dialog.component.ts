@@ -37,7 +37,7 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { Unit, UnitComponent } from '../../models/units.model';
 import { FloatingCompInfoComponent } from '../floating-comp-info/floating-comp-info.component';
 import { weaponTypes, getWeaponTypeCSSClass } from '../../utils/equipment.util';
-import { DataService, UnitTypeMaxStats, DOES_NOT_TRACK } from '../../services/data.service';
+import { DataService } from '../../services/data.service';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { ToastService } from '../../services/toast.service';

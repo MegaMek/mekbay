@@ -50,8 +50,9 @@ export interface UnitComponent {
      * A: Artillery
      * P: Physical
      * O: Other
+     * X: Ammo
      */
-    t: 'E' | 'M' | 'B' | 'A' | 'P' | 'O' | 'HIDDEN'; // type
+    t: 'E' | 'M' | 'B' | 'A' | 'X' | 'P' | 'O' | 'HIDDEN'; // type
     p: number; // the location id 
     l: string;      // location (RA, LT, LA, etc. Can contain multiple locations if component is split: LA/LT)
     r?: string;      // range (e.g. "6/12/18")
