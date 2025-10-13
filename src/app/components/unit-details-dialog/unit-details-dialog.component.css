@@ -697,6 +697,10 @@
     line-height: 1.4em;
 }
 
+.ammo-pill:hover {
+    text-decoration: underline var(--text-color) dotted;
+}
+
 @container (max-width: 768px) {
     .fluff-image-container {
         float: none;
