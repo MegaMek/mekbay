@@ -120,7 +120,7 @@
                                         (mouseenter)="onCompMouseEnter(bay, $event)" (mouseleave)="onCompMouseLeave()">
                                         <div class="comp-title">
                                             <span class="comp-qty">{{ bay.q }}×</span>
-                                            <span class="comp-name">{{ bay.n }}</span>
+                                            <span class="comp-name">{{ bay.n }}<span *ngIf="bay.q2" class="ammo-count"> ({{ bay.q2 }})</span></span>
                                         </div>
                                     </div>
                                 </div>
@@ -133,7 +133,7 @@
                                     (mouseenter)="onCompMouseEnter(comp, $event)" (mouseleave)="onCompMouseLeave()">
                                     <div class="comp-title">
                                         <span class="comp-qty">{{ comp.q }}×</span>
-                                        <span class="comp-name">{{ comp.n }}</span>
+                                        <span class="comp-name">{{ comp.n }}<span *ngIf="comp.q2" class="ammo-count"> ({{ comp.q2 }})</span></span>
                                         <span *ngIf="unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All'"
                                             class="tech-base"><img src="/images/component-{{ comp.eq.base == 'IS' ? 'is' : 'clan' }}.svg" alt="{{ comp.eq.base == 'IS' ? 'IS' : 'Clan' }}" />
                                         </span>
@@ -155,7 +155,7 @@
                                 (mouseenter)="onCompMouseEnter(bay, $event)" (mouseleave)="onCompMouseLeave()">
                                 <div class="comp-title">
                                     <span class="comp-qty">{{ bay.q }}×</span>
-                                    <span class="comp-name">{{ bay.n }}</span>
+                                    <span class="comp-name">{{ bay.n }}<span *ngIf="bay.q2" class="ammo-count"> ({{ bay.q2 }})</span></span>
                                 </div>
                             </div>
                         </div>
@@ -169,7 +169,7 @@
                                 (mouseenter)="onCompMouseEnter(comp, $event)" (mouseleave)="onCompMouseLeave()">
                                 <div class="comp-title">
                                     <span class="comp-qty">{{ comp.q }}×</span>
-                                    <span class="comp-name">{{ comp.n }}</span>
+                                    <span class="comp-name">{{ comp.n }}<span *ngIf="comp.q2" class="ammo-count"> ({{ comp.q2 }})</span></span>
                                     <span *ngIf="unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All'"
                                         class="tech-base"><img src="/images/component-{{ comp.eq.base == 'IS' ? 'is' : 'clan' }}.svg" alt="{{ comp.eq.base == 'IS' ? 'IS' : 'Clan' }}" />
                                     </span>
@@ -183,7 +183,7 @@
                         <div class="ammo-list"><span class="info-label muted">Ammo: </span>
                             <ng-container *ngFor="let comp of ammoList; let last = last">
                                 <span class="ammo-pill" (mouseenter)="onCompMouseEnter(comp, $event)"
-                                    (mouseleave)="onCompMouseLeave()">({{ comp.n }}) {{ comp.q }}</span><span
+                                    (mouseleave)="onCompMouseLeave()">({{ comp.n }}) {{ comp.q2 }}</span><span
                                     *ngIf="!last">, </span>
                             </ng-container>
                         </div>

@@ -54,6 +54,7 @@ export class FilterAmmoPipe implements PipeTransform {
             if (aggregated.has(key)) {
                 const existing = aggregated.get(key)!;
                 existing.q = (existing.q || 1) + (comp.q || 1);
+                existing.q2 = (existing.q2 || 0) + (comp.q2 || 0);
             } else {
                 aggregated.set(key, { ...comp, n: name });
             }

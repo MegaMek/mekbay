@@ -41,6 +41,7 @@ import { Era } from "./eras.model";
 export interface UnitComponent {
     id: string;     // Internal Name
     q: number;      // quantity
+    q2?: number;     // used for ammo count (as q is used for the tons)
     n: string;      // Display Name
     /**
      * type:
