@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStrategy, output, viewChild, afterNextRender, effect, WritableSignal } from '@angular/core';
+import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStrategy, output, viewChild, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { Unit, UnitComponent } from '../../models/units.model';

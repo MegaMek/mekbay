@@ -857,7 +857,6 @@ export class UnitSearchComponent implements OnDestroy {
     onCompMouseEnter(unit: Unit, comp: UnitComponent, event: MouseEvent) {
         this.isCompHovered = true;
         if (this.hoveredComp() !== comp) {
-            console.log(this.hoveredComp(), '->', comp);
             this.hoveredUnit.set(unit);
             this.hoveredComp.set(comp);
             const container = event.currentTarget as HTMLElement;
