@@ -145,6 +145,10 @@
     line-height: 16px;
 }
 
+.tab-general {
+    padding: 8px;
+}
+
 /* Basic Info */
 .basic-info {
     display: flex;
@@ -162,8 +166,6 @@
     width: 100%;
     max-width: 100%;
     min-width: 100%;
-    padding-right: 8px;
-    padding-left: 8px;
     box-sizing: border-box;
 }
 
@@ -176,6 +178,7 @@
     flex-direction: row;
     flex-wrap: wrap;
     gap: 4px;
+    align-items: baseline;
 }
 
 .quirks-block {
@@ -215,8 +218,6 @@
     width: 100%;
     max-width: 100%;
     min-width: 100%;
-    padding-right: 8px;
-    padding-left: 8px;
     margin-top: 16px;
     box-sizing: border-box;
 }
@@ -315,7 +316,7 @@
 /* Components */
 .components-container {
     display: grid;
-    grid-template-columns: repeat(auto-fit, 300px);
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 4px 16px;
     justify-content: center;
     align-items: stretch;
@@ -486,52 +487,9 @@
 }
 
 @media (max-width: 680px) {
-    .header {
-        padding-left: 0px;
-        padding-right: 0px;
-    }
-
-    .header-model {
-        font-size: 0.8em;
-    }
-
-    .header-chassis {
-        font-size: 1em;
-    }
-
-    .header-details {
-        font-size: 0.8em;
-    }
-
     .nav-arrow {
         display: none;
     }
-    .stat-bars-columns {
-        grid-template-columns: 1fr 1fr;
-    }
-
-
-}
-
-@media (max-width: 425px) {
-
-    .stat-bars-columns {
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    }
-
-
-    .components-container {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .component-rect {
-        width: 100%;
-        min-width: 100%;
-        max-width: 100%;
-    }
-
-
 }
 
 /* Matrix layout (3 columns, 3 rows) */
@@ -551,14 +509,6 @@
     width: 100%;
 }
 
-@media (max-width: 425px) {
-    .components-matrix {
-        display: flex;
-        flex-direction: column;
-    }
-}
-
-
 .tab-content {
     padding-top: 0.5em;
     display: flex;
@@ -573,8 +523,6 @@
     align-items: flex-start;
     margin-bottom: 8px;
     font-size: 0.8em;
-    padding-left: 8px;
-    padding-right: 8px;
 }
 
 .bottom-left {
@@ -609,17 +557,13 @@
 
 /* Factions Tab */
 .faction-availability-list {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: auto 1fr;
     padding: 16px;
     gap: 8px 16px;
     overflow-y: auto;
     align-items: baseline;
     
-    @media (min-width: 768px) {
-        display: grid;
-        grid-template-columns: auto 1fr;
-    }
 }
 
 .era-name {
@@ -638,7 +582,7 @@
 }
 
 .faction-list {
-    line-height: 1.4;
+    line-height: 1.6;
 }
 
 .no-factions {
@@ -681,7 +625,6 @@
 }
 
 .fluff-image-container {
-    height: min(500px, 50vh);
     float: right;
     display: flex;
     align-items: center;
@@ -693,7 +636,7 @@
 
 .fluff-image {
     max-width: 100%;
-    max-height: 100%;
+    height: min(500px, 50vh);
     display: block;
     filter: invert(1) sepia(1) hue-rotate(160deg) saturate(0.3) brightness(0.9) contrast(1.15);
     mix-blend-mode: lighten;
@@ -725,41 +668,6 @@
     margin-top: 24px;
 }
 
-@media (max-width: 768px) {
-    .fluff-content {
-        gap: 12px;
-    }
-    
-    .fluff-content:has(.fluff-image-container:only-child) .fluff-image-container {
-        width: 100%;
-        max-width: 500px;
-        height: auto;
-        aspect-ratio: 1;
-    }
-    
-    .fluff-image-container {
-        float: none;
-        width: 100%;
-        height: 300px;
-        margin: 0 0 16px 0;
-    }
-
-    .fluff-label {
-        font-size: 1em;
-    }
-    
-    .fluff-text {
-        font-size: 0.95em;
-    }
-}
-
-@media (max-width: 425px) {
-    .fluff-content {
-        padding: 8px;
-        gap: 10px;
-    }
-}
-
 .fluff-bg-image {
     position: absolute;
     top: -100px;
@@ -782,4 +690,93 @@
 :host ::ng-deep .modal.fluff-background > *:not(.fluff-bg-image) {
     position: relative;
     z-index: 1;
+}
+
+
+@container (max-width: 768px) {
+    .fluff-image-container {
+        float: none;
+        margin: 0 0 16px 0;
+        width: 100%;
+    }
+
+    .fluff-image {
+        height: auto;
+        max-height: 50vh;
+        max-width: 100%;
+    }
+
+    .fluff-label {
+        font-size: 1em;
+    }
+    
+    .fluff-text {
+        font-size: 0.95em;
+    }
+
+    .faction-availability-list {
+        display: flex;
+        flex-direction: column;
+    }
+}
+
+@container (max-width: 600px) {
+    .header {
+        padding-left: 0px;
+        padding-right: 0px;
+    }
+
+    .header-model {
+        font-size: 0.8em;
+    }
+
+    .header-chassis {
+        font-size: 1em;
+    }
+
+    .header-details {
+        font-size: 0.8em;
+    }
+
+    .stat-bars-columns {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .components-container {
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 4px;
+    }
+}
+
+@container (max-width: 500px) {
+    .components-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .component-rect {
+        max-width: 100%;
+    }
+}
+
+@container (max-width: 500px) {
+    .stat-label {
+        font-size: 0.8em;
+    }
+}
+
+@container (max-width: 380px) {
+    .stat-bars-columns {
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+
+    .stat-label {
+        font-size: 1em;
+    }
+    
+    .fluff-content {
+        padding: 8px;
+        gap: 10px;
+    }
 }

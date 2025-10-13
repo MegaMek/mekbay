@@ -29,7 +29,7 @@
         [src]="fluffImageUrl()"
         class="fluff-bg-image"
         alt="">
-        <div class="tab-content" *ngIf="activeTab() === 'General'">
+        <div class="tab-content tab-general" *ngIf="activeTab() === 'General'">
             <!-- Basic Info -->
             <div class="basic-info-block allow-select">
                 <div><strong>{{ unit.type }}<span *ngIf="unit.subtype != unit.type"> - {{ unit.subtype }}</span> - {{ unit.weightClass }}</strong></div>
@@ -45,9 +45,8 @@
                 </div>
                 <div><span class="muted">Tech: </span><strong>{{ unit.techBase }} | {{ unit.techRating }}</strong></div>
                 <div *ngIf="unit.year"><span class="muted">Intro Year: </span><strong>{{ unit.year }}</strong> <img *ngIf="getEraImg(unit)" [src]="getEraImg(unit)" class="era-icon" title="{{ unit._era?.name }}" /></div>
-                <div *ngIf="unit.armorType"><span class="muted">Armor Type: </span><strong>{{ unit.armorType }}</strong></div>
-                <div *ngIf="unit.structureType"><span class="muted">Structure Type: </span><strong>{{ unit.structureType }}</strong></div>
-                <div *ngIf="unit.moveType"><span class="muted">Motive Type: </span><strong>{{ unit.moveType }}</strong></div>
+                <div *ngIf="unit.moveType && unit.moveType != 'None'"><span class="muted">Motive Type: </span><strong>{{ unit.moveType }}</strong></div>
+                <div *ngIf="unit.walk"><span class="muted">Movement: </span><strong>{{ unit.walk }}/{{ unit.run }}<ng-container *ngIf="unit.jump">/{{ unit.jump }}</ng-container></strong></div>
                 <div *ngIf="unit.engine"><span class="muted">Engine: </span><strong><span *ngIf="unit.engineRating">{{ unit.engineRating }} </span>{{ unit.engine }}</strong></div>
                 <div *ngIf="unit.c3 && unit.c3 != 'None'"><span class="muted">Network: </span><strong>{{ unit.c3 }}</strong></div>
                 <div><span class="muted">C-Bill Cost: </span><strong>{{ formatThousands(unit.cost) }}</strong></div>

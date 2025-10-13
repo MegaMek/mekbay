@@ -466,7 +466,7 @@
     padding: 4px;
 }
 
-@media (max-width: 768px) {
+@container (max-width: 768px) {
     .expanded-basic-info {
         grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
         font-size: 0.9em;

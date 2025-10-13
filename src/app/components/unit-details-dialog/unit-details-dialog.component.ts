@@ -188,9 +188,16 @@ export class UnitDetailsDialogComponent {
     updateStats() {
         this.maxStats = this.dataService.getUnitTypeMaxStats(this.unit.type);
 
+        const armorLabel = this.unit.armorType ? `Armor (${this.unit.armorType.replace(/armor/i,'').trim()})` : 'Armor';
+        let structureLabel;
+        if (this.unit.type === 'Infantry') {
+            structureLabel = 'Squad size';
+        } else {
+            structureLabel = this.unit.structureType ? `Structure (${this.unit.structureType.replace(/structure/i,'').trim()})` : 'Structure';
+        }
         const statDefs = [
-            { key: 'armor', label: 'Armor', value: this.unit.armor, max: this.maxStats.armor[1] },
-            { key: 'internal', label: this.unit.type === 'Infantry' ? 'Squad size' : 'Structure', value: this.unit.internal, max: this.maxStats.internal[1] },
+            { key: 'armor', label: armorLabel, value: this.unit.armor, max: this.maxStats.armor[1] },
+            { key: 'internal', label: structureLabel, value: this.unit.internal, max: this.maxStats.internal[1] },
             // Here we use _mdSumNoPhysicalNoOneshots for max so that the stat bar reflects the max without oneshots even if we are counting them anyway
             // This allows to have a decent stat bar even if the unit has no oneshot weapons (TODO: maybe we should not consider oneshots at all even in the filters?)
             { key: 'alphaNoPhysical', label: 'Firepower', value: this.unit._mdSumNoPhysical, max: this.maxStats.alphaNoPhysicalNoOneshots[1] },
@@ -198,7 +205,7 @@ export class UnitDetailsDialogComponent {
             { key: 'maxRange', label: 'Range', value: this.unit._maxRange, max: this.maxStats.maxRange[1] },
             { key: 'heat', label: 'Heat', value: this.unit.heat, max: this.maxStats.heat[1] },
             { key: 'dissipation', label: 'Dissipation', value: this.unit.dissipation, max: this.maxStats.dissipation[1] },
-            { key: 'runMP', label: 'Speed', value: this.unit.run, max: this.maxStats.runMP[1] },
+            { key: 'runMP', label: 'Top Speed', value: this.unit.run, max: this.maxStats.runMP[1] },
             { key: 'jumpMP', label: 'Jump', value: this.unit.jump, max: this.maxStats.jumpMP[1] },
         ];
         this.statBarSpecs = statDefs.filter((def, idx) => {
@@ -629,7 +636,7 @@ export class UnitDetailsDialogComponent {
     }
 
     private canHaveThreeCols(): boolean {
-        return window.innerWidth >= 900;
+        return window.innerWidth >= 820;
     }
 
     private updateUseMatrixLayout() {
