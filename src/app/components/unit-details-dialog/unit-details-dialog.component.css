@@ -781,10 +781,6 @@
     .stat-bars-columns {
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     }
-
-    .stat-label {
-        font-size: 1em;
-    }
     
     .fluff-content {
         padding: 8px;
