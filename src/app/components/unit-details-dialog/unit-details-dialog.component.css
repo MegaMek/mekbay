@@ -522,7 +522,6 @@
     justify-content: space-between;
     align-items: flex-start;
     margin-bottom: 8px;
-    font-size: 1em;
 }
 
 .bottom-left {
@@ -537,21 +536,18 @@
     align-items: flex-end;
 }
 
-.bottom-left .muted,
-.bottom-right .muted {
+.bottom-info .label {
     flex-shrink: 0;
     white-space: nowrap;
 }
 
-.bottom-left a,
-.bottom-right a {
+.bottom-info a {
     color: var(--text-color);
     font-weight: bold;
     text-decoration: underline dotted;
 }
 
-.bottom-left a:hover,
-.bottom-right a:hover {
+.bottom-info a:hover {
     text-decoration: underline;
 }
 
