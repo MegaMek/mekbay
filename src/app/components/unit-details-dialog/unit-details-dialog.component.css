@@ -419,6 +419,7 @@
     height: 24px;
     display: inline-block;
     vertical-align: middle;
+    opacity: 0.9;
 }
 
 .comp-details {
