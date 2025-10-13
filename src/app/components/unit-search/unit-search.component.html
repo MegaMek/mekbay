@@ -348,7 +348,7 @@
                     </div>
                     <div class="info-item" *ngIf="unit.walk">
                         <span class="info-label muted">Movement:</span>
-                        <span class="info-value">{{ unit.walk }}/{{ unit.run }}<span *ngIf="unit.run2 != unit.run"> [{{ unit.run2 }}]</span><ng-container *ngIf="unit.jump">/{{ unit.jump }}</ng-container></span>
+                        <span class="info-value">{{ unit.walk }} / {{ unit.run }}<span *ngIf="unit.run2 != unit.run"> [{{ unit.run2 }}]</span><ng-container *ngIf="unit.jump"> / {{ unit.jump }}</ng-container></span>
                     </div>
                 </div>
 

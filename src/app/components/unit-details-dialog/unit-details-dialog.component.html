@@ -46,7 +46,7 @@
                 <div><span class="muted">Tech: </span><strong>{{ unit.techBase }} | {{ unit.techRating }}</strong></div>
                 <div *ngIf="unit.year"><span class="muted">Intro Year: </span><strong>{{ unit.year }}</strong> <img *ngIf="getEraImg(unit)" [src]="getEraImg(unit)" class="era-icon" title="{{ unit._era?.name }}" /></div>
                 <div *ngIf="unit.moveType && unit.moveType != 'None'"><span class="muted">Motive Type: </span><strong>{{ unit.moveType }}</strong></div>
-                <div *ngIf="unit.walk"><span class="muted">Movement: </span><strong>{{ unit.walk }}/{{ unit.run }}<span *ngIf="unit.run2 != unit.run"> [{{ unit.run2 }}]</span><ng-container *ngIf="unit.jump">/{{ unit.jump }}</ng-container></strong></div>
+                <div *ngIf="unit.walk"><span class="muted">Movement: </span><strong>{{ unit.walk }} / {{ unit.run }}<span *ngIf="unit.run2 != unit.run"> [{{ unit.run2 }}]</span><ng-container *ngIf="unit.jump"> / {{ unit.jump }}</ng-container></strong></div>
                 <div *ngIf="unit.engine"><span class="muted">Engine: </span><strong><span *ngIf="unit.engineRating">{{ unit.engineRating }} </span>{{ unit.engine }}</strong></div>
                 <div *ngIf="unit.c3 && unit.c3 != 'None'"><span class="muted">Network: </span><strong>{{ unit.c3 }}</strong></div>
                 <div><span class="muted">C-Bill Cost: </span><strong>{{ formatThousands(unit.cost) }}</strong></div>
