@@ -173,8 +173,8 @@ export class UnitDetailsDialogComponent {
     private baysForArea = new Map<string, UnitComponent[]>();
     private compsForArea = new Map<string, UnitComponent[]>();
 
-    trackByBay = (i: number, bay: UnitComponent) => `${bay.n}|${bay.t}|${bay.l}`;
-    trackByComp = (i: number, comp: UnitComponent) => `${comp.n}|${comp.t}|${comp.l}`;
+    trackByBay = (bay: UnitComponent) => `${bay.n}|${bay.t}|${bay.l}`;
+    trackByComp = (comp: UnitComponent) => `${comp.n}|${comp.t}|${comp.l}`;
 
     updateCachedData() {
         this.groupedBays = this.getGroupedBaysByLocation();
@@ -830,10 +830,6 @@ export class UnitDetailsDialogComponent {
 
     hasBays(): boolean {
         return this.unit?.comp.some(c => c.bay && c.bay.length > 0);
-    }
-
-    trackByBayLoc(index: number, group: { l: string }) {
-        return group.l;
     }
 
     getGroupedBaysByLocation(): Array<{ l: string, p: number, bays: UnitComponent[] }> {

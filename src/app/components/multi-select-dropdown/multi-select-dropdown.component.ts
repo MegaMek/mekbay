@@ -230,8 +230,4 @@ export class MultiSelectDropdownComponent {
         // }
         // return this.selectedOptions().some(o => o.name === optionName);
     }
-
-    trackByName(index: number, option: DropdownOption): string {
-        return option.name;
-    }
 }

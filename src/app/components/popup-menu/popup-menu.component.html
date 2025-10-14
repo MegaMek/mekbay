@@ -8,12 +8,14 @@
     <polyline points="18,17 21,20 18,23" />
   </svg>
 </button>
-<div #popupMenu class="popup-menu framed-borders" 
-     [class.show-below]="showBelow()"
-     *ngIf="isOpen()">
-  <ng-container *ngFor="let opt of options()">
-    <hr *ngIf="opt.separator">
-    <button *ngIf="!opt.separator"
-      (click)="opt.value !== undefined && select(opt.value)">{{ opt.label }}</button>
-  </ng-container>
-</div>
+@if (isOpen()) {
+  <div #popupMenu class="popup-menu framed-borders" 
+       [class.show-below]="showBelow()">
+       @for (opt of options(); let i = $index; track i) {
+        @if (opt.separator) {<hr/>}
+        @else {
+          <button (click)="opt.value !== undefined && select(opt.value)">{{ opt.label }}</button>
+        }
+       }
+  </div>
+}

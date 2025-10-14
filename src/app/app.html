@@ -1,50 +1,57 @@
 <main>
     <div class="app-container" [class.menu-open]="this.layoutService.isMenuOpen()">
-        <force-builder-viewer
-            *ngIf="hasUnits()" 
-            [unitSearchPortal]="unitSearchPortalForceBuilder()"
-            [unitSearchComponent]="unitSearchComponentRef()"
-            (menuSelect)="onMenuSelected($event)">
-        </force-builder-viewer>
+        @if (this.hasUnits()) {
+            <force-builder-viewer
+                [unitSearchPortal]="unitSearchPortalForceBuilder()"
+                [unitSearchComponent]="unitSearchComponentRef()"
+                (menuSelect)="onMenuSelected($event)">
+            </force-builder-viewer>
+        }
         <div class="extended-search-container">
             <div [cdkPortalOutlet]="unitSearchPortalExtended"></div>
         </div>
         <div class="main-content">
 
-            <div *ngIf="hasUnits()" class="content-area">
-                <svg-viewer [unit]="selectedUnit()"></svg-viewer>
-            </div>
-            <!-- Empty state -->
-            <div *ngIf="!hasUnits()" class="empty-state-container">
-                <popup-menu [showBelow]="true" [class.disabled]="!this.dataService.isDataReady()" class="popup-menu-button" [options]="popupMenuOptions"
-                    (menuSelect)="onMenuSelected($event)"></popup-menu>
-                <div class="main-search">
-                    <div class="empty-state-logo">
-                        <img src="/images/logo.png" alt="Mekbay Logo">
-                        <div class="beta-notice noprint" (click)="showBetaDialog();">BETA</div>
-                    </div>
-                    <div class="search-container">
-                        <div [cdkPortalOutlet]="unitSearchPortalMain"></div>
-                    </div>
-                    <div class="spinner-container" *ngIf="this.dataService.isDownloading() || this.dataService.isCloudForceLoading()">
-                        <div class="spinner">
-                            <div class="ring"></div>
-                        </div>
-                        <div>
-                            Downloading data...
-                        </div>
-                    </div>
+            @if (this.hasUnits()) {
+                <div class="content-area">
+                    <svg-viewer [unit]="selectedUnit()"></svg-viewer>
                 </div>
+            } @else {
+                <!-- Empty state -->
+                <div class="empty-state-container">
+                    <popup-menu [showBelow]="true" [class.disabled]="!this.dataService.isDataReady()" class="popup-menu-button" [options]="popupMenuOptions"
+                        (menuSelect)="onMenuSelected($event)"></popup-menu>
+                    <div class="main-search">
+                        <div class="empty-state-logo">
+                            <img src="/images/logo.png" alt="Mekbay Logo">
+                            <div class="beta-notice noprint" (click)="showBetaDialog();">BETA</div>
+                        </div>
+                        <div class="search-container">
+                            <div [cdkPortalOutlet]="unitSearchPortalMain"></div>
+                        </div>
+                        @if (this.dataService.isDownloading() || this.dataService.isCloudForceLoading()) {
+                            <div class="spinner-container">
+                                <div class="spinner">
+                                    <div class="ring"></div>
+                                </div>
+                                <div>
+                                    Downloading data...
+                                </div>
+                            </div>
+                        }
+                    </div>
 
-                <div class="footer">
-                    <span class="footer-text" style="cursor:pointer" (click)="showLicenseDialog();">Mekbay is an open-source, fan-made project not affiliated with Catalyst Game Labs or The Topps Company, Inc. BattleTech and related marks are trademarks of The Topps Company, Inc. All rights reserved.</span>
+                    <div class="footer">
+                        <span class="footer-text" style="cursor:pointer" (click)="showLicenseDialog();">Mekbay is an open-source, fan-made project not affiliated with Catalyst Game Labs or The Topps Company, Inc. BattleTech and related marks are trademarks of The Topps Company, Inc. All rights reserved.</span>
+                    </div>
                 </div>
-            </div>
+            }
         </div>
 
         <!-- Overlay to close the menu on mobile -->
-        <div class="menu-overlay" *ngIf="isOverlayVisible()" (click)="closeMenu()" [style.opacity]="this.layoutService.menuOpenRatio()">
-        </div>
+        @if (isOverlayVisible()) {
+            <div class="menu-overlay" (click)="closeMenu()" [style.opacity]="this.layoutService.menuOpenRatio()"></div>
+        }
         <update-button [updateAvailable]="updateAvailable()"></update-button>
         <app-toasts></app-toasts>
         <div #unitSearchContainer>

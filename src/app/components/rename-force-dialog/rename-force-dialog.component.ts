@@ -84,13 +84,12 @@ export interface RenameForceDialogData {
             </details>
         </div>
         <div dialog-actions>
-            <button
-                *ngFor="let btn of buttons"
-                (click)="btn.value === 'ok' ? submit() : close(null)"
-                class="bt-button {{ btn.class }}"
-            >
-                {{ btn.label }}
-            </button>
+            @for (btn of buttons; let i = $index; track i) {
+                <button
+                    (click)="btn.value === 'ok' ? submit() : close(null)"
+                    class="bt-button {{ btn.class }}"
+                >{{ btn.label }}</button>
+            }
         </div>
     </div>
     `,

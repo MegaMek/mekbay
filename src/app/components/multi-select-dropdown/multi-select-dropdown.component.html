@@ -2,19 +2,20 @@
     <div class="display-area" (click)="toggleDropdown()">
         <span class="label">{{ label() }}</span>
         <div class="pills-container">
-            <ng-container *ngIf="selectedOptions().length === 0">
+            @if (selectedOptions().length === 0) {
                 <span class="placeholder">Any</span>
-            </ng-container>
-            <span *ngFor="let option of selectedOptions()" 
-                  class="pill"
-                  [ngClass]="{
-                    'pill-or': option.state === 'or',
-                    'pill-and': option.state === 'and',
-                    'pill-not': option.state === 'not'
-                  }">
-                {{ option.name }}{{ (option.count > 1) ? ' (' + option.count + ')' : '' }}
-                <button class="remove-pill" (click)="removeOption(option.name, $event)">&#10005;</button>
-            </span>
+            }
+            @for (option of selectedOptions(); let i = $index; track i) {
+                <span class="pill"
+                      [ngClass]="{
+                        'pill-or': option.state === 'or',
+                        'pill-and': option.state === 'and',
+                        'pill-not': option.state === 'not'
+                      }">
+                    {{ option.name }}{{ (option.count > 1) ? ' (' + option.count + ')' : '' }}
+                    <button class="remove-pill" (click)="removeOption(option.name, $event)">&#10005;</button>
+                </span>
+            }
         </div>
         <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -35,47 +36,48 @@
             </div>
         </ng-container>
         <div class="options-list">
-            <label *ngFor="let option of filteredOptions(); trackBy: trackByName" 
-                class="option-item"
-                [class.unavailable]="option.available === false"
-                [class.selected-single]="!multiselect() && isSelected(option.name)"
-                (click)="!multiselect() ? onSingleSelect(option.name) : null"
-                >
-                <ng-container *ngIf="multiselect(); else singleSelect">
-                    <input type="checkbox" [checked]="isSelected(option.name)" (change)="onOptionToggle(option.name)" />
-                    <span class="custom-checkbox"
-                        [ngClass]="{
-                            'checkbox-or': multistate() && isSelected(option.name) === 'or',
-                            'checkbox-and': multistate() && isSelected(option.name) === 'and',
-                            'checkbox-not': multistate() && isSelected(option.name) === 'not',
-                            'checked': !multistate() && isSelected(option.name)
-                        }">
-                        <ng-container *ngIf="multistate(); else normalCheck">
-                            <ng-container [ngSwitch]="isSelected(option.name)">
-                                <span *ngSwitchCase="'or'" class="checkbox-mark">&#10003;</span>
-                                <span *ngSwitchCase="'and'" class="checkbox-mark">+</span>
-                                <span *ngSwitchCase="'not'" class="checkbox-mark">&#10005;</span>
+            @for (option of filteredOptions(); let i = $index; track option.name) {
+                <label class="option-item"
+                    [class.unavailable]="option.available === false"
+                    [class.selected-single]="!multiselect() && isSelected(option.name)"
+                    (click)="!multiselect() ? onSingleSelect(option.name) : null"
+                    >
+                    <ng-container *ngIf="multiselect(); else singleSelect">
+                        <input type="checkbox" [checked]="isSelected(option.name)" (change)="onOptionToggle(option.name)" />
+                        <span class="custom-checkbox"
+                            [ngClass]="{
+                                'checkbox-or': multistate() && isSelected(option.name) === 'or',
+                                'checkbox-and': multistate() && isSelected(option.name) === 'and',
+                                'checkbox-not': multistate() && isSelected(option.name) === 'not',
+                                'checked': !multistate() && isSelected(option.name)
+                            }">
+                            <ng-container *ngIf="multistate(); else normalCheck">
+                                <ng-container [ngSwitch]="isSelected(option.name)">
+                                    <span *ngSwitchCase="'or'" class="checkbox-mark">&#10003;</span>
+                                    <span *ngSwitchCase="'and'" class="checkbox-mark">+</span>
+                                    <span *ngSwitchCase="'not'" class="checkbox-mark">&#10005;</span>
+                                </ng-container>
                             </ng-container>
-                        </ng-container>
-                        <ng-template #normalCheck>
-                            <span *ngIf="isSelected(option.name)" class="checkbox-mark">&#10003;</span>
-                        </ng-template>
-                    </span>
-                </ng-container>
-                <ng-template #singleSelect></ng-template>
-                <img *ngIf="option.img" [src]="option.img" class="option-img" alt="">
-                <span>{{ option.name }}</span>
-                <div *ngIf="countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')" 
-                    class="quantity-input">
-                <input type="number" 
-                        [value]="getCount(option.name)"
-                        min="1"
-                        class="quantity-field"
-                        (input)="onQuantityInput(option.name, $event)"
-                        (click)="$event.stopPropagation()">
-                </div>
-
-            </label>
+                            <ng-template #normalCheck>
+                                <span *ngIf="isSelected(option.name)" class="checkbox-mark">&#10003;</span>
+                            </ng-template>
+                        </span>
+                    </ng-container>
+                    <ng-template #singleSelect></ng-template>
+                    <img *ngIf="option.img" [src]="option.img" class="option-img" alt="">
+                    <span>{{ option.name }}</span>
+                    <div *ngIf="countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')" 
+                        class="quantity-input">
+                    <input type="number" 
+                            [value]="getCount(option.name)"
+                            min="1"
+                            class="quantity-field"
+                            (input)="onQuantityInput(option.name, $event)"
+                            (click)="$event.stopPropagation()">
+                    </div>
+    
+                </label>
+            }
             <div *ngIf="filteredOptions().length === 0 && options().length > 0" class="no-options">
                 No matching options
             </div>

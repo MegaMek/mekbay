@@ -1,0 +1,126 @@
+.radial-picker-container {
+    font-family: 'Roboto', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+    pointer-events: none;
+}
+.radial-title {
+    position: absolute;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    pointer-events: none;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #fff;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    height: 40px;
+}
+.radial-title.top-positioned {
+    transform: none;
+}
+.radial-title-hex {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 0;
+    pointer-events: none;
+}
+.radial-title-hex-shape {
+    fill: #000;
+    stroke: #fff;
+}
+.radial-title-text {
+    position: absolute;
+    left: 22px;
+    top: 0;
+    width: 94px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    font-size: 1em;
+    background: transparent;
+    min-height: unset;
+    text-align: center;
+}
+.radial-picker {
+    display: block;
+}
+.radial-sector {
+    stroke-width: 2;
+    cursor: pointer;
+    transition: fill 0.15s;
+    fill: #000A;
+    pointer-events: auto;
+}
+.radial-sector.disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+.radial-sector.selected {
+    fill: var(--bt-yellow-background-bright-transparent);
+}
+.radial-sector.highlight:not(.disabled),
+:host-context(.night-mode) .radial-sector.highlight:not(.disabled) {
+    fill: var(--bt-yellow);
+}
+.radial-label {
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.9em;
+    pointer-events: none;
+    fill: #fff;
+    font-weight: 500;
+    text-shadow: 0 1px 2px #111;
+    transition: fill 0.15s;
+}
+.radial-label.disabled {
+    opacity: 0.5;
+    fill: #666;
+}
+.radial-label.selected {
+    font-weight: bold;
+}
+.radial-center-value {
+    font-family: 'Roboto', sans-serif;
+    font-size: 1.2em;
+    font-weight: bold;
+    fill: #fff;
+    pointer-events: none;
+    dominant-baseline: middle;
+}   
+.radial-picker-border {
+    pointer-events: none;
+    stroke: #fff;
+}
+:host-context(.night-mode) .radial-title-hex-shape {
+    fill: #fff;
+    stroke: #000;
+}
+:host-context(.night-mode) .radial-title-text {
+    color: #000;
+}
+:host-context(.night-mode) .radial-sector {
+    fill: #FFFC;
+}
+:host-context(.night-mode) .radial-sector.selected {
+    fill: #AAAC;
+}
+:host-context(.night-mode) .radial-label.selected {
+    fill: #FFF;
+    text-shadow: 0 1px 2px #111;
+}
+:host-context(.night-mode) .radial-label {
+    fill: #000;
+    text-shadow: none;
+}
+:host-context(.night-mode) .radial-label.highlight {
+    fill: #fff;
+    text-shadow: 0 1px 2px #111;
+}

@@ -1,0 +1,124 @@
+<div
+    class="radial-picker-container"
+    [class.touch]="interactionType() === 'touch'"
+    [style.width.px]="diameter()"
+    [style.position]="'absolute'"
+    [style.left.px]="position().x - diameter() / 2"
+    [style.top.px]="position().y - diameter() / 2"
+    style="z-index: 1000;"
+>
+    @if (title()) {
+        <div class="radial-title"
+            [class.top-positioned]="beginEndPadding() < 50"
+            [style.right.px]="beginEndPadding() >= 50 ? 130 + radius() + innerRadius() : null"
+            [style.top.px]="beginEndPadding() < 50 ? -40 : null"
+            [style.left.px]="beginEndPadding() < 50 ? diameter() / 2 - 68 : null">
+            <svg class="radial-title-hex" width="130" height="40" viewBox="-3 -3 136 46">
+                <polygon class="radial-title-hex-shape"
+                    points="10,20 20,5 120,5 130,20 120,35 20,35"
+                    stroke-width="2"
+                />
+            </svg>
+            <div class="radial-title-text" [style.font-size]="titleFontSize()">{{ title() }}</div>
+        </div>
+    }
+    <svg #picker
+        [attr.width]="diameter()"
+        [attr.height]="diameter()"
+        [attr.viewBox]="'-3 -3 ' + (diameter() + 6) + ' ' + (diameter() + 6)"
+        class="radial-picker"
+    >
+        <defs>
+            @for (choice of values(); let i = $index; track i) {
+                @if (useCurvedText()) {
+                    <path 
+                        [attr.id]="getTextPathId(i)"
+                        [attr.d]="getCurvedTextPath(i)"
+                        fill="none"
+                        stroke="none"
+                    />
+                }
+            }
+        </defs>
+        @for (choice of values(); let i = $index; track i) {
+            <path
+                [attr.d]="getDonutSectorPath(i)"
+                class="radial-sector"
+                [class.selected]="isSelected(choice)"
+                [class.highlight]="isHovered(choice) && !choice.disabled"
+                [class.disabled]="choice.disabled"
+                (mouseenter)="setHoveredChoice(choice)"
+                (mouseleave)="resetHovered()"
+                (touchstart)="setHoveredChoice(choice)"
+                (click)="handleChoiceClick($event, choice)"
+            ></path>
+            
+            <!-- Curved text -->
+            @if (useCurvedText()) {
+                <text 
+                    text-anchor="middle"
+                    dominant-baseline="middle"
+                    class="radial-label curved-text"
+                    [class.selected]="isSelected(choice)"
+                    [class.highlight]="isHovered(choice) && !choice.disabled"
+                    [class.disabled]="choice.disabled"
+                    (mouseenter)="setHoveredChoice(choice)"
+                    (mouseleave)="resetHovered()"
+                    (touchstart)="setHoveredChoice(choice)"
+                    (click)="handleChoiceClick($event, choice)"
+                >
+                    <textPath 
+                        [attr.href]="'#' + getTextPathId(i)"
+                        startOffset="50%"
+                        text-anchor="middle"
+                    >
+                        {{ choice.label }}
+                    </textPath>
+                </text>
+            } @else {
+                <!-- Straight text -->
+                <text
+                    [attr.x]="getLabelPosition(i).x"
+                    [attr.y]="getLabelPosition(i).y"
+                    text-anchor="middle"
+                    dominant-baseline="middle"
+                    class="radial-label"
+                    [class.selected]="isSelected(choice)"
+                    [class.highlight]="isHovered(choice) && !choice.disabled"
+                    [class.disabled]="choice.disabled"
+                    (mouseenter)="setHoveredChoice(choice)"
+                    (mouseleave)="resetHovered()"
+                    (touchstart)="setHoveredChoice(choice)"
+                    (click)="handleChoiceClick($event, choice)"
+                >{{ choice.label }}</text>
+            }
+        }
+        
+        <circle
+            [attr.cx]="diameter() / 2"
+            [attr.cy]="diameter() / 2"
+            [attr.r]="innerRadius()"
+            [attr.fill]="title() && hoveredChoice() ? 'var(--bt-yellow)' : 'transparent'"
+            class="radial-inner-circle"
+        />
+        @if (title()) {
+            <text
+                [attr.x]="getCenterValuePosition().x"
+                [attr.y]="getCenterValuePosition().y"
+                text-anchor="middle"
+                dominant-baseline="middle"
+                dy=".07em"
+                class="radial-center-value"
+            >
+                {{ hoveredChoice()?.value ?? '' }}
+            </text>
+        }
+        <path
+            [attr.d]="getBorderPath()"
+            stroke-width="2"
+            fill="none"
+            class="radial-picker-border"
+            pointer-events="none"
+        />
+    </svg>
+</div>

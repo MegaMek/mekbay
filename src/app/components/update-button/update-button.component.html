@@ -1,13 +1,15 @@
-<div *ngIf="showUpdate()" class="notification-container">
-    <div class="update-btn-container bt-button" [class.pulse]="pulse()">
-        <button (click)="reloadForUpdate()" class="update-btn">
-            Update available! Click to reload.
-            <div class="progress-bar-container">
-                <div class="progress-bar" 
-                    [class.warning]="countdown() <= this.WARNING_THRESHOLD"
-                    [style.width]="(countdown() / this.START_COUNTDOWN) * 100 + '%'"></div>
-            </div>
-        </button>
-        <button (click)="cancelReload()" class="cancel-btn">X</button>
+@if (showUpdate()) {
+    <div class="notification-container">
+        <div class="update-btn-container bt-button" [class.pulse]="pulse()">
+            <button (click)="reloadForUpdate()" class="update-btn">
+                Update available! Click to reload.
+                <div class="progress-bar-container">
+                    <div class="progress-bar" 
+                        [class.warning]="countdown() <= this.WARNING_THRESHOLD"
+                        [style.width]="(countdown() / this.START_COUNTDOWN) * 100 + '%'"></div>
+                </div>
+            </button>
+            <button (click)="cancelReload()" class="cancel-btn">X</button>
+        </div>
     </div>
-</div>
+}

@@ -67,15 +67,17 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
             (pointerdown)="onPointerDown($event)" 
         >
             <!-- Title banner centered above the dial -->
-            <div class="title" *ngIf="title()">
-                <svg class="title-hex" width="130" height="40" viewBox="-3 -3 136 46">
-                    <polygon class="title-hex-shape"
-                        points="10,20 20,5 120,5 130,20 120,35 20,35"
-                        stroke-width="2"
-                    />
-                </svg>
-                <div class="title-text" [style.font-size]="titleFontSize()">{{ title() }}</div>
-            </div>
+            @if(title()){
+                <div class="title">
+                    <svg class="title-hex" width="130" height="40" viewBox="-3 -3 136 46">
+                        <polygon class="title-hex-shape"
+                            points="10,20 20,5 120,5 130,20 120,35 20,35"
+                            stroke-width="2"
+                        />
+                    </svg>
+                    <div class="title-text" [style.font-size]="titleFontSize()">{{ title() }}</div>
+                </div>
+            }
 
             <svg #picker
                 [attr.width]="diameter()"
@@ -127,17 +129,18 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
                 </g>
 
                 <g [attr.transform]="'rotate(' + rotationAngle() + ' ' + radius() + ' ' + radius() + ')'">
-                    <g *ngFor="let i of notchIndices()">
-                        <line
-                            [attr.transform]="'rotate(' + (i * 360 / 24) + ' ' + radius() + ' ' + radius() + ')'"
-
-                            [attr.x1]="radius() + innerRadius() + ( i % 3 === 0 ? 20 : 25)"
-                            [attr.y1]="radius()"
-                            [attr.x2]="radius() + radius() - 5"
-                            [attr.y2]="radius()"
-                            class="dial-notch"
-                        />
-                    </g>
+                    @for (idx of notchIndices(); let i = $index; track i) {
+                        <g>
+                            <line
+                                [attr.transform]="'rotate(' + (idx * 360 / 24) + ' ' + radius() + ' ' + radius() + ')'"
+                                [attr.x1]="radius() + innerRadius() + ( idx % 3 === 0 ? 20 : 25)"
+                                [attr.y1]="radius()"
+                                [attr.x2]="radius() + radius() - 5"
+                                [attr.y2]="radius()"
+                                class="dial-notch"
+                            />
+                        </g>
+                    }
                 </g>
 
                 @if (currentValue() !== 0) {

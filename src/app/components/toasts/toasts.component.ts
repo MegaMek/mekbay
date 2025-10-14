@@ -45,9 +45,11 @@ import { ToastService } from '../../services/toast.service';
     imports: [CommonModule],
     template: `
     <div class="toast-container">
-        <div *ngFor="let toast of toastService.toasts()" class="toast" [ngClass]="toast.type" (click)="toastService.dismiss(toast.id)">
-            {{ toast.message }}
-        </div>
+        @for (toast of toastService.toasts(); let i = $index; track i) {
+            <div class="toast" [ngClass]="toast.type" (click)="toastService.dismiss(toast.id)">
+                {{ toast.message }}
+            </div>
+        }
     </div>
     `,
     styleUrls: ['./toasts.component.css']

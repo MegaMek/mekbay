@@ -61,47 +61,48 @@
             </div>
             <div class="quirks-block" *ngIf="unit.quirks && unit.quirks.length > 0">
                 <div class="quirks">
-                    <div class="muted">Quirks:</div>
-                    <div *ngFor="let quirk of unit.quirks">
-                        <div class="quirk" [ngClass]="getQuirkClass(quirk)" [title]="getQuirkDesc(quirk)">{{ quirk }}
-                        </div>
-                    </div>
+                    <div class="muted">Quirks: </div>
+                    @for (quirk of unit.quirks; let i = $index; track i) {
+                        <div class="quirk" [ngClass]="getQuirkClass(quirk)" [title]="getQuirkDesc(quirk)">{{ quirk }}</div>
+                    }
                 </div>
             </div>
             <!-- Stat Progress Bars -->
             <div class="stat-bars-columns">
-                <div class="stat-bar-row" *ngFor="let spec of (unit | statBarSpecs)">
-                    <div class="stat-bar">
-                        <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
+                @for (spec of (unit | statBarSpecs); let i = $index; track i) {
+                    <div class="stat-bar-row">
+                        <div class="stat-bar">
+                            <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
+                        </div>
+                        <span class="stat-label">{{ spec.label }}</span>
+                        <span class="stat-value">{{ spec.value }}</span>
                     </div>
-                    <span class="stat-label">{{ spec.label }}</span>
-                    <span class="stat-value">{{ spec.value }}</span>
-                </div>
+                }
             </div>
 
             <!-- Weapon Type Summary Bar -->
             <div class="type-summary-bar">
                 <!-- First block: first 3 weapon types -->
                 <div class="type-summary-block">
-                    <ng-container *ngFor="let type of weaponTypes.slice(0, 3)">
+                    @for (type of weaponTypes.slice(0, 3); let i = $index; track i) {
                         <div class="type-summary-rect" [ngStyle]="{'border-color': type.color}" [title]="type.name">
                             <div [ngStyle]="{'background-color': type.color}" class="icon">
                                 <img class="type-icon" [src]="getTypeIcon(type.code)" />
                             </div>
                             <div class="type-count">{{ getTypeCount(type.code) }}</div>
                         </div>
-                    </ng-container>
+                    }
                 </div>
                 <!-- Second block: last 3 weapon types -->
                 <div class="type-summary-block">
-                    <ng-container *ngFor="let type of weaponTypes.slice(3)" class="type-summary-block">
+                    @for (type of weaponTypes.slice(3); let i = $index; track i) {
                         <div class="type-summary-rect" [ngStyle]="{'border-color': type.color}" [title]="type.name">
                             <div [ngStyle]="{'background-color': type.color}" class="icon">
                                 <img class="type-icon" [src]="getTypeIcon(type.code)" />
                             </div>
                             <div class="type-count">{{ getTypeCount(type.code) }}</div>
                         </div>
-                    </ng-container>
+                    }
                 </div>
             </div>
 
@@ -109,27 +110,70 @@
             <!-- Matrix layout (3x3) when supported and defined for unit.type -->
             <ng-container *ngIf="useMatrixLayout(); else defaultComponentsBlock">
                 <div class="components-matrix" [style.grid-template-areas]="gridAreas">
-                    <div *ngFor="let area of matrixAreaCodes" class="component-rect" [style.grid-area]="area">
-                        <div class="comp-loc" *ngIf="areaHasContent(area)">{{ getAreaLabel(area) }}</div>
-                        <div class="comp-list">
-                            <!-- Bays (matrix) -->
-                            <ng-container *ngIf="areaHasBays(area); else matrixNormalComponents">
-                                <div class="bay">
-                                    <div *ngFor="let bay of getBaysForArea(area); trackBy: trackByBay"
-                                        class="subcomponent-data {{ getTypeClass(bay.t) }}"
+                    @for (area of matrixAreaCodes; let i = $index; track i) {
+                        <div class="component-rect" [style.grid-area]="area">
+                            <div class="comp-loc" *ngIf="areaHasContent(area)">{{ getAreaLabel(area) }}</div>
+                            <div class="comp-list">
+                                <!-- Bays (matrix) -->
+                                @if (areaHasBays(area)) {
+                                    <div class="bay">
+                                        @for (bay of getBaysForArea(area); let i = $index; track trackByBay(bay)) {
+                                            <div class="subcomponent-data {{ getTypeClass(bay.t) }}"
+                                                (mouseenter)="onCompMouseEnter(bay, $event)" (mouseleave)="onCompMouseLeave()">
+                                                <div class="comp-title">
+                                                    <span class="comp-qty">{{ bay.q }}×</span>
+                                                    <span class="comp-name">{{ bay.n }}<span *ngIf="bay.q2" class="ammo-count"> ({{ bay.q2 }})</span></span>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                } @else {
+                                    <!-- Normal components (matrix) -->
+                                    @for (comp of getComponentsForArea(area); let i = $index; track trackByComp(comp)) {
+                                    <div class="component-data {{ getTypeClass(comp.t) }}"
+                                        (mouseenter)="onCompMouseEnter(comp, $event)" (mouseleave)="onCompMouseLeave()">
+                                        <div class="comp-title">
+                                            <span class="comp-qty">{{ comp.q }}×</span>
+                                            <span class="comp-name">{{ comp.n }}<span *ngIf="comp.q2" class="ammo-count"> ({{ comp.q2 }})</span></span>
+                                            <span *ngIf="unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All'"
+                                                class="tech-base"><img src="/images/component-{{ comp.eq.base == 'IS' ? 'is' : 'clan' }}.svg" alt="{{ comp.eq.base == 'IS' ? 'IS' : 'Clan' }}" />
+                                            </span>
+                                        </div>
+                                    </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </ng-container>
+
+            <!-- Default -->
+            <ng-template #defaultComponentsBlock>
+                <div class="components-container" *ngIf="hasBays(); else normalComponents">
+                    @for (group of groupedBays; let i = $index; track group.l) {
+                        <div class="component-rect">
+                            <div class="comp-loc">{{ group.l }}</div>
+                            <div class="bay">
+                                @for (bay of group.bays; let j = $index; track j) {
+                                    <div class="subcomponent-data {{ getTypeClass(bay.t) }}"
                                         (mouseenter)="onCompMouseEnter(bay, $event)" (mouseleave)="onCompMouseLeave()">
                                         <div class="comp-title">
                                             <span class="comp-qty">{{ bay.q }}×</span>
                                             <span class="comp-name">{{ bay.n }}<span *ngIf="bay.q2" class="ammo-count"> ({{ bay.q2 }})</span></span>
                                         </div>
                                     </div>
-                                </div>
-                            </ng-container>
-
-                            <!-- Normal components (matrix) -->
-                            <ng-template #matrixNormalComponents>
-                                <div *ngFor="let comp of getComponentsForArea(area); trackBy: trackByComp"
-                                    class="component-data {{ getTypeClass(comp.t) }}"
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+                <ng-template #normalComponents>
+                    <div class="components-container">
+                        @for (comp of components; let i = $index; track i) {
+                            <div class="component-rect">
+                                <div class="comp-loc">{{ comp.l }}</div>
+                                <div class="component-data {{ getTypeClass(comp.t) }}"
                                     (mouseenter)="onCompMouseEnter(comp, $event)" (mouseleave)="onCompMouseLeave()">
                                     <div class="comp-title">
                                         <span class="comp-qty">{{ comp.q }}×</span>
@@ -139,53 +183,17 @@
                                         </span>
                                     </div>
                                 </div>
-                            </ng-template>
-                        </div>
-                    </div>
-                </div>
-            </ng-container>
-
-            <!-- Default -->
-            <ng-template #defaultComponentsBlock>
-                <div class="components-container" *ngIf="hasBays(); else normalComponents">
-                    <div *ngFor="let group of groupedBays; trackBy: trackByBayLoc" class="component-rect">
-                        <div class="comp-loc">{{ group.l }}</div>
-                        <div class="bay">
-                            <div *ngFor="let bay of group.bays" class="subcomponent-data {{ getTypeClass(bay.t) }}"
-                                (mouseenter)="onCompMouseEnter(bay, $event)" (mouseleave)="onCompMouseLeave()">
-                                <div class="comp-title">
-                                    <span class="comp-qty">{{ bay.q }}×</span>
-                                    <span class="comp-name">{{ bay.n }}<span *ngIf="bay.q2" class="ammo-count"> ({{ bay.q2 }})</span></span>
-                                </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-                <ng-template #normalComponents>
-                    <div class="components-container">
-                        <div *ngFor="let comp of components" class="component-rect">
-                            <div class="comp-loc">{{ comp.l }}</div>
-                            <div class="component-data {{ getTypeClass(comp.t) }}"
-                                (mouseenter)="onCompMouseEnter(comp, $event)" (mouseleave)="onCompMouseLeave()">
-                                <div class="comp-title">
-                                    <span class="comp-qty">{{ comp.q }}×</span>
-                                    <span class="comp-name">{{ comp.n }}<span *ngIf="comp.q2" class="ammo-count"> ({{ comp.q2 }})</span></span>
-                                    <span *ngIf="unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All'"
-                                        class="tech-base"><img src="/images/component-{{ comp.eq.base == 'IS' ? 'is' : 'clan' }}.svg" alt="{{ comp.eq.base == 'IS' ? 'IS' : 'Clan' }}" />
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
+                        }
                     </div>
                 </ng-template>
                 <ng-container *ngIf="unit.comp | filterAmmo as ammoList">
                     <ng-container *ngIf="ammoList.length > 0">
                         <div class="ammo-list"><span class="info-label muted">Ammo: </span>
-                            <ng-container *ngFor="let comp of ammoList; let last = last">
+                            @for (comp of ammoList; let last = $last; let i = $index; track i) {
                                 <span class="ammo-pill" (mouseenter)="onCompMouseEnter(comp, $event)"
-                                    (mouseleave)="onCompMouseLeave()">({{ comp.n }}) {{ comp.q2 }}</span><span
-                                    *ngIf="!last">, </span>
-                            </ng-container>
+                                    (mouseleave)="onCompMouseLeave()">({{ comp.n }}) {{ comp.q2 }}</span>@if(!last){, }
+                            }
                         </div>
                     </ng-container>
                 </ng-container>
@@ -205,20 +213,21 @@
         <!-- Factions -->
         <div class="tab-content" *ngIf="activeTab() === 'Factions'">
             <div class="faction-availability-list allow-select">
-                <ng-container *ngFor="let era of factionAvailability">
-                    <div class="era-name">
-                        <img [src]="era.eraImg" class="era-icon" *ngIf="era.eraImg" />
-                        <strong>{{ era.eraName }}:</strong>
-                    </div>
-                    <div class="faction-list">
-                        <span *ngFor="let faction of era.factions; let isLast = last">
-                            {{ faction.name }}{{ !isLast ? ', ' : '' }}
-                        </span>
-                    </div>
-                </ng-container>
-                <div *ngIf="factionAvailability.length === 0" class="no-factions">
-                    No faction availability information for this unit.
-                </div>
+                @if (factionAvailability.length === 0) {
+                    <div class="no-factions">No faction availability information for this unit.</div>
+                } @else {
+                    @for (era of factionAvailability; let i = $index; track i) {
+                        <div class="era-name">
+                            <img [src]="era.eraImg" class="era-icon" *ngIf="era.eraImg" />
+                            <strong>{{ era.eraName }}:</strong>
+                        </div>
+                        <div class="faction-list">
+                            @for (faction of era.factions; let isLast = $last; track faction.name) {
+                                <span>{{ faction.name }}{{ !isLast ? ', ' : '' }}</span>
+                            }
+                        </div>
+                    }
+                }
             </div>
         </div>
 

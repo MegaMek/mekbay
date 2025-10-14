@@ -48,19 +48,22 @@ import { CommonModule } from '@angular/common';
       <div class="modal" [ngClass]="modalClassFromTab()">
         <div class="modal-header" [class.tabbed]="isTabbed()">
           <ng-content select="[dialog-header]"></ng-content>
-          <div *ngIf="isTabbed()" class="tab-header">
-            <div class="tab-buttons">
-              <button *ngFor="let tab of tabs()" 
-                      class="tab-button" 
-                      [class.active]="tab === activeTab()" 
-                      (click)="onTabClick(tab)">
-                {{ tab }}
-              </button>
+          @if (isTabbed()) {
+            <div class="tab-header">
+              <div class="tab-buttons">
+                @for (tab of tabs(); let i = $index; track i) {
+                <button class="tab-button" 
+                        [class.active]="tab === activeTab()" 
+                        (click)="onTabClick(tab)">
+                  {{ tab }}
+                </button>
+                }
+              </div>
+              <div class="tab-actions">
+                <ng-content select="[tab-actions]"></ng-content>
+              </div>
             </div>
-            <div class="tab-actions">
-              <ng-content select="[tab-actions]"></ng-content>
-            </div>
-          </div>
+          }
         </div>
         <div class="modal-body">
           <ng-content select="[dialog-body]"></ng-content>
