@@ -264,6 +264,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
     // { key: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
     { key: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
+    { key: 'armorPer', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
     { key: 'internal', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
     { key: '_mdSumNoPhysical', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
     { key: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },

@@ -75,7 +75,7 @@
                             <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
                         </div>
                         <span class="stat-label">{{ spec.label }}</span>
-                        <span class="stat-value">{{ spec.value }}</span>
+                        <span class="stat-value">{{ spec.valueText ?? spec.value }}</span>
                     </div>
                 }
             </div>

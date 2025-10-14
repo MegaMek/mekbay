@@ -89,6 +89,7 @@ export interface Unit {
     armorType: string;
     structureType: string;
     armor: number;
+    armorPer: number; // Armor %
     internal: number;
     heat: number;
     dissipation: number;

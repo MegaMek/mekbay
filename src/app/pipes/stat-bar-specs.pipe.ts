@@ -41,6 +41,7 @@ import { Unit } from "../models/units.model";
 interface statBarSpec {
     label: string;
     value: number;
+    valueText?: string; // Optional text to display instead of the raw number
     max: number;
     percent: number;
 }
@@ -63,8 +64,9 @@ export class StatBarSpecsPipe implements PipeTransform {
             // structureLabel = unit.structureType ? `Structure (${unit.structureType.replace(/structure/i,'').trim()})` : 'Structure';
             structureLabel = 'Structure';
         }
+        const armorValue = `${unit.armor} (${unit.armorPer}%)`;
         const statDefs = [
-            { key: 'armor', label: armorLabel, value: unit.armor, max: maxStats.armor[1] },
+            { key: 'armor', label: armorLabel, value: unit.armor, valueText: armorValue, max: maxStats.armor[1] },
             { key: 'internal', label: structureLabel, value: unit.internal, max: maxStats.internal[1] },
             { key: 'alphaNoPhysical', label: 'Firepower', value: unit._mdSumNoPhysical, max: maxStats.alphaNoPhysicalNoOneshots[1] },
             { key: 'dpt', label: 'Damage/Turn', value: unit.dpt, max: maxStats.dpt[1] },
@@ -82,7 +84,7 @@ export class StatBarSpecsPipe implements PipeTransform {
             if (statMaxArr[0] === statMaxArr[1]) return false;
             if (statMaxArr[0] === 0 && DOES_NOT_TRACK === statMaxArr[1] && DOES_NOT_TRACK === def.value) return false;
             return true;
-        }).map(def => ({ label: def.label, value: def.value, max: def.max, percent: this.getStatPercent(def.value, def.max) }) );
+        }).map(def => ({ label: def.label, value: def.value, valueText: def.valueText, max: def.max, percent: this.getStatPercent(def.value, def.max) }) );
         return filteredStats;
     }
 
