@@ -64,6 +64,7 @@ import { firstValueFrom } from 'rxjs';
         (mouseup)="$event.stopPropagation()"
         (mousemove)="$event.stopPropagation()"
         (click)="$event.stopPropagation()"
+        (dblclick)="$event.stopPropagation()"
         (touchstart)="$event.stopPropagation()"
         (touchend)="$event.stopPropagation()"
         (touchmove)="$event.stopPropagation()"
@@ -97,7 +98,7 @@ import { firstValueFrom } from 'rxjs';
           <input
             type="range"
             min="2"
-            max="24"
+            max="20"
             [value]="brushSize()"
             (input)="onBrushSizeChange($event)"
             aria-label="Brush Size"
@@ -108,15 +109,17 @@ import { firstValueFrom } from 'rxjs';
             (mouseup)="$event.stopPropagation()"
             (mousemove)="$event.stopPropagation()"
             (click)="$event.stopPropagation()"
+            (dblclick)="$event.stopPropagation()"
             (touchstart)="$event.stopPropagation()"
             (touchend)="$event.stopPropagation()"
             (touchmove)="$event.stopPropagation()"
             (contextmenu)="$event.stopPropagation()"
           />
           <span class="line-width-value">{{ brushSize() }}</span>
+          <div class="notice">TEST: this will not be saved!</div>
         </div>
         }
-    </div>
+    </div>    
     `,
     styles: `
         :host {
@@ -212,7 +215,7 @@ import { firstValueFrom } from 'rxjs';
             position: absolute;
             height: 32px;
             right: 64px;
-            bottom: 12px;
+            bottom: 0px;
             display: flex;
             flex-direction: row;
             gap: 4px;
@@ -236,30 +239,46 @@ import { firstValueFrom } from 'rxjs';
         }
         .line-width-slider-row {
             position: absolute;
-            right: 64px;
-            bottom: 48px;
+            right: 60px;
+            bottom: 35px;
             display: flex;
             align-items: center;
             gap: 8px;
             z-index: 1;
-            width: 120px;
             pointer-events: auto;
         }
         .line-width-slider-row input[type="range"] {
+            width: 100px;
             pointer-events: auto;
             flex: 1;
-            accent-color: #1976d2;
+            accent-color: black;
+        }
+        :host-context(.night-mode) .line-width-slider-row input[type="range"] {
+            accent-color: white;
         }
         .line-width-value {
-            min-width: 24px;
+            min-width: 20px;
             text-align: center;
             font-size: 14px;
-            color: #222;
-            background: #fff;
+            color: #fff;
+            background: #222;
             border-radius: 8px;
             padding: 2px 6px;
             box-shadow: 0 1px 2px rgba(0,0,0,0.08);
-        }`,
+        }
+        :host-context(.night-mode) .line-width-value {
+            color: #222;
+            background: #fff;
+        }
+        .notice {
+            position: absolute;
+            top: -20px;
+            right: 2px;
+            font-weight: bold;
+            color: #f00;
+            width: 204px;
+        }
+        `
 })
 export class SvgDirectCanvasOverlayComponent {
     private static INTERNAL_SCALE = 2;

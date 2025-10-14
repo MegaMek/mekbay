@@ -70,6 +70,7 @@ import { Dialog } from '@angular/cdk/dialog';
         (mouseup)="$event.stopPropagation()"
         (mousemove)="$event.stopPropagation()"
         (click)="$event.stopPropagation()"
+        (dblclick)="$event.stopPropagation()"
         (touchstart)="$event.stopPropagation()"
         (touchend)="$event.stopPropagation()"
         (touchmove)="$event.stopPropagation()"
@@ -103,8 +104,8 @@ import { Dialog } from '@angular/cdk/dialog';
         <div class="line-width-slider-row">
           <input
             type="range"
-            min="2"
-            max="24"
+            min="4"
+            max="20"
             [value]="brushSize()"
             (input)="onBrushSizeChange($event)"
             aria-label="Brush Size"
@@ -115,15 +116,17 @@ import { Dialog } from '@angular/cdk/dialog';
             (mouseup)="$event.stopPropagation()"
             (mousemove)="$event.stopPropagation()"
             (click)="$event.stopPropagation()"
+            (dblclick)="$event.stopPropagation()"
             (touchstart)="$event.stopPropagation()"
             (touchend)="$event.stopPropagation()"
             (touchmove)="$event.stopPropagation()"
             (contextmenu)="$event.stopPropagation()"
           />
           <span class="line-width-value">{{ brushSize() }}</span>
+          <div class="notice">TEST: this will not be saved!</div>
         </div>
     }
-    </div>
+    </div>    
   `,
     styles: `
         .svg-canvas-overlay {
@@ -210,7 +213,7 @@ import { Dialog } from '@angular/cdk/dialog';
             position: absolute;
             height: 32px;
             right: 64px;
-            bottom: 12px;
+            bottom: 0px;
             display: flex;
             flex-direction: row;
             gap: 4px;
@@ -234,30 +237,47 @@ import { Dialog } from '@angular/cdk/dialog';
         }
         .line-width-slider-row {
             position: absolute;
-            right: 64px;
-            bottom: 48px;
+            right: 60px;
+            bottom: 35px;
             display: flex;
             align-items: center;
             gap: 8px;
             z-index: 1;
-            width: 120px;
             pointer-events: auto;
         }
         .line-width-slider-row input[type="range"] {
+            width: 100px;
             pointer-events: auto;
             flex: 1;
-            accent-color: #1976d2;
+            accent-color: black;
         }
+        :host-context(.night-mode) .line-width-slider-row input[type="range"] {
+            accent-color: white;
+        }
+        
         .line-width-value {
-            min-width: 24px;
+            min-width: 20px;
             text-align: center;
             font-size: 14px;
-            color: #222;
-            background: #fff;
+            color: #fff;
+            background: #222;
             border-radius: 8px;
             padding: 2px 6px;
             box-shadow: 0 1px 2px rgba(0,0,0,0.08);
-        }`,
+        }
+        :host-context(.night-mode) .line-width-value {
+            color: #222;
+            background: #fff;
+        }
+        .notice {
+            position: absolute;
+            top: -20px;
+            right: 2px;
+            font-weight: bold;
+            color: #f00;
+            width: 204px;
+        }
+`,
 })
 export class SvgCanvasOverlayComponent {
     private static INTERNAL_SCALE = 1;
@@ -281,7 +301,7 @@ export class SvgCanvasOverlayComponent {
     lines: Line[] = [];
     private currentLine?: Line;
     lastReducedIndex = 0;
-    canvasData = input<string | null>(null);    
+    canvasData = input<string | null>(null);
     mode = signal<'brush' | 'eraser' | 'none'>('none');
     brushColor = signal<string>('#f00');
     colorOptions = ['#f00', '#00f', '#0f0', '#f0f', '#0ff', '#ff0'];
@@ -332,7 +352,7 @@ export class SvgCanvasOverlayComponent {
             this.addEventListeners();
         });
         this.destroyRef.onDestroy(() => {
-        const stageContent = this.stageComponent()?.getStage().content;
+            const stageContent = this.stageComponent()?.getStage().content;
             if (stageContent) {
                 stageContent.removeEventListener('pointerdown', this.nativePointerDown);
                 stageContent.removeEventListener('touchstart', this.nativePointerDown);
@@ -344,7 +364,7 @@ export class SvgCanvasOverlayComponent {
         });
     }
 
-     addEventListeners() {
+    addEventListeners() {
         const stageContent = this.stageComponent()?.getStage().content;
         if (stageContent) {
             stageContent.addEventListener('pointerdown', this.nativePointerDown);
@@ -362,7 +382,7 @@ export class SvgCanvasOverlayComponent {
             height: this.height() * SvgCanvasOverlayComponent.INTERNAL_SCALE,
         };
     }
-    
+
     onBrushSizeChange(event: Event) {
         const value = +(event.target as HTMLInputElement).value;
         this.brushSize.set(value);
@@ -527,7 +547,7 @@ export class SvgCanvasOverlayComponent {
         let i = 2;
         while (i < reduced.length - 2) {
             const x0 = reduced[i - 2], y0 = reduced[i - 1];
-            const x1 = reduced[i],     y1 = reduced[i + 1];
+            const x1 = reduced[i], y1 = reduced[i + 1];
             const x2 = reduced[i + 2], y2 = reduced[i + 3];
 
             // Vectors: v1 = (x1-x0, y1-y0), v2 = (x2-x1, y2-y1)
