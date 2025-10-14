@@ -31,12 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import { Component, input, ElementRef, AfterViewInit, OnDestroy, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, viewChild } from '@angular/core';
+import { Component, input, ElementRef, AfterViewInit, OnDestroy, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, viewChild, ComponentRef, ViewContainerRef, TemplateRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceUnit } from '../../models/force-unit.model';
 import { SvgZoomPanService, SwipeCallbacks } from './svg-zoom-pan.service';
 import { SvgInteractionService } from './svg-interaction.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
+import { SvgCanvasOverlayComponent } from './svg-canvas-overlay.component';
+import { SvgDirectCanvasOverlayComponent } from './svg-direct-canvas-overlay.component';
 
 /*
  * Author: Drake
@@ -45,7 +47,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
     selector: 'svg-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [CommonModule, SvgDirectCanvasOverlayComponent],
     providers: [SvgZoomPanService, SvgInteractionService],
     templateUrl: './svg-viewer.component.html',
     styleUrls: ['./svg-viewer.component.css']
@@ -63,6 +65,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     diffHeatMarkerRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatMarker');
     diffHeatArrowRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatArrow');
     diffHeatTextRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatText');
+    canvasOverlay = viewChild.required<SvgDirectCanvasOverlayComponent>('canvasOverlay');
 
     loadError = signal<string | null>(null);
     svgWidth = 0;
@@ -215,7 +218,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     displaySvg(): void {
         const currentUnit = this.unit();
         const slides = this.slidesRef().nativeElement;
-        slides.innerHTML = ''; // Clear previous slides
+        Array.from(slides.querySelectorAll('.slide')).forEach((el: Element) => el.remove());
         this.currentSvg.set(null);
         this.loadError.set(null);
         this.currentSlideEl = null;
@@ -247,10 +250,19 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             this.updateDimensions();
             this.svgDimensionsUpdated();
             this.restoreViewState();
-
+            this.resetCanvas();
         } else {
             this.loadError.set('Loading record sheet...');
         }
+    }
+    // Canvas data to pass to overlay component
+    canvasData = signal<string | null>(null);
+
+    protected resetCanvas() {
+        const canvasOverlay = this.canvasOverlay();
+        if (!canvasOverlay) return;
+        this.setSlideX(canvasOverlay.nativeElement, 0, false);
+        this.canvasData.set(crypto.randomUUID());
     }
 
     retryLoad() {
@@ -402,6 +414,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
         // Disable transitions while dragging
         this.setSlideX(this.currentSlideEl, 0, false);
+        this.setSlideX(this.canvasOverlay().nativeElement, 0, false);
         if (this.prevSlideEl) this.setSlideX(this.prevSlideEl, -this.containerWidth, false);
         if (this.nextSlideEl) this.setSlideX(this.nextSlideEl, this.containerWidth, false);
     }
@@ -422,6 +435,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
         // Follow the finger
         this.setSlideX(this.currentSlideEl, this.swipeOffsetX, false);
+        this.setSlideX(this.canvasOverlay().nativeElement, this.swipeOffsetX, false);
         if (this.prevSlideEl) {
             this.setSlideX(this.prevSlideEl, -this.containerWidth + this.swipeOffsetX, false);
         }
@@ -448,6 +462,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             };
             // Animate commit to prev (current -> right, prev -> center)
             this.setSlideX(this.currentSlideEl, width, true);
+            this.setSlideX(this.canvasOverlay().nativeElement, width, true);
             if (this.prevSlideEl) this.setSlideX(this.prevSlideEl, 0, true);
 
             const onDone = () => {            
@@ -471,6 +486,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             
             // Animate commit to next (current -> left, next -> center)
             this.setSlideX(this.currentSlideEl, -width, true);
+            this.setSlideX(this.canvasOverlay().nativeElement, -width, true);
             if (this.nextSlideEl) this.setSlideX(this.nextSlideEl, 0, true);
 
             const onDone = () => {
@@ -486,6 +502,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
         // Cancel swipe: animate back to original
         this.setSlideX(this.currentSlideEl, 0, true);
+            this.setSlideX(this.canvasOverlay().nativeElement, 0, true);
         if (this.prevSlideEl) this.setSlideX(this.prevSlideEl, -width, true);
         if (this.nextSlideEl) this.setSlideX(this.nextSlideEl, width, true);
 

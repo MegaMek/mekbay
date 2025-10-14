@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, ElementRef, signal, WritableSignal, Injector, inject } from '@angular/core';
+import { Injectable, ElementRef, signal, WritableSignal, Injector, inject, computed } from '@angular/core';
 import { LayoutService } from '../../services/layout.service';
 import { SvgInteractionService } from './svg-interaction.service';
 
@@ -54,10 +54,10 @@ export interface ViewState {
 }
 
 export interface ZoomPanState {
-    scale: number;
+    scale: WritableSignal<number>;
     minScale: number;
     maxScale: number;
-    translate: { x: number; y: number };
+    translate: WritableSignal<{ x: number; y: number }>;
     isPanning: boolean;
     isSwiping: boolean;
     last: { x: number; y: number };
@@ -96,10 +96,10 @@ export class SvgZoomPanService {
     ];
 
     private state: ZoomPanState = {
-        scale: 1,
+        scale: signal(1),
         minScale: 1,
         maxScale: 5,
-        translate: { x: 0, y: 0 },
+        translate: signal({ x: 0, y: 0 }),
         isPanning: false,
         isSwiping: false,
         last: { x: 0, y: 0 },
@@ -120,7 +120,7 @@ export class SvgZoomPanService {
     private interactionService!: SvgInteractionService;
     private swipeCallbacks?: SwipeCallbacks;
     private swipeTotalDx = 0;
-
+    
     constructor() { }
 
     initialize(
@@ -149,19 +149,19 @@ export class SvgZoomPanService {
         return { ...this.state };
     }
 
-    getViewState(): ViewState {
+    getViewState = computed<ViewState>(() => {
+        const translate = this.state.translate();
         return {
-            scale: this.state.scale,
-            translateX: this.state.translate.x,
-            translateY: this.state.translate.y
+            scale: this.state.scale(),
+            translateX: translate.x,
+            translateY: translate.y
         };
-    }
+    });
 
     restoreViewState(viewState: ViewState | null) {
         if (viewState && viewState.scale > 0) {
-            this.state.scale = viewState.scale;
-            this.state.translate.x = viewState.translateX;
-            this.state.translate.y = viewState.translateY;
+            this.state.scale.set(viewState.scale);
+            this.state.translate.set({ x: viewState.translateX, y: viewState.translateY });
             this.clampPan();
         } else {
             this.resetView();
@@ -208,14 +208,13 @@ export class SvgZoomPanService {
     private centerSvg() {
         const svgWidthWithPadding = this.svgDimensions.width + MARGIN_H;
         const svgHeightWithPadding = this.svgDimensions.height + MARGIN_V;
-        const x = (this.containerDimensions.width - svgWidthWithPadding * this.state.scale) / 2;
-        const y = (this.containerDimensions.height - svgHeightWithPadding * this.state.scale) / 2;
-        this.state.translate.x = Math.max(0, x);
-        this.state.translate.y = Math.max(0, y);
+        const x = (this.containerDimensions.width - svgWidthWithPadding * this.state.scale()) / 2;
+        const y = (this.containerDimensions.height - svgHeightWithPadding * this.state.scale()) / 2;
+        this.state.translate.set({ x: Math.max(0, x), y: Math.max(0, y) });
     }
 
     resetView() {
-        this.state.scale = this.state.minScale;
+        this.state.scale.set(this.state.minScale);
         this.centerSvg();
         this.applyTransform();
     }
@@ -225,8 +224,8 @@ export class SvgZoomPanService {
         if (this.svgDimensions.width && this.svgDimensions.height) {
             this.calculateMinScale();
             // If current scale is below new minimum, adjust it
-            if (this.state.scale < this.state.minScale) {
-                this.state.scale = this.state.minScale;
+            if (this.state.scale() < this.state.minScale) {
+                this.state.scale.set(this.state.minScale);
             }
         }
 
@@ -243,10 +242,10 @@ export class SvgZoomPanService {
         const mx = event.offsetX;
         const my = event.offsetY;
         const scaleAmount = event.deltaY > 0 ? 0.9 : 1.1;
-        let newScale = this.state.scale * scaleAmount;
+        let newScale = this.state.scale() * scaleAmount;
         newScale = Math.max(this.state.minScale, Math.min(this.state.maxScale, newScale));
 
-        if (newScale === this.state.scale) return;
+        if (newScale === this.state.scale()) return;
 
         this.interactionService.removePicker();
 
@@ -254,10 +253,12 @@ export class SvgZoomPanService {
             this._rafPending = true;
             requestAnimationFrame(() => {
                 // Adjust translation so zoom is centered on mouse
-                if (newScale !== this.state.scale) {
-                    this.state.translate.x = mx - ((mx - this.state.translate.x) * (newScale / this.state.scale));
-                    this.state.translate.y = my - ((my - this.state.translate.y) * (newScale / this.state.scale));
-                    this.state.scale = newScale;
+                if (newScale !== this.state.scale()) {
+                    const translate = this.state.translate();
+                    const newX = mx - ((mx - translate.x) * (newScale / this.state.scale()));
+                    const newY = my - ((my - translate.y) * (newScale / this.state.scale()));
+                    this.state.translate.set({ x: newX, y: newY });
+                    this.state.scale.set(newScale);
                 }
                 this.clampPan();
                 this.applyTransform();
@@ -274,7 +275,7 @@ export class SvgZoomPanService {
 
         if (event.button !== 0) return; // Only handle left button
 
-        const isZoomedOut = this.state.scale <= this.state.minScale * 1.01;
+        const isZoomedOut = this.state.scale() <= this.state.minScale * 1.01;
         this.state.isSwiping = isZoomedOut;
         this.state.isPanning = !isZoomedOut;
 
@@ -333,8 +334,8 @@ export class SvgZoomPanService {
         const dy = event.clientY - this.state.last.y;
         this.state.last = { x: event.clientX, y: event.clientY };
 
-        this.state.translate.x += dx;
-        this.state.translate.y += dy;
+        const translate = this.state.translate();
+        this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
 
         this.clampPan();
         this.applyTransform();
@@ -365,7 +366,7 @@ export class SvgZoomPanService {
 
         if (event.touches.length === 1) {
             const touch = event.touches[0];
-            const isZoomedOut = this.state.scale <= this.state.minScale * 1.01;
+            const isZoomedOut = this.state.scale() <= this.state.minScale * 1.01;
             this.state.isSwiping = isZoomedOut;
             this.state.isPanning = !isZoomedOut;
             this.state.last = { x: touch.clientX, y: touch.clientY };
@@ -389,7 +390,7 @@ export class SvgZoomPanService {
                 touch2.clientY - touch1.clientY
             );
 
-            this.state.touchStartScale = this.state.scale;
+            this.state.touchStartScale = this.state.scale();
 
             const container = this.containerRef.nativeElement;
             const rect = container.getBoundingClientRect();
@@ -440,9 +441,8 @@ export class SvgZoomPanService {
             this.state.last = { x: touch.clientX, y: touch.clientY };
 
             if (this.state.isPanning) {
-                this.state.translate.x += dx;
-                this.state.translate.y += dy;
-
+                const translate = this.state.translate();
+                this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
                 this.clampPan();
                 this.applyTransform();
             }
@@ -478,19 +478,21 @@ export class SvgZoomPanService {
                 y: ((touch1.clientY + touch2.clientY) / 2) - rect.top
             };
 
+            const translate = this.state.translate();
             const dx = newTouchCenter.x - this.state.prevTouchCenter.x;
             const dy = newTouchCenter.y - this.state.prevTouchCenter.y;
-            this.state.translate.x += dx;
-            this.state.translate.y += dy;
+            this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
             this.state.prevTouchCenter = { ...newTouchCenter };
 
             if (!this._rafPending) {
                 this._rafPending = true;
                 requestAnimationFrame(() => {
-                    if (newScale !== this.state.scale) {
-                        this.state.translate.x = newTouchCenter.x - ((newTouchCenter.x - this.state.translate.x) * (newScale / this.state.scale));
-                        this.state.translate.y = newTouchCenter.y - ((newTouchCenter.y - this.state.translate.y) * (newScale / this.state.scale));
-                        this.state.scale = newScale;
+                    if (newScale !== this.state.scale()) {
+                        const translate = this.state.translate();
+                        const newX = newTouchCenter.x - ((newTouchCenter.x - translate.x) * (newScale / this.state.scale()));
+                        const newY = newTouchCenter.y - ((newTouchCenter.y - translate.y) * (newScale / this.state.scale()));
+                        this.state.translate.set({ x: newX, y: newY });
+                        this.state.scale.set(newScale);
                     }
                     this.clampPan();
                     this.applyTransform();
@@ -512,7 +514,7 @@ export class SvgZoomPanService {
         } else if (event.touches.length === 1) {
             // Transition from pinch to pan
             const touch = event.touches[0];
-            const isZoomedOut = this.state.scale <= this.state.minScale * 1.01;
+            const isZoomedOut = this.state.scale() <= this.state.minScale * 1.01;
             this.state.isSwiping = isZoomedOut;
             this.state.isPanning = !isZoomedOut;
             this.state.last = { x: touch.clientX, y: touch.clientY };
@@ -526,21 +528,25 @@ export class SvgZoomPanService {
 
     // Prevent panning out of bounds
     private clampPan() {
-        const scaledWidth = (this.svgDimensions.width + MARGIN_H) * this.state.scale;
-        const scaledHeight = (this.svgDimensions.height + MARGIN_V) * this.state.scale;
+        const scale = this.state.scale();
+        const scaledWidth = (this.svgDimensions.width + MARGIN_H) * scale;
+        const scaledHeight = (this.svgDimensions.height + MARGIN_V) * scale;
         const maxX = Math.max(0, (this.containerDimensions.width - scaledWidth) / 2);
         const maxY = Math.max(0, (this.containerDimensions.height - scaledHeight) / 2);
         const minX = this.containerDimensions.width - scaledWidth - maxX;
         const minY = this.containerDimensions.height - scaledHeight - maxY;
 
-        this.state.translate.x = Math.max(minX, Math.min(maxX, this.state.translate.x));
-        this.state.translate.y = Math.max(minY, Math.min(maxY, this.state.translate.y));
+        const translate = this.state.translate();
+        const clampedX = Math.max(minX, Math.min(maxX, translate.x));
+        const clampedY = Math.max(minY, Math.min(maxY, translate.y));
+        this.state.translate.set({ x: clampedX, y: clampedY });
     }
 
     private applyTransform() {
         const svg = this.containerRef.nativeElement.querySelector('svg');
         if (svg) {
-            (svg as any).style.transform = `translate(${this.state.translate.x}px,${this.state.translate.y}px) scale(${this.state.scale})`;
+            const translate = this.state.translate();
+            (svg as any).style.transform = `translate(${translate.x}px,${translate.y}px) scale(${this.state.scale()})`;
             (svg as any).style.transformOrigin = 'top left';
         }
     }

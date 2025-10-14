@@ -1,5 +1,11 @@
 <div #container class="svg-viewer-container" style="position:relative;">
     <div #slides class="slides"></div>
+    <svg-canvas-overlay
+        #canvasOverlay
+        [canvasData]="this.canvasData()"
+        [width]="this.svgWidth"
+        [height]="this.svgHeight"
+    ></svg-canvas-overlay>
 </div>
 
 <div #diffHeatMarker class="heat-diff-marker" 
