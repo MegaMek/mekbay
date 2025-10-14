@@ -36,7 +36,7 @@
             </div>
         </ng-container>
         <div class="options-list">
-            @for (option of filteredOptions(); let i = $index; track i) {
+            @for (option of filteredOptions(); let i = $index; track option.name) {
                 <label class="option-item"
                     [class.unavailable]="option.available === false"
                     [class.selected-single]="!multiselect() && isSelected(option.name)"

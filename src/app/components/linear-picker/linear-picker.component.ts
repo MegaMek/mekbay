@@ -49,7 +49,7 @@ import { PickerComponent, PickerChoice, PickerValue } from '../picker/picker.int
                 [class.horizontal]="horizontal()"
                 [class.vertical]="!horizontal()"
         >    
-            @for (choice of values(); let i = $index; track i) {
+            @for (choice of values(); let i = $index; track choice.value) {
                 <div class="value-cell"
                     [class.selected]="isSelected(choice)"
                     [class.highlight]="isHovered(choice) && !choice.disabled"
@@ -257,10 +257,6 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
 
     isHovered(choice: PickerChoice): boolean {
         return choice === this.hoveredChoice();
-    }
-
-    trackByValue(index: number, choice: PickerChoice): PickerValue {
-        return choice.value;
     }
 
     // Event handlers

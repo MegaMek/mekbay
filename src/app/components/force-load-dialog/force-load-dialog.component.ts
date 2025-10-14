@@ -99,10 +99,6 @@ export class ForceLoadDialogComponent {
         return force.units().reduce((sum, unit) => sum + (unit.getBv() ?? 0), 0);
     }
 
-    trackByInstanceId(index: number, force: Force): string | null {
-        return force.instanceId;
-    }
-
     onLoad() {
         const force = this.selectedForce();
         if (!force) return;
