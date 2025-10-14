@@ -50,7 +50,7 @@ import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 export interface UnitDetailsDialogData {
     unitList: Unit[];
     unitIndex: number;
-    hideAddButton: boolean;
+    addAsClone: boolean;
     gunnerySkill?: number;
     pilotingSkill?: number;
 }
@@ -119,7 +119,7 @@ export class UnitDetailsDialogComponent {
     activeTab = signal(this.tabs[0]);
 
     unitList: Unit[] = this.data.unitList;
-    hideAddButton = this.data.hideAddButton;
+    addAsClone = this.data.addAsClone;
     unitIndex = signal(this.data.unitIndex);
     gunnerySkill?: number = this.data.gunnerySkill;
     pilotingSkill?: number = this.data.pilotingSkill;

@@ -558,7 +558,7 @@ export class UnitSearchComponent implements OnDestroy {
             data: {
                 unitList: filteredUnits,
                 unitIndex: filteredUnitIndex,
-                hideAddButton: false,
+                addAsClone: false,
                 gunnerySkill: this.filtersService.pilotGunnerySkill(),
                 pilotingSkill: this.filtersService.pilotPilotingSkill()
             }

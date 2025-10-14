@@ -243,7 +243,7 @@ export class App implements OnInit {
             data: {
                 unitList: [unit],
                 unitIndex: 0,
-                hideAddButton: false
+                addAsClone: false
             }
         });
 

@@ -286,7 +286,7 @@
         </div>
     </div>
     <div class="footer" dialog-footer>
-        <button *ngIf="!hideAddButton" class="modal-btn bt-button" (click)="onAdd()">ADD</button>
+        <button class="modal-btn bt-button" (click)="onAdd()">{{ addAsClone ? 'CLONE' : 'ADD' }}</button>
         <button class="modal-btn bt-button" (click)="onShare()">SHARE</button>
         <button class="modal-btn bt-button" (click)="onClose()">CLOSE</button>
     </div>
