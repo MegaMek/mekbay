@@ -102,6 +102,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('quickActions', value);
     }
 
+    onCanvasModeChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as 'raster' | 'vector';
+        this.optionsService.setOption('canvasMode', value);
+    }
+
     onUserUuidInput(event: Event) {
         const value = (event.target as HTMLInputElement).value;
         this.userUuid = value;

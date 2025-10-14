@@ -32,13 +32,16 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ChangeDetectionStrategy, inject, input, signal, viewChild, Signal, effect, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, input, signal, viewChild, Signal, effect, computed, DestroyRef, afterNextRender } from '@angular/core';
 import { Stage, StageConfig } from 'konva/lib/Stage';
 import { Layer } from 'konva/lib/Layer';
 import { Line, LineConfig } from 'konva/lib/shapes/Line';
 import { SvgZoomPanService } from './svg-zoom-pan.service';
 import { StageComponent, CoreShapeComponent, NgKonvaEventObject } from 'ng2-konva';
 import { gzip, ungzip, Data } from 'pako';
+import { firstValueFrom } from 'rxjs';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
+import { Dialog } from '@angular/cdk/dialog';
 
 /*
  * Author: Drake
@@ -50,34 +53,76 @@ import { gzip, ungzip, Data } from 'pako';
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule, StageComponent, CoreShapeComponent],
     template: `
-    <div class="svg-canvas-overlay" [class.active]="mode() !== 'none'"
-      [ngStyle]="overlayTransformStyle()">
+    <div class="svg-canvas-overlay" [class.active]="mode() !== 'none'">
+      <div #stageContainer class="stageContainer">
       <ko-stage #stage
+        class="drawing-canvas"
+        [ngStyle]="canvasTransformStyle()"
         [config]="stageConfig"
-        (mousedown)="onPointerDown($event)"
-        (touchstart)="onPointerDown($event)"
-        (mouseup)="onPointerUp($event)"
-        (touchend)="onPointerUp($event)"
-        (mousemove)="onPointerMove($event)"
-        (touchmove)="onPointerMove($event)"
       ><ko-layer #drawLayer></ko-layer></ko-stage>
+      </div>
     </div>
-    <div class="tools">
-        <select class="tool-select" [value]="mode()" (change)="setMode($event)">
-            <option value="none">None</option>
-            <option value="brush">Brush</option>
-            <option value="eraser">Eraser</option>
-        </select>
-        <select class="color-select" [value]="brushColor()" (change)="setBrushColor($event)">
-            <option value="#f00">Red</option>
-            <option value="#00f">Blue</option>
-            <option value="#0f0">Green</option>
-            <option value="#f0f">Fuchsia</option>
-            <option value="#0ff">Cyan</option>
-            <option value="#ff0">Yellow</option>
-        </select>
-        <button class="undo-btn" (click)="undo()">Undo</button>
-        <button class="clear-btn" (click)="clearCanvas()">Clear</button>
+    <div class="fab-container"
+        (pointerdown)="$event.stopPropagation()"
+        (pointerup)="$event.stopPropagation()"
+        (pointermove)="$event.stopPropagation()"
+        (mousedown)="$event.stopPropagation()"
+        (mouseup)="$event.stopPropagation()"
+        (mousemove)="$event.stopPropagation()"
+        (click)="$event.stopPropagation()"
+        (touchstart)="$event.stopPropagation()"
+        (touchend)="$event.stopPropagation()"
+        (touchmove)="$event.stopPropagation()"
+        (contextmenu)="$event.stopPropagation()"
+    >
+      <button class="fab main-fab"  
+        [ngStyle]="mainFabStyle()"
+        [class.active]="mode() !== 'none'"
+        (click)="toggleDrawMode()"
+        aria-label="Toggle Draw Mode">D</button>
+        @if (mode() !== 'none') {
+        <div class="controls-fab-column">
+            <button class="fab mini-fab clear-fab" (click)="requestClearCanvas()" aria-label="Clear Canvas">C</button>
+            <button class="fab mini-fab undo-fab" (click)="undo()" aria-label="Undo">U</button>
+            <button class="fab mini-fab eraser-fab"
+            [class.active]="mode() === 'eraser'"
+            (click)="toggleEraser()"
+            aria-label="Eraser">E</button>
+        </div>
+        <div class="color-fab-row">
+          @for (color of colorOptions; let i = $index; track i) {
+            <button
+                class="fab mini-fab color-fab"
+                [ngStyle]="{'background': color}"
+                [class.selected]="brushColor() === color && mode() === 'brush'"
+                (click)="setBrushColor(color)"
+                [attr.aria-label]="'Set color ' + color">
+            </button>
+          }
+        </div>
+        <div class="line-width-slider-row">
+          <input
+            type="range"
+            min="2"
+            max="24"
+            [value]="brushSize()"
+            (input)="onBrushSizeChange($event)"
+            aria-label="Brush Size"
+            (pointerdown)="$event.stopPropagation()"
+            (pointerup)="$event.stopPropagation()"
+            (pointermove)="$event.stopPropagation()"
+            (mousedown)="$event.stopPropagation()"
+            (mouseup)="$event.stopPropagation()"
+            (mousemove)="$event.stopPropagation()"
+            (click)="$event.stopPropagation()"
+            (touchstart)="$event.stopPropagation()"
+            (touchend)="$event.stopPropagation()"
+            (touchmove)="$event.stopPropagation()"
+            (contextmenu)="$event.stopPropagation()"
+          />
+          <span class="line-width-value">{{ brushSize() }}</span>
+        </div>
+    }
     </div>
   `,
     styles: `
@@ -97,24 +142,135 @@ import { gzip, ungzip, Data } from 'pako';
             pointer-events: auto;
         }
         ko-stage {
-            opacity: 0.9;
+            opacity: 0.95;
             background: transparent;
             cursor: crosshair;
         }
-        .tools {
-            pointer-events: auto;
+        /* Controls */
+        .fab-container {
             position: fixed;
-            top: 8px;
-            left: 8px;
-            z-index: 10;
+            bottom: 24px;
+            right: 24px;
+            z-index: 20;
+            pointer-events: none;
+            width: 56px;
+            height: 56px;
+        }
+        .fab {
+            border: none;
+            outline: none;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+            min-height: 32px;
+            background: #fff;
+            color: #222;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 24px;
+            position: relative;
+            pointer-events: auto;
+            transition: box-shadow 0.2s, color 0.2s, border 0.2s, width 0.2s, height 0.2s;
+        }
+        .fab.main-fab {
+            background: gray;
+            color: #fff;
+            width: 56px;
+            height: 56px;
+            min-width: 56px;
+            min-height: 56px;
+        }
+        .fab.mini-fab.active,
+        .fab.mini-fab.selected {
+            background: #1976d2;
+            color: #fff;
+        }
+        .fab.eraser-fab.active {
+            background: #fbc02d;
+            color: #222;
+        }
+        .fab.clear-fab {
+            background: #fff;
+            color: #f44336;
+        }
+        .controls-fab-column {
+            position: absolute;
+            bottom: 64px;
+            left: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+        }
+        .color-fab-row {
+            position: absolute;
+            height: 32px;
+            right: 64px;
+            bottom: 12px;
+            display: flex;
+            flex-direction: row;
+            gap: 4px;
+            z-index: 1;
+            align-items: center;
+        }
+        .fab.color-fab {
+            border: 2px solid #fff;
+            width: 24px;
+            height: 24px;
+            min-width: 24px;
+            min-height: 24px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+        }
+        .fab.color-fab.selected {
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+            min-height: 32px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+        }
+        .line-width-slider-row {
+            position: absolute;
+            right: 64px;
+            bottom: 48px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 1;
+            width: 120px;
+            pointer-events: auto;
+        }
+        .line-width-slider-row input[type="range"] {
+            pointer-events: auto;
+            flex: 1;
+            accent-color: #1976d2;
+        }
+        .line-width-value {
+            min-width: 24px;
+            text-align: center;
+            font-size: 14px;
+            color: #222;
+            background: #fff;
+            border-radius: 8px;
+            padding: 2px 6px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
         }`,
 })
 export class SvgCanvasOverlayComponent {
     private static INTERNAL_SCALE = 1;
-    private static REDUCE_WINDOW_SIZE = 10;
+    private static REDUCE_WINDOW_SIZE = 40;
     private static MAX_LINES = 1000;
-    private static MAX_LINE_POINTS = 3000;
+    private static MAX_STROKE_POINTS = 1000;
+    private static MAX_STROKE_ERASER_POINTS = 10000;
+    private static BRUSH_SIZE = 3;
+    private static ERASER_SIZE_MULTIPLIER = 2;
+    private destroyRef = inject(DestroyRef);
     private zoomPanService = inject(SvgZoomPanService);
+    private dialog = inject(Dialog);
+    stageContainer = viewChild.required('stageContainer') as Signal<HTMLDivElement>;
     stageComponent = viewChild('stage') as Signal<StageComponent | undefined>;
     drawLayerComponent = viewChild('drawLayer') as Signal<CoreShapeComponent | undefined>;
     width = input(200);
@@ -125,64 +281,79 @@ export class SvgCanvasOverlayComponent {
     lines: Line[] = [];
     private currentLine?: Line;
     lastReducedIndex = 0;
-    mode = signal<'brush' | 'eraser' | 'none'>('brush');
+    canvasData = input<string | null>(null);    
+    mode = signal<'brush' | 'eraser' | 'none'>('none');
     brushColor = signal<string>('#f00');
-    
-    overlayTransformStyle = computed(() => {
+    colorOptions = ['#f00', '#00f', '#0f0', '#f0f', '#0ff', '#ff0'];
+    brushSize = signal<number>(SvgCanvasOverlayComponent.BRUSH_SIZE);
+
+
+    private nativePointerDown = (event: MouseEvent | TouchEvent) => this.onPointerDown(event);
+    private nativePointerUp = (event: MouseEvent | TouchEvent) => this.onPointerUp(event);
+    private nativePointerMove = (event: MouseEvent | TouchEvent) => this.onPointerMove(event);
+
+    canvasTransformStyle = computed(() => {
         const state = this.zoomPanService.getState();
-        const scale = state.scale() * (1 / SvgCanvasOverlayComponent.INTERNAL_SCALE);
+        const scale = state.scale();
         const translate = state.translate();
         return {
             transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
-            transformOrigin: '0 0'
+            transformOrigin: '0 0',
+            width: this.width() + 'px',
+            height: this.height() + 'px',
         };
     });
+
+    mainFabStyle = computed(() => {
+        if (this.mode() === 'brush') {
+            return { background: this.brushColor(), color: '#fff' };
+        }
+        if (this.mode() === 'eraser') {
+            return { background: '#fbc02d', color: '#222' };
+        }
+        // Default (inactive)
+        return { background: 'gray', color: '#fff' };
+    });
+
+    get nativeElement(): HTMLElement | undefined {
+        return this.stageComponent()?.getStage().content;
+    }
 
     constructor() {
         effect(() => {
             this.updateStageConfig();
         });
-        // Generate random lines to fill MAX_LINES and MAX_LINE_POINTS at startup
-        setTimeout(() => {
-            const stage = this.stageComponent()?.getStage();
-            const layer = stage?.getLayers()[0] as Layer | undefined;
-            if (!layer) return;
-
-            // Helper to generate a random point within canvas
-            const randPoint = () => [
-                Math.random() * (this.width() * SvgCanvasOverlayComponent.INTERNAL_SCALE),
-                Math.random() * (this.height() * SvgCanvasOverlayComponent.INTERNAL_SCALE)
-            ];
-
-            for (let i = 0; i < SvgCanvasOverlayComponent.MAX_LINES; i++) {
-                // Distribute points so total does not exceed MAX_LINE_POINTS
-                const pointsPerLine = Math.floor(SvgCanvasOverlayComponent.MAX_LINE_POINTS / SvgCanvasOverlayComponent.MAX_LINES);
-                const points: number[] = [];
-                let last = randPoint();
-                points.push(...last);
-
-                for (let j = 1; j < pointsPerLine; j++) {
-                    // Next point is a small random step from last
-                    last = [
-                        Math.max(0, Math.min(this.width() * SvgCanvasOverlayComponent.INTERNAL_SCALE, last[0] + (Math.random() - 0.5) * 40)),
-                        Math.max(0, Math.min(this.height() * SvgCanvasOverlayComponent.INTERNAL_SCALE, last[1] + (Math.random() - 0.5) * 40))
-                    ];
-                    points.push(...last);
-                }
-
-                const line = new Line({
-                    points,
-                    stroke: `hsl(${Math.random() * 360}, 80%, 50%)`,
-                    strokeWidth: Math.random() > 0.5 ? 2 : 8,
-                    globalCompositeOperation: Math.random() > 0.5 ? 'source-over' : 'destination-out',
-                    lineCap: 'round',
-                    lineJoin: 'round'
-                });
-                layer.add(line);
-                this.lines.push(line);
+        effect(() => {
+            console.log('Canvas data changed, importing...');
+            const data = this.canvasData();
+            this.clearCanvas();
+        });
+        afterNextRender(() => {
+            this.addEventListeners();
+        });
+        this.destroyRef.onDestroy(() => {
+        const stageContent = this.stageComponent()?.getStage().content;
+            if (stageContent) {
+                stageContent.removeEventListener('pointerdown', this.nativePointerDown);
+                stageContent.removeEventListener('touchstart', this.nativePointerDown);
+                stageContent.removeEventListener('pointerup', this.nativePointerUp);
+                stageContent.removeEventListener('touchend', this.nativePointerUp);
+                stageContent.removeEventListener('pointermove', this.nativePointerMove);
+                stageContent.removeEventListener('touchmove', this.nativePointerMove);
             }
-            layer.batchDraw();
-        }, 0);
+        });
+    }
+
+     addEventListeners() {
+        const stageContent = this.stageComponent()?.getStage().content;
+        if (stageContent) {
+            stageContent.addEventListener('pointerdown', this.nativePointerDown);
+            stageContent.addEventListener('touchstart', this.nativePointerDown, { passive: false });
+            stageContent.addEventListener('pointerup', this.nativePointerUp);
+            stageContent.addEventListener('touchend', this.nativePointerUp, { passive: false });
+            stageContent.addEventListener('pointermove', this.nativePointerMove);
+            stageContent.addEventListener('touchmove', this.nativePointerMove, { passive: false });
+        }
     }
 
     updateStageConfig() {
@@ -191,15 +362,31 @@ export class SvgCanvasOverlayComponent {
             height: this.height() * SvgCanvasOverlayComponent.INTERNAL_SCALE,
         };
     }
-
-    setMode(event: Event) {
-        const value = (event.target as HTMLSelectElement).value as 'brush' | 'eraser' | 'none';
-        this.mode.set(value);
+    
+    onBrushSizeChange(event: Event) {
+        const value = +(event.target as HTMLInputElement).value;
+        this.brushSize.set(value);
     }
 
-    setBrushColor(event: Event) {
-        const value = (event.target as HTMLSelectElement).value;
-        this.brushColor.set(value);
+    toggleDrawMode() {
+        if (this.mode() === 'none') {
+            this.mode.set('brush');
+        } else {
+            this.mode.set('none');
+        }
+    }
+
+    toggleEraser() {
+        if (this.mode() === 'eraser') {
+            this.mode.set('brush');
+        } else {
+            this.mode.set('eraser');
+        }
+    }
+
+    setBrushColor(color: string) {
+        this.brushColor.set(color);
+        this.mode.set('brush');
     }
 
     undo() {
@@ -213,6 +400,24 @@ export class SvgCanvasOverlayComponent {
         layer.batchDraw();
     }
 
+    async requestClearCanvas() {
+        const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
+            data: <ConfirmDialogData<string>>{
+                title: 'Clear Canvas',
+                message: 'Are you sure you want to clear the canvas?',
+                buttons: [
+                    { label: 'CONFIRM', value: 'clear', class: 'danger' },
+                    { label: 'CANCEL', value: 'cancel' }
+                ]
+            }
+        });
+        const result = await firstValueFrom(dialogRef.closed);
+
+        if (result === 'clear') {
+            this.clearCanvas();
+        }
+    }
+
     clearCanvas() {
         const stage = this.stageComponent()?.getStage();
         if (!stage) return;
@@ -223,10 +428,11 @@ export class SvgCanvasOverlayComponent {
         layer.batchDraw();
     }
 
-    onWheel(event: WheelEvent) {
-    }
-
-    onPointerDown(event: NgKonvaEventObject<MouseEvent | TouchEvent>) {       
+    onPointerDown(event: MouseEvent | TouchEvent) {
+        const mode = this.mode();
+        if (mode === 'none') return;
+        event.preventDefault();
+        event.stopPropagation();
         if (this.isPaint) return;
         const stage = this.stageComponent()?.getStage();
         if (!stage) return;
@@ -234,12 +440,11 @@ export class SvgCanvasOverlayComponent {
         if (!layer) return;
         const pos = (stage as Stage).getPointerPosition();
         if (!pos) return;
-        const mode = this.mode();
         this.isPaint = true;
         this.currentLine = new Line({
             points: [pos.x, pos.y, pos.x, pos.y],
             stroke: mode === 'brush' ? this.brushColor() : '#000',
-            strokeWidth: mode === 'brush' ? 2 : 8,
+            strokeWidth: mode === 'brush' ? this.brushSize() : this.brushSize() * SvgCanvasOverlayComponent.ERASER_SIZE_MULTIPLIER,
             globalCompositeOperation: mode === 'brush' ? 'source-over' : 'destination-out',
             lineCap: 'round',
             lineJoin: 'round'
@@ -254,10 +459,14 @@ export class SvgCanvasOverlayComponent {
         layer.batchDraw();
     }
 
-    onPointerUp(event: NgKonvaEventObject<MouseEvent | TouchEvent>) {
+    onPointerUp(event: MouseEvent | TouchEvent) {
         if (!this.isPaint) return;
+        const mode = this.mode();
+        if (mode === 'none') return;
+        event.preventDefault();
+        event.stopPropagation();
         this.isPaint = false;
-        this.currentLine?.points(this.reduceNearPoints(this.currentLine.points(), 1, 0.03));
+        this.currentLine?.points(this.reduceNearPoints(this.currentLine.points(), 1, 0.01));
         this.currentLine = undefined;
         // Calculate how much memory we are using for lines
         const linesData = this.compressVectorData();
@@ -265,8 +474,12 @@ export class SvgCanvasOverlayComponent {
         console.log(`Current vector data size: ${sizeInKB.toFixed(2)} KB`);
     }
 
-    onPointerMove(event: NgKonvaEventObject<MouseEvent | TouchEvent>) {
+    onPointerMove(event: MouseEvent | TouchEvent) {
         if (!this.isPaint || !this.currentLine) return;
+        const mode = this.mode();
+        if (mode === 'none') return;
+        event.preventDefault();
+        event.stopPropagation();
         const stage = this.stageComponent()?.getStage();
         if (!stage) return;
         const layer = stage.getLayers()[0] as Layer | null;
@@ -277,22 +490,25 @@ export class SvgCanvasOverlayComponent {
         if (lastIndex < 0) return;
         const oldPoints = this.currentLine.points();
         const newPoints = [...oldPoints, pos.x, pos.y];
-        const start = Math.max(0, newPoints.length - SvgCanvasOverlayComponent.REDUCE_WINDOW_SIZE * 2);
+        const start = Math.max(0, newPoints.length - SvgCanvasOverlayComponent.REDUCE_WINDOW_SIZE);
         const prefix = newPoints.slice(0, start);
         const segment = newPoints.slice(start);
-        const reducedSegment = this.reduceNearPoints(segment, 1, 0.02);
+        const reducedSegment = this.reduceNearPoints(segment, 1, 0.01);
         const reducedPoints = [...prefix, ...reducedSegment];
         this.currentLine.points(reducedPoints);
         // Limit the number of points to prevent memory issues, we remove the oldest points
-        if (this.currentLine.points().length > SvgCanvasOverlayComponent.MAX_LINE_POINTS) {
-            const excessPoints = this.currentLine.points().length - SvgCanvasOverlayComponent.MAX_LINE_POINTS;
+        if (this.mode() === 'eraser' && this.currentLine.points().length > SvgCanvasOverlayComponent.MAX_STROKE_ERASER_POINTS) {
+            const excessPoints = this.currentLine.points().length - SvgCanvasOverlayComponent.MAX_STROKE_ERASER_POINTS;
+            this.currentLine.points(this.currentLine.points().slice(excessPoints));
+        } else if (this.currentLine.points().length > SvgCanvasOverlayComponent.MAX_STROKE_POINTS) {
+            const excessPoints = this.currentLine.points().length - SvgCanvasOverlayComponent.MAX_STROKE_POINTS;
             this.currentLine.points(this.currentLine.points().slice(excessPoints));
         }
         layer.batchDraw();
     }
 
     reduceNearPoints(points: number[], minDist = 2, angleEpsilon = 0.01): number[] {
-        if (points.length < 4) return points;
+        if (points.length <= 4) return points;
         const reduced: number[] = [points[0], points[1]];
 
         for (let i = 2; i < points.length; i += 2) {
@@ -327,12 +543,15 @@ export class SvgCanvasOverlayComponent {
                 // If angle is very close to 0 (cos ~ 1), remove the middle point
                 if (Math.abs(1 - cos) < angleEpsilon) {
                     reduced.splice(i, 2);
+                    if (reduced.length <= 4) break;
                     continue; // Stay at same index to check next triplet
                 }
             }
             i += 2;
         }
-
+        if (reduced.length < 4 && points.length >= 4) {
+            return points.slice(0, 4);
+        }
         return reduced;
     }
 

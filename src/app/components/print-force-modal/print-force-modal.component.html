@@ -4,7 +4,9 @@
     <div *ngIf="loading()" class="message">Loading sheets...</div>
     <div *ngIf="!loading() && svgStrings().length == 0" class="message">Nothing to print!</div>
     <div class="svg-list" *ngIf="!loading()">
-      <div class="svg-container" *ngFor="let svg of svgStrings()" [innerHTML]="svg"></div>
+      @for (svg of svgStrings(); let i = $index; track i) {
+        <div class="svg-container" [innerHTML]="svg"></div>
+      }
     </div>
   </div>
   <div class="footer" dialog-footer>

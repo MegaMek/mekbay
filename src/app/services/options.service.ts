@@ -42,12 +42,12 @@ import { UserStateService } from './userState.service';
 @Injectable({ providedIn: 'root' })
 export class OptionsService {
     private dbService = inject(DbService);
-    private userStateService = inject(UserStateService);
 
     public options = signal<Options>({
         sheetsColor: 'normal',
         pickerStyle: 'default',
-        quickActions: 'disabled'
+        quickActions: 'disabled',
+        canvasMode: 'raster'
     });
 
     constructor() {
@@ -59,7 +59,8 @@ export class OptionsService {
         this.options.set({
             sheetsColor: saved?.sheetsColor ?? 'normal',
             pickerStyle: saved?.pickerStyle ?? 'default',
-            quickActions: saved?.quickActions ?? 'disabled'
+            quickActions: saved?.quickActions ?? 'disabled',
+            canvasMode: saved?.canvasMode ?? 'raster'
         });
     }
 

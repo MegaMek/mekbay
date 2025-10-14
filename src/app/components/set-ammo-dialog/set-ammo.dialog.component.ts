@@ -62,14 +62,16 @@ export interface SetAmmoDialogData {
                 (change)="onAmmoTypeChange($event)"
                 required
             >
-                <option
-                    *ngFor="let ammo of data.ammoOptions"
-                    [value]="ammo.internalName"
-                    [selected]="ammo.internalName === data.currentAmmo.internalName"
-                >    
-                {{ ammo.shortName }}
-                <ng-container *ngIf="data.ammoOptions.length > 1 && ammo.internalName === data.originalAmmo.internalName && data.originalAmmo.internalName != data.currentAmmo.internalName"> ★</ng-container>
-                </option>
+                @for (ammo of data.ammoOptions; let i = $index; track i) {
+                    <option
+                        [value]="ammo.internalName"
+                        [selected]="ammo.internalName === data.currentAmmo.internalName"
+                    >{{ ammo.shortName }}
+                    @if (data.ammoOptions.length > 1 
+                    && ammo.internalName === data.originalAmmo.internalName 
+                    && data.originalAmmo.internalName != data.currentAmmo.internalName){ ★}
+                    </option>
+                }
             </select>
             <div class="quantity-group">
                 <input
@@ -87,13 +89,14 @@ export interface SetAmmoDialogData {
             </div>
         </div>
         <div dialog-actions>
-            <button
-                *ngFor="let btn of buttons"
-                (click)="btn.value === 'ok' ? submit() : close()"
-                class="bt-button {{ btn.class }}"
-            >
-                {{ btn.label }}
-            </button>
+            @for (btn of buttons; let i = $index; track i) {
+                <button
+                    (click)="btn.value === 'ok' ? submit() : close()"
+                    class="bt-button {{ btn.class }}"
+                >
+                    {{ btn.label }}
+                </button>
+            }
         </div>
     </div>
     `,

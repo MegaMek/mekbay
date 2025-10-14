@@ -169,24 +169,24 @@ export class SvgZoomPanService {
         this.applyTransform();
     }
 
-    setupEventListeners(svg: SVGSVGElement) {
+    setupEventListeners(container: HTMLDivElement) {
         // Mouse wheel zoom
-        svg.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
+        container.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
 
         // Pointer events for pan
-        svg.addEventListener('pointerdown', this.onPointerDown.bind(this));
-        svg.addEventListener('pointermove', this.onPointerMove.bind(this));
-        svg.addEventListener('pointerup', this.onPointerUp.bind(this));
-        svg.addEventListener('pointerleave', this.onPointerUp.bind(this));
-        svg.addEventListener('pointercancel', this.onPointerUp.bind(this));
+        container.addEventListener('pointerdown', this.onPointerDown.bind(this));
+        container.addEventListener('pointermove', this.onPointerMove.bind(this));
+        container.addEventListener('pointerup', this.onPointerUp.bind(this));
+        container.addEventListener('pointerleave', this.onPointerUp.bind(this));
+        container.addEventListener('pointercancel', this.onPointerUp.bind(this));
 
         // Touch events for pinch-zoom
-        svg.addEventListener('touchstart', this.onTouchStart.bind(this), { passive: false });
-        svg.addEventListener('touchmove', this.onTouchMove.bind(this), { passive: false });
-        svg.addEventListener('touchend', this.onTouchEnd.bind(this), { passive: false });
+        container.addEventListener('touchstart', this.onTouchStart.bind(this), { passive: false });
+        container.addEventListener('touchmove', this.onTouchMove.bind(this), { passive: false });
+        container.addEventListener('touchend', this.onTouchEnd.bind(this), { passive: false });
 
         // Double-click to reset view
-        svg.addEventListener('dblclick', (event: MouseEvent) => {
+        container.addEventListener('dblclick', (event: MouseEvent) => {
             const target = event.target as Element;
             const isInteractiveElement = SvgZoomPanService.NON_INTERACTIVE_SELECTORS.some(selector =>
                 target.closest(selector)

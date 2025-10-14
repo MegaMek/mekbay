@@ -39,6 +39,7 @@ import { SvgInteractionService } from './svg-interaction.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { SvgCanvasOverlayComponent } from './svg-canvas-overlay.component';
 import { SvgDirectCanvasOverlayComponent } from './svg-direct-canvas-overlay.component';
+import { OptionsService } from '../../services/options.service';
 
 /*
  * Author: Drake
@@ -47,7 +48,7 @@ import { SvgDirectCanvasOverlayComponent } from './svg-direct-canvas-overlay.com
     selector: 'svg-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, SvgDirectCanvasOverlayComponent],
+    imports: [CommonModule, SvgCanvasOverlayComponent, SvgDirectCanvasOverlayComponent],
     providers: [SvgZoomPanService, SvgInteractionService],
     templateUrl: './svg-viewer.component.html',
     styleUrls: ['./svg-viewer.component.css']
@@ -58,6 +59,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     private zoomPanService = inject(SvgZoomPanService);
     private interactionService = inject(SvgInteractionService);
     private forceBuilder = inject(ForceBuilderService);
+    optionsService = inject(OptionsService);
     unit = input<ForceUnit | null>(null);
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
@@ -160,6 +162,9 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             this.diffHeatTextRef()
         );
 
+        // Setup zoom and pan event listeners
+        this.zoomPanService.setupEventListeners(this.containerRef().nativeElement);
+
         // Monitor picker open state
         effect(() => {
             const pickerOpen = this.interactionService.isAnyPickerOpen();
@@ -189,14 +194,6 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     protected restoreViewState(): void {
         const viewState = this.unit()?.viewState || null;
         this.zoomPanService.restoreViewState(viewState);
-    }
-
-    protected setupSvgEvents(svg: SVGSVGElement): void {
-        // Setup zoom and pan event listeners
-        this.zoomPanService.setupEventListeners(svg);
-
-        // Prevent context menu
-        svg.addEventListener('contextmenu', (event: MouseEvent) => event.preventDefault());
     }
 
     protected setupInteractions(svg: SVGSVGElement): void {
@@ -243,7 +240,6 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             this.currentSvg.set(svg);
 
             // Setup events for the newly attached SVG
-            this.setupSvgEvents(svg);            
             this.setupInteractions(svg);
 
             // Update dimensions and restore view state

@@ -7,10 +7,12 @@
         [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
         [value]="this.filtersService.search()" (input)="setSearch(searchInput.value)" (focus)="focused.set(true)"
         id="unit-search-input" autocomplete="off" />
-    <button *ngIf="this.filtersService.search().length > 0" class="searchbar-cancel-btn" type="button"
-        (click)="setSearch(''); searchInput.focus();" aria-label="Clear search" tabindex="-1">
-        &#10005;
-    </button>
+    @if (this.filtersService.search().length > 0) {
+        <button class="searchbar-cancel-btn" type="button"
+            (click)="setSearch(''); searchInput.focus();" aria-label="Clear search" tabindex="-1">
+            &#10005;
+        </button>
+    }
     <button #advBtn class="bt-button adv-btn" [class.active]="isAdvActive()"
         [disabled]="!this.filtersService.isDataReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
@@ -24,19 +26,17 @@
 <div #resultsDropdown class="results-dropdown framed-borders" [class.expanded]="this.expandedView()"
     [hidden]="!this.filtersService.isDataReady() || !resultsVisible()" [ngStyle]="resultsDropdownStyle()">
     <div class="results-dropdown-content">
-        <ng-container *ngIf="this.filtersService.filteredUnits().length > 0; else noResults">
+        @if (this.filtersService.filteredUnits().length > 0) {
             <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
                 [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1350" tabindex="0">
                 <div class="results-dropdown-item unit-card"
                     *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
                     [class.active]="activeIndex() === i" (mouseenter)="activeIndex.set(i)" (click)="onUnitClick(unit)">
 
-                    <ng-container *ngIf="this.expandedView(); else compactView">
+                    @if (this.expandedView()) {
                         <ng-container *ngTemplateOutlet="expandedView; context: { unit: unit }"></ng-container>
-                    </ng-container>
-
-                    <!-- Compact View Template -->
-                    <ng-template #compactView>
+                    } @else {
+                        <!-- Compact View Template -->
                         <div class="unit-image-container">
                             <img class="icon" [src]="getUnitImg(unit)"
                                 (error)="$event.target.src = '/images/unknown.png'"
@@ -45,9 +45,11 @@
                         <div class="unit-data-container">
                             <div class="secondary-info">
                                 <div class="model" [innerHTML]="highlight(unit.model)"></div>
-                                <div class="role" *ngIf="unit.role && (unit.role !== 'None')"
-                                    [class.sort-slot]="this.filtersService.selectedSort() === 'role'">{{ unit.role }}
-                                </div>
+                                @if (unit.role && (unit.role !== 'None')) {
+                                    <div class="role"
+                                        [class.sort-slot]="this.filtersService.selectedSort() === 'role'">{{ unit.role }}
+                                    </div>
+                                }
                             </div>
                             <div class="primary-info">
                                 <div class="chassis" [innerHTML]="highlight(unit.chassis)"></div>
@@ -66,124 +68,129 @@
                                     <div class="info-slot"
                                         [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
                                         <span class="value">{{ unit.year }}</span>
-                                        <img *ngIf="getEraImg(unit)" [src]="getEraImg(unit)" class="icon era-icon"
-                                            alt="Intro Year and Era" [title]="unit._era?.name" />
+                                        @if (getEraImg(unit); as eraImg) {
+                                            <img [src]="eraImg" class="icon era-icon" alt="Era"
+                                                [title]="unit._era?.name" />
+                                        }
                                     </div>
-                                    <ng-container *ngIf="getSortSlot(unit) as slot">
+                                    @if (getSortSlot(unit); as slot) {
                                         <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
                                             <span class="value">
-                                                <ng-container *ngIf="slot.label">{{ slot.label }}: </ng-container>{{
-                                                slot.value }}
+                                                @if(slot.label) { {{ slot.label }}: } {{ slot.value }}
                                             </span>
-                                            <img *ngIf="slot.img" [src]="slot.img" class="icon" [alt]="slot.alt">
+                                            @if (slot.img) {<img [src]="slot.img" class="icon" [alt]="slot.alt">}
                                         </div>
-                                    </ng-container>
+                                    }
                                 </div>
                                 <span class="info-spanner"></span>
                                 <div class="info-slot-tags">
                                     <a class="add-tag-btn" (click)="onAddTag(unit, $event)" title="Add tag"
                                         aria-label="Add tag">
-                                        <svg *ngIf="!unit._tags || unit._tags.length === 0" fill="none"
-                                            stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24"
-                                            xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                                            <path
-                                                d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z"
-                                                stroke-width="1.5" />
-                                            <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
-                                        </svg>
-                                        <ng-container *ngIf="unit._tags && unit._tags.length > 0">
+                                        @if (!unit._tags || unit._tags.length === 0) {
+                                            <svg fill="none"
+                                                stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24"
+                                                xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                                                <path
+                                                    d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z"
+                                                    stroke-width="1.5" />
+                                                <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
+                                            </svg>
+                                        } @else {
                                             <span class="tags-counter">{{ unit._tags.length }}</span>
                                             <svg fill="var(--bt-yellow)" width="24px" height="24px" viewBox="0 0 24 24"
                                                 xmlns="http://www.w3.org/2000/svg">
                                                 <path
                                                     d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z" />
                                             </svg>
-                                        </ng-container>
+                                        }
                                     </a>
                                 </div>
                             </div>
                         </div>
-                    </ng-template>
+                    }
 
                 </div>
             </cdk-virtual-scroll-viewport>
 
-            <div class="results-footer" *ngIf="this.filtersService.filteredUnits().length > 0">
-                <div class="results-expand">
-                    <button type="button" class="bt-button expand-btn"
-                        (click)="this.expandedView.set(!this.expandedView())"
-                        [title]="this.expandedView() ? 'Collapse View' : 'Expand View'"
-                        [attr.aria-label]="this.expandedView() ? 'Collapse View' : 'Expand View'">
-                        <ng-container *ngIf="this.expandedView(); else expandView">
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                aria-hidden="true" role="img">
-                                <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor"
-                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                        </ng-container>
-                        <ng-template #expandView>
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                aria-hidden="true" role="img">
-                                <path d="M14 10L21 3M21 3H15M21 3V9M10 14L3 21M3 21H9M3 21L3 15" stroke="currentColor"
-                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                        </ng-template>
-                    </button>
+            @if (this.filtersService.filteredUnits().length > 0) {
+                <div class="results-footer">
+                    <div class="results-expand">
+                        <button type="button" class="bt-button expand-btn"
+                            (click)="this.expandedView.set(!this.expandedView())"
+                            [title]="this.expandedView() ? 'Collapse View' : 'Expand View'"
+                            [attr.aria-label]="this.expandedView() ? 'Collapse View' : 'Expand View'">
+                            @if (this.expandedView()) {
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                                    aria-hidden="true" role="img">
+                                    <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            } @else {
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                                    aria-hidden="true" role="img">
+                                    <path d="M14 10L21 3M21 3H15M21 3V9M10 14L3 21M3 21H9M3 21L3 15" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            }
+                        </button>
+                    </div>
+                    <div class="results-count">
+                        {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length
+                        === 1 ? '' : 's' }}
+                    </div>
+                    <div class="results-sort">
+                        <select #sortSel class="bt-input sort-select"
+                            (change)="this.filtersService.setSortOrder(sortSel.value)">
+                            @for (opt of SORT_OPTIONS; let i = $index; track i) {
+                                <option [value]="opt.key"
+                                    [selected]="opt.key === this.filtersService.selectedSort()">
+                                    {{ opt.label }}
+                                </option>
+                            }
+                        </select><button type="button" class="bt-button sort-direction-btn"
+                            (click)="this.filtersService.setSortDirection(this.filtersService.selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
+                            [title]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
+                            [attr.aria-label]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+                            @if (this.filtersService.selectedSortDirection() === 'asc') {
+                                <!-- ASC -->
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                                    aria-hidden="true" role="img">
+                                    <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                    <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                    <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                    <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            } @else {
+                                <!-- DESC -->
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                                    aria-hidden="true" role="img">
+                                    <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                    <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                    <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                    <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                        stroke-linejoin="round" />
+                                </svg>
+                            }
+                        </button>
+                    </div>
                 </div>
-                <div class="results-count">
-                    {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length
-                    === 1 ? '' : 's' }}
-                </div>
-                <div class="results-sort">
-                    <select #sortSel class="bt-input sort-select"
-                        (change)="this.filtersService.setSortOrder(sortSel.value)">
-                        <option *ngFor="let opt of SORT_OPTIONS" [value]="opt.key"
-                            [selected]="opt.key === this.filtersService.selectedSort()">
-                            {{ opt.label }}
-                        </option>
-                    </select><button type="button" class="bt-button sort-direction-btn"
-                        (click)="this.filtersService.setSortDirection(this.filtersService.selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
-                        [title]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
-                        [attr.aria-label]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
-                        <ng-container *ngIf="this.filtersService.selectedSortDirection() === 'asc'; else descIcon">
-                            <!-- ASC -->
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                aria-hidden="true" role="img">
-                                <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5"
-                                    stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                        </ng-container>
-                        <ng-template #descIcon>
-                            <!-- DESC -->
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                aria-hidden="true" role="img">
-                                <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                    stroke-linejoin="round" />
-                            </svg>
-                        </ng-template>
-                    </button>
-                </div>
-            </div>
-        </ng-container>
-        <ng-template #noResults>
+            }
+        } @else {
             <div class="results-dropdown-item no-results">
                 No results
             </div>
-        </ng-template>
+        }
     </div>
 </div>
 <div #advPanel class="adv-panel framed-borders" [hidden]="!advOpen()" [ngStyle]="advPanelStyle()"
     [class.docked]="advPanelDocked()">
-    <div *ngIf="this.expandedView() && this.advPanelDocked()" class="adv-panel-drag-handle"
-        (mousedown)="onAdvPanelDragStart($event)" (click)="onAdvPanelDragHandleClick($event)">
-        <div class="drag-bar"></div>
-    </div>
+    @if (this.expandedView() && this.advPanelDocked()) {
+        <div class="adv-panel-drag-handle"
+            (mousedown)="onAdvPanelDragStart($event)" (click)="onAdvPanelDragHandleClick($event)">
+            <div class="drag-bar"></div>
+        </div>
+    }
     <div class="adv-panel-header" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         <div class="pilot-skills-section framed-borders">
             <div class="pilot-skills-controls">
@@ -192,8 +199,9 @@
                     <select id="gunnery-skill" class="bt-input skill-select"
                         [value]="this.filtersService.pilotGunnerySkill()"
                         (change)="setPilotSkill('gunnery', +$any($event.target).value)">
-                        <option *ngFor="let i of [0,1,2,3,4,5,6,7,8]" [value]="i"
-                            [selected]="i === this.filtersService.pilotGunnerySkill()">{{ i }}</option>
+                        @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
+                            <option [value]="n" [selected]="n === this.filtersService.pilotGunnerySkill()">{{ n }}</option>
+                        }
 
                     </select>
                 </div>
@@ -202,8 +210,9 @@
                     <select id="piloting-skill" class="bt-input skill-select"
                         [value]="this.filtersService.pilotPilotingSkill()"
                         (change)="setPilotSkill('piloting', +$any($event.target).value)">
-                        <option *ngFor="let i of [0,1,2,3,4,5,6,7,8]" [value]="i"
-                            [selected]="i === this.filtersService.pilotPilotingSkill()">{{ i }}</option>
+                        @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
+                            <option [value]="n" [selected]="n === this.filtersService.pilotPilotingSkill()">{{ n }}</option>
+                        }
                     </select>
                 </div>
             </div>
@@ -212,44 +221,47 @@
     </div>
     <div class="adv-panel-content" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         <!-- Dropdown filters -->
-        <ng-container *ngFor="let conf of ADVANCED_FILTERS">
-            <ng-container *ngIf="this.filtersService.advOptions()[conf.key]?.type === 'dropdown'">
-                <div class="filter-row" *ngIf="this.filtersService.advOptions()[conf.key] as optionsData">
-                    <multi-select-dropdown class="dropdown" *ngIf="optionsData.type === 'dropdown'"
-                        [label]="optionsData.label" [options]="optionsData.options" [selected]="optionsData.value"
-                        [multistate]="conf.multistate ?? false" [countable]="conf.countable ?? false"
-                        (selectionChange)="setAdvFilter(conf.key, $event)">
-                    </multi-select-dropdown>
-                </div>
-            </ng-container>
-        </ng-container>
-        <!-- Range Filters -->
-        <ng-container *ngFor="let conf of ADVANCED_FILTERS">
-            <ng-container *ngIf="this.filtersService.advOptions()[conf.key]?.type === 'range'">
-                <div class="filter-row" *ngIf="this.filtersService.advOptions()[conf.key] as optionsData">
-                    <div class="range" *ngIf="optionsData.type === 'range'">
-                        <label>{{ optionsData.label }}
-                            <span class="range-values">
-                                (<span class="range-value-min clickable"
-                                    (click)="openRangeValueDialog(conf.key, 'min', optionsData.value[0], optionsData.options)">{{
-                                    formatValue(optionsData.value[0], false, true) }}</span>~<span
-                                    class="range-value-max clickable"
-                                    (click)="openRangeValueDialog(conf.key, 'max', optionsData.value[1], optionsData.options)">{{
-                                    formatValue(optionsData.value[1], false, true) }}</span>)
-                            </span>
-                        </label>
-                        <range-slider [min]="optionsData.totalRange[0]" [max]="optionsData.totalRange[1]"
-                            [value]="optionsData.value" [availableRange]="optionsData.options"
-                            [interacted]="optionsData.interacted" [curve]="conf.curve ?? 1"
-                            (valueChange)="setAdvFilter(conf.key, $event)">
-                        </range-slider>
+        @for (conf of ADVANCED_FILTERS; let i = $index; track i) {
+            @if (this.filtersService.advOptions()[conf.key]; as optionsData) {
+                @if (optionsData.type === 'dropdown') {
+                    <div class="filter-row">
+                        <multi-select-dropdown class="dropdown"
+                            [label]="optionsData.label" [options]="optionsData.options" [selected]="optionsData.value"
+                            [multistate]="conf.multistate ?? false" [countable]="conf.countable ?? false"
+                            (selectionChange)="setAdvFilter(conf.key, $event)">
+                        </multi-select-dropdown>
                     </div>
-                </div>
-            </ng-container>
-        </ng-container>
+                }
+            }
+        }
+        <!-- Range Filters -->
+        @for (conf of ADVANCED_FILTERS; let i = $index; track i) {
+            @if (this.filtersService.advOptions()[conf.key]; as optionsData) {
+                @if (optionsData.type === 'range') {
+                    <div class="filter-row">
+                        <div class="range">
+                            <label>{{ optionsData.label }}
+                                <span class="range-values">
+                                    (<span class="range-value-min clickable"
+                                        (click)="openRangeValueDialog(conf.key, 'min', optionsData.value[0], optionsData.options)">{{
+                                        formatValue(optionsData.value[0], false, true) }}</span>~<span
+                                        class="range-value-max clickable"
+                                        (click)="openRangeValueDialog(conf.key, 'max', optionsData.value[1], optionsData.options)">{{
+                                        formatValue(optionsData.value[1], false, true) }}</span>)
+                                </span>
+                            </label>
+                            <range-slider [min]="optionsData.totalRange[0]" [max]="optionsData.totalRange[1]"
+                                [value]="optionsData.value" [availableRange]="optionsData.options"
+                                [interacted]="optionsData.interacted" [curve]="conf.curve ?? 1"
+                                (valueChange)="setAdvFilter(conf.key, $event)">
+                            </range-slider>
+                        </div>
+                    </div>
+                }
+            }
+        }
     </div>
 </div>
-
 
 
 <ng-template #expandedView let-unit="unit">
@@ -265,24 +277,27 @@
                 <div class="expanded-chassis" [innerHTML]="highlight(unit.chassis)"></div>
             </div>
             <div class="expanded-subtitle">
-                <div class="subtitle-line role" *ngIf="unit.role && unit.role !== 'None'">{{ unit.role }}</div>
+                @if (unit.role && unit.role !== 'None') {
+                    <div class="subtitle-line role">{{ unit.role }}</div>
+                }
                 <div class="subtitle-line">
-                    <span>{{ unit.type }}<span *ngIf="unit.subtype && unit.subtype !== unit.type"> - {{ unit.subtype
-                            }}</span></span>
+                    <span>{{ unit.type }}@if(unit.subtype && unit.subtype !== unit.type){<span> - {{ unit.subtype }}</span>}</span>
                     <span> • {{ unit.weightClass }}</span>
                 </div>
                 <div class="subtitle-line">
                     <div class="info-slot-tags">
-                        <span class="tag" *ngFor="let tag of unit._tags">{{ tag }}</span>
-                        <a class="add-tag-btn" (click)="onAddTag(unit, $event)" title="Add tag" aria-label="Add tag">
-                            <svg fill="none" stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24"
-                                xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                                <path
-                                    d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z"
-                                    stroke-width="1.5" />
-                                <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
-                            </svg>
-                        </a>
+                        @for(tag of unit._tags; let i = $index; track i) {
+                            <span class="tag">{{ tag }}</span>
+                            <a class="add-tag-btn" (click)="onAddTag(unit, $event)" title="Add tag" aria-label="Add tag">
+                                <svg fill="none" stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24"
+                                    xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                                    <path
+                                        d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z"
+                                        stroke-width="1.5" />
+                                    <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
+                                </svg>
+                            </a>
+                        }
                     </div>
                 </div>
             </div>
@@ -313,8 +328,8 @@
                     <div class="info-item">
                         <span class="info-label muted">Intro Year: </span>
                         <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">{{
-                            unit.year }} <img *ngIf="getEraImg(unit)" [src]="getEraImg(unit)" class="era-icon" alt="Era"
-                                [title]="unit._era?.name" /></span>
+                            unit.year }} @if(getEraImg(unit); as eraImg) { <img [src]="eraImg" class="era-icon" alt="Era"
+                                [title]="unit._era?.name" /> }</span>
 
                     </div>
                     <div class="info-item">
@@ -322,37 +337,49 @@
                         <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'level'">{{
                             unit.level }}</span>
                     </div>
-                    <div class="info-item" *ngIf="unit.cost">
-                        <span class="info-label muted">C-Bill:</span>
-                        <span class="info-value">{{ formatValue(unit.cost, true, false) }}</span>
-                    </div>
-                    <div class="info-item" *ngIf="unit.armorType">
-                        <span class="info-label muted">Armor:</span>
-                        <span class="info-value">{{ unit.armorType }}</span>
-                    </div>
-                    <div class="info-item" *ngIf="unit.structureType">
-                        <span class="info-label muted">Structure:</span>
-                        <span class="info-value">{{ unit.structureType }}</span>
-                    </div>
-                    <div class="info-item" *ngIf="unit.moveType">
-                        <span class="info-label muted">Motive:</span>
-                        <span class="info-value">{{ unit.moveType }}</span>
-                    </div>
-                    <div class="info-item" *ngIf="unit.engine">
-                        <span class="info-label muted">Engine:</span>
-                        <span class="info-value"><span *ngIf="unit.engineRating">{{ unit.engineRating }} </span>{{
-                            unit.engine }}</span>
-                    </div>
-                    <div class="info-item" *ngIf="unit.c3">
-                        <span class="info-label muted">Network:</span>
-                        <span class="info-value">{{ unit.c3 }}</span>
-                    </div>
-                    <div class="info-item" *ngIf="unit.walk">
-                        <span class="info-label muted">Movement:</span>
-                        <span class="info-value">{{ unit.walk }} / {{ unit.run }}<span *ngIf="unit.run2 != unit.run">
-                                [{{ unit.run2 }}]</span><ng-container *ngIf="unit.jump"> / {{ unit.jump
-                                }}</ng-container></span>
-                    </div>
+                    @if (unit.cost) {
+                        <div class="info-item">
+                            <span class="info-label muted">C-Bill:</span>
+                            <span class="info-value">{{ formatValue(unit.cost, true, false) }}</span>
+                        </div>
+                    }
+                    @if (unit.armorType) {
+                        <div class="info-item">
+                            <span class="info-label muted">Armor:</span>
+                            <span class="info-value">{{ unit.armorType }}</span>
+                        </div>
+                    }
+                    @if (unit.structureType) {
+                        <div class="info-item">
+                            <span class="info-label muted">Structure:</span>
+                            <span class="info-value">{{ unit.structureType }}</span>
+                        </div>
+                    }
+                    @if (unit.moveType) {
+                        <div class="info-item">
+                            <span class="info-label muted">Motive:</span>
+                            <span class="info-value">{{ unit.moveType }}</span>
+                        </div>
+                    }
+                    @if (unit.engine) {
+                        <div class="info-item">
+                            <span class="info-label muted">Engine:</span>
+                            <span class="info-value">@if(unit.engineRating){{{ unit.engineRating }} }{{
+                                unit.engine }}</span>
+                        </div>
+                    }
+                    @if (unit.c3) {
+                        <div class="info-item">
+                            <span class="info-label muted">Network:</span>
+                            <span class="info-value">{{ unit.c3 }}</span>
+                        </div>
+                    }
+                    @if (unit.walk) {
+                        <div class="info-item">
+                            <span class="info-label muted">Movement:</span>
+                            <span class="info-value">{{ unit.walk }} / {{ unit.run }}@if(unit.run2 != unit.run){ [{{ unit.run2 }}]}@if(unit.jump){ / {{ unit.jump }}}</span>
+                        </div>
+                    }
                 </div>
 
             </div>
@@ -360,24 +387,29 @@
             <div class="expanded-stats">
                 <!-- Stat Bars -->
                 <div class="stat-bars-columns">
-                    <div class="stat-bar-row" *ngFor="let spec of (unit | statBarSpecs)">
-                        <div class="stat-bar">
-                            <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
-                        </div>
-                        <span class="stat-label">{{ spec.label }}</span>
-                        <span class="stat-value">{{ spec.value }}</span>
-                    </div>
+                    @if((unit | statBarSpecs); as specsList) {
+                        @for (spec of specsList; let i = $index; track i) {
+                            <div class="stat-bar-row">
+                                <div class="stat-bar">
+                                    <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
+                                </div>
+                                <span class="stat-label">{{ spec.label }}</span>
+                                <span class="stat-value">{{ spec.value }}</span>
+                            </div>
+                        }
+                    }
                 </div>
             </div>
 
             <div class="expanded-right">
                 <!-- Right Column: Components -->
-                <ng-container *ngIf="unit.comp | expandedComponents as componentsList">
-                    <ng-container *ngIf="componentsList.length > 0">
+                @if ((unit.comp | expandedComponents); as componentsList) {
+                    @if (componentsList.length > 0) {
                         <div class="components-header">Equipment</div>
                         <div class="expanded-components">
                             <div class="components-pills">
-                                <div class="component-pill" *ngFor="let comp of componentsList"
+                                @for (comp of componentsList; let last = $last; let i = $index; track i) {
+                                <div class="component-pill"
                                     [ngClass]="getTypeClass(comp.t)" 
                                     (click)="$event.preventDefault(); $event.stopPropagation()"
                                     (mouseenter)="onCompMouseEnter(unit, comp, $event)"
@@ -385,23 +417,24 @@
                                     <span class="pill-qty">{{ comp.q }}×</span>
                                     <span class="pill-name">{{ comp.n }}</span>
                                 </div>
+                                }
                             </div>
                         </div>
-                    </ng-container>
-                </ng-container>
-                <ng-container *ngIf="unit.comp | filterAmmo as ammoList">
-                    <ng-container *ngIf="ammoList.length > 0">
-                        <div class="ammo-list"><span class="info-label muted">Ammo: </span>
-                            <ng-container *ngFor="let comp of ammoList; let last = last">
+                    }
+                }
+                @if ((unit.comp | filterAmmo); as ammoList) {
+                    @if (ammoList.length > 0) {
+                        <div class="ammo-list">
+                            <span class="info-label muted">Ammo: </span>
+                            @for (comp of ammoList; let last = $last; let i = $index; track i) {                                
                                 <span class="ammo-pill" 
                                     (click)="$event.preventDefault(); $event.stopPropagation()"
                                     (mouseenter)="onCompMouseEnter(unit, comp, $event)"
-                                    (mouseleave)="onCompMouseLeave()">({{ comp.n }}) {{ comp.q2 }}</span><span
-                                    *ngIf="!last">, </span>
-                            </ng-container>
+                                    (mouseleave)="onCompMouseLeave()">({{ comp.n }}) {{ comp.q2 }}</span>@if(!last){<span>, </span>}
+                            }
                         </div>
-                    </ng-container>
-                </ng-container>
+                    }
+                }
             </div>
         </div>
     </div>

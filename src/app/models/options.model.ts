@@ -39,4 +39,5 @@ export interface Options {
     sheetsColor: 'normal' | 'night';
     pickerStyle: 'default' | 'radial' | 'linear';
     quickActions: 'enabled' | 'disabled';
+    canvasMode: 'vector' | 'raster';
 }

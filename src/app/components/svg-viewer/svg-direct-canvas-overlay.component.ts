@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ChangeDetectionStrategy, inject, input, signal, viewChild, effect, computed, ElementRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, input, DestroyRef, signal, viewChild, effect, computed, ElementRef, afterNextRender } from '@angular/core';
 import { SvgZoomPanService } from './svg-zoom-pan.service';
 import { Dialog } from '@angular/cdk/dialog';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
@@ -43,7 +43,7 @@ import { firstValueFrom } from 'rxjs';
  */
 
 @Component({
-    selector: 'svg-canvas-overlay',
+    selector: 'svg-direct-canvas-overlay',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule],
@@ -54,43 +54,68 @@ import { firstValueFrom } from 'rxjs';
         [width]="canvasWidth"
         [height]="canvasHeight"
         [ngStyle]="canvasTransformStyle()"
-        [style.borderColor]="mode() === 'brush' ? brushColor() : 'transparent'"
-        (mousedown)="onPointerDown($event)"
-        (touchstart)="onPointerDown($event)"
-        (mouseup)="onPointerUp($event)"
-        (touchend)="onPointerUp($event)"
-        (mousemove)="onPointerMove($event)"
-        (touchmove)="onPointerMove($event)"
       ></canvas>
     </div>
-    <div class="fab-container">
-      <!-- Main FAB: Pen -->
+    <div class="fab-container"
+        (pointerdown)="$event.stopPropagation()"
+        (pointerup)="$event.stopPropagation()"
+        (pointermove)="$event.stopPropagation()"
+        (mousedown)="$event.stopPropagation()"
+        (mouseup)="$event.stopPropagation()"
+        (mousemove)="$event.stopPropagation()"
+        (click)="$event.stopPropagation()"
+        (touchstart)="$event.stopPropagation()"
+        (touchend)="$event.stopPropagation()"
+        (touchmove)="$event.stopPropagation()"
+        (contextmenu)="$event.stopPropagation()"
+    >
       <button class="fab main-fab"
+        [ngStyle]="mainFabStyle()"
         [class.active]="mode() !== 'none'"
         (click)="toggleDrawMode()"
         aria-label="Toggle Draw Mode">D</button>
-      <!-- Show when draw mode is active -->
-      <ng-container *ngIf="mode() !== 'none'">
+        @if (mode() !== 'none') {
         <div class="controls-fab-column">
-            <!-- Clear Canvas -->
             <button class="fab mini-fab clear-fab" (click)="requestClearCanvas()" aria-label="Clear Canvas">C</button>
-            <!-- Eraser Toggle -->
             <button class="fab mini-fab eraser-fab"
             [class.active]="mode() === 'eraser'"
             (click)="toggleEraser()"
             aria-label="Eraser">E</button>
         </div>
-        <!-- Color Picker -->
         <div class="color-fab-row">
-          <button *ngFor="let color of colorOptions"
-            class="fab mini-fab color-fab"
-            [ngStyle]="{'background': color}"
-            [class.selected]="brushColor() === color && mode() === 'brush'"
-            (click)="setBrushColor(color)"
-            [attr.aria-label]="'Set color ' + color">
-          </button>
+          @for (color of colorOptions; let i = $index; track i) {
+            <button
+                class="fab mini-fab color-fab"
+                [ngStyle]="{'background': color}"
+                [class.selected]="brushColor() === color && mode() === 'brush'"
+                (click)="setBrushColor(color)"
+                [attr.aria-label]="'Set color ' + color">
+            </button>
+          }
         </div>
-      </ng-container>
+        <div class="line-width-slider-row">
+          <input
+            type="range"
+            min="2"
+            max="24"
+            [value]="brushSize()"
+            (input)="onBrushSizeChange($event)"
+            aria-label="Brush Size"
+            (pointerdown)="$event.stopPropagation()"
+            (pointerup)="$event.stopPropagation()"
+            (pointermove)="$event.stopPropagation()"
+            (mousedown)="$event.stopPropagation()"
+            (mouseup)="$event.stopPropagation()"
+            (mousemove)="$event.stopPropagation()"
+            (click)="$event.stopPropagation()"
+            (touchstart)="$event.stopPropagation()"
+            (touchend)="$event.stopPropagation()"
+            (touchmove)="$event.stopPropagation()"
+            (contextmenu)="$event.stopPropagation()"
+          />
+          <span class="line-width-value">{{ brushSize() }}</span>
+        </div>
+        }
     </div>
     `,
     styles: `
@@ -118,7 +143,6 @@ import { firstValueFrom } from 'rxjs';
             background: transparent;
             cursor: crosshair;
             opacity: 0.95;
-            /* border: 2px solid transparent; */
             box-sizing: border-box;
         }
         .svg-canvas-overlay.active .drawing-canvas {
@@ -155,7 +179,7 @@ import { firstValueFrom } from 'rxjs';
             transition: box-shadow 0.2s, color 0.2s, border 0.2s, width 0.2s, height 0.2s;
         }
         .fab.main-fab {
-            background: #1976d2;
+            background: gray;
             color: #fff;
             width: 56px;
             height: 56px;
@@ -209,12 +233,39 @@ import { firstValueFrom } from 'rxjs';
             min-width: 32px;
             min-height: 32px;
             box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+        }
+        .line-width-slider-row {
+            position: absolute;
+            right: 64px;
+            bottom: 48px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 1;
+            width: 120px;
+            pointer-events: auto;
+        }
+        .line-width-slider-row input[type="range"] {
+            pointer-events: auto;
+            flex: 1;
+            accent-color: #1976d2;
+        }
+        .line-width-value {
+            min-width: 24px;
+            text-align: center;
+            font-size: 14px;
+            color: #222;
+            background: #fff;
+            border-radius: 8px;
+            padding: 2px 6px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
         }`,
 })
 export class SvgDirectCanvasOverlayComponent {
     private static INTERNAL_SCALE = 2;
-    private static BRUSH_SIZE = 2;
-    private static ERASER_SIZE = 16;
+    private static BRUSH_SIZE = 4;
+    private static ERASER_SIZE_MULTIPLIER = 2;
+    private destroyRef = inject(DestroyRef);
     private zoomPanService = inject(SvgZoomPanService);
     private dialog = inject(Dialog);
     canvasOverlayRef = viewChild.required<ElementRef<HTMLCanvasElement>>('canvasOverlay');
@@ -230,6 +281,11 @@ export class SvgDirectCanvasOverlayComponent {
     mode = signal<'brush' | 'eraser' | 'none'>('none');
     brushColor = signal<string>('#f00');
     colorOptions = ['#f00', '#00f', '#0f0', '#f0f', '#0ff', '#ff0'];
+    brushSize = signal<number>(SvgDirectCanvasOverlayComponent.BRUSH_SIZE);
+
+    private nativePointerDown = (event: MouseEvent | TouchEvent) => this.onPointerDown(event);
+    private nativePointerUp = (event: MouseEvent | TouchEvent) => this.onPointerUp(event);
+    private nativePointerMove = (event: MouseEvent | TouchEvent) => this.onPointerMove(event);
 
     canvasTransformStyle = computed(() => {
         const state = this.zoomPanService.getState();
@@ -243,6 +299,17 @@ export class SvgDirectCanvasOverlayComponent {
         };
     });
 
+    mainFabStyle = computed(() => {
+        if (this.mode() === 'brush') {
+            return { background: this.brushColor(), color: '#fff' };
+        }
+        if (this.mode() === 'eraser') {
+            return { background: '#fbc02d', color: '#222' };
+        }
+        // Default (inactive)
+        return { background: 'gray', color: '#fff' };
+    });
+
     get nativeElement(): HTMLElement {
         return this.canvasOverlayRef().nativeElement;
     }
@@ -251,7 +318,6 @@ export class SvgDirectCanvasOverlayComponent {
         effect(() => {
             this.canvasWidth = this.width() * SvgDirectCanvasOverlayComponent.INTERNAL_SCALE;
             this.canvasHeight = this.height() * SvgDirectCanvasOverlayComponent.INTERNAL_SCALE;
-            console.log(`Canvas size set to ${this.canvasWidth}x${this.canvasHeight}`);
         });
         effect(() => {
             console.log('Canvas data changed, importing...');
@@ -261,6 +327,37 @@ export class SvgDirectCanvasOverlayComponent {
                 this.importImageData(data);
             }
         });
+        afterNextRender(() => {
+            this.addEventListeners();
+        });
+        this.destroyRef.onDestroy(() => {
+            const canvas = this.canvasRef()?.nativeElement;
+            if (canvas) {
+                canvas.removeEventListener('pointerdown', this.nativePointerDown);
+                canvas.removeEventListener('touchstart', this.nativePointerDown);
+                canvas.removeEventListener('pointerup', this.nativePointerUp);
+                canvas.removeEventListener('touchend', this.nativePointerUp);
+                canvas.removeEventListener('pointermove', this.nativePointerMove);
+                canvas.removeEventListener('touchmove', this.nativePointerMove);
+            }
+        });
+    }
+
+     addEventListeners() {
+        const canvas = this.canvasRef()?.nativeElement;
+        if (canvas) {
+            canvas.addEventListener('pointerdown', this.nativePointerDown);
+            canvas.addEventListener('touchstart', this.nativePointerDown, { passive: false });
+            canvas.addEventListener('pointerup', this.nativePointerUp);
+            canvas.addEventListener('touchend', this.nativePointerUp, { passive: false });
+            canvas.addEventListener('pointermove', this.nativePointerMove);
+            canvas.addEventListener('touchmove', this.nativePointerMove, { passive: false });
+        }
+    }
+    
+    onBrushSizeChange(event: Event) {
+        const value = +(event.target as HTMLInputElement).value;
+        this.brushSize.set(value);
     }
 
     toggleDrawMode() {
@@ -334,6 +431,7 @@ export class SvgDirectCanvasOverlayComponent {
     onPointerDown(event: MouseEvent | TouchEvent) {
         if (this.mode() === 'none') return;
         event.preventDefault();
+        event.stopPropagation();
         const pos = this.getPointerPosition(event);
         if (!pos) return;
         this.isPaint = true;
@@ -354,11 +452,11 @@ export class SvgDirectCanvasOverlayComponent {
         if (this.mode() === 'eraser' || this.isRightPaint) {
             ctx.globalCompositeOperation = 'destination-out';
             ctx.strokeStyle = 'rgba(0,0,0,1)';
-            ctx.lineWidth = SvgDirectCanvasOverlayComponent.ERASER_SIZE;
+            ctx.lineWidth = this.brushSize() * SvgDirectCanvasOverlayComponent.ERASER_SIZE_MULTIPLIER;
         } else {
             ctx.globalCompositeOperation = 'source-over';
             ctx.strokeStyle = this.brushColor();
-            ctx.lineWidth = SvgDirectCanvasOverlayComponent.BRUSH_SIZE;
+            ctx.lineWidth = this.brushSize();
         }
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
@@ -370,20 +468,28 @@ export class SvgDirectCanvasOverlayComponent {
     }
 
     onPointerUp(event: MouseEvent | TouchEvent) {
-        if (!this.isPaint) return;      
-        event.preventDefault();  
+        if (this.mode() === 'none') return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!this.isPaint) return;
         if (event instanceof MouseEvent && event.button === 2) {
             this.isRightPaint = false;
         }
         this.isPaint = false;
         this.lastPoint = null;
-        const saveData = this.exportImageData();
-        console.log(`Memory usage for canvas data: ${saveData ? (saveData.length * 3 / 4 / 1024).toFixed(2) : 0} KB`);
+        // Export canvas data
+        const canvasData = this.exportImageData();
+        // Memory evaluation
+        const blob = new Blob([canvasData ?? '']);
+        const sizeKB = blob.size / 1024;
+        console.log(`Canvas image size is ${sizeKB.toFixed(2)} KB`);
     }
 
     onPointerMove(event: MouseEvent | TouchEvent) {
-        if (!this.isPaint || !this.lastPoint) return;
+        if (this.mode() === 'none') return;
         event.preventDefault();
+        event.stopPropagation();
+        if (!this.isPaint || !this.lastPoint) return;
         const ctx = this.getCanvasContext();
         if (!ctx) return;
         const pos = this.getPointerPosition(event);
