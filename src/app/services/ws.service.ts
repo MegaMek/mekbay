@@ -186,7 +186,7 @@ export class WsService {
                     if (msg.requestId === requestId) {
                         ws.removeEventListener('message', handler);
                         if (timeoutId) clearTimeout(timeoutId);
-                        resolve(msg.data || null);
+                        resolve(msg);
                     }
                 } catch {
                     resolve(null);

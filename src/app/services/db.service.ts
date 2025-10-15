@@ -38,7 +38,7 @@ import { Factions } from '../models/factions.model';
 import { Options } from '../models/options.model';
 import { Quirks } from '../models/quirks.model';
 import { EquipmentData } from '../models/equipment.model';
-import { Force } from '../models/force-unit.model';
+import { Force, SerializedForce } from '../models/force-unit.model';
 import { DataService } from './data.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { Injector } from '@angular/core';
@@ -285,11 +285,11 @@ export class DbService {
         return await this.saveDataToStore(tags, 'main', TAGS_STORE);
     }
 
-    public async getForce(instanceId: string): Promise<Force | null> {
-        return await this.getDataFromStore<Force>(instanceId, FORCE_STORE);
+    public async getForce(instanceId: string): Promise<SerializedForce | null> {
+        return await this.getDataFromStore<SerializedForce>(instanceId, FORCE_STORE);
     }
 
-    public async saveForce(force: Force): Promise<void> {
+    public async saveForce(force: SerializedForce): Promise<void> {
         if (!force.instanceId) {
             throw new Error('Force instance ID is required for saving.');
         }
@@ -342,8 +342,8 @@ export class DbService {
     private async deleteForceCanvasData(instanceId: string): Promise<void> {
         const force = await this.getForce(instanceId);
         if (!force) return;
-        const unitIds = force.units().map(unit => unit.id).filter(id => id);
-        await Promise.all(unitIds.map(id => this.deleteCanvasData(id!)));
+        const unitIds = force.units.map(unit => unit.id).filter(id => id);
+        await Promise.all(unitIds.map(id => this.deleteCanvasData(id)));
     }
 
     private async deleteCanvasData(unitId: string): Promise<void> {
@@ -351,6 +351,7 @@ export class DbService {
     }
 
     public async deleteForce(instanceId: string): Promise<void> {
+        await this.deleteForceCanvasData(instanceId);
         await this.deleteDataFromStore(instanceId, FORCE_STORE);
     }
 

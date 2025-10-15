@@ -89,7 +89,7 @@ export class ForceBuilderService {
 
         this.currentForce.set(newForce);
 
-        console.log(`ForceBuilderService: Setting new force with name "${this.force.name}" and instance ID "${this.force.instanceId}"`);
+        console.log(`ForceBuilderService: Setting new force with name "${this.force.name}" and instance ID "${this.force.instanceId()}"`);
 
         // Update URL to reflect the new force state
         if (updateUrl && this.urlStateInitialized) {
@@ -99,7 +99,7 @@ export class ForceBuilderService {
                 queryParams: {
                     units: unitParams.length > 0 ? unitParams.join(',') : null,
                     name: newForce.name || null,
-                    instance: newForce.instanceId || null
+                    instance: newForce.instanceId() || null
                 },
                 queryParamsHandling: 'replace',
                 replaceUrl: true
@@ -110,15 +110,16 @@ export class ForceBuilderService {
         this.forceChangedSubscription = this.currentForce().changed.subscribe(() => {
             this.dataService.saveForce(this.force);
             const currentInstanceParam = this.route.snapshot.queryParamMap.get('instance');
-            if (this.force.instanceId && currentInstanceParam !== this.force.instanceId) {
+            const forceInstanceId = this.force.instanceId();
+            if (forceInstanceId && currentInstanceParam !== forceInstanceId) {
                 this.router.navigate([], {
                     relativeTo: this.route,
-                    queryParams: { instance: this.force.instanceId },
+                    queryParams: { instance: forceInstanceId },
                     queryParamsHandling: 'merge',
                     replaceUrl: true
                 });
             }
-            console.log(`ForceBuilderService: Auto-saved force with instance ID ${this.force.instanceId}`);
+            console.log(`ForceBuilderService: Auto-saved force with instance ID ${forceInstanceId}`);
         });
     }
 
@@ -147,7 +148,7 @@ export class ForceBuilderService {
     }
 
     async promptSaveForceIfNeeded() {
-        if (this.force.instanceId || this.force.units().length == 0) {
+        if (this.force.instanceId() || this.force.units().length == 0) {
             return true;
         }
         // We have a force without an instanceId, so we ask the user if they want to save it
@@ -187,7 +188,7 @@ export class ForceBuilderService {
         this.selectUnit(force.units()[0] || null);
         this.urlStateInitialized = true; // Re-enable URL state initialization
         
-        console.log(`ForceBuilderService: Loaded force with name "${force.name}" and instance ID "${force.instanceId}"`);
+        console.log(`ForceBuilderService: Loaded force with name "${force.name}" and instance ID "${force.instanceId()}"`);
     }
 
     async createNewForce(name: string = 'New Force'): Promise<boolean> {
@@ -223,7 +224,7 @@ export class ForceBuilderService {
                 queryParams: {
                     units: unitParams.length > 0 ? unitParams.join(',') : null,
                     name: forceName || null,
-                    instance: this.force.instanceId || null
+                    instance: this.force.instanceId() || null
                 },
                 queryParamsHandling: 'merge',
                 replaceUrl: true
@@ -491,8 +492,11 @@ export class ForceBuilderService {
         }
 
         // If the last unit was removed and the force had an instanceId, create a new force
-        if (updatedUnits.length === 0 && this.force.instanceId) {
-            this.dataService.deleteForce(this.force.instanceId); // Is the last unit, delete the force
+        if (updatedUnits.length === 0) {
+            const forceInstanceId = this.force.instanceId();
+            if (forceInstanceId) {
+                this.dataService.deleteForce(forceInstanceId); // Is the last unit, delete the force
+            }
             this.createNewForce();
         } else {        
             this.generateForceNameIfNeeded();
@@ -509,7 +513,7 @@ export class ForceBuilderService {
     }
 
     private generateForceNameIfNeeded() {
-        if (!this.force.instanceId) {
+        if (!this.force.instanceId()) {
             this.force.setName(this.generateForceName(), false);
         }
     }
@@ -559,7 +563,7 @@ export class ForceBuilderService {
      * @param force The updated force instance.
      */
     remoteForceUpdate(force: Force) {
-        console.log(`ForceBuilderService: Remote force update received for instance ID ${force.instanceId}`);
+        console.log(`ForceBuilderService: Remote force update received for instance ID ${force.instanceId()}`);
         // this.setForce(force);
         // this.selectUnit(force.units()[0] || null);
         // this.force.emitChanged();

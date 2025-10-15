@@ -652,13 +652,13 @@ export class DataService {
     }
 
     public async saveForce(force: Force): Promise<void> {
-        if (!force.instanceId || !force.owned) {
-            force.instanceId = generateUUID();
+        if (!force.instanceId() || !force.owned) {
+            force.instanceId.set(generateUUID());
             force.owned = true;
         }
-        const key = force.instanceId;
+        const key = force.instanceId();
         await this.dbService.saveForce(force.serialize());
-        await this.saveForceCloud(force);
+        this.saveForceCloud(force);
     }
 
     public async listForces(): Promise<Force[]> {
@@ -672,16 +672,18 @@ export class DataService {
             return 0;
         };
         for (const force of localForces) {
-            if (force && force.instanceId) {
-                forceMap.set(force.instanceId, force);
-            }
+            if (!force) continue;
+            const instanceId = force.instanceId();
+            if (!instanceId) continue;
+            forceMap.set(instanceId, force);
         }
         for (const cloudForce of cloudForces) {
-            if (cloudForce && cloudForce.instanceId) {
-                const localForce = forceMap.get(cloudForce.instanceId);
-                if (!localForce || getTimestamp(cloudForce) >= getTimestamp(localForce)) {
-                    forceMap.set(cloudForce.instanceId, cloudForce);
-                }
+            if (!cloudForce) continue;
+            const instanceId = cloudForce.instanceId();
+            if (!instanceId) continue;
+            const localForce = forceMap.get(instanceId);
+            if (!localForce || getTimestamp(cloudForce) >= getTimestamp(localForce)) {
+                forceMap.set(instanceId, cloudForce);
             }
         }
         const mergedForces = Array.from(forceMap.values()).sort((a, b) => getTimestamp(b) - getTimestamp(a));
@@ -734,8 +736,8 @@ export class DataService {
             uuid,
         };
         const response = await this.wsService.sendAndWaitForResponse(payload);
-        if (response && Array.isArray(response)) {
-            for (const rawForce of response) {
+        if (response && Array.isArray(response.data)) {
+            for (const rawForce of response.data) {
                 try {
                     const force = Force.deserialize(rawForce, this, this.unitInitializer, this.injector);
                     force.cloud = true; // Mark as cloud force
@@ -757,7 +759,18 @@ export class DataService {
             uuid,
             data: force.serialize()
         };
-        this.wsService.send(payload);
+        const response = await this.wsService.sendAndWaitForResponse(payload);
+        if (response && response.code === 'not_owner') {
+            console.warn('Cannot save force to cloud: not the owner, we regenerated a new instanceId.');
+            const oldInstanceId = force.instanceId();
+            force.instanceId.set(generateUUID());
+            force.owned = true;
+            await this.saveForce(force); // We try again
+            if (oldInstanceId) {
+                this.dbService.deleteForce(oldInstanceId); // Clean up old local copy
+            }
+
+        }
     }
 
     private async getForceCloud(instanceId: string): Promise<any | null> {
@@ -770,7 +783,7 @@ export class DataService {
             instanceId,
         };
         const response = await this.wsService.sendAndWaitForResponse(payload);
-        return response;
+        return response.data || null;
     }
     
     private async loadUnitTags(units: Unit[]): Promise<void> {

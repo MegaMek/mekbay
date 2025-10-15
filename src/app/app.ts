@@ -220,7 +220,7 @@ export class App {
 
     beforeUnloadHandler = (event: BeforeUnloadEvent) => {
         if (this.forceBuilderService.forceUnits().length > 0) {
-            if (!this.forceBuilderService.force.instanceId) {
+            if (!this.forceBuilderService.force.instanceId()) {
                 // We have units but we don't have an instanceId? This is not yet saved.
                 event.preventDefault();
                 return '';

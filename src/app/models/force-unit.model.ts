@@ -45,8 +45,17 @@ import { generateUUID } from '../services/ws.service';
 /*
  * Author: Drake
  */
+export interface SerializedForce {
+    version: number;
+    timestamp: string;
+    instanceId: string;
+    name: string;
+    owned?: boolean;
+    units: any[]; // Serialized ForceUnit objects
+}
+
 export class Force {
-    instanceId: string | null;
+    instanceId: WritableSignal<string | null> = signal(null);
     _name: WritableSignal<string>;
     timestamp: string | null = null;
     units: WritableSignal<ForceUnit[]> = signal([]);
@@ -64,7 +73,6 @@ export class Force {
         dataService: DataService,
         unitInitializer: UnitInitializerService,
         injector: Injector) {
-        this.instanceId = null;
         this._name = signal(name);
         this.dataService = dataService;
         this.unitInitializer = unitInitializer;
@@ -78,7 +86,7 @@ export class Force {
     public setName(name: string, emitChange: boolean = true) {
         if (name === this._name()) return; // No change
         this._name.set(name);
-        if (this.instanceId || emitChange) {
+        if (this.instanceId() || emitChange) {
             this.emitChanged();
         }
     }
@@ -86,7 +94,7 @@ export class Force {
     public addUnit(unit: Unit): ForceUnit {    
         const forceUnit = new ForceUnit(unit, this, this.dataService, this.unitInitializer, this.injector);
         this.units.update(units => [...units, forceUnit]);
-        if (this.instanceId) {
+        if (this.instanceId()) {
             this.emitChanged();
         }
         return forceUnit;
@@ -96,14 +104,14 @@ export class Force {
         unitToRemove.destroy();
         this.units.update(units => units.filter(u => u.id !== unitToRemove.id));
         this.refreshUnits();
-        if (this.instanceId) {
+        if (this.instanceId()) {
             this.emitChanged();
         }
     }
 
     public setUnits(newUnits: ForceUnit[]) {
         this.units.set(newUnits);
-        if (this.instanceId) {
+        if (this.instanceId()) {
             this.emitChanged();
         }
     }
@@ -130,7 +138,7 @@ export class Force {
         const [moved] = units.splice(previousIndex, 1);
         units.splice(currentIndex, 0, moved);
         this.units.set(units);
-        if (this.instanceId) {
+        if (this.instanceId()) {
             this.emitChanged();
         }
     }
@@ -140,22 +148,27 @@ export class Force {
     }
 
     /** Serialize this Force instance to a plain object */
-    public serialize(): any {
+    public serialize(): SerializedForce {
+        let instanceId = this.instanceId();
+        if (!instanceId) {
+            instanceId = generateUUID();
+            this.instanceId.set(instanceId);
+        }
         return {
             version: 1,
             timestamp: new Date().toISOString(),
-            instanceId: this.instanceId,
+            instanceId: instanceId,
             name: this.name,
             units: this.units().map(unit => unit.serialize())
         };
     }
 
     /** Deserialize a plain object to a Force instance */
-    public static deserialize(data: any, dataService: DataService, unitInitializer: UnitInitializerService, injector: Injector): Force {
+    public static deserialize(data: SerializedForce, dataService: DataService, unitInitializer: UnitInitializerService, injector: Injector): Force {
         const force = new Force(data.name, dataService, unitInitializer, injector);
         force.loading = true;
         try {
-            force.instanceId = data.instanceId;
+            force.instanceId.set(data.instanceId);
             force.owned = (data.owned !== false);
             const units: ForceUnit[] = [];
             for (const unitData of data.units) {

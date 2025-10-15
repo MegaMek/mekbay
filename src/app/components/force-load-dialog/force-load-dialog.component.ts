@@ -105,7 +105,9 @@ export class ForceLoadDialogComponent {
 
     async onDelete() {
         const force = this.selectedForce();
-        if (!force || !force.instanceId) return;
+        if (!force) return;
+        const forceInstanceId = force.instanceId();
+        if (!forceInstanceId) return;
 
         const confirmed = await this.dialogsService.showQuestion(
             `Are you sure you want to delete "${force.name}"? This action cannot be undone.`,
@@ -113,7 +115,9 @@ export class ForceLoadDialogComponent {
             'danger'
         );
         if (confirmed === 'yes') {
-            await this.dataService.deleteForce(force.instanceId);
+            if (forceInstanceId) {
+                await this.dataService.deleteForce(forceInstanceId);
+            }
             this.forces.set(this.forces().filter(f => f !== force));
             this.selectedForce.set(null);
         }

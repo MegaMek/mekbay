@@ -6,7 +6,7 @@
             No saved forces found.
         </div>
         <div *ngIf="!loading() && forces().length > 0" class="force-list">
-            @for (force of forces(); let i = $index; track force.instanceId) {
+            @for (force of forces(); let i = $index; track force.instanceId()) {
                 <div
                     class="force-entry"
                     [class.selected]="selectedForce() === force"
