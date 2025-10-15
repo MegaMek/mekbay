@@ -38,6 +38,7 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DbService } from '../../services/db.service';
 import { UserStateService } from '../../services/userState.service';
+import { DialogsService } from '../../services/dialogs.service';
 
 /*
  * Author: Drake
@@ -55,6 +56,7 @@ export class OptionsDialogComponent {
     dbService = inject(DbService);
     dialogRef = inject(DialogRef<OptionsDialogComponent>);
     userStateService = inject(UserStateService);
+    dialogsService = inject(DialogsService);
     
     tabs = ['General', 'Advanced', 'Debug'];
     activeTab = signal(this.tabs[0]);
@@ -137,7 +139,12 @@ export class OptionsDialogComponent {
     }
 
     async onPurgeCache() {
-        if (confirm('Are you sure you want to delete all cached record sheets? They will be redownloaded as needed.')) {
+        const confirmed = await this.dialogsService.showQuestion(
+            'Are you sure you want to delete all cached record sheets? They will be redownloaded as needed.',
+            'Confirm Purge Cache',
+            'danger'
+        );
+        if (confirmed === 'yes') {
             await this.dbService.clearSheetsStore();
             this.updateSheetCacheSize();
 
@@ -151,7 +158,12 @@ export class OptionsDialogComponent {
     }
 
     async onPurgeCanvas() {
-        if (confirm('Are you sure you want to delete all cached drawings? They will be redownloaded as needed.')) {
+        const confirmed = await this.dialogsService.showQuestion(
+            'Are you sure you want to delete all drawings? They will be lost forever.',
+            'Confirm Purge Drawings',
+            'danger'
+        );
+        if (confirmed === 'yes') {
             await this.dbService.clearCanvasStore();
             this.updateCanvasMemorySize();
         }

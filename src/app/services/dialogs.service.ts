@@ -52,29 +52,50 @@ export class DialogsService {
     async showNotice(message: string, title = 'Notice'): Promise<void> {
         const dialogRef = this.dialog.open(ConfirmDialogComponent, {
             disableClose: true, // Prevents closing by clicking outside or pressing Escape
-            data: {
+            data: <ConfirmDialogData<string>>{
                 title,
                 message,
                 buttons: [
                     { label: 'DISMISS', value: 'nop' }
                 ]
-            } as ConfirmDialogData<string>
+            }
         });
         // Wait for dialog to close, we don't really care about the result
         await firstValueFrom(dialogRef.closed); 
+    }
+
+    async showQuestion(message: string, title: string, type: 'info' | 'danger'): Promise<string | null> {
+        const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
+            disableClose: true, // Prevents closing by clicking outside or pressing Escape
+            panelClass: type,
+            data: <ConfirmDialogData<string>>{
+                title,
+                message,
+                buttons: [
+                    { label: 'CONFIRM', value: 'yes' },
+                    { label: 'DISMISS', value: 'no' }
+                ]
+            }
+        });
+        const answer = await firstValueFrom(dialogRef.closed);
+        
+        if (answer && answer !== null) {
+            return answer;
+        }
+        return null;
     }
 
     async showError(message: string, title = 'Error'): Promise<void> {
         const dialogRef = this.dialog.open(ConfirmDialogComponent, {
             disableClose: true, // Prevents closing by clicking outside or pressing Escape
             panelClass: 'danger',
-            data: {
+            data: <ConfirmDialogData<string>>{
                 title,
                 message,
                 buttons: [
                     { label: 'DISMISS', value: 'nop', class: 'danger' }
                 ]
-            } as ConfirmDialogData<string>
+            }
         });
         // Wait for dialog to close, we don't really care about the result
         await firstValueFrom(dialogRef.closed); 
