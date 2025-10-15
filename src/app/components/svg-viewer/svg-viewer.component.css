@@ -39,6 +39,30 @@ svg {
     height: 100%;
 }
 
+.slide-placeholder {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    background: #222;
+    font-size: 2em;
+    text-align: center;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.fade-in {
+    animation: fadeIn .3s linear;
+}
+
 /* Styles for the heat difference marker (touch input) */
 .heat-diff-marker {
     position: absolute;

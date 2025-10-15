@@ -39,6 +39,7 @@ import { SvgInteractionService } from './svg-interaction.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { SvgCanvasOverlayComponent } from './svg-canvas-overlay.component';
 import { OptionsService } from '../../services/options.service';
+import { Unit } from '../../models/units.model';
 
 /*
  * Author: Drake
@@ -347,65 +348,121 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (this.nextSvg !== nextSvg) this.nextSvg = nextSvg;
     }
 
-    private ensureNeighborSlides(direction: 'prev' | 'next') {
+    private createPlaceholderDiv(unit: Unit): HTMLDivElement {
+        const placeholderDiv = this.renderer.createElement('div');
+        this.renderer.addClass(placeholderDiv, 'slide-placeholder');
+        this.renderer.setStyle(placeholderDiv, 'width', `${this.svgWidth}px`);
+        this.renderer.setStyle(placeholderDiv, 'height', `${this.svgHeight}px`);
+        placeholderDiv.innerHTML = `${unit.model}<br/>${unit.chassis}`;
+        const currentSvg = this.currentSvg();
+        if (currentSvg) {
+            const state = this.zoomPanService.getState();
+            const scaledWidth = (currentSvg.viewBox.baseVal.width) * state.minScale;
+            const scaledHeight = (currentSvg.viewBox.baseVal.height) * state.minScale;
+            const maxX = Math.max(0, (this.containerWidth - scaledWidth) / 2);
+            const maxY = Math.max(0, (this.containerHeight - scaledHeight) / 2);
+            const minX = this.containerWidth - scaledWidth - maxX;
+            const minY = this.containerHeight - scaledHeight - maxY;
+            placeholderDiv.style.transform = `translate(${minX}px,${minY}px) scale(${state.minScale})`;
+            placeholderDiv.style.transformOrigin = 'top left';
+        }
+        return placeholderDiv;
+    }
+
+    private ensureNeighborSlides(direction: 'prev' | 'next', placeholder: boolean = false) {
         const slides = this.slidesRef().nativeElement;
         const width = this.containerWidth;
         const state = this.zoomPanService.getState();
+        const svgWidth = this.svgWidth;
+        const svgHeight = this.svgHeight;
         if (direction === 'prev') {
-            if (!this.prevSvg || !this.prevUnit) return;
+            if (!this.prevUnit) return;
             if (!this.prevSlideEl) {
                 const slide = this.createSlide();
-                slide.appendChild(this.prevSvg);
+                if (placeholder) {
+                    slide.appendChild(this.createPlaceholderDiv(this.prevUnit.getUnit()));
+                } else if (this.prevSvg) {
+                    slide.appendChild(this.prevSvg);
+                    const scaledWidth = (this.prevSvg.viewBox.baseVal.width) * state.minScale;
+                    const scaledHeight = (this.prevSvg.viewBox.baseVal.height) * state.minScale;
+                    const maxX = Math.max(0, (this.containerWidth - scaledWidth) / 2);
+                    const maxY = Math.max(0, (this.containerHeight - scaledHeight) / 2);
+                    const minX = this.containerWidth - scaledWidth - maxX;
+                    const minY = this.containerHeight - scaledHeight - maxY;
+                    this.prevSvg.style.transform = `translate(${minX}px,${minY}px) scale(${state.minScale})`;
+                    this.prevSvg.style.transformOrigin = 'top left';
+                }
                 slides.appendChild(slide);
                 this.prevSlideEl = slide;
                 this.setSlideX(this.prevSlideEl, -width, false);
-                const scaledWidth = (this.prevSvg.viewBox.baseVal.width) * state.minScale;
-                const scaledHeight = (this.prevSvg.viewBox.baseVal.height) * state.minScale;
-                const maxX = Math.max(0, (this.containerWidth - scaledWidth) / 2);
-                const maxY = Math.max(0, (this.containerHeight - scaledHeight) / 2);
-                const minX = this.containerWidth - scaledWidth - maxX;
-                const minY = this.containerHeight - scaledHeight - maxY;
-                this.prevSvg.style.transform = `translate(${minX}px,${minY}px) scale(${state.minScale})`;
-                this.prevSvg.style.transformOrigin = 'top left';
             }
         } else {
-            if (!this.nextSvg || !this.nextUnit) return;
+            if (!this.nextUnit) return;
             if (!this.nextSlideEl) {
                 const slide = this.createSlide();
-                // If nextUnit is the same as prevUnit, clone the SVG so we can visualize the loop
-                const svgToAppend = (this.nextUnit === this.prevUnit) ? this.nextSvg.cloneNode(true) as SVGSVGElement : this.nextSvg;
-                slide.appendChild(svgToAppend);
+                if (placeholder) {
+                    slide.appendChild(this.createPlaceholderDiv(this.nextUnit.getUnit()));
+                } else if (this.nextSvg) {
+                    // If nextUnit is the same as prevUnit, clone the SVG so we can visualize the loop
+                    const svgToAppend = (this.nextUnit === this.prevUnit) ? this.nextSvg.cloneNode(true) as SVGSVGElement : this.nextSvg;
+                    slide.appendChild(svgToAppend);
+                    const scaledWidth = (this.nextSvg.viewBox.baseVal.width) * state.minScale;
+                    const scaledHeight = (this.nextSvg.viewBox.baseVal.height) * state.minScale;
+                    const maxX = Math.max(0, (this.containerWidth - scaledWidth) / 2);
+                    const maxY = Math.max(0, (this.containerHeight - scaledHeight) / 2);
+                    const minX = this.containerWidth - scaledWidth - maxX;
+                    const minY = this.containerHeight - scaledHeight - maxY;
+                    this.nextSvg.style.transform = `translate(${minX}px,${minY}px) scale(${state.minScale})`;
+                    this.nextSvg.style.transformOrigin = 'top left';
+                }
                 slides.appendChild(slide);
                 this.nextSlideEl = slide;
                 this.setSlideX(this.nextSlideEl, width, false);
-                const scaledWidth = (this.nextSvg.viewBox.baseVal.width) * state.minScale;
-                const scaledHeight = (this.nextSvg.viewBox.baseVal.height) * state.minScale;
-                const maxX = Math.max(0, (this.containerWidth - scaledWidth) / 2);
-                const maxY = Math.max(0, (this.containerHeight - scaledHeight) / 2);
-                const minX = this.containerWidth - scaledWidth - maxX;
-                const minY = this.containerHeight - scaledHeight - maxY;
-                this.nextSvg.style.transform = `translate(${minX}px,${minY}px) scale(${state.minScale})`;
-                this.nextSvg.style.transformOrigin = 'top left';
             }
         }
+    }
+
+    private updateNeighborSlideWithSvg(direction: 'prev' | 'next') {
+        const state = this.zoomPanService.getState();
+        let svgElement: SVGSVGElement | null = null;
+        if (direction === 'prev' && this.prevSlideEl && this.prevSvg) {
+            this.prevSlideEl.innerHTML = '';
+            this.prevSlideEl.appendChild(this.prevSvg);
+            this.prevSlideEl.classList.add('fade-in');
+            svgElement = this.prevSvg;
+        } else
+        if (direction === 'next' && this.nextSlideEl && this.nextSvg) {
+            this.nextSlideEl.innerHTML = '';
+            const svgToAppend = (this.nextUnit === this.prevUnit) ? this.nextSvg.cloneNode(true) as SVGSVGElement : this.nextSvg;
+            this.nextSlideEl.appendChild(svgToAppend);
+            this.nextSlideEl.classList.add('fade-in');
+            svgElement = this.nextSvg;
+        }
+        if (!svgElement) return;
+        const scaledWidth = (svgElement.viewBox.baseVal.width) * state.minScale;
+        const scaledHeight = (svgElement.viewBox.baseVal.height) * state.minScale;
+        const maxX = Math.max(0, (this.containerWidth - scaledWidth) / 2);
+        const maxY = Math.max(0, (this.containerHeight - scaledHeight) / 2);
+        const minX = this.containerWidth - scaledWidth - maxX;
+        const minY = this.containerHeight - scaledHeight - maxY;
+        svgElement.style.transform = `translate(${minX}px,${minY}px) scale(${state.minScale})`;
+        svgElement.style.transformOrigin = 'top left';
     }
 
     private async onSwipeStart() {
         if (this.forceBuilder.forceUnits().length < 2) return; // No swipe if only one unit
         this.swipeStarted = true;
-        await this.preloadNeighbors();
+        this.ensureNeighborSlides('prev', true);
+        this.ensureNeighborSlides('next', true);
+        this.preloadNeighbors().then(() => {
+            // Replace placeholders with SVGs when ready
+            this.updateNeighborSlideWithSvg('prev');
+            this.updateNeighborSlideWithSvg('next');
+        });
         if (!this.swipeStarted) return;
         if (!this.currentSlideEl) return;
         this.swipeActive = true;
         this.swipeOffsetX = 0;
-
-        // Prepare both neighbors if available to avoid first-move lag
-        if (this.prevUnit && this.prevSvg) {
-            this.ensureNeighborSlides('prev');
-        }
-        if (this.nextUnit && this.nextSvg) {
-            this.ensureNeighborSlides('next');
-        }
 
         // Disable transitions while dragging
         this.setSlideX(this.currentSlideEl, 0, false);
