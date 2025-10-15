@@ -927,8 +927,8 @@ export class LanceTypeIdentifierUtil {
         if (matches.length === 0) return null;
         // randomize but put weight on more specific matches.
         // Weights:
-        // 1. Faction-specific lance types that match the current faction: x5
-        // 2. Child definitions (those with parents) as they are more specific: x3
+        // 1. Faction-specific lance types that match the current faction: x10
+        // 2. Child definitions (those with parents) as they are more specific: x4
         // 3. Other lance types with specific requirements (non-generic): x2
         // 4. Generic lance types (support, command, battle): x1
 
@@ -936,10 +936,10 @@ export class LanceTypeIdentifierUtil {
         for (const match of matches) {
             let weight = 1;
             if (match.exclusiveFaction && factionName.includes(match.exclusiveFaction)) {
-                weight *= 5;
+                weight *= 10;
             } else
             if (match.parent) {
-                weight *= 3;
+                weight *= 4;
             } else
             if (match.id !== 'support-lance' && match.id !== 'command-lance' && match.id !== 'battle-lance') {
                 weight *= 2;
