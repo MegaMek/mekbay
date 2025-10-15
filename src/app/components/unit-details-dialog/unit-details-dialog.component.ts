@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStrategy, output, viewChild, effect } from '@angular/core';
+import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStrategy, output, viewChild, effect, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { Unit, UnitComponent } from '../../models/units.model';
@@ -50,7 +50,6 @@ import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 export interface UnitDetailsDialogData {
     unitList: Unit[];
     unitIndex: number;
-    addAsClone: boolean;
     gunnerySkill?: number;
     pilotingSkill?: number;
 }
@@ -119,10 +118,9 @@ export class UnitDetailsDialogComponent {
     activeTab = signal(this.tabs[0]);
 
     unitList: Unit[] = this.data.unitList;
-    addAsClone = this.data.addAsClone;
     unitIndex = signal(this.data.unitIndex);
-    gunnerySkill?: number = this.data.gunnerySkill;
-    pilotingSkill?: number = this.data.pilotingSkill;
+    gunnerySkill = signal<number | undefined>(this.data.gunnerySkill);
+    pilotingSkill = signal<number | undefined>(this.data.pilotingSkill);
 
     groupedBays: Array<{ l: string, p: number, bays: UnitComponent[] }> = [];
     components: UnitComponent[] = [];
@@ -140,16 +138,18 @@ export class UnitDetailsDialogComponent {
         return this.unitList[this.unitIndex()];
     }
 
-    getAdjustedBV(): number | null {
-        if (this.gunnerySkill === undefined || this.pilotingSkill === undefined) {
+    getAdjustedBV = computed<number | null>(() => {
+        const gunnery = this.gunnerySkill();
+        const piloting = this.pilotingSkill();
+        if (gunnery === undefined || piloting === undefined) {
             return null;
         }
-        return BVCalculatorUtil.calculateAdjustedBV(this.unit.bv, this.gunnerySkill, this.pilotingSkill);
-    }
+        return BVCalculatorUtil.calculateAdjustedBV(this.unit.bv, gunnery, piloting);
+    });
 
-    hasNonDefaultSkills(): boolean {
-        return this.gunnerySkill !== 4 || this.pilotingSkill !== 5;
-    }
+    hasNonDefaultSkills = computed<boolean>(() => {
+        return this.gunnerySkill() !== 4 || this.pilotingSkill() !== 5;
+    });
 
     get weaponTypes() {
         return weaponTypes;

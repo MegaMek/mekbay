@@ -40,7 +40,7 @@ import { ForceUnit } from '../../models/force-unit.model';
 import { DragDropModule, CdkDragDrop } from '@angular/cdk/drag-drop'
 import { PopupMenuComponent } from '../../components/popup-menu/popup-menu.component';
 import { Dialog } from '@angular/cdk/dialog';
-import { UnitDetailsDialogComponent } from '../unit-details-dialog/unit-details-dialog.component';
+import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { Portal, PortalModule } from '@angular/cdk/portal';
 
 /*
@@ -164,16 +164,17 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         event.stopPropagation();
         const unitList = this.forceBuilderService.forceUnits().map(u => u.getUnit());
         const unitIndex = unitList.findIndex(u => u.name === unit.getUnit().name);
+        const gunnery = unit.getCrewMember(0).getSkill('gunnery');
+        const piloting = unit.getCrewMember(0).getSkill('piloting');
         const ref = this.dialog.open(UnitDetailsDialogComponent, {
-            data: {
+            data: <UnitDetailsDialogData>{
                 unitList: unitList,
                 unitIndex: unitIndex,
-                addAsClone: true
+                gunnerySkill: gunnery,
+                pilotingSkill: piloting,
             }
         });
         ref.componentInstance?.add.subscribe(selectedUnit => {
-            const gunnery = unit.getCrewMember(0).getSkill('gunnery');
-            const piloting = unit.getCrewMember(0).getSkill('piloting');
             this.forceBuilderService.addUnit(
                 selectedUnit,
                 gunnery,

@@ -42,7 +42,7 @@ import { ForceBuilderService } from './services/force-builder.service';
 import { Unit } from './models/units.model';
 import { LayoutService } from './services/layout.service';
 import { LayoutModule } from '@angular/cdk/layout';
-import { UnitDetailsDialogComponent } from './components/unit-details-dialog/unit-details-dialog.component';
+import { UnitDetailsDialogComponent, UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
 import { OptionsService } from './services/options.service';
 import { OptionsDialogComponent } from './components/options-dialog/options-dialog.component';
 import { PopupMenuComponent } from './components/popup-menu/popup-menu.component';
@@ -240,10 +240,9 @@ export class App implements OnInit {
 
     showSingleUnitDetails(unit: Unit, tab?: string) {
         const ref = this.dialog.open(UnitDetailsDialogComponent, {
-            data: {
+            data: <UnitDetailsDialogData>{
                 unitList: [unit],
-                unitIndex: 0,
-                addAsClone: false
+                unitIndex: 0
             }
         });
 

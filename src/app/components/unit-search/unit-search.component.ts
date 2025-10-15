@@ -42,7 +42,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { Dialog } from '@angular/cdk/dialog';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { UnitDetailsDialogComponent } from '../unit-details-dialog/unit-details-dialog.component';
+import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
 import { TagSelectorComponent } from '../tag-selector/tag-selector.component';
 import { firstValueFrom } from 'rxjs';
@@ -555,10 +555,9 @@ export class UnitSearchComponent implements OnDestroy {
         const filteredUnits = this.filtersService.filteredUnits();
         const filteredUnitIndex = filteredUnits.findIndex(u => u.name === unit.name);
         const ref = this.dialog.open(UnitDetailsDialogComponent, {
-            data: {
+            data: <UnitDetailsDialogData>{
                 unitList: filteredUnits,
                 unitIndex: filteredUnitIndex,
-                addAsClone: false,
                 gunnerySkill: this.filtersService.pilotGunnerySkill(),
                 pilotingSkill: this.filtersService.pilotPilotingSkill()
             }
