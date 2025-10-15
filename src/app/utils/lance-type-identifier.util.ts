@@ -926,32 +926,29 @@ export class LanceTypeIdentifierUtil {
     public static getBestMatch(units: ForceUnit[], techBase: string, factionName: string): LanceTypeDefinition | null {
         const matches = this.identifyLanceTypes(units, techBase, factionName);
         if (matches.length === 0) return null;
-        
-        // Prioritize faction-specific lance types that match the current faction
-        const factionSpecific = matches.filter(m => m.exclusiveFaction && factionName.includes(m.exclusiveFaction));
-        if (factionSpecific.length > 0) {
-            return factionSpecific[Math.floor(Math.random() * factionSpecific.length)];
+        // randomize but put weight on more specific matches.
+        // Weights:
+        // 1. Faction-specific lance types that match the current faction: x5
+        // 2. Child definitions (those with parents) as they are more specific: x3
+        // 3. Other lance types with specific requirements (non-generic): x2
+        // 4. Generic lance types (support, command, battle): x1
+
+        const weightedMatches: LanceTypeDefinition[] = [];
+        for (const match of matches) {
+            let weight = 1;
+            if (match.exclusiveFaction && factionName.includes(match.exclusiveFaction)) {
+                weight *= 5;
+            } else
+            if (match.parent) {
+                weight *= 3;
+            } else
+            if (match.id !== 'support-lance' && match.id !== 'command-lance' && match.id !== 'battle-lance') {
+                weight *= 2;
+            }
+            weightedMatches.push(...Array(weight).fill(match));
         }
-        
-        // Prioritize child definitions (those with parents) as they are more specific
-        const childDefinitions = matches.filter(m => m.parent);
-        if (childDefinitions.length > 0) {
-            return childDefinitions[Math.floor(Math.random() * childDefinitions.length)];
-        }
-        
-        // Then prioritize other lance types with specific requirements (non-generic)
-        const nonGeneric = matches.filter(m => 
-            m.id !== 'support-lance' && 
-            m.id !== 'command-lance' && 
-            m.id !== 'battle-lance'
-        );
-        
-        if (nonGeneric.length > 0) {
-            return nonGeneric[Math.floor(Math.random() * nonGeneric.length)];
-        }
-        
-        // Pick a random match
-        return matches[Math.floor(Math.random() * matches.length)];
+        // Pick a random match from the weighted list
+        return weightedMatches[Math.floor(Math.random() * weightedMatches.length)];
     }
 
     // Helper methods
