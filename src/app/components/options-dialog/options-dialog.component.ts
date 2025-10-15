@@ -62,10 +62,12 @@ export class OptionsDialogComponent {
     userUuid = '';
     userUuidError = '';
     sheetCacheSize = signal(0);
+    canvasMemorySize = signal(0);
 
     constructor() {
         this.userUuid = this.userStateService.uuid();
         this.updateSheetCacheSize();
+        this.updateCanvasMemorySize();
         // Debug tab event listeners
         window.addEventListener('pointerdown', this.pointerListener, true);
         window.addEventListener('keydown', this.keyListener, true);
@@ -76,6 +78,12 @@ export class OptionsDialogComponent {
     updateSheetCacheSize() {
         this.dbService.getSheetsStoreSize().then(size => {
             this.sheetCacheSize.set(size);
+        });
+    }
+
+    updateCanvasMemorySize() {
+        this.dbService.getCanvasStoreSize().then(size => {
+            this.canvasMemorySize.set(size);
         });
     }
 
@@ -139,6 +147,13 @@ export class OptionsDialogComponent {
             }
 
             window.location.reload();
+        }
+    }
+
+    async onPurgeCanvas() {
+        if (confirm('Are you sure you want to delete all cached drawings? They will be redownloaded as needed.')) {
+            await this.dbService.clearCanvasStore();
+            this.updateCanvasMemorySize();
         }
     }
 

@@ -49,13 +49,14 @@ import { DialogsService } from './dialogs.service';
  * Author: Drake
  */
 const DB_NAME = 'mekbay';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 const DB_STORE = 'store';
 const UNITS_KEY = 'units';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
 const ERAS_KEY = 'eras';
 const SHEETS_STORE = 'sheetsStore';
+const CANVAS_STORE = 'canvasStore';
 const FORCE_STORE = 'forceStore';
 const TAGS_STORE = 'tagsStore';
 const OPTIONS_KEY = 'options';
@@ -97,6 +98,7 @@ export class DbService {
                 this.createStoreIfMissing(db, transaction, SHEETS_STORE, 'timestamp');
                 this.createStoreIfMissing(db, transaction, FORCE_STORE, 'timestamp');
                 this.createStoreIfMissing(db, transaction, TAGS_STORE);
+                this.createStoreIfMissing(db, transaction, CANVAS_STORE);
             };
 
             request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
@@ -124,7 +126,7 @@ export class DbService {
         await this.dbPromise;
     }
 
-    private async getDataFromDBStore<T>(key: string): Promise<T | null> {
+    private async getDataFromGeneralStore<T>(key: string): Promise<T | null> {
         const db = await this.dbPromise;
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(DB_STORE, 'readonly');
@@ -142,7 +144,7 @@ export class DbService {
         });
     }
 
-    private async saveDataFromDBStore<T>(data: T, key: string): Promise<void> {
+    private async saveDataFromGeneralStore<T>(data: T, key: string): Promise<void> {
         const db = await this.dbPromise;
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(DB_STORE, 'readwrite');
@@ -196,52 +198,69 @@ export class DbService {
         });
     }
 
+    private async deleteDataFromStore(key: string, storeName: string): Promise<void> {
+        const db = await this.dbPromise;
+        return new Promise<void>((resolve, reject) => {
+            const transaction = db.transaction(storeName, 'readwrite');
+            const store = transaction.objectStore(storeName);
+            const request = store.delete(key);
+
+            request.onsuccess = () => {
+                resolve();
+            };
+
+            request.onerror = () => {
+                reject(request.error);
+            };
+        });
+    }
+
     public async getUnits(): Promise<Units | null> {
-        return await this.getDataFromDBStore<Units>(UNITS_KEY);
+        return await this.getDataFromGeneralStore<Units>(UNITS_KEY);
     }
 
     public async saveEquipment(equipmentData: EquipmentData): Promise<void> {
-        return await this.saveDataFromDBStore(equipmentData, EQUIPMENT_KEY);
+        return await this.saveDataFromGeneralStore(equipmentData, EQUIPMENT_KEY);
     }
 
     public async getEquipment(): Promise<EquipmentData | null> {
-        return await this.getDataFromDBStore<EquipmentData>(EQUIPMENT_KEY);
+        return await this.getDataFromGeneralStore<EquipmentData>(EQUIPMENT_KEY);
     }
 
     public async saveUnits(unitsData: Units): Promise<void> {
-        return await this.saveDataFromDBStore(unitsData, UNITS_KEY);
+        return await this.saveDataFromGeneralStore(unitsData, UNITS_KEY);
     }
 
     public async getFactions(): Promise<Factions | null> {
-        return await this.getDataFromDBStore<Factions>(FACTIONS_KEY);
+        return await this.getDataFromGeneralStore<Factions>(FACTIONS_KEY);
     }
 
     public async saveFactions(factionsData: Factions): Promise<void> {
-        return await this.saveDataFromDBStore(factionsData, FACTIONS_KEY);
+        return await this.saveDataFromGeneralStore(factionsData, FACTIONS_KEY);
     }
 
     public async getEras(): Promise<Eras | null> {
-        return await this.getDataFromDBStore<Eras>(ERAS_KEY);
+        return await this.getDataFromGeneralStore<Eras>(ERAS_KEY);
     }
 
     public async saveEras(erasData: Eras): Promise<void> {
-        return await this.saveDataFromDBStore(erasData, ERAS_KEY);
+        return await this.saveDataFromGeneralStore(erasData, ERAS_KEY);
     }
 
     public async getOptions(): Promise<Options | null> {
-        return await this.getDataFromDBStore<Options>(OPTIONS_KEY);
+        return await this.getDataFromGeneralStore<Options>(OPTIONS_KEY);
     }
     
     public async saveOptions(options: Options): Promise<void> {
-        return await this.saveDataFromDBStore(options, OPTIONS_KEY);
+        return await this.saveDataFromGeneralStore(options, OPTIONS_KEY);
     }
 
     public async getQuirks(): Promise<Quirks | null> {
-        return await this.getDataFromDBStore<Quirks>(QUIRKS_KEY);
+        return await this.getDataFromGeneralStore<Quirks>(QUIRKS_KEY);
     }
 
     public async saveQuirks(quirksData: Quirks): Promise<void> {
-        return await this.saveDataFromDBStore(quirksData, QUIRKS_KEY);
+        return await this.saveDataFromGeneralStore(quirksData, QUIRKS_KEY);
     }
 
     public async getTags(): Promise<StoredTags | null> {
@@ -306,21 +325,31 @@ export class DbService {
         });
     }
 
+    private async deleteForceCanvasData(instanceId: string): Promise<void> {
+        const force = await this.getForce(instanceId);
+        if (!force) return;
+        const unitIds = force.units().map(unit => unit.id).filter(id => id);
+        await Promise.all(unitIds.map(id => this.deleteCanvasData(id!)));
+    }
+
+    private async deleteCanvasData(unitId: string): Promise<void> {
+        await this.deleteDataFromStore(unitId, CANVAS_STORE);
+    }
+
     public async deleteForce(instanceId: string): Promise<void> {
-        const db = await this.dbPromise;
-        return new Promise<void>((resolve, reject) => {
-            const transaction = db.transaction(FORCE_STORE, 'readwrite');
-            const store = transaction.objectStore(FORCE_STORE);
-            const request = store.delete(instanceId);
+        await this.deleteDataFromStore(instanceId, FORCE_STORE);
+    }
 
-            request.onsuccess = () => {
-                resolve();
-            };
+    public async getCanvasData(unitId: string): Promise<Blob | null> {
+        const storedData = await this.getDataFromStore<Blob>(unitId, CANVAS_STORE);
+        if (!storedData) {
+            return null;
+        }
+        return storedData;
+    }
 
-            request.onerror = () => {
-                reject(request.error);
-            };
-        });
+    public async saveCanvasData(unitId: string, img: Blob): Promise<void> {
+        this.saveDataToStore(img, unitId, CANVAS_STORE);
     }
 
     public async getSheet(key: string, etag: string): Promise<SVGSVGElement | null> {
@@ -362,11 +391,11 @@ export class DbService {
         });
     }
 
-    public async clearSheetsStore(): Promise<void> {
+    private async clearStore(storeName: string): Promise<void> {
         const db = await this.dbPromise;
         return new Promise<void>((resolve, reject) => {
-            const transaction = db.transaction(SHEETS_STORE, 'readwrite');
-            const store = transaction.objectStore(SHEETS_STORE);
+            const transaction = db.transaction(storeName, 'readwrite');
+            const store = transaction.objectStore(storeName);
             const request = store.clear();
 
             request.onsuccess = () => {
@@ -379,19 +408,30 @@ export class DbService {
         });
     }
 
-    public async getSheetsStoreSize(): Promise<number> {
+    public async clearSheetsStore(): Promise<void> {
+        await this.clearStore(SHEETS_STORE);
+    }
+
+    public async clearCanvasStore(): Promise<void> {
+        await this.clearStore(CANVAS_STORE);
+    }
+
+    private async getStoreSize(storeName: string): Promise<number> {
         const db = await this.dbPromise;
         return new Promise<number>((resolve, reject) => {
-            const transaction = db.transaction(SHEETS_STORE, 'readonly');
-            const store = transaction.objectStore(SHEETS_STORE);
+            const transaction = db.transaction(storeName, 'readonly');
+            const store = transaction.objectStore(storeName);
             const request = store.openCursor();
             let totalSize = 0;
-
             request.onsuccess = () => {
                 const cursor = request.result;
                 if (cursor) {
-                    const storedSheet = cursor.value as StoredSheet;
-                    totalSize += storedSheet.size || 0;
+                    const value = cursor.value;
+                    if (value && typeof value === 'object') {
+                        if ('size' in value && typeof value.size === 'number') {
+                            totalSize += value.size;
+                        }
+                    }
                     cursor.continue();
                 } else {
                     resolve(totalSize);
@@ -402,6 +442,14 @@ export class DbService {
                 reject(request.error);
             };
         });
+    }
+
+    public async getSheetsStoreSize(): Promise<number> {
+        return await this.getStoreSize(SHEETS_STORE);
+    }
+
+    public async getCanvasStoreSize(): Promise<number> {
+        return await this.getStoreSize(CANVAS_STORE);
     }
 
     private async cullOldSheets(): Promise<void> {

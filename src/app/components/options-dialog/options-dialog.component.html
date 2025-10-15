@@ -68,6 +68,9 @@
                             <option value="vector">Vector</option>
                         </select>
                     </div>
+                    <div class="description">
+                        <p>This option is for testing purpose, will be removed. Only RASTER supports save/load.</p>
+                    </div>
                     <div class="option-row">
                         <label for="canvasInput">Canvas input:</label>
                         <select id="canvasInput" class="bt-select" [value]="optionsService.options().canvasInput"
@@ -77,9 +80,10 @@
                             <option value="touch">Touch only</option>
                         </select>
                     </div>
-                    <div class="description">
-                        <p>This is for testing purpose only. Will be removed in the future.</p>
-                    </div>
+                </div>
+                <div class="option-row">
+                    <span>Drawings stored: <strong>{{ formatBytes(canvasMemorySize()) }}</strong></span>
+                    <button class="bt-button" (click)="onPurgeCanvas()">PURGE</button>
                 </div>
                 <div class="option-col">
                     <div class="option-row">

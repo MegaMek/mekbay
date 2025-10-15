@@ -43,6 +43,7 @@ import { firstValueFrom } from 'rxjs';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 import { Dialog } from '@angular/cdk/dialog';
 import { OptionsService } from '../../services/options.service';
+import { DbService } from '../../services/db.service';
 
 /*
  * Author: Drake
@@ -319,6 +320,7 @@ export class SvgCanvasOverlayComponent {
     private injector = inject(Injector);
     private dialog = inject(Dialog);
     optionsService = inject(OptionsService);
+    dbService = inject(DbService);
     canvasOverlay = viewChild.required<ElementRef<HTMLDivElement>>('canvasOverlay');
     canvasContainer = viewChild.required<ElementRef<HTMLDivElement>>('canvasContainer');
     canvasRef = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
@@ -331,7 +333,7 @@ export class SvgCanvasOverlayComponent {
     lines: Line[] = [];
     private currentLine?: Line;
     lastReducedIndex = 0;
-    canvasData = input<string | null>(null);
+    unitId = input<string | null>(null);
     mode = signal<'brush' | 'eraser' | 'none'>('none');
     brushColor = signal<string>('#f00');
     colorOptions = ['#f00', '#00f', '#0f0', '#f0f', '#0ff', '#ff0'];
@@ -346,6 +348,7 @@ export class SvgCanvasOverlayComponent {
     });
 
     canvasHeight = computed(() => {
+        this.unitId();
         return this.height() * SvgCanvasOverlayComponent.INTERNAL_SCALE;
     });
     canvasWidth = computed(() => {
@@ -389,10 +392,14 @@ export class SvgCanvasOverlayComponent {
             this.updateStageConfig();
         });
         effect(() => {
-            console.log('Canvas data changed, importing...');
-            const data = this.canvasData();
+            const unitId = this.unitId();
             afterNextRender(() => {
                 this.clearCanvas();
+                if (!unitId) return;
+                this.dbService.getCanvasData(unitId).then(data => {
+                    if (!data) return;
+                    this.importImageData(data);
+                });
             }, { injector: this.injector});
         });
         afterNextRender(() => {
@@ -620,7 +627,7 @@ export class SvgCanvasOverlayComponent {
         }
     }
 
-    onPointerUp(event: PointerEvent) {
+    async onPointerUp(event: PointerEvent) {
         if (this.activePointers.has(event.pointerId) === false) return;
         event.preventDefault();
         event.stopPropagation();
@@ -632,6 +639,11 @@ export class SvgCanvasOverlayComponent {
         }    
         if (this.activePointers.size === 0) {
             this.removeMoveAndUpListeners();
+            const unitId = this.unitId();
+            if (!unitId) return;
+            const blob = await this.exportImageData();
+            if (!blob) return;
+            this.dbService.saveCanvasData(unitId, blob);
         }
     }
 
@@ -773,24 +785,31 @@ export class SvgCanvasOverlayComponent {
         }
         layer.batchDraw();
     }
-    
 
-    public exportImageData(): string | null {
+    public async exportImageData(): Promise<Blob | null> {
         const canvas = this.canvasRef();
         if (!canvas) return null;
-        return canvas.nativeElement.toDataURL('image/webp');
+        return new Promise<Blob | null>((resolve) => {
+            canvas.nativeElement.toBlob((blob) => {
+                resolve(blob);
+            }, 'image/png');
+        });
     }
 
-    public importImageData(dataUrl: string) {
+    public importImageData(blob: Blob) {
         const ctx = this.getCanvasContext();
         if (!ctx) return;
         const img = new window.Image();
+            
         img.onload = () => {
-            const canvasWidth = this.canvasWidth();
-            const canvasHeight = this.canvasHeight();
-            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-            ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
-        };
-        img.src = dataUrl;
+                const canvasWidth = this.canvasWidth();
+                const canvasHeight = this.canvasHeight();
+                ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+                ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+            };
+            img.onerror = (err) => {
+                console.error('Failed to load image for canvas import', err);
+            };
+            img.src = URL.createObjectURL(blob);
     }
 }
