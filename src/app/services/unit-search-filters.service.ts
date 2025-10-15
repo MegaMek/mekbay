@@ -316,6 +316,7 @@ function getUnitComponentData(unit: Unit) {
 
 @Injectable({ providedIn: 'root' })
 export class UnitSearchFiltersService {
+    private QUERY_PARAMS = ['q', 'sort', 'sortDir', 'filters', 'expanded', 'gunnery', 'piloting'];
     public dataService = inject(DataService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
@@ -1057,7 +1058,7 @@ export class UnitSearchFiltersService {
 
             // Preserve existing non-filter parameters
             currentParams.keys.forEach(key => {
-                if (!['q', 'sort', 'sortDir', 'filters', 'expanded', 'gunnery', 'piloting'].includes(key)) {
+                if (!this.QUERY_PARAMS.includes(key)) {
                     queryParams[key] = currentParams.get(key);
                 }
             });

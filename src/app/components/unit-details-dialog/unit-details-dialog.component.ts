@@ -43,12 +43,14 @@ import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { ToastService } from '../../services/toast.service';
 import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
 import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
+import { ForceUnit } from '../../models/force-unit.model';
+import { ForceBuilderService } from '../../services/force-builder.service';
 
 /*
  * Author: Drake
  */
 export interface UnitDetailsDialogData {
-    unitList: Unit[];
+    unitList: Unit[] | ForceUnit[];
     unitIndex: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
@@ -108,6 +110,7 @@ interface ManufacturerInfo {
 })
 export class UnitDetailsDialogComponent {
     private dataService = inject(DataService);
+    private forceBuilderService = inject(ForceBuilderService);
     private dialogRef = inject(DialogRef<UnitDetailsDialogComponent>);
     private data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     private toastService = inject(ToastService);
@@ -117,10 +120,22 @@ export class UnitDetailsDialogComponent {
     tabs = ['General', 'Intel', 'Factions'];
     activeTab = signal(this.tabs[0]);
 
-    unitList: Unit[] = this.data.unitList;
+    unitList: Unit[] | ForceUnit[] = this.data.unitList;
     unitIndex = signal(this.data.unitIndex);
-    gunnerySkill = signal<number | undefined>(this.data.gunnerySkill);
-    pilotingSkill = signal<number | undefined>(this.data.pilotingSkill);
+    gunnerySkill = computed<number | undefined>(() => {
+        const currentUnit = this.unitList[this.unitIndex()]
+        if (currentUnit instanceof ForceUnit) {
+            return currentUnit.getCrewMember(0).getSkill('gunnery');
+        }
+        return this.data.gunnerySkill;
+    });
+    pilotingSkill = computed<number | undefined>(() => {
+        const currentUnit = this.unitList[this.unitIndex()]
+        if (currentUnit instanceof ForceUnit) {
+            return currentUnit.getCrewMember(0).getSkill('piloting');
+        }
+        return this.data.pilotingSkill;
+    });
 
     groupedBays: Array<{ l: string, p: number, bays: UnitComponent[] }> = [];
     components: UnitComponent[] = [];
@@ -135,7 +150,11 @@ export class UnitDetailsDialogComponent {
     private isFloatingHovered = false;
     
     get unit(): Unit {
-        return this.unitList[this.unitIndex()];
+        const currentUnit = this.unitList[this.unitIndex()]
+        if (currentUnit instanceof ForceUnit) {
+            return currentUnit.getUnit();
+        }
+        return currentUnit;
     }
 
     getAdjustedBV = computed<number | null>(() => {
@@ -747,7 +766,24 @@ export class UnitDetailsDialogComponent {
     }
 
     onAdd() {
-        this.add.emit(this.unit);
+        const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
+        let gunnery;
+        let piloting;
+        if (this.unit instanceof ForceUnit) {
+            gunnery = this.unit.getCrewMember(0).getSkill('gunnery');
+            piloting = this.unit.getCrewMember(0).getSkill('piloting');
+        } else {
+            gunnery = this.gunnerySkill();
+            piloting = this.pilotingSkill();
+        }
+        this.forceBuilderService.addUnit(
+            selectedUnit,
+            gunnery,
+            piloting,
+        );
+        this.toastService.show(`${selectedUnit.model} ${selectedUnit.chassis} added to the force.`, 'success');
+        this.add.emit(selectedUnit);
+        this.onClose();
     }
 
     onClose() {

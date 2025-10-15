@@ -162,25 +162,13 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     showUnitInfo(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
-        const unitList = this.forceBuilderService.forceUnits().map(u => u.getUnit());
-        const unitIndex = unitList.findIndex(u => u.name === unit.getUnit().name);
-        const gunnery = unit.getCrewMember(0).getSkill('gunnery');
-        const piloting = unit.getCrewMember(0).getSkill('piloting');
+        const unitList = this.forceBuilderService.forceUnits();
+        const unitIndex = unitList.findIndex(u => u.id === unit.id);
         const ref = this.dialog.open(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: unitList,
-                unitIndex: unitIndex,
-                gunnerySkill: gunnery,
-                pilotingSkill: piloting,
+                unitIndex: unitIndex
             }
-        });
-        ref.componentInstance?.add.subscribe(selectedUnit => {
-            this.forceBuilderService.addUnit(
-                selectedUnit,
-                gunnery,
-                piloting
-            );
-            ref.close();
         });
 
     }

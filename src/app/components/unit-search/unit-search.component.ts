@@ -568,17 +568,11 @@ export class UnitSearchComponent implements OnDestroy {
             this.unitDetailsDialogOpen.set(false);
         });
 
-        ref.componentInstance?.add.subscribe(unit => {
+        ref.componentInstance?.add.subscribe(newUnit => {
             if (!this.forceBuilderService.hasUnits()) {
                 // If this is the first unit being added, close the search panel
                 this.closeAllPanels();
             }
-            this.forceBuilderService.addUnit(
-                unit,
-                this.filtersService.pilotGunnerySkill(),
-                this.filtersService.pilotPilotingSkill()
-            );
-            ref.close();
             this.searchInput().nativeElement.blur();
             this.unitDetailsDialogOpen.set(false);
         });

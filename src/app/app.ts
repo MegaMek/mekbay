@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, OnInit, signal, HostListener, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector } from '@angular/core';
+import { Component, computed, signal, HostListener, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
@@ -80,7 +80,7 @@ import { DomPortal, PortalModule } from '@angular/cdk/portal';
     templateUrl: './app.html',
     styleUrl: './app.scss'
 })
-export class App implements OnInit {
+export class App {
     private swUpdate = inject(SwUpdate);
     protected dataService = inject(DataService);
     private forceBuilderService = inject(ForceBuilderService);
@@ -116,6 +116,8 @@ export class App implements OnInit {
     ];
 
     constructor() {
+        document.addEventListener('contextmenu', (event) => event.preventDefault());
+        window.addEventListener('beforeunload', this.beforeUnloadHandler);
         if (this.swUpdate.isEnabled) {
             setInterval(() => this.checkForUpdate(), this.updateCheckInterval);
             this.checkForUpdate();
@@ -145,6 +147,28 @@ export class App implements OnInit {
                 }
             }
         });
+        effect(() => {
+            untracked(async () => {
+                await this.dataService.initialize();
+                if (this.dataService.isDataReady()) {
+                    const params = new URLSearchParams(window.location.search);
+                    const sharedUnitName = params.get('shareUnit');
+                    const tab = params.get('tab') ?? undefined;
+                    if (sharedUnitName) {
+                        // Find the unit by model name (decode first)
+                        const unitNameDecoded = decodeURIComponent(sharedUnitName);
+                        const unit = this.dataService.getUnitByName(unitNameDecoded);
+                        if (unit) {
+                            this.showSingleUnitDetails(unit, tab);
+                        }
+                    } else {
+                        afterNextRender(() => {
+                            this.unitSearchComponentRef()?.focusInput();
+                        }, { injector: this.injector });
+                    }
+                }
+            });
+        });
     }
 
     hasUnits = computed(() => this.forceBuilderService.forceUnits().length > 0);
@@ -152,13 +176,12 @@ export class App implements OnInit {
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
     @HostListener('window:online')
     onOnline() {
-        console.log('Back online, checking for updates...');
+        console.log('Back online!');
         this.checkForUpdate();
     }
 
     @HostListener('window:focus')
     onFocus() {
-        console.log('App focused, checking for updates...');
         this.checkForUpdate();
     }
 
@@ -168,6 +191,7 @@ export class App implements OnInit {
         if (now - this.lastUpdateCheck < (this.updateCheckInterval / 4)) {
             return;
         }
+        console.log('Checking for updates...');
         this.lastUpdateCheck = now;
 
         if (this.swUpdate.isEnabled) {
@@ -178,25 +202,6 @@ export class App implements OnInit {
                 }
             } catch (err) {
                 console.error('Error checking for updates:', err);
-            }
-        }
-    }
-
-    async ngOnInit() {
-        document.addEventListener('contextmenu', (event) => event.preventDefault());
-        await this.dataService.initialize();
-        window.addEventListener('beforeunload', this.beforeUnloadHandler);
-        if (this.dataService.isDataReady()) {
-            const params = new URLSearchParams(window.location.search);
-            const sharedUnitName = params.get('shareUnit');
-            const tab = params.get('tab') ?? undefined;
-            if (sharedUnitName) {
-                // Find the unit by model name (decode first)
-                const unitNameDecoded = decodeURIComponent(sharedUnitName);
-                const unit = this.dataService.getUnitByName(unitNameDecoded);
-                if (unit) {
-                    this.showSingleUnitDetails(unit, tab);
-                }
             }
         }
     }
@@ -249,9 +254,7 @@ export class App implements OnInit {
         ref.closed.subscribe(() => {
             this.removeShareUnitParam();
         });
-        ref.componentInstance?.add.subscribe(unit => {
-            this.forceBuilderService.addUnit(unit);
-            ref.close();
+        ref.componentInstance?.add.subscribe(newUnit => {
             this.removeShareUnitParam();
         });
 

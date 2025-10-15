@@ -371,7 +371,7 @@ export class ForceBuilderService {
      * @param gunnerySkill Optional gunnery skill to set for the crew
      * @param pilotingSkill Optional piloting skill to set for the crew
      */
-    addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number) {
+    addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number): ForceUnit {
         const newForceUnit = this.force.addUnit(unit);
         
         // Set crew skills if provided
@@ -397,6 +397,7 @@ export class ForceBuilderService {
             this.layoutService.openMenu();
         }
         this.generateForceNameIfNeeded();
+        return newForceUnit;
     }
 
     /**

@@ -32,13 +32,12 @@
                         unit.weightClass }}</strong></div>
                 <div>
                     <span class="muted">BV: </span>
-                    <ng-container *ngIf="getAdjustedBV() !== null && hasNonDefaultSkills(); else defaultBV">
+                    @if (getAdjustedBV() != null && getAdjustedBV() != unit.bv) {
                         <strong>{{ formatThousands(getAdjustedBV()!) }}</strong>
                         <span class="muted"> ({{ formatThousands(unit.bv) }})</span>
-                    </ng-container>
-                    <ng-template #defaultBV>
+                    } @else {
                         <strong>{{ formatThousands(unit.bv) }}</strong>
-                    </ng-template>
+                    }
                 </div>
                 <div><span class="muted">Tech: </span><strong>{{ unit.techBase }} | {{ unit.techRating }}</strong></div>
                 <div *ngIf="unit.year"><span class="muted">Intro Year: </span><strong>{{ unit.year }}</strong> <img
