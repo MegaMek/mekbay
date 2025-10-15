@@ -532,9 +532,13 @@ export class SvgCanvasOverlayComponent {
         }
     }
 
+    isEraseButton(button: number): boolean {
+        return button === 5 || button === 2; // X1 (back) button or right-click
+    }
+
     drawNative(event: PointerEvent, ctx: CanvasRenderingContext2D, fromPos: { x: number, y: number }, toPos: { x: number, y: number }) {
         ctx.save();
-        if (this.mode() === 'eraser' || event.buttons === 5) {
+        if (this.mode() === 'eraser' || this.isEraseButton(event.button)) {
             ctx.globalCompositeOperation = 'destination-out';
             ctx.strokeStyle = 'rgba(0,0,0,1)';
             ctx.lineWidth = this.eraserSize() * 2;
@@ -568,7 +572,7 @@ export class SvgCanvasOverlayComponent {
         if (!stage || !layer) return;
         const pos = this.getPointerPosition(event);
         if (!pos) return;
-        const paintMode = event.button == 5 ? false : this.mode() === 'brush';
+        const paintMode = this.isEraseButton(event.button) ? false : this.mode() === 'brush';
         this.currentLine = new Line({
             points: [pos.x, pos.y, pos.x, pos.y],
             stroke: paintMode ? this.brushColor() : '#000',
@@ -615,7 +619,7 @@ export class SvgCanvasOverlayComponent {
         event.stopPropagation();
         this.activePointers.delete(event.pointerId);
         if (!this.isDirectMode()) {
-            const paintMode = event.button == 5 ? false : this.mode() === 'brush';
+            const paintMode = this.isEraseButton(event.button) ? false : this.mode() === 'brush';
             this.currentLine?.points(this.reduceNearPoints(this.currentLine.points(), (paintMode ? this.brushSize() : this.eraserSize()) / 2, 0.01));
             this.currentLine = undefined;
         }    
@@ -653,7 +657,7 @@ export class SvgCanvasOverlayComponent {
             const start = Math.max(0, newPoints.length - SvgCanvasOverlayComponent.REDUCE_WINDOW_SIZE);
             const prefix = newPoints.slice(0, start);
             const segment = newPoints.slice(start);
-            const paintMode = event.button == 5 ? false : this.mode() === 'brush';
+            const paintMode = this.isEraseButton(event.button) ? false : this.mode() === 'brush';
             const reducedSegment = this.reduceNearPoints(segment, (paintMode ? this.brushSize() : this.eraserSize()) / 2, 0.01);
             const reducedPoints = [...prefix, ...reducedSegment];
             this.currentLine.points(reducedPoints);
