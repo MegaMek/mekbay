@@ -240,6 +240,19 @@
                             alt="{{ unit.model }} {{ unit.chassis }}" />
                     </div>
 
+                    <div class="fluff-section" *ngIf="unit.fluff.systems && unit.fluff.systems.length > 0">
+                        <div class="fluff-label">Systems:</div>
+                        <div class="fluff-text">
+                            @for (system of unit.fluff.systems; track system.label) {
+                                <div>
+                                    <strong *ngIf="system.label">{{ system.label }}: </strong>
+                                    <span *ngIf="system.manufacturer">{{ system.manufacturer }} </span>
+                                    <span *ngIf="system.model">({{ system.model }})</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
                     <div class="fluff-section" *ngIf="unit.fluff.manufacturer">
                         <div class="fluff-label">Manufacturers:</div>
                         <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.manufacturer) }}</div>

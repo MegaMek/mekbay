@@ -114,6 +114,7 @@ export interface Unit {
         deployment?: string;
         history?: string;
         notes?: string;
+        systems?: { label?: string, manufacturer?: string, model?: string }[];
     };
     sheets: string[];
     _chassis?: string; // For pre-compiled search
