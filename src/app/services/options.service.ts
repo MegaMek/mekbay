@@ -64,7 +64,6 @@ export class OptionsService {
             quickActions: saved?.quickActions ?? 'disabled',
             canvasMode: saved?.canvasMode ?? 'raster',
             canvasInput: saved?.canvasInput ?? 'all',
-            uuid: saved?.uuid ?? await this.userStateService.getOrCreateUuid(),
         });
     }
 

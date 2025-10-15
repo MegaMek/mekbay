@@ -35,7 +35,7 @@
  * Author: Drake
  */
 export interface Options {
-    uuid?: string;
+    uuid?: string; // deprecated, use UserStateService instead
     sheetsColor: 'normal' | 'night';
     pickerStyle: 'default' | 'radial' | 'linear';
     quickActions: 'enabled' | 'disabled';

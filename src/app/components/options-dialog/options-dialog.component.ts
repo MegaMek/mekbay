@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { OptionsService } from '../../services/options.service';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
@@ -61,13 +61,14 @@ export class OptionsDialogComponent {
     tabs = ['General', 'Advanced', 'Debug'];
     activeTab = signal(this.tabs[0]);
 
-    userUuid = '';
+    uuidInput = viewChild.required<ElementRef<HTMLInputElement>>('uuidInput');
+    userUuid = computed(() => this.userStateService.uuid() || '');
     userUuidError = '';
     sheetCacheSize = signal(0);
     canvasMemorySize = signal(0);
 
+
     constructor() {
-        this.userUuid = this.userStateService.uuid();
         this.updateSheetCacheSize();
         this.updateCanvasMemorySize();
         // Debug tab event listeners
@@ -127,12 +128,6 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('canvasInput', value);
     }
     
-    onUserUuidInput(event: Event) {
-        const value = (event.target as HTMLInputElement).value;
-        this.userUuid = value;
-        if (this.userUuidError) this.userUuidError = '';
-    }
-
     selectAll(event: FocusEvent) {
         const input = event.target as HTMLInputElement;
         input.select();
@@ -169,26 +164,51 @@ export class OptionsDialogComponent {
         }
     }
 
-    onUserUuidKeydown(event: KeyboardEvent) {
+    async onUserUuidKeydown(event: KeyboardEvent) {
         if (event.key === 'Escape') {
             event.preventDefault();
             event.stopPropagation();
-            this.userUuid = this.userStateService.uuid();
             this.userUuidError = '';
-            (event.target as HTMLInputElement).blur();
+            this.resetUserUuidInput();
         }
     }
 
-    async onSetUuid() {
-        const trimmed = this.userUuid.trim();
+    private resetUserUuidInput() {
+        this.userUuidError = '';
+        const el = this.uuidInput().nativeElement;
+        el.value = this.userUuid();
+        el.blur();
+    }
+
+    async onSetUuid(value: string) {
+        this.userUuidError = '';
+        const trimmed = value.trim();
+        if (trimmed === this.userUuid()) {
+            // No change
+            return;
+        }
         if (trimmed.length === 0) {
             // Generate a new UUID if input is empty
-            this.userUuid = await this.userStateService.getOrCreateUuid(true);
+            const confirmed = await this.dialogsService.showQuestion(
+                'Are you sure you want to generate a new User Identifier? This will disconnect you from your cloud data. Your local data will remain intact.',
+                'Confirm New Identifier', 'danger');
+            if (confirmed !== 'yes') {
+                this.resetUserUuidInput();
+                return;
+            }
+            await this.userStateService.createNewUUID();
+            window.location.reload();
+            return;
         }
-        this.userUuid = trimmed;
-        this.userUuidError = '';
         try {
-            await this.userStateService.setUuid(this.userUuid);
+            const confirmed = await this.dialogsService.showQuestion(
+                'Are you sure you want to set a new User Identifier? This will disconnect you from your cloud data. Your local data will remain intact.',
+                'Confirm New Identifier', 'danger');
+            if (confirmed !== 'yes') {
+                this.resetUserUuidInput();
+                return;
+            }
+            await this.userStateService.setUuid(trimmed);
             window.location.reload();
         } catch (e: any) {
             this.userUuidError = e?.message || 'An unknown error occurred.';

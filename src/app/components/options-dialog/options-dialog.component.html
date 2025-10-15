@@ -42,10 +42,10 @@
                 <div class="option-col">
                     <label for="userUuid">User Identifier:</label>
                     <div class="option-row">
-                        <input id="userUuid" class="bt-input" [class.error]="!!userUuidError" type="text" [value]="userUuid"
-                            (input)="onUserUuidInput($event)" (focus)="selectAll($event)"
+                        <input #uuidInput id="userUuid" class="bt-input" [class.error]="!!userUuidError" type="text" [value]="userUuid()"
+                            (focus)="selectAll($event)"
                             (keydown)="onUserUuidKeydown($event)" />
-                        <button class="bt-button" (click)="onSetUuid()">APPLY</button>
+                        <button class="bt-button" (click)="onSetUuid(uuidInput.value)">APPLY</button>
                     </div>
                     @if (userUuidError) {<div class="error-msg">{{ userUuidError }}</div>}
                     <div class="description">

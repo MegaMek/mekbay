@@ -60,6 +60,7 @@ const CANVAS_STORE = 'canvasStore';
 const FORCE_STORE = 'forceStore';
 const TAGS_STORE = 'tagsStore';
 const OPTIONS_KEY = 'options';
+const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
 
 const MAX_SHEET_CACHE_COUNT = 2000; // Max number of sheets to cache
@@ -74,6 +75,11 @@ export interface StoredSheet {
 
 export interface StoredTags {
     [unitName: string]: string[];
+}
+
+export interface UserData {
+    uuid: string;
+    tabSubs?: string[];
 }
 
 @Injectable({
@@ -253,6 +259,14 @@ export class DbService {
     
     public async saveOptions(options: Options): Promise<void> {
         return await this.saveDataFromGeneralStore(options, OPTIONS_KEY);
+    }
+
+    public async getUserData(): Promise<UserData | null> {
+        return await this.getDataFromGeneralStore<UserData>(USER_KEY);
+    }
+
+    public async saveUserData(userData: UserData): Promise<void> {
+        return await this.saveDataFromGeneralStore(userData, USER_KEY);
     }
 
     public async getQuirks(): Promise<Quirks | null> {

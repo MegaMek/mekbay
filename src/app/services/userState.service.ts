@@ -31,10 +31,10 @@
  * affiliated with Microsoft.
  */
 
-import { inject, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, signal, viewChild } from '@angular/core';
 import { generateUUID } from './ws.service';
 import { Options } from '../models/options.model';
-import { DbService } from './db.service';
+import { DbService, UserData } from './db.service';
 
 /*
  * Author: Drake
@@ -42,26 +42,36 @@ import { DbService } from './db.service';
 @Injectable({ providedIn: 'root' })
 export class UserStateService {
     public isRegistered = signal<boolean>(false);
-    public uuid = signal<string>('');
     private dbService = inject(DbService);
+    private userData = signal<UserData>({ uuid: '' });
+    public uuid = computed<string>(() => this.userData().uuid);
 
     constructor() {
-        this.initUserState();
+        this.initUserData();
     }
     
-    async initUserState() {
-        const uuid = await this.getOrCreateUuid();
-        this.uuid.set(uuid);
-    }
-    
-    public async getOrCreateUuid(forceNew: boolean = false): Promise<string> {
-        let options = await this.dbService.getOptions();
-        if (forceNew || !options || !options.uuid || options.uuid.trim().length === 0) {
-            const newUuid = generateUUID();
-            await this.setUuid(newUuid);
-            return newUuid;
+    async initUserData() {
+        const userData = await this.dbService.getUserData();
+        if (userData) {
+            this.userData.set(userData);
+            return;
         }
-        return options.uuid;
+        // Fallback for older versions that didn't have a user table
+        const options = await this.dbService.getOptions();
+        if (options && options.uuid) {
+            const newUserData = <UserData>{ uuid: options.uuid };
+            this.userData.set(newUserData);
+            await this.dbService.saveUserData(newUserData);
+            return;
+        }
+        // No user data? We generate it anew
+        await this.createNewUUID();
+    }
+
+    public async createNewUUID(): Promise<UserData> {
+        const uuid = generateUUID();
+        this.setUuid(uuid);
+        return this.userData();
     }
 
     public async setUuid(newUuid: string) {
@@ -69,10 +79,15 @@ export class UserStateService {
         if (trimmed.length < 10 || trimmed.length > 40) {
             throw new Error('User Identifier must be between 10 and 40 characters long.');
         }
-        let options = await this.dbService.getOptions();
-        options = { ...options, uuid: trimmed } as Options;
-        await this.dbService.saveOptions(options);
-        this.uuid.set(trimmed);
+        let userData = this.userData();
+        if (!userData) {
+            // Create new user data with the given UUID
+            userData = <UserData>{ uuid: trimmed };
+        } else {
+            userData.uuid = trimmed;
+        }
+        this.userData.set({ ...userData });
+        await this.dbService.saveUserData(userData);
     }
 
 }
