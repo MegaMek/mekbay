@@ -222,7 +222,7 @@ export class ForceBuilderService {
                 relativeTo: this.route,
                 queryParams: {
                     units: unitParams.length > 0 ? unitParams.join(',') : null,
-                    name: this.force.instanceId ? (forceName || null) : null,
+                    name: forceName || null,
                     instance: this.force.instanceId || null
                 },
                 queryParamsHandling: 'merge',
