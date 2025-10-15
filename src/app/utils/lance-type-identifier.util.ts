@@ -43,9 +43,9 @@ export interface LanceTypeDefinition {
     parent?: string;
     name: string;
     description: string;
-    category: 'Inner Sphere' | 'Clan' | 'Special';
     validator: (units: ForceUnit[]) => boolean;
     idealRole?: string;
+    techBase?: 'Inner Sphere' | 'Clan' | 'Special';
     minUnits?: number;
     exclusiveFaction?: string;
 }
@@ -87,7 +87,7 @@ export class LanceTypeIdentifierUtil {
             id: 'air-lance',
             name: 'Air Lance',
             description: 'Lance of ground units plus two aerospace/conventional fighters',
-            category: 'Special',
+            techBase: 'Special',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 const fighters = units.filter(u => u.getUnit().subtype === 'Aerospace Fighter' || u.getUnit().subtype === 'Conventional Fighter');
@@ -108,7 +108,6 @@ export class LanceTypeIdentifierUtil {
             id: 'anti-mech-lance',
             name: 'Anti-\'Mech Lance',
             description: 'All infantry units for urban and anti-mech warfare',
-            category: 'Inner Sphere',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 return units.every(u => u.getUnit().type === 'Infantry');
@@ -120,7 +119,6 @@ export class LanceTypeIdentifierUtil {
             id: 'assault-lance',
             name: 'Assault Lance',
             description: 'Heavy firepower and armor powerhouse formation',
-            category: 'Inner Sphere',
             idealRole: 'Juggernaut',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
@@ -146,7 +144,7 @@ export class LanceTypeIdentifierUtil {
             id: 'anvil-lance',
             name: 'Anvil Lance',
             description: 'Marik heavy formation for holding enemy advance',
-            category: 'Inner Sphere',
+            
             exclusiveFaction: 'Free Worlds League',
             idealRole: 'Juggernaut',
             minUnits: 4,
@@ -166,7 +164,7 @@ export class LanceTypeIdentifierUtil {
             parent: 'assault-lance',
             name: 'Fast Assault Lance',
             description: 'Mobile assault formation with speed advantage',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // Fast assault requirement
@@ -180,7 +178,7 @@ export class LanceTypeIdentifierUtil {
             id: 'hunter-lance',
             name: 'Hunter Lance',
             description: 'Ambush specialists for heavy terrain',
-            category: 'Inner Sphere',
+            
             idealRole: 'Ambusher',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
@@ -196,7 +194,7 @@ export class LanceTypeIdentifierUtil {
             id: 'battle-lance',
             name: 'Battle Lance',
             description: 'Line troops with balanced firepower and armor',
-            category: 'Inner Sphere',
+            
             idealRole: 'Brawler',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
@@ -218,7 +216,7 @@ export class LanceTypeIdentifierUtil {
             id: 'light-battle-lance',
             name: 'Light Battle Lance',
             description: 'Fast light formation for reconnaissance and skirmishing',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 
@@ -239,7 +237,7 @@ export class LanceTypeIdentifierUtil {
             id: 'medium-battle-lance',
             name: 'Medium Battle Lance',
             description: 'Medium weight balanced formation',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 
@@ -257,7 +255,7 @@ export class LanceTypeIdentifierUtil {
             id: 'heavy-battle-lance',
             name: 'Heavy Battle Lance',
             description: 'Heavy weight powerhouse formation',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {                
                 const heavyOrLarger = units.filter(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) >= 3);
@@ -274,7 +272,7 @@ export class LanceTypeIdentifierUtil {
             id: 'rifle-lance',
             name: 'Rifle Lance',
             description: 'Davion autocannon specialists',
-            category: 'Inner Sphere',
+            
             exclusiveFaction: 'Federated Suns',
             validator: (units: ForceUnit[]) => {
                 if (units.length < 1) return false;
@@ -297,7 +295,7 @@ export class LanceTypeIdentifierUtil {
             id: 'berserker-lance',
             name: 'Berserker/Close Combat Lance',
             description: 'Close combat specialists for physical attacks',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // Same as battle lance but focused on close combat. I don't use the 'parent' to avoid priority issues.
@@ -320,7 +318,7 @@ export class LanceTypeIdentifierUtil {
             id: 'command-lance',
             name: 'Command Lance',
             description: 'Diverse formation built around force commander',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // At least 50 percent of the units in this Formation must have one of the following Unit Roles: Sniper, Missile Boat, Skirmisher, or Juggernaut.
@@ -336,7 +334,7 @@ export class LanceTypeIdentifierUtil {
             id: 'order-lance',
             name: 'Order Lance',
             description: 'Kurita synchronized formation of identical units',
-            category: 'Inner Sphere',
+            
             exclusiveFaction: 'Draconis Combine',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {                
@@ -356,7 +354,7 @@ export class LanceTypeIdentifierUtil {
             id: 'vehicle-command-lance',
             name: 'Vehicle Command Lance',
             description: 'Formation of command vehicle units',
-            category: 'Inner Sphere',
+            
             exclusiveFaction: 'Draconis Combine',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
@@ -377,7 +375,7 @@ export class LanceTypeIdentifierUtil {
             id: 'fire-lance',
             name: 'Fire Lance',
             description: 'Long-range firepower specialists',
-            category: 'Inner Sphere',
+            
             idealRole: 'Missile Boat',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
@@ -392,7 +390,7 @@ export class LanceTypeIdentifierUtil {
             parent: 'fire-lance',
             name: 'Anti-Air Lance',
             description: 'Air defense specialists',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 //  at least two units in an Anti-Air Lance must possess an LBX autocannon, a standard autocannon, an artillery weapon, or the Anti-Aircraft Targeting Quirk
@@ -408,7 +406,7 @@ export class LanceTypeIdentifierUtil {
             id: 'artillery-fire-lance',
             name: 'Artillery Fire Lance',
             description: 'Artillery support specialists',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 const hasArtillery = units.filter(u => LanceTypeIdentifierUtil.hasArtillery(u.getUnit()));
@@ -420,9 +418,10 @@ export class LanceTypeIdentifierUtil {
             id: 'direct-fire-lance',
             name: 'Direct Fire Lance',
             description: 'Direct fire heavy weapons',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
+                console.log('Direct Fire Lance validation', units);
                 // At least two units in this Formation must be heavy or larger
                 const heavyOrLarger = units.filter(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) >= 3);
                 
@@ -437,7 +436,7 @@ export class LanceTypeIdentifierUtil {
             id: 'fire-support-lance',
             name: 'Fire Support Lance',
             description: 'Indirect fire specialists',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 const indirectCapable = units.filter(u => LanceTypeIdentifierUtil.hasLRM(u.getUnit()) || 
@@ -451,7 +450,7 @@ export class LanceTypeIdentifierUtil {
             id: 'light-fire-lance',
             name: 'Light Fire Lance',
             description: 'Light units with coordinated long-range fire',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // No unit of heavy weight or larger may be included. 
@@ -467,7 +466,7 @@ export class LanceTypeIdentifierUtil {
             id: 'nova',
             name: 'Nova',
             description: 'Clan OmniMech Star with mechanized battle armor',
-            category: 'Clan',
+            techBase: 'Clan',
             validator: (units: ForceUnit[]) => {
                 if (units.length !== 10) return false;
                 
@@ -487,7 +486,7 @@ export class LanceTypeIdentifierUtil {
             id: 'pursuit-lance',
             name: 'Pursuit Lance',
             description: 'Fast scout hunters with firepower',
-            category: 'Inner Sphere',
+            
             idealRole: 'Striker',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
@@ -506,7 +505,7 @@ export class LanceTypeIdentifierUtil {
             id: 'probe-lance',
             name: 'Probe Lance',
             description: 'Mobile reconnaissance force',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // No units of assault weight or larger may be included
@@ -523,7 +522,7 @@ export class LanceTypeIdentifierUtil {
             id: 'sweep-lance',
             name: 'Sweep Lance',
             description: 'Fast medium-range sweeping force',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // All units in this Formation must be light or medium
@@ -542,7 +541,7 @@ export class LanceTypeIdentifierUtil {
             id: 'recon-lance',
             name: 'Recon Lance',
             description: 'Fast reconnaissance specialists',
-            category: 'Inner Sphere',
+            
             idealRole: 'Scout',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
@@ -558,7 +557,7 @@ export class LanceTypeIdentifierUtil {
             id: 'heavy-recon-lance',
             name: 'Heavy Recon Lance',
             description: 'Armored reconnaissance formation',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // All units in this Formation must have a Walk/Cruise speed of 4 or more
@@ -577,7 +576,7 @@ export class LanceTypeIdentifierUtil {
             id: 'light-recon-lance',
             name: 'Light Recon Lance',
             description: 'Ultra-fast light reconnaissance',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // All units in this Formation must be light
@@ -596,7 +595,7 @@ export class LanceTypeIdentifierUtil {
             id: 'security-lance',
             name: 'Security Lance',
             description: 'Installation defense specialists',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // At least one unit in this Formation must have the Scout or Striker Unit Role
@@ -614,7 +613,7 @@ export class LanceTypeIdentifierUtil {
             id: 'striker-lance',
             name: 'Striker/Cavalry Lance',
             description: 'Fast mobile firepower',
-            category: 'Inner Sphere',
+            
             idealRole: 'Striker',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
@@ -632,7 +631,7 @@ export class LanceTypeIdentifierUtil {
             id: 'hammer-lance',
             name: 'Hammer Lance',
             description: 'Marik fast flanking force',
-            category: 'Inner Sphere',
+            
             exclusiveFaction: 'Free Worlds League',
             idealRole: 'Striker',
             minUnits: 4,
@@ -647,7 +646,7 @@ export class LanceTypeIdentifierUtil {
             id: 'heavy-striker-lance',
             name: 'Heavy Striker/Cavalry Lance',
             description: 'Heavy fast-moving formation',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // All units in this Formation must have a minimum Walk/Cruise speed of 4
@@ -668,7 +667,7 @@ export class LanceTypeIdentifierUtil {
             id: 'horde',
             name: 'Horde',
             description: 'Mass light unit swarm tactics',
-            category: 'Inner Sphere',
+            
             minUnits: 5,
             validator: (units: ForceUnit[]) => {
                 // The Formation must consist of five to ten units; 
@@ -686,7 +685,7 @@ export class LanceTypeIdentifierUtil {
             id: 'light-striker-lance',
             name: 'Light Striker/Cavalry Lance',
             description: 'Fast light mobile force',
-            category: 'Inner Sphere',
+            
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // All units in this Formation must have a minimum Walk/Cruise speed of 5
@@ -706,7 +705,7 @@ export class LanceTypeIdentifierUtil {
             id: 'ranger-lance',
             name: 'Ranger Lance',
             description: 'Terrain warfare specialists',
-            category: 'Inner Sphere',
+            
             idealRole: 'Skirmisher',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
@@ -721,7 +720,7 @@ export class LanceTypeIdentifierUtil {
             id: 'support-lance',
             name: 'Support Lance',
             description: 'Multi-role formation backing other units',
-            category: 'Inner Sphere',
+            
             validator: (units: ForceUnit[]) => {
                 // Support lance has no specific requirements
                 return units.length >= 3;
@@ -733,7 +732,7 @@ export class LanceTypeIdentifierUtil {
             id: 'urban-lance',
             name: 'Urban Combat Lance',
             description: 'City fighting specialists',
-            category: 'Inner Sphere',
+            
             idealRole: 'Ambusher',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
@@ -752,7 +751,7 @@ export class LanceTypeIdentifierUtil {
             id: 'aerospace-superiority-squadron',
             name: 'Aerospace Superiority Squadron',
             description: 'Air superiority specialists',
-            category: 'Inner Sphere',
+            
             minUnits: 6,
             validator: (units: ForceUnit[]) => {
                 // Has to be aerospace units only
@@ -768,7 +767,7 @@ export class LanceTypeIdentifierUtil {
             id: 'electronic-warfare-squadron',
             name: 'Electronic Warfare Squadron',
             description: 'Electronic warfare specialists',
-            category: 'Inner Sphere',
+            
             minUnits: 6,
             validator: (units: ForceUnit[]) => {
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
@@ -795,7 +794,7 @@ export class LanceTypeIdentifierUtil {
             id: 'fire-support-squadron',
             name: 'Fire Support Squadron',
             description: 'Fire support specialists',
-            category: 'Inner Sphere',
+            
             minUnits: 6,
             validator: (units: ForceUnit[]) => {
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
@@ -813,7 +812,7 @@ export class LanceTypeIdentifierUtil {
             id: 'interceptor-squadron',
             name: 'Interceptor Squadron',
             description: 'Interceptor specialists',
-            category: 'Inner Sphere',
+            
             minUnits: 6,
             validator: (units: ForceUnit[]) => {
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
@@ -828,7 +827,7 @@ export class LanceTypeIdentifierUtil {
             id: 'strike-squadron',
             name: 'Strike Squadron',
             description: 'Strike specialists',
-            category: 'Inner Sphere',
+            
             minUnits: 6,
             validator: (units: ForceUnit[]) => {
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
@@ -845,7 +844,7 @@ export class LanceTypeIdentifierUtil {
             id: 'transport-squadron',
             name: 'Transport Squadron',
             description: 'Transport specialists',
-            category: 'Inner Sphere',
+            
             minUnits: 6,
             validator: (units: ForceUnit[]) => {
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
@@ -904,10 +903,11 @@ export class LanceTypeIdentifierUtil {
                 }
                 
                 // Skip if tech base doesn't match (unless special or mixed)
-                if (techBase && definition.category != 'Special' && techBase !== 'Mixed') {
-                    if (definition.category !== techBase) {
-                        continue;
-                    }
+                if (techBase && definition.techBase 
+                    && definition.techBase != 'Special' 
+                    && techBase !== 'Mixed' 
+                    && definition.techBase !== techBase) {
+                    continue;
                 }
                 if (this.validateDefinition(definition, units)) {
                     matches.push(definition);
