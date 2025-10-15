@@ -129,7 +129,9 @@ export class UnitSearchComponent implements OnDestroy {
         height: '100%',
     });
 
-    overlayVisible = computed(() => this.advOpen() || this.resultsVisible() || this.expandedView());
+    overlayVisible = computed(() => {
+        return this.advOpen() || this.resultsVisible();
+    });
 
     resultsVisible = computed(() => {
         if (this.expandedView()) {

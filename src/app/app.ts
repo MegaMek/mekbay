@@ -166,7 +166,8 @@ export class App {
                     }
                 } else {
                     afterNextRender(() => {
-                        // Default search focus
+                        const params = new URLSearchParams(window.location.search);
+                        if (params.has('instanceId') || params.has('units')) return; // Don't focus if loading a force
                         this.unitSearchComponentRef()?.focusInput();
                     }, { injector: this.injector });
                 }
