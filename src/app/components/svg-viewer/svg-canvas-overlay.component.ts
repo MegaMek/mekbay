@@ -543,16 +543,16 @@ export class SvgCanvasOverlayComponent {
         }
     }
 
-    drawNative(ctx: CanvasRenderingContext2D, fromPos: { x: number, y: number }, toPos: { x: number, y: number }) {
+    drawNative(event: PointerEvent, ctx: CanvasRenderingContext2D, fromPos: { x: number, y: number }, toPos: { x: number, y: number }) {
         ctx.save();
-        if (this.mode() === 'eraser') {
+        if (this.mode() === 'eraser' || event.buttons === 5) {
             ctx.globalCompositeOperation = 'destination-out';
             ctx.strokeStyle = 'rgba(0,0,0,1)';
-            ctx.lineWidth = this.strokeSize() * 2;
+            ctx.lineWidth = this.eraserSize() * 2;
         } else {
             ctx.globalCompositeOperation = 'source-over';
             ctx.strokeStyle = this.brushColor();
-            ctx.lineWidth = this.strokeSize();
+            ctx.lineWidth = this.brushSize();
         }
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
@@ -569,7 +569,7 @@ export class SvgCanvasOverlayComponent {
         // draw initial dot
         const ctx = this.getCanvasContext();
         if (ctx) {
-            this.drawNative(ctx, pos, pos);
+            this.drawNative(event, ctx, pos, pos);
         }
     }
 
@@ -579,12 +579,12 @@ export class SvgCanvasOverlayComponent {
         if (!stage || !layer) return;
         const pos = this.getPointerPosition(event);
         if (!pos) return;
-        const mode = this.mode();
+        const paintMode = event.button == 5 ? false : this.mode() === 'brush';
         this.currentLine = new Line({
             points: [pos.x, pos.y, pos.x, pos.y],
-            stroke: mode === 'brush' ? this.brushColor() : '#000',
-            strokeWidth: mode === 'brush' ? this.strokeSize() : this.strokeSize() * 2,
-            globalCompositeOperation: mode === 'brush' ? 'source-over' : 'destination-out',
+            stroke: paintMode ? this.brushColor() : '#000',
+            strokeWidth: paintMode ? this.brushSize() : this.eraserSize() * 2,
+            globalCompositeOperation: paintMode ? 'source-over' : 'destination-out',
             lineCap: 'round',
             lineJoin: 'round'
         });
@@ -621,16 +621,13 @@ export class SvgCanvasOverlayComponent {
     }
 
     onPointerUp(event: PointerEvent) {
-        const mode = this.mode();
-        if (mode === 'none') return;
-        const inputFilter = this.optionsService.options().canvasInput;
-        if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
-        if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
+        if (this.activePointers.has(event.pointerId) === false) return;
         event.preventDefault();
         event.stopPropagation();
         this.activePointers.delete(event.pointerId);
         if (!this.isDirectMode()) {
-            this.currentLine?.points(this.reduceNearPoints(this.currentLine.points(), this.strokeSize() / 2, 0.01));
+            const paintMode = event.button == 5 ? false : this.mode() === 'brush';
+            this.currentLine?.points(this.reduceNearPoints(this.currentLine.points(), (paintMode ? this.brushSize() : this.eraserSize()) / 2, 0.01));
             this.currentLine = undefined;
         }    
         if (this.activePointers.size === 0) {
@@ -639,11 +636,7 @@ export class SvgCanvasOverlayComponent {
     }
 
     onPointerMove(event: PointerEvent) {
-        const mode = this.mode();
-        if (mode === 'none') return;
-        const inputFilter = this.optionsService.options().canvasInput;
-        if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
-        if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
+        if (this.activePointers.has(event.pointerId) === false) return;
         event.preventDefault();
         event.stopPropagation();
         const pos = this.getPointerPosition(event);
@@ -652,7 +645,7 @@ export class SvgCanvasOverlayComponent {
             const ctx = this.getCanvasContext();
             if (!ctx) return;
             const fromPos = this.activePointers.get(event.pointerId);
-            this.drawNative(ctx, fromPos ?? pos, pos);
+            this.drawNative(event, ctx, fromPos ?? pos, pos);
             this.activePointers.set(event.pointerId, pos);
         } else {
             if (!this.currentLine) return;
@@ -666,7 +659,8 @@ export class SvgCanvasOverlayComponent {
             const start = Math.max(0, newPoints.length - SvgCanvasOverlayComponent.REDUCE_WINDOW_SIZE);
             const prefix = newPoints.slice(0, start);
             const segment = newPoints.slice(start);
-            const reducedSegment = this.reduceNearPoints(segment, this.strokeSize() / 2, 0.01);
+            const paintMode = event.button == 5 ? false : this.mode() === 'brush';
+            const reducedSegment = this.reduceNearPoints(segment, (paintMode ? this.brushSize() : this.eraserSize()) / 2, 0.01);
             const reducedPoints = [...prefix, ...reducedSegment];
             this.currentLine.points(reducedPoints);
             // Limit the number of points to prevent memory issues, we remove the oldest points
