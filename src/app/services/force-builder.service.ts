@@ -273,7 +273,7 @@ export class ForceBuilderService {
                     loadedInstance = await this.dataService.getForce(instanceParam);
                     if (loadedInstance) {
                         if (!loadedInstance.owned) {
-                            await this.dialogsService.showNotice('This force is owned by another user. Editing will create a cloned force and will not affect the original.', 'Shared Force');
+                            this.dialogsService.showNotice('This force is owned by another user. Editing will create a cloned force and will not affect the original.', 'Shared Force');
                         }
                         this.setForce(loadedInstance);
                         this.selectUnit(loadedInstance.units()[0] || null);
