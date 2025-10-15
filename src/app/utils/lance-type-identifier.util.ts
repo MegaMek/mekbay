@@ -421,7 +421,6 @@ export class LanceTypeIdentifierUtil {
             
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
-                console.log('Direct Fire Lance validation', units);
                 // At least two units in this Formation must be heavy or larger
                 const heavyOrLarger = units.filter(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) >= 3);
                 
