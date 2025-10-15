@@ -936,13 +936,13 @@ export class LanceTypeIdentifierUtil {
         for (const match of matches) {
             let weight = 1;
             if (match.exclusiveFaction && factionName.includes(match.exclusiveFaction)) {
-                weight *= 10;
-            } else
-            if (match.parent) {
                 weight *= 5;
             } else
-            if (match.id !== 'support-lance' && match.id !== 'command-lance' && match.id !== 'battle-lance') {
+            if (match.parent) {
                 weight *= 3;
+            } else
+            if (match.id !== 'support-lance' && match.id !== 'command-lance' && match.id !== 'battle-lance') {
+                weight *= 2;
             }
             weightedMatches.push(...Array(weight).fill(match));
         }
