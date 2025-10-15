@@ -930,13 +930,13 @@ export class LanceTypeIdentifierUtil {
         // Prioritize faction-specific lance types that match the current faction
         const factionSpecific = matches.filter(m => m.exclusiveFaction && factionName.includes(m.exclusiveFaction));
         if (factionSpecific.length > 0) {
-            return factionSpecific[0];
+            return factionSpecific[Math.floor(Math.random() * factionSpecific.length)];
         }
         
         // Prioritize child definitions (those with parents) as they are more specific
         const childDefinitions = matches.filter(m => m.parent);
         if (childDefinitions.length > 0) {
-            return childDefinitions[0];
+            return childDefinitions[Math.floor(Math.random() * childDefinitions.length)];
         }
         
         // Then prioritize other lance types with specific requirements (non-generic)
@@ -947,11 +947,11 @@ export class LanceTypeIdentifierUtil {
         );
         
         if (nonGeneric.length > 0) {
-            return nonGeneric[0];
+            return nonGeneric[Math.floor(Math.random() * nonGeneric.length)];
         }
         
-        // Return the first match as fallback
-        return matches[0];
+        // Pick a random match
+        return matches[Math.floor(Math.random() * matches.length)];
     }
 
     // Helper methods
