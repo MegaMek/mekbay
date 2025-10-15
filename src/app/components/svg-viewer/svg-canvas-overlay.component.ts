@@ -47,6 +47,12 @@ import { DialogsService } from '../../services/dialogs.service';
  * Author: Drake
  */
 
+interface brushLocation {
+    x: number;
+    y: number;
+    mode: 'brush' | 'eraser';
+}
+
 @Component({
     selector: 'svg-canvas-overlay',
     standalone: true,
@@ -318,7 +324,7 @@ export class SvgCanvasOverlayComponent {
     height = input(200);
 
     stageConfig: Partial<StageConfig> = {};
-    activePointers = new Map<number, { x: number, y: number }>();
+    activePointers = new Map<number, brushLocation>();
     lines: Line[] = [];
     private currentLine?: Line;
     lastReducedIndex = 0;
@@ -536,9 +542,9 @@ export class SvgCanvasOverlayComponent {
         return button === 5 || button === 2; // X1 (back) button or right-click
     }
 
-    drawNative(event: PointerEvent, ctx: CanvasRenderingContext2D, fromPos: { x: number, y: number }, toPos: { x: number, y: number }) {
+    drawNative(ctx: CanvasRenderingContext2D, brushLocation: brushLocation, toPos: { x: number, y: number }) {
         ctx.save();
-        if (this.mode() === 'eraser' || this.isEraseButton(event.button)) {
+        if (brushLocation.mode === 'eraser') {
             ctx.globalCompositeOperation = 'destination-out';
             ctx.strokeStyle = 'rgba(0,0,0,1)';
             ctx.lineWidth = this.eraserSize() * 2;
@@ -550,19 +556,19 @@ export class SvgCanvasOverlayComponent {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.beginPath();
-        ctx.moveTo(fromPos.x, fromPos.y);
+        ctx.moveTo(brushLocation.x, brushLocation.y);
         ctx.lineTo(toPos.x, toPos.y);
         ctx.stroke();
         ctx.restore();
     }
 
-    startDrawNativeCanvas(event: PointerEvent) {
-        const pos = this.getPointerPosition(event);
+    startDrawNativeCanvas(pointerId: number) {
+        const pos = this.activePointers.get(pointerId);
         if (!pos) return;
         // draw initial dot
         const ctx = this.getCanvasContext();
         if (ctx) {
-            this.drawNative(event, ctx, pos, pos);
+            this.drawNative(ctx, pos, pos);
         }
     }
 
@@ -572,7 +578,7 @@ export class SvgCanvasOverlayComponent {
         if (!stage || !layer) return;
         const pos = this.getPointerPosition(event);
         if (!pos) return;
-        const paintMode = this.isEraseButton(event.button) ? false : this.mode() === 'brush';
+        const paintMode = this.mode() === 'brush';
         this.currentLine = new Line({
             points: [pos.x, pos.y, pos.x, pos.y],
             stroke: paintMode ? this.brushColor() : '#000',
@@ -601,13 +607,14 @@ export class SvgCanvasOverlayComponent {
         event.stopPropagation();
         const pos = this.getPointerPosition(event);
         if (!pos) return;
-        this.activePointers.set(event.pointerId, pos);
+        const interactionMode = this.isEraseButton(event.button) ? 'eraser' : this.mode() === 'brush' ? 'brush' : 'eraser';
+        this.activePointers.set(event.pointerId, { ...pos, mode: interactionMode });
         if (this.activePointers.size === 1) {
             window.addEventListener('pointermove', this.nativePointerMove);
             window.addEventListener('pointerup', this.nativePointerUp);
         }
         if (this.isDirectMode()) {
-            this.startDrawNativeCanvas(event);
+            this.startDrawNativeCanvas(event.pointerId);
         } else {
             this.startDrawKonvaCanvas(event);
         }
@@ -619,7 +626,7 @@ export class SvgCanvasOverlayComponent {
         event.stopPropagation();
         this.activePointers.delete(event.pointerId);
         if (!this.isDirectMode()) {
-            const paintMode = this.isEraseButton(event.button) ? false : this.mode() === 'brush';
+            const paintMode = this.mode() === 'brush';
             this.currentLine?.points(this.reduceNearPoints(this.currentLine.points(), (paintMode ? this.brushSize() : this.eraserSize()) / 2, 0.01));
             this.currentLine = undefined;
         }    
@@ -643,8 +650,9 @@ export class SvgCanvasOverlayComponent {
             const ctx = this.getCanvasContext();
             if (!ctx) return;
             const fromPos = this.activePointers.get(event.pointerId);
-            this.drawNative(event, ctx, fromPos ?? pos, pos);
-            this.activePointers.set(event.pointerId, pos);
+            if (!fromPos) return;
+            this.drawNative(ctx, fromPos ?? pos, pos);
+            this.activePointers.set(event.pointerId, { x: pos.x, y: pos.y, mode: fromPos.mode });
         } else {
             if (!this.currentLine) return;
             const stage = this.stageComponent()?.getStage();
@@ -657,7 +665,7 @@ export class SvgCanvasOverlayComponent {
             const start = Math.max(0, newPoints.length - SvgCanvasOverlayComponent.REDUCE_WINDOW_SIZE);
             const prefix = newPoints.slice(0, start);
             const segment = newPoints.slice(start);
-            const paintMode = this.isEraseButton(event.button) ? false : this.mode() === 'brush';
+            const paintMode = this.mode() === 'brush';
             const reducedSegment = this.reduceNearPoints(segment, (paintMode ? this.brushSize() : this.eraserSize()) / 2, 0.01);
             const reducedPoints = [...prefix, ...reducedSegment];
             this.currentLine.points(reducedPoints);
