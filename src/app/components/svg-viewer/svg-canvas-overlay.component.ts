@@ -269,7 +269,7 @@ interface brushLocation {
         }
         .line-width-slider-row {
             position: absolute;
-            right: 60px;
+            right: 64px;
             bottom: 35px;
             display: flex;
             align-items: center;
