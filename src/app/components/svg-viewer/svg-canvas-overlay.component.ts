@@ -141,7 +141,6 @@ import { DbService } from '../../services/db.service';
             (contextmenu)="$event.stopPropagation()"
           />
           <span class="line-width-value">{{ strokeSize() }}</span>
-          <div class="notice">TEST: this will not be saved!</div>
         </div>
     }
     </div>    
@@ -297,14 +296,6 @@ import { DbService } from '../../services/db.service';
         :host-context(.night-mode) .line-width-value {
             color: #222;
             background: #fff;
-        }
-        .notice {
-            position: absolute;
-            top: -20px;
-            right: 2px;
-            font-weight: bold;
-            color: #f00;
-            width: 204px;
         }
 `,
 })
