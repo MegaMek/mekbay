@@ -64,7 +64,13 @@ export class StatBarSpecsPipe implements PipeTransform {
             // structureLabel = unit.structureType ? `Structure (${unit.structureType.replace(/structure/i,'').trim()})` : 'Structure';
             structureLabel = 'Structure';
         }
-        const armorValue = `${unit.armor} (${unit.armorPer}%)`;
+        let armorValue;
+        if (unit.subtype === 'Battle Armor') {
+            const armorPerUnit = unit.armor / unit.internal;
+            armorValue = `${armorPerUnit}×${unit.internal} (${unit.armorPer}%)`;
+        } else {
+            armorValue = `${unit.armor} (${unit.armorPer}%)`;
+        }
         const statDefs = [
             { key: 'armor', label: armorLabel, value: unit.armor, valueText: armorValue, max: maxStats.armor[1] },
             { key: 'internal', label: structureLabel, value: unit.internal, max: maxStats.internal[1] },

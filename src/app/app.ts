@@ -57,6 +57,7 @@ import { ForceLoadDialogComponent } from './components/force-load-dialog/force-l
 import { UpdateButtonComponent } from './components/update-button/update-button.component';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
+import { OverlayModule } from '@angular/cdk/overlay';
 
 
 /*
@@ -75,6 +76,7 @@ import { DomPortal, PortalModule } from '@angular/cdk/portal';
         PopupMenuComponent,
         UpdateButtonComponent,
         UnitSearchComponent,
+        OverlayModule,
         PortalModule
     ],
     templateUrl: './app.html',
@@ -116,6 +118,7 @@ export class App {
     ];
 
     constructor() {
+        this.dataService.initialize();
         document.addEventListener('contextmenu', (event) => event.preventDefault());
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
         if (this.swUpdate.isEnabled) {
@@ -147,27 +150,27 @@ export class App {
                 }
             }
         });
+        let initialShareHandled = false;
         effect(() => {
-            untracked(async () => {
-                await this.dataService.initialize();
-                if (this.dataService.isDataReady()) {
-                    const params = new URLSearchParams(window.location.search);
-                    const sharedUnitName = params.get('shareUnit');
-                    const tab = params.get('tab') ?? undefined;
-                    if (sharedUnitName) {
-                        // Find the unit by model name (decode first)
-                        const unitNameDecoded = decodeURIComponent(sharedUnitName);
-                        const unit = this.dataService.getUnitByName(unitNameDecoded);
-                        if (unit) {
-                            this.showSingleUnitDetails(unit, tab);
-                        }
-                    } else {
-                        afterNextRender(() => {
-                            this.unitSearchComponentRef()?.focusInput();
-                        }, { injector: this.injector });
+            if (this.dataService.isDataReady() && !initialShareHandled) {
+                initialShareHandled = true;
+                const params = new URLSearchParams(window.location.search);
+                const sharedUnitName = params.get('shareUnit');
+                const tab = params.get('tab') ?? undefined;
+                if (sharedUnitName) {
+                    // Find the unit by model name (decode first)
+                    const unitNameDecoded = decodeURIComponent(sharedUnitName);
+                    const unit = this.dataService.getUnitByName(unitNameDecoded);
+                    if (unit) {
+                        this.showSingleUnitDetails(unit, tab);
                     }
+                } else {
+                    afterNextRender(() => {
+                        // Default search focus
+                        this.unitSearchComponentRef()?.focusInput();
+                    }, { injector: this.injector });
                 }
-            });
+            }
         });
     }
 
