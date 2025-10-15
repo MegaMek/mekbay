@@ -259,24 +259,6 @@ export class SvgInteractionService {
         el.addEventListener('touchend', upHandler, eventOptions);
     }
 
-    private addPointerDownHandler(
-        el: SVGElement,
-        handler: (event: PointerEvent) => void,
-        options: AddEventListenerOptions = { passive: false },
-        signal?: AbortSignal
-    ) {
-        el.addEventListener('pointerdown', (event: PointerEvent) => {
-            if (!this.unit()) return;
-            if (event.pointerType === 'touch' && !this.layoutService.isSingleTouch()) {
-                return;
-            }
-            event.stopPropagation();
-            event.preventDefault();
-            this.state.interactionMode.set(event.pointerType === 'mouse' ? 'mouse' : 'touch');
-            handler(event);
-        }, { ...options, signal });
-    }
-
     private setupPipInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         // If we have location zones, we handle it with those ones
         if (svg.querySelector('.unitLocation')) {

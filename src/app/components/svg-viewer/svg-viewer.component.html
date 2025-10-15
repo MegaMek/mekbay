@@ -1,20 +1,11 @@
 <div #container class="svg-viewer-container" style="position:relative;">
     <div #slides class="slides"></div>
-    @if (this.optionsService.options().canvasMode === 'raster') {
-        <svg-direct-canvas-overlay
-            #canvasOverlay
-            [canvasData]="this.canvasData()"
-            [width]="this.svgWidth"
-            [height]="this.svgHeight"
-        ></svg-direct-canvas-overlay>
-    } @else {
-        <svg-canvas-overlay
-            #canvasOverlay
-            [canvasData]="this.canvasData()"
-            [width]="this.svgWidth"
-            [height]="this.svgHeight"
-        ></svg-canvas-overlay>
-    }
+    <svg-canvas-overlay
+        #canvasOverlay
+        [canvasData]="this.canvasData()"
+        [width]="this.svgWidth"
+        [height]="this.svgHeight"
+    ></svg-canvas-overlay>
 </div>
 
 <div #diffHeatMarker class="heat-diff-marker" 

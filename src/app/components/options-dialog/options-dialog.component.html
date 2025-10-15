@@ -68,6 +68,15 @@
                             <option value="vector">Vector</option>
                         </select>
                     </div>
+                    <div class="option-row">
+                        <label for="canvasInput">Canvas input:</label>
+                        <select id="canvasInput" class="bt-select" [value]="optionsService.options().canvasInput"
+                            (change)="onCanvasInputChange($event)">
+                            <option value="all">All</option>
+                            <option value="pen">Pen only</option>
+                            <option value="touch">Touch only</option>
+                        </select>
+                    </div>
                     <div class="description">
                         <p>This is for testing purpose only. Will be removed in the future.</p>
                     </div>
@@ -80,6 +89,26 @@
                     <div class="description">
                         <p>MekBay caches record sheets locally to speed up loading times and for offline use.</p>
                         <p>Purging the cache will remove all stored sheets. They will be re-downloaded as needed.</p>
+                    </div>
+                </div>
+            </div>
+        }
+        <!-- Debug options -->
+        @if (activeTab() === 'Debug') {
+            <div class="tab-content">
+                <div class="option-col">
+                    <div class="option-row">
+                        <span>Event Logger</span>
+                        <button class="bt-button" (click)="clearDebugLogs()">CLEAR</button>
+                    </div>
+                    <div class="description">
+                        <p>Logs pointerdown, keydown, and click events globally while this dialog is open.</p>
+                    </div>
+                    <div style="overflow:auto;font-family:monospace;font-size:0.9em;">
+                        <div *ngFor="let log of debugLogs()">{{ log }}</div>
+                        @if (debugLogs().length === 0) {
+                            <div style="color:#888;">No events logged yet.</div>
+                        }
                     </div>
                 </div>
             </div>

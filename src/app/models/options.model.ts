@@ -40,4 +40,5 @@ export interface Options {
     pickerStyle: 'default' | 'radial' | 'linear';
     quickActions: 'enabled' | 'disabled';
     canvasMode: 'vector' | 'raster';
+    canvasInput: 'all' | 'touch' | 'pen';
 }

@@ -32,16 +32,17 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ChangeDetectionStrategy, inject, input, signal, viewChild, Signal, effect, computed, DestroyRef, afterNextRender } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, DestroyRef, afterNextRender, ElementRef } from '@angular/core';
 import { Stage, StageConfig } from 'konva/lib/Stage';
 import { Layer } from 'konva/lib/Layer';
 import { Line, LineConfig } from 'konva/lib/shapes/Line';
 import { SvgZoomPanService } from './svg-zoom-pan.service';
-import { StageComponent, CoreShapeComponent, NgKonvaEventObject } from 'ng2-konva';
+import { StageComponent, CoreShapeComponent } from 'ng2-konva';
 import { gzip, ungzip, Data } from 'pako';
 import { firstValueFrom } from 'rxjs';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 import { Dialog } from '@angular/cdk/dialog';
+import { OptionsService } from '../../services/options.service';
 
 /*
  * Author: Drake
@@ -53,14 +54,29 @@ import { Dialog } from '@angular/cdk/dialog';
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule, StageComponent, CoreShapeComponent],
     template: `
-    <div class="svg-canvas-overlay" [class.active]="mode() !== 'none'">
-      <div #stageContainer class="stageContainer">
-      <ko-stage #stage
-        class="drawing-canvas"
+    <div #canvasOverlay class="svg-canvas-overlay" [class.active]="mode() !== 'none'">
+    <div #canvasContainer class="drawing-canvas"
         [ngStyle]="canvasTransformStyle()"
-        [config]="stageConfig"
-      ><ko-layer #drawLayer></ko-layer></ko-stage>
-      </div>
+        (mousedown)="bubbleInterceptor($event)"
+        (mouseup)="bubbleInterceptor($event)"
+        (mousemove)="bubbleInterceptor($event)"
+        (touchstart)="bubbleInterceptor($event)"
+        (touchend)="bubbleInterceptor($event)"
+        (touchmove)="bubbleInterceptor($event)"
+    >
+        @if (isDirectMode()) {
+            <canvas #canvas
+            [width]="canvasWidth()"
+            [height]="canvasHeight()"
+        ></canvas>
+        } @else {
+        <div class="stageContainer">
+        <ko-stage #stage
+            [config]="stageConfig"
+        ><ko-layer #drawLayer></ko-layer></ko-stage>
+        </div>
+    }]
+    </div>
     </div>
     <div class="fab-container"
         (pointerdown)="$event.stopPropagation()"
@@ -74,7 +90,6 @@ import { Dialog } from '@angular/cdk/dialog';
         (touchstart)="$event.stopPropagation()"
         (touchend)="$event.stopPropagation()"
         (touchmove)="$event.stopPropagation()"
-        (contextmenu)="$event.stopPropagation()"
     >
       <button class="fab main-fab"  
         [ngStyle]="mainFabStyle()"
@@ -84,7 +99,9 @@ import { Dialog } from '@angular/cdk/dialog';
         @if (mode() !== 'none') {
         <div class="controls-fab-column">
             <button class="fab mini-fab clear-fab" (click)="requestClearCanvas()" aria-label="Clear Canvas">C</button>
-            <button class="fab mini-fab undo-fab" (click)="undo()" aria-label="Undo">U</button>
+            @if (!isDirectMode()) {
+                <button class="fab mini-fab undo-fab" (click)="undo()" aria-label="Undo">U</button>
+            }
             <button class="fab mini-fab eraser-fab"
             [class.active]="mode() === 'eraser'"
             (click)="toggleEraser()"
@@ -106,8 +123,8 @@ import { Dialog } from '@angular/cdk/dialog';
             type="range"
             min="4"
             max="20"
-            [value]="brushSize()"
-            (input)="onBrushSizeChange($event)"
+            [value]="strokeSize()"
+            (input)="onStrokeSizeChange($event)"
             aria-label="Brush Size"
             (pointerdown)="$event.stopPropagation()"
             (pointerup)="$event.stopPropagation()"
@@ -122,7 +139,7 @@ import { Dialog } from '@angular/cdk/dialog';
             (touchmove)="$event.stopPropagation()"
             (contextmenu)="$event.stopPropagation()"
           />
-          <span class="line-width-value">{{ brushSize() }}</span>
+          <span class="line-width-value">{{ strokeSize() }}</span>
           <div class="notice">TEST: this will not be saved!</div>
         </div>
     }
@@ -135,14 +152,25 @@ import { Dialog } from '@angular/cdk/dialog';
             pointer-events: none;
             z-index: 5;
         }
-        .svg-canvas-overlay ko-stage {
+        .drawing-canvas {
+            pointer-events: none;
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: transparent;
+            cursor: crosshair;
+            opacity: 0.95;
+            box-sizing: border-box;
+        }
+        .svg-canvas-overlay.active .drawing-canvas {
+            pointer-events: auto;
+        }
+        .drawing-canvas ko-stage,
+        .drawing-canvas canvas {
             width: 100%;
             height: 100%;
             display: block;
             pointer-events: none;
-        }
-        .svg-canvas-overlay.active ko-stage {
-            pointer-events: auto;
         }
         ko-stage {
             opacity: 0.95;
@@ -280,24 +308,26 @@ import { Dialog } from '@angular/cdk/dialog';
 `,
 })
 export class SvgCanvasOverlayComponent {
-    private static INTERNAL_SCALE = 1;
-    private static REDUCE_WINDOW_SIZE = 40;
+    private static INTERNAL_SCALE = 2;
+    private static REDUCE_WINDOW_SIZE = 100;
     private static MAX_LINES = 1000;
     private static MAX_STROKE_POINTS = 1000;
-    private static MAX_STROKE_ERASER_POINTS = 10000;
-    private static BRUSH_SIZE = 3;
-    private static ERASER_SIZE_MULTIPLIER = 2;
+    private static INITIAL_BRUSH_SIZE = 6;
+    private static INITIAL_ERASER_SIZE = 12;
     private destroyRef = inject(DestroyRef);
     private zoomPanService = inject(SvgZoomPanService);
+    private injector = inject(Injector);
     private dialog = inject(Dialog);
-    stageContainer = viewChild.required('stageContainer') as Signal<HTMLDivElement>;
+    optionsService = inject(OptionsService);
+    canvasOverlay = viewChild.required<ElementRef<HTMLDivElement>>('canvasOverlay');
+    canvasContainer = viewChild.required<ElementRef<HTMLDivElement>>('canvasContainer');
+    canvasRef = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
     stageComponent = viewChild('stage') as Signal<StageComponent | undefined>;
-    drawLayerComponent = viewChild('drawLayer') as Signal<CoreShapeComponent | undefined>;
     width = input(200);
     height = input(200);
 
     stageConfig: Partial<StageConfig> = {};
-    isPaint = false;
+    activePointers = new Map<number, { x: number, y: number }>();
     lines: Line[] = [];
     private currentLine?: Line;
     lastReducedIndex = 0;
@@ -305,12 +335,26 @@ export class SvgCanvasOverlayComponent {
     mode = signal<'brush' | 'eraser' | 'none'>('none');
     brushColor = signal<string>('#f00');
     colorOptions = ['#f00', '#00f', '#0f0', '#f0f', '#0ff', '#ff0'];
-    brushSize = signal<number>(SvgCanvasOverlayComponent.BRUSH_SIZE);
+    brushSize = signal<number>(SvgCanvasOverlayComponent.INITIAL_BRUSH_SIZE);
+    eraserSize = signal<number>(SvgCanvasOverlayComponent.INITIAL_ERASER_SIZE);
+    strokeSize = computed(() => {
+        return this.mode() === 'brush' ? this.brushSize() : this.eraserSize();
+    });
 
+    isDirectMode = computed(()=>{
+        return this.optionsService.options().canvasMode === 'raster';
+    });
 
-    private nativePointerDown = (event: MouseEvent | TouchEvent) => this.onPointerDown(event);
-    private nativePointerUp = (event: MouseEvent | TouchEvent) => this.onPointerUp(event);
-    private nativePointerMove = (event: MouseEvent | TouchEvent) => this.onPointerMove(event);
+    canvasHeight = computed(() => {
+        return this.height() * SvgCanvasOverlayComponent.INTERNAL_SCALE;
+    });
+    canvasWidth = computed(() => {
+        return this.width() * SvgCanvasOverlayComponent.INTERNAL_SCALE;
+    });
+
+    private nativePointerDown = (event: PointerEvent) => this.onPointerDown(event);
+    private nativePointerUp = (event: PointerEvent) => this.onPointerUp(event);
+    private nativePointerMove = (event: PointerEvent) => this.onPointerMove(event);
 
     canvasTransformStyle = computed(() => {
         const state = this.zoomPanService.getState();
@@ -335,45 +379,47 @@ export class SvgCanvasOverlayComponent {
         return { background: 'gray', color: '#fff' };
     });
 
-    get nativeElement(): HTMLElement | undefined {
-        return this.stageComponent()?.getStage().content;
+    get nativeElement(): HTMLElement {
+        return this.canvasOverlay().nativeElement;
     }
 
     constructor() {
         effect(() => {
+            if (this.isDirectMode()) return;
             this.updateStageConfig();
         });
         effect(() => {
             console.log('Canvas data changed, importing...');
             const data = this.canvasData();
-            this.clearCanvas();
+            afterNextRender(() => {
+                this.clearCanvas();
+            }, { injector: this.injector});
         });
         afterNextRender(() => {
             this.addEventListeners();
         });
         this.destroyRef.onDestroy(() => {
-            const stageContent = this.stageComponent()?.getStage().content;
-            if (stageContent) {
-                stageContent.removeEventListener('pointerdown', this.nativePointerDown);
-                stageContent.removeEventListener('touchstart', this.nativePointerDown);
-                stageContent.removeEventListener('pointerup', this.nativePointerUp);
-                stageContent.removeEventListener('touchend', this.nativePointerUp);
-                stageContent.removeEventListener('pointermove', this.nativePointerMove);
-                stageContent.removeEventListener('touchmove', this.nativePointerMove);
+            const container = this.canvasContainer().nativeElement;
+            if (container) {
+                container.removeEventListener('pointerdown', this.nativePointerDown);
             }
+            this.removeMoveAndUpListeners();
         });
     }
 
     addEventListeners() {
-        const stageContent = this.stageComponent()?.getStage().content;
-        if (stageContent) {
-            stageContent.addEventListener('pointerdown', this.nativePointerDown);
-            stageContent.addEventListener('touchstart', this.nativePointerDown, { passive: false });
-            stageContent.addEventListener('pointerup', this.nativePointerUp);
-            stageContent.addEventListener('touchend', this.nativePointerUp, { passive: false });
-            stageContent.addEventListener('pointermove', this.nativePointerMove);
-            stageContent.addEventListener('touchmove', this.nativePointerMove, { passive: false });
+        const container = this.canvasContainer().nativeElement;
+        if (container) {
+            container.addEventListener('pointerdown', this.nativePointerDown);
         }
+    }
+    removeMoveAndUpListeners() {
+        window.removeEventListener('pointermove', this.nativePointerMove);
+        window.removeEventListener('pointerup', this.nativePointerUp);
+    }
+
+    bubbleInterceptor(event: Event) {
+        event.stopPropagation();
     }
 
     updateStageConfig() {
@@ -383,9 +429,13 @@ export class SvgCanvasOverlayComponent {
         };
     }
 
-    onBrushSizeChange(event: Event) {
+    onStrokeSizeChange(event: Event) {
         const value = +(event.target as HTMLInputElement).value;
-        this.brushSize.set(value);
+        if (this.mode() === 'brush') {
+            this.brushSize.set(value);
+        } else {
+            this.eraserSize.set(value);
+        }
     }
 
     toggleDrawMode() {
@@ -438,7 +488,17 @@ export class SvgCanvasOverlayComponent {
         }
     }
 
-    clearCanvas() {
+    private getCanvasContext(): CanvasRenderingContext2D | null {
+        return this.canvasRef()?.nativeElement.getContext('2d') ?? null;
+    }
+
+    clearNativeCanvas() {
+        const ctx = this.getCanvasContext();
+        if (!ctx) return;
+        ctx.clearRect(0, 0, this.canvasWidth(), this.canvasHeight());
+    }
+
+    clearKonvaCanvas() {
         const stage = this.stageComponent()?.getStage();
         if (!stage) return;
         const layer = stage.getLayers()[0] as Layer | null;
@@ -448,23 +508,82 @@ export class SvgCanvasOverlayComponent {
         layer.batchDraw();
     }
 
-    onPointerDown(event: MouseEvent | TouchEvent) {
-        const mode = this.mode();
-        if (mode === 'none') return;
-        event.preventDefault();
-        event.stopPropagation();
-        if (this.isPaint) return;
-        const stage = this.stageComponent()?.getStage();
-        if (!stage) return;
-        const layer = stage.getLayers()[0] as Layer | null;
-        if (!layer) return;
-        const pos = (stage as Stage).getPointerPosition();
+    clearCanvas() {
+        if (this.isDirectMode()) {
+            this.clearNativeCanvas();
+        } else {
+            this.clearKonvaCanvas();
+        }
+    }
+
+    private getPointerPosition(event: MouseEvent | TouchEvent): { x: number, y: number } | null {
+        if (this.isDirectMode()) {
+            const el = this.canvasRef()?.nativeElement;
+            if (!el) return null;
+            const rect = el.getBoundingClientRect();
+            let clientX: number, clientY: number;
+            if (event instanceof TouchEvent) {
+                if (event.touches.length === 0) return null;
+                clientX = event.touches[0].clientX;
+                clientY = event.touches[0].clientY;
+            } else {
+                clientX = event.clientX;
+                clientY = event.clientY;
+            }
+            return {
+                x: (clientX - rect.left) * (el.width / rect.width),
+                y: (clientY - rect.top) * (el.height / rect.height)
+            };
+        } else {
+            // KONVA
+            const stage = this.stageComponent()?.getStage();
+            stage?.setPointersPositions(event);
+            const pos = (stage as Stage).getPointerPosition();
+            return pos;
+        }
+    }
+
+    drawNative(ctx: CanvasRenderingContext2D, fromPos: { x: number, y: number }, toPos: { x: number, y: number }) {
+        ctx.save();
+        if (this.mode() === 'eraser') {
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.strokeStyle = 'rgba(0,0,0,1)';
+            ctx.lineWidth = this.strokeSize() * 2;
+        } else {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.strokeStyle = this.brushColor();
+            ctx.lineWidth = this.strokeSize();
+        }
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(fromPos.x, fromPos.y);
+        ctx.lineTo(toPos.x, toPos.y);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    startDrawNativeCanvas(event: PointerEvent) {
+        const pos = this.getPointerPosition(event);
         if (!pos) return;
-        this.isPaint = true;
+        // draw initial dot
+        const ctx = this.getCanvasContext();
+        if (ctx) {
+            this.drawNative(ctx, pos, pos);
+        }
+    }
+
+    startDrawKonvaCanvas(event: PointerEvent) {
+        const stage = this.stageComponent()?.getStage();
+        const layer = stage?.getLayers()[0] as Layer | null;
+        if (!stage || !layer) return;
+        const pos = this.getPointerPosition(event);
+        if (!pos) return;
+        const mode = this.mode();
         this.currentLine = new Line({
             points: [pos.x, pos.y, pos.x, pos.y],
             stroke: mode === 'brush' ? this.brushColor() : '#000',
-            strokeWidth: mode === 'brush' ? this.brushSize() : this.brushSize() * SvgCanvasOverlayComponent.ERASER_SIZE_MULTIPLIER,
+            strokeWidth: mode === 'brush' ? this.strokeSize() : this.strokeSize() * 2,
             globalCompositeOperation: mode === 'brush' ? 'source-over' : 'destination-out',
             lineCap: 'round',
             lineJoin: 'round'
@@ -479,59 +598,91 @@ export class SvgCanvasOverlayComponent {
         layer.batchDraw();
     }
 
-    onPointerUp(event: MouseEvent | TouchEvent) {
-        if (!this.isPaint) return;
+    onPointerDown(event: PointerEvent) {
         const mode = this.mode();
         if (mode === 'none') return;
+        const inputFilter = this.optionsService.options().canvasInput;
+        if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
+        if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
         event.preventDefault();
         event.stopPropagation();
-        this.isPaint = false;
-        this.currentLine?.points(this.reduceNearPoints(this.currentLine.points(), 1, 0.01));
-        this.currentLine = undefined;
-        // Calculate how much memory we are using for lines
-        const linesData = this.compressVectorData();
-        const sizeInKB = new Blob([linesData as any]).size / 1024;
-        console.log(`Current vector data size: ${sizeInKB.toFixed(2)} KB`);
+        const pos = this.getPointerPosition(event);
+        if (!pos) return;
+        this.activePointers.set(event.pointerId, pos);
+        if (this.activePointers.size === 1) {
+            window.addEventListener('pointermove', this.nativePointerMove);
+            window.addEventListener('pointerup', this.nativePointerUp);
+        }
+        if (this.isDirectMode()) {
+            this.startDrawNativeCanvas(event);
+        } else {
+            this.startDrawKonvaCanvas(event);
+        }
     }
 
-    onPointerMove(event: MouseEvent | TouchEvent) {
-        if (!this.isPaint || !this.currentLine) return;
+    onPointerUp(event: PointerEvent) {
         const mode = this.mode();
         if (mode === 'none') return;
+        const inputFilter = this.optionsService.options().canvasInput;
+        if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
+        if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
         event.preventDefault();
         event.stopPropagation();
-        const stage = this.stageComponent()?.getStage();
-        if (!stage) return;
-        const layer = stage.getLayers()[0] as Layer | null;
-        if (!layer) return;
-        const pos = (stage as Stage).getPointerPosition();
-        if (!pos) return;
-        const lastIndex = this.lines.length - 1;
-        if (lastIndex < 0) return;
-        const oldPoints = this.currentLine.points();
-        const newPoints = [...oldPoints, pos.x, pos.y];
-        const start = Math.max(0, newPoints.length - SvgCanvasOverlayComponent.REDUCE_WINDOW_SIZE);
-        const prefix = newPoints.slice(0, start);
-        const segment = newPoints.slice(start);
-        const reducedSegment = this.reduceNearPoints(segment, 1, 0.01);
-        const reducedPoints = [...prefix, ...reducedSegment];
-        this.currentLine.points(reducedPoints);
-        // Limit the number of points to prevent memory issues, we remove the oldest points
-        if (this.mode() === 'eraser' && this.currentLine.points().length > SvgCanvasOverlayComponent.MAX_STROKE_ERASER_POINTS) {
-            const excessPoints = this.currentLine.points().length - SvgCanvasOverlayComponent.MAX_STROKE_ERASER_POINTS;
-            this.currentLine.points(this.currentLine.points().slice(excessPoints));
-        } else if (this.currentLine.points().length > SvgCanvasOverlayComponent.MAX_STROKE_POINTS) {
-            const excessPoints = this.currentLine.points().length - SvgCanvasOverlayComponent.MAX_STROKE_POINTS;
-            this.currentLine.points(this.currentLine.points().slice(excessPoints));
+        this.activePointers.delete(event.pointerId);
+        if (!this.isDirectMode()) {
+            this.currentLine?.points(this.reduceNearPoints(this.currentLine.points(), this.strokeSize() / 2, 0.01));
+            this.currentLine = undefined;
+        }    
+        if (this.activePointers.size === 0) {
+            this.removeMoveAndUpListeners();
         }
-        layer.batchDraw();
+    }
+
+    onPointerMove(event: PointerEvent) {
+        const mode = this.mode();
+        if (mode === 'none') return;
+        const inputFilter = this.optionsService.options().canvasInput;
+        if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
+        if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
+        event.preventDefault();
+        event.stopPropagation();
+        const pos = this.getPointerPosition(event);
+        if (!pos) return;
+        if (this.isDirectMode()) {
+            const ctx = this.getCanvasContext();
+            if (!ctx) return;
+            const fromPos = this.activePointers.get(event.pointerId);
+            this.drawNative(ctx, fromPos ?? pos, pos);
+            this.activePointers.set(event.pointerId, pos);
+        } else {
+            if (!this.currentLine) return;
+            const stage = this.stageComponent()?.getStage();
+            const layer = stage?.getLayers()[0] as Layer | null;
+            if (!stage || !layer) return;
+            const lastIndex = this.lines.length - 1;
+            if (lastIndex < 0) return;
+            const oldPoints = this.currentLine.points();
+            const newPoints = [...oldPoints, pos.x, pos.y];
+            const start = Math.max(0, newPoints.length - SvgCanvasOverlayComponent.REDUCE_WINDOW_SIZE);
+            const prefix = newPoints.slice(0, start);
+            const segment = newPoints.slice(start);
+            const reducedSegment = this.reduceNearPoints(segment, this.strokeSize() / 2, 0.01);
+            const reducedPoints = [...prefix, ...reducedSegment];
+            this.currentLine.points(reducedPoints);
+            // Limit the number of points to prevent memory issues, we remove the oldest points
+            if (this.currentLine.points().length > SvgCanvasOverlayComponent.MAX_STROKE_POINTS) {
+                const excessPoints = this.currentLine.points().length - SvgCanvasOverlayComponent.MAX_STROKE_POINTS;
+                this.currentLine.points(this.currentLine.points().slice(excessPoints));
+            }
+            layer.batchDraw();
+        }
     }
 
     reduceNearPoints(points: number[], minDist = 2, angleEpsilon = 0.01): number[] {
         if (points.length <= 4) return points;
         const reduced: number[] = [points[0], points[1]];
 
-        for (let i = 2; i < points.length; i += 2) {
+        for (let i = 2; i < points.length - 2; i += 2) {
             const lastX = reduced[reduced.length - 2];
             const lastY = reduced[reduced.length - 1];
             const x = points[i];
@@ -542,7 +693,8 @@ export class SvgCanvasOverlayComponent {
                 reduced.push(x, y);
             }
         }
-
+        reduced.push(points[points.length - 2], points[points.length - 1]);
+        
         // Further optimize by removing collinear points (straight lines)
         let i = 2;
         while (i < reduced.length - 2) {
@@ -626,5 +778,25 @@ export class SvgCanvasOverlayComponent {
             this.lines.push(line);
         }
         layer.batchDraw();
+    }
+    
+
+    public exportImageData(): string | null {
+        const canvas = this.canvasRef();
+        if (!canvas) return null;
+        return canvas.nativeElement.toDataURL('image/webp');
+    }
+
+    public importImageData(dataUrl: string) {
+        const ctx = this.getCanvasContext();
+        if (!ctx) return;
+        const img = new window.Image();
+        img.onload = () => {
+            const canvasWidth = this.canvasWidth();
+            const canvasHeight = this.canvasHeight();
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+        };
+        img.src = dataUrl;
     }
 }

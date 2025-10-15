@@ -50,8 +50,6 @@ export class LayoutService {
     public isMenuDragging = signal(false);
     public menuOpenRatio = signal(0);
     public isTouchInput = signal(false);
-    public activeTouchPoints = signal(0);
-    private lastTouchTime = 0;
     public windowWidth = signal(typeof window !== 'undefined' ? window.innerWidth : 1280);
     public windowHeight = signal(typeof window !== 'undefined' ? window.innerHeight : 800);
     public isPortraitOrientation = computed(() => this.windowHeight() > this.windowWidth());
@@ -78,19 +76,13 @@ export class LayoutService {
             };
 
             // Global input listeners
-            window.addEventListener('touchstart', this.setTouchInput, { passive: true, capture: true });
-            window.addEventListener('touchend', this.updateTouchPoints, { passive: true, capture: true });
-            window.addEventListener('touchcancel', this.updateTouchPoints, { passive: true, capture: true });
-            window.addEventListener('mousedown', this.setMouseInput, { passive: true, capture: true });
+            window.addEventListener('pointerdown', this.onPointerDown, { passive: true, capture: true });
             window.addEventListener('orientationchange', resizeHandler, { passive: true, capture: true });
             window.addEventListener('resize', resizeHandler, { passive: true, capture: true });
             mediaQuery.addEventListener('change', mediaQueryHandler);
 
             onCleanup(() => {
-                window.removeEventListener('touchstart', this.setTouchInput, { capture: true });
-                window.removeEventListener('touchend', this.updateTouchPoints, { capture: true });
-                window.removeEventListener('touchcancel', this.updateTouchPoints, { capture: true });
-                window.removeEventListener('mousedown', this.setMouseInput, { capture: true });    
+                window.removeEventListener('pointerdown', this.onPointerDown, { capture: true });
                 window.removeEventListener('orientationchange', resizeHandler, { capture: true });
                 window.removeEventListener('resize', resizeHandler, { capture: true });
                 mediaQuery.removeEventListener('change', mediaQueryHandler);
@@ -127,28 +119,9 @@ export class LayoutService {
         this.isMenuOpen.set(true);
     }
 
-    public isSingleTouch(): boolean {
-        return this.activeTouchPoints() <= 1;
-    }
-
-    public isMultiTouch(): boolean {
-        return this.activeTouchPoints() > 1;
-    }
-
-    private setTouchInput = (event: TouchEvent) => {
-        this.lastTouchTime = Date.now();
-        this.isTouchInput.set(true);
-        this.activeTouchPoints.set(event.touches.length);
+    private onPointerDown = (event: PointerEvent) => {
+        const isTouch = event.pointerType === 'touch' || event.pointerType === 'pen';
+        this.isTouchInput.set(isTouch);
     };
 
-    private updateTouchPoints = (event: TouchEvent) => {
-        this.activeTouchPoints.set(event.touches.length);
-    };
-
-    private setMouseInput = () => {
-        // Ignore mousedown if it occurs within 1000ms of a touchstart
-        if (Date.now() - this.lastTouchTime < 1000) return;
-        this.isTouchInput.set(false);
-        this.activeTouchPoints.set(0);
-    };
 }

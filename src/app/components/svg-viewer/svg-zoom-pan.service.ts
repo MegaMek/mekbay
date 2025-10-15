@@ -292,7 +292,7 @@ export class SvgZoomPanService {
     }
 
     private onPointerMove(event: PointerEvent) {
-        if (this.layoutService.isMultiTouch()) {
+        if (!event.isPrimary) {
             this.interactionService.removePicker();
         }
 
