@@ -939,10 +939,10 @@ export class LanceTypeIdentifierUtil {
                 weight *= 10;
             } else
             if (match.parent) {
-                weight *= 4;
+                weight *= 5;
             } else
             if (match.id !== 'support-lance' && match.id !== 'command-lance' && match.id !== 'battle-lance') {
-                weight *= 2;
+                weight *= 3;
             }
             weightedMatches.push(...Array(weight).fill(match));
         }
