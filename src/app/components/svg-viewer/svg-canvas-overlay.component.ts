@@ -100,17 +100,17 @@ interface brushLocation {
         [ngStyle]="mainFabStyle()"
         [class.active]="mode() !== 'none'"
         (click)="toggleDrawMode()"
-        aria-label="Toggle Draw Mode">D</button>
+        aria-label="Toggle Draw Mode"><img src="/images/draw.svg" alt="Draw"></button>
         @if (mode() !== 'none') {
         <div class="controls-fab-column">
-            <button class="fab mini-fab clear-fab" (click)="requestClearCanvas()" aria-label="Clear Canvas">C</button>
+            <button class="fab mini-fab clear-fab" (click)="requestClearCanvas()" aria-label="Clear Canvas"><img src="/images/delete.svg" alt="Delete"></button>
             @if (!isDirectMode()) {
-                <button class="fab mini-fab undo-fab" (click)="undo()" aria-label="Undo">U</button>
+                <button class="fab mini-fab undo-fab" (click)="undo()" aria-label="Undo">↶</button>
             }
             <button class="fab mini-fab eraser-fab"
             [class.active]="mode() === 'eraser'"
             (click)="toggleEraser()"
-            aria-label="Eraser">E</button>
+            aria-label="Eraser"><img src="/images/eraser.svg" alt="Eraser"></button>
         </div>
         <div class="color-fab-row">
           @for (color of colorOptions; let i = $index; track i) {
