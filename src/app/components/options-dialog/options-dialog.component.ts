@@ -142,7 +142,7 @@ export class OptionsDialogComponent {
         const confirmed = await this.dialogsService.showQuestion(
             'Are you sure you want to delete all cached record sheets? They will be redownloaded as needed.',
             'Confirm Purge Cache',
-            'danger'
+            'info'
         );
         if (confirmed === 'yes') {
             await this.dbService.clearSheetsStore();
@@ -159,7 +159,7 @@ export class OptionsDialogComponent {
 
     async onPurgeCanvas() {
         const confirmed = await this.dialogsService.showQuestion(
-            'Are you sure you want to delete all drawings? They will be lost forever.',
+            'Are you sure you want to delete all drawings? This action cannot be undone.',
             'Confirm Purge Drawings',
             'danger'
         );

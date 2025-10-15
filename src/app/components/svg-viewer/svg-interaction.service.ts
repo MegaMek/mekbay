@@ -32,13 +32,12 @@
  */
 
 import { Injectable, ElementRef, signal, WritableSignal, Injector, effect, EffectRef, ApplicationRef, EnvironmentInjector, createComponent, inject } from '@angular/core';
-import { Dialog, DialogRef } from '@angular/cdk/dialog';
+import { Dialog } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
-import { ForceUnit, CrewMember, SkillType, CriticalSlot, MountedEquipment } from '../../models/force-unit.model';
+import { ForceUnit, SkillType, CriticalSlot } from '../../models/force-unit.model';
 import { OptionsService } from '../../services/options.service';
 import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
 import { SvgZoomPanService } from './svg-zoom-pan.service';
-import { heatLevels, linkedLocs } from './common';
 import { PickerChoice, PickerInstance, PickerPosition, PickerTargetType, PickerValue } from '../picker/picker.interface';
 import { RadialPickerComponent } from '../radial-picker/radial-picker.component';
 import { LinearPickerComponent } from '../linear-picker/linear-picker.component';

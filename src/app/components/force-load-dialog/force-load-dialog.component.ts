@@ -37,9 +37,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { Force, ForceUnit } from '../../models/force-unit.model';
-import { Dialog } from '@angular/cdk/dialog';
-import { ConfirmDialogComponent, ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
-import { firstValueFrom } from 'rxjs';
+import { DialogsService } from '../../services/dialogs.service';
 
 /*
  * Author: Drake
@@ -56,7 +54,7 @@ export class ForceLoadDialogComponent {
     dialogRef = inject(DialogRef<ForceLoadDialogComponent>);
     dataService = inject(DataService);
     cdr = inject(ChangeDetectorRef);
-    dialog = inject(Dialog);
+    dialogsService = inject(DialogsService);
     @Output() load = new EventEmitter<Force>();
 
     forces = signal<Force[]>([]);
@@ -109,19 +107,12 @@ export class ForceLoadDialogComponent {
         const force = this.selectedForce();
         if (!force || !force.instanceId) return;
 
-        const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
-            data: <ConfirmDialogData<string>>{
-                title: 'Delete Force',
-                message: `Are you sure you want to delete "${force.name}"? This action cannot be undone.`,
-                buttons: [
-                    { label: 'CONFIRM', value: 'delete', class: 'danger' },
-                    { label: 'CANCEL', value: 'cancel' }
-                ]
-            }
-        });
-        const result = await firstValueFrom(dialogRef.closed);
-
-        if (result === 'delete') {
+        const confirmed = await this.dialogsService.showQuestion(
+            `Are you sure you want to delete "${force.name}"? This action cannot be undone.`,
+            'Delete Force',
+            'danger'
+        );
+        if (confirmed === 'yes') {
             await this.dataService.deleteForce(force.instanceId);
             this.forces.set(this.forces().filter(f => f !== force));
             this.selectedForce.set(null);

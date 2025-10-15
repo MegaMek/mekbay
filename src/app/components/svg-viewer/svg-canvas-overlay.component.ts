@@ -39,11 +39,9 @@ import { Line, LineConfig } from 'konva/lib/shapes/Line';
 import { SvgZoomPanService } from './svg-zoom-pan.service';
 import { StageComponent, CoreShapeComponent } from 'ng2-konva';
 import { gzip, ungzip, Data } from 'pako';
-import { firstValueFrom } from 'rxjs';
-import { ConfirmDialogComponent, ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
-import { Dialog } from '@angular/cdk/dialog';
 import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
+import { DialogsService } from '../../services/dialogs.service';
 
 /*
  * Author: Drake
@@ -309,7 +307,7 @@ export class SvgCanvasOverlayComponent {
     private destroyRef = inject(DestroyRef);
     private zoomPanService = inject(SvgZoomPanService);
     private injector = inject(Injector);
-    private dialog = inject(Dialog);
+    private dialogsService = inject(DialogsService);
     optionsService = inject(OptionsService);
     dbService = inject(DbService);
     canvasOverlay = viewChild.required<ElementRef<HTMLDivElement>>('canvasOverlay');
@@ -469,19 +467,12 @@ export class SvgCanvasOverlayComponent {
     }
 
     async requestClearCanvas() {
-        const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
-            data: <ConfirmDialogData<string>>{
-                title: 'Clear Canvas',
-                message: 'Are you sure you want to clear the canvas?',
-                buttons: [
-                    { label: 'CONFIRM', value: 'clear', class: 'danger' },
-                    { label: 'CANCEL', value: 'cancel' }
-                ]
-            }
-        });
-        const result = await firstValueFrom(dialogRef.closed);
-
-        if (result === 'clear') {
+        const confirmed = await this.dialogsService.showQuestion(
+            'Are you sure you want to clear the canvas? This cannot be undone.',
+            'Clear Canvas',
+            'danger'
+        );
+        if (confirmed === 'yes') {
             this.clearCanvas();
         }
     }

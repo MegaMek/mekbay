@@ -157,7 +157,7 @@ export class ForceBuilderService {
                 message: 'You have an unsaved force. Do you want to save it before proceeding?',
                 buttons: [
                     { label: 'YES', value: 'yes' },
-                    { label: 'NO', value: 'no' },
+                    { label: 'NO', value: 'no', class: 'danger' },
                     { label: 'CANCEL', value: 'cancel' }
                 ]
             }
@@ -459,6 +459,7 @@ export class ForceBuilderService {
         if (unitToRemove.modified) {
             const unitName = (unitToRemove.getUnit().chassis + ' ' + unitToRemove.getUnit().model).trim();
             const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
+                panelClass: 'danger',
                 data: <ConfirmDialogData<string>>{
                     title: `Delete Unit`,
                     message: `Removing will discard all marks on the sheet and permanently remove the unit "${unitName}" from the force.`,
@@ -538,24 +539,16 @@ export class ForceBuilderService {
     }
 
     public async repairAllUnits() {
-        const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
-            data: <ConfirmDialogData<string>>{
-                title: 'Repair All Units',
-                message: 'Are you sure you want to repair all units? This will reset all damage and status effects on every unit in the force.',
-                buttons: [
-                    { label: 'YES', value: 'yes', class: 'primary' },
-                    { label: 'NO', value: 'no' }
-                ]
-            }
-        });
-        const result = await firstValueFrom(dialogRef.closed);
-        
-        if (result === 'yes') {
+        const confirmed = await this.dialogsService.showQuestion(
+            'Are you sure you want to repair all units? This will reset all damage and status effects on every unit in the force.',
+            'Repair All Units',
+            'info');
+        if (confirmed === 'yes') {
             this.forceUnits().forEach(fu => {
                 fu.repairAll();
             });
             return true;
-        }
+        };
         return false;
     }
 
