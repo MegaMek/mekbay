@@ -301,6 +301,11 @@ interface brushLocation {
             color: #222;
             background: #fff;
         }
+        @media (print) {
+            .fab-container {
+                display: none;
+            }
+        }
 `,
 })
 export class SvgCanvasOverlayComponent {
