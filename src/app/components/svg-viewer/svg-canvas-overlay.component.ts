@@ -218,6 +218,10 @@ interface brushLocation {
             height: 56px;
             min-width: 56px;
             min-height: 56px;
+            opacity: .8;
+        }
+        .fab.main-fab.active {
+            opacity: 1;
         }
         .fab.mini-fab.active,
         .fab.mini-fab.selected {
@@ -302,6 +306,21 @@ interface brushLocation {
             background: #fff;
         }
         @media print {
+            .svg-canvas-overlay {
+                transform: none !important;
+            }
+            .drawing-canvas {
+                width: 8.5in !important;
+                height: 11in !important;
+                padding: 0 !important;
+                transform: none !important;
+                max-width: calc(100% - 0.32in);
+                max-height: calc(100% - 0.32in);
+                margin: 0.16in;
+            }
+            .drawing-canvas canvas {
+                transform: none !important;
+            }
             .fab-container {
                 display: none !important;
             }
