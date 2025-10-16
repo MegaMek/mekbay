@@ -342,6 +342,7 @@ export class SvgCanvasOverlayComponent {
     private static MAX_STROKE_POINTS = 1000;
     private static INITIAL_BRUSH_SIZE = 6;
     private static INITIAL_ERASER_SIZE = 12;
+    private static ERASER_MULTIPLIER = 1.6;
     private destroyRef = inject(DestroyRef);
     private zoomPanService = inject(SvgZoomPanService);
     private injector = inject(Injector);
@@ -577,7 +578,7 @@ export class SvgCanvasOverlayComponent {
         if (brushLocation.mode === 'eraser') {
             ctx.globalCompositeOperation = 'destination-out';
             ctx.strokeStyle = 'rgba(0,0,0,1)';
-            ctx.lineWidth = this.eraserSize() * 2;
+            ctx.lineWidth = this.eraserSize() * SvgCanvasOverlayComponent.ERASER_MULTIPLIER;
         } else {
             ctx.globalCompositeOperation = 'source-over';
             ctx.strokeStyle = this.brushColor();
@@ -612,7 +613,7 @@ export class SvgCanvasOverlayComponent {
         this.currentLine = new Line({
             points: [pos.x, pos.y, pos.x, pos.y],
             stroke: paintMode ? this.brushColor() : '#000',
-            strokeWidth: paintMode ? this.brushSize() : this.eraserSize() * 2,
+            strokeWidth: paintMode ? this.brushSize() : this.eraserSize() * SvgCanvasOverlayComponent.ERASER_MULTIPLIER,
             globalCompositeOperation: paintMode ? 'source-over' : 'destination-out',
             lineCap: 'round',
             lineJoin: 'round'
