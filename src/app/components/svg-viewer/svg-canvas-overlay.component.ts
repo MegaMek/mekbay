@@ -491,6 +491,9 @@ export class SvgCanvasOverlayComponent {
         const ctx = this.getCanvasContext();
         if (!ctx) return;
         ctx.clearRect(0, 0, this.canvasWidth(), this.canvasHeight());
+        const unitId = this.unitId();
+        if (!unitId) return;
+        this.dbService.deleteCanvasData(unitId);
     }
 
     clearKonvaCanvas() {
@@ -511,27 +514,14 @@ export class SvgCanvasOverlayComponent {
         }
     }
 
-    private getPointerPosition(event: MouseEvent | TouchEvent): { x: number, y: number } | null {
+    private getPointerPosition(event: PointerEvent): { x: number, y: number } | null {
         if (this.isDirectMode()) {
             const el = this.canvasRef()?.nativeElement;
             if (!el) return null;
             const rect = el.getBoundingClientRect();
-            let clientX: number, clientY: number;
-            // This is a workaround for TouchEvent not being defined in some environments (some Firefox configurations)
-            const isTouchEvent = typeof TouchEvent !== 'undefined' && event instanceof TouchEvent;
-            if (isTouchEvent) {
-                const touchEvent = event as TouchEvent;
-                if (touchEvent.touches.length === 0) return null;
-                clientX = touchEvent.touches[0].clientX;
-                clientY = touchEvent.touches[0].clientY;
-            } else {
-                const mouseEvent = event as MouseEvent;
-                clientX = mouseEvent.clientX;
-                clientY = mouseEvent.clientY;
-            }
             return {
-                x: (clientX - rect.left) * (el.width / rect.width),
-                y: (clientY - rect.top) * (el.height / rect.height)
+                x: (event.clientX - rect.left) * (el.width / rect.width),
+                y: (event.clientY - rect.top) * (el.height / rect.height)
             };
         } else {
             // KONVA

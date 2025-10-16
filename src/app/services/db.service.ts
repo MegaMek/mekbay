@@ -346,7 +346,7 @@ export class DbService {
         await Promise.all(unitIds.map(id => this.deleteCanvasData(id)));
     }
 
-    private async deleteCanvasData(unitId: string): Promise<void> {
+    public async deleteCanvasData(unitId: string): Promise<void> {
         await this.deleteDataFromStore(unitId, CANVAS_STORE);
     }
 
