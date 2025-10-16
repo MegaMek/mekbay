@@ -185,12 +185,10 @@ interface brushLocation {
         /* Controls */
         .fab-container {
             position: fixed;
-            bottom: 24px;
-            right: 24px;
+            bottom: 0;
+            right: 0;
             z-index: 20;
             pointer-events: none;
-            width: 56px;
-            height: 56px;
         }
         .fab {
             border: none;
@@ -211,6 +209,7 @@ interface brushLocation {
             position: relative;
             pointer-events: auto;
             transition: box-shadow 0.2s, color 0.2s, border 0.2s, width 0.2s, height 0.2s, transform 0.15s;
+            transform-origin: center;
         }
         .fab img {
             pointer-events: none;
@@ -220,16 +219,23 @@ interface brushLocation {
             z-index: 2;
         }
         .fab.main-fab {
+            position: absolute;
             background: gray;
             color: #fff;
-            width: 56px;
-            height: 56px;
-            min-width: 56px;
-            min-height: 56px;
+            width: 96px;
+            height: 96px;
+            left: -48px;
+            bottom: -48px;
             opacity: .8;
+        }
+        .fab.main-fab img {
+            position: absolute;
+            top: 16px;
+            left: 16px;
         }
         .fab.main-fab.active {
             opacity: 1;
+            transform: scale(1.15);
         }
         .fab.mini-fab.active,
         .fab.mini-fab.selected {
@@ -247,7 +253,7 @@ interface brushLocation {
         .controls-fab-column {
             position: absolute;
             bottom: 64px;
-            left: 12px;
+            left: -42px;
             display: flex;
             flex-direction: column;
             gap: 8px;
@@ -257,7 +263,7 @@ interface brushLocation {
             position: absolute;
             height: 32px;
             right: 64px;
-            bottom: 0px;
+            bottom: 12px;
             display: flex;
             flex-direction: row;
             gap: 4px;
@@ -281,8 +287,8 @@ interface brushLocation {
         }
         .line-width-slider-row {
             position: absolute;
-            right: 64px;
-            bottom: 35px;
+            right: 56px;
+            bottom: 56px;
             display: flex;
             align-items: center;
             gap: 8px;
