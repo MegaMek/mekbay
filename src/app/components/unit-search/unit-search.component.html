@@ -55,7 +55,8 @@
                     [class.active]="activeIndex() === i" 
                     [class.selected]="isUnitSelected(unit)"
                     (mouseenter)="activeIndex.set(i)" 
-                    (click)="onUnitCardClick(unit, $event)">
+                    (click)="onUnitCardClick(unit, $event)"
+                    (contextmenu)="onUnitCardClick(unit, $event, true); $event.preventDefault();">
 
                     @if (this.expandedView()) {
                         <ng-container *ngTemplateOutlet="expandedView; context: { unit: unit }"></ng-container>

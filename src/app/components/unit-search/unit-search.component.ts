@@ -908,8 +908,8 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     // Multi-select logic: click with Ctrl/Cmd or Shift to select multiple units
-    onUnitCardClick(unit: Unit, event?: MouseEvent) {
-        if (event && (event.ctrlKey || event.metaKey || event.shiftKey)) {
+    onUnitCardClick(unit: Unit, event?: MouseEvent, forceMultiSelect = false) {
+        if (event && (event.ctrlKey || event.metaKey || event.shiftKey || forceMultiSelect)) {
             // Multi-select logic
             const selected = new Set(this.selectedUnits());
             if (selected.has(unit.name)) {
