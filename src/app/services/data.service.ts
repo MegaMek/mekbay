@@ -42,7 +42,7 @@ import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, IAmmo, IEquipment, IWeapon, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { Quirk, Quirks } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
-import { Force } from '../models/force-unit.model';
+import { Force, ForceUnit } from '../models/force-unit.model';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { UserStateService } from './userState.service';
 
@@ -808,5 +808,9 @@ export class DataService {
         }
         
         await this.dbService.saveTags(tagsToSave);
+    }
+
+    public deleteCanvasDataOfUnit(unit: ForceUnit): void {
+        this.dbService.deleteCanvasData(unit.id);
     }
 }

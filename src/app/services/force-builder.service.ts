@@ -480,6 +480,7 @@ export class ForceBuilderService {
         const currentUnits = this.forceUnits();
         const idx = currentUnits.findIndex(u => u.id === unitToRemove.id);
         this.force.removeUnit(unitToRemove);
+        this.dataService.deleteCanvasDataOfUnit(unitToRemove);
 
         const updatedUnits = this.forceUnits();
         if (this.selectedUnit()?.id === unitToRemove.id) {

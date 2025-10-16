@@ -51,7 +51,38 @@ export interface SerializedForce {
     instanceId: string;
     name: string;
     owned?: boolean;
-    units: any[]; // Serialized ForceUnit objects
+    units: SerializedUnit[]; // Serialized ForceUnit objects
+}
+
+export interface SerializedUnit {
+    id: string;
+    unit: string; // Unit name
+    state: SerializedState; // Serialized ForceUnitState object
+}
+
+export interface SerializedState {
+    modified: boolean;
+    destroyed: boolean;
+    c3Linked: boolean;
+    crew: any[]; // Serialized CrewMember objects
+    crits: CriticalSlot[];
+    locations: Record<string, LocationData>;
+    heat: { current: number, previous: number };
+    inventory?: MountedEquipment[];
+}
+
+export interface CriticalSlot {
+    uid?: string; // Unique identifier for the critical slot on the sheet (this value changes at each SVG update)
+    name?: string; // Name, if loc/slot are null, this is the name of the critical point (example: engine)
+    loc?: string; // Location of the critical slot (HD, LT, RT, ...)
+    slot?: number; // Slot number of the critical slot
+    hits?: number; // How many hits did this location receive. If is an armored location, this is the number of hits it has taken
+    totalAmmo?: number; // If is an ammo slot: how much total ammo is in this slot.
+    consumed?: number; // If is an ammo slot: how much ammo have been consumed. If is a F_MODULAR_ARMOR, is the armor points used
+    destroyed?: boolean; // If this location is destroyed (can be from 0 hits if the structure is completely destroyed)
+    originalName?: string; // saved original name in case we override the current name
+    el?: SVGElement;
+    eq?: Equipment;
 }
 
 export class Force {
@@ -568,8 +599,8 @@ export class ForceUnit {
         return (!this.svg()?.querySelector('.critSlot')) && (this.getUnit().type !== 'Infantry') || false;
     }
 
-    public serialize(): any {
-        const stateObj: any = {
+    public serialize(): SerializedUnit {
+        const stateObj: SerializedState = {
                 crew: this.state.crew().map(crew => crew.serialize()),
                 crits: this.state.crits().map(({ uid, el, eq, ...rest }) => rest), // We remove UID and the SVGElement as they are linked at load time
                 heat: this.state.heat(),
@@ -591,7 +622,7 @@ export class ForceUnit {
 
     /** Deserialize a plain object to a ForceUnit instance */
     public static deserialize(
-        data: any,
+        data: SerializedUnit,
         force: Force,
         dataService: DataService,
         unitInitializer: UnitInitializerService,
@@ -606,7 +637,7 @@ export class ForceUnit {
         return fu;
     }
 
-    private deserializeState(data: any) {
+    private deserializeState(data: SerializedUnit) {
         this.id = data.id;
         if (data.state) {
             this.state.crits.set(data.state.crits);
@@ -769,18 +800,4 @@ export class CrewMember {
         crew.setHits(data.hits);
         return crew;
     }
-}
-
-export interface CriticalSlot {
-    uid?: string; // Unique identifier for the critical slot on the sheet (this value changes at each SVG update)
-    name?: string; // Name, if loc/slot are null, this is the name of the critical point (example: engine)
-    loc?: string; // Location of the critical slot (HD, LT, RT, ...)
-    slot?: number; // Slot number of the critical slot
-    hits?: number; // How many hits did this location receive. If is an armored location, this is the number of hits it has taken
-    totalAmmo?: number; // If is an ammo slot: how much total ammo is in this slot.
-    consumed?: number; // If is an ammo slot: how much ammo have been consumed. If is a F_MODULAR_ARMOR, is the armor points used
-    destroyed?: boolean; // If this location is destroyed (can be from 0 hits if the structure is completely destroyed)
-    originalName?: string; // saved original name in case we override the current name
-    el?: SVGElement;
-    eq?: Equipment;
 }
