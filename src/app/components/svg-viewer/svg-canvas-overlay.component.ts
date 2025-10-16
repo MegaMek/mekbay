@@ -37,6 +37,7 @@ import { SvgZoomPanService } from './svg-zoom-pan.service';
 import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { ForceUnit } from '../../models/force-unit.model';
 
 /*
  * Author: Drake
@@ -338,7 +339,7 @@ export class SvgCanvasOverlayComponent {
 
     activePointers = new Map<number, brushLocation>();
     lastReducedIndex = 0;
-    unitId = input<string | null>(null);
+    unit = input<ForceUnit | null>(null);
     mode = signal<'brush' | 'eraser' | 'none'>('none');
     brushColor = signal<string>('#f00');
     colorOptions = ['#f00', '#00f', '#0f0', '#f0f', '#0ff', '#ff0'];
@@ -349,7 +350,7 @@ export class SvgCanvasOverlayComponent {
     });
 
     canvasHeight = computed(() => {
-        this.unitId();
+        this.unit();
         return this.height() * SvgCanvasOverlayComponent.INTERNAL_SCALE;
     });
     canvasWidth = computed(() => {
@@ -389,11 +390,11 @@ export class SvgCanvasOverlayComponent {
 
     constructor() {
         effect(() => {
-            const unitId = this.unitId();
+            const unit = this.unit();
             afterNextRender(() => {
                 this.clearCanvas();
-                if (!unitId) return;
-                this.dbService.getCanvasData(unitId).then(data => {
+                if (!unit) return;
+                this.dbService.getCanvasData(unit.id).then(data => {
                     if (!data) return;
                     this.importImageData(data);
                 });
@@ -464,9 +465,9 @@ export class SvgCanvasOverlayComponent {
         );
         if (confirmed === 'yes') {
             this.clearCanvas();
-            const unitId = this.unitId();
-            if (!unitId) return;
-            this.dbService.deleteCanvasData(unitId);
+            const unit = this.unit();
+            if (!unit) return;
+            this.dbService.deleteCanvasData(unit.id);
         }
     }
 
@@ -560,11 +561,12 @@ export class SvgCanvasOverlayComponent {
         if (this.activePointers.size === 0) {
             this.removeMoveAndUpListeners();
         }
-        const unitId = this.unitId();
-        if (!unitId) return;
+        const unit = this.unit();
+        if (!unit) return;
         const blob = await this.exportImageData();
         if (!blob) return;
-        this.dbService.saveCanvasData(unitId, blob);
+        this.dbService.saveCanvasData(unit.id, blob);
+        unit.setModified();
     }
 
     onPointerMove(event: PointerEvent) {

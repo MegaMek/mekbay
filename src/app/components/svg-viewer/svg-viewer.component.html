@@ -3,7 +3,7 @@
     @if (currentSvg()) {
         <svg-canvas-overlay
             #canvasOverlay
-            [unitId]="unit() ? unit()!.id : null"
+            [unit]="unit()"
             [width]="this.svgWidth"
             [height]="this.svgHeight"
         ></svg-canvas-overlay>
