@@ -345,7 +345,7 @@ export class SvgCanvasOverlayComponent {
     private static BRUSH_MULTIPLIER = 1.0 * SvgCanvasOverlayComponent.INTERNAL_SCALE;
     private static ERASER_MULTIPLIER = 2.0 * SvgCanvasOverlayComponent.INTERNAL_SCALE;
     MIN_STROKE_SIZE = 1;
-    MAX_STROKE_SIZE = 32;
+    MAX_STROKE_SIZE = 16;
     private destroyRef = inject(DestroyRef);
     private zoomPanService = inject(SvgZoomPanService);
     private injector = inject(Injector);
