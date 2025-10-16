@@ -115,6 +115,7 @@ export class UnitSearchComponent implements OnDestroy {
     advPanelUserColumns = signal<1 | 2 | null>(null);
     focused = signal(false);
     activeIndex = signal<number | null>(null);
+    selectedUnits = signal<Set<string>>(new Set());
     private unitDetailsDialogOpen = signal(false);
     advPanelStyle = signal<{ left: string, top: string, width: string, height: string, columnsCount: number }>({
         left: '0px',
@@ -399,6 +400,7 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     clearAdvFilters() {
+        this.clearSelection();
         this.filtersService.clearFilters();
         this.activeIndex.set(null);
     }
@@ -411,6 +413,14 @@ export class UnitSearchComponent implements OnDestroy {
     @HostListener('keydown', ['$event'])
     onKeydown(event: KeyboardEvent) {
         const searchInput = this.searchInput();
+        // SELECT ALL
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+            event.preventDefault();
+            const allUnits = this.filtersService.filteredUnits();
+            const allNames = new Set(allUnits.map(u => u.name));
+            this.selectedUnits.set(allNames);
+            return;
+        }
         if (event.key === 'Escape') {
             event.stopPropagation();
             if (this.advOpen()) {
@@ -452,9 +462,9 @@ export class UnitSearchComponent implements OnDestroy {
                 case 'Enter':
                     event.preventDefault();
                     if (currentActiveIndex !== null) {
-                        this.onUnitClick(items[currentActiveIndex]);
+                        this.showUnitDetails(items[currentActiveIndex]);
                     } else if (items.length > 0) {
-                        this.onUnitClick(items[0]);
+                        this.showUnitDetails(items[0]);
                     }
                     break;
             }
@@ -553,7 +563,7 @@ export class UnitSearchComponent implements OnDestroy {
         return `${unit.chassis} ${unit.model}`;
     }
 
-    onUnitClick(unit: Unit) {
+    showUnitDetails(unit: Unit) {
         const filteredUnits = this.filtersService.filteredUnits();
         const filteredUnitIndex = filteredUnits.findIndex(u => u.name === unit.name);
         const ref = this.dialog.open(UnitDetailsDialogComponent, {
@@ -678,6 +688,19 @@ export class UnitSearchComponent implements OnDestroy {
     async onAddTag(unit: Unit, event: MouseEvent) {
         event.stopPropagation();
 
+        // Determine which units to tag: selected units if any.
+        const selectedNames = this.selectedUnits();
+        const allUnits = this.filtersService.filteredUnits();
+        let unitsToTag: Unit[];
+        if (selectedNames.size > 0) {
+            // Always include the clicked unit, even if not in the selection
+            const selectedSet = new Set(selectedNames);
+            selectedSet.add(unit.name);
+            unitsToTag = allUnits.filter(u => selectedSet.has(u.name));
+        } else {
+            unitsToTag = [unit];
+        }
+
         // Collect all unique tags from all units
         const tagOptions = this.filtersService.getAllTags();
 
@@ -714,7 +737,12 @@ export class UnitSearchComponent implements OnDestroy {
 
         // Pass data to the component
         componentRef.instance.tags = tagOptions;
-        componentRef.instance.assignedTags = unit._tags || [];
+
+        // Show tags that are common to all selected units
+        const commonTags = unitsToTag
+            .map(u => u._tags || [])
+            .reduce((a, b) => a.filter(tag => b.includes(tag)), unitsToTag[0]._tags || []);
+        componentRef.instance.assignedTags = commonTags;
 
         // Handle backdrop click to close
         this.tagSelectorOverlayRef.backdropClick().subscribe(() => {
@@ -722,23 +750,28 @@ export class UnitSearchComponent implements OnDestroy {
             this.tagSelectorOverlayRef = undefined;
         });
 
-        // Handle tag removal
+        // Handle tag removal for all selected units
         componentRef.instance.tagRemoved.subscribe(async (tagToRemove: string) => {
-            if (unit._tags) {
-                const index = unit._tags.findIndex(t => t.toLowerCase() === tagToRemove.toLowerCase());
-                if (index !== -1) {
-                    unit._tags.splice(index, 1);
-                    // Update the component's assigned tags
-                    componentRef.instance.assignedTags = unit._tags || [];
-
-                    await this.filtersService.saveTagsToStorage();
-                    this.filtersService.invalidateTagsCache();
-                    this.cdr.markForCheck();
+            for (const u of unitsToTag) {
+                if (u._tags) {
+                    const index = u._tags.findIndex(t => t.toLowerCase() === tagToRemove.toLowerCase());
+                    if (index !== -1) {
+                        u._tags.splice(index, 1);
+                    }
                 }
             }
+            // Update the component's assigned tags
+            const updatedCommon = unitsToTag
+                .map(u => u._tags || [])
+                .reduce((a, b) => a.filter(tag => b.includes(tag)), unitsToTag[0]._tags || []);
+            componentRef.instance.assignedTags = updatedCommon;
+
+            await this.filtersService.saveTagsToStorage();
+            this.filtersService.invalidateTagsCache();
+            this.cdr.markForCheck();
         });
 
-        // Handle tag selection
+        // Handle tag selection for all selected units
         componentRef.instance.tagSelected.subscribe(async (selectedTag: string) => {
             this.tagSelectorOverlayRef?.dispose();
             this.tagSelectorOverlayRef = undefined;
@@ -761,7 +794,6 @@ export class UnitSearchComponent implements OnDestroy {
                     return;
                 }
                 if (newTag.length > 16) {
-                    // Limit tag length to 16 characters
                     await this.dialogsService.showError('Tag is too long. Maximum length is 16 characters.', 'Invalid Tag');
                     return;
                 }
@@ -771,19 +803,14 @@ export class UnitSearchComponent implements OnDestroy {
 
             const trimmedTag = selectedTag.trim();
 
-            // Initialize tags array if it doesn't exist
-            if (!unit._tags) {
-                unit._tags = [];
+            for (const u of unitsToTag) {
+                if (!u._tags) {
+                    u._tags = [];
+                }
+                if (!u._tags.some(tag => tag.toLowerCase() === trimmedTag.toLowerCase())) {
+                    u._tags.push(trimmedTag);
+                }
             }
-
-            // Check if tag already exists (case-insensitive)
-            if (unit._tags.some(tag => tag.toLowerCase() === trimmedTag.toLowerCase())) {
-                // Tag already exists, don't add duplicate
-                return;
-            }
-
-            // Add the tag
-            unit._tags.push(trimmedTag);
             this.cdr.markForCheck();
 
             await this.filtersService.saveTagsToStorage();
@@ -883,4 +910,29 @@ export class UnitSearchComponent implements OnDestroy {
         }
     }
 
+    // Multi-select logic: click with Ctrl/Cmd or Shift to select multiple units
+    onUnitCardClick(unit: Unit, event?: MouseEvent) {
+        if (event && (event.ctrlKey || event.metaKey || event.shiftKey)) {
+            // Multi-select logic
+            const selected = new Set(this.selectedUnits());
+            if (selected.has(unit.name)) {
+                selected.delete(unit.name);
+            } else {
+                selected.add(unit.name);
+            }
+            this.selectedUnits.set(selected);
+            event.stopPropagation();
+            return;
+        }
+        // Single click: open details and clear selection
+        this.showUnitDetails(unit);
+    }
+    
+    isUnitSelected(unit: Unit): boolean {
+        return this.selectedUnits().has(unit.name);
+    }
+    
+    clearSelection() {
+        this.selectedUnits.set(new Set());
+    }
 }

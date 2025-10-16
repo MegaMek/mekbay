@@ -210,18 +210,27 @@
     overflow-x: hidden;
     gap: 4px;
     align-items: center;
+    transition: background-color 0.2s;
 }
 
 .results-dropdown-item:hover {
-    background: var(--background-highlight);
+    background-color: var(--background-highlight);
 }
 
 .results-dropdown-item.active {
-    background: var(--background-highlight);
+    background-color: var(--background-highlight);
 }
 
 .results-dropdown-item:last-child {
     border-bottom: none;
+}
+
+.results-dropdown-item.selected {
+    background-color: var(--bt-yellow-background);
+}
+
+.results-dropdown-item.selected:hover {
+    background-color: var(--bt-yellow-background-bright);
 }
 
 .results-dropdown-item.no-results {
