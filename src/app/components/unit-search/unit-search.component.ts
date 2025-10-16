@@ -400,7 +400,6 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     clearAdvFilters() {
-        this.clearSelection();
         this.filtersService.clearFilters();
         this.activeIndex.set(null);
     }
@@ -416,9 +415,7 @@ export class UnitSearchComponent implements OnDestroy {
         // SELECT ALL
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
             event.preventDefault();
-            const allUnits = this.filtersService.filteredUnits();
-            const allNames = new Set(allUnits.map(u => u.name));
-            this.selectedUnits.set(allNames);
+            this.selectAll();
             return;
         }
         if (event.key === 'Escape') {
@@ -925,6 +922,7 @@ export class UnitSearchComponent implements OnDestroy {
             return;
         }
         // Single click: open details and clear selection
+        this.clearSelection();
         this.showUnitDetails(unit);
     }
     
@@ -933,6 +931,14 @@ export class UnitSearchComponent implements OnDestroy {
     }
     
     clearSelection() {
-        this.selectedUnits.set(new Set());
+        if (this.selectedUnits().size > 0) {
+            this.selectedUnits.set(new Set());
+        }
+    }
+
+    selectAll() {
+        const allUnits = this.filtersService.filteredUnits();
+        const allNames = new Set(allUnits.map(u => u.name));
+        this.selectedUnits.set(allNames);
     }
 }
