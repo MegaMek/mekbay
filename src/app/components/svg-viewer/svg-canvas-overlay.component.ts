@@ -211,6 +211,9 @@ interface brushLocation {
             pointer-events: auto;
             transition: box-shadow 0.2s, color 0.2s, border 0.2s, width 0.2s, height 0.2s;
         }
+        .fab img {
+            pointer-events: none;
+        }
         .fab.main-fab {
             background: gray;
             color: #fff;
