@@ -239,6 +239,7 @@
   width: 100%;
   min-height: 80px;
 }
+
 .results-dropdown-item.no-results:hover {
     background-color: transparent;
     cursor: default;
@@ -289,6 +290,10 @@
     color: var(--text-color-secondary);
     padding-left: 4px;
     pointer-events: none;
+}
+
+.selected-count {
+    color: var(--bt-yellow);
 }
 
 .results-sort {

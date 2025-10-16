@@ -142,7 +142,7 @@
                         {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length
                         === 1 ? '' : 's' }}
                         @if (this.selectedUnits().size > 0) {
-                            ({{ this.selectedUnits().size }} selected)
+                            <div class="selected-count">{{ this.selectedUnits().size }} selected</div>
                         }
                     </div>
                     <div class="results-sort">
