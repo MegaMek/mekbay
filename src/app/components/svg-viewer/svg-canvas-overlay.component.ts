@@ -127,8 +127,8 @@ interface brushLocation {
         <div class="line-width-slider-row">
           <input
             type="range"
-            min="4"
-            max="20"
+            min="1"
+            max="16"
             [value]="strokeSize()"
             (input)="onStrokeSizeChange($event)"
             aria-label="Brush Size"
@@ -340,9 +340,10 @@ export class SvgCanvasOverlayComponent {
     private static REDUCE_WINDOW_SIZE = 100;
     private static MAX_LINES = 1000;
     private static MAX_STROKE_POINTS = 1000;
-    private static INITIAL_BRUSH_SIZE = 6;
-    private static INITIAL_ERASER_SIZE = 12;
-    private static ERASER_MULTIPLIER = 1.6;
+    private static INITIAL_BRUSH_SIZE = 3;
+    private static INITIAL_ERASER_SIZE = 6;
+    private static BRUSH_MULTIPLIER = 2.0;
+    private static ERASER_MULTIPLIER = 3.2;
     private destroyRef = inject(DestroyRef);
     private zoomPanService = inject(SvgZoomPanService);
     private injector = inject(Injector);
@@ -520,6 +521,11 @@ export class SvgCanvasOverlayComponent {
         window.print();
     }
 
+    private getStrokeSizeByMode(mode: 'brush' | 'eraser'): number {
+        const paintMode = mode === 'brush';
+        return paintMode ? this.brushSize() * SvgCanvasOverlayComponent.BRUSH_MULTIPLIER : this.eraserSize() * SvgCanvasOverlayComponent.ERASER_MULTIPLIER;
+    }
+    
     private getCanvasContext(): CanvasRenderingContext2D | null {
         return this.canvasRef()?.nativeElement.getContext('2d') ?? null;
     }
@@ -578,12 +584,11 @@ export class SvgCanvasOverlayComponent {
         if (brushLocation.mode === 'eraser') {
             ctx.globalCompositeOperation = 'destination-out';
             ctx.strokeStyle = 'rgba(0,0,0,1)';
-            ctx.lineWidth = this.eraserSize() * SvgCanvasOverlayComponent.ERASER_MULTIPLIER;
         } else {
             ctx.globalCompositeOperation = 'source-over';
             ctx.strokeStyle = this.brushColor();
-            ctx.lineWidth = this.brushSize();
         }
+        ctx.lineWidth = this.getStrokeSizeByMode(brushLocation.mode);
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.beginPath();
@@ -613,7 +618,7 @@ export class SvgCanvasOverlayComponent {
         this.currentLine = new Line({
             points: [pos.x, pos.y, pos.x, pos.y],
             stroke: paintMode ? this.brushColor() : '#000',
-            strokeWidth: paintMode ? this.brushSize() : this.eraserSize() * SvgCanvasOverlayComponent.ERASER_MULTIPLIER,
+            strokeWidth: this.getStrokeSizeByMode(paintMode ? 'brush' : 'eraser'),
             globalCompositeOperation: paintMode ? 'source-over' : 'destination-out',
             lineCap: 'round',
             lineJoin: 'round'
@@ -658,7 +663,7 @@ export class SvgCanvasOverlayComponent {
         this.activePointers.delete(event.pointerId);
         if (!this.isDirectMode()) {
             const paintMode = this.mode() === 'brush';
-            this.currentLine?.points(this.reduceNearPoints(this.currentLine.points(), (paintMode ? this.brushSize() : this.eraserSize()) / 2, 0.01));
+            this.currentLine?.points(this.reduceNearPoints(this.currentLine.points(), this.getStrokeSizeByMode(paintMode ? 'brush' : 'eraser') / 2, 0.01));
             this.currentLine = undefined;
         }    
         if (this.activePointers.size === 0) {
@@ -697,7 +702,7 @@ export class SvgCanvasOverlayComponent {
             const prefix = newPoints.slice(0, start);
             const segment = newPoints.slice(start);
             const paintMode = this.mode() === 'brush';
-            const reducedSegment = this.reduceNearPoints(segment, (paintMode ? this.brushSize() : this.eraserSize()) / 2, 0.01);
+            const reducedSegment = this.reduceNearPoints(segment, this.getStrokeSizeByMode(paintMode ? 'brush' : 'eraser') / 2, 0.01);
             const reducedPoints = [...prefix, ...reducedSegment];
             this.currentLine.points(reducedPoints);
             // Limit the number of points to prevent memory issues, we remove the oldest points
