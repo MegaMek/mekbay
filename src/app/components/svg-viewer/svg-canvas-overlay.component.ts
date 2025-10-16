@@ -303,7 +303,7 @@ interface brushLocation {
         }
         @media (print) {
             .fab-container {
-                display: none;
+                display: none !important;
             }
         }
 `,
