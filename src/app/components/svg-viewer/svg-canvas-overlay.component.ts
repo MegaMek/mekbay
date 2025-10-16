@@ -516,6 +516,9 @@ export class SvgCanvasOverlayComponent {
         );
         if (confirmed === 'yes') {
             this.clearCanvas();
+            const unitId = this.unitId();
+            if (!unitId) return;
+            this.dbService.deleteCanvasData(unitId);
         }
     }
 
@@ -537,9 +540,6 @@ export class SvgCanvasOverlayComponent {
         const ctx = this.getCanvasContext();
         if (!ctx) return;
         ctx.clearRect(0, 0, this.canvasWidth(), this.canvasHeight());
-        const unitId = this.unitId();
-        if (!unitId) return;
-        this.dbService.deleteCanvasData(unitId);
     }
 
     clearKonvaCanvas() {
