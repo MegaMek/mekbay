@@ -319,7 +319,7 @@ interface brushLocation {
 export class SvgCanvasOverlayComponent {
     private static INTERNAL_SCALE = 2;
     private static INITIAL_BRUSH_SIZE = 3;
-    private static INITIAL_ERASER_SIZE = 3;
+    private static INITIAL_ERASER_SIZE = 6;
     private static BRUSH_MULTIPLIER = 1.0 * SvgCanvasOverlayComponent.INTERNAL_SCALE;
     private static ERASER_MULTIPLIER = 2.0 * SvgCanvasOverlayComponent.INTERNAL_SCALE;
     MIN_STROKE_SIZE = 1;
