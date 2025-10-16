@@ -33,12 +33,7 @@
 
 import { CommonModule } from '@angular/common';
 import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, DestroyRef, afterNextRender, ElementRef } from '@angular/core';
-import { Stage, StageConfig } from 'konva/lib/Stage';
-import { Layer } from 'konva/lib/Layer';
-import { Line, LineConfig } from 'konva/lib/shapes/Line';
 import { SvgZoomPanService } from './svg-zoom-pan.service';
-import { StageComponent, CoreShapeComponent } from 'ng2-konva';
-import { gzip, ungzip, Data } from 'pako';
 import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -57,31 +52,20 @@ interface brushLocation {
     selector: 'svg-canvas-overlay',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, StageComponent, CoreShapeComponent],
+    imports: [CommonModule],
     template: `
     <div #canvasOverlay class="svg-canvas-overlay" [class.active]="mode() !== 'none'">
-    <div #canvasContainer class="drawing-canvas"
-        [ngStyle]="canvasTransformStyle()"
-        (mousedown)="bubbleInterceptor($event)"
-        (mouseup)="bubbleInterceptor($event)"
-        (mousemove)="bubbleInterceptor($event)"
-        (touchstart)="bubbleInterceptor($event)"
-        (touchend)="bubbleInterceptor($event)"
-        (touchmove)="bubbleInterceptor($event)"
-    >
-        @if (isDirectMode()) {
-            <canvas #canvas
-            [width]="canvasWidth()"
-            [height]="canvasHeight()"
-        ></canvas>
-        } @else {
-        <div class="stageContainer">
-        <ko-stage #stage
-            [config]="stageConfig"
-        ><ko-layer #drawLayer></ko-layer></ko-stage>
+        <div #canvasContainer class="drawing-canvas"
+            [ngStyle]="canvasTransformStyle()"
+            (mousedown)="bubbleInterceptor($event)"
+            (mouseup)="bubbleInterceptor($event)"
+            (mousemove)="bubbleInterceptor($event)"
+            (touchstart)="bubbleInterceptor($event)"
+            (touchend)="bubbleInterceptor($event)"
+            (touchmove)="bubbleInterceptor($event)"
+        >
+            <canvas #canvas [width]="canvasWidth()" [height]="canvasHeight()"></canvas>
         </div>
-    }]
-    </div>
     </div>
     <div class="fab-container"
         (pointerdown)="$event.stopPropagation()"
@@ -105,9 +89,6 @@ interface brushLocation {
         <div class="controls-fab-column">
             <button class="fab mini-fab print-fab" (click)="print()" aria-label="Print Canvas"><img src="/images/print.svg" alt="Print"></button>
             <button class="fab mini-fab clear-fab" (click)="requestClearCanvas()" aria-label="Clear Canvas"><img src="/images/delete.svg" alt="Delete"></button>
-            @if (!isDirectMode()) {
-                <button class="fab mini-fab undo-fab" (click)="undo()" aria-label="Undo">↶</button>
-            }
             <button class="fab mini-fab eraser-fab"
             [class.active]="mode() === 'eraser'"
             (click)="toggleEraser()"
@@ -170,17 +151,11 @@ interface brushLocation {
         .svg-canvas-overlay.active .drawing-canvas {
             pointer-events: auto;
         }
-        .drawing-canvas ko-stage,
         .drawing-canvas canvas {
             width: 100%;
             height: 100%;
             display: block;
             pointer-events: none;
-        }
-        ko-stage {
-            opacity: 0.95;
-            background: transparent;
-            cursor: crosshair;
         }
         /* Controls */
         .fab-container {
@@ -343,9 +318,6 @@ interface brushLocation {
 })
 export class SvgCanvasOverlayComponent {
     private static INTERNAL_SCALE = 2;
-    private static REDUCE_WINDOW_SIZE = 100;
-    private static MAX_LINES = 1000;
-    private static MAX_STROKE_POINTS = 1000;
     private static INITIAL_BRUSH_SIZE = 3;
     private static INITIAL_ERASER_SIZE = 3;
     private static BRUSH_MULTIPLIER = 1.0 * SvgCanvasOverlayComponent.INTERNAL_SCALE;
@@ -361,14 +333,10 @@ export class SvgCanvasOverlayComponent {
     canvasOverlay = viewChild.required<ElementRef<HTMLDivElement>>('canvasOverlay');
     canvasContainer = viewChild.required<ElementRef<HTMLDivElement>>('canvasContainer');
     canvasRef = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
-    stageComponent = viewChild('stage') as Signal<StageComponent | undefined>;
     width = input(200);
     height = input(200);
 
-    stageConfig: Partial<StageConfig> = {};
     activePointers = new Map<number, brushLocation>();
-    lines: Line[] = [];
-    private currentLine?: Line;
     lastReducedIndex = 0;
     unitId = input<string | null>(null);
     mode = signal<'brush' | 'eraser' | 'none'>('none');
@@ -378,10 +346,6 @@ export class SvgCanvasOverlayComponent {
     eraserSize = signal<number>(SvgCanvasOverlayComponent.INITIAL_ERASER_SIZE);
     strokeSize = computed(() => {
         return this.mode() === 'brush' ? this.brushSize() : this.eraserSize();
-    });
-
-    isDirectMode = computed(()=>{
-        return this.optionsService.options().canvasMode === 'raster';
     });
 
     canvasHeight = computed(() => {
@@ -425,10 +389,6 @@ export class SvgCanvasOverlayComponent {
 
     constructor() {
         effect(() => {
-            if (this.isDirectMode()) return;
-            this.updateStageConfig();
-        });
-        effect(() => {
             const unitId = this.unitId();
             afterNextRender(() => {
                 this.clearCanvas();
@@ -466,13 +426,6 @@ export class SvgCanvasOverlayComponent {
         event.stopPropagation();
     }
 
-    updateStageConfig() {
-        this.stageConfig = {
-            width: this.width() * SvgCanvasOverlayComponent.INTERNAL_SCALE,
-            height: this.height() * SvgCanvasOverlayComponent.INTERNAL_SCALE,
-        };
-    }
-
     onStrokeSizeChange(event: Event) {
         const value = +(event.target as HTMLInputElement).value;
         if (this.mode() === 'brush') {
@@ -503,17 +456,6 @@ export class SvgCanvasOverlayComponent {
         this.mode.set('brush');
     }
 
-    undo() {
-        const stage = this.stageComponent()?.getStage();
-        if (!stage) return;
-        const layer = stage.getLayers()[0] as Layer | null;
-        if (!layer) return;
-        const lastLine = this.lines.pop();
-        if (!lastLine) return;
-        lastLine?.destroy();
-        layer.batchDraw();
-    }
-
     async requestClearCanvas() {
         const confirmed = await this.dialogsService.showQuestion(
             'Are you sure you want to clear the canvas? This cannot be undone.',
@@ -542,53 +484,27 @@ export class SvgCanvasOverlayComponent {
         return this.canvasRef()?.nativeElement.getContext('2d') ?? null;
     }
 
-    clearNativeCanvas() {
+    clearCanvas() {
         const ctx = this.getCanvasContext();
         if (!ctx) return;
         ctx.clearRect(0, 0, this.canvasWidth(), this.canvasHeight());
     }
 
-    clearKonvaCanvas() {
-        const stage = this.stageComponent()?.getStage();
-        if (!stage) return;
-        const layer = stage.getLayers()[0] as Layer | null;
-        if (!layer) return;
-        this.lines.forEach(line => line.destroy());
-        this.lines = [];
-        layer.batchDraw();
-    }
-
-    clearCanvas() {
-        if (this.isDirectMode()) {
-            this.clearNativeCanvas();
-        } else {
-            this.clearKonvaCanvas();
-        }
-    }
-
     private getPointerPosition(event: PointerEvent): { x: number, y: number } | null {
-        if (this.isDirectMode()) {
-            const el = this.canvasRef()?.nativeElement;
-            if (!el) return null;
-            const rect = el.getBoundingClientRect();
-            return {
-                x: (event.clientX - rect.left) * (el.width / rect.width),
-                y: (event.clientY - rect.top) * (el.height / rect.height)
-            };
-        } else {
-            // KONVA
-            const stage = this.stageComponent()?.getStage();
-            stage?.setPointersPositions(event);
-            const pos = (stage as Stage).getPointerPosition();
-            return pos;
-        }
+        const el = this.canvasRef()?.nativeElement;
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return {
+            x: (event.clientX - rect.left) * (el.width / rect.width),
+            y: (event.clientY - rect.top) * (el.height / rect.height)
+        };
     }
 
     isEraseButton(button: number): boolean {
         return button === 5 || button === 2; // X1 (back) button or right-click
     }
 
-    drawNative(ctx: CanvasRenderingContext2D, brushLocation: brushLocation, toPos: { x: number, y: number }) {
+    draw(ctx: CanvasRenderingContext2D, brushLocation: brushLocation, toPos: { x: number, y: number }) {
         ctx.save();
         if (brushLocation.mode === 'eraser') {
             ctx.globalCompositeOperation = 'destination-out';
@@ -607,39 +523,14 @@ export class SvgCanvasOverlayComponent {
         ctx.restore();
     }
 
-    startDrawNativeCanvas(pointerId: number) {
+    startDraw(pointerId: number) {
         const pos = this.activePointers.get(pointerId);
         if (!pos) return;
         // draw initial dot
         const ctx = this.getCanvasContext();
         if (ctx) {
-            this.drawNative(ctx, pos, pos);
+            this.draw(ctx, pos, pos);
         }
-    }
-
-    startDrawKonvaCanvas(event: PointerEvent) {
-        const stage = this.stageComponent()?.getStage();
-        const layer = stage?.getLayers()[0] as Layer | null;
-        if (!stage || !layer) return;
-        const pos = this.getPointerPosition(event);
-        if (!pos) return;
-        const paintMode = this.mode() === 'brush';
-        this.currentLine = new Line({
-            points: [pos.x, pos.y, pos.x, pos.y],
-            stroke: paintMode ? this.brushColor() : '#000',
-            strokeWidth: this.getStrokeSizeScaledByMode(paintMode ? 'brush' : 'eraser'),
-            globalCompositeOperation: paintMode ? 'source-over' : 'destination-out',
-            lineCap: 'round',
-            lineJoin: 'round'
-        });
-        layer.add(this.currentLine);
-        if (this.lines.length >= SvgCanvasOverlayComponent.MAX_LINES) {
-            const oldLine = this.lines.shift();
-            oldLine?.destroy();
-        }
-        this.lines.push(this.currentLine);
-        this.lastReducedIndex = 0;
-        layer.batchDraw();
     }
 
     onPointerDown(event: PointerEvent) {
@@ -658,11 +549,7 @@ export class SvgCanvasOverlayComponent {
             window.addEventListener('pointermove', this.nativePointerMove);
             window.addEventListener('pointerup', this.nativePointerUp);
         }
-        if (this.isDirectMode()) {
-            this.startDrawNativeCanvas(event.pointerId);
-        } else {
-            this.startDrawKonvaCanvas(event);
-        }
+        this.startDraw(event.pointerId);
     }
 
     async onPointerUp(event: PointerEvent) {
@@ -670,19 +557,14 @@ export class SvgCanvasOverlayComponent {
         event.preventDefault();
         event.stopPropagation();
         this.activePointers.delete(event.pointerId);
-        if (!this.isDirectMode()) {
-            const paintMode = this.mode() === 'brush';
-            this.currentLine?.points(this.reduceNearPoints(this.currentLine.points(), this.getStrokeSizeScaledByMode(paintMode ? 'brush' : 'eraser') / 2, 0.01));
-            this.currentLine = undefined;
-        }    
         if (this.activePointers.size === 0) {
             this.removeMoveAndUpListeners();
-            const unitId = this.unitId();
-            if (!unitId) return;
-            const blob = await this.exportImageData();
-            if (!blob) return;
-            this.dbService.saveCanvasData(unitId, blob);
         }
+        const unitId = this.unitId();
+        if (!unitId) return;
+        const blob = await this.exportImageData();
+        if (!blob) return;
+        this.dbService.saveCanvasData(unitId, blob);
     }
 
     onPointerMove(event: PointerEvent) {
@@ -691,138 +573,12 @@ export class SvgCanvasOverlayComponent {
         event.stopPropagation();
         const pos = this.getPointerPosition(event);
         if (!pos) return;
-        if (this.isDirectMode()) {
-            const ctx = this.getCanvasContext();
-            if (!ctx) return;
-            const fromPos = this.activePointers.get(event.pointerId);
-            if (!fromPos) return;
-            this.drawNative(ctx, fromPos ?? pos, pos);
-            this.activePointers.set(event.pointerId, { x: pos.x, y: pos.y, mode: fromPos.mode });
-        } else {
-            if (!this.currentLine) return;
-            const stage = this.stageComponent()?.getStage();
-            const layer = stage?.getLayers()[0] as Layer | null;
-            if (!stage || !layer) return;
-            const lastIndex = this.lines.length - 1;
-            if (lastIndex < 0) return;
-            const oldPoints = this.currentLine.points();
-            const newPoints = [...oldPoints, pos.x, pos.y];
-            const start = Math.max(0, newPoints.length - SvgCanvasOverlayComponent.REDUCE_WINDOW_SIZE);
-            const prefix = newPoints.slice(0, start);
-            const segment = newPoints.slice(start);
-            const paintMode = this.mode() === 'brush';
-            const reducedSegment = this.reduceNearPoints(segment, this.getStrokeSizeScaledByMode(paintMode ? 'brush' : 'eraser') / 2, 0.01);
-            const reducedPoints = [...prefix, ...reducedSegment];
-            this.currentLine.points(reducedPoints);
-            // Limit the number of points to prevent memory issues, we remove the oldest points
-            if (this.currentLine.points().length > SvgCanvasOverlayComponent.MAX_STROKE_POINTS) {
-                const excessPoints = this.currentLine.points().length - SvgCanvasOverlayComponent.MAX_STROKE_POINTS;
-                this.currentLine.points(this.currentLine.points().slice(excessPoints));
-            }
-            layer.batchDraw();
-        }
-    }
-
-    reduceNearPoints(points: number[], minDist = 2, angleEpsilon = 0.01): number[] {
-        if (points.length <= 4) return points;
-        const reduced: number[] = [points[0], points[1]];
-
-        for (let i = 2; i < points.length - 2; i += 2) {
-            const lastX = reduced[reduced.length - 2];
-            const lastY = reduced[reduced.length - 1];
-            const x = points[i];
-            const y = points[i + 1];
-            const dx = x - lastX;
-            const dy = y - lastY;
-            if (dx * dx + dy * dy >= minDist * minDist) {
-                reduced.push(x, y);
-            }
-        }
-        reduced.push(points[points.length - 2], points[points.length - 1]);
-        
-        // Further optimize by removing collinear points (straight lines)
-        let i = 2;
-        while (i < reduced.length - 2) {
-            const x0 = reduced[i - 2], y0 = reduced[i - 1];
-            const x1 = reduced[i], y1 = reduced[i + 1];
-            const x2 = reduced[i + 2], y2 = reduced[i + 3];
-
-            // Vectors: v1 = (x1-x0, y1-y0), v2 = (x2-x1, y2-y1)
-            const v1x = x1 - x0, v1y = y1 - y0;
-            const v2x = x2 - x1, v2y = y2 - y1;
-            const len1 = Math.hypot(v1x, v1y);
-            const len2 = Math.hypot(v2x, v2y);
-
-            if (len1 > 0 && len2 > 0) {
-                // Calculate angle between vectors
-                const dot = v1x * v2x + v1y * v2y;
-                const cos = dot / (len1 * len2);
-                // If angle is very close to 0 (cos ~ 1), remove the middle point
-                if (Math.abs(1 - cos) < angleEpsilon) {
-                    reduced.splice(i, 2);
-                    if (reduced.length <= 4) break;
-                    continue; // Stay at same index to check next triplet
-                }
-            }
-            i += 2;
-        }
-        if (reduced.length < 4 && points.length >= 4) {
-            return points.slice(0, 4);
-        }
-        return reduced;
-    }
-
-    public compressVectorData(): pako.Data {
-        const compact = this.lines.map(line => [
-            line.points().map(n => +Math.round(n)),
-            line.stroke(),
-            line.strokeWidth(),
-            line.globalCompositeOperation()
-        ]);
-        return gzip(JSON.stringify(compact));
-    }
-
-    public decompressVectorData(gzipCompressedData: Data): any[] {
-        const lines = [];
-        const compact = JSON.parse(ungzip(gzipCompressedData, { to: 'string' }));
-        for (const [points, stroke, strokeWidth, gco] of compact) {
-            const line = {
-                points,
-                stroke,
-                strokeWidth,
-                globalCompositeOperation: gco,
-                lineCap: 'round',
-                lineJoin: 'round'
-            };
-            lines.push(line);
-        }
-        return lines;
-    }
-
-    public exportVectorData() {
-        return this.lines.map(line => ({
-            points: line.points(),
-            stroke: line.stroke(),
-            strokeWidth: line.strokeWidth(),
-            globalCompositeOperation: line.globalCompositeOperation(),
-            lineCap: line.lineCap(),
-            lineJoin: line.lineJoin()
-        }));
-    }
-
-    public importVectorData(vectorData: LineConfig[]) {
-        const stage = this.stageComponent()?.getStage();
-        if (!stage) return;
-        const layer = stage?.getLayer() as Layer | null;
-        if (!layer) return;
-        this.lines.forEach(line => line.destroy());
-        this.lines = [];
-        for (const cfg of vectorData) {
-            const line = new Line(cfg);
-            layer.add(line);
-            this.lines.push(line);
-        }
-        layer.batchDraw();
+        const ctx = this.getCanvasContext();
+        if (!ctx) return;
+        const fromPos = this.activePointers.get(event.pointerId);
+        if (!fromPos) return;
+        this.draw(ctx, fromPos ?? pos, pos);
+        this.activePointers.set(event.pointerId, { x: pos.x, y: pos.y, mode: fromPos.mode });
     }
 
     public async exportImageData(): Promise<Blob | null> {

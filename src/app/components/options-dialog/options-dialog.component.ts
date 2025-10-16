@@ -118,11 +118,6 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('quickActions', value);
     }
 
-    onCanvasModeChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value as 'raster' | 'vector';
-        this.optionsService.setOption('canvasMode', value);
-    }
-
     onCanvasInputChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'all' | 'touch' | 'pen';
         this.optionsService.setOption('canvasInput', value);

@@ -59,27 +59,14 @@
         <!-- Advanced options -->
         @if (activeTab() === 'Advanced') {
             <div class="tab-content">
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="canvasMode">Canvas Mode (BETA!):</label>
-                        <select id="canvasMode" class="bt-select" [value]="optionsService.options().canvasMode"
-                            (change)="onCanvasModeChange($event)">
-                            <option value="raster">Raster</option>
-                            <option value="vector">Vector</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>This option is for testing purpose, will be removed. Only RASTER supports save/load.</p>
-                    </div>
-                    <div class="option-row">
-                        <label for="canvasInput">Canvas input:</label>
-                        <select id="canvasInput" class="bt-select" [value]="optionsService.options().canvasInput"
-                            (change)="onCanvasInputChange($event)">
-                            <option value="all">All</option>
-                            <option value="pen">Pen only</option>
-                            <option value="touch">Touch only</option>
-                        </select>
-                    </div>
+                <div class="option-row">
+                    <label for="canvasInput">Canvas input:</label>
+                    <select id="canvasInput" class="bt-select" [value]="optionsService.options().canvasInput"
+                        (change)="onCanvasInputChange($event)">
+                        <option value="all">All</option>
+                        <option value="pen">Pen only</option>
+                        <option value="touch">Touch only</option>
+                    </select>
                 </div>
                 <div class="option-row">
                     <span>Drawings stored: <strong>{{ formatBytes(canvasMemorySize()) }}</strong></span>
