@@ -414,9 +414,12 @@ export class UnitSearchComponent implements OnDestroy {
         const searchInput = this.searchInput();
         // SELECT ALL
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
-            event.preventDefault();
-            this.selectAll();
-            return;
+            const isInInput = event.target instanceof HTMLElement && Boolean(event.target.closest('input, textarea, select, [contenteditable]'));
+            if (!isInInput) {
+                event.preventDefault();
+                this.selectAll();
+                return;
+            }
         }
         if (event.key === 'Escape') {
             event.stopPropagation();
@@ -909,7 +912,8 @@ export class UnitSearchComponent implements OnDestroy {
 
     // Multi-select logic: click with Ctrl/Cmd or Shift to select multiple units
     onUnitCardClick(unit: Unit, event?: MouseEvent, forceMultiSelect = false) {
-        if (event && (event.ctrlKey || event.metaKey || event.shiftKey || forceMultiSelect)) {
+        const multiSelect = event ? (event.ctrlKey || event.metaKey || event.shiftKey) : false;
+        if (event && (multiSelect || forceMultiSelect)) {
             // Multi-select logic
             const selected = new Set(this.selectedUnits());
             if (selected.has(unit.name)) {
