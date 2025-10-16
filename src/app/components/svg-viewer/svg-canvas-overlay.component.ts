@@ -301,7 +301,7 @@ interface brushLocation {
             color: #222;
             background: #fff;
         }
-        @media (print) {
+        @media print {
             .fab-container {
                 display: none !important;
             }
