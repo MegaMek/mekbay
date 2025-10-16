@@ -517,13 +517,17 @@ export class SvgCanvasOverlayComponent {
             if (!el) return null;
             const rect = el.getBoundingClientRect();
             let clientX: number, clientY: number;
-            if (event instanceof TouchEvent) {
-                if (event.touches.length === 0) return null;
-                clientX = event.touches[0].clientX;
-                clientY = event.touches[0].clientY;
+            // This is a workaround for TouchEvent not being defined in some environments (some Firefox configurations)
+            const isTouchEvent = typeof TouchEvent !== 'undefined' && event instanceof TouchEvent;
+            if (isTouchEvent) {
+                const touchEvent = event as TouchEvent;
+                if (touchEvent.touches.length === 0) return null;
+                clientX = touchEvent.touches[0].clientX;
+                clientY = touchEvent.touches[0].clientY;
             } else {
-                clientX = event.clientX;
-                clientY = event.clientY;
+                const mouseEvent = event as MouseEvent;
+                clientX = mouseEvent.clientX;
+                clientY = mouseEvent.clientY;
             }
             return {
                 x: (clientX - rect.left) * (el.width / rect.width),
