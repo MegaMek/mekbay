@@ -1054,6 +1054,7 @@ export class UnitSearchFiltersService {
             }
 
             const currentParams = this.route.snapshot.queryParamMap;
+            console.log(currentParams);
             const queryParams: any = {};
 
             // Preserve existing non-filter parameters

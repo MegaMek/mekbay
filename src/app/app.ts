@@ -58,6 +58,7 @@ import { UpdateButtonComponent } from './components/update-button/update-button.
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
+import { Router } from '@angular/router';
 
 
 /*
@@ -93,6 +94,7 @@ export class App {
     private optionsService = inject(OptionsService);
     public unitSearchFilter = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
+    private router = inject(Router);
 
     private lastUpdateCheck: number = 0;
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
@@ -273,14 +275,13 @@ export class App {
     }
 
     removeShareUnitParam() {
-        const params = new URLSearchParams(window.location.search);
-        params.delete('shareUnit');
-        params.delete('tab');
-        const newUrl =
-            window.location.pathname +
-            (params.toString() ? '?' + params.toString() : '') +
-            window.location.hash;
-        window.history.replaceState({}, '', newUrl);
+        this.router.navigate([], {
+            queryParams: {
+                'shareUnit': null,
+                'tab': null,
+            },
+            queryParamsHandling: 'merge'
+        });
     }
 
     toggleMenu() {
