@@ -3,16 +3,37 @@
 </div>
 
 <div class="searchbar-container" [class.expanded]="this.expandedView()">
-    <input #searchInput class="bt-input searchbar" type="text" [disabled]="!this.filtersService.isDataReady()"
-        [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
-        [value]="this.filtersService.search()" (input)="setSearch(searchInput.value)" (focus)="focused.set(true)"
-        id="unit-search-input" autocomplete="off" />
-    @if (this.filtersService.search().length > 0) {
-        <button class="searchbar-cancel-btn" type="button"
-            (click)="setSearch(''); searchInput.focus();" aria-label="Clear search" tabindex="-1">
-            &#10005;
-        </button>
-    }
+    <div class="searchbar-input-container">
+        <input #searchInput class="bt-input searchbar" type="text" [disabled]="!this.filtersService.isDataReady()"
+            [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
+            [value]="this.filtersService.search()" (input)="setSearch(searchInput.value)" (focus)="focused.set(true)"
+            id="unit-search-input" autocomplete="off" />
+        @if (this.filtersService.search().length > 0) {
+            <button class="searchbar-cancel-btn" type="button"
+                (click)="setSearch(''); searchInput.focus();" aria-label="Clear search" tabindex="-1">
+                &#10005;
+            </button>
+        }
+    </div>
+    
+    <button type="button" class="bt-button expand-btn"
+        (click)="this.expandedView.set(!this.expandedView())"
+        [title]="this.expandedView() ? 'Collapse View' : 'Expand View'"
+        [attr.aria-label]="this.expandedView() ? 'Collapse View' : 'Expand View'">
+        @if (this.expandedView()) {
+            <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                aria-hidden="true" role="img">
+                <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+        } @else {
+            <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                aria-hidden="true" role="img">
+                <path d="M14 10L21 3M21 3H15M21 3V9M10 14L3 21M3 21H9M3 21L3 15" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+        }
+    </button>
     <button #advBtn class="bt-button adv-btn" [class.active]="isAdvActive()"
         [disabled]="!this.filtersService.isDataReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
@@ -114,26 +135,6 @@
 
             @if (this.filtersService.filteredUnits().length > 0) {
                 <div class="results-footer">
-                    <div class="results-expand">
-                        <button type="button" class="bt-button expand-btn"
-                            (click)="this.expandedView.set(!this.expandedView())"
-                            [title]="this.expandedView() ? 'Collapse View' : 'Expand View'"
-                            [attr.aria-label]="this.expandedView() ? 'Collapse View' : 'Expand View'">
-                            @if (this.expandedView()) {
-                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                    aria-hidden="true" role="img">
-                                    <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor"
-                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                </svg>
-                            } @else {
-                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                    aria-hidden="true" role="img">
-                                    <path d="M14 10L21 3M21 3H15M21 3V9M10 14L3 21M3 21H9M3 21L3 15" stroke="currentColor"
-                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                </svg>
-                            }
-                        </button>
-                    </div>
                     <div class="results-count">
                         {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length
                         === 1 ? '' : 's' }}
