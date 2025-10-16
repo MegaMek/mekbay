@@ -226,10 +226,6 @@
 }
 
 .results-dropdown-item.selected {
-    background-color: var(--bt-yellow-background);
-}
-
-.results-dropdown-item.selected:hover {
     background-color: var(--bt-yellow-background-bright);
 }
 
