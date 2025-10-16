@@ -103,6 +103,7 @@ interface brushLocation {
         aria-label="Toggle Draw Mode"><img src="/images/draw.svg" alt="Draw"></button>
         @if (mode() !== 'none') {
         <div class="controls-fab-column">
+            <button class="fab mini-fab print-fab" (click)="print()" aria-label="Print Canvas"><img src="/images/print.svg" alt="Print"></button>
             <button class="fab mini-fab clear-fab" (click)="requestClearCanvas()" aria-label="Clear Canvas"><img src="/images/delete.svg" alt="Delete"></button>
             @if (!isDirectMode()) {
                 <button class="fab mini-fab undo-fab" (click)="undo()" aria-label="Undo">↶</button>
@@ -209,10 +210,14 @@ interface brushLocation {
             font-size: 24px;
             position: relative;
             pointer-events: auto;
-            transition: box-shadow 0.2s, color 0.2s, border 0.2s, width 0.2s, height 0.2s;
+            transition: box-shadow 0.2s, color 0.2s, border 0.2s, width 0.2s, height 0.2s, transform 0.15s;
         }
         .fab img {
             pointer-events: none;
+        }
+        .fab:hover {
+            transform: scale(1.12);
+            z-index: 2;
         }
         .fab.main-fab {
             background: gray;
@@ -508,6 +513,10 @@ export class SvgCanvasOverlayComponent {
         if (confirmed === 'yes') {
             this.clearCanvas();
         }
+    }
+
+    print() {
+        window.print();
     }
 
     private getCanvasContext(): CanvasRenderingContext2D | null {
