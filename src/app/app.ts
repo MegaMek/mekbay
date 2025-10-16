@@ -257,13 +257,6 @@ export class App {
             }
         });
 
-        ref.closed.subscribe(() => {
-            this.removeShareUnitParam();
-        });
-        ref.componentInstance?.add.subscribe(newUnit => {
-            this.removeShareUnitParam();
-        });
-
         // Restore tab if provided
         if (tab && ref.componentInstance) {
             afterNextRender(() => {
@@ -272,16 +265,6 @@ export class App {
                 }
             }, { injector: this.injector });
         }
-    }
-
-    removeShareUnitParam() {
-        this.router.navigate([], {
-            queryParams: {
-                'shareUnit': null,
-                'tab': null,
-            },
-            queryParamsHandling: 'merge'
-        });
     }
 
     toggleMenu() {

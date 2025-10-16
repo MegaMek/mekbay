@@ -45,6 +45,7 @@ import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
 import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { ForceUnit } from '../../models/force-unit.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
+import { Router } from '@angular/router';
 
 /*
  * Author: Drake
@@ -78,13 +79,13 @@ const MATRIX_ALIGNMENT: Record<string, MatrixSpec> = {
     ],
     Tank: [
         [['!FRLS', '^'], ['FR', '^'], ['!FRRS', 'FT', '^']],
-        ['RS', ['BD','GUN'], ['LS', '^']],
+        ['RS', ['BD', 'GUN'], ['LS', '^']],
         [['!RRLS', '~'], ['RR', '~'], ['!RRRS', '^', '~']],
         ['~', '~', ['TU', '~']]
     ],
     Naval: [ // TODO: this is a copy of Tank, could be optimized for naval units only
         [['!FRLS', '^'], ['FR', '^'], ['!FRRS', 'FT', '^']],
-        ['RS', ['BD','GUN'], ['LS', '^']],
+        ['RS', ['BD', 'GUN'], ['LS', '^']],
         [['!RRLS', '~'], ['RR', '~'], ['!RRRS', '^', '~']],
         ['~', '~', ['TU', '~']]
     ],
@@ -114,6 +115,7 @@ export class UnitDetailsDialogComponent {
     private dialogRef = inject(DialogRef<UnitDetailsDialogComponent>);
     private data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     private toastService = inject(ToastService);
+    private router = inject(Router);
     add = output<Unit>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
 
@@ -148,7 +150,7 @@ export class UnitDetailsDialogComponent {
     hoverRect = signal<DOMRect | null>(null);
     private isCompHovered = false;
     private isFloatingHovered = false;
-    
+
     get unit(): Unit {
         const currentUnit = this.unitList[this.unitIndex()]
         if (currentUnit instanceof ForceUnit) {
@@ -186,6 +188,26 @@ export class UnitDetailsDialogComponent {
             this.canHaveThreeCols(); // Re-run when window size changes
             this.updateCachedData();
         });
+        effect(() => {
+            this.unit;
+            this.activeTab()
+            this.router.navigate([], {
+                queryParams: {
+                    shareUnit: this.unit.id,
+                    tab: this.activeTab(),
+                },
+                queryParamsHandling: 'merge'
+            });
+        });
+        this.dialogRef.closed.subscribe(() => {
+            this.router.navigate([], {
+                queryParams: {
+                    shareUnit: null,
+                    tab: null,
+                },
+                queryParamsHandling: 'merge'
+            });
+        });
     }
 
     private baysByLocCache = new Map<string, UnitComponent[]>();
@@ -207,7 +229,7 @@ export class UnitDetailsDialogComponent {
 
     private updateFluffImage() {
         this.fluffImageUrl.set(null);
-        
+
         if (this.unit?.fluff?.img) {
             if (this.unit.fluff.img.endsWith('hud.png')) return; // Ignore HUD images
             this.fluffImageUrl.set(`https://db.mekbay.com/images/fluff/${this.unit.fluff.img}`);
@@ -249,7 +271,7 @@ export class UnitDetailsDialogComponent {
         }
         this.factionAvailability = availability;
     }
-        
+
     private normalizeLoc(loc: string): string {
         let norm = (loc === '*') ? 'ALL' : loc.trim();
         norm = norm.replace(/[^A-Za-z0-9_-]/g, '');
@@ -287,7 +309,7 @@ export class UnitDetailsDialogComponent {
         }
         // Bays (groupedBays already built in updateStats -> getGroupedBaysByLocation)
         for (const g of this.groupedBays) {
-            if (g.l) allUnitLocs.add(this.normalizeLoc(g.l)); 
+            if (g.l) allUnitLocs.add(this.normalizeLoc(g.l));
         }
         const extraCodes: string[] = [];
         for (const loc of allUnitLocs) {
@@ -353,7 +375,7 @@ export class UnitDetailsDialogComponent {
         codes: string[];
         hasFallback: boolean;
         hasBorrowUp: boolean;
-        anchorCodes: string[]; 
+        anchorCodes: string[];
     } {
         const arr = Array.isArray(slot) ? slot : [slot];
         const codes: string[] = [];
@@ -395,7 +417,7 @@ export class UnitDetailsDialogComponent {
             hasContent: boolean;
             borrowUpActive: boolean;
             contentCodes: string[];
-            anchorActive: boolean; 
+            anchorActive: boolean;
         }
 
         const expectedCols = matrix[0]?.length || 0;
@@ -623,7 +645,7 @@ export class UnitDetailsDialogComponent {
         const hasMatrix = !!this.getMatrixForUnit();
         this.useMatrixLayout.set(hasMatrix && this.canHaveThreeCols());
     }
-        
+
     private buildAreaCaches() {
         this.baysForArea.clear();
         this.compsForArea.clear();
@@ -742,7 +764,7 @@ export class UnitDetailsDialogComponent {
             }
         }
     }
-    
+
     get hasPrev(): boolean {
         return this.unitList && this.unitIndex() > 0;
     }
@@ -997,7 +1019,7 @@ export class UnitDetailsDialogComponent {
     }
 
     // Swipe handling for mobile (prev/next)
-    
+
     private touch: { startX: number; startY: number; endX: number; endY: number } = {
         startX: 0,
         startY: 0,
@@ -1041,18 +1063,18 @@ export class UnitDetailsDialogComponent {
 
     getManufacturerFactoryPairs(): ManufacturerInfo[] {
         if (!this.unit.fluff) return [];
-    
+
         const manufacturers = this.unit.fluff.manufacturer?.split(',').map(m => m.trim()) || [];
         const factories = this.unit.fluff.primaryFactory?.split(',').map(f => f.trim()) || [];
-        
+
         const manufacturerMap = new Map<string, string[]>();
         const maxLen = Math.max(manufacturers.length, factories.length);
-        
+
         // Build map of manufacturer -> factories
         for (let i = 0; i < maxLen; i++) {
             const mfg = manufacturers[i] || '';
             const factory = factories[i] || '';
-            
+
             if (mfg) {
                 if (!manufacturerMap.has(mfg)) {
                     manufacturerMap.set(mfg, []);
@@ -1068,7 +1090,7 @@ export class UnitDetailsDialogComponent {
                 manufacturerMap.get('')!.push(factory);
             }
         }
-        
+
         const pairs: ManufacturerInfo[] = [];
         manufacturerMap.forEach((factoryList, mfg) => {
             pairs.push({
@@ -1076,20 +1098,20 @@ export class UnitDetailsDialogComponent {
                 factory: factoryList.join(', ')
             });
         });
-        
+
         return pairs;
     }
 
     public sanitizeFluffHtml(text: string | undefined): string {
         if (!text) return '';
-        
+
         // Replace <p> tags with double newlines for paragraph breaks
         let sanitized = text.replace(/<p>/gi, '\n\n');
         sanitized = sanitized.replace(/<\/p>/gi, '');
-        
+
         // Strip all remaining HTML tags
         sanitized = sanitized.replace(/<[^>]*>/g, '');
-        
+
         // Decode common HTML entities
         sanitized = sanitized
             .replace(/&nbsp;/g, ' ')
@@ -1098,13 +1120,13 @@ export class UnitDetailsDialogComponent {
             .replace(/&gt;/g, '>')
             .replace(/&quot;/g, '"')
             .replace(/&#39;/g, "'");
-        
+
         // Clean up excessive whitespace and newlines
         sanitized = sanitized
             .replace(/\n{3,}/g, '\n\n') // Max 2 consecutive newlines
             .replace(/[ \t]+/g, ' ')     // Normalize spaces
             .trim();
-        
+
         return sanitized;
     }
 }
