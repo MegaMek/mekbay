@@ -458,6 +458,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     }
 
     private async onSwipeStart() {
+        if (this.optionsService.options().swipeToNextSheet === 'disabled') return;
         if (this.forceBuilder.forceUnits().length < 2) return; // No swipe if only one unit
         this.swipeStarted = true;
         this.ensureNeighborSlides('prev', true);

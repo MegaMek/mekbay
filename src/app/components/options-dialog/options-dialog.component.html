@@ -60,6 +60,15 @@
         @if (activeTab() === 'Advanced') {
             <div class="tab-content">
                 <div class="option-row">
+                    <label for="swipeToNextSheet">Swipe to next sheet:</label>
+                    <select id="swipeToNextSheet" class="bt-select" [value]="optionsService.options().swipeToNextSheet"
+                        (change)="onSwipeToNextSheetChange($event)">
+                        <!-- <option value="vertical">Vertical</option> -->
+                        <option value="horizontal">Horizontal</option>
+                        <option value="disabled">Disabled</option>
+                    </select>
+                </div>
+                <div class="option-row">
                     <label for="canvasInput">Canvas input:</label>
                     <select id="canvasInput" class="bt-select" [value]="optionsService.options().canvasInput"
                         (change)="onCanvasInputChange($event)">

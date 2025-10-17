@@ -40,4 +40,5 @@ export interface Options {
     pickerStyle: 'default' | 'radial' | 'linear';
     quickActions: 'enabled' | 'disabled';
     canvasInput: 'all' | 'touch' | 'pen';
+    swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
 }

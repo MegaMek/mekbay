@@ -122,6 +122,11 @@ export class OptionsDialogComponent {
         const value = (event.target as HTMLSelectElement).value as 'all' | 'touch' | 'pen';
         this.optionsService.setOption('canvasInput', value);
     }
+
+    onSwipeToNextSheetChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as 'vertical' | 'horizontal' | 'disabled';
+        this.optionsService.setOption('swipeToNextSheet', value);
+    }
     
     selectAll(event: FocusEvent) {
         const input = event.target as HTMLInputElement;

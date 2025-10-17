@@ -47,7 +47,8 @@ export class OptionsService {
         sheetsColor: 'normal',
         pickerStyle: 'default',
         quickActions: 'disabled',
-        canvasInput: 'all'
+        canvasInput: 'all',
+        swipeToNextSheet: 'horizontal',
     });
 
     constructor() {
@@ -61,6 +62,7 @@ export class OptionsService {
             pickerStyle: saved?.pickerStyle ?? 'default',
             quickActions: saved?.quickActions ?? 'disabled',
             canvasInput: saved?.canvasInput ?? 'all',
+            swipeToNextSheet: saved?.swipeToNextSheet ?? 'horizontal',
         });
     }
 
