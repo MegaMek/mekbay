@@ -361,7 +361,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         this.renderer.addClass(placeholderDiv, 'slide-placeholder');
         this.renderer.setStyle(placeholderDiv, 'width', `${this.svgWidth}px`);
         this.renderer.setStyle(placeholderDiv, 'height', `${this.svgHeight}px`);
-        placeholderDiv.innerHTML = `${unit.model}<br/>${unit.chassis}`;
+        // placeholderDiv.innerHTML = `${unit.chassis}<br/>${unit.model}`;
         const currentSvg = this.currentSvg();
         if (currentSvg) {
             const state = this.zoomPanService.getState();

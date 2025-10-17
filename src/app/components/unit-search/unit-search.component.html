@@ -65,7 +65,7 @@
                         <div class="unit-image-container">
                             <img class="icon" [src]="getUnitImg(unit)"
                                 (error)="$event.target.src = '/images/unknown.png'"
-                                alt="{{ unit.model }} {{ unit.chassis }}" />
+                                alt="{{ unit.chassis }} {{ unit.model }}" />
                         </div>
                         <div class="unit-data-container">
                             <div class="secondary-info">
@@ -278,7 +278,7 @@
         <div class="expanded-header">
             <div class="expanded-image">
                 <img class="icon" [src]="getUnitImg(unit)" (error)="$event.target.src = '/images/unknown.png'"
-                    alt="{{ unit.model }} {{ unit.chassis }}" />
+                    alt="{{ unit.chassis }} {{ unit.model }}" />
             </div>
             <div class="expanded-title">
                 <div class="expanded-model" [innerHTML]="highlight(unit.model)"></div>

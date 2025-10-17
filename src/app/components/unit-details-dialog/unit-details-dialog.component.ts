@@ -803,7 +803,7 @@ export class UnitDetailsDialogComponent {
             gunnery,
             piloting,
         );
-        this.toastService.show(`${selectedUnit.model} ${selectedUnit.chassis} added to the force.`, 'success');
+        this.toastService.show(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
         this.add.emit(selectedUnit);
         this.onClose();
     }

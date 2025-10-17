@@ -3,7 +3,7 @@
         <div class="header-group">
             <div class="header-icon-container">
                 <img src="{{ getUnitImg(unit) }}" (error)="$event.target.src = '/images/unknown.png'" class="icon"
-                    alt="{{ unit.model }} {{ unit.chassis }}" />
+                    alt="{{ unit.chassis }} {{ unit.model }}" />
             </div>
             <div class="header-name-group">
                 <div class="header-model allow-select">{{ unit.model }}</div>
@@ -237,7 +237,7 @@
                     <!-- Fluff Image -->
                     <div class="fluff-image-container" *ngIf="fluffImageUrl()">
                         <img [src]="fluffImageUrl()" class="fluff-image" (error)="onFluffImageError()"
-                            alt="{{ unit.model }} {{ unit.chassis }}" />
+                            alt="{{ unit.chassis }} {{ unit.model }}" />
                     </div>
 
                     <div class="fluff-section" *ngIf="unit.fluff.systems && unit.fluff.systems.length > 0">

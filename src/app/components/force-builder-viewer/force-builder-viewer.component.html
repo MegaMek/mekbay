@@ -26,7 +26,7 @@
                     cdkDragBoundary=".scrollable-content"
                     [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                     <div class="unit-image-container">
-                        <img class="icon unit-icon" [src]="getUnitImg(unit)" (error)="$event.target.src = '/images/unknown.png'" alt="{{ unit.getUnit().model }} {{ unit.getUnit().chassis }}" />
+                        <img class="icon unit-icon" [src]="getUnitImg(unit)" (error)="$event.target.src = '/images/unknown.png'" alt="{{ unit.getUnit().chassis }} {{ unit.getUnit().model }}" />
                     </div>
                     <div class="unit-data-container">
                         <div class="secondary-info">
