@@ -133,9 +133,9 @@
                                         <div class="comp-title">
                                             <span class="comp-qty">{{ comp.q }}×</span>
                                             <span class="comp-name">{{ comp.n }}<span *ngIf="comp.q2" class="ammo-count"> ({{ comp.q2 }})</span></span>
-                                            <span *ngIf="unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All'"
-                                                class="tech-base"><img src="/images/component-{{ comp.eq.base == 'IS' ? 'is' : 'clan' }}.svg" alt="{{ comp.eq.base == 'IS' ? 'IS' : 'Clan' }}" />
-                                            </span>
+                                            @if (unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All') {
+                                                <div class="tech-base tech-{{ comp.eq.base | lowercase }}">{{ comp.eq.base == 'IS' ? 'IS' : 'C' }}</div>
+                                            }
                                         </div>
                                     </div>
                                     }
@@ -175,9 +175,9 @@
                                     <div class="comp-title">
                                         <span class="comp-qty">{{ comp.q }}×</span>
                                         <span class="comp-name">{{ comp.n }}<span *ngIf="comp.q2" class="ammo-count"> ({{ comp.q2 }})</span></span>
-                                        <span *ngIf="unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All'"
-                                            class="tech-base"><img src="/images/component-{{ comp.eq.base == 'IS' ? 'is' : 'clan' }}.svg" alt="{{ comp.eq.base == 'IS' ? 'IS' : 'Clan' }}" />
-                                        </span>
+                                        @if (unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All') {
+                                            <div class="tech-base tech-{{ comp.eq.base | lowercase }}">{{ comp.eq.base == 'IS' ? 'IS' : 'C' }}</div>
+                                        }
                                     </div>
                                 </div>
                             </div>
