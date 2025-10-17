@@ -139,7 +139,7 @@ export class UnitSearchComponent implements OnDestroy {
             return true;
         }
         return (this.focused() || this.advOpen() || this.unitDetailsDialogOpen()) &&
-            (this.filtersService.search() || this.isAdvActive());
+            (this.filtersService.searchText() || this.isAdvActive());
     });
 
     itemSize = signal(75);
@@ -266,7 +266,7 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     setSearch(val: string) {
-        this.filtersService.search.set(val);
+        this.filtersService.searchText.set(val);
         this.activeIndex.set(null);
     }
 
@@ -288,7 +288,7 @@ export class UnitSearchComponent implements OnDestroy {
         if (this.advOpen()) {
             this.updateAdvPanelPosition();
         }
-        if (this.filtersService.search().length > 0 || this.isAdvActive()) {
+        if (this.filtersService.searchText().length > 0 || this.isAdvActive()) {
             this.updateResultsDropdownPosition();
         }
     }
@@ -476,28 +476,36 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     highlight(text: string): string {
-        const search = this.filtersService.search().trim();
-        if (!search) return this.escapeHtml(text);
+        const searchGroups = this.filtersService.searchTokens();
+        if (!searchGroups || searchGroups.length === 0) return this.escapeHtml(text);
 
-        // Split by commas or semicolons to get OR groups
-        const orGroups = search.split(/[,;]/).map(g => g.trim()).filter(Boolean);
-
-        // Collect all words from all OR groups
-        const allWords = new Set<string>();
-        for (const group of orGroups) {
-            group.split(/\s+/).filter(Boolean).forEach(word => allWords.add(word));
+        // Flatten tokens across all OR groups, preserve exact tokens (prefer exact over partial on same string)
+        const tokenMap = new Map<string, 'exact' | 'partial'>();
+        for (const group of searchGroups) {
+            for (const t of group.tokens) {
+                const existing = tokenMap.get(t.token);
+                if (!existing) {
+                    tokenMap.set(t.token, t.mode);
+                } else if (existing === 'partial' && t.mode === 'exact') {
+                    // prefer exact if same token appears as exact and partial
+                    tokenMap.set(t.token, 'exact');
+                }
+            }
         }
 
-        if (allWords.size === 0) return this.escapeHtml(text);
+        const tokens = Array.from(tokenMap.keys())
+            .sort((a, b) => b.length - a.length) // longest first to avoid partial overlaps
+            .filter(Boolean);
+
+        if (tokens.length === 0) return this.escapeHtml(text);
 
         const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const pattern = Array.from(allWords)
-            .map(escapeRegExp)
-            .sort((a, b) => b.length - a.length)
-            .join('|');
+        const pattern = tokens.map(escapeRegExp).join('|');
+        if (!pattern) return this.escapeHtml(text);
+
         const regex = new RegExp(`(${pattern})`, 'gi');
 
-        // Split on matches, then escape each part; wrap only the matches
+        // Split on matches, escape parts and wrap matches in <b>
         const parts = text.split(regex);
         return parts
             .map((part, idx) => (idx % 2 === 1)

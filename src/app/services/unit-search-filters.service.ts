@@ -314,6 +314,15 @@ function getUnitComponentData(unit: Unit) {
     return cached;
 }
 
+interface SearchToken {
+    token: string;
+    mode: 'exact' | 'partial';
+}
+
+interface SearchTokens {
+    tokens: SearchToken[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class UnitSearchFiltersService {
     private QUERY_PARAMS = ['q', 'sort', 'sortDir', 'filters', 'expanded', 'gunnery', 'piloting'];
@@ -324,7 +333,7 @@ export class UnitSearchFiltersService {
     ADVANCED_FILTERS = ADVANCED_FILTERS;
     pilotGunnerySkill = signal(4);
     pilotPilotingSkill = signal(5);
-    search = signal('');
+    searchText = signal('');
     filterState = signal<FilterState>({});
     selectedSort = signal<string>('name');
     selectedSortDirection = signal<'asc' | 'desc'>('asc');
@@ -363,7 +372,60 @@ export class UnitSearchFiltersService {
         return 'Structure / Squad Size';
     });
 
-    
+    searchTokens = computed((): SearchTokens[] => {
+        const query = this.searchText().trim().toLowerCase();
+        if (!query) return [];
+
+        // Split top-level on commas/semicolons but ignore those inside double quotes
+        const groups: string[] = [];
+        let buf = '';
+        let inQuotes = false;
+        for (let i = 0; i < query.length; i++) {
+            const ch = query[i];
+            if (ch === '"') {
+                inQuotes = !inQuotes;
+                buf += ch;
+            } else if ((ch === ',' || ch === ';') && !inQuotes) {
+                const trimmed = buf.trim();
+                if (trimmed) groups.push(trimmed);
+                buf = '';
+            } else {
+                buf += ch;
+            }
+        }
+        const last = buf.trim();
+        if (last) groups.push(last);
+
+        const results = groups.map(group => {
+            const tokens: SearchToken[] = [];
+            // Extract quoted tokens (exact) and unquoted tokens (partial)
+            const re = /"([^"]+)"|(\S+)/g;
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(group)) !== null) {
+                if (m[1] !== undefined) {
+                    // Quoted exact token: keep the full content (may contain commas/spaces)
+                    const cleaned = DataService.removeAccents(m[1].trim());
+                    if (cleaned) tokens.push({ token: cleaned, mode: 'exact' });
+                } else if (m[2] !== undefined) {
+                    const cleaned = DataService.removeAccents(m[2].trim());
+                    if (cleaned) tokens.push({ token: cleaned, mode: 'partial' });
+                }
+            }
+
+            // Deduplicate tokens while preserving the longest-first ordering for partial matches
+            const uniqueMap = new Map<string, SearchToken>();
+            // Sort by length desc so longer partial tokens are matched first
+            tokens.sort((a, b) => b.token.length - a.token.length);
+            for (const t of tokens) {
+                if (!uniqueMap.has(t.token)) uniqueMap.set(t.token, t);
+            }
+
+            return { tokens: Array.from(uniqueMap.values()) };
+        });
+        console.log(results);
+        return results;
+    });
+
     private recalculateBVRange() {
         const units = this.units;
         if (units.length === 0) return;
@@ -544,27 +606,42 @@ export class UnitSearchFiltersService {
         return results;
     }
 
+    filteredUnitsBySearchTextTokens = computed(() => {
+        if (!this.isDataReady()) return [];
+        let results = this.units;
+        const searchTokens = this.searchTokens();
+        if (searchTokens.length === 0) return results;
+        results = results.filter(unit => {
+            // Unit matches if it matches ANY of the OR groups
+            return searchTokens.some(group => {
+                // Separate exact and partial tokens
+                const exactTokens = group.tokens.filter(t => t.mode === 'exact').map(t => t.token);
+                const partialTokens = group.tokens
+                    .filter(t => t.mode === 'partial')
+                    .map(t => t.token)
+                    .sort((a, b) => b.length - a.length); // longest-first for non-overlap matching
+
+                // All exact tokens must match via exactMatchWord
+                for (const et of exactTokens) {
+                    if (!this.exactMatchWord(unit, et)) return false;
+                }
+
+                // All partial tokens must match non-overlappingly
+                if (partialTokens.length > 0) {
+                    if (!this.partialMatchWords(unit, partialTokens)) return false;
+                }
+
+                return true;
+            });
+        });
+        return results;
+    });
+
     // All filters applied
     filteredUnits = computed(() => {
         if (!this.isDataReady()) return [];
 
-        let results = this.units;
-        const query = this.search().trim().toLowerCase();
-        if (query) {
-            // Split by commas or semicolons for OR logic
-            const orGroups = query.split(/[,;]/).map(g => g.trim()).filter(Boolean);
-            
-            results = results.filter(unit => {
-                // Unit matches if it matches ANY of the OR groups
-                return orGroups.some(group => {
-                    const words = Array.from(new Set(
-                        group.split(/\s+/).filter(Boolean).map(w => DataService.removeAccents(w))
-                    )).sort((a, b) => b.length - a.length);
-                    return this.matchesWords(unit, words);
-                });
-            });
-        }
-
+        let results = this.filteredUnitsBySearchTextTokens();
         results = this.applyFilters(results, this.filterState());
 
         const sortKey = this.selectedSort();
@@ -615,24 +692,7 @@ export class UnitSearchFiltersService {
         const state = this.filterState();
         const _tagsCacheKey = this.tagsCacheKey();
 
-        let baseUnits = this.units;
-        const query = this.search().trim().toLowerCase();
-        if (query) {
-            
-            // Split by commas or semicolons for OR logic
-            const orGroups = query.split(/[,;]/).map(g => g.trim()).filter(Boolean);
-            
-            baseUnits = baseUnits.filter(unit => {
-                // Unit matches if it matches ANY of the OR groups
-                return orGroups.some(group => {
-                    const words = Array.from(new Set(
-                        group.split(/\s+/).filter(Boolean).map(w => DataService.removeAccents(w))
-                    )).sort((a, b) => b.length - a.length);
-                    return this.matchesWords(unit, words);
-                });
-            });
-        }
-
+        let baseUnits = this.filteredUnitsBySearchTextTokens();
         const activeFilters = Object.entries(state)
             .filter(([, s]) => s.interactedWith)
             .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
@@ -868,10 +928,19 @@ export class UnitSearchFiltersService {
      * @param words The words to match against the unit's properties, they must be sorted from longest to shortest
      * @returns True if the unit matches all words, false otherwise.
      */
-    private matchesWords(unit: Unit, words: string[]): boolean {
+    private partialMatchWords(unit: Unit, words: string[]): boolean {
         if (!words || words.length === 0) return true;
         const text = `${unit._chassis ?? ''} ${unit._model ?? ''}`;
         return this.tokensMatchNonOverlapping(text, words);
+    }
+
+    private exactMatchWord(unit: Unit, word: string): boolean {
+        if (!word || word.length === 0) return true;
+        if (word == unit._chassis) return true;
+        if (word == unit._model) return true;
+        if (word === `${unit._chassis ?? ''} ${unit._model ?? ''}`) return true;
+        if (word === `${unit._model ?? ''} ${unit._chassis ?? ''}`) return true;
+        return false;
     }
 
     private tokensMatchNonOverlapping(text: string, tokens: string[]): boolean {
@@ -920,7 +989,7 @@ export class UnitSearchFiltersService {
                 // Load search query
                 const searchParam = params.get('q');
                 if (searchParam) {
-                    this.search.set(decodeURIComponent(searchParam));
+                    this.searchText.set(decodeURIComponent(searchParam));
                 }
                 
                 // Load sort settings
@@ -1041,7 +1110,7 @@ export class UnitSearchFiltersService {
 
     private updateUrlOnFiltersChange() {
         effect(() => {
-            const search = this.search();
+            const search = this.searchText();
             const filterState = this.filterState();
             const selectedSort = this.selectedSort();
             const selectedSortDirection = this.selectedSortDirection();
@@ -1279,11 +1348,11 @@ export class UnitSearchFiltersService {
 
     // Override search setter to handle URL updates
     setSearch(query: string) {
-        this.search.set(query);
+        this.searchText.set(query);
     }
 
     clearFilters() {
-        this.search.set('');
+        this.searchText.set('');
         this.filterState.set({});
         this.selectedSort.set('name');
         this.selectedSortDirection.set('asc');

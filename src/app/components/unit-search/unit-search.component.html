@@ -6,9 +6,9 @@
     <div class="searchbar-input-container">
         <input #searchInput class="bt-input searchbar" type="text" [disabled]="!this.filtersService.isDataReady()"
             [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
-            [value]="this.filtersService.search()" (input)="setSearch(searchInput.value)" (focus)="focused.set(true)"
+            [value]="this.filtersService.searchText()" (input)="setSearch(searchInput.value)" (focus)="focused.set(true)"
             id="unit-search-input" autocomplete="off" />
-        @if (this.filtersService.search().length > 0) {
+        @if (this.filtersService.searchText().length > 0) {
             <button class="searchbar-cancel-btn" type="button"
                 (click)="setSearch(''); searchInput.focus();" aria-label="Clear search" tabindex="-1">
                 &#10005;
