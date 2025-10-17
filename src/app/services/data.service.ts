@@ -79,17 +79,26 @@ interface LocalStore {
     [key: string]: any;
 }
 
+// Generic store update payload used for cross-tab notifications
+export type BroadcastPayload = {
+    source: 'mekbay';
+    action: 'update';   // e.g. 'update'
+    context?: string;     // e.g. 'tags'
+    meta?: any;         // optional misc info
+};
+
 @Injectable({
     providedIn: 'root'
 })
 export class DataService {
+    private broadcast?: BroadcastChannel;
     private injector = inject(Injector);
     private http = inject(HttpClient);
     private dbService = inject(DbService);
     private wsService = inject(WsService);
     private userStateService = inject(UserStateService);
     private unitInitializer = inject(UnitInitializerService);
-    
+
     isDataReady = signal(false);
     isDownloading = signal(false);
     public isCloudForceLoading = signal(false);
@@ -102,7 +111,8 @@ export class DataService {
     private unitTypeMaxStats: UnitTypeMaxStats = {};
     private quirksMap = new Map<string, Quirk>();
 
-    private readonly remoteVersionUrl: string = 'https://db.mekbay.com/version.json';
+    public tagsVersion = signal(0);
+
     private readonly remoteStores: RemoteStore<any>[] = [
         {
             key: 'units',
@@ -147,7 +157,7 @@ export class DataService {
                     const equipmentForType = data.equipment[unitType];
                     newData.equipment[unitType] = {};
                     for (const equipmentInternalName of Object.keys(equipmentForType)) {
-                        
+
                         const equipment = equipmentForType[equipmentInternalName];
                         if (equipment.type === 'weapon') {
                             newData.equipment[unitType][equipmentInternalName] = new WeaponEquipment(equipment as IWeapon);
@@ -213,7 +223,50 @@ export class DataService {
         },
     ];
 
-    constructor() { }
+
+    constructor() {
+        try {
+            if (typeof BroadcastChannel !== 'undefined') {
+                this.broadcast = new BroadcastChannel('mekbay-updates');
+
+                this.broadcast.addEventListener('message', (ev) => {
+                    void this.handleStoreUpdate(ev.data as any);
+                });
+            };
+        } catch { /* best-effort */ }
+    }
+
+    public notifyStoreUpdated(action: BroadcastPayload['action'], store?: string, meta?: any) {
+        if (!this.broadcast) return;
+        const payload: any = { source: 'mekbay', action, store, meta };
+        try {
+            this.broadcast?.postMessage(payload);
+        } catch { /* best-effort */ }
+    }
+
+    private async handleStoreUpdate(msg: BroadcastPayload): Promise<void> {
+        try {
+            if (!msg || msg.source !== 'mekbay') return;
+            const action = msg.action;
+            const context = msg.context;
+            if (action === 'update' && context === 'tags') {
+                this.loadUnitTags(this.getUnits());
+            }
+        } catch (err) {
+            console.error('Error handling store update broadcast', err);
+        }
+    }
+
+    private async loadUnitTags(units: Unit[]): Promise<void> {
+        const storedTags = await this.dbService.getTags();
+        if (!storedTags) return;
+
+        for (const unit of units) {
+            const tags = storedTags[unit.name];
+            unit._tags = tags ?? [];
+        }
+        this.tagsVersion.set(this.tagsVersion() + 1);
+    }
 
     private formatUnitType(type: string): string {
         if (type === 'Handheld Weapon') {
@@ -785,29 +838,18 @@ export class DataService {
         const response = await this.wsService.sendAndWaitForResponse(payload);
         return response.data || null;
     }
-    
-    private async loadUnitTags(units: Unit[]): Promise<void> {
-        const storedTags = await this.dbService.getTags();
-        if (!storedTags) return;
 
-        for (const unit of units) {
-            const tags = storedTags[unit.name];
-            if (tags && tags.length > 0) {
-                unit._tags = tags;
-            }
-        }
-    }
-    
     public async saveUnitTags(units: Unit[]): Promise<void> {
         const tagsToSave: StoredTags = {};
-        
+
         for (const unit of units) {
             if (unit._tags && unit._tags.length > 0) {
                 tagsToSave[unit.name] = unit._tags;
             }
         }
-        
+
         await this.dbService.saveTags(tagsToSave);
+        this.notifyStoreUpdated('update', 'tags');
     }
 
     public deleteCanvasDataOfUnit(unit: ForceUnit): void {

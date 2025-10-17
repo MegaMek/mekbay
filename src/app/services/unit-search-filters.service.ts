@@ -351,6 +351,10 @@ export class UnitSearchFiltersService {
             }
         });
         effect(() => {
+            this.dataService.tagsVersion(); // depend on tags version
+            this.invalidateTagsCache();
+        });
+        effect(() => {
             const gunnery = this.pilotGunnerySkill();
             const piloting = this.pilotPilotingSkill();
             
