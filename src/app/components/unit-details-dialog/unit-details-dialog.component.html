@@ -52,8 +52,7 @@
                 <div *ngIf="unit.moveType && unit.moveType != 'None'"><span class="muted">Motive Type: </span><strong>{{
                         unit.moveType }}</strong></div>
                 <div *ngIf="unit.walk"><span class="muted">Movement: </span><strong>{{ unit.walk }} / {{ unit.run
-                        }}<span *ngIf="unit.run2 != unit.run"> [{{ unit.run2 }}]</span><ng-container *ngIf="unit.jump">
-                            / {{ unit.jump }}</ng-container></strong></div>
+                        }}<span *ngIf="unit.run2 != unit.run"> [{{ unit.run2 }}]</span>@if (unit.jump) { / {{ unit.jump }}}</strong></div>
                 <div *ngIf="unit.c3 && unit.c3 != 'None'"><span class="muted">Network: </span><strong>{{ unit.c3
                         }}</strong></div>
                 <div><span class="muted">C-Bill Cost: </span><strong>{{ formatThousands(unit.cost) }}</strong></div>
@@ -149,25 +148,26 @@
 
             <!-- Default -->
             <ng-template #defaultComponentsBlock>
-                <div class="components-container" *ngIf="hasBays(); else normalComponents">
-                    @for (group of groupedBays; let i = $index; track group.l) {
-                        <div class="component-rect">
-                            <div class="comp-loc">{{ group.l }}</div>
-                            <div class="bay">
-                                @for (bay of group.bays; let j = $index; track j) {
-                                    <div class="subcomponent-data {{ getTypeClass(bay.t) }}"
-                                        (mouseenter)="onCompMouseEnter(bay, $event)" (mouseleave)="onCompMouseLeave()">
-                                        <div class="comp-title">
-                                            <span class="comp-qty">{{ bay.q }}×</span>
-                                            <span class="comp-name">{{ bay.n }}<span *ngIf="bay.q2" class="ammo-count"> ({{ bay.q2 }})</span></span>
+                @if (hasBays()) {
+                    <div class="components-container">
+                        @for (group of groupedBays; let i = $index; track group.l) {
+                            <div class="component-rect">
+                                <div class="comp-loc">{{ group.l }}</div>
+                                <div class="bay">
+                                    @for (bay of group.bays; let j = $index; track j) {
+                                        <div class="subcomponent-data {{ getTypeClass(bay.t) }}"
+                                            (mouseenter)="onCompMouseEnter(bay, $event)" (mouseleave)="onCompMouseLeave()">
+                                            <div class="comp-title">
+                                                <span class="comp-qty">{{ bay.q }}×</span>
+                                                <span class="comp-name">{{ bay.n }}<span *ngIf="bay.q2" class="ammo-count"> ({{ bay.q2 }})</span></span>
+                                            </div>
                                         </div>
-                                    </div>
-                                }
+                                    }
+                                </div>
                             </div>
-                        </div>
-                    }
-                </div>
-                <ng-template #normalComponents>
+                        }
+                    </div>
+                } @else {
                     <div class="components-container">
                         @for (comp of components; let i = $index; track i) {
                             <div class="component-rect">
@@ -185,17 +185,17 @@
                             </div>
                         }
                     </div>
-                </ng-template>
-                <ng-container *ngIf="unit.comp | filterAmmo as ammoList">
-                    <ng-container *ngIf="ammoList.length > 0">
+                }
+                @if ((unit.comp | filterAmmo); as ammoList) {
+                    @if (ammoList.length > 0) {
                         <div class="ammo-list"><span class="info-label muted">Ammo: </span>
                             @for (comp of ammoList; let last = $last; let i = $index; track i) {
                                 <span class="ammo-pill" (mouseenter)="onCompMouseEnter(comp, $event)"
                                     (mouseleave)="onCompMouseLeave()">({{ comp.n }}) {{ comp.q2 }}</span>@if(!last){, }
                             }
                         </div>
-                    </ng-container>
-                </ng-container>
+                    }
+                }
             </ng-template>
 
             <div class="spanner"></div>
@@ -231,71 +231,72 @@
         </div>
 
         <!-- Intel -->
-        <div class="tab-content" *ngIf="activeTab() === 'Intel'">
-            <div class="fluff-content allow-select">
-                <ng-container *ngIf="unit.fluff; else noFluff">
-                    <!-- Fluff Image -->
-                    <div class="fluff-image-container" *ngIf="fluffImageUrl()">
-                        <img [src]="fluffImageUrl()" class="fluff-image" (error)="onFluffImageError()"
-                            alt="{{ unit.chassis }} {{ unit.model }}" />
-                    </div>
+        @if (activeTab() === 'Intel') {
+            <div class="tab-content">
+                <div class="fluff-content allow-select">
+                    @if (unit.fluff) {
 
-                    <div class="fluff-section" *ngIf="unit.fluff.systems && unit.fluff.systems.length > 0">
-                        <div class="fluff-label">Systems:</div>
-                        <div class="fluff-text">
-                            @for (system of unit.fluff.systems; track system.label) {
-                                <div>
-                                    <strong *ngIf="system.label">{{ system.label }}: </strong>
-                                    <span *ngIf="system.manufacturer">{{ system.manufacturer }} </span>
-                                    <span *ngIf="system.model">({{ system.model }})</span>
-                                </div>
-                            }
+                        <!-- Fluff Image -->
+                        <div class="fluff-image-container" *ngIf="fluffImageUrl()">
+                            <img [src]="fluffImageUrl()" class="fluff-image" (error)="onFluffImageError()"
+                                alt="{{ unit.chassis }} {{ unit.model }}" />
                         </div>
-                    </div>
-
-                    <div class="fluff-section" *ngIf="unit.fluff.manufacturer">
-                        <div class="fluff-label">Manufacturers:</div>
-                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.manufacturer) }}</div>
-                    </div>
-
-                    <div class="fluff-section" *ngIf="unit.fluff.primaryFactory">
-                        <div class="fluff-label">Primary Factories:</div>
-                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.primaryFactory) }}</div>
-                    </div>
-
-                    <div class="fluff-section" *ngIf="unit.fluff.capabilities">
-                        <div class="fluff-label">Capabilities:</div>
-                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.capabilities) }}</div>
-                    </div>
-
-                    <div class="fluff-section" *ngIf="unit.fluff.overview">
-                        <div class="fluff-label">Overview:</div>
-                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.overview) }}</div>
-                    </div>
-
-                    <div class="fluff-section" *ngIf="unit.fluff.deployment">
-                        <div class="fluff-label">Deployment:</div>
-                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.deployment) }}</div>
-                    </div>
-
-                    <div class="fluff-section" *ngIf="unit.fluff.history">
-                        <div class="fluff-label">History:</div>
-                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.history) }}</div>
-                    </div>
-
-                    <div class="fluff-section" *ngIf="unit.fluff.notes">
-                        <div class="fluff-label">Notes:</div>
-                        <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.notes) }}</div>
-                    </div>
-                </ng-container>
-
-                <ng-template #noFluff>
-                    <div class="no-fluff">
-                        No intel available for this unit.
-                    </div>
-                </ng-template>
+    
+                        <div class="fluff-section" *ngIf="unit.fluff.systems && unit.fluff.systems.length > 0">
+                            <div class="fluff-label">Systems:</div>
+                            <div class="fluff-text">
+                                @for (system of unit.fluff.systems; track system.label) {
+                                    <div>
+                                        <strong *ngIf="system.label">{{ system.label }}: </strong>
+                                        <span *ngIf="system.manufacturer">{{ system.manufacturer }} </span>
+                                        <span *ngIf="system.model">({{ system.model }})</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+    
+                        <div class="fluff-section" *ngIf="unit.fluff.manufacturer">
+                            <div class="fluff-label">Manufacturers:</div>
+                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.manufacturer) }}</div>
+                        </div>
+    
+                        <div class="fluff-section" *ngIf="unit.fluff.primaryFactory">
+                            <div class="fluff-label">Primary Factories:</div>
+                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.primaryFactory) }}</div>
+                        </div>
+    
+                        <div class="fluff-section" *ngIf="unit.fluff.capabilities">
+                            <div class="fluff-label">Capabilities:</div>
+                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.capabilities) }}</div>
+                        </div>
+    
+                        <div class="fluff-section" *ngIf="unit.fluff.overview">
+                            <div class="fluff-label">Overview:</div>
+                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.overview) }}</div>
+                        </div>
+    
+                        <div class="fluff-section" *ngIf="unit.fluff.deployment">
+                            <div class="fluff-label">Deployment:</div>
+                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.deployment) }}</div>
+                        </div>
+    
+                        <div class="fluff-section" *ngIf="unit.fluff.history">
+                            <div class="fluff-label">History:</div>
+                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.history) }}</div>
+                        </div>
+    
+                        <div class="fluff-section" *ngIf="unit.fluff.notes">
+                            <div class="fluff-label">Notes:</div>
+                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.notes) }}</div>
+                        </div>
+                    } @else {
+                        <div class="no-fluff">
+                            No intel available for this unit.
+                        </div>
+                    }
+                </div>
             </div>
-        </div>
+        }
     </div>
     <div class="footer" dialog-footer>
         <button class="modal-btn bt-button" (click)="onAdd()">ADD</button>
