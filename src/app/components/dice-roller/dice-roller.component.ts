@@ -68,12 +68,13 @@ export interface DiceRollerData {
         <div class="dice-faces">
             <div class="die">{{ rollResult()?.die1 }}</div>
             <div class="die">{{ rollResult()?.die2 }}</div>
-            <ng-container *ngIf="rollResult()?.modifier as mod">
+            @if (rollResult()?.modifier; as mod) {
                 <div class="die">
                     <span *ngIf="mod > 0"> + {{ mod }}</span>
                     <span *ngIf="mod < 0"> - {{ -mod }}</span>
                 </div>
-            </ng-container></div>
+            }
+        </div>
         <div class="dice-result">
             <span class="result-total">= {{ rollResult()?.total }}</span>
         </div>
