@@ -107,7 +107,7 @@
                                         </div>
                                     }
                                 </div>
-                                <span class="info-spanner"></span>
+                                <span class="spanner"></span>
                                 <div class="info-slot-tags">
                                     <a class="add-tag-btn" (click)="onAddTag(unit, $event)" title="Add tag"
                                         aria-label="Add tag">
@@ -137,15 +137,29 @@
                 </div>
             </cdk-virtual-scroll-viewport>
 
+                        @if (this.selectedUnits().size > 0) {
+                        <div class="selection-footer">
+                            <div class="selected-count">{{ this.selectedUnits().size }} units selected</div>
+                            <span class="spanner"></span>
+                            <button type="button" class="bt-button"
+                                (click)="addSelectedUnits()">
+                                ADD TO FORCE
+                            </button>
+                            <button type="button" class="bt-button"
+                                (click)="clearSelection()">
+                                CLEAR
+                            </button>
+                        </div>
+                        }
+
+                        
             @if (this.filtersService.filteredUnits().length > 0) {
                 <div class="results-footer">
                     <div class="results-count">
                         {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length
                         === 1 ? '' : 's' }}
-                        @if (this.selectedUnits().size > 0) {
-                            <div class="selected-count">{{ this.selectedUnits().size }} selected</div>
-                        }
                     </div>
+                            <span class="spanner"></span>
                     <div class="results-sort">
                         <select #sortSel class="bt-input sort-select"
                             (change)="this.filtersService.setSortOrder(sortSel.value)">

@@ -82,6 +82,11 @@ hr {
     color: var(--text-color-secondary);
 }
 
+.spanner {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 .modal-btn {
     padding: 8px 36px;
     font-size: 1.1em;

@@ -934,7 +934,6 @@ export class UnitSearchComponent implements OnDestroy {
             return;
         }
         // Single click: open details and clear selection
-        this.clearSelection();
         this.showUnitDetails(unit);
     }
     
@@ -952,5 +951,18 @@ export class UnitSearchComponent implements OnDestroy {
         const allUnits = this.filtersService.filteredUnits();
         const allNames = new Set(allUnits.map(u => u.name));
         this.selectedUnits.set(allNames);
+    }
+
+    addSelectedUnits() {
+        const gunnery = this.filtersService.pilotGunnerySkill();
+        const piloting = this.filtersService.pilotPilotingSkill();
+        this.selectedUnits().forEach(unitName => {
+            const unit = this.dataService.getUnitByName(unitName);
+            if (unit) {
+                this.forceBuilderService.addUnit(unit, gunnery, piloting);
+            }
+        });
+        this.clearSelection();
+        this.closeAllPanels();
     }
 }

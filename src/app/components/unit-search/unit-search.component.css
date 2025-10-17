@@ -274,6 +274,7 @@
     color: var(--bt-yellow);
 }
 
+.selection-footer,
 .results-footer {
     display: flex;
     justify-content: space-between;
@@ -284,6 +285,11 @@
     font-size: 0.8em;
     border-top: 1px solid #666;
     flex-shrink: 0;
+    gap: 4px;
+}
+
+.selection-footer .bt-button {
+    height: 32px;
 }
 
 .results-count {    
@@ -299,7 +305,7 @@
 .results-sort {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
 }
 
 .results-sort .sort-select {
@@ -349,12 +355,6 @@
     height: 17px;
     width: 17px;
 }
-
-.info-spanner {
-    flex: 1 1 auto;
-    min-width: 0px;
-}
-
 
 @container (min-width: 600px) {
     .unit-card .primary-info {
