@@ -51,7 +51,7 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
     <base-dialog>
         <div dialog-header><div class="title">Beta Notice</div></div>
         <div dialog-body>
-            <p>This is a development and internal beta version of MekBay.</p>
+            <p>This is a development and public beta version of MekBay.</p>
             <p>It may contain bugs and issues that need to be resolved, and things might break unexpectedly.</p>
             <p>Features are subject to change, and some functionality may be incomplete or experimental.</p>
             <p>Thank you for testing MekBay and helping us build a better experience for the BattleTech community!</p>
