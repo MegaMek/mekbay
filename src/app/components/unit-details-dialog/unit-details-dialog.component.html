@@ -106,7 +106,7 @@
 
             <!-- Components Grid -->
             <!-- Matrix layout (3x3) when supported and defined for unit.type -->
-            <ng-container *ngIf="useMatrixLayout(); else defaultComponentsBlock">
+            @if (useMatrixLayout()) {
                 <div class="components-matrix" [style.grid-template-areas]="gridAreas">
                     @for (area of matrixAreaCodes; let i = $index; track i) {
                         <div class="component-rect" [style.grid-area]="area">
@@ -144,10 +144,8 @@
                         </div>
                     }
                 </div>
-            </ng-container>
-
-            <!-- Default -->
-            <ng-template #defaultComponentsBlock>
+            } @else {
+                <!-- Default -->
                 @if (hasBays()) {
                     <div class="components-container">
                         @for (group of groupedBays; let i = $index; track group.l) {
@@ -196,7 +194,7 @@
                         </div>
                     }
                 }
-            </ng-template>
+            }
 
             <div class="spanner"></div>
 
