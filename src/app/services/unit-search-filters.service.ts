@@ -422,7 +422,6 @@ export class UnitSearchFiltersService {
 
             return { tokens: Array.from(uniqueMap.values()) };
         });
-        console.log(results);
         return results;
     });
 
