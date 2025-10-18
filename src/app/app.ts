@@ -293,7 +293,7 @@ export class App {
                 break;
             }
             case 'cloneForce': {
-                this.forceBuilderService.cloneForce();
+                this.forceBuilderService.requestCloneForce();
                 break;
             }
             case 'load': {

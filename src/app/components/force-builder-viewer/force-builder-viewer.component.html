@@ -5,7 +5,7 @@
     </div>
     <div class="force-name" (click)="promptChangeForceName()">{{ forceName() }}</div>
     @if (forceBuilderService.readOnlyForce()) {
-        <button class="bt-button btn-clone" (click)="forceBuilderService.cloneForce()">CLONE FORCE TO EDIT</button>
+        <button class="bt-button btn-clone" (click)="forceBuilderService.requestCloneForce()">CLONE FORCE TO EDIT</button>
     }
     <div #scrollableContent class="scrollable-content">
         @if (forceBuilderService.forceUnits().length > 0) {

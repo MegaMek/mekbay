@@ -522,7 +522,17 @@ export class ForceBuilderService {
         this.force.reorderUnit(previousIndex, currentIndex);
     }
 
-    cloneForce(): Promise<boolean> {
+    public async requestCloneForce() {
+        const confirmed = await this.dialogsService.showQuestion(
+            'Cloning this force will create a copy that you own and can edit. Do you want to proceed?',
+            'Clone Force',
+            'info');
+        if (confirmed === 'yes') {
+            this.cloneForce();
+        };
+    }
+
+    private cloneForce(): Promise<boolean> {
         return new Promise(async (resolve) => {
             // We simply set a new UUID and we save the force as a new instance.
             this.force.loading = true;
