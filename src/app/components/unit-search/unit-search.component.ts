@@ -88,10 +88,10 @@ export class ExpandedComponentsPipe implements PipeTransform {
     styleUrl: './unit-search.component.css',
 })
 export class UnitSearchComponent implements OnDestroy {
-    public layoutService = inject(LayoutService);
-    public filtersService = inject(UnitSearchFiltersService);
-    public dataService = inject(DataService);
-    private forceBuilderService = inject(ForceBuilderService);
+    layoutService = inject(LayoutService);
+    filtersService = inject(UnitSearchFiltersService);
+    dataService = inject(DataService);
+    forceBuilderService = inject(ForceBuilderService);
     private injector = inject(Injector);
     private dialog = inject(Dialog);
     private dialogsService = inject(DialogsService);

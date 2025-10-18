@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStrategy, output, viewChild, effect, computed } from '@angular/core';
+import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStrategy, output, viewChild, effect, computed, HostBinding } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { Unit, UnitComponent } from '../../models/units.model';
@@ -46,6 +46,7 @@ import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { ForceUnit } from '../../models/force-unit.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Router } from '@angular/router';
+import { SvgViewerLiteComponent } from '../svg-viewer-lite/svg-viewer-lite.component';
 
 /*
  * Author: Drake
@@ -105,21 +106,21 @@ interface ManufacturerInfo {
     selector: 'unit-details-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, FloatingCompInfoComponent, StatBarSpecsPipe, FilterAmmoPipe],
+    imports: [CommonModule, BaseDialogComponent, FloatingCompInfoComponent, StatBarSpecsPipe, FilterAmmoPipe, SvgViewerLiteComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css']
 })
 export class UnitDetailsDialogComponent {
-    private dataService = inject(DataService);
-    private forceBuilderService = inject(ForceBuilderService);
-    private dialogRef = inject(DialogRef<UnitDetailsDialogComponent>);
-    private data = inject(DIALOG_DATA) as UnitDetailsDialogData;
-    private toastService = inject(ToastService);
-    private router = inject(Router);
+    dataService = inject(DataService);
+    forceBuilderService = inject(ForceBuilderService);
+    dialogRef = inject(DialogRef<UnitDetailsDialogComponent>);
+    data = inject(DIALOG_DATA) as UnitDetailsDialogData;
+    toastService = inject(ToastService);
+    router = inject(Router);
     add = output<Unit>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
 
-    tabs = ['General', 'Intel', 'Factions'];
+    tabs = ['General', 'Intel', 'Factions', 'Sheet'];
     activeTab = signal(this.tabs[0]);
 
     unitList: Unit[] | ForceUnit[] = this.data.unitList;
@@ -182,6 +183,17 @@ export class UnitDetailsDialogComponent {
     matrixAreaCodes: string[] = [];
     private areaNameToCodes = new Map<string, string[]>();
 
+    @HostBinding('class.fluff-background')
+    get hostHasFluff(): boolean {
+        return !!this.fluffImageUrl();
+    }
+
+    @HostBinding('style.--fluff-bg')
+    get hostFluffBg(): string | null {
+        const url = this.fluffImageUrl();
+        return url ? `url("${url}")` : null;
+    }
+    
     constructor() {
         effect(() => {
             this.unit; // Re-run when unit changes
@@ -193,7 +205,7 @@ export class UnitDetailsDialogComponent {
             this.activeTab()
             this.router.navigate([], {
                 queryParams: {
-                    shareUnit: this.unit.id,
+                    shareUnit: this.unit.name,
                     tab: this.activeTab(),
                 },
                 queryParamsHandling: 'merge'

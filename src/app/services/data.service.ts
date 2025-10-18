@@ -705,9 +705,9 @@ export class DataService {
     }
 
     public async saveForce(force: Force): Promise<void> {
-        if (!force.instanceId() || !force.owned) {
+        if (!force.instanceId() || !force.owned()) {
             force.instanceId.set(generateUUID());
-            force.owned = true;
+            force.owned.set(true);
         }
         const key = force.instanceId();
         await this.dbService.saveForce(force.serialize());
@@ -817,7 +817,7 @@ export class DataService {
             console.warn('Cannot save force to cloud: not the owner, we regenerated a new instanceId.');
             const oldInstanceId = force.instanceId();
             force.instanceId.set(generateUUID());
-            force.owned = true;
+            force.owned.set(true);
             await this.saveForce(force); // We try again
             if (oldInstanceId) {
                 this.dbService.deleteForce(oldInstanceId); // Clean up old local copy

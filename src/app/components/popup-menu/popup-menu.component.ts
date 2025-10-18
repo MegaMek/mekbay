@@ -41,6 +41,7 @@ export interface PopupMenuOption {
     label?: string;
     value?: string;
     separator?: boolean;
+    hidden?: boolean;
 }
 
 @Component({

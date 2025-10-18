@@ -295,9 +295,15 @@
                 </div>
             </div>
         }
+
+        @if (activeTab() === 'Sheet') {
+            <div class="tab-content">
+                <svg-viewer-lite [unit]="unit"></svg-viewer-lite>
+            </div>
+        }
     </div>
     <div class="footer" dialog-footer>
-        <button class="modal-btn bt-button" (click)="onAdd()">ADD</button>
+        <button [disabled]="this.forceBuilderService.readOnlyForce()" class="modal-btn bt-button" (click)="onAdd()">ADD</button>
         <button class="modal-btn bt-button" (click)="onShare()">SHARE</button>
         <button class="modal-btn bt-button" (click)="onClose()">CLOSE</button>
     </div>

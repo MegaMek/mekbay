@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, signal, effect, computed, OnDestroy, Injector, inject } from '@angular/core';
+import { Injectable, signal, effect, computed, OnDestroy, Injector, inject, untracked } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Unit } from '../models/units.model';
 import { Force, ForceUnit } from '../models/force-unit.model';
@@ -44,6 +44,8 @@ import { firstValueFrom } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData } from '../components/rename-force-dialog/rename-force-dialog.component';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { DialogsService } from './dialogs.service';
+import { generateUUID } from './ws.service';
+import { ToastService } from './toast.service';
 
 /*
  * Author: Drake
@@ -52,8 +54,9 @@ import { DialogsService } from './dialogs.service';
     providedIn: 'root'
 })
 export class ForceBuilderService {
-    private dataService = inject(DataService);
-    private layoutService = inject(LayoutService);
+    dataService = inject(DataService);
+    layoutService = inject(LayoutService);
+    toastService = inject(ToastService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
     private dialog = inject(Dialog);
@@ -78,6 +81,10 @@ export class ForceBuilderService {
 
     forceUnits = computed(() => this.currentForce().units());
     hasUnits = computed(() => this.currentForce().units().length > 0);
+
+    readOnlyForce = computed<boolean>(() => {
+        return this.force.owned() === false;
+    });
 
     setForce(newForce: Force, updateUrl: boolean = true) {
         // Unsubscribe from previous force
@@ -270,14 +277,16 @@ export class ForceBuilderService {
                 let loadedInstance = null;
                 if (instanceParam) {
                     // Try to find an existing force with this instance ID in the storage.
+                    untracked(async () => {
                     loadedInstance = await this.dataService.getForce(instanceParam);
                     if (loadedInstance) {
-                        if (!loadedInstance.owned) {
-                            this.dialogsService.showNotice('This force is owned by another user. Editing will create a cloned force and will not affect the original.', 'Shared Force');
+                            if (!loadedInstance.owned()) {
+                                this.dialogsService.showNotice('Intel indicates another commander owns this force. Clone to adopt it for yourself.', 'Captured Intel');
+                            }
+                            this.setForce(loadedInstance);
+                            this.selectUnit(loadedInstance.units()[0] || null);
                         }
-                        this.setForce(loadedInstance);
-                        this.selectUnit(loadedInstance.units()[0] || null);
-                    }
+                    });
                 }
                 if (!loadedInstance) {
                     // If no instance ID or not found, create a new force.
@@ -511,6 +520,21 @@ export class ForceBuilderService {
     */
     reorderUnit(previousIndex: number, currentIndex: number) {
         this.force.reorderUnit(previousIndex, currentIndex);
+    }
+
+    cloneForce(): Promise<boolean> {
+        return new Promise(async (resolve) => {
+            // We simply set a new UUID and we save the force as a new instance.
+            this.force.loading = true;
+            try {
+                this.force.instanceId.set(generateUUID());
+                this.dataService.saveForce(this.force);
+            } finally {
+                this.force.loading = false;
+            }
+            this.toastService.show(`Force cloned. You can now edit this copy.`, 'success');
+            resolve(true);
+        });
     }
 
     private generateForceNameIfNeeded() {

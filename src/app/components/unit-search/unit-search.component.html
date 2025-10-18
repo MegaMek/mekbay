@@ -141,7 +141,7 @@
                         <div class="selection-footer">
                             <div class="selected-count">{{ this.selectedUnits().size }} units selected</div>
                             <span class="spanner"></span>
-                            <button type="button" class="bt-button"
+                            <button [disabled]="this.forceBuilderService.readOnlyForce()" type="button" class="bt-button"
                                 (click)="addSelectedUnits()">
                                 ADD TO FORCE
                             </button>

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, input, ElementRef, AfterViewInit, OnDestroy, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, viewChild, ComponentRef, ViewContainerRef, TemplateRef, afterNextRender } from '@angular/core';
+import { Component, input, ElementRef, AfterViewInit, OnDestroy, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, viewChild, ComponentRef, ViewContainerRef, TemplateRef, afterNextRender, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceUnit } from '../../models/force-unit.model';
 import { SvgZoomPanService, SwipeCallbacks } from './svg-zoom-pan.service';
@@ -105,8 +105,9 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
     private resizeTimeout: any = null;
 
-    constructor() {
+    readOnly = computed(() => this.unit()?.readOnly());
 
+    constructor() {
         // Watch for unit changes using effect instead of ngOnChanges
         let previousUnit: ForceUnit | null = null;
         this.unitChangeEffectRef = effect(async () => {
@@ -119,7 +120,9 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             if (previousUnit && previousUnit !== currentUnit) {
                 this.saveViewState(previousUnit);
             }
-            this.interactionService.updateUnit(currentUnit);
+            if (!this.readOnly()) {
+                this.interactionService.updateUnit(currentUnit);
+            }
             
             this.displaySvg();
 
@@ -153,14 +156,15 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
         // Initialize services
         this.zoomPanService.initialize(this.containerRef(), this.isPickerOpen, swipeCallbacks);
-        this.interactionService.initialize(
-            this.containerRef(),
-            this.unit(),
-            this.injector,
-            this.diffHeatMarkerRef(),
-            this.diffHeatArrowRef(),
-            this.diffHeatTextRef()
-        );
+        if (!this.readOnly()) {
+            this.interactionService.initialize(
+                this.containerRef(),
+                this.injector,
+                this.diffHeatMarkerRef(),
+                this.diffHeatArrowRef(),
+                this.diffHeatTextRef()
+            );
+        }
 
         // Setup zoom and pan event listeners
         this.zoomPanService.setupEventListeners(this.containerRef().nativeElement);
@@ -197,6 +201,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     }
 
     protected setupInteractions(svg: SVGSVGElement): void {
+        if (this.readOnly()) return;
         // Setup all interaction handlers
         this.interactionService.setupInteractions(svg);
     }

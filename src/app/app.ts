@@ -94,7 +94,6 @@ export class App {
     private optionsService = inject(OptionsService);
     public unitSearchFilter = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
-    private router = inject(Router);
 
     private lastUpdateCheck: number = 0;
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
@@ -291,6 +290,10 @@ export class App {
                 if (await this.forceBuilderService.repairAllUnits()) {
                     this.toastService.show(`Repaired all units.`, 'info');
                 }
+                break;
+            }
+            case 'cloneForce': {
+                this.forceBuilderService.cloneForce();
                 break;
             }
             case 'load': {

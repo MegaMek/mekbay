@@ -4,11 +4,15 @@
         <div [cdkPortalOutlet]="unitSearchPortal()"></div>
     </div>
     <div class="force-name" (click)="promptChangeForceName()">{{ forceName() }}</div>
+    @if (forceBuilderService.readOnlyForce()) {
+        <button class="bt-button btn-clone" (click)="forceBuilderService.cloneForce()">CLONE FORCE TO EDIT</button>
+    }
     <div #scrollableContent class="scrollable-content">
         @if (forceBuilderService.forceUnits().length > 0) {
-
             <div class="force-units-list" cdkDropList
-                [cdkDropListData]="forceBuilderService.forceUnits()" (cdkDropListDropped)="drop($event)">
+                [cdkDropListData]="forceBuilderService.forceUnits()" 
+                [cdkDropListDisabled]="forceBuilderService.readOnlyForce()"
+                (cdkDropListDropped)="drop($event)">
                 @for (unit of forceBuilderService.forceUnits(); let i = $index; track i) {
                 <div
                     #forceUnitItem
@@ -20,6 +24,7 @@
                     tabindex="0"
                     (keydown)="onUnitKeydown($event, i)"
                     cdkDrag
+                    [cdkDragDisabled]="forceBuilderService.readOnlyForce()"
                     (cdkDragStarted)="onUnitDragStart()"
                     (cdkDragEnded)="onUnitDragEnd()"
                     cdkDragLockAxis="y"
@@ -59,7 +64,10 @@
                         </div>
                     </div>
                     <div class="unit-actions">
-                        <button class="remove-btn" (click)="removeUnit($event, unit)" title="Remove unit">×</button>
+                        @if (!forceBuilderService.readOnlyForce()) {
+                            <button class="remove-btn" (click)="removeUnit($event, unit)" title="Remove unit">×</button>
+                        }
+                        <div class="spanner"></div>
                         <button class="info-btn" (click)="showUnitInfo($event, unit)" title="Unit info">i</button>
                     </div>
                 </div>
@@ -69,14 +77,15 @@
             <p class="empty-text">Search for units to add them to your force.</p>
         }
     </div>
-
     <div class="footer">
         <div class="total-bv">
             <span>BV: {{ totalBv() | number }}</span>
         </div>
+        <div class="spanner"></div>
         <popup-menu class="popup-menu-button" [options]="[
             { label: 'New Force', value: 'new' },
-            { label: 'Repair Force', value: 'repairAll' },
+            { label: 'Repair Force', value: 'repairAll', hidden: forceBuilderService.readOnlyForce() },
+            { label: 'Clone Force', value: 'cloneForce', hidden: !forceBuilderService.readOnlyForce() },
             { label: 'Load Force', value: 'load' },
             { label: 'Print All', value: 'print' },
             { separator: true },

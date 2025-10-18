@@ -147,6 +147,12 @@
   align-items: center;
   position: relative; 
   overflow: visible;
+  gap: 4px;
+}
+
+.btn-clone {
+    margin-bottom: 4px;
+    background-color: #2296;
 }
 
 .options-btn {

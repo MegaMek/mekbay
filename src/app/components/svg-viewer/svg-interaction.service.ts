@@ -97,14 +97,12 @@ export class SvgInteractionService {
 
     initialize(
         containerRef: ElementRef<HTMLDivElement>,
-        unit: ForceUnit | null,
         injector: Injector,
         diffHeatMarkerRef: ElementRef<HTMLDivElement>,
         diffHeatArrowRef: ElementRef<HTMLDivElement>,
         diffHeatTextRef: ElementRef<HTMLDivElement>
     ) {
         this.containerRef = containerRef;
-        this.unit.set(unit);
         this.injector = injector;
         this.diffHeatMarkerRef = diffHeatMarkerRef;
         this.diffHeatArrowRef = diffHeatArrowRef;

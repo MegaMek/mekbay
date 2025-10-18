@@ -321,6 +321,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     }
 
     onUnitDragStart() {
+        if (this.forceBuilderService.readOnlyForce()) return;
         this.isUnitDragging = true;
         if (this.isDragging) {
             this.isDragging = false;
@@ -332,6 +333,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     }
 
     onUnitDragEnd() {
+        if (this.forceBuilderService.readOnlyForce()) return;
         setTimeout(() => {
             this.isUnitDragging = false;
         }, 50);
@@ -389,6 +391,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     }
 
     promptChangeForceName() {
+        if (this.forceBuilderService.readOnlyForce()) return;
         this.forceBuilderService.promptChangeForceName();
     }
 

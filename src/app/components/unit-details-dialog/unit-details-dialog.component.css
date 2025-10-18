@@ -537,6 +537,9 @@
     flex-direction: column;
     min-height: 0;
     flex: 1;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
 }
 
 .bottom-info {
@@ -688,8 +691,8 @@
 
 .fluff-bg-image {
     position: absolute;
-    top: -100px;
-    right: -100px;
+    top: calc(10% - 100px);
+    right: calc(40% - 400px);
     width: 800px;
     height: auto;
     object-fit: cover;
@@ -707,7 +710,6 @@
 
 :host ::ng-deep .modal.fluff-background > *:not(.fluff-bg-image) {
     position: relative;
-    z-index: 1;
 }
 
 .ammo-list {

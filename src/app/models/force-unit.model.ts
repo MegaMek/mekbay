@@ -92,7 +92,7 @@ export class Force {
     units: WritableSignal<ForceUnit[]> = signal([]);
     loading: boolean = false;
     cloud?: boolean = false; // Indicates if this force is stored in the cloud
-    owned = true; // Indicates if the user owns this force (false if it's a shared force)
+    owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
     public changed = new EventEmitter<void>();
     private _debounceTimer: any = null;
 
@@ -200,7 +200,7 @@ export class Force {
         force.loading = true;
         try {
             force.instanceId.set(data.instanceId);
-            force.owned = (data.owned !== false);
+            force.owned.set(data.owned !== false);
             const units: ForceUnit[] = [];
             for (const unitData of data.units) {
                 try {
@@ -275,6 +275,8 @@ export class ForceUnit {
     private injector: Injector;
     private isLoaded: boolean = false;
     public disabledSaving: boolean = false;
+
+    readOnly = computed(() => this.force.owned() === false);
 
     constructor(unit: Unit,
         force: Force,
