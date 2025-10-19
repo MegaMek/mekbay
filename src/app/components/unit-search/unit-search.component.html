@@ -433,7 +433,8 @@
                                 @for (comp of componentsList; let last = $last; let i = $index; track i) {
                                 <div class="component-pill"
                                     [ngClass]="getTypeClass(comp.t)" 
-                                    (click)="$event.preventDefault(); $event.stopPropagation()"
+                                    (click)="onCompClick(unit, comp, $event)"
+                                    (pointerdown)="onCompPointerDown(unit, comp, $event)"
                                     (mouseenter)="onCompMouseEnter(unit, comp, $event)"
                                     (mouseleave)="onCompMouseLeave()">
                                     <span class="pill-qty">{{ comp.q }}×</span>
@@ -448,9 +449,10 @@
                     @if (ammoList.length > 0) {
                         <div class="ammo-list">
                             <span class="info-label muted">Ammo: </span>
-                            @for (comp of ammoList; let last = $last; let i = $index; track i) {                                
-                                <span class="ammo-pill" 
-                                    (click)="$event.preventDefault(); $event.stopPropagation()"
+                            @for (comp of ammoList; let last = $last; let i = $index; track i) {
+                                <span class="ammo-pill"
+                                    (click)="onCompClick(unit, comp, $event)"
+                                    (pointerdown)="onCompPointerDown(unit, comp, $event)"
                                     (mouseenter)="onCompMouseEnter(unit, comp, $event)"
                                     (mouseleave)="onCompMouseLeave()">({{ comp.n }}) {{ comp.q2 }}</span>@if(!last){<span>, </span>}
                             }

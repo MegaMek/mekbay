@@ -154,10 +154,30 @@ export class UnitSearchComponent implements OnDestroy {
     hoveredUnit = signal<Unit | null>(null);
     hoveredComp = signal<UnitComponent | null>(null);
     hoverRect = signal<DOMRect | null>(null);
+    viewportScrollOffset = signal<number>(0);
     private isCompHovered = false;
     private isFloatingHovered = false;
 
     constructor() {
+        effect((cleanup) => {
+            const viewport = this.viewport();
+            if (!viewport) return;
+            const elScrolledSub = viewport.elementScrolled().subscribe(() => {
+                const offset = viewport.measureScrollOffset();
+                this.viewportScrollOffset.set(offset);
+            });
+            cleanup(() => {
+                elScrolledSub.unsubscribe();
+            });
+        });
+        effect(() => {
+            this.viewportScrollOffset();
+            if (this.isCompHovered || this.isFloatingHovered) {
+                this.isCompHovered = false;
+                this.isFloatingHovered = false;
+                this.updateFloatingVisibility();
+            }
+        });
         effect(() => {
             if (this.advOpen()) {
                 this.advPanelUserColumns();
@@ -894,10 +914,26 @@ export class UnitSearchComponent implements OnDestroy {
         }
     }
 
+    onCompPointerDown(unit: Unit, comp: UnitComponent, event: MouseEvent) {
+        if (this.hoveredComp() === comp) {
+            this.isCompHovered = false;
+            this.onCompMouseLeave();
+        } else {
+            this.onCompMouseEnter(unit, comp, event);
+        }
+    }
+
+    onCompClick(unit: Unit, comp: UnitComponent, event: MouseEvent) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
     onCompMouseLeave() {
         this.isCompHovered = false;
         // Defer to next tick to allow floating window mouseenter to fire first if moving to it
-        setTimeout(() => this.updateFloatingVisibility(), 0);
+        afterNextRender(() => {
+            this.updateFloatingVisibility();
+        }, { injector: this.injector });
     }
 
     onFloatingMouseEnter() {
@@ -906,8 +942,10 @@ export class UnitSearchComponent implements OnDestroy {
 
     onFloatingMouseLeave() {
         this.isFloatingHovered = false;
-        // Defer to next tick to allow comp mouseenter to fire first if moving to it
-        setTimeout(() => this.updateFloatingVisibility(), 0);
+            // Defer to next tick to allow comp mouseenter to fire first if moving to it
+        afterNextRender(() => {
+            this.updateFloatingVisibility();
+        }, { injector: this.injector });
     }
 
     private updateFloatingVisibility() {
