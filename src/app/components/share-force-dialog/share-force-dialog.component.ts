@@ -253,7 +253,7 @@ export class ShareForceDialogComponent {
         const filename = `${baseName}.png`;
         const file = new File([blob], filename, { type: 'image/png' });
 
-        if (navigator.canShare({ files: [file] })) {
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
                 await navigator.share({
                     title: this.forceBuilderService.force.name || 'MekBay Force',
