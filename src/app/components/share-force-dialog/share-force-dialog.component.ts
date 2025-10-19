@@ -220,7 +220,6 @@ export class ShareForceDialogComponent {
         // calculate the height of each force-unit-item
         const unitItems = forceView.querySelectorAll('.force-view .force-unit-item');
         const totalHeight = Array.from(unitItems).reduce((acc, item) => acc + item.scrollHeight + 4, 0);
-        console.log('Total height for image:', totalHeight);
         const canvas = await html2canvas(forceView, <any>{
             useCORS: true,
             backgroundColor: '#292929',
@@ -263,26 +262,26 @@ export class ShareForceDialogComponent {
                 this.toastService.show('Image shared.', 'success');
                 return;
             } catch (err) {
-                // fall through to clipboard/download fallback
-                if (window.ClipboardItem) {
-                    try {
-                        const item = new ClipboardItem({ 'image/png': blob });
-                        await navigator.clipboard.write([item]);
-                        this.toastService.show('Image copied to clipboard.', 'success');
-                        return;
-                    } catch (err) {
-                        // fall through to download fallback
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = filename;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                        URL.revokeObjectURL(url);
-                        this.toastService.show('Image downloaded.', 'success');
-                    }
-                }
+            }
+        }
+        // fall through to clipboard/download fallback
+        if (window.ClipboardItem) {
+            try {
+                const item = new ClipboardItem({ 'image/png': blob });
+                await navigator.clipboard.write([item]);
+                this.toastService.show('Image copied to clipboard.', 'success');
+                return;
+            } catch (err) {
+                // fall through to download fallback
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                this.toastService.show('Image downloaded.', 'success');
             }
         }
     };
