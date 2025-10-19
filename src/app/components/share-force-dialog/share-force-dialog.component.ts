@@ -263,7 +263,7 @@ export class ShareForceDialogComponent {
                 return;
             } catch (err) {
             }
-        }
+        } else
         // fall through to clipboard/download fallback
         if (window.ClipboardItem) {
             try {
