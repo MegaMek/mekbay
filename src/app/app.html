@@ -19,7 +19,11 @@
             } @else {
                 <!-- Empty state -->
                 <div class="empty-state-container">
-                    <popup-menu [showBelow]="true" [class.disabled]="!this.dataService.isDataReady()" class="popup-menu-button" [options]="popupMenuOptions"
+                    <popup-menu [showBelow]="true" 
+                        [class.disabled]="!this.dataService.isDataReady()" 
+                        [borderlessButton]="true"
+                        class="popup-menu-button" 
+                        [options]="popupMenuOptions"
                         (menuSelect)="onMenuSelected($event)"></popup-menu>
                     <div class="main-search">
                         <div class="empty-state-logo">

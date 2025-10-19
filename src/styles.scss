@@ -353,19 +353,27 @@ hr {
         cursor: not-allowed;
         color: #444;
     }
+
+    &.square-normal {
+        width: 32px;
+        height: 32px;
+        overflow: hidden;
+    }
+
+    &.square-large {
+        width: 40px;
+        height: 40px;
+        overflow: hidden;
+    }
+
+    &.borderless {
+        border: none;
+        background: none;
+    }
 }
 
-.bt-button.square-normal {
-    width: 32px;
-    height: 32px;
-    overflow: hidden;
-}
 
-.bt-button.square-large {
-    width: 40px;
-    height: 40px;
-    overflow: hidden;
-}
+
 
 /* Unit Card */
 .unit-card {

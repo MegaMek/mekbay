@@ -2,15 +2,6 @@
     position: relative;
 }
 
-.popup-btn {
-    background: transparent;
-    border: none;
-    color: #fff;
-    font-size: 2em;
-    cursor: pointer;
-    position: relative;
-}
-
 .popup-menu {
     position: absolute;
     right: 0;

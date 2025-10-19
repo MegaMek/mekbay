@@ -57,6 +57,7 @@ export class PopupMenuComponent implements OnDestroy {
     options = input<PopupMenuOption[]>([]);
     menuSelect = output<string>();
 
+    borderlessButton = input<boolean>(false);
     isOpen = signal(false);
     
     showBelow = input<boolean>(false);
