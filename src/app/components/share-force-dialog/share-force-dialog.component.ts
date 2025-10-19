@@ -233,11 +233,12 @@ export class ShareForceDialogComponent {
                 });
                 const styleEl = clonedDoc.createElement('style');
                 styleEl.textContent = `
-                    html, body { height: 100% !important; }
+                    .force-name { height: 32px !important; min-height: 32px !important; }
+                    .primary-info, .secondary-info, .third-info { width: auto !important; }
                     .force-viewer-container { height: auto !important; }
                     .force-view { force-grow: 0 !important; min-height: initial !important; height: 0 !important; }
                     .scrollable-content { flex-grow: 0; overflow: visible !important; min-height: initial !important; }
-                    .footer { justify-content: center !important; position: sticky !important; bottom: 0 !important; }
+                    .footer { justify-content: center !important; height: 32px !important; }
                 `;
                 clonedDoc.documentElement.appendChild(styleEl);
             }

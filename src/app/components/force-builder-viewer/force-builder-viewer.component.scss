@@ -39,6 +39,9 @@
     color: var(--text-color);
     cursor: pointer;
     transition: color 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .force-name:hover {
