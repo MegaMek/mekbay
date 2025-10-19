@@ -42,6 +42,7 @@ import { PopupMenuComponent } from '../../components/popup-menu/popup-menu.compo
 import { Dialog } from '@angular/cdk/dialog';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { Portal, PortalModule } from '@angular/cdk/portal';
+import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
 
 /*
  * Author: Drake
@@ -503,5 +504,9 @@ export class ForceBuilderViewerComponent implements OnDestroy {
             return;
         }
         this.toggleMenu();
+    }
+
+    shareForce() {
+        this.dialog.open(ShareForceDialogComponent);
     }
 }

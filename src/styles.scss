@@ -271,7 +271,9 @@ hr {
 .bt-button {
     cursor: pointer;
     touch-action: manipulation;
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: var(--background-input);
     color: #bbb;
     border: 1px solid white;
@@ -353,6 +355,18 @@ hr {
     }
 }
 
+.bt-button.square-normal {
+    width: 32px;
+    height: 32px;
+    overflow: hidden;
+}
+
+.bt-button.square-large {
+    width: 40px;
+    height: 40px;
+    overflow: hidden;
+}
+
 /* Unit Card */
 .unit-card {
     display: flex;
@@ -363,10 +377,12 @@ hr {
 
     .primary-info {
         container-type: inline-size;
+        flex-grow: 1;
     }
 
     .secondary-info {
         display: flex;
+        flex-grow: 1;
         flex-direction: row;
         align-items: baseline;
         justify-content: space-between;
@@ -388,6 +404,7 @@ hr {
     }
 
     .third-info {
+        flex-grow: 1;
         display: flex;
         flex-direction: row;
         gap: 4px;
@@ -430,12 +447,12 @@ hr {
 }
 
 .unit-image-container {
-    height: 56px;
-    width: 65.33px;
-    /* Maintains 72x84 aspect ratio at 56px height */
+    max-height: 56px;
+    width: 52px;
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 
     img {
         height: 100%;
@@ -446,7 +463,9 @@ hr {
 }
 
 .unit-data-container {
+    flex: 1 1 auto;
     width: 100%;
+    min-width: 0;
 }
 
 @container (max-width: 399px) {

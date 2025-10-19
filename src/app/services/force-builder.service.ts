@@ -218,19 +218,15 @@ export class ForceBuilderService {
     
     private updateUrlOnForceChange() {
         effect(() => {
-            const units = this.forceUnits();
-            const forceName = this.force.name;
-
+            const queryParameters = this.queryParameters();
             if (!this.urlStateInitialized) {
                 return;
             }
-
-            const unitParams = this.generateUnitParams(units);
             this.router.navigate([], {
                 relativeTo: this.route,
                 queryParams: {
-                    units: unitParams.length > 0 ? unitParams.join(',') : null,
-                    name: forceName || null,
+                    units: queryParameters.units,
+                    name: queryParameters.name,
                     instance: this.force.instanceId() || null
                 },
                 queryParamsHandling: 'merge',
@@ -238,6 +234,17 @@ export class ForceBuilderService {
             });
         });
     }
+    
+    queryParameters = computed(() => {
+        const units = this.forceUnits();
+        const forceName = this.force.name;
+        const unitParams = this.generateUnitParams(units);
+        return {
+            units: unitParams.length > 0 ? unitParams.join(',') : null,
+            name: forceName || null,
+            instance: this.force.instanceId() || null
+        };
+    });
 
     private generateUnitParams(units: ForceUnit[]): string[] {
         return units.map(fu => {
@@ -281,7 +288,7 @@ export class ForceBuilderService {
                     loadedInstance = await this.dataService.getForce(instanceParam);
                     if (loadedInstance) {
                             if (!loadedInstance.owned()) {
-                                this.dialogsService.showNotice('Intel indicates another commander owns this force. Clone to adopt it for yourself.', 'Captured Intel');
+                                this.dialogsService.showNotice('Reports indicate another commander owns this force. Clone to adopt it for yourself.', 'Captured Intel');
                             }
                             this.setForce(loadedInstance);
                             this.selectUnit(loadedInstance.units()[0] || null);

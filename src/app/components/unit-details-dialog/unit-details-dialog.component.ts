@@ -994,31 +994,14 @@ export class UnitDetailsDialogComponent {
                 url: shareUrl
             }).catch(() => {
                 // fallback if user cancels or error
-                this.copyToClipboard(shareText);
+                navigator.clipboard.writeText(shareText);
             });
         } else {
-            this.copyToClipboard(shareText);
+            navigator.clipboard.writeText(shareText);
             this.toastService.show('Unit link copied to clipboard.', 'success');
         }
     }
-
-    copyToClipboard(text: string) {
-        if (navigator.clipboard) {
-            navigator.clipboard.writeText(text);
-        } else {
-            // fallback for older browsers
-            const textarea = document.createElement('textarea');
-            try {
-                textarea.value = text;
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand('copy');
-            } finally {
-                document.body.removeChild(textarea);
-            }
-        }
-    }
-
+    
     getQuirkClass(quirk: string): string {
         const q = this.dataService.getQuirkByName(quirk);
         if (!q) return '';

@@ -1,18 +1,22 @@
 :host {
-    display: block;
-    width: 310px;
+    display: flex;
+    flex-direction: column;
+    width: 330px;
+    min-width: 330px;
     flex-shrink: 0;
     background-color: var(--background-color-menu);
     padding: 10px;
     border-right: 1px solid var(--border-color);
     box-shadow: 2px 0 8px 0 rgba(0,0,0,0.04);
-    overflow: hidden;
+    height: 100%;
+    box-sizing: border-box;
 }
 
 .force-viewer-container {
     display: flex;
     flex-direction: column;
     height: 100%;
+    gap: 8px;
 }
 
 .logo {
@@ -23,7 +27,7 @@
 }
 
 .scrollable-content {
-    flex-grow: 1;
+    flex: 1 1 auto;
     overflow-y: auto;
     min-height: 0;
 }
@@ -32,7 +36,6 @@
     font-size: 0.9em;
     font-weight: bold;
     text-align: center;
-    padding-bottom: 10px;
     color: var(--text-color);
     cursor: pointer;
     transition: color 0.3s ease;
@@ -45,7 +48,7 @@
 .force-units-list {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 4px;
 }
 
 .force-unit-item {
@@ -141,13 +144,25 @@
     color: var(--text-color);
 }
 
+.header,
+.footer {
+    flex: 0 0 auto;
+}
+
 .footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  position: relative; 
-  overflow: visible;
   gap: 4px;
+  flex-shrink: 0;
+}
+
+.force-view {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .btn-clone {
@@ -182,10 +197,6 @@
     font-weight: bold;
     font-size: 1.1em;
     color: var(--text-color);
-}
-
-.header {
-    margin-bottom: 10px;
 }
 
 .cdk-drag-preview {

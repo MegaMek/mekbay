@@ -58,7 +58,6 @@ import { UpdateButtonComponent } from './components/update-button/update-button.
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
-import { Router } from '@angular/router';
 
 
 /*
