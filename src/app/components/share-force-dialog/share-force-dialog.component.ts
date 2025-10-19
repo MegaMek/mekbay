@@ -53,13 +53,13 @@ import html2canvas from 'html2canvas';
     <div class="content">
         <h2 dialog-title>{{ forceBuilderService.force.name }}</h2>
         <div dialog-content class="content">
-            <label class="description">Instance: this link will share the current live instance, sharing damage and statuses</label>
+            <label class="description">Live battle record: share the current deployment as a read‑only field report — includes damage, heat, and status effects.</label>
             <div class="row">
                 <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="shareUrl"/>
                 <button class="bt-button" (click)="share(shareUrl)">SHARE</button>
             </div>
 
-            <label class="description">Clean force: this is a copy of your force, without any damage or status information</label>
+            <label class="description">Clean roster: share a pristine copy of the force — no damage, heat, pilot wounds, or status conditions.</label>
             <div class="row">
                 <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="cleanUrl"/>
                 <button class="bt-button" (click)="share(cleanUrl)">SHARE</button>
