@@ -224,7 +224,7 @@ export class ShareForceDialogComponent {
             useCORS: true,
             backgroundColor: '#292929',
             height: totalHeight + 96,
-            removeContainer: false,
+            removeContainer: true,
             onclone: (clonedDoc: Document) => {
                 clonedDoc.querySelectorAll('.popup-btn').forEach(el => { el.parentElement?.remove(); });
                 removeElements.forEach(selector => {
