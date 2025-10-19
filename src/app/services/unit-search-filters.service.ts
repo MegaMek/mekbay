@@ -650,7 +650,8 @@ export class UnitSearchFiltersService {
         const sortKey = this.selectedSort();
         const sortDirection = this.selectedSortDirection();
 
-        results.sort((a: Unit, b: Unit) => {
+        const sorted = [...results];
+        sorted.sort((a: Unit, b: Unit) => {
             let comparison = 0;
             if (sortKey === 'name') {
                 comparison = (a.chassis || '').localeCompare(b.chassis || '');
@@ -684,7 +685,7 @@ export class UnitSearchFiltersService {
             return comparison;
         });
 
-        return results;
+        return sorted;
     });
 
     // Advanced filter options
