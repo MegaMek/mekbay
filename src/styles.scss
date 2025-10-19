@@ -374,6 +374,7 @@ hr {
     gap: 4px;
     padding: 8px;
     padding-left: 4px;
+    box-sizing: border-box;
 
     .primary-info {
         container-type: inline-size;

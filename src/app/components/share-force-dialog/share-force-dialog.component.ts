@@ -240,7 +240,7 @@ export class ShareForceDialogComponent {
                     .force-viewer-container { height: auto !important; }
                     .force-view { force-grow: 0 !important; min-height: initial !important; height: 0 !important; }
                     .force-units-list, .unit-card { width: 100% !important; }
-                    .scrollable-content { flex-grow: 0; overflow: visible !important; min-height: initial !important; }
+                    .scrollable-content { flex-grow: 0; overflow: visible !important; min-height: initial !important; width: 100% !important; }
                     .footer { justify-content: center !important; height: 32px !important; }
                 `;
                 clonedDoc.documentElement.appendChild(styleEl);
