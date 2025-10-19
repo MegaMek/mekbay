@@ -224,7 +224,8 @@ export class ShareForceDialogComponent {
             useCORS: true,
             backgroundColor: '#292929',
             height: totalHeight + 96,
-            removeContainer: true,
+            windowHeight: (totalHeight + 96) * 2,
+            removeContainer: false,
             onclone: (clonedDoc: Document) => {
                 clonedDoc.querySelectorAll('.popup-btn').forEach(el => { el.parentElement?.remove(); });
                 removeElements.forEach(selector => {
@@ -233,10 +234,12 @@ export class ShareForceDialogComponent {
                 });
                 const styleEl = clonedDoc.createElement('style');
                 styleEl.textContent = `
+                    body * { block-size: initial !important; }
                     .force-name { height: 32px !important; min-height: 32px !important; }
                     .primary-info, .secondary-info, .third-info { width: auto !important; }
                     .force-viewer-container { height: auto !important; }
                     .force-view { force-grow: 0 !important; min-height: initial !important; height: 0 !important; }
+                    .force-units-list, .unit-card { width: 100% !important; }
                     .scrollable-content { flex-grow: 0; overflow: visible !important; min-height: initial !important; }
                     .footer { justify-content: center !important; height: 32px !important; }
                 `;
