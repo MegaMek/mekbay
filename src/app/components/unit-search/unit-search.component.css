@@ -189,6 +189,7 @@
     cursor: pointer;
     flex-direction: row;
     overflow-x: hidden;
+    padding-right: 8px;
     gap: 4px;
     align-items: center;
     transition: background-color 0.2s;
