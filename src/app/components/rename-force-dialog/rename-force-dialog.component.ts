@@ -77,6 +77,7 @@ export interface RenameForceDialogData {
         </div>
         <div dialog-actions>
             <button (click)="submit()" class="bt-button">CONFIRM</button>
+            <button (click)="submitEmpty()" class="bt-button">UNSET</button>
             <button (click)="close()" class="bt-button">DISMISS</button>
         </div>
     </div>
@@ -220,6 +221,10 @@ export class RenameForceDialogComponent {
     submit() {
         const value = this.inputRef().nativeElement.textContent?.trim() || '';
         this.dialogRef.close(value);
+    }
+
+    submitEmpty() {
+        this.dialogRef.close('');
     }
 
     fillRandomName() {
