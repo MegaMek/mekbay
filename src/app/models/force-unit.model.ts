@@ -424,6 +424,10 @@ export class ForceUnit {
     public disabledSaving: boolean = false;
 
     readOnly = computed(() => this.force.owned() === false);
+    alias = computed<string | undefined>(() => {
+        const pilot = this.getCrewMember(0);
+        return pilot?.getName() ?? undefined;
+    });
 
     constructor(unit: Unit,
         force: Force,
@@ -761,11 +765,10 @@ export class ForceUnit {
         if (this.hasDirectInventory()) {
             // stateObj.inventory = [];
         }
-        const pilot = this.getCrewMember(0);
         const data = {
             id: this.id,
             state: stateObj,
-            alias: pilot?.getName(),
+            alias: this.alias(),
             unit: this.getUnit().name // Serialize only the name
         };
         return data;
