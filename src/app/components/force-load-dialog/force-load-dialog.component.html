@@ -17,7 +17,7 @@
                         <span class="force-timestamp"><img
                                 [src]="force.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'"
                                 class="cloud-icon" alt="Cloud status"
-                                title="{{ force.cloud ? 'Stored online' : 'Stored locally' }}" /> {{ formatTimestamp(force) }}</span>
+                                title="{{ force.cloud ? 'Stored online' : 'Stored locally' }}" /> {{ force.timestamp | formatTimestamp }}</span>
                         @if (force.bv > 0) {
                             <span class="force-bv">BV: {{ force.bv | number }}</span>
                         }

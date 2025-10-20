@@ -56,11 +56,24 @@ export class CleanModelStringPipe implements PipeTransform {
     }
 }
 
+@Pipe({
+    name: 'formatTimestamp',
+    pure: true // Pure pipes are only called when the input changes
+})
+export class FormatTimestamp implements PipeTransform {
+    transform(timestamp: string | undefined): string {
+        if (!timestamp) return '';
+        const date = new Date(timestamp);
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+}
+
 @Component({
     selector: 'force-load-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe],
+    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp],
     templateUrl: './force-load-dialog.component.html',
     styleUrls: ['./force-load-dialog.component.css']
 })
@@ -83,14 +96,6 @@ export class ForceLoadDialogComponent {
             this.loading.set(false);
             this.cdr.detectChanges();
         });
-    }
-
-    formatTimestamp(force: LoadForceEntry): string {
-        const ts = force.timestamp ?? '';
-        if (!ts) return '';
-        const date = new Date(ts);
-        const pad = (n: number) => n.toString().padStart(2, '0');
-        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
     }
 
     selectForce(force: LoadForceEntry) {
