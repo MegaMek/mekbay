@@ -621,6 +621,14 @@ export class ForceBuilderService {
         return false;
     }
 
+    public addGroup() {
+        const newGroup = this.force.addGroup();
+    }
+
+    public removeGroup(group: UnitGroup) {
+        this.force.removeGroup(group);
+    }
+
     /**
      * Handles remote updates to the force from the database.
      * This method is called when the WebSocket receives a message

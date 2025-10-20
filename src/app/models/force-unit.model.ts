@@ -191,9 +191,9 @@ export class Force {
         return newGroup;
     }
 
-    public removeGroup(groupId: string) {
+    public removeGroup(group: UnitGroup) {
         const groups = [...this.groups()];
-        const idx = groups.findIndex(g => g.id === groupId);
+        const idx = groups.findIndex(g => g.id === group.id);
         if (idx === -1) return;
         const removed = groups.splice(idx, 1)[0];
         // Move removed units into previous group or create default
@@ -263,7 +263,7 @@ export class Force {
             this.instanceId.set(instanceId);
         }
         // Serialize groups (preserve per-group structure)
-        const serializedGroups: SerializedGroup[] = this.groups().map(g => ({
+        const serializedGroups: SerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => ({
             id: g.id,
             name: g.name(),
             nameLock: g.nameLock,

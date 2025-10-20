@@ -94,7 +94,7 @@
 .group-container {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
 }
 
 .group-units {
@@ -109,12 +109,6 @@
     }
 }
 
-.group-container:not(:has(unit-block)) .group-units {
-    min-height: 75px;
-    align-items: center;
-    justify-content: center;
-}
-
 .force-units-list.single-group .group-container:first-child {
     border: none;
     padding: 0;
@@ -126,7 +120,26 @@
     align-items: center;
     justify-content: center;
     color: var(--text-color-secondary);
-    font-size: 0.9em;
+    font-size: 0.8em;
+}
+
+.group-container:not(:has(unit-block)) .group-units {
+    min-height: 75px;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--border-color);
+}
+
+.empty-group-placeholder {
+    text-align: center;
+    color: var(--background-highlight);
+    font-size: 0.8em;
+    transition: color 0.3s;
+    cursor: pointer;
+}
+.empty-group-placeholder:hover,
+.cdk-drop-list-receiving .empty-group-placeholder {
+    color: var(--text-color-secondary);
 }
 
 .new-group-dropzone.visible:not(:has(unit-block)) {
@@ -145,7 +158,9 @@
     opacity: 1;
 }
 
+
 .new-group-dropzone:not(:has(unit-block)) .group-name,
+.group-units:has(unit-block) .empty-group-placeholder,
 .new-group-dropzone:has(unit-block) .new-group-placeholder {
     display: none;
 }

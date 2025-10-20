@@ -19,6 +19,7 @@
                             <span class="group-bv">BV: {{ group.totalBV() | number }}</span>
                         </div> 
                     </div>
+                    @let units = forceBuilderService.force.groups()[gi].units();
                     <div class="group-units" cdkDropList 
                         [class.compact-mode]="compactMode()"
                         id="group-{{ forceBuilderService.force.groups()[gi].id }}"
@@ -27,7 +28,13 @@
                         [cdkDropListConnectedTo]="connectedDropLists()"
                         [cdkDropListDisabled]="compactMode() || forceBuilderService.readOnlyForce()"
                         (cdkDropListDropped)="drop($event)"> 
-                        @for (unit of forceBuilderService.force.groups()[gi].units(); let i = $index; track i) {
+                        @if (units.length === 0) {
+                        <div class="empty-group-placeholder"
+                        (click)="onEmptyGroupClick(group)">
+                            No units in this group.<br/>Drop units here to add them or click to remove it.
+                        </div>
+                        }
+                        @for (unit of units; let i = $index; track i) {
                             <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item"
                                 (click)="selectUnit(unit)" tabindex="0"
                                 (keydown)="onUnitKeydown($event, i)" cdkDrag [cdkDragDisabled]="forceBuilderService.readOnlyForce()"
@@ -44,16 +51,21 @@
                     </div>
                 </div>
                 }
-                <div class="group-container new-group-dropzone" cdkDropList
-                    id="new-group-dropzone"
-                    [cdkDropListConnectedTo]="connectedDropLists()"
-                    [cdkDropListData]="[]"
-                    [class.visible]="isUnitDragging()"
-                    [cdkDropListDisabled]="forceBuilderService.readOnlyForce()"
-                    (cdkDropListDropped)="dropForNewGroup($event)">
-                    <div class="group-name">New Group</div>
-                    <div class="new-group-placeholder">Drop units here to form a new group</div>
-                </div>
+                @if (!compactMode() && !forceBuilderService.readOnlyForce() && !isUnitDragging()) {
+                    <button class="bt-button btn-add-group" (click)="forceBuilderService.addGroup()">+ Add Group</button>
+                }
+                @if (!hasEmptyGroups()) {
+                    <div class="group-container new-group-dropzone" cdkDropList
+                        id="new-group-dropzone"
+                        [cdkDropListConnectedTo]="connectedDropLists()"
+                        [cdkDropListData]="[]"
+                        [class.visible]="isUnitDragging()"
+                        [cdkDropListDisabled]="forceBuilderService.readOnlyForce()"
+                        (cdkDropListDropped)="dropForNewGroup($event)">
+                        <div class="group-name">New Group</div>
+                        <div class="new-group-placeholder">Drop units here to form a new group</div>
+                    </div>
+                }
             </div>
         </div>
         <div class="footer">

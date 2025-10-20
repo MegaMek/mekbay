@@ -80,6 +80,10 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         return !this.compactMode() ? 'y' : null;
     });
 
+    hasEmptyGroups = computed(() => {
+        return this.forceBuilderService.force.groups().some(g => g.units().length === 0);
+    });
+
     // --- Gesture State ---
     private isDragging = false;
     private startX = 0;
@@ -665,5 +669,12 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     toggleCompactMode() {
         this.compactMode.set(!this.compactMode());
+    }
+
+    onEmptyGroupClick(group: UnitGroup) {
+        if (this.forceBuilderService.readOnlyForce()) return;
+        if (group.units().length === 0) {
+            this.forceBuilderService.removeGroup(group);
+        }
     }
 }
