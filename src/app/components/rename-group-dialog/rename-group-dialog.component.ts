@@ -55,14 +55,14 @@ export interface RenameGroupDialogData {
         <div dialog-content>
             <p>Group Name</p>
             <div class="input-wrapper">
-                <input
+                <div 
+                    class="input"
+                    contentEditable="true"
                     #inputRef
-                    type="text"
-                    [placeholder]="data.group.name()"
-                    [value]="data.group.name()"
+                    [textContent]="data.group.name()"
                     (keydown.enter)="submit()"
                     required
-                />
+                ></div>
                 <button
                     type="button"
                     class="random-button"
@@ -108,7 +108,7 @@ export interface RenameGroupDialogData {
             margin-bottom: 8px;
         }
 
-        [dialog-content] input {
+        [dialog-content] .input {
             width: calc(90vw - 32px);
             max-width: 500px;
             margin-bottom: 16px;
@@ -123,7 +123,7 @@ export interface RenameGroupDialogData {
             padding-left: 32px;
         }
 
-        [dialog-content] input:focus {
+        [dialog-content] .input:focus {
             border-bottom: 1px solid #fff;
             outline: none;
         }
@@ -206,7 +206,7 @@ export interface RenameGroupDialogData {
 })
 
 export class RenameGroupDialogComponent {
-    inputRef = viewChild.required<ElementRef<HTMLInputElement>>('inputRef');
+    inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
     public dialogRef: DialogRef<string | number | null, RenameGroupDialogComponent> = inject(DialogRef);
     readonly data: RenameGroupDialogData = inject(DIALOG_DATA);
     private forceBuilder = inject(ForceBuilderService);
@@ -215,7 +215,7 @@ export class RenameGroupDialogComponent {
     constructor() {}
 
     submit() {
-        const value = this.inputRef().nativeElement.value;
+        const value = this.inputRef().nativeElement.textContent?.trim() || '';
         this.dialogRef.close(value);
     }
 
@@ -223,9 +223,13 @@ export class RenameGroupDialogComponent {
         const randomName = this.forceBuilder.generateGroupName(this.data.group);
         const nativeEl = this.inputRef().nativeElement;
         if (!nativeEl) return;
-        nativeEl.value = randomName;
+        nativeEl.textContent = randomName;
         nativeEl.focus();
-        nativeEl.select();
+        const range = document.createRange();
+        range.selectNodeContents(nativeEl);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
     }
 
     private computeFormationsText(): string[] | null {

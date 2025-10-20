@@ -55,14 +55,14 @@ export interface RenameForceDialogData {
         <div dialog-content>
             <p>Force Name</p>
             <div class="input-wrapper">
-                <input
+                <div 
+                    class="input"
+                    contentEditable="true"
                     #inputRef
-                    type="text"
-                    [placeholder]="data.force.name"
-                    [value]="data.force.name"
+                    [textContent]="data.force.name"
                     (keydown.enter)="submit()"
                     required
-                />
+                ></div>
                 <button
                     type="button"
                     class="random-button"
@@ -108,7 +108,7 @@ export interface RenameForceDialogData {
             margin-bottom: 8px;
         }
 
-        [dialog-content] input {
+        [dialog-content] .input {
             width: calc(90vw - 32px);
             max-width: 500px;
             margin-bottom: 16px;
@@ -121,9 +121,12 @@ export interface RenameForceDialogData {
             outline: none;
             transition: all 0.2s ease-in-out;
             padding-left: 32px;
+            white-space: normal;
+            overflow-wrap: break-word;
+            word-break: break-word;
         }
 
-        [dialog-content] input:focus {
+        [dialog-content] .input:focus {
             border-bottom: 1px solid #fff;
             outline: none;
         }
@@ -206,7 +209,7 @@ export interface RenameForceDialogData {
 })
 
 export class RenameForceDialogComponent {
-    inputRef = viewChild.required<ElementRef<HTMLInputElement>>('inputRef');
+    inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
     public dialogRef: DialogRef<string | number | null, RenameForceDialogComponent> = inject(DialogRef);
     readonly data: RenameForceDialogData = inject(DIALOG_DATA);
     private forceBuilder = inject(ForceBuilderService);
@@ -215,7 +218,7 @@ export class RenameForceDialogComponent {
     constructor() {}
 
     submit() {
-        const value = this.inputRef().nativeElement.value;
+        const value = this.inputRef().nativeElement.textContent?.trim() || '';
         this.dialogRef.close(value);
     }
 
@@ -223,9 +226,13 @@ export class RenameForceDialogComponent {
         const randomName = this.forceBuilder.generateForceName();
         const nativeEl = this.inputRef().nativeElement;
         if (!nativeEl) return;
-        nativeEl.value = randomName;
+        nativeEl.textContent = randomName;
         nativeEl.focus();
-        nativeEl.select();
+        const range = document.createRange();
+        range.selectNodeContents(nativeEl);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
     }
 
     private computeFactionsText(): string[] | null {
