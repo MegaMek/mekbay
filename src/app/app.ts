@@ -281,10 +281,6 @@ export class App {
                 }
                 break;
             }
-            case 'rename': {
-                this.forceBuilderService.promptChangeForceName();
-                break;
-            }
             case 'repairAll': {
                 if (await this.forceBuilderService.repairAllUnits()) {
                     this.toastService.show(`Repaired all units.`, 'info');

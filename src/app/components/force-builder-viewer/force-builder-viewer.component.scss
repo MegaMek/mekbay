@@ -214,7 +214,7 @@
                 0 3px 14px 2px rgba(0, 0, 0, 0.12);
 }
 
-.cdk-drag-placeholder {
+.cdk-drag-placeholder ::ng-deep .unit-card {
     opacity: 0.3;
     border: 1px dashed #aaa;
     border-left-width: 5px;
