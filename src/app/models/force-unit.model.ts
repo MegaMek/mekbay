@@ -761,9 +761,11 @@ export class ForceUnit {
         if (this.hasDirectInventory()) {
             // stateObj.inventory = [];
         }
+        const pilot = this.getCrewMember(0);
         const data = {
             id: this.id,
             state: stateObj,
+            alias: pilot?.getName(),
             unit: this.getUnit().name // Serialize only the name
         };
         return data;
