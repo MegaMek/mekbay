@@ -6,7 +6,7 @@
             No saved forces found.
         </div>
         <div *ngIf="!loading() && forces().length > 0" class="force-list">
-            @for (force of forces(); let i = $index; track force.instanceId()) {
+            @for (force of forces(); let i = $index; track force.instanceId) {
                 <div
                     class="force-entry"
                     [class.selected]="selectedForce() === force"
@@ -21,17 +21,26 @@
                     alt="Cloud status"
                     title="{{ force.cloud ? 'Stored online' : 'Stored locally' }}"
                 /> {{ formatTimestamp(force) }}</span>
-                            <span class="force-bv">BV: {{ getTotalBV(force) | number }}</span>
+                            <span class="force-bv">BV: {{ force.bv | number }}</span>
                         </div>
                     </div>
                     <div class="unit-scroll">
-                        @for (group of force.groups(); let gi = $index; track group.id) {
+                        @for (group of force.groups; let gi = $index; track gi) {
                             <div class="unit-group">
-
-                                <div class="group-name">{{ group.name() }}</div>
+                                <div class="group-name">{{ group.name }}</div>
                                 <div class="units">
-                                    @for (unit of group.units(); let i = $index; track i) {
-                                        <unit-block [forceUnit]="unit" [compactMode]="true"></unit-block>
+                                    @for (unitEntry of group.units; let i = $index; track i) {
+                                        <div class="unit-square compact-mode" 
+                                            [class.destroyed]="unitEntry.destroyed">
+                                            <img 
+                                                src="{{ unitEntry?.unit?.icon ? `https://db.mekbay.com/images/units/${unitEntry?.unit?.icon}` : '/images/unknown.png' }}" 
+                                                (error)="$event.target.src = '/images/unknown.png'" 
+                                                class="unit-icon" 
+                                                alt="{{ unitEntry.unit?.chassis }} {{ unitEntry.unit?.model }}" 
+                                                title="{{ unitEntry.unit?.chassis }} {{ unitEntry.unit?.model }}" />
+                                            <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
+                                            <div class="unit-chassis">{{ unitEntry.unit?.chassis }}</div>
+                                        </div>
                                     }
                                 </div>
                             </div>

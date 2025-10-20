@@ -42,9 +42,10 @@ import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, IAmmo, IEquipment, IWeapon, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { Quirk, Quirks } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
-import { Force, ForceUnit } from '../models/force-unit.model';
+import { Force, ForceUnit, SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-unit.model';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { UserStateService } from './userState.service';
+import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 
 /*
  * Author: Drake
@@ -729,13 +730,13 @@ export class DataService {
         this.saveForceCloud(force);
     }
 
-    public async listForces(): Promise<Force[]> {
+    public async listForces(): Promise<LoadForceEntry[]> {
         console.log(`Retrieving local forces...`);
         const localForces = await this.dbService.listForces(this, this.unitInitializer, this.injector);
         console.log(`Retrieving cloud forces...`);
         const cloudForces = await this.listForcesCloud();
         console.log(`Found ${localForces.length} local forces and ${cloudForces.length} cloud forces.`);
-        const forceMap = new Map<string, Force>();
+        const forceMap = new Map<string, LoadForceEntry>();
         const getTimestamp = (f: any) => {
             if (f && typeof f.timestamp === 'number') return f.timestamp;
             if (f && f.timestamp) return new Date(f.timestamp).getTime();
@@ -743,17 +744,15 @@ export class DataService {
         };
         for (const force of localForces) {
             if (!force) continue;
-            const instanceId = force.instanceId();
-            if (!instanceId) continue;
-            forceMap.set(instanceId, force);
+            if (!force.instanceId) continue;
+            forceMap.set(force.instanceId, force);
         }
         for (const cloudForce of cloudForces) {
             if (!cloudForce) continue;
-            const instanceId = cloudForce.instanceId();
-            if (!instanceId) continue;
-            const localForce = forceMap.get(instanceId);
+            if (!cloudForce.instanceId) continue;
+            const localForce = forceMap.get(cloudForce.instanceId);
             if (!localForce || getTimestamp(cloudForce) >= getTimestamp(localForce)) {
-                forceMap.set(instanceId, cloudForce);
+                forceMap.set(cloudForce.instanceId, cloudForce);
             }
         }
         const mergedForces = Array.from(forceMap.values()).sort((a, b) => getTimestamp(b) - getTimestamp(a));
@@ -797,10 +796,10 @@ export class DataService {
         }
     }
 
-    private async listForcesCloud(): Promise<Force[]> {
+    private async listForcesCloud(): Promise<LoadForceEntry[]> {
         const ws = await this.canUseCloud();
         if (!ws) return [];
-        const forces: Force[] = [];
+        const forces: LoadForceEntry[] = [];
         const uuid = this.userStateService.uuid();
         const payload = {
             action: 'listForces',
@@ -808,13 +807,52 @@ export class DataService {
         };
         const response = await this.wsService.sendAndWaitForResponse(payload);
         if (response && Array.isArray(response.data)) {
-            for (const rawForce of response.data) {
+            for (const raw of response.data as SerializedForce[]) {
                 try {
-                    const force = Force.deserialize(rawForce, this, this.unitInitializer, this.injector);
-                    force.cloud = true; // Mark as cloud force
-                    forces.push(force);
+                    const groups: LoadForceGroup[] = [];
+                    if (raw.groups && Array.isArray(raw.groups)) {
+                        for (const group of raw.groups as SerializedGroup[]) {
+                            const loadGroup: LoadForceGroup = {
+                                name: group.name,
+                                units: []
+                            };
+                            for (const unit of group.units as SerializedUnit[]) {
+                                const loadUnit: LoadForceUnit = {
+                                    unit: this.getUnitByName(unit.unit),
+                                    alias: unit.alias,
+                                    destroyed: unit.state.destroyed ?? false
+                                };
+                                loadGroup.units.push(loadUnit);
+                            }
+                            groups.push(loadGroup);
+                        }
+                    } else if (raw.units && Array.isArray(raw.units)) {
+                        const loadUnits: LoadForceUnit[] = [];
+                        for (const unit of raw.units as SerializedUnit[]) {
+                            const loadUnit: LoadForceUnit = {
+                                unit: this.getUnitByName(unit.unit),
+                                alias: unit.alias,
+                                destroyed: unit.state.destroyed ?? false
+                            }
+                            loadUnits.push(loadUnit);
+                        };
+                        groups.push({
+                            name: '',
+                            units: loadUnits
+                        });
+                    }
+                    const entry: LoadForceEntry = {
+                        cloud: true,
+                        instanceId: raw.instanceId,
+                        name: raw.name,
+                        type: raw.type,
+                        bv: raw.bv || 0,
+                        timestamp: raw.timestamp, 
+                        groups: groups
+                    };
+                    forces.push(entry);
                 } catch (error) {
-                    console.error('Failed to deserialize force:', error, rawForce);
+                    console.error('Failed to deserialize force:', error, raw);
                 }
             }
         }

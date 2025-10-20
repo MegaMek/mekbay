@@ -36,18 +36,31 @@ import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
-import { Force, ForceUnit } from '../../models/force-unit.model';
 import { DialogsService } from '../../services/dialogs.service';
-import { UnitBlockComponent } from '../unit-block/unit-block.component';
+import { Pipe, PipeTransform } from "@angular/core";
+import { LoadForceEntry } from '../../models/load-force-entry.model';
 
 /*
  * Author: Drake
  */
+
+        
+@Pipe({
+    name: 'cleanModelString',
+    pure: true // Pure pipes are only called when the input changes
+})
+export class CleanModelStringPipe implements PipeTransform {
+    transform(model: string | undefined): string {
+        if (!model) return '';
+        return model.replace(/\s*\(.*?\)\s*/g, '').trim();
+    }
+}
+
 @Component({
     selector: 'force-load-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, UnitBlockComponent],
+    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe],
     templateUrl: './force-load-dialog.component.html',
     styleUrls: ['./force-load-dialog.component.css']
 })
@@ -56,10 +69,10 @@ export class ForceLoadDialogComponent {
     dataService = inject(DataService);
     cdr = inject(ChangeDetectorRef);
     dialogsService = inject(DialogsService);
-    @Output() load = new EventEmitter<Force>();
+    @Output() load = new EventEmitter<LoadForceEntry>();
 
-    forces = signal<Force[]>([]);
-    selectedForce = signal<Force | null>(null);
+    forces = signal<LoadForceEntry[]>([]);
+    selectedForce = signal<LoadForceEntry | null>(null);
     loading = signal<boolean>(true);
 
     constructor() {
@@ -72,7 +85,7 @@ export class ForceLoadDialogComponent {
         });
     }
 
-    formatTimestamp(force: Force): string {
+    formatTimestamp(force: LoadForceEntry): string {
         const ts = force.timestamp ?? '';
         if (!ts) return '';
         const date = new Date(ts);
@@ -80,12 +93,8 @@ export class ForceLoadDialogComponent {
         return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
     }
 
-    selectForce(force: Force) {
+    selectForce(force: LoadForceEntry) {
         this.selectedForce.set(force);
-    }
-
-    getTotalBV(force: Force): number {
-        return force.units().reduce((sum, unit) => sum + (unit.getBv() ?? 0), 0);
     }
 
     onLoad() {
@@ -97,8 +106,7 @@ export class ForceLoadDialogComponent {
     async onDelete() {
         const force = this.selectedForce();
         if (!force) return;
-        const forceInstanceId = force.instanceId();
-        if (!forceInstanceId) return;
+        if (!force.instanceId) return;
 
         const confirmed = await this.dialogsService.showQuestion(
             `Are you sure you want to delete "${force.name}"? This action cannot be undone.`,
@@ -106,8 +114,8 @@ export class ForceLoadDialogComponent {
             'danger'
         );
         if (confirmed === 'yes') {
-            if (forceInstanceId) {
-                await this.dataService.deleteForce(forceInstanceId);
+            if (force.instanceId) {
+                await this.dataService.deleteForce(force.instanceId);
             }
             this.forces.set(this.forces().filter(f => f !== force));
             this.selectedForce.set(null);

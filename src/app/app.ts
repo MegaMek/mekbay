@@ -297,8 +297,13 @@ export class App {
             }
             case 'load': {
                 const ref = this.dialog.open(ForceLoadDialogComponent);
-                ref.componentInstance?.load.subscribe(force => {
-                    this.forceBuilderService.loadForce(force);
+                ref.componentInstance?.load.subscribe(async (force) => {
+                    const requestedForce = await this.dataService.getForce(force.instanceId);
+                    if (!requestedForce) {
+                        this.toastService.show('Failed to load force.', 'error');
+                        return;
+                    }
+                    this.forceBuilderService.loadForce(requestedForce);
                     ref.close();
                 });
                 break;

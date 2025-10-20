@@ -60,7 +60,7 @@
                 } @else {
                 <!-- Compact View Template -->
                 <div class="unit-image-container">
-                    <img class="icon" [src]="`https://db.mekbay.com/images/units/${unit.icon}`" (error)="$event.target.src = '/images/unknown.png'"
+                    <img class="icon" src="{{ unit.icon ? `https://db.mekbay.com/images/units/${unit.icon}` : '/images/unknown.png' }}" (error)="$event.target.src = '/images/unknown.png'"
                         alt="{{ unit.chassis }} {{ unit.model }}" />
                 </div>
                 <div class="unit-data-container">
@@ -281,7 +281,7 @@
         <!-- Header Section -->
         <div class="expanded-header">
             <div class="expanded-image">
-                <img class="icon" [src]="`https://db.mekbay.com/images/units/${unit.icon}`" (error)="$event.target.src = '/images/unknown.png'"
+                <img class="icon" src="{{ unit.icon ? `https://db.mekbay.com/images/units/${unit.icon}` : '/images/unknown.png' }}" (error)="$event.target.src = '/images/unknown.png'"
                     alt="{{ unit.chassis }} {{ unit.model }}" />
             </div>
             <div class="expanded-title">

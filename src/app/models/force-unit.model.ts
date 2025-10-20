@@ -54,8 +54,10 @@ export interface SerializedForce {
     version: number;
     timestamp: string;
     instanceId: string;
+    type?: 'cbt' | 'as';
     name: string;
     nameLock?: boolean;
+    bv?: number;
     owned?: boolean;
     groups?: SerializedGroup[];
     units?: SerializedUnit[]; // Deprecated, use groups instead
@@ -72,6 +74,9 @@ export interface SerializedGroup {
 export interface SerializedUnit {
     id: string;
     unit: string; // Unit name
+    model?: string;
+    chassis?: string;
+    alias?: string;
     state: SerializedState; // Serialized ForceUnitState object
 }
 

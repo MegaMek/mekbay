@@ -38,11 +38,12 @@ import { Factions } from '../models/factions.model';
 import { Options } from '../models/options.model';
 import { Quirks } from '../models/quirks.model';
 import { EquipmentData } from '../models/equipment.model';
-import { Force, SerializedForce } from '../models/force-unit.model';
+import { Force, SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-unit.model';
 import { DataService } from './data.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { Injector } from '@angular/core';
 import { DialogsService } from './dialogs.service';
+import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 
 
 /*
@@ -299,9 +300,9 @@ export class DbService {
     /**
      * Retrieves all forces from IndexedDB, sorted by timestamp descending.
      */
-    public async listForces(dataService: DataService, unitInitializer: UnitInitializerService, injector: Injector): Promise<Force[]> {
+    public async listForces(dataService: DataService, unitInitializer: UnitInitializerService, injector: Injector): Promise<LoadForceEntry[]> {
         const db = await this.dbPromise;
-        return new Promise<Force[]>((resolve, reject) => {
+        return new Promise<LoadForceEntry[]>((resolve, reject) => {
             const transaction = db.transaction(FORCE_STORE, 'readonly');
             const store = transaction.objectStore(FORCE_STORE);
             // Use index if available, otherwise iterate and sort manually
@@ -326,7 +327,51 @@ export class DbService {
                     }
                     // Deserialize each force
                     try {
-                        const result = forces.map(raw => Force.deserialize(raw, dataService, unitInitializer, injector));
+                        const result: LoadForceEntry[] = [];
+                        for (const raw of forces) {
+                            const groups: LoadForceGroup[] = [];
+                            if (raw.groups && Array.isArray(raw.groups)) {
+                                for (const group of raw.groups as SerializedGroup[]) {
+                                    const loadGroup: LoadForceGroup = {
+                                        name: group.name,
+                                        units: []
+                                    };
+                                    for (const unit of group.units as SerializedUnit[]) {
+                                        const loadUnit: LoadForceUnit = {
+                                            unit: dataService.getUnitByName(unit.unit),
+                                            alias: unit.alias,
+                                            destroyed: unit.state.destroyed ?? false
+                                        };
+                                        loadGroup.units.push(loadUnit);
+                                    }
+                                    groups.push(loadGroup);
+                                }
+                            } else if (raw.units && Array.isArray(raw.units)) {
+                                const loadUnits: LoadForceUnit[] = [];
+                                for (const unit of raw.units as SerializedUnit[]) {
+                                    const loadUnit: LoadForceUnit = {
+                                        unit: dataService.getUnitByName(unit.unit),
+                                        alias: unit.alias,
+                                        destroyed: unit.state.destroyed ?? false
+                                    }
+                                    loadUnits.push(loadUnit);
+                                };
+                                groups.push({
+                                    name: '',
+                                    units: loadUnits
+                                });
+                            }
+                            const entry: LoadForceEntry = {
+                                cloud: false,
+                                instanceId: raw.instanceId,
+                                name: raw.name,
+                                type: raw.type,
+                                bv: raw.bv,
+                                timestamp: raw.timestamp, 
+                                groups: groups
+                            };
+                            result.push(entry);
+                        }
                         resolve(result);
                     } catch (err) {
                         reject(err);
