@@ -135,14 +135,6 @@ export class RangeSliderComponent implements OnDestroy {
         return Math.round(Math.max(this.min(), Math.min(value, this.max())));
     }
 
-    formatValue(val: number): string {
-        const roundedVal = Math.round(val);
-        if (roundedVal >= 1_000_000_000) return `${(roundedVal / 1_000_000_000).toFixed(1)}B`;
-        if (roundedVal >= 1_000_000) return `${(roundedVal / 1_000_000).toFixed(1)}M`;
-        if (roundedVal >= 10_000) return `${(roundedVal / 1000).toFixed(1)}k`;
-        return roundedVal.toString();
-    }
-
     onThumbFocus(which: 'min' | 'max') {
         this.focusedThumb.set(which);
     }

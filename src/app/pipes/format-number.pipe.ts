@@ -51,13 +51,13 @@ export class FormatNumberPipe implements PipeTransform {
         let postfix = '';
         if (compress) {
             if (val >= 10_000_000_000) {
-                postfix = 'kkk';
+                postfix = 'B';
                 val = Math.round(val / 1_000_000_000);
             } else if (val >= 10_000_000) {
-                postfix = 'kk';
+                postfix = 'M';
                 val = Math.round(val / 1_000_000);
             } else if (val >= 10_000) {
-                postfix = 'k';
+                postfix = 'K';
                 val = Math.round(val / 1_000);
             }
         }

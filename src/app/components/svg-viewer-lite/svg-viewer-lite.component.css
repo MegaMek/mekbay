@@ -7,4 +7,7 @@
     justify-content: center;
     align-items: center;
     flex-direction: column;
+    pointer-events: auto;
+    touch-action: pan-x pan-y pinch-zoom;
+    -webkit-overflow-scrolling: touch;
 }

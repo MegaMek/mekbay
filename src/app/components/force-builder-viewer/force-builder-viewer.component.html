@@ -22,10 +22,10 @@
                     <div class="group-units" cdkDropList 
                         [class.compact-mode]="compactMode()"
                         id="group-{{ forceBuilderService.force.groups()[gi].id }}"
-                        [cdkDropListOrientation]="compactMode() ? 'horizontal' : 'vertical'"
+                        cdkDropListOrientation="vertical"
                         [cdkDropListData]="forceBuilderService.force.groups()[gi].units"
                         [cdkDropListConnectedTo]="connectedDropLists()"
-                        [cdkDropListDisabled]="forceBuilderService.readOnlyForce()"
+                        [cdkDropListDisabled]="compactMode() || forceBuilderService.readOnlyForce()"
                         (cdkDropListDropped)="drop($event)"> 
                         @for (unit of forceBuilderService.force.groups()[gi].units(); let i = $index; track i) {
                             <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item"

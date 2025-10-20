@@ -81,6 +81,10 @@
     font-size: 0.8em;
 }
 
+.force-units-list.single-group .group-footer {
+    display: none;
+}
+
 .force-units-list {
     display: flex;
     flex-direction: column;
@@ -152,9 +156,6 @@
     padding: 0;
     justify-content: center;
     align-items: center;
-    flex: 0 0 90px;
-    width: 90px;
-    height: 105px;
 }
 
 .header,

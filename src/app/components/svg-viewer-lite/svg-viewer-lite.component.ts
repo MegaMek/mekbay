@@ -36,6 +36,7 @@ export class SvgViewerLiteComponent {
                         const cloned = svg.cloneNode(true) as SVGSVGElement;
                         cloned.removeAttribute('id');
                         cloned.classList.add('mekbay-sheet');
+                        cloned.style.pointerEvents = 'none';
                         svgs.push(cloned);
                     }
                     this.svgs.set([...this.svgs(), ...svgs]);
