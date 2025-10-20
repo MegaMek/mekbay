@@ -46,7 +46,7 @@ import { FormatNumberPipe } from '../../pipes/format-number.pipe';
     styleUrl: './range-slider.component.css',
 })
 export class RangeSliderComponent implements OnDestroy {
-    private readonly DEBOUNCE_TIME_MS = 250;
+    private readonly DEBOUNCE_TIME_MS = 150;
     private debounceTimer: any;
 
     min = input.required<number>();

@@ -234,6 +234,21 @@ export class DataService {
                 });
             };
         } catch { /* best-effort */ }
+        if (typeof window !== 'undefined') {
+            const flushOnUnload = () => {
+                try {
+                    this.flushAllPendingSavesOnUnload();
+                } catch { /* best-effort */ }
+            };
+            window.addEventListener('beforeunload', flushOnUnload);
+            window.addEventListener('pagehide', flushOnUnload);
+            // also try when visibility becomes hidden (mobile browsers)
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') {
+                    flushOnUnload();
+                }
+            });
+        }
     }
 
     public notifyStoreUpdated(action: BroadcastPayload['action'], store?: string, meta?: any) {
@@ -806,26 +821,130 @@ export class DataService {
         return forces;
     }
 
-    private async saveForceCloud(force: Force): Promise<void> {
-        const ws = await this.canUseCloud();
-        if (!ws) return;
-        const uuid = this.userStateService.uuid();
-        const payload = {
-            action: 'saveForce',
-            uuid,
-            data: force.serialize()
-        };
-        const response = await this.wsService.sendAndWaitForResponse(payload);
-        if (response && response.code === 'not_owner') {
-            console.warn('Cannot save force to cloud: not the owner, we regenerated a new instanceId.');
-            const oldInstanceId = force.instanceId();
-            force.instanceId.set(generateUUID());
-            force.owned.set(true);
-            await this.saveForce(force); // We try again
-            if (oldInstanceId) {
-                this.dbService.deleteForce(oldInstanceId); // Clean up old local copy
-            }
+    SAVE_FORCE_CLOUD_DEBOUNCE_MS = 1000;
+    // Debounce map to prevent multiple simultaneous saves for the same force
+    private saveForceCloudDebounce = new Map<string, {
+        timeout: ReturnType<typeof setTimeout>,
+        force: Force,
+        resolvers: Array<{ resolve: () => void, reject: (e: any) => void }>
+    }>();
 
+    public hasPendingCloudSaves(): boolean {    
+        return this.saveForceCloudDebounce && this.saveForceCloudDebounce.size > 0;
+    }
+
+    private async saveForceCloud(force: Force): Promise<void> {
+        const instanceId = force.instanceId();
+        if (!instanceId) return; // Should not happen, nothing to save without an instanceId
+        
+        return new Promise<void>((resolve, reject) => {
+            const existing = this.saveForceCloudDebounce.get(instanceId);
+            const schedule = () => {
+                const timeout = setTimeout(() => {
+                    void this.flushSaveForceCloud(instanceId);
+                }, this.SAVE_FORCE_CLOUD_DEBOUNCE_MS);
+                // store/replace entry
+                this.saveForceCloudDebounce.set(instanceId, {
+                    timeout,
+                    force,
+                    resolvers: existing ? existing.resolvers.concat([{ resolve, reject }]) : [{ resolve, reject }]
+                });
+            };
+
+            if (existing) {
+                // clear previous timeout and replace stored force with latest
+                clearTimeout(existing.timeout);
+                existing.force = force;
+                existing.resolvers.push({ resolve, reject });
+                // reschedule
+                const timeout = setTimeout(() => {
+                    void this.flushSaveForceCloud(instanceId);
+                }, this.SAVE_FORCE_CLOUD_DEBOUNCE_MS);
+                existing.timeout = timeout;
+                this.saveForceCloudDebounce.set(instanceId, existing);
+            } else {
+                schedule();
+            }
+        });
+    }
+
+    // Flush function performs the actual cloud save for the latest Force for a given instanceId
+    private async flushSaveForceCloud(instanceId: string): Promise<void> {
+        const entry = this.saveForceCloudDebounce.get(instanceId);
+        if (!entry) return;
+        // Remove entry immediately to allow new debounces
+        this.saveForceCloudDebounce.delete(instanceId);
+        clearTimeout(entry.timeout);
+
+        const { force, resolvers } = entry;
+
+        try {
+            const ws = await this.canUseCloud();
+            if (!ws) {
+                // Nothing to do, resolve all pending promises
+                for (const r of resolvers) r.resolve();
+                return;
+            }
+            const uuid = this.userStateService.uuid();
+            const payload = {
+                action: 'saveForce',
+                uuid,
+                data: force.serialize()
+            };
+            const response = await this.wsService.sendAndWaitForResponse(payload);
+            if (response && response.code === 'not_owner') {
+                console.warn('Cannot save force to cloud: not the owner, we regenerated a new instanceId.');
+                const oldInstanceId = force.instanceId();
+                force.instanceId.set(generateUUID());
+                force.owned.set(true);
+                // Save again (this will schedule another debounce for the new instanceId)
+                await this.saveForce(force);
+                if (oldInstanceId) {
+                    this.dbService.deleteForce(oldInstanceId); // Clean up old local copy
+                }
+            }
+            for (const r of resolvers) r.resolve();
+        } catch (err) {
+            for (const r of resolvers) r.reject(err);
+        }
+    }
+
+    // Best-effort flush of all pending debounced cloud saves.
+    private flushAllPendingSavesOnUnload(): void {
+        if (!this.saveForceCloudDebounce || this.saveForceCloudDebounce.size === 0) return;
+
+        const ws = this.wsService.getWebSocket();
+        const canSendOverWs = ws && ws.readyState === WebSocket.OPEN;
+
+        for (const [instanceId, entry] of Array.from(this.saveForceCloudDebounce.entries())) {
+            try {
+                // stop scheduled debounce
+                clearTimeout(entry.timeout);
+                this.saveForceCloudDebounce.delete(instanceId);
+
+                // try to send final payload over websocket if available (synchronous queueing)
+                if (canSendOverWs) {
+                    try {
+                        const uuid = this.userStateService.uuid();
+                        const payload = {
+                            action: 'saveForce',
+                            uuid,
+                            data: entry.force.serialize()
+                        };
+                        this.wsService.send(payload);
+                    } catch { /* best-effort */ }
+                }
+
+                // resolve pending promises so callers do not hang on unload
+                for (const r of entry.resolvers) {
+                    try { r.resolve(); } catch { /* best-effort */ }
+                }
+            } catch (err) {
+                // ensure resolvers are resolved even on error
+                for (const r of entry.resolvers) {
+                    try { r.resolve(); } catch { /* best-effort */ }
+                }
+            }
         }
     }
 
