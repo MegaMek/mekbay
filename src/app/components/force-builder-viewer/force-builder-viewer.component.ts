@@ -124,10 +124,6 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         return this.forceBuilderService.force.groups().length === 1;
     });
 
-    totalBv = computed(() => {
-        return this.forceBuilderService.forceUnits().reduce((sum, unit) => sum + (unit.getBv()), 0);
-    });
-
     constructor() {
         effect(() => {
             // When the menu is closed, ensure the advanced search panel is also closed.

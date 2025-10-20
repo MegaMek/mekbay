@@ -57,7 +57,7 @@ export interface SerializedForce {
     type?: 'cbt' | 'as';
     name: string;
     nameLock?: boolean;
-    bv?: number;
+    bv: number;
     owned?: boolean;
     groups?: SerializedGroup[];
     units?: SerializedUnit[]; // Deprecated, use groups instead
@@ -162,6 +162,10 @@ export class Force {
 
     units = computed<ForceUnit[]>(() => {
         return this.groups().flatMap(g => g.units());
+    });
+
+    totalBv = computed(() => {
+        return this.units().reduce((sum, unit) => sum + (unit.getBv()), 0);
     });
 
     get name(): string {
@@ -298,6 +302,7 @@ export class Force {
             timestamp: new Date().toISOString(),
             instanceId: instanceId,
             name: this.name,
+            bv: this.totalBv(),
             nameLock: this.nameLock || false,
             groups: serializedGroups,
             // units: this.units().map(unit => unit.serialize()) // Deprecated: use groups instead

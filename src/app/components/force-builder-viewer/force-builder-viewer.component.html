@@ -68,7 +68,7 @@
         </div>
         <div class="footer">
             <div class="total-bv">
-                <span>BV: {{ totalBv() | number }}</span>
+                <span>BV: {{ forceBuilderService.force.totalBv() | number }}</span>
             </div>
             <div class="spanner"></div>
             <button class="bt-button square-normal" (click)="toggleCompactMode()">
