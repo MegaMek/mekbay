@@ -130,17 +130,20 @@ interface ForceNameOptions {
     eras: Era[];
 }
 
+interface GroupNameOptions {
+    units: ForceUnit[];
+    allUnits: ForceUnit[];
+    forceName: string;
+}
+
 const MIN_UNITS_PERCENTAGE = 0.7;
 
 export class ForceNamerUtil {
 
-    public static getAvailableFormations(units: ForceUnit[], factions: Faction[], eras: Era[]): string[] | null {
-        let majorityTechBase = this.getTechBase(units);
-        const availableFactions = this.getAvailableFactions(units, factions, eras);
-        const availableFactionsText = availableFactions ? Array.from(availableFactions.keys()).join(', ') : '';
+    public static getAvailableFormations(groupUnits: ForceUnit[], allUnits: ForceUnit[], factionName: string): string[] | null {
+        let majorityTechBase = this.getTechBase(allUnits);
         const lanceTypes: Set<string> = new Set();
-
-        const identified = identifyLanceTypes(units, majorityTechBase, availableFactionsText);
+        const identified = identifyLanceTypes(groupUnits, majorityTechBase, factionName);
         for (const lt of identified) {
             lanceTypes.add(lt.name);
         }
@@ -254,22 +257,35 @@ export class ForceNamerUtil {
         let forceType: string;
         if (factionName === 'ComStar' || factionName === 'Word of Blake') {
             forceType = getForceType(units, '', factionName);
-            const bestLance = getBestLanceType(units, '', factionName);
+        } else {
+            // Find the majority tech base
+            const majorityTechBase = this.getTechBase(units);
+            forceType = getForceType(units, majorityTechBase, factionName);
+        }
+        return `${factionName} ${forceType}`;
+    }
+
+    static generateFormationName({ units, allUnits, forceName }: GroupNameOptions): string {
+        if (!units || units.length === 0) return 'Unnamed Formation';
+        let forceType: string;
+        if (forceName.includes('ComStar') || forceName.includes('Word of Blake')) {
+            forceType = getForceType(units, '', forceName);
+            const bestLance = getBestLanceType(units, '', forceName);
             if (bestLance) {
                 const formationType = bestLance.name as ForceType;
                 forceType = forceType + ' - ' + formationType.replace(/\Lance/g, '').trim();
             }
         } else {
             // Find the majority tech base
-            const majorityTechBase = this.getTechBase(units);
-            forceType = getForceType(units, majorityTechBase, factionName);
-            const bestLance = getBestLanceType(units, majorityTechBase, factionName);
+            const majorityTechBase = this.getTechBase(allUnits);
+            forceType = getForceType(units, majorityTechBase, forceName);
+            const bestLance = getBestLanceType(units, majorityTechBase, forceName);
             if (bestLance) {
                 const formationType = bestLance.name as ForceType;
                 forceType = formationType.replace(/Lance/g, forceType);
             }
         }
-        return `${factionName} ${forceType}`;
+        return `${forceType}`;
     }
 
 }

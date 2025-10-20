@@ -53,6 +53,9 @@ import { DialogsService } from '../../services/dialogs.service';
 import { FloatingCompInfoComponent } from '../floating-comp-info/floating-comp-info.component';
 import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
 import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
+import { FormatNumberPipe } from '../../pipes/format-number.pipe';
+import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
+import { FilterAdjustedBV } from '../../pipes/filter-adjusted-bv.pipe';
 
 @Pipe({
     name: 'expandedComponents',
@@ -83,7 +86,7 @@ export class ExpandedComponentsPipe implements PipeTransform {
     selector: 'unit-search',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, MultiSelectDropdownComponent, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, FloatingCompInfoComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, MultiSelectDropdownComponent, FilterAdjustedBV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, FloatingCompInfoComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.css',
 })
@@ -195,9 +198,9 @@ export class UnitSearchComponent implements OnDestroy {
             if (this.autoFocus() &&
                 this.filtersService.isDataReady() &&
                 this.searchInput().nativeElement) {
-                setTimeout(() => {
-                    this.searchInput().nativeElement.focus();
-                }, 0);
+                    afterNextRender(() => {
+                        this.searchInput().nativeElement.focus();
+                }, { injector: this.injector });
             }
         });
         afterNextRender(() => {
@@ -624,46 +627,6 @@ export class UnitSearchComponent implements OnDestroy {
         (document.activeElement as HTMLElement)?.blur();
     }
 
-    formatValue(val: number, formatThousands: boolean = false, compress: boolean = false): string {
-        let postfix = '';
-        if (compress) {
-            if (val >= 10_000_000_000) {
-                postfix = 'kkk';
-                val = Math.round(val / 1_000_000_000);
-            } else if (val >= 10_000_000) {
-                postfix = 'kk';
-                val = Math.round(val / 1_000_000);
-            } else if (val >= 10_000) {
-                postfix = 'k';
-                val = Math.round(val / 1_000);
-            }
-        }
-        const rounded = Math.round(val);
-        if (formatThousands) {
-            return rounded.toLocaleString() + postfix;
-        }
-        return rounded.toString() + postfix;
-    }
-
-    formatTons(tons: number): string {
-        const format = (num: number) => Math.round(num * 100) / 100;
-        if (tons < 1000) {
-            return `${format(tons)}`;
-        } else if (tons < 1000000) {
-            return `${format(tons / 1000)}k`;
-        } else {
-            return `${format(tons / 1000000)}M`;
-        }
-    }
-
-    getEraImg(unit: Unit): string | undefined {
-        return unit._era?.img;
-    }
-
-    getUnitImg(unit: Unit): string | undefined {
-        return `https://db.mekbay.com/images/units/${unit.icon}`;
-    }
-
     private getDisplaySortKey(): string {
         const key = this.filtersService.selectedSort();
         // These keys are shown in the main unit card, we don't need to repeat them in the slot
@@ -691,7 +654,7 @@ export class UnitSearchComponent implements OnDestroy {
             value = '—';
             numeric = false;
         } else {
-            value = numeric ? this.formatValue(raw, true, false) : String(raw);
+            value = numeric ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
         }
 
         return {
@@ -857,10 +820,6 @@ export class UnitSearchComponent implements OnDestroy {
         }
 
         this.activeIndex.set(null);
-    }
-
-    getDisplayBV(unit: Unit): number {
-        return this.filtersService.getAdjustedBV(unit);
     }
 
     /* Adv Panel Dragging */

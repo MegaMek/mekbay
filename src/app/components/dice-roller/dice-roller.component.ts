@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, inject, Inject, OnInit, signal } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, inject, Inject, Injector, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogModule, DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { CdkDrag, CdkDragEnd, CdkDragStart } from '@angular/cdk/drag-drop';
@@ -156,6 +156,7 @@ export class DiceRollerComponent implements OnInit {
     protected isDragging = false;
     public dialogRef: DialogRef<void> = inject(DialogRef);
     readonly data: DiceRollerData = inject(DIALOG_DATA);
+    private injector = inject(Injector);
 
     constructor() {}
 
@@ -185,8 +186,8 @@ export class DiceRollerComponent implements OnInit {
 
     onDragEnd(event: CdkDragEnd): void {
         event.event.stopPropagation();
-        setTimeout(() => {
+        afterNextRender(() => {
             this.isDragging = false;
-        }, 50);
+        }, { injector: this.injector });
     }
 }

@@ -10,86 +10,78 @@
             EDIT</button>
         }
         <div #scrollableContent class="scrollable-content">
-            @if (forceBuilderService.forceUnits().length > 0) {
-            <div class="force-units-list" cdkDropList [cdkDropListData]="forceBuilderService.forceUnits()"
-                [cdkDropListDisabled]="forceBuilderService.readOnlyForce()" (cdkDropListDropped)="drop($event)">
-                @for (unit of forceBuilderService.forceUnits(); let i = $index; track i) {
-                <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item unit-card"
-                    [class.selected]="unit.id === forceBuilderService.selectedUnit()?.id"
-                    [class.destroyed]="unit.destroyed" (click)="selectUnit(unit)" tabindex="0"
-                    (keydown)="onUnitKeydown($event, i)" cdkDrag [cdkDragDisabled]="forceBuilderService.readOnlyForce()"
-                    (cdkDragStarted)="onUnitDragStart()" (cdkDragEnded)="onUnitDragEnd()" cdkDragLockAxis="y"
-                    cdkDragBoundary=".scrollable-content" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
-                    <div class="unit-image-container">
-                        <img class="icon unit-icon" [src]="getUnitImg(unit)"
-                            (error)="$event.target.src = '/images/unknown.png'"
-                            alt="{{ unit.getUnit().chassis }} {{ unit.getUnit().model }}" />
+            <div class="force-units-list" [class.single-group]="hasSingleGroup()">
+                @for (group of forceBuilderService.force.groups(); let gi = $index; track gi) {
+                <div class="group-container">
+                    <div class="group-header">
+                        <div class="group-name" (click)="promptChangeGroupName(group)">{{ forceBuilderService.force.groups()[gi].name() }}</div>
+                        <div class="group-footer">
+                            <span class="group-bv">BV: {{ group.totalBV() | number }}</span>
+                        </div> 
                     </div>
-                    <div class="unit-data-container">
-                        <div class="secondary-info">
-                            <span class="model">{{ unit.getUnit().model }}</span>
-                            <div class="role" *ngIf="unit.getUnit().role && (unit.getUnit().role !== 'None')">{{
-                                unit.getUnit().role }}
+                    <div class="group-units" cdkDropList 
+                        [class.compact-mode]="compactMode()"
+                        id="group-{{ forceBuilderService.force.groups()[gi].id }}"
+                        [cdkDropListOrientation]="compactMode() ? 'horizontal' : 'vertical'"
+                        [cdkDropListData]="forceBuilderService.force.groups()[gi].units"
+                        [cdkDropListConnectedTo]="connectedDropLists()"
+                        [cdkDropListDisabled]="forceBuilderService.readOnlyForce()"
+                        (cdkDropListDropped)="drop($event)"> 
+                        @for (unit of forceBuilderService.force.groups()[gi].units(); let i = $index; track i) {
+                            <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item"
+                                (click)="selectUnit(unit)" tabindex="0"
+                                (keydown)="onUnitKeydown($event, i)" cdkDrag [cdkDragDisabled]="forceBuilderService.readOnlyForce()"
+                                (cdkDragStarted)="onUnitDragStart()" (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd()"
+                                [cdkDragLockAxis]="lockAxis()!"
+                                cdkDragBoundary=".force-view" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
+                                <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode()"
+                                [class.selected]="unit.id === forceBuilderService.selectedUnit()?.id"
+                                (onRemoveUnit)="removeUnit($event, unit)"
+                                (onInfo)="showUnitInfo($event, unit)"
+                                (onToggleC3)="toggleC3Link($event, unit)"></unit-block>
                             </div>
-                        </div>
-                        <div class="primary-info">
-                            <span class="chassis">{{ unit.getUnit().chassis }}</span>
-                        </div>
-                        <div class="third-info">
-                            <div class="info-area">
-                                <div class="info-slot numeric">
-                                    <span class="value">BV: {{ formatValue(unit.getBv(), true) }}</span>
-                                </div>
-                                <div class="info-slot numeric">
-                                    <span class="value">{{ formatTons(unit.getUnit().tons) }}</span>
-                                    <img src="/images/weight.svg" class="icon" alt="Tonnage">
-                                </div>
-                                <div class="info-slot numeric">
-                                    <span class="value">{{ formatPilotData(unit) }}</span>
-                                    <img src="/images/helmet.svg" class="icon" alt="Pilot">
-                                </div>
-                                <div *ngIf="unit.getUnit().c3 !== 'None'" class="info-slot c3link"
-                                    [class.enabled]="unit.c3Linked" (click)="toggleC3Link($event, unit)"
-                                    title="Toggle C3 Link">
-                                    <span>{{ unit.getUnit().c3 }}</span>
-                                    <svg fill="currentColor" width="14px" height="14px" viewBox="0 0 32 32"
-                                        version="1.1" xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M27 21.75c-0.795 0.004-1.538 0.229-2.169 0.616l0.018-0.010-2.694-2.449c0.724-1.105 1.154-2.459 1.154-3.913 0-1.572-0.503-3.027-1.358-4.212l0.015 0.021 3.062-3.062c0.57 0.316 1.249 0.503 1.971 0.508h0.002c2.347 0 4.25-1.903 4.25-4.25s-1.903-4.25-4.25-4.25c-2.347 0-4.25 1.903-4.25 4.25v0c0.005 0.724 0.193 1.403 0.519 1.995l-0.011-0.022-3.062 3.062c-1.147-0.84-2.587-1.344-4.144-1.344-0.868 0-1.699 0.157-2.467 0.443l0.049-0.016-0.644-1.17c0.726-0.757 1.173-1.787 1.173-2.921 0-2.332-1.891-4.223-4.223-4.223s-4.223 1.891-4.223 4.223c0 2.332 1.891 4.223 4.223 4.223 0.306 0 0.605-0.033 0.893-0.095l-0.028 0.005 0.642 1.166c-1.685 1.315-2.758 3.345-2.758 5.627 0 0.605 0.076 1.193 0.218 1.754l-0.011-0.049-0.667 0.283c-0.78-0.904-1.927-1.474-3.207-1.474-2.334 0-4.226 1.892-4.226 4.226s1.892 4.226 4.226 4.226c2.334 0 4.226-1.892 4.226-4.226 0-0.008-0-0.017-0-0.025v0.001c-0.008-0.159-0.023-0.307-0.046-0.451l0.003 0.024 0.667-0.283c1.303 2.026 3.547 3.349 6.1 3.349 1.703 0 3.268-0.589 4.503-1.574l-0.015 0.011 2.702 2.455c-0.258 0.526-0.41 1.144-0.414 1.797v0.001c0 2.347 1.903 4.25 4.25 4.25s4.25-1.903 4.25-4.25c0-2.347-1.903-4.25-4.25-4.25v0zM8.19 5c0-0.966 0.784-1.75 1.75-1.75s1.75 0.784 1.75 1.75c0 0.966-0.784 1.75-1.75 1.75v0c-0.966-0.001-1.749-0.784-1.75-1.75v-0zM5 22.42c-0.966-0.001-1.748-0.783-1.748-1.749s0.783-1.749 1.749-1.749c0.966 0 1.748 0.782 1.749 1.748v0c-0.001 0.966-0.784 1.749-1.75 1.75h-0zM27 3.25c0.966 0 1.75 0.784 1.75 1.75s-0.784 1.75-1.75 1.75c-0.966 0-1.75-0.784-1.75-1.75v0c0.001-0.966 0.784-1.749 1.75-1.75h0zM11.19 16c0-0.001 0-0.002 0-0.003 0-2.655 2.152-4.807 4.807-4.807 1.328 0 2.53 0.539 3.4 1.409l0.001 0.001 0.001 0.001c0.87 0.87 1.407 2.072 1.407 3.399 0 2.656-2.153 4.808-4.808 4.808s-4.808-2.153-4.808-4.808c0-0 0-0 0-0v0zM27 27.75c-0.966 0-1.75-0.784-1.75-1.75s0.784-1.75 1.75-1.75c0.966 0 1.75 0.784 1.75 1.75v0c-0.001 0.966-0.784 1.749-1.75 1.75h-0z">
-                                        </path>
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="unit-actions">
-                        @if (!forceBuilderService.readOnlyForce()) {
-                        <button class="remove-btn" (click)="removeUnit($event, unit)" title="Remove unit">
-                            <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
-                                L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"/>
-                            </svg>
-                        </button>
                         }
-                        <div class="spanner"></div>
-                        <button class="info-btn" (click)="showUnitInfo($event, unit)" title="Unit info">
-                            <svg width="18px" height="18px" viewBox="0 0 18 18" fill="currentColor" version="1.1" xmlns="http://www.w3.org/2000/svg">
-                                <path fill-rule="evenodd" d="M11.6569197,9.96878873 L11.0595168,9.96878873 L10.847779,9.77535912 C11.5888611,8.95865635 12.0350229,7.89837557 12.0350229,6.74496201 C12.0350229,4.17306471 9.83446261,2.08832344 7.11968213,2.08832344 C4.40490164,2.08832344 2.20434141,4.17306471 2.20434141,6.74496201 C2.20434141,9.31685932 4.40490164,11.4016006 7.11968213,11.4016006 C8.33717422,11.4016006 9.45635948,10.9789211 10.3184346,10.2768433 L10.5226103,10.4774369 L10.5226103,11.0433976 L14.3036417,14.6182632 L15.4303889,13.5508184 L11.6569197,9.96878873 L11.6569197,9.96878873 L11.6569197,9.96878873 Z M7.11968213,9.96878873 C5.23672853,9.96878873 3.71675394,8.5288128 3.71675394,6.74496201 C3.71675394,4.96111124 5.23672853,3.52113531 7.11968213,3.52113531 C9.00263573,3.52113531 10.5226103,4.96111124 10.5226103,6.74496201 C10.5226103,8.5288128 9.00263573,9.96878873 7.11968213,9.96878873 Z M6.47123526,6.26497004 L4.40868268,6.26497004 L4.40868268,7.33957894 L6.47123526,7.33957894 L6.47123526,8.87537416 L7.88912201,8.87537416 L7.88912201,7.33957894 L9.91953582,7.33957894 L9.91953582,6.26497004 L7.88912201,6.26497004 L7.88912201,4.69872757 L6.47123526,4.69872757 L6.47123526,6.26497004 Z" />
-                            </svg>
-                        </button>
                     </div>
                 </div>
                 }
+                <div class="group-container new-group-dropzone" cdkDropList
+                    id="new-group-dropzone"
+                    [cdkDropListConnectedTo]="connectedDropLists()"
+                    [cdkDropListData]="[]"
+                    [class.visible]="isUnitDragging()"
+                    [cdkDropListDisabled]="forceBuilderService.readOnlyForce()"
+                    (cdkDropListDropped)="dropForNewGroup($event)">
+                    <div class="group-name">New Group</div>
+                    <div class="new-group-placeholder">Drop units here to form a new group</div>
+                </div>
             </div>
-            } @else {
-            <p class="empty-text">Search for units to add them to your force.</p>
-            }
         </div>
         <div class="footer">
             <div class="total-bv">
                 <span>BV: {{ totalBv() | number }}</span>
             </div>
             <div class="spanner"></div>
+            <button class="bt-button square-normal" (click)="toggleCompactMode()">
+            @if (compactMode()) {
+                <svg width="20px" height="20px" viewBox="0 0 35 35" fill="currentcolor" version="1.1" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M34.999,0H0.001v6.777h34.997L34.999,0L34.999,0z M32.999,4.777H2.001V2h30.997L32.999,4.777L32.999,4.777z"/>
+                    <rect y="8.642" width="35" height="11.072"/>
+                    <rect y="21.928" width="35" height="13.072"/>
+                </svg>
+            } @else {
+                <svg width="20px" height="20px" viewBox="0 0 32 32" fill="currentcolor" version="1.1" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="1" y="1" width="7" height="7"/>
+                    <rect x="12" y="1" width="7" height="7"/>
+                    <rect x="23" y="1" width="7" height="7"/>
+                    <rect x="1" y="12" width="7" height="7"/>
+                    <rect x="12" y="12" width="7" height="7"/>
+                    <rect x="23" y="12" width="7" height="7"/>
+                    <rect x="1" y="23" width="7" height="7"/>
+                    <rect x="12" y="23" width="7" height="7"/>
+                    <rect x="23" y="23" width="7" height="7"/>
+                </svg>
+            }
+            </button>
             <button class="bt-button square-normal share-btn" (click)="shareForce()" title="Share Force">
                 <svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor"
                     xmlns="http://www.w3.org/2000/svg">

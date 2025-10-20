@@ -45,13 +45,25 @@ import { generateUUID } from '../services/ws.service';
 /*
  * Author: Drake
  */
+
+const DEFAULT_GROUP_NAME = 'Main';
 export interface SerializedForce {
     version: number;
     timestamp: string;
     instanceId: string;
     name: string;
+    nameLock?: boolean;
     owned?: boolean;
-    units: SerializedUnit[]; // Serialized ForceUnit objects
+    groups?: SerializedGroup[];
+    units?: SerializedUnit[]; // Deprecated, use groups instead
+}
+
+export interface SerializedGroup {
+    id: string;
+    name: string;
+    nameLock?: boolean;
+    color?: string;
+    units: SerializedUnit[];
 }
 
 export interface SerializedUnit {
@@ -84,12 +96,42 @@ export interface CriticalSlot {
     el?: SVGElement;
     eq?: Equipment;
 }
+export class UnitGroup {
+    force: Force;
+    id: string = generateUUID();
+    name = signal<string>('Group');
+    nameLock?: boolean; // If true, the group name cannot be changed by the random generator
+    color?: string;
+    units: WritableSignal<ForceUnit[]> = signal([]);
+
+    totalBV = computed(() => {
+        return this.units().reduce((sum, unit) => sum + (unit.getBv()), 0);
+    });
+
+    constructor(force: Force, name?: string) {
+        this.force = force;
+        this.id = generateUUID();
+        if (name !== undefined) {
+            this.name.set(name);
+        }
+    }
+
+    setName(name: string, emitChange: boolean = true) {
+        if (name === this.name()) return; // No change
+        this.name.set(name);
+        if (emitChange) {
+            this.force?.emitChanged();
+        }
+    }
+
+}
 
 export class Force {
     instanceId: WritableSignal<string | null> = signal(null);
     _name: WritableSignal<string>;
+    nameLock: boolean = false; // If true, the force name cannot be changed by the random generator
     timestamp: string | null = null;
-    units: WritableSignal<ForceUnit[]> = signal([]);
+    groups: WritableSignal<UnitGroup[]> = signal([]);
     loading: boolean = false;
     cloud?: boolean = false; // Indicates if this force is stored in the cloud
     owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
@@ -108,7 +150,12 @@ export class Force {
         this.dataService = dataService;
         this.unitInitializer = unitInitializer;
         this.injector = injector;
+        // this.addGroup(DEFAULT_GROUP_NAME);
     }
+
+    units = computed<ForceUnit[]>(() => {
+        return this.groups().flatMap(g => g.units());
+    });
 
     get name(): string {
         return this._name();
@@ -124,24 +171,75 @@ export class Force {
 
     public addUnit(unit: Unit): ForceUnit {    
         const forceUnit = new ForceUnit(unit, this, this.dataService, this.unitInitializer, this.injector);
-        this.units.update(units => [...units, forceUnit]);
+        if (this.groups().length === 0) {
+            this.addGroup(DEFAULT_GROUP_NAME);
+        }
+        const groups = [...this.groups()];
+        const units = groups[0].units();
+        groups[0].units.set([...units, forceUnit]);
+        this.groups.set(groups);
         if (this.instanceId()) {
             this.emitChanged();
         }
         return forceUnit;
     }
+    
+    public addGroup(name: string = 'Group'): UnitGroup {
+        const newGroup = new UnitGroup(this, name);
+        this.groups.update(gs => [...gs, newGroup]);
+        if (this.instanceId()) this.emitChanged();
+        return newGroup;
+    }
+
+    public removeGroup(groupId: string) {
+        const groups = [...this.groups()];
+        const idx = groups.findIndex(g => g.id === groupId);
+        if (idx === -1) return;
+        const removed = groups.splice(idx, 1)[0];
+        // Move removed units into previous group or create default
+        if (groups.length === 0) {
+            const defaultGroup = this.addGroup(DEFAULT_GROUP_NAME);
+            defaultGroup.units.set(removed.units());
+        } else {
+            const targetIdx = Math.max(0, idx - 1);
+            const group = groups[targetIdx];
+            group.units.set([...group.units(), ...removed.units()]);
+        }
+        this.groups.set(groups);
+        if (this.instanceId()) this.emitChanged();
+    }
 
     public removeUnit(unitToRemove: ForceUnit) {
+        const groups = this.groups();
+        for (const g of groups) {
+            const originalCount = g.units().length;
+            const filtered = g.units().filter(u => u.id !== unitToRemove.id);
+            if (filtered.length !== originalCount) {
+                g.units.set(filtered);
+            }
+        }
         unitToRemove.destroy();
-        this.units.update(units => units.filter(u => u.id !== unitToRemove.id));
+        this.removeEmptyGroups();
         this.refreshUnits();
         if (this.instanceId()) {
             this.emitChanged();
         }
     }
 
+    public removeEmptyGroups() {
+        const groups = this.groups();
+        const nonEmptyGroups = groups.filter(g => g.units().length > 0);
+        if (nonEmptyGroups.length === groups.length) return; // No change
+        this.groups.set(nonEmptyGroups);
+        if (this.instanceId()) {
+            this.emitChanged();
+        }
+    }
+
     public setUnits(newUnits: ForceUnit[]) {
-        this.units.set(newUnits);
+        this.groups.set([]);
+        const defaultGroup = this.addGroup(DEFAULT_GROUP_NAME);
+        defaultGroup.units.set(newUnits);
         if (this.instanceId()) {
             this.emitChanged();
         }
@@ -153,27 +251,6 @@ export class Force {
         });
     }
 
-    public reorderUnit(previousIndex: number, currentIndex: number) {
-        if (previousIndex === currentIndex) {
-            return; // No change needed
-        }
-        const units = [...this.units()];
-        if (
-            previousIndex < 0 ||
-            previousIndex >= units.length ||
-            currentIndex < 0 ||
-            currentIndex >= units.length
-        ) {
-            return;
-        }
-        const [moved] = units.splice(previousIndex, 1);
-        units.splice(currentIndex, 0, moved);
-        this.units.set(units);
-        if (this.instanceId()) {
-            this.emitChanged();
-        }
-    }
-    
     public loadAll() {
         this.units().forEach(unit => unit.load());
     }
@@ -185,13 +262,23 @@ export class Force {
             instanceId = generateUUID();
             this.instanceId.set(instanceId);
         }
+        // Serialize groups (preserve per-group structure)
+        const serializedGroups: SerializedGroup[] = this.groups().map(g => ({
+            id: g.id,
+            name: g.name(),
+            nameLock: g.nameLock,
+            color: g.color,
+            units: g.units().map(u => u.serialize())
+        })) as SerializedGroup[];
         return {
             version: 1,
             timestamp: new Date().toISOString(),
             instanceId: instanceId,
             name: this.name,
-            units: this.units().map(unit => unit.serialize())
-        };
+            nameLock: this.nameLock || false,
+            groups: serializedGroups,
+            // units: this.units().map(unit => unit.serialize()) // Deprecated: use groups instead
+        } as SerializedForce & { groups?: any[] };
     }
 
     /** Deserialize a plain object to a Force instance */
@@ -200,17 +287,49 @@ export class Force {
         force.loading = true;
         try {
             force.instanceId.set(data.instanceId);
+            force.nameLock = data.nameLock || false;
             force.owned.set(data.owned !== false);
             const units: ForceUnit[] = [];
-            for (const unitData of data.units) {
-                try {
-                    units.push(ForceUnit.deserialize(unitData, force, dataService, unitInitializer, injector));
-                } catch (err) {
-                    console.error(`Force.deserialize error on unit "${unitData.unit}":`, err);
-                    continue; // Ignore this unit
+            // If the serialized payload has groups support, use it (backwards compatibility)
+            if (data.groups && Array.isArray(data.groups)) {
+                const groupsIn = data.groups;
+                const parsedGroups: UnitGroup[] = [];
+                for (const g of groupsIn) {
+                    const groupUnits: ForceUnit[] = [];
+                    for (const unitData of g.units) {
+                        try {
+                            groupUnits.push(ForceUnit.deserialize(unitData, force, dataService, unitInitializer, injector));
+                        } catch (err) {
+                            console.error(`Force.deserialize error on unit "${unitData.unit}":`, err);
+                            continue;
+                        }
+                    }
+                    const group = new UnitGroup(force, g.name || DEFAULT_GROUP_NAME);
+                    if (g.id) {
+                        group.id = g.id;
+                    }
+                    group.nameLock = g.nameLock || false;
+                    group.color = g.color || '';
+                    group.units.set(groupUnits);
+                    parsedGroups.push(group);
                 }
+                force.groups.set(parsedGroups);
+            } else if (data.units) {
+                for (const unitData of data.units) {
+                    try {
+                        units.push(ForceUnit.deserialize(unitData, force, dataService, unitInitializer, injector));
+                    } catch (err) {
+                        console.error(`Force.deserialize error on unit "${unitData.unit}":`, err);
+                        continue; // Ignore this unit
+                    }
+                }
+                // Put existing units into a default group for compatibility
+                const defaultGroup = force.addGroup(DEFAULT_GROUP_NAME);
+                if (force.nameLock) {
+                    defaultGroup.nameLock = true; // Propagate name lock to default group, fallback behavior
+                }
+                defaultGroup.units.set(units);
             }
-            force.units.set(units);
             force.timestamp = data.timestamp ?? null;
             force.refreshUnits();
         } finally {
@@ -227,7 +346,7 @@ export class Force {
         this._debounceTimer = setTimeout(() => {
             this.changed.emit();
             this._debounceTimer = null;
-        }, 10); // debounce
+        }, 300); // debounce
     }
 }
 
@@ -532,7 +651,7 @@ export class ForceUnit {
         let piloting = pilot.getSkill('piloting');
         let bv = this.unit.bv;
         if (this.c3Linked) {
-            const c3Tax = C3NetworkUtil.calculateC3Tax(this, this.force.units());
+            const c3Tax = C3NetworkUtil.calculateC3Tax(this, this.force.groups().flatMap(g => g.units()));
             if (c3Tax > 0) {
                 bv += c3Tax;
             }

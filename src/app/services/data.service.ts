@@ -549,7 +549,7 @@ export class DataService {
             this.postprocessData();
         } finally {
             if (this.isDownloading()) {
-                setTimeout(() => this.isDownloading.set(false), 500);
+                this.isDownloading.set(false);
             }
         }
     }
@@ -715,7 +715,9 @@ export class DataService {
     }
 
     public async listForces(): Promise<Force[]> {
+        console.log(`Retrieving local forces...`);
         const localForces = await this.dbService.listForces(this, this.unitInitializer, this.injector);
+        console.log(`Retrieving cloud forces...`);
         const cloudForces = await this.listForcesCloud();
         console.log(`Found ${localForces.length} local forces and ${cloudForces.length} cloud forces.`);
         const forceMap = new Map<string, Force>();
@@ -740,6 +742,7 @@ export class DataService {
             }
         }
         const mergedForces = Array.from(forceMap.values()).sort((a, b) => getTimestamp(b) - getTimestamp(a));
+        console.log(`Found ${mergedForces.length} unique forces.`);
         return mergedForces;
     }
 

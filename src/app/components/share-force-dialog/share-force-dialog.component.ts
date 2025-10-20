@@ -38,7 +38,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ToastService } from '../../services/toast.service';
-import html2canvas from 'html2canvas-pro';
+// import html2canvas from 'html2canvas-pro';
 
 /*
  * Author: Drake
@@ -66,7 +66,6 @@ import html2canvas from 'html2canvas-pro';
             </div>
         </div>
         <div dialog-actions>
-            <button class="bt-button" (click)="downloadAsImage()">SHARE AS IMAGE</button>
             <button class="bt-button" (click)="close(null)">DISMISS</button>
         </div>
     </div>
@@ -211,95 +210,95 @@ export class ShareForceDialogComponent {
         }
     }
 
-    async downloadAsImage() {
-        const forceView = document.getElementById('force-view');
-        if (!forceView) return;
-        const removeElements = ['.modal', '.share-btn', '.menu-overlay', '.burger-lip-btn',
-            '.main-content', '.force-viewer-container .header',
-            '.cdk-overlay-container', '.footer .spanner', '.unit-actions'];
-        // calculate the height of each force-unit-item
-        const unitItems = forceView.querySelectorAll('.force-view .force-unit-item');
-        const precalculatedHeight = Array.from(unitItems).reduce((acc, item) => acc + item.scrollHeight + 4, 0);
-        let realTotalHeight = 0;
-        const myCanvas = document.createElement('canvas');
-        try {
-            myCanvas.width = forceView.scrollWidth * devicePixelRatio;
-            await html2canvas(forceView, <any>{
-                useCORS: true,
-                backgroundColor: '#292929',
-                height: precalculatedHeight + 104,
-                windowHeight: (precalculatedHeight + 104) + 24,
-                removeContainer: true,
-                canvas: myCanvas,
-                onclone: (clonedDoc: Document) => {
-                    clonedDoc.querySelectorAll('.popup-btn').forEach(el => { el.parentElement?.remove(); });
-                    removeElements.forEach(selector => {
-                        const elements = clonedDoc.querySelectorAll(selector);
-                        elements.forEach(el => el.remove());
-                    });
-                    const styleEl = clonedDoc.createElement('style');
-                    styleEl.textContent = `
-                        body * { block-size: initial !important; }
-                        .force-name { height: 32px !important; min-height: 32px !important; }
-                        .primary-info, .secondary-info, .third-info, .third-info .info-area { width: auto !important; max-width: initial !important; }
-                        .force-viewer-container { height: auto !important; }
-                        .force-view { force-grow: 0 !important; min-height: initial !important; height: 0 !important; }
-                        .force-units-list, .unit-card { width: 100% !important; }
-                        .scrollable-content { flex-grow: 0; overflow: visible !important; min-height: initial !important; width: 100% !important; }
-                        .footer { justify-content: center !important; height: 32px !important; }
-                    `;
-                    clonedDoc.documentElement.appendChild(styleEl);
-                    const unitItems = clonedDoc.querySelectorAll('.force-view .force-unit-item');
-                    realTotalHeight = Array.from(unitItems).reduce((acc, item) => acc + item.scrollHeight + 4, 0);
-                    myCanvas.height = (realTotalHeight + 104) * devicePixelRatio;
-                }
-            });
-            const blob: Blob | null = await new Promise(resolve => myCanvas.toBlob(resolve, 'image/png'));
-            if (!blob) {
-                this.toastService.show('Failed to create image.', 'error');
-                return;
-            }
-            const baseName = (this.forceBuilderService.force?.name || 'mekbay-force')
-                .replace(/[^a-z0-9_\-]/ig, '_')
-                .slice(0, 100);
-            const filename = `${baseName}.png`;
-            const file = new File([blob], filename, { type: 'image/png' });
+    // async downloadAsImage() {
+    //     const forceView = document.getElementById('force-view');
+    //     if (!forceView) return;
+    //     const removeElements = ['.modal', '.share-btn', '.menu-overlay', '.burger-lip-btn',
+    //         '.main-content', '.force-viewer-container .header',
+    //         '.cdk-overlay-container', '.footer .spanner', '.unit-actions'];
+    //     // calculate the height of each force-unit-item
+    //     const unitItems = forceView.querySelectorAll('.force-view .force-unit-item');
+    //     const precalculatedHeight = Array.from(unitItems).reduce((acc, item) => acc + item.scrollHeight + 4, 0);
+    //     let realTotalHeight = 0;
+    //     const myCanvas = document.createElement('canvas');
+    //     try {
+    //         myCanvas.width = forceView.scrollWidth * devicePixelRatio;
+    //         await html2canvas(forceView, <any>{
+    //             useCORS: true,
+    //             backgroundColor: '#292929',
+    //             height: precalculatedHeight + 104,
+    //             windowHeight: (precalculatedHeight + 104) + 24,
+    //             removeContainer: true,
+    //             canvas: myCanvas,
+    //             onclone: (clonedDoc: Document) => {
+    //                 clonedDoc.querySelectorAll('.popup-btn').forEach(el => { el.parentElement?.remove(); });
+    //                 removeElements.forEach(selector => {
+    //                     const elements = clonedDoc.querySelectorAll(selector);
+    //                     elements.forEach(el => el.remove());
+    //                 });
+    //                 const styleEl = clonedDoc.createElement('style');
+    //                 styleEl.textContent = `
+    //                     body * { block-size: initial !important; }
+    //                     .force-name { height: 32px !important; min-height: 32px !important; }
+    //                     .primary-info, .secondary-info, .third-info, .third-info .info-area { width: auto !important; max-width: initial !important; }
+    //                     .force-viewer-container { height: auto !important; }
+    //                     .force-view { force-grow: 0 !important; min-height: initial !important; height: 0 !important; }
+    //                     .force-units-list, .unit-card { width: 100% !important; }
+    //                     .scrollable-content { flex-grow: 0; overflow: visible !important; min-height: initial !important; width: 100% !important; }
+    //                     .footer { justify-content: center !important; height: 32px !important; }
+    //                 `;
+    //                 clonedDoc.documentElement.appendChild(styleEl);
+    //                 const unitItems = clonedDoc.querySelectorAll('.force-view .force-unit-item');
+    //                 realTotalHeight = Array.from(unitItems).reduce((acc, item) => acc + item.scrollHeight + 4, 0);
+    //                 myCanvas.height = (realTotalHeight + 104) * devicePixelRatio;
+    //             }
+    //         });
+    //         const blob: Blob | null = await new Promise(resolve => myCanvas.toBlob(resolve, 'image/png'));
+    //         if (!blob) {
+    //             this.toastService.show('Failed to create image.', 'error');
+    //             return;
+    //         }
+    //         const baseName = (this.forceBuilderService.force?.name || 'mekbay-force')
+    //             .replace(/[^a-z0-9_\-]/ig, '_')
+    //             .slice(0, 100);
+    //         const filename = `${baseName}.png`;
+    //         const file = new File([blob], filename, { type: 'image/png' });
 
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                try {
-                    await navigator.share({
-                        title: this.forceBuilderService.force.name || 'MekBay Force',
-                        files: [file]
-                    });
-                    this.toastService.show('Image shared.', 'success');
-                    return;
-                } catch (err) {
-                }
-            } else if (window.ClipboardItem) {
-                // fall through to clipboard/download fallback
-                try {
-                    const item = new ClipboardItem({ 'image/png': blob });
-                    await navigator.clipboard.write([item]);
-                    this.toastService.show('Image copied to clipboard.', 'success');
-                    return;
-                } catch (err) {
-                    // fall through to download fallback
-                    // const url = URL.createObjectURL(blob);
-                    // const a = document.createElement('a');
-                    // a.href = url;
-                    // a.download = filename;
-                    // document.body.appendChild(a);
-                    // a.click();
-                    // a.remove();
-                    // URL.revokeObjectURL(url);
-                    // this.toastService.show('Image downloaded.', 'success');
-                }
-            }
-        } finally {
-            myCanvas.remove();
-        }
+    //         if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    //             try {
+    //                 await navigator.share({
+    //                     title: this.forceBuilderService.force.name || 'MekBay Force',
+    //                     files: [file]
+    //                 });
+    //                 this.toastService.show('Image shared.', 'success');
+    //                 return;
+    //             } catch (err) {
+    //             }
+    //         } else if (window.ClipboardItem) {
+    //             // fall through to clipboard/download fallback
+    //             try {
+    //                 const item = new ClipboardItem({ 'image/png': blob });
+    //                 await navigator.clipboard.write([item]);
+    //                 this.toastService.show('Image copied to clipboard.', 'success');
+    //                 return;
+    //             } catch (err) {
+    //                 // fall through to download fallback
+    //                 // const url = URL.createObjectURL(blob);
+    //                 // const a = document.createElement('a');
+    //                 // a.href = url;
+    //                 // a.download = filename;
+    //                 // document.body.appendChild(a);
+    //                 // a.click();
+    //                 // a.remove();
+    //                 // URL.revokeObjectURL(url);
+    //                 // this.toastService.show('Image downloaded.', 'success');
+    //             }
+    //         }
+    //     } finally {
+    //         myCanvas.remove();
+    //     }
 
-    };
+    // };
 
     close(value: null) {
         this.dialogRef.close(value);

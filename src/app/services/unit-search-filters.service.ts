@@ -1126,52 +1126,26 @@ export class UnitSearchFiltersService {
                 return;
             }
 
-            const currentParams = this.route.snapshot.queryParamMap;
             const queryParams: any = {};
-
-            // Preserve existing non-filter parameters
-            currentParams.keys.forEach(key => {
-                if (!this.QUERY_PARAMS.includes(key)) {
-                    queryParams[key] = currentParams.get(key);
-                }
-            });
             
             // Add search query if present
-            if (search.trim()) {
-                queryParams.q = encodeURIComponent(search.trim());
-            }
+            queryParams.q = search.trim() ? encodeURIComponent(search.trim()) : null;
             
             // Add sort if not default
-            if (selectedSort !== 'name') {
-                queryParams.sort = selectedSort;
-            }
-            
-            // Add sort direction if not default
-            if (selectedSortDirection !== 'asc') {
-                queryParams.sortDir = selectedSortDirection;
-            }
+            queryParams.sort = (selectedSort !== 'name') ? selectedSort : null;
+            queryParams.sortDir = (selectedSortDirection !== 'asc') ? selectedSortDirection : null;
             
             // Add filters if any are active
             const filtersParam = this.generateCompactFiltersParam(filterState);
-            if (filtersParam) {
-                queryParams.filters = filtersParam;
-            }
-
-            if (gunnery !== 4) {
-                queryParams.gunnery = gunnery;
-            }
-            if (piloting !== 5) {
-                queryParams.piloting = piloting;
-            }
-
-            if (expanded) {
-                queryParams.expanded = 'true';
-            }
+            queryParams.filters = filtersParam ? filtersParam : null;
+            queryParams.gunnery = (gunnery !== 4) ? gunnery : null;
+            queryParams.piloting = (piloting !== 5) ? piloting : null;
+            queryParams.expanded = (expanded ? 'true' : null);
 
             this.router.navigate([], {
                 relativeTo: this.route,
                 queryParams: Object.keys(queryParams).length > 0 ? queryParams : {},
-                queryParamsHandling: 'replace',
+                queryParamsHandling: 'merge',
                 replaceUrl: true
             });
         });

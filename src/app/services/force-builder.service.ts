@@ -34,7 +34,7 @@
 import { Injectable, signal, effect, computed, OnDestroy, Injector, inject, untracked } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Unit } from '../models/units.model';
-import { Force, ForceUnit } from '../models/force-unit.model';
+import { Force, ForceUnit, UnitGroup } from '../models/force-unit.model';
 import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
@@ -42,6 +42,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { firstValueFrom } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData } from '../components/rename-force-dialog/rename-force-dialog.component';
+import { RenameGroupDialogComponent, RenameGroupDialogData } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { DialogsService } from './dialogs.service';
 import { generateUUID } from './ws.service';
@@ -86,7 +87,7 @@ export class ForceBuilderService {
         return this.force.owned() === false;
     });
 
-    setForce(newForce: Force, updateUrl: boolean = true) {
+    setForce(newForce: Force) {
         // Unsubscribe from previous force
         if (this.forceChangedSubscription) {
             this.forceChangedSubscription.unsubscribe();
@@ -98,34 +99,10 @@ export class ForceBuilderService {
 
         console.log(`ForceBuilderService: Setting new force with name "${this.force.name}" and instance ID "${this.force.instanceId()}"`);
 
-        // Update URL to reflect the new force state
-        if (updateUrl && this.urlStateInitialized) {
-            const unitParams = this.generateUnitParams(newForce.units());
-            this.router.navigate([], {
-                relativeTo: this.route,
-                queryParams: {
-                    units: unitParams.length > 0 ? unitParams.join(',') : null,
-                    name: newForce.name || null,
-                    instance: newForce.instanceId() || null
-                },
-                queryParamsHandling: 'replace',
-                replaceUrl: true
-            });
-        }
-
         // Subscribe to new force's changed event
         this.forceChangedSubscription = this.currentForce().changed.subscribe(() => {
             this.dataService.saveForce(this.force);
-            const currentInstanceParam = this.route.snapshot.queryParamMap.get('instance');
             const forceInstanceId = this.force.instanceId();
-            if (forceInstanceId && currentInstanceParam !== forceInstanceId) {
-                this.router.navigate([], {
-                    relativeTo: this.route,
-                    queryParams: { instance: forceInstanceId },
-                    queryParamsHandling: 'merge',
-                    replaceUrl: true
-                });
-            }
             console.log(`ForceBuilderService: Auto-saved force with instance ID ${forceInstanceId}`);
         });
     }
@@ -140,17 +117,40 @@ export class ForceBuilderService {
     }
 
     async promptChangeForceName() {
+            const targetForce = this.force;
         const ref = this.dialog.open<string | null>(RenameForceDialogComponent, {
             data: {
-                message: 'Force Name',
-                inputType: 'text',
-                defaultValue: this.force.name,
-                placeholder: 'Name'
+                force: targetForce
             } as RenameForceDialogData
         });
         const newName = await firstValueFrom(ref.closed);
-        if (newName && newName !== null) {
-            this.force.setName(newName.trim());
+        if (newName !== null && newName !== undefined) {
+            if (newName === '') {
+                targetForce.nameLock = false; // Unlock name if empty
+                targetForce.setName(this.generateForceName());
+            } else {
+                targetForce.nameLock = true; // Lock name after manual change
+                targetForce.setName(newName.trim());
+            }
+        }
+    }
+
+    async promptChangeGroupName(group: UnitGroup) {
+        const ref = this.dialog.open<string | null>(RenameGroupDialogComponent, {
+            data: {
+                group: group
+            } as RenameGroupDialogData
+        });
+        const newName = await firstValueFrom(ref.closed);
+        
+        if (newName !== null && newName !== undefined) {
+            if (newName === '') {
+                group.nameLock = false; // Unlock name if empty
+                group.setName(this.generateGroupName(group));
+            } else {
+                group.nameLock = true; // Lock name after manual change
+                group.setName(newName.trim());
+            }
         }
     }
 
@@ -191,7 +191,7 @@ export class ForceBuilderService {
         }
         
         this.urlStateInitialized = false; // Reset URL state initialization
-        this.setForce(force, true);
+        this.setForce(force);
         this.selectUnit(force.units()[0] || null);
         this.urlStateInitialized = true; // Re-enable URL state initialization
         
@@ -209,7 +209,7 @@ export class ForceBuilderService {
         const newForce = new Force(name, this.dataService, this.unitInitializer, this.injector);
         
         this.urlStateInitialized = false; // Reset URL state initialization
-        this.setForce(newForce, true);
+        this.setForce(newForce);
         this.urlStateInitialized = true; // Re-enable URL state initialization
         
         console.log(`ForceBuilderService: Created new force with name "${name}"`);
@@ -236,13 +236,17 @@ export class ForceBuilderService {
     }
     
     queryParameters = computed(() => {
+        const instanceId = this.force.instanceId();
         const units = this.forceUnits();
-        const forceName = this.force.name;
+        let forceName: string | null = this.force.name;
+        if (units.length === 0) {
+            forceName = null;
+        }
         const unitParams = this.generateUnitParams(units);
         return {
             units: unitParams.length > 0 ? unitParams.join(',') : null,
             name: forceName || null,
-            instance: this.force.instanceId() || null
+            instance: instanceId || null
         };
     });
 
@@ -284,20 +288,23 @@ export class ForceBuilderService {
                 let loadedInstance = null;
                 if (instanceParam) {
                     // Try to find an existing force with this instance ID in the storage.
-                    untracked(async () => {
-                    loadedInstance = await this.dataService.getForce(instanceParam);
-                    if (loadedInstance) {
+                    loadedInstance = await untracked(async () => {
+                        const loadedInstance = await this.dataService.getForce(instanceParam);
+                        if (loadedInstance) {
                             if (!loadedInstance.owned()) {
                                 this.dialogsService.showNotice('Reports indicate another commander owns this force. Clone to adopt it for yourself.', 'Captured Intel');
                             }
                             this.setForce(loadedInstance);
                             this.selectUnit(loadedInstance.units()[0] || null);
                         }
+                        return loadedInstance;
                     });
                 }
                 if (!loadedInstance) {
                     // If no instance ID or not found, create a new force.
                     if (instanceParam) {
+
+                        //We remove the fail instance ID from the URL
                         this.router.navigate([], {
                             relativeTo: this.route,
                             queryParams: { instance: null },
@@ -413,7 +420,13 @@ export class ForceBuilderService {
         if (this.force.units().length === 1) {
             this.layoutService.openMenu();
         }
+        const unitGroup = this.force.groups().find(group => {
+            return group.units().some(u => u.id === newForceUnit.id);
+        });
         this.generateForceNameIfNeeded();
+        if (unitGroup) {
+            this.generateGroupNameIfNeeded(unitGroup);
+        }
         return newForceUnit;
     }
 
@@ -495,6 +508,9 @@ export class ForceBuilderService {
 
         const currentUnits = this.forceUnits();
         const idx = currentUnits.findIndex(u => u.id === unitToRemove.id);
+        const unitGroup = this.force.groups().find(group => {
+            return group.units().some(u => u.id === unitToRemove.id);
+        });
         this.force.removeUnit(unitToRemove);
         this.dataService.deleteCanvasDataOfUnit(unitToRemove);
 
@@ -517,16 +533,10 @@ export class ForceBuilderService {
             this.createNewForce();
         } else {        
             this.generateForceNameIfNeeded();
+            if (unitGroup) {
+                this.generateGroupNameIfNeeded(unitGroup);
+            }
         }
-    }
-
-    /**
-    * Reorders a unit in the forceUnits array.
-    * @param previousIndex The previous index of the unit.
-    * @param currentIndex The new index of the unit.
-    */
-    reorderUnit(previousIndex: number, currentIndex: number) {
-        this.force.reorderUnit(previousIndex, currentIndex);
     }
 
     public async requestCloneForce() {
@@ -555,16 +565,29 @@ export class ForceBuilderService {
     }
 
     private generateForceNameIfNeeded() {
-        if (!this.force.instanceId()) {
+        if (!this.force.nameLock) {
             this.force.setName(this.generateForceName(), false);
         }
     }
 
+    public generateGroupNameIfNeeded(group: UnitGroup) {
+        if (!group.nameLock && group.units().length > 0) {
+            group.setName(this.generateGroupName(group), false);
+        }
+    }
     public generateForceName(): string {
         return ForceNamerUtil.generateForceName({
             units: this.forceUnits(),
             factions: this.dataService.getFactions(),
             eras: this.dataService.getEras()
+        });
+    }
+
+    public generateGroupName(group: UnitGroup): string {
+        return ForceNamerUtil.generateFormationName({
+            units: group.units(),
+            allUnits: this.forceUnits(),
+            forceName: this.force.name
         });
     }
 
@@ -576,11 +599,11 @@ export class ForceBuilderService {
         );
     }
 
-    public getAllFormationsAvailable(): string[] | null {
+    public getAllFormationsAvailable(group: UnitGroup): string[] | null {
         return ForceNamerUtil.getAvailableFormations(
+            group.units(),
             this.forceUnits(),
-            this.dataService.getFactions(),
-            this.dataService.getEras()
+            this.force.name // Pass force name to help with Faction detection, hopefully...
         );
     }
 
@@ -610,5 +633,4 @@ export class ForceBuilderService {
         // this.selectUnit(force.units()[0] || null);
         // this.force.emitChanged();
     }
-
 }

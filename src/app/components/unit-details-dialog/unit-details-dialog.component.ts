@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStrategy, output, viewChild, effect, computed, HostBinding } from '@angular/core';
+import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStrategy, output, viewChild, effect, computed, HostBinding, afterNextRender, Injector } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { Unit, UnitComponent } from '../../models/units.model';
@@ -117,6 +117,7 @@ export class UnitDetailsDialogComponent {
     data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     toastService = inject(ToastService);
     router = inject(Router);
+    injector = inject(Injector);
     add = output<Unit>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
 
@@ -828,14 +829,6 @@ export class UnitDetailsDialogComponent {
         return `${unit.chassis} ${unit.model}`;
     }
 
-    getEraImg(unit: Unit): string | undefined {
-        return unit._era?.img;
-    }
-
-    getUnitImg(unit: Unit): string | undefined {
-        return `https://db.mekbay.com/images/units/${unit.icon}`;
-    }
-
     getTypeCount(typeCode: string): number {
         if (!this.unit?.comp) return 0;
         return this.unit.comp.filter(w => w.t === typeCode).reduce((sum, w) => sum + (w.q || 1), 0);
@@ -962,7 +955,9 @@ export class UnitDetailsDialogComponent {
     onCompMouseLeave() {
         this.isCompHovered = false;
         // Defer to next tick to allow floating window mouseenter to fire first if moving to it
-        setTimeout(() => this.updateFloatingVisibility(), 0);
+        afterNextRender(() => {
+            this.updateFloatingVisibility()
+        }, { injector: this.injector });
     }
 
     onFloatingMouseEnter() {
@@ -972,7 +967,9 @@ export class UnitDetailsDialogComponent {
     onFloatingMouseLeave() {
         this.isFloatingHovered = false;
         // Defer to next tick to allow comp mouseenter to fire first if moving to it
-        setTimeout(() => this.updateFloatingVisibility(), 0);
+        afterNextRender(() => {
+            this.updateFloatingVisibility()
+        }, { injector: this.injector });
     }
 
     private updateFloatingVisibility() {

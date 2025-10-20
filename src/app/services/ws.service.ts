@@ -139,7 +139,7 @@ export class WsService {
 
     public async waitForWebSocket(): Promise<void> {
         const wsConnectTimeout = new Promise<void>((_, reject) =>
-            setTimeout(() => reject('WebSocket connect timeout'), 2000)
+            setTimeout(() => reject('WebSocket connect timeout'), 3000)
         );
         await Promise.race([
             (async () => {

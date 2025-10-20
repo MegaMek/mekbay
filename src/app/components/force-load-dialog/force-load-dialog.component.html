@@ -25,17 +25,15 @@
                         </div>
                     </div>
                     <div class="unit-scroll">
-                        @for (unit of force.units(); let i = $index; track i) {
-                            <div class="unit-square" 
-                                [class.destroyed]="unit.destroyed">
-                                <img 
-                                    [src]="getUnitImg(unit)" 
-                                    (error)="$event.target.src = '/images/unknown.png'" 
-                                    class="unit-icon" 
-                                    alt="{{ unit.getUnit().chassis }} {{ unit.getUnit().model }}" 
-                                    title="{{ unit.getUnit().chassis }} {{ unit.getUnit().model }}" />
-                                <div class="unit-model">{{ getCleanedModel(unit) }}</div>
-                                <div class="unit-chassis">{{ unit.getUnit().chassis }}</div>
+                        @for (group of force.groups(); let gi = $index; track group.id) {
+                            <div class="unit-group">
+
+                                <div class="group-name">{{ group.name() }}</div>
+                                <div class="units">
+                                    @for (unit of group.units(); let i = $index; track i) {
+                                        <unit-block [forceUnit]="unit" [compactMode]="true"></unit-block>
+                                    }
+                                </div>
                             </div>
                         }
                     </div>

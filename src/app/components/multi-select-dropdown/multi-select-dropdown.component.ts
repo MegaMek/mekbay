@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, HostListener, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild } from '@angular/core';
+import { Component, HostListener, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 /*
@@ -59,6 +59,7 @@ export interface MultiStateSelection {
 })
 export class MultiSelectDropdownComponent {
     private elementRef = inject(ElementRef);
+    private injector = inject(Injector);
     filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
     
     label = input<string>('');
@@ -108,14 +109,14 @@ export class MultiSelectDropdownComponent {
     toggleDropdown() {
         this.isOpen.set(!this.isOpen());
         this.filterText.set('');        
-        setTimeout(() => {
+        afterNextRender(() => {
             if (this.isOpen()) {
                 const inputEl = this.filterInput()?.nativeElement;
                 if (inputEl) {
                     inputEl.focus();
                 }
             }
-        });
+        }, { injector: this.injector });
     }
 
     onFilterInput(event: Event) {

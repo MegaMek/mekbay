@@ -6,32 +6,31 @@
     <div class="searchbar-input-container">
         <input #searchInput class="bt-input searchbar" type="text" [disabled]="!this.filtersService.isDataReady()"
             [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
-            [value]="this.filtersService.searchText()" (input)="setSearch(searchInput.value)" (focus)="focused.set(true)"
-            id="unit-search-input" autocomplete="off" />
+            [value]="this.filtersService.searchText()" (input)="setSearch(searchInput.value)"
+            (focus)="focused.set(true)" id="unit-search-input" autocomplete="off" />
         @if (this.filtersService.searchText().length > 0) {
-            <button class="searchbar-cancel-btn" type="button"
-                (click)="setSearch(''); searchInput.focus();" aria-label="Clear search" tabindex="-1">
-                &#10005;
-            </button>
+        <button class="searchbar-cancel-btn" type="button" (click)="setSearch(''); searchInput.focus();"
+            aria-label="Clear search" tabindex="-1">
+            &#10005;
+        </button>
         }
     </div>
-    
-    <button type="button" class="bt-button expand-btn"
-        (click)="this.expandedView.set(!this.expandedView())"
+
+    <button type="button" class="bt-button expand-btn" (click)="this.expandedView.set(!this.expandedView())"
         [title]="this.expandedView() ? 'Collapse View' : 'Expand View'"
         [attr.aria-label]="this.expandedView() ? 'Collapse View' : 'Expand View'">
         @if (this.expandedView()) {
-            <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                aria-hidden="true" role="img">
-                <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor"
-                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+            focusable="false" aria-hidden="true" role="img">
+            <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
         } @else {
-            <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                aria-hidden="true" role="img">
-                <path d="M14 10L21 3M21 3H15M21 3V9M10 14L3 21M3 21H9M3 21L3 15" stroke="currentColor"
-                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+            focusable="false" aria-hidden="true" role="img">
+            <path d="M14 10L21 3M21 3H15M21 3V9M10 14L3 21M3 21H9M3 21L3 15" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
         }
     </button>
     <button #advBtn class="bt-button adv-btn" [class.active]="isAdvActive()"
@@ -48,170 +47,162 @@
     [hidden]="!this.filtersService.isDataReady() || !resultsVisible()" [ngStyle]="resultsDropdownStyle()">
     <div class="results-dropdown-content">
         @if (this.filtersService.filteredUnits().length > 0) {
-            <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
-                [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1350" tabindex="0">
-                <div class="results-dropdown-item unit-card"
-                    *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
-                    [class.active]="activeIndex() === i" 
-                    [class.selected]="isUnitSelected(unit)"
-                    (mouseenter)="activeIndex.set(i)" 
-                    (click)="onUnitCardClick(unit, $event)"
-                    (contextmenu)="onUnitCardClick(unit, $event, true); $event.preventDefault();">
+        <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
+            [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1350" tabindex="0">
+            <div class="results-dropdown-item unit-card"
+                *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
+                [class.active]="activeIndex() === i" [class.selected]="isUnitSelected(unit)"
+                (mouseenter)="activeIndex.set(i)" (click)="onUnitCardClick(unit, $event)"
+                (contextmenu)="onUnitCardClick(unit, $event, true); $event.preventDefault();">
 
-                    @if (this.expandedView()) {
-                        <ng-container *ngTemplateOutlet="expandedView; context: { unit: unit }"></ng-container>
-                    } @else {
-                        <!-- Compact View Template -->
-                        <div class="unit-image-container">
-                            <img class="icon" [src]="getUnitImg(unit)"
-                                (error)="$event.target.src = '/images/unknown.png'"
-                                alt="{{ unit.chassis }} {{ unit.model }}" />
-                        </div>
-                        <div class="unit-data-container">
-                            <div class="secondary-info">
-                                <div class="model" [innerHTML]="highlight(unit.model)"></div>
-                                @if (unit.role && (unit.role !== 'None')) {
-                                    <div class="role"
-                                        [class.sort-slot]="this.filtersService.selectedSort() === 'role'">{{ unit.role }}
-                                    </div>
-                                }
-                            </div>
-                            <div class="primary-info">
-                                <div class="chassis" [innerHTML]="highlight(unit.chassis)"></div>
-                            </div>
-                            <div class="third-info">
-                                <div class="info-area">
-                                    <div class="info-slot numeric"
-                                        [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
-                                        <span class="value">BV: {{ formatValue(getDisplayBV(unit), true, true) }}</span>
-                                    </div>
-                                    <div class="info-slot numeric"
-                                        [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
-                                        <span class="value">{{ formatTons(unit.tons) }}</span>
-                                        <img src="/images/weight.svg" class="icon" alt="Tonnage">
-                                    </div>
-                                    <div class="info-slot"
-                                        [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
-                                        <span class="value">{{ unit.year }}</span>
-                                        @if (getEraImg(unit); as eraImg) {
-                                            <img [src]="eraImg" class="icon era-icon" alt="Era"
-                                                [title]="unit._era?.name" />
-                                        }
-                                    </div>
-                                    @if (getSortSlot(unit); as slot) {
-                                        <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
-                                            <span class="value">
-                                                @if(slot.label) { {{ slot.label }}: } {{ slot.value }}
-                                            </span>
-                                            @if (slot.img) {<img [src]="slot.img" class="icon" [alt]="slot.alt">}
-                                        </div>
-                                    }
-                                </div>
-                                <span class="spanner"></span>
-                                <div class="info-slot-tags">
-                                    <a class="add-tag-btn" (click)="onAddTag(unit, $event)" title="Add tag"
-                                        aria-label="Add tag">
-                                        @if (!unit._tags || unit._tags.length === 0) {
-                                            <svg fill="none"
-                                                stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24"
-                                                xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                                                <path
-                                                    d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z"
-                                                    stroke-width="1.5" />
-                                                <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
-                                            </svg>
-                                        } @else {
-                                            <span class="tags-counter">{{ unit._tags.length }}</span>
-                                            <svg fill="var(--bt-yellow)" width="24px" height="24px" viewBox="0 0 24 24"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <path
-                                                    d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z" />
-                                            </svg>
-                                        }
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    }
-
+                @if (this.expandedView()) {
+                <ng-container *ngTemplateOutlet="expandedView; context: { unit: unit }"></ng-container>
+                } @else {
+                <!-- Compact View Template -->
+                <div class="unit-image-container">
+                    <img class="icon" [src]="`https://db.mekbay.com/images/units/${unit.icon}`" (error)="$event.target.src = '/images/unknown.png'"
+                        alt="{{ unit.chassis }} {{ unit.model }}" />
                 </div>
-            </cdk-virtual-scroll-viewport>
-
-                        @if (this.selectedUnits().size > 0) {
-                        <div class="selection-footer">
-                            <div class="selected-count">{{ this.selectedUnits().size }} units selected</div>
-                            <span class="spanner"></span>
-                            <button [disabled]="this.forceBuilderService.readOnlyForce()" type="button" class="bt-button"
-                                (click)="addSelectedUnits()">
-                                ADD TO FORCE
-                            </button>
-                            <button type="button" class="bt-button"
-                                (click)="clearSelection()">
-                                CLEAR
-                            </button>
+                <div class="unit-data-container">
+                    <div class="secondary-info">
+                        <div class="model" [innerHTML]="highlight(unit.model)"></div>
+                        @if (unit.role && (unit.role !== 'None')) {
+                        <div class="role" [class.sort-slot]="this.filtersService.selectedSort() === 'role'">{{ unit.role
+                            }}
                         </div>
                         }
-
-                        
-            @if (this.filtersService.filteredUnits().length > 0) {
-                <div class="results-footer">
-                    <div class="results-count">
-                        {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length
-                        === 1 ? '' : 's' }}
                     </div>
-                            <span class="spanner"></span>
-                    <div class="results-sort">
-                        <select #sortSel class="bt-input sort-select"
-                            (change)="this.filtersService.setSortOrder(sortSel.value)">
-                            @for (opt of SORT_OPTIONS; let i = $index; track i) {
-                                <option [value]="opt.key"
-                                    [selected]="opt.key === this.filtersService.selectedSort()">
-                                    {{ opt.label }}
-                                </option>
+                    <div class="primary-info">
+                        <div class="chassis" [innerHTML]="highlight(unit.chassis)"></div>
+                    </div>
+                    <div class="third-info">
+                        <div class="info-area">
+                            <div class="info-slot numeric"
+                                [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
+                                <span class="value">BV: {{ unit | filterAdjustedBV | formatNumber:true:true }}</span>
+                            </div>
+                            <div class="info-slot numeric"
+                                [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
+                                <span class="value">{{ unit.tons | formatTons }}</span>
+                                <img src="/images/weight.svg" class="icon" alt="Tonnage">
+                            </div>
+                            <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
+                                <span class="value">{{ unit.year }}</span>
+                                @if (unit._era?.img) {
+                                <img [src]="unit._era?.img" class="icon era-icon" alt="Era" [title]="unit._era?.name" />
+                                }
+                            </div>
+                            @if (getSortSlot(unit); as slot) {
+                            <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
+                                <span class="value">
+                                    @if(slot.label) { {{ slot.label }}: } {{ slot.value }}
+                                </span>
+                                @if (slot.img) {<img [src]="slot.img" class="icon" [alt]="slot.alt">}
+                            </div>
                             }
-                        </select><button type="button" class="bt-button sort-direction-btn"
-                            (click)="this.filtersService.setSortDirection(this.filtersService.selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
-                            [title]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
-                            [attr.aria-label]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
-                            @if (this.filtersService.selectedSortDirection() === 'asc') {
-                                <!-- ASC -->
-                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                    aria-hidden="true" role="img">
-                                    <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                    <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                    <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                    <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5"
-                                        stroke-linecap="round" stroke-linejoin="round" />
+                        </div>
+                        <span class="spanner"></span>
+                        <div class="info-slot-tags">
+                            <a class="add-tag-btn" (click)="onAddTag(unit, $event)" title="Add tag"
+                                aria-label="Add tag">
+                                @if (!unit._tags || unit._tags.length === 0) {
+                                <svg fill="none" stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24"
+                                    xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                                    <path
+                                        d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z"
+                                        stroke-width="1.5" />
+                                    <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
                                 </svg>
-                            } @else {
-                                <!-- DESC -->
-                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                    aria-hidden="true" role="img">
-                                    <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                    <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                    <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                    <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                        stroke-linejoin="round" />
+                                } @else {
+                                <span class="tags-counter">{{ unit._tags.length }}</span>
+                                <svg fill="var(--bt-yellow)" width="24px" height="24px" viewBox="0 0 24 24"
+                                    xmlns="http://www.w3.org/2000/svg">
+                                    <path
+                                        d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z" />
                                 </svg>
-                            }
-                        </button>
+                                }
+                            </a>
+                        </div>
                     </div>
                 </div>
-            }
-        } @else {
-            <div class="results-dropdown-item no-results">
-                No results
+                }
+
             </div>
+        </cdk-virtual-scroll-viewport>
+
+        @if (this.selectedUnits().size > 0) {
+        <div class="selection-footer">
+            <div class="selected-count">{{ this.selectedUnits().size }} units selected</div>
+            <span class="spanner"></span>
+            <button [disabled]="this.forceBuilderService.readOnlyForce()" type="button" class="bt-button"
+                (click)="addSelectedUnits()">
+                ADD TO FORCE
+            </button>
+            <button type="button" class="bt-button" (click)="clearSelection()">
+                CLEAR
+            </button>
+        </div>
+        }
+
+
+        @if (this.filtersService.filteredUnits().length > 0) {
+        <div class="results-footer">
+            <div class="results-count">
+                {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length
+                === 1 ? '' : 's' }}
+            </div>
+            <span class="spanner"></span>
+            <div class="results-sort">
+                <select #sortSel class="bt-input sort-select"
+                    (change)="this.filtersService.setSortOrder(sortSel.value)">
+                    @for (opt of SORT_OPTIONS; let i = $index; track i) {
+                    <option [value]="opt.key" [selected]="opt.key === this.filtersService.selectedSort()">
+                        {{ opt.label }}
+                    </option>
+                    }
+                </select><button type="button" class="bt-button sort-direction-btn"
+                    (click)="this.filtersService.setSortDirection(this.filtersService.selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
+                    [title]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
+                    [attr.aria-label]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+                    @if (this.filtersService.selectedSortDirection() === 'asc') {
+                    <!-- ASC -->
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                        aria-hidden="true" role="img">
+                        <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                    } @else {
+                    <!-- DESC -->
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                        aria-hidden="true" role="img">
+                        <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                    }
+                </button>
+            </div>
+        </div>
+        }
+        } @else {
+        <div class="results-dropdown-item no-results">
+            No results
+        </div>
         }
     </div>
 </div>
 <div #advPanel class="adv-panel framed-borders" [hidden]="!advOpen()" [ngStyle]="advPanelStyle()"
     [class.docked]="advPanelDocked()">
     @if (this.expandedView() && this.advPanelDocked()) {
-        <div class="adv-panel-drag-handle"
-            (mousedown)="onAdvPanelDragStart($event)" (click)="onAdvPanelDragHandleClick($event)">
-            <div class="drag-bar"></div>
-        </div>
+    <div class="adv-panel-drag-handle" (mousedown)="onAdvPanelDragStart($event)"
+        (click)="onAdvPanelDragHandleClick($event)">
+        <div class="drag-bar"></div>
+    </div>
     }
     <div class="adv-panel-header" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         <div class="pilot-skills-section framed-borders">
@@ -222,7 +213,7 @@
                         [value]="this.filtersService.pilotGunnerySkill()"
                         (change)="setPilotSkill('gunnery', +$any($event.target).value)">
                         @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
-                            <option [value]="n" [selected]="n === this.filtersService.pilotGunnerySkill()">{{ n }}</option>
+                        <option [value]="n" [selected]="n === this.filtersService.pilotGunnerySkill()">{{ n }}</option>
                         }
 
                     </select>
@@ -233,7 +224,7 @@
                         [value]="this.filtersService.pilotPilotingSkill()"
                         (change)="setPilotSkill('piloting', +$any($event.target).value)">
                         @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
-                            <option [value]="n" [selected]="n === this.filtersService.pilotPilotingSkill()">{{ n }}</option>
+                        <option [value]="n" [selected]="n === this.filtersService.pilotPilotingSkill()">{{ n }}</option>
                         }
                     </select>
                 </div>
@@ -244,43 +235,42 @@
     <div class="adv-panel-content" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         <!-- Dropdown filters -->
         @for (conf of ADVANCED_FILTERS; let i = $index; track i) {
-            @if (this.filtersService.advOptions()[conf.key]; as optionsData) {
-                @if (optionsData.type === 'dropdown') {
-                    <div class="filter-row">
-                        <multi-select-dropdown class="dropdown"
-                            [label]="optionsData.label" [options]="optionsData.options" [selected]="optionsData.value"
-                            [multistate]="conf.multistate ?? false" [countable]="conf.countable ?? false"
-                            (selectionChange)="setAdvFilter(conf.key, $event)">
-                        </multi-select-dropdown>
-                    </div>
-                }
-            }
+        @if (this.filtersService.advOptions()[conf.key]; as optionsData) {
+        @if (optionsData.type === 'dropdown') {
+        <div class="filter-row">
+            <multi-select-dropdown class="dropdown" [label]="optionsData.label" [options]="optionsData.options"
+                [selected]="optionsData.value" [multistate]="conf.multistate ?? false"
+                [countable]="conf.countable ?? false" (selectionChange)="setAdvFilter(conf.key, $event)">
+            </multi-select-dropdown>
+        </div>
+        }
+        }
         }
         <!-- Range Filters -->
         @for (conf of ADVANCED_FILTERS; let i = $index; track i) {
-            @if (this.filtersService.advOptions()[conf.key]; as optionsData) {
-                @if (optionsData.type === 'range') {
-                    <div class="filter-row">
-                        <div class="range">
-                            <label>{{ optionsData.label }}
-                                <span class="range-values">
-                                    (<span class="range-value-min clickable"
-                                        (click)="openRangeValueDialog(conf.key, 'min', optionsData.value[0], optionsData.options)">{{
-                                        formatValue(optionsData.value[0], false, true) }}</span>~<span
-                                        class="range-value-max clickable"
-                                        (click)="openRangeValueDialog(conf.key, 'max', optionsData.value[1], optionsData.options)">{{
-                                        formatValue(optionsData.value[1], false, true) }}</span>)
-                                </span>
-                            </label>
-                            <range-slider [min]="optionsData.totalRange[0]" [max]="optionsData.totalRange[1]"
-                                [value]="optionsData.value" [availableRange]="optionsData.options"
-                                [interacted]="optionsData.interacted" [curve]="conf.curve ?? 1"
-                                (valueChange)="setAdvFilter(conf.key, $event)">
-                            </range-slider>
-                        </div>
-                    </div>
-                }
-            }
+        @if (this.filtersService.advOptions()[conf.key]; as optionsData) {
+        @if (optionsData.type === 'range') {
+        <div class="filter-row">
+            <div class="range">
+                <label>{{ optionsData.label }}
+                    <span class="range-values">
+                        (<span class="range-value-min clickable"
+                            (click)="openRangeValueDialog(conf.key, 'min', optionsData.value[0], optionsData.options)">{{
+                            optionsData.value[0] | formatNumber:false:true }}</span>~<span
+                            class="range-value-max clickable"
+                            (click)="openRangeValueDialog(conf.key, 'max', optionsData.value[1], optionsData.options)">{{
+                            optionsData.value[1] | formatNumber:false:true }}</span>)
+                    </span>
+                </label>
+                <range-slider [min]="optionsData.totalRange[0]" [max]="optionsData.totalRange[1]"
+                    [value]="optionsData.value" [availableRange]="optionsData.options"
+                    [interacted]="optionsData.interacted" [curve]="conf.curve ?? 1"
+                    (valueChange)="setAdvFilter(conf.key, $event)">
+                </range-slider>
+            </div>
+        </div>
+        }
+        }
         }
     </div>
 </div>
@@ -291,7 +281,7 @@
         <!-- Header Section -->
         <div class="expanded-header">
             <div class="expanded-image">
-                <img class="icon" [src]="getUnitImg(unit)" (error)="$event.target.src = '/images/unknown.png'"
+                <img class="icon" [src]="`https://db.mekbay.com/images/units/${unit.icon}`" (error)="$event.target.src = '/images/unknown.png'"
                     alt="{{ unit.chassis }} {{ unit.model }}" />
             </div>
             <div class="expanded-title">
@@ -300,16 +290,17 @@
             </div>
             <div class="expanded-subtitle">
                 @if (unit.role && unit.role !== 'None') {
-                    <div class="subtitle-line role">{{ unit.role }}</div>
+                <div class="subtitle-line role">{{ unit.role }}</div>
                 }
                 <div class="subtitle-line">
-                    <span>{{ unit.type }}@if(unit.subtype && unit.subtype !== unit.type){<span> - {{ unit.subtype }}</span>}</span>
+                    <span>{{ unit.type }}@if(unit.subtype && unit.subtype !== unit.type){<span> - {{ unit.subtype
+                            }}</span>}</span>
                     <span> • {{ unit.weightClass }}</span>
                 </div>
                 <div class="subtitle-line">
                     <div class="info-slot-tags">
                         @for(tag of unit._tags; let i = $index; track i) {
-                            <span class="tag">{{ tag }}</span>
+                        <span class="tag">{{ tag }}</span>
                         }
                         <a class="add-tag-btn" (click)="onAddTag(unit, $event)" title="Add tag" aria-label="Add tag">
                             <svg fill="none" stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24"
@@ -334,12 +325,12 @@
                     <div class="info-item">
                         <span class="info-label muted">BV:</span>
                         <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">{{
-                            formatValue(getDisplayBV(unit), true, false) }}</span>
+                            unit | filterAdjustedBV | formatNumber:true:false }}</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">Tons:</span>
                         <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">{{
-                            formatTons(unit.tons) }}</span>
+                            unit.tons | formatTons }}</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">Tech:</span>
@@ -350,8 +341,8 @@
                     <div class="info-item">
                         <span class="info-label muted">Intro Year: </span>
                         <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">{{
-                            unit.year }} @if(getEraImg(unit); as eraImg) { <img [src]="eraImg" class="era-icon" alt="Era"
-                                [title]="unit._era?.name" /> }</span>
+                            unit.year }} @if(unit._era?.img) { 
+                                <img [src]="unit._era.img" class="era-icon" [alt]="unit._era?.name" [title]="unit._era?.name" /> }</span>
 
                     </div>
                     <div class="info-item">
@@ -360,47 +351,48 @@
                             unit.level }}</span>
                     </div>
                     @if (unit.cost) {
-                        <div class="info-item">
-                            <span class="info-label muted">C-Bill:</span>
-                            <span class="info-value">{{ formatValue(unit.cost, true, false) }}</span>
-                        </div>
+                    <div class="info-item">
+                        <span class="info-label muted">C-Bill:</span>
+                        <span class="info-value">{{ unit.cost | formatNumber:true:false }}</span>
+                    </div>
                     }
                     @if (unit.armorType) {
-                        <div class="info-item">
-                            <span class="info-label muted">Armor:</span>
-                            <span class="info-value">{{ unit.armorType }}</span>
-                        </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Armor:</span>
+                        <span class="info-value">{{ unit.armorType }}</span>
+                    </div>
                     }
                     @if (unit.structureType) {
-                        <div class="info-item">
-                            <span class="info-label muted">Structure:</span>
-                            <span class="info-value">{{ unit.structureType }}</span>
-                        </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Structure:</span>
+                        <span class="info-value">{{ unit.structureType }}</span>
+                    </div>
                     }
                     @if (unit.moveType) {
-                        <div class="info-item">
-                            <span class="info-label muted">Motive:</span>
-                            <span class="info-value">{{ unit.moveType }}</span>
-                        </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Motive:</span>
+                        <span class="info-value">{{ unit.moveType }}</span>
+                    </div>
                     }
                     @if (unit.engine) {
-                        <div class="info-item">
-                            <span class="info-label muted">Engine:</span>
-                            <span class="info-value">@if(unit.engineRating){{{ unit.engineRating }} }{{
-                                unit.engine }}</span>
-                        </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Engine:</span>
+                        <span class="info-value">@if(unit.engineRating){{{ unit.engineRating }} }{{
+                            unit.engine }}</span>
+                    </div>
                     }
                     @if (unit.c3) {
-                        <div class="info-item">
-                            <span class="info-label muted">Network:</span>
-                            <span class="info-value">{{ unit.c3 }}</span>
-                        </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Network:</span>
+                        <span class="info-value">{{ unit.c3 }}</span>
+                    </div>
                     }
                     @if (unit.walk) {
-                        <div class="info-item">
-                            <span class="info-label muted">Movement:</span>
-                            <span class="info-value">{{ unit.walk }} / {{ unit.run }}@if(unit.run2 != unit.run){ [{{ unit.run2 }}]}@if(unit.jump){ / {{ unit.jump }}}</span>
-                        </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Movement:</span>
+                        <span class="info-value">{{ unit.walk }} / {{ unit.run }}@if(unit.run2 != unit.run){ [{{
+                            unit.run2 }}]}@if(unit.jump){ / {{ unit.jump }}}</span>
+                    </div>
                     }
                 </div>
 
@@ -410,15 +402,15 @@
                 <!-- Stat Bars -->
                 <div class="stat-bars-columns">
                     @if((unit | statBarSpecs); as specsList) {
-                        @for (spec of specsList; let i = $index; track i) {
-                            <div class="stat-bar-row">
-                                <div class="stat-bar">
-                                    <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
-                                </div>
-                                <span class="stat-label">{{ spec.label }}</span>
-                                <span class="stat-value">{{ spec.valueText ?? spec.value }}</span>
-                            </div>
-                        }
+                    @for (spec of specsList; let i = $index; track i) {
+                    <div class="stat-bar-row">
+                        <div class="stat-bar">
+                            <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
+                        </div>
+                        <span class="stat-label">{{ spec.label }}</span>
+                        <span class="stat-value">{{ spec.valueText ?? spec.value }}</span>
+                    </div>
+                    }
                     }
                 </div>
             </div>
@@ -426,38 +418,35 @@
             <div class="expanded-right">
                 <!-- Right Column: Components -->
                 @if ((unit.comp | expandedComponents); as componentsList) {
-                    @if (componentsList.length > 0) {
-                        <div class="components-header">Equipment</div>
-                        <div class="expanded-components">
-                            <div class="components-pills">
-                                @for (comp of componentsList; let last = $last; let i = $index; track i) {
-                                <div class="component-pill"
-                                    [ngClass]="getTypeClass(comp.t)" 
-                                    (click)="onCompClick(unit, comp, $event)"
-                                    (pointerdown)="onCompPointerDown(unit, comp, $event)"
-                                    (mouseenter)="onCompMouseEnter(unit, comp, $event)"
-                                    (mouseleave)="onCompMouseLeave()">
-                                    <span class="pill-qty">{{ comp.q }}×</span>
-                                    <span class="pill-name">{{ comp.n }}</span>
-                                </div>
-                                }
-                            </div>
+                @if (componentsList.length > 0) {
+                <div class="components-header">Equipment</div>
+                <div class="expanded-components">
+                    <div class="components-pills">
+                        @for (comp of componentsList; let last = $last; let i = $index; track i) {
+                        <div class="component-pill" [ngClass]="getTypeClass(comp.t)"
+                            (click)="onCompClick(unit, comp, $event)"
+                            (pointerdown)="onCompPointerDown(unit, comp, $event)"
+                            (mouseenter)="onCompMouseEnter(unit, comp, $event)" (mouseleave)="onCompMouseLeave()">
+                            <span class="pill-qty">{{ comp.q }}×</span>
+                            <span class="pill-name">{{ comp.n }}</span>
                         </div>
-                    }
+                        }
+                    </div>
+                </div>
+                }
                 }
                 @if ((unit.comp | filterAmmo); as ammoList) {
-                    @if (ammoList.length > 0) {
-                        <div class="ammo-list">
-                            <span class="info-label muted">Ammo: </span>
-                            @for (comp of ammoList; let last = $last; let i = $index; track i) {
-                                <span class="ammo-pill"
-                                    (click)="onCompClick(unit, comp, $event)"
-                                    (pointerdown)="onCompPointerDown(unit, comp, $event)"
-                                    (mouseenter)="onCompMouseEnter(unit, comp, $event)"
-                                    (mouseleave)="onCompMouseLeave()">({{ comp.n }}) {{ comp.q2 }}</span>@if(!last){<span>, </span>}
-                            }
-                        </div>
+                @if (ammoList.length > 0) {
+                <div class="ammo-list">
+                    <span class="info-label muted">Ammo: </span>
+                    @for (comp of ammoList; let last = $last; let i = $index; track i) {
+                    <span class="ammo-pill" (click)="onCompClick(unit, comp, $event)"
+                        (pointerdown)="onCompPointerDown(unit, comp, $event)"
+                        (mouseenter)="onCompMouseEnter(unit, comp, $event)" (mouseleave)="onCompMouseLeave()">({{ comp.n
+                        }}) {{ comp.q2 }}</span>@if(!last){<span>, </span>}
                     }
+                </div>
+                }
                 }
             </div>
         </div>

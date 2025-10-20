@@ -342,8 +342,16 @@ export class DbService {
     private async deleteForceCanvasData(instanceId: string): Promise<void> {
         const force = await this.getForce(instanceId);
         if (!force) return;
-        const unitIds = force.units.map(unit => unit.id).filter(id => id);
-        await Promise.all(unitIds.map(id => this.deleteCanvasData(id)));
+        if (force.groups) {
+            for (const group of force.groups) {
+                const unitIds = group.units.map(unit => unit.id).filter(id => id);
+                await Promise.all(unitIds.map(id => this.deleteCanvasData(id)));
+            }
+        } else if (force.units) {
+            // Backwards compatibility for forces without groups
+            const unitIds = force.units.map(unit => unit.id).filter(id => id);
+            await Promise.all(unitIds.map(id => this.deleteCanvasData(id)));
+        }
     }
 
     public async deleteCanvasData(unitId: string): Promise<void> {

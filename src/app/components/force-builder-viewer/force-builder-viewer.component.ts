@@ -31,19 +31,19 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, HostBinding, HostListener, ElementRef, Renderer2, effect, inject, OnDestroy, ChangeDetectionStrategy, viewChild, viewChildren, output, input, contentChild } from '@angular/core';
+import { Component, computed, HostBinding, HostListener, Injector, ElementRef, Renderer2, effect, inject, OnDestroy, ChangeDetectionStrategy, viewChild, viewChildren, output, input, contentChild, signal, afterNextRender, WritableSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { UnitSearchComponent } from '../unit-search/unit-search.component';
-import { ForceUnit } from '../../models/force-unit.model';
-import { DragDropModule, CdkDragDrop } from '@angular/cdk/drag-drop'
+import { ForceUnit, UnitGroup } from '../../models/force-unit.model';
+import { DragDropModule, CdkDragDrop, transferArrayItem, moveItemInArray, CdkDragMove } from '@angular/cdk/drag-drop'
 import { PopupMenuComponent } from '../../components/popup-menu/popup-menu.component';
 import { Dialog } from '@angular/cdk/dialog';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { Portal, PortalModule } from '@angular/cdk/portal';
 import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
-
+import { UnitBlockComponent } from '../unit-block/unit-block.component';
 /*
  * Author: Drake
  */
@@ -56,7 +56,7 @@ const SWIPE_SNAP_THRESHOLD_PERCENT = 0.5;   // Menu snaps open/closed if dragged
     selector: 'force-builder-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, PortalModule, DragDropModule, PopupMenuComponent],
+    imports: [CommonModule, PortalModule, DragDropModule, PopupMenuComponent, UnitBlockComponent],
     templateUrl: './force-builder-viewer.component.html',
     styleUrls: ['./force-builder-viewer.component.scss']
 })
@@ -66,6 +66,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     private elRef = inject(ElementRef<HTMLElement>);
     private renderer = inject(Renderer2);
     private dialog = inject(Dialog);
+    private injector = inject(Injector);
     unitSearchPortal = input<Portal<any>>();
     unitSearchComponent = input<UnitSearchComponent>();
     menuSelect = output<string>();
@@ -73,13 +74,19 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
     private burgerLipBtn = viewChild<ElementRef<HTMLButtonElement>>('burgerLipBtn');
 
+    compactMode = signal<boolean>(false);
+
+    lockAxis = computed(() => {
+        return !this.compactMode() ? 'y' : null;
+    });
+
     // --- Gesture State ---
     private isDragging = false;
     private startX = 0;
     private startY = 0;
     private hostWidth = 0;
     private hasMoved = false; // Flag to distinguish tap from swipe
-    private isUnitDragging = false; // Flag for unit drag/sorting
+    isUnitDragging = signal<boolean>(false); // Flag for unit drag/sorting
 
     // Touch event listeners for dynamic management
     private touchMoveListener?: (event: TouchEvent) => void;
@@ -96,10 +103,23 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     private lipMoveUnlisten?: () => void;
     private lipUpUnlisten?: () => void;
 
+    //Units autoscroll
+    private autoScrollVelocity = signal<number>(0);     // px/sec (+ down, - up)
+    private autoScrollRafId?: number;
+    private lastAutoScrollTs?: number;
+    private readonly AUTOSCROLL_EDGE = 64;   // px threshold from edge to start scrolling
+    private readonly AUTOSCROLL_MAX = 600;   // px/sec max scroll speed
+    private readonly AUTOSCROLL_MIN = 40;
+
     @HostBinding('class.is-mobile-menu-open')
     get isMobileMenuOpen() {
         return this.layoutService.isMobile() && this.layoutService.isMenuOpen();
     }
+
+    hasSingleGroup = computed(() => {
+        return this.forceBuilderService.force.groups().length === 1;
+    });
+
     totalBv = computed(() => {
         return this.forceBuilderService.forceUnits().reduce((sum, unit) => sum + (unit.getBv()), 0);
     });
@@ -115,9 +135,9 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         effect(() => {
             const selected = this.forceBuilderService.selectedUnit();
             if (selected) {
-                setTimeout(() => {
+                afterNextRender(() => {
                     this.scrollToUnit(selected.id);
-                }, 50);
+                }, { injector: this.injector });
             }
         });
     }
@@ -186,6 +206,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     ngOnDestroy() {
         this.cleanupTouchListeners();
         this.cleanupLipListeners();
+        this.stopAutoScrollLoop();
     }
 
     private addTouchListeners() {
@@ -245,7 +266,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     @HostListener('document:touchstart', ['$event'])
     onTouchStart(event: TouchEvent) {
-        if (!this.layoutService.isMobile() || this.isUnitDragging) return;
+        if (!this.layoutService.isMobile() || this.isUnitDragging()) return;
 
         if (this.unitSearchComponent()?.advOpen()) {
             const advPanelEl = this.unitSearchComponent()?.advPanel()?.nativeElement;
@@ -323,7 +344,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     onUnitDragStart() {
         if (this.forceBuilderService.readOnlyForce()) return;
-        this.isUnitDragging = true;
+        this.isUnitDragging.set(true);
         if (this.isDragging) {
             this.isDragging = false;
             this.renderer.removeClass(this.elRef.nativeElement, 'is-dragging');
@@ -333,49 +354,180 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         }
     }
 
+    onUnitDragMoved(event: CdkDragMove<any>) {
+       if (this.forceBuilderService.readOnlyForce()) return;
+
+       const scrollRef = this.scrollableContent?.();
+       if (!scrollRef) {
+           this.stopAutoScrollLoop();
+           return;
+       }
+       const container = scrollRef.nativeElement as HTMLElement;
+       const rect = container.getBoundingClientRect();
+
+       // pointerPosition provided by CdkDragMove when available; fallback to underlying event coords
+       const pointerY = event.pointerPosition?.y ?? (event.event as PointerEvent)?.clientY;
+       if (pointerY == null) {
+           this.stopAutoScrollLoop();
+           return;
+       }
+
+       const topDist = pointerY - rect.top;
+       const bottomDist = rect.bottom - pointerY;
+
+       let ratio = 0;
+       if (topDist < this.AUTOSCROLL_EDGE) {
+           ratio = (this.AUTOSCROLL_EDGE - topDist) / this.AUTOSCROLL_EDGE; // 0..1
+           ratio = Math.max(0, Math.min(1, ratio));
+           ratio = ratio * ratio; // ease-in
+           this.autoScrollVelocity.set(-Math.max(this.AUTOSCROLL_MIN, ratio * this.AUTOSCROLL_MAX));
+       } else if (bottomDist < this.AUTOSCROLL_EDGE) {
+           ratio = (this.AUTOSCROLL_EDGE - bottomDist) / this.AUTOSCROLL_EDGE;
+           ratio = Math.max(0, Math.min(1, ratio));
+           ratio = ratio * ratio;
+           this.autoScrollVelocity.set(Math.max(this.AUTOSCROLL_MIN, ratio * this.AUTOSCROLL_MAX));
+       } else {
+           this.autoScrollVelocity.set(0);
+       }
+
+       if (Math.abs(this.autoScrollVelocity()) > 0.5) {
+           this.startAutoScrollLoop();
+       } else {
+           this.stopAutoScrollLoop();
+       }
+    }
+
     onUnitDragEnd() {
         if (this.forceBuilderService.readOnlyForce()) return;
-        setTimeout(() => {
-            this.isUnitDragging = false;
-        }, 50);
+        this.stopAutoScrollLoop();
+        this.isUnitDragging.set(false);
     }
 
-    formatValue(val: number, formatThousands: boolean = false): string {
-        if (val >= 10_000_000_000) {
-            return `${Math.round(val / 1_000_000_000)}kkk`;
-        }
-        if (val >= 10_000_000) {
-            return `${Math.round(val / 1_000_000)}kk`;
-        }
-        if (val >= 10_000) {
-            return `${Math.round(val / 1_000)}k`;
-        }
-        const rounded = Math.round(val);
-        if (formatThousands) {
-            return rounded.toLocaleString();
-        }
-        return rounded.toString();
+       
+    private startAutoScrollLoop() {
+        if (this.autoScrollRafId) return;
+        this.lastAutoScrollTs = performance.now();
+        const step = (ts: number) => {
+            // If RAF was cancelled, abort
+            if (!this.autoScrollRafId) return;
+            const last = this.lastAutoScrollTs ?? ts;
+            // clamp dt to avoid huge jumps
+            const dt = Math.min(100, ts - last) / 1000;
+            this.lastAutoScrollTs = ts;
+
+            const v = this.autoScrollVelocity();
+            if (Math.abs(v) > 0.5) {
+                const scrollRef = this.scrollableContent?.();
+                if (scrollRef) {
+                    const el = scrollRef.nativeElement as HTMLElement;
+                    const delta = v * dt;
+                    // clamp new scrollTop inside scrollable range
+                    el.scrollTop = Math.max(0, Math.min(el.scrollHeight - el.clientHeight, el.scrollTop + delta));
+                }
+                this.autoScrollRafId = requestAnimationFrame(step);
+            } else {
+                this.stopAutoScrollLoop();
+            }
+        };
+        this.autoScrollRafId = requestAnimationFrame(step);
     }
 
-    formatTons(tons: number): string {
-        const format = (num: number) => Math.round(num * 100) / 100;
-        if (tons < 1000) {
-            return `${format(tons)}`;
-        } else if (tons < 1000000) {
-            return `${format(tons / 1000)}k`;
+    private stopAutoScrollLoop() {
+        if (this.autoScrollRafId) {
+            cancelAnimationFrame(this.autoScrollRafId);
+            this.autoScrollRafId = undefined;
+        }
+        this.autoScrollVelocity.set(0);
+        this.lastAutoScrollTs = undefined;
+    }
+
+    drop(event: CdkDragDrop<WritableSignal<ForceUnit[]>>) {
+        if (this.forceBuilderService.readOnlyForce()) return;
+        
+        const force = this.forceBuilderService.force;
+        const groups = force.groups();
+
+        const groupIdFromContainer = (id?: string) => id && id.startsWith('group-') ? id.substring('group-'.length) : null;
+
+        const fromGroupId = groupIdFromContainer(event.previousContainer?.id);
+        const toGroupId = groupIdFromContainer(event.container?.id);
+
+        if (!fromGroupId || !toGroupId) return;
+
+       const fromGroup = groups.find(g => g.id === fromGroupId);
+        const toGroup = groups.find(g => g.id === toGroupId);
+        if (!fromGroup || !toGroup) return;
+
+        // Work with snapshots of the signals' arrays and then write them back.
+        if (fromGroup === toGroup) {
+            const units = [...fromGroup.units()]; // snapshot
+            moveItemInArray(units, event.previousIndex, event.currentIndex);
+            fromGroup.units.set(units);
         } else {
-            return `${format(tons / 1000000)}M`;
+            const fromUnits = [...fromGroup.units()];
+            const toUnits = [...toGroup.units()];
+
+            // Remove from source
+            const [moved] = fromUnits.splice(event.previousIndex, 1);
+            if (!moved) return;
+
+            // Insert into destination at the requested index
+            const insertIndex = Math.min(Math.max(0, event.currentIndex), toUnits.length);
+            toUnits.splice(insertIndex, 0, moved);
+
+            fromGroup.units.set(fromUnits);
+            toGroup.units.set(toUnits);
+            this.forceBuilderService.generateGroupNameIfNeeded(fromGroup);
+            this.forceBuilderService.generateGroupNameIfNeeded(toGroup);
         }
+        force.removeEmptyGroups();
+        // Notify force that structure changed
+        force.emitChanged();
     }
 
-    formatPilotData(unit: ForceUnit): string {
-        const pilot = unit.getCrewMember(0);
-        if (!pilot) return 'N/A';
-        return `${pilot.getSkill('gunnery')} / ${pilot.getSkill('piloting')}`;
+    connectedDropLists(): string[] {
+        const groups = this.forceBuilderService.force.groups() || [];
+        const ids = groups.map(g => `group-${g.id}`);
+        ids.push('new-group-dropzone');
+        return ids;
     }
 
-    drop(event: CdkDragDrop<ForceUnit[]>) {
-        this.forceBuilderService.reorderUnit(event.previousIndex, event.currentIndex);
+    dropForNewGroup(event: CdkDragDrop<any, any, any>) {        
+        if (this.forceBuilderService.readOnlyForce()) return;
+
+        const force = this.forceBuilderService.force;
+
+        // Create the group first (force.addGroup already updates force.groups())
+        const newGroup = force.addGroup('New Group');
+        if (!newGroup) return;
+
+        const prevId = event.previousContainer?.id;
+        if (!prevId || !prevId.startsWith('group-')) {
+            // previous container isn't a group (nothing to move)
+            return;
+        }
+
+        const sourceGroupId = prevId.substring('group-'.length);
+        const sourceGroup = force.groups().find(g => g.id === sourceGroupId);
+        if (!sourceGroup) return;
+
+        // Move the item from source to the new group
+        const sourceUnits = [...sourceGroup.units()];
+        const [moved] = sourceUnits.splice(event.previousIndex, 1);
+        if (!moved) return;
+
+        const targetUnits = [...newGroup.units(), moved]; // append to end
+        sourceGroup.units.set(sourceUnits);
+        newGroup.units.set(targetUnits);
+        this.forceBuilderService.generateGroupNameIfNeeded(sourceGroup);
+        this.forceBuilderService.generateGroupNameIfNeeded(newGroup);
+        force.removeEmptyGroups();
+
+        // Commit change
+        force.emitChanged();
+
+        // Select the moved unit
+        this.forceBuilderService.selectUnit(moved);
     }
 
     private scrollToUnit(id: string) {
@@ -396,8 +548,9 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         this.forceBuilderService.promptChangeForceName();
     }
 
-    getUnitImg(unit: ForceUnit): string | undefined {
-        return `https://db.mekbay.com/images/units/${unit.getUnit().icon}`;
+    promptChangeGroupName(group: UnitGroup) {
+        if (this.forceBuilderService.readOnlyForce()) return;
+        this.forceBuilderService.promptChangeGroupName(group);
     }
 
     // --- Lip vertical drag handlers ---
@@ -508,5 +661,9 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     shareForce() {
         this.dialog.open(ShareForceDialogComponent);
+    }
+
+    toggleCompactMode() {
+        this.compactMode.set(!this.compactMode());
     }
 }

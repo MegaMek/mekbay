@@ -33,7 +33,7 @@
 
 import { CommonModule } from '@angular/common';
 import { Component, signal, computed, OnDestroy, ElementRef, input, output, effect, ChangeDetectionStrategy, HostListener, viewChild } from '@angular/core';
-
+import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 /*
  * Author: Drake
  */
@@ -41,7 +41,7 @@ import { Component, signal, computed, OnDestroy, ElementRef, input, output, effe
     selector: 'range-slider',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [CommonModule, FormatNumberPipe],
     templateUrl: './range-slider.component.html',
     styleUrl: './range-slider.component.css',
 })

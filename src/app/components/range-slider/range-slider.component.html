@@ -10,7 +10,7 @@
         (blur)="onThumbBlur()" (dblclick)="resetThumb('min', $event)" (dbltap)="resetThumb('min', $event)" tabindex="0">
         @if (dragging() === 'min' || focusedThumb() === 'min') {
         <div class="thumb-label">
-            {{ formatValue(left()) }}
+            {{ left() | formatNumber}}
         </div>
         }
     </div>
@@ -22,7 +22,7 @@
         (blur)="onThumbBlur()" (dblclick)="resetThumb('max', $event)" (dbltap)="resetThumb('max', $event)" tabindex="0">
         @if (dragging() === 'max' || focusedThumb() === 'max') {
         <div class="thumb-label">
-            {{ formatValue(right()) }}
+            {{ right() | formatNumber }}
         </div>
         }
     </div>

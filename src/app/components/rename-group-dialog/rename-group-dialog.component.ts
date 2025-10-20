@@ -35,17 +35,17 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { Force } from '../../models/force-unit.model';
+import { UnitGroup } from '../../models/force-unit.model';
 
 /*
  * Author: Drake
  */
-export interface RenameForceDialogData {
-    force: Force
+export interface RenameGroupDialogData {
+    group: UnitGroup;
 }
 
 @Component({
-    selector: 'rename-force-dialog',
+    selector: 'rename-group-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule],
@@ -53,13 +53,13 @@ export interface RenameForceDialogData {
     <div class="content">
         <h2 dialog-title></h2>
         <div dialog-content>
-            <p>Force Name</p>
+            <p>Group Name</p>
             <div class="input-wrapper">
                 <input
                     #inputRef
                     type="text"
-                    [placeholder]="data.force.name"
-                    [value]="data.force.name"
+                    [placeholder]="data.group.name()"
+                    [value]="data.group.name()"
                     (keydown.enter)="submit()"
                     required
                 />
@@ -70,9 +70,9 @@ export interface RenameForceDialogData {
                     aria-label="Generate random force name"
                 ></button>
             </div>
-            <details class="faction-accordion" *ngIf="factionsText">
-                <summary>Factions ({{ factionsText.length }})</summary>
-                <p>{{ factionsText.join(', ') }}</p>
+            <details class="faction-accordion" *ngIf="formationsText">
+                <summary>Formations ({{ formationsText.length }})</summary>
+                <p>{{ formationsText.join(', ') }}</p>
             </details>
         </div>
         <div dialog-actions>
@@ -205,12 +205,12 @@ export interface RenameForceDialogData {
     `]
 })
 
-export class RenameForceDialogComponent {
+export class RenameGroupDialogComponent {
     inputRef = viewChild.required<ElementRef<HTMLInputElement>>('inputRef');
-    public dialogRef: DialogRef<string | number | null, RenameForceDialogComponent> = inject(DialogRef);
-    readonly data: RenameForceDialogData = inject(DIALOG_DATA);
+    public dialogRef: DialogRef<string | number | null, RenameGroupDialogComponent> = inject(DialogRef);
+    readonly data: RenameGroupDialogData = inject(DIALOG_DATA);
     private forceBuilder = inject(ForceBuilderService);
-    factionsText = this.computeFactionsText();
+    formationsText = this.computeFormationsText();
 
     constructor() {}
 
@@ -220,7 +220,7 @@ export class RenameForceDialogComponent {
     }
 
     fillRandomName() {
-        const randomName = this.forceBuilder.generateForceName();
+        const randomName = this.forceBuilder.generateGroupName(this.data.group);
         const nativeEl = this.inputRef().nativeElement;
         if (!nativeEl) return;
         nativeEl.value = randomName;
@@ -228,21 +228,12 @@ export class RenameForceDialogComponent {
         nativeEl.select();
     }
 
-    private computeFactionsText(): string[] | null {
-        const factions = this.forceBuilder.getAllFactionsAvailable();
-        const totalUnits = this.forceBuilder.forceUnits().length;
-        if (!totalUnits || !factions || factions.size === 0) {
+    private computeFormationsText(): string[] | null {
+        const formations = this.forceBuilder.getAllFormationsAvailable(this.data.group);
+        if (!formations || formations.length === 0) {
             return null;
         }
-        const formatted = Array.from(factions.entries()).sort((a, b) => b[1] - a[1]).map(([name, percentage]) => {
-            const percent = Math.round(percentage * 100);
-            if (percent < 100) {
-                return `${name} (${percent}%)`;
-            } else {
-                return name;
-            }
-        });
-        return formatted;
+        return formations;
     }
 
     close(value = null) {

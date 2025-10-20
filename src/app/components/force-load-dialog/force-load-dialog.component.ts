@@ -38,6 +38,7 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { Force, ForceUnit } from '../../models/force-unit.model';
 import { DialogsService } from '../../services/dialogs.service';
+import { UnitBlockComponent } from '../unit-block/unit-block.component';
 
 /*
  * Author: Drake
@@ -46,7 +47,7 @@ import { DialogsService } from '../../services/dialogs.service';
     selector: 'force-load-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent],
+    imports: [CommonModule, BaseDialogComponent, UnitBlockComponent],
     templateUrl: './force-load-dialog.component.html',
     styleUrls: ['./force-load-dialog.component.css']
 })
@@ -69,10 +70,6 @@ export class ForceLoadDialogComponent {
             this.loading.set(false);
             this.cdr.detectChanges();
         });
-    }
-
-    getUnitImg(unit: ForceUnit): string | undefined {
-        return `https://db.mekbay.com/images/units/${unit.getUnit().icon}`;
     }
 
     formatTimestamp(force: Force): string {

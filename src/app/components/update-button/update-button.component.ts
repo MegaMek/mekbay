@@ -30,7 +30,7 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
-import { ChangeDetectionStrategy, Component, signal, input, computed, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal, input, computed, effect, inject, afterNextRender, Injector } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { App } from '../../app';
 
@@ -53,6 +53,7 @@ export class UpdateButtonComponent {
     isVisible = signal(false);
     pulse = signal(false);
     private app = inject(App);
+    private injector = inject(Injector);
     private countdownInterval?: ReturnType<typeof setInterval>;
 
     showUpdate = computed(() => this.updateAvailable() && this.isVisible());
@@ -101,6 +102,8 @@ export class UpdateButtonComponent {
 
     triggerPulse() {
         this.pulse.set(false);
-        setTimeout(() => this.pulse.set(true), 10);
+        requestAnimationFrame(() => {
+            afterNextRender(() => this.pulse.set(true), { injector: this.injector });
+        });
     }
 }
