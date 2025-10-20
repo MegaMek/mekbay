@@ -18,7 +18,6 @@
     "@angular/platform-browser": "^20.3.6",
     "@angular/router": "^20.3.6",
     "@angular/service-worker": "^20.3.6",
-    "html2canvas-pro": "^1.5.12",
     "tslib": "^2.3.0"
   },
   "devDependencies": {

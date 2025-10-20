@@ -80,12 +80,6 @@ export class ForceLoadDialogComponent {
         return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
     }
 
-    getCleanedModel(unit: ForceUnit): string {
-        let name = unit.getUnit().model;
-        // Remove text in () or [] and trim
-        return name.replace(/(\(.*?\)|\[.*?\])/g, '').trim();
-    }
-
     selectForce(force: Force) {
         this.selectedForce.set(force);
     }
