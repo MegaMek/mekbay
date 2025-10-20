@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { signal, computed, WritableSignal, EventEmitter, Injector, inject } from '@angular/core';
+import { signal, computed, WritableSignal, EventEmitter, Injector } from '@angular/core';
 import { BVCalculatorUtil } from "../utils/bv-calculator.util";
 import { DataService } from '../services/data.service'; 
 import { Unit } from "./units.model";
@@ -47,6 +47,9 @@ import { generateUUID } from '../services/ws.service';
  */
 
 const DEFAULT_GROUP_NAME = 'Main';
+const MAX_GROUPS = 6;
+const MAX_UNITS_PER_GROUP = 24;
+
 export interface SerializedForce {
     version: number;
     timestamp: string;
@@ -150,7 +153,6 @@ export class Force {
         this.dataService = dataService;
         this.unitInitializer = unitInitializer;
         this.injector = injector;
-        // this.addGroup(DEFAULT_GROUP_NAME);
     }
 
     units = computed<ForceUnit[]>(() => {
@@ -169,22 +171,38 @@ export class Force {
         }
     }
 
-    public addUnit(unit: Unit): ForceUnit {    
+    public addUnit(unit: Unit): ForceUnit {
+        if (this.units().length >= MAX_GROUPS * MAX_UNITS_PER_GROUP) {
+            throw new Error(`Cannot add more than ${MAX_GROUPS * MAX_UNITS_PER_GROUP} units to the force`);
+        }
         const forceUnit = new ForceUnit(unit, this, this.dataService, this.unitInitializer, this.injector);
         if (this.groups().length === 0) {
             this.addGroup(DEFAULT_GROUP_NAME);
         }
-        const groups = [...this.groups()];
-        const units = groups[0].units();
-        groups[0].units.set([...units, forceUnit]);
-        this.groups.set(groups);
+        // search for a group that is not full
+        let targetGroup = this.groups().find(g => g.units().length < MAX_UNITS_PER_GROUP);
+        if (!targetGroup) {
+            if (this.hasMaxGroups()) {
+                throw new Error(`All groups are full, cannot add more units`);
+            }
+            targetGroup = this.addGroup();
+        }
+        const units = targetGroup.units();
+        targetGroup.units.set([...units, forceUnit]);
         if (this.instanceId()) {
             this.emitChanged();
         }
         return forceUnit;
     }
+
+    public hasMaxGroups = computed<boolean>(() => {
+        return this.groups().length >= MAX_GROUPS;
+    });
     
     public addGroup(name: string = 'Group'): UnitGroup {
+        if (this.hasMaxGroups()) {
+            throw new Error(`Cannot add more than ${MAX_GROUPS} groups`);
+        }
         const newGroup = new UnitGroup(this, name);
         this.groups.update(gs => [...gs, newGroup]);
         if (this.instanceId()) this.emitChanged();

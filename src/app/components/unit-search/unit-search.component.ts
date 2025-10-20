@@ -953,12 +953,15 @@ export class UnitSearchComponent implements OnDestroy {
     addSelectedUnits() {
         const gunnery = this.filtersService.pilotGunnerySkill();
         const piloting = this.filtersService.pilotPilotingSkill();
-        this.selectedUnits().forEach(unitName => {
-            const unit = this.dataService.getUnitByName(unitName);
+        const selectedUnits = this.selectedUnits();
+        for (let selectedUnit of selectedUnits) {
+            const unit = this.dataService.getUnitByName(selectedUnit);
             if (unit) {
-                this.forceBuilderService.addUnit(unit, gunnery, piloting);
+                if (!this.forceBuilderService.addUnit(unit, gunnery, piloting)) {
+                    break;
+                }
             }
-        });
+        };
         this.clearSelection();
         this.closeAllPanels();
     }

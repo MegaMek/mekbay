@@ -395,8 +395,14 @@ export class ForceBuilderService {
      * @param gunnerySkill Optional gunnery skill to set for the crew
      * @param pilotingSkill Optional piloting skill to set for the crew
      */
-    addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number): ForceUnit {
-        const newForceUnit = this.force.addUnit(unit);
+    addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number): ForceUnit | null {
+        let newForceUnit;
+        try {
+            newForceUnit = this.force.addUnit(unit);
+        } catch (error) {
+            this.toastService.show(error instanceof Error ? error.message : (error as string), 'error');
+            return null;
+        }
         
         // Set crew skills if provided
         if (gunnerySkill !== undefined || pilotingSkill !== undefined) {

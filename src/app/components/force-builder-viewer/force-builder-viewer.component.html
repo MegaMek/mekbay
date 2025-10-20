@@ -51,14 +51,14 @@
                     </div>
                 </div>
                 }
-                @if (!compactMode() && !forceBuilderService.readOnlyForce() && !isUnitDragging()) {
+                @if (!compactMode() && !forceBuilderService.readOnlyForce() && !isUnitDragging() && !forceBuilderService.force.hasMaxGroups()) {
                     <button class="bt-button btn-add-group" (click)="forceBuilderService.addGroup()">+ Add Group</button>
                 }
                 <div class="group-container new-group-dropzone" cdkDropList
                     id="new-group-dropzone"
                     [cdkDropListConnectedTo]="connectedDropLists()"
                     [cdkDropListData]="[]"
-                    [class.visible]="isUnitDragging() && !hasEmptyGroups()"
+                    [class.visible]="isUnitDragging() && !hasEmptyGroups() && !forceBuilderService.force.hasMaxGroups()"
                     [cdkDropListDisabled]="forceBuilderService.readOnlyForce()"
                     (cdkDropListDropped)="dropForNewGroup($event)">
                     <div class="group-name">New Group</div>

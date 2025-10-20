@@ -811,13 +811,15 @@ export class UnitDetailsDialogComponent {
             gunnery = this.gunnerySkill();
             piloting = this.pilotingSkill();
         }
-        this.forceBuilderService.addUnit(
+        const addedUnit = this.forceBuilderService.addUnit(
             selectedUnit,
             gunnery,
             piloting,
         );
-        this.toastService.show(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
-        this.add.emit(selectedUnit);
+        if (addedUnit) {
+            this.toastService.show(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
+            this.add.emit(selectedUnit);
+        }
         this.onClose();
     }
 
