@@ -61,6 +61,7 @@
     left: 0;
     right: 0;
     bottom: 16px;
+    gap: 8px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -188,4 +189,11 @@ svg-viewer {
     cursor: pointer;
     text-align: center;
     margin: -12px 12px;
+}
+
+.build-info {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #666;
+    pointer-events: none;
 }

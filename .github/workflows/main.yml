@@ -10,21 +10,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Get latest code
-        uses: actions/checkout@v2.3.2
-      - name: Use Node.js 20
-        uses: actions/setup-node@v2
+        uses: actions/checkout@v5
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: 'latest'
+
+      - name: Generate build metadata
+        run: node ./scripts/generate-build-meta.js
+
       - name: Install NPM and Build Angular Project
         run: |  
-          npm install
+          npm ci
           npm run build
+
       - name: Get LFTP
         run: sudo apt-get install -y --no-install-recommends lftp
+
       - name: Configure LFTP
         run: mkdir ~/.lftp && echo "set ssl:verify-certificate false;" >> ~/.lftp/rc
+
       - name: Load Secrets
         run: echo "machine ${{ secrets.FTP_HOST }} login ${{ secrets.FTP_USER }} password ${{ secrets.FTP_PASSWORD }}" > ~/.netrc
+
       - name: Upload Folder (with cleanup)  
         run: |
           lftp -c "set ftp:list-options -a; 

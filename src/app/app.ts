@@ -58,6 +58,7 @@ import { UpdateButtonComponent } from './components/update-button/update-button.
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
+import { APP_VERSION_STRING } from './build-meta';
 
 
 /*
@@ -94,10 +95,12 @@ export class App {
     public unitSearchFilter = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
 
+    protected buildInfo = APP_VERSION_STRING;
     private lastUpdateCheck: number = 0;
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
     protected title = 'mekbay';
     protected updateAvailable = signal(false);
+
 
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
     public readonly unitSearchComponentRef = viewChild(UnitSearchComponent);
