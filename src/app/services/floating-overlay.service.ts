@@ -53,14 +53,34 @@ export class FloatingOverlayService {
         effect((cleanup) => {
             window.addEventListener('scroll', this.onScroll, true);
             window.addEventListener('wheel', this.onScroll, { capture: true, passive: true });
-            window.addEventListener('touchmove', this.onScroll, { capture: true, passive: true });
+            window.addEventListener('pointerdown', this.onPointerDown, true);
             cleanup(() => {
                 window.removeEventListener('scroll', this.onScroll, true);
                 window.removeEventListener('wheel', this.onScroll, { capture: true, passive: true } as AddEventListenerOptions);
-                window.removeEventListener('touchmove', this.onScroll, { capture: true, passive: true } as AddEventListenerOptions);
+                window.removeEventListener('pointerdown', this.onPointerDown, true);
             });
         });
     }
+
+    private onPointerDown = (ev: Event) => {
+        if (!this.overlayRef) return;
+        const target = ev.target as Node | null;
+        if (!target) return;
+
+        try {
+            const pane = this.overlayRef.overlayElement;
+            if (pane && pane.contains(target)) return;
+
+            const components = document.querySelectorAll('unit-component-item');
+            for (const el of Array.from(components)) {
+                if (el.contains(target)) return;
+            }
+        } catch (e) {
+            // ignore any DOM errors and fall through to destroy
+        }
+
+        this.destroy();
+    };
 
     private onScroll = () => {
         // hide on any scroll operation
