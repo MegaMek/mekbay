@@ -441,7 +441,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         this.lastAutoScrollTs = undefined;
     }
 
-    drop(event: CdkDragDrop<WritableSignal<ForceUnit[]>>) {
+    drop(event: CdkDragDrop<ForceUnit[]>) {
         if (this.forceBuilderService.readOnlyForce()) return;
         
         const force = this.forceBuilderService.force;

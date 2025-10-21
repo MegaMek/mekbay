@@ -14,17 +14,17 @@
                 @for (group of forceBuilderService.force.groups(); let gi = $index; track gi) {
                 <div class="group-container">
                     <div class="group-header">
-                        <div class="group-name" (click)="promptChangeGroupName(group)">{{ forceBuilderService.force.groups()[gi].name() }}</div>
+                        <div class="group-name" (click)="promptChangeGroupName(group)">{{ group.name() }}</div>
                         <div class="group-footer">
                             <span class="group-bv">BV: {{ group.totalBV() | number }}</span>
                         </div> 
                     </div>
-                    @let units = forceBuilderService.force.groups()[gi].units();
+                    @let units = group.units();
                     <div class="group-units" cdkDropList 
                         [class.compact-mode]="compactMode()"
-                        id="group-{{ forceBuilderService.force.groups()[gi].id }}"
+                        id="group-{{ group.id }}"
                         cdkDropListOrientation="vertical"
-                        [cdkDropListData]="forceBuilderService.force.groups()[gi].units"
+                        [cdkDropListData]="units"
                         [cdkDropListConnectedTo]="connectedDropLists()"
                         [cdkDropListDisabled]="compactMode() || forceBuilderService.readOnlyForce()"
                         (cdkDropListDropped)="drop($event)"> 
@@ -40,6 +40,7 @@
                                 (keydown)="onUnitKeydown($event, i)" cdkDrag [cdkDragDisabled]="forceBuilderService.readOnlyForce()"
                                 (cdkDragStarted)="onUnitDragStart()" (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd()"
                                 [cdkDragLockAxis]="lockAxis()!"
+                                [cdkDragRootElement]="'body'"
                                 cdkDragBoundary=".force-view" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                                 <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode()"
                                 [class.selected]="unit.id === forceBuilderService.selectedUnit()?.id"
