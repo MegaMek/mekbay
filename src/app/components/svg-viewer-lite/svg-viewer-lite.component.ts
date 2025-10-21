@@ -35,8 +35,6 @@ export class SvgViewerLiteComponent {
                         const svg = await this.dataService.getSheet(sheetName);
                         const cloned = svg.cloneNode(true) as SVGSVGElement;
                         cloned.removeAttribute('id');
-                        cloned.classList.add('mekbay-sheet');
-                        cloned.style.pointerEvents = 'none';
                         svgs.push(cloned);
                     }
                     this.svgs.set([...this.svgs(), ...svgs]);
@@ -60,8 +58,10 @@ export class SvgViewerLiteComponent {
         if (!svgs || svgs.length === 0) return;
         const container = this.containerRef().nativeElement;
         for (const s of svgs) {
+            s.classList.add('mekbay-sheet');
+            s.style.pointerEvents = 'none';
             s.style.display = 'block';
-            s.style.minWidth = '100%';
+            s.style.width = '100%';
             s.style.height = 'auto';
             container.appendChild(s);
         }
