@@ -40,7 +40,6 @@
                                 (keydown)="onUnitKeydown($event, i)" cdkDrag [cdkDragDisabled]="forceBuilderService.readOnlyForce()"
                                 (cdkDragStarted)="onUnitDragStart()" (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd()"
                                 [cdkDragLockAxis]="lockAxis()!"
-                                [cdkDragRootElement]="'body'"
                                 cdkDragBoundary=".force-view" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                                 <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode()"
                                 [class.selected]="unit.id === forceBuilderService.selectedUnit()?.id"
