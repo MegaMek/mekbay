@@ -41,7 +41,7 @@ import { Unit } from "../models/units.model";
  */
 @Pipe({
     name: 'filterAdjustedBV',
-    pure: true // Pure pipes are only called when the input changes
+    pure: false
 })
 export class FilterAdjustedBV implements PipeTransform {
     private filtersService = inject(UnitSearchFiltersService);
