@@ -356,12 +356,14 @@ hr {
     }
 
     &.square-normal {
+        flex-shrink: 0;
         width: 32px;
         height: 32px;
         overflow: hidden;
     }
 
     &.square-large {
+        flex-shrink: 0;
         width: 40px;
         height: 40px;
         overflow: hidden;
