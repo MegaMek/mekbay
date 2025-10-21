@@ -1,7 +1,11 @@
+:host {
+    display: contents;
+}
+
 .unit-square.compact-mode {
     pointer-events: none;
     width: 72px;
-    height: 80px;
+    max-height: 105px;
     min-width: 72px;
     background: #0003;
     display: flex;
@@ -10,6 +14,7 @@
     overflow: hidden;
     padding: 2px;
     box-sizing: border-box;
+    flex-grow: 1;
 
     &.destroyed {
         background-image: repeating-linear-gradient(
@@ -52,7 +57,12 @@
         font-size: 0.8em;
         color: var(--text-color);
         word-break: break-word;
-        text-align: center;
+        text-align: center;        
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .unit-alias {

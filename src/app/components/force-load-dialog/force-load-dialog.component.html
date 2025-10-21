@@ -1,57 +1,72 @@
+@let unitDisplayName = optionsService.options().unitDisplayName;
 <base-dialog>
     <div dialog-header>
         <div class="title">Load Force</div>
     </div>
     <div dialog-body>
-        <div *ngIf="loading()" class="loading-spinner">Loading forces...</div>
-        <div *ngIf="!loading() && forces().length === 0" class="empty-state">
-            No saved forces found.
-        </div>
-        <div *ngIf="!loading() && forces().length > 0" class="force-list">
-            @for (force of forces(); let i = $index; track force.instanceId) {
-            <div class="force-entry" [class.selected]="selectedForce() === force" (click)="selectForce(force)"
-                tabindex="0">
-                <div class="force-header">
-                    <span class="force-name">{{ force.name }}</span>
-                    <div class="force-info">
-                        <span class="force-timestamp"><img
-                                [src]="force.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'"
-                                class="cloud-icon" alt="Cloud status"
-                                title="{{ force.cloud ? 'Stored online' : 'Stored locally' }}" /> {{ force.timestamp | formatTimestamp }}</span>
-                        @if (force.bv > 0) {
-                            <span class="force-bv">BV: {{ force.bv | number }}</span>
-                        }
-                    </div>
-                </div>
-                <div class="unit-scroll">
-                    @for (group of force.groups; let gi = $index; track gi) {
-                    <div class="unit-group">
-                        <div class="group-name">{{ group.name }}</div>
-                        <div class="units">
-                            @for (unitEntry of group.units; let i = $index; track i) {
-                            <div class="unit-square compact-mode" [class.destroyed]="unitEntry.destroyed">
-                                <img src="{{ unitEntry?.unit?.icon ? `https://db.mekbay.com/images/units/${unitEntry?.unit?.icon}` : '/images/unknown.png' }}"
-                                    (error)="$event.target.src = '/images/unknown.png'" class="unit-icon"
-                                    alt="{{ unitEntry.unit?.chassis }} {{ unitEntry.unit?.model }}"
-                                    title="{{ unitEntry.unit?.chassis }} {{ unitEntry.unit?.model }}" />
-                                @if (optionsService.options().unitDisplayName === 'chassisModel' 
-                                    || optionsService.options().unitDisplayName === 'both'
-                                    || !unitEntry.alias) {
-                                <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
-                                <div class="unit-chassis">{{ unitEntry.unit?.chassis }}</div>
-                                }
-                                @if (optionsService.options().unitDisplayName === 'alias' || optionsService.options().unitDisplayName === 'both') {
-                                <div class="unit-alias">{{ unitEntry.alias }}</div>
-                                }
-                            </div>
+        @if (!loading()) {
+            <div class="search-container">
+                <input
+                    #searchInput
+                    class="bt-input search-input"
+                    type="text"
+                    placeholder="Search forces, models, chassis, pilots..."
+                    [value]="searchText()"
+                    (input)="onSearch($any($event.target).value)" />
+            </div>
+        }
+        @if (loading()) {
+            <div class="loading-spinner">Loading forces...</div>
+        } @else if (filteredForces().length === 0) {
+            <div class="empty-state">No saved forces found.</div>
+        } @else {
+            <div class="force-list">
+                @for (force of filteredForces(); let i = $index; track force.instanceId) {
+                <div class="force-entry" [class.selected]="selectedForce() === force" (click)="selectForce(force)"
+                    tabindex="0">
+                    <div class="force-header">
+                        <span class="force-name">{{ force.name }}</span>
+                        <div class="force-info">
+                            <span class="force-timestamp"><img
+                                    [src]="force.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'"
+                                    class="cloud-icon" alt="Cloud status"
+                                    title="{{ force.cloud ? 'Stored online' : 'Stored locally' }}" /> {{ force.timestamp | formatTimestamp }}</span>
+                            @if (force.bv > 0) {
+                                <span class="force-bv">BV: {{ force.bv | number }}</span>
                             }
                         </div>
                     </div>
-                    }
+                    <div class="unit-scroll">
+                        @for (group of force.groups; let gi = $index; track gi) {
+                        <div class="unit-group">
+                            <div class="group-name">{{ group.name }}</div>
+                            <div class="units">
+                                @for (unitEntry of group.units; let i = $index; track i) {
+                                <div class="unit-square compact-mode" [class.destroyed]="unitEntry.destroyed">
+                                    <img src="{{ unitEntry?.unit?.icon ? `https://db.mekbay.com/images/units/${unitEntry?.unit?.icon}` : '/images/unknown.png' }}"
+                                        (error)="$event.target.src = '/images/unknown.png'" class="unit-icon"
+                                        alt="{{ unitEntry.unit?.chassis }} {{ unitEntry.unit?.model }}"
+                                        title="{{ unitEntry.unit?.chassis }} {{ unitEntry.unit?.model }}" />
+                                    @if (unitDisplayName === 'chassisModel' 
+                                        || unitDisplayName === 'both'
+                                        || !unitEntry.alias) {
+                                    <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
+                                    <div class="unit-chassis">{{ unitEntry.unit?.chassis }}</div>
+                                    }
+                                    @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
+                                    <div class="unit-alias" 
+                                        [class.thin]="unitDisplayName === 'both'">{{ unitEntry.alias }}</div>
+                                    }
+                                </div>
+                                }
+                            </div>
+                        </div>
+                        }
+                    </div>
                 </div>
+                }
             </div>
-            }
-        </div>
+        }   
     </div>
     <div dialog-footer class="footer">
         <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="!selectedForce()">LOAD</button>

@@ -1,3 +1,15 @@
+:host ::ng-deep .modal-body {
+    padding: 0px !important;
+}
+
+:host ::ng-deep div[dialog-body] {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
 .footer {
     width: 100%;
     display: flex;
@@ -6,15 +18,22 @@
     gap: 8px;
 }
 
-:host ::ng-deep .modal-body {
-    padding: 0px !important;
+.search-container {
+    flex: 0 0 auto;
+    padding: 4px;
+}
+
+.search-input {
+    width: 100%;
 }
 
 .force-list {
     display: flex;
     flex-direction: column;
-    padding: 4px;
+    flex: 1 1 auto;
+    padding: 0px 4px;
     gap: 4px;
+    min-height: 0;
     overflow-y: auto;
 }
 
@@ -123,6 +142,7 @@
 .unit-square.compact-mode {
     width: 72px;
     height: 80px;
+    max-height: 105px;
     min-width: 72px;
     background: #0003;
     padding: 2px;
@@ -174,10 +194,20 @@
         color: var(--text-color);
         word-break: break-word;
         text-align: center;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .unit-alias {
         font-weight: bold;
+    }
+
+    .unit-alias.thin {
+        font-size: 0.6em;
+        font-weight: normal;
     }
     
 }

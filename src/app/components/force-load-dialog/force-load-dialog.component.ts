@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { Component, EventEmitter, inject, OnInit, Output, signal, effect, ChangeDetectorRef, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, output, viewChild, ElementRef, afterNextRender, Injector } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { DialogRef } from '@angular/cdk/dialog';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -70,6 +70,8 @@ export class FormatTimestamp implements PipeTransform {
     }
 }
 
+type SearchableForce = LoadForceEntry & { _searchText?: string };
+
 @Component({
     selector: 'force-load-dialog',
     standalone: true,
@@ -82,26 +84,71 @@ export class ForceLoadDialogComponent {
     dialogRef = inject(DialogRef<ForceLoadDialogComponent>);
     dataService = inject(DataService);
     optionsService = inject(OptionsService);
-    cdr = inject(ChangeDetectorRef);
     dialogsService = inject(DialogsService);
-    @Output() load = new EventEmitter<LoadForceEntry>();
+    injector = inject(Injector);
+    load = output<LoadForceEntry>();
+    searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
     forces = signal<LoadForceEntry[]>([]);
     selectedForce = signal<LoadForceEntry | null>(null);
     loading = signal<boolean>(true);
 
+    searchText = signal<string>('');
+    filteredForces = computed<LoadForceEntry[]>(() => {
+        const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
+        if (tokens.length === 0) return this.forces();
+        return this.forces().filter(force => {
+            const hay = (force as SearchableForce)._searchText || '';
+            return tokens.every(t => hay.indexOf(t) !== -1);
+        });
+    });
+
     constructor() {
         effect(async () => {
             this.loading.set(true);
             const result = await this.dataService.listForces();
-            this.forces.set(result);
+            const enriched = (result || []).map(f => {
+                const sf: SearchableForce = { ...f };
+                sf._searchText = this.computeSearchText(f);
+                return sf;
+            });
+            this.forces.set(enriched);
             this.loading.set(false);
-            this.cdr.detectChanges();
         });
+        effect(() => {
+            if (!this.loading()) {
+                afterNextRender(() => this.searchInput()?.nativeElement?.focus(), { injector: this.injector });
+            }
+        });
+    }
+
+    private computeSearchText(force: LoadForceEntry): string {
+        let s = '';
+        if (force.name) s += force.name + ' ';
+        for (const g of (force.groups || [])) {
+            if (g.name) s += g.name + ' ';
+            for (const ue of (g.units || [])) {
+                if (ue.alias) s += ue.alias + ' ';
+                if (ue.unit) {
+                    if (ue.unit.model) s += ue.unit.model + ' ';
+                    if (ue.unit.chassis) s += ue.unit.chassis + ' ';
+                }
+            }
+        }
+        return s.trim().toLowerCase();
     }
 
     selectForce(force: LoadForceEntry) {
         this.selectedForce.set(force);
+    }
+
+    onSearch(text: string) {
+        this.searchText.set(text);
+        // if selected force is filtered out, clear selection
+        const sel = this.selectedForce();
+        if (sel && !this.filteredForces().includes(sel)) {
+            this.selectedForce.set(null);
+        }
     }
 
     onLoad() {
