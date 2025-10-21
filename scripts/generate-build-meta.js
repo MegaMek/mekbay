@@ -9,7 +9,7 @@ const buildMetaFile = path.join(root, 'src', 'app', 'build-meta.ts');
 function readVersion() {
   const content = fs.readFileSync(versionFile, 'utf8');
   const m = content.match(/export\s+const\s+APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
-  return m ? m[1] : '0.0.0';
+  return m ? m[1] : '0.0';
 }
 
 function git(cmd) {
@@ -30,6 +30,7 @@ export const BUILD_TIMESTAMP = '${timestamp}';
 export const APP_VERSION_STRING = '${versionString}';
 `;
   fs.writeFileSync(buildMetaFile, content, 'utf8');
+  return versionString;
 }
 
 (function main() {
@@ -45,8 +46,8 @@ export const APP_VERSION_STRING = '${versionString}';
 
     const timestamp = new Date().toISOString();
 
-    writeBuildMeta(version, commitNumber || 0, commitHash, timestamp);
-    console.log('Build meta generated:', version, commitNumber, commitHash, timestamp);
+    const generated = writeBuildMeta(version, commitNumber || 0, commitHash, timestamp);
+    console.log('Build meta generated:', generated);
   } catch (err) {
     console.error('Failed to generate build meta:', err);
     process.exitCode = 1;
