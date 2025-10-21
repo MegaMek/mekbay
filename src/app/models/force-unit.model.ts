@@ -47,8 +47,8 @@ import { generateUUID } from '../services/ws.service';
  */
 
 const DEFAULT_GROUP_NAME = 'Main';
-const MAX_GROUPS = 6;
-const MAX_UNITS_PER_GROUP = 24;
+const MAX_GROUPS = 12;
+const MAX_UNITS = 30;
 
 export interface SerializedForce {
     version: number;
@@ -181,21 +181,18 @@ export class Force {
     }
 
     public addUnit(unit: Unit): ForceUnit {
-        if (this.units().length >= MAX_GROUPS * MAX_UNITS_PER_GROUP) {
-            throw new Error(`Cannot add more than ${MAX_GROUPS * MAX_UNITS_PER_GROUP} units to the force`);
+        if (this.units().length >= MAX_UNITS) {
+            throw new Error(`Cannot add more than ${MAX_UNITS} units to a single force`);
         }
         const forceUnit = new ForceUnit(unit, this, this.dataService, this.unitInitializer, this.injector);
         if (this.groups().length === 0) {
             this.addGroup(DEFAULT_GROUP_NAME);
         }
-        // search for a group that is not full
-        let targetGroup = this.groups().find(g => g.units().length < MAX_UNITS_PER_GROUP);
-        if (!targetGroup) {
-            if (this.hasMaxGroups()) {
-                throw new Error(`All groups are full, cannot add more units`);
-            }
-            targetGroup = this.addGroup();
-        }
+
+        // Pick the last group
+        const groups = this.groups();
+        const targetGroup = groups[groups.length - 1];
+
         const units = targetGroup.units();
         targetGroup.units.set([...units, forceUnit]);
         if (this.instanceId()) {
