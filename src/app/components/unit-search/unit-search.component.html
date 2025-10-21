@@ -1,3 +1,5 @@
+@let gunnery = this.filtersService.pilotGunnerySkill();
+@let piloting = this.filtersService.pilotPilotingSkill();
 <div class="search-overlay overlay-backdrop" [class.expanded]="this.expandedView()"
     [hidden]="!this.filtersService.isDataReady() || !overlayVisible()" (click)="onOverlayClick()">
 </div>
@@ -79,7 +81,7 @@
                         <div class="info-area">
                             <div class="info-slot numeric"
                                 [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
-                                <span class="value">BV: {{ unit | filterAdjustedBV | formatNumber:true:true }}</span>
+                                <span class="value">BV: {{ unit.bv | filterAdjustedBV:gunnery:piloting | formatNumber:true:true }}</span>
                             </div>
                             <div class="info-slot numeric"
                                 [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
@@ -210,10 +212,10 @@
                 <div class="skill-control">
                     <label for="gunnery-skill">Gunnery:</label>
                     <select id="gunnery-skill" class="bt-input skill-select"
-                        [value]="this.filtersService.pilotGunnerySkill()"
+                        [value]="gunnery"
                         (change)="setPilotSkill('gunnery', +$any($event.target).value)">
                         @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
-                        <option [value]="n" [selected]="n === this.filtersService.pilotGunnerySkill()">{{ n }}</option>
+                        <option [value]="n" [selected]="n === gunnery">{{ n }}</option>
                         }
 
                     </select>
@@ -221,10 +223,10 @@
                 <div class="skill-control">
                     <label for="piloting-skill">Piloting:</label>
                     <select id="piloting-skill" class="bt-input skill-select"
-                        [value]="this.filtersService.pilotPilotingSkill()"
+                        [value]="piloting"
                         (change)="setPilotSkill('piloting', +$any($event.target).value)">
                         @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
-                        <option [value]="n" [selected]="n === this.filtersService.pilotPilotingSkill()">{{ n }}</option>
+                        <option [value]="n" [selected]="n === piloting">{{ n }}</option>
                         }
                     </select>
                 </div>
@@ -325,7 +327,7 @@
                     <div class="info-item">
                         <span class="info-label muted">BV:</span>
                         <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">{{
-                            unit | filterAdjustedBV | formatNumber:true:false }}</span>
+                            unit.bv | filterAdjustedBV:gunnery:piloting | formatNumber:true:false }}</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">Tons:</span>

@@ -32,22 +32,23 @@
  * affiliated with Microsoft.
  */
 
-import { inject, Pipe, PipeTransform } from "@angular/core";
-import { UnitSearchFiltersService } from "../services/unit-search-filters.service";
-import { Unit } from "../models/units.model";
+import { Pipe, PipeTransform } from "@angular/core";
+import { BVCalculatorUtil } from "../utils/bv-calculator.util";
 
 /*
  * Author: Drake
  */
 @Pipe({
     name: 'filterAdjustedBV',
-    pure: false
+    pure: true
 })
 export class FilterAdjustedBV implements PipeTransform {
-    private filtersService = inject(UnitSearchFiltersService);
 
-    transform(unit: Unit | undefined): number {
-        if (unit === undefined) return 0;
-        return this.filtersService.getAdjustedBV(unit);
+    transform(bv: number, gunnery: number, piloting: number): number {
+        if (bv === undefined) return 0;
+        if (gunnery === 4 && piloting === 5) {
+            return bv;
+        }
+        return BVCalculatorUtil.calculateAdjustedBV(bv, gunnery, piloting);
     }
 }
