@@ -48,7 +48,7 @@ import { generateUUID } from '../services/ws.service';
 
 const DEFAULT_GROUP_NAME = 'Main';
 const MAX_GROUPS = 12;
-const MAX_UNITS = 30;
+const MAX_UNITS = 50;
 
 export interface SerializedForce {
     version: number;
