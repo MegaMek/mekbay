@@ -114,34 +114,19 @@
                 <div class="components-matrix" [style.grid-template-areas]="gridAreas">
                     @for (area of matrixAreaCodes; let i = $index; track i) {
                         <div class="component-rect" [style.grid-area]="area">
-                            <div class="comp-loc" *ngIf="areaHasContent(area)">{{ getAreaLabel(area) }}</div>
+                            <div class="comp-loc">{{ getAreaLabel(area) }}</div>
                             <div class="comp-list">
                                 <!-- Bays (matrix) -->
                                 @if (areaHasBays(area)) {
                                     <div class="bay">
                                         @for (bay of getBaysForArea(area); let i = $index; track trackByBay(bay)) {
-                                            <div class="subcomponent-data {{ getTypeClass(bay.t) }}"
-                                                (mouseenter)="onCompMouseEnter(bay, $event)" (mouseleave)="onCompMouseLeave()">
-                                                <div class="comp-title">
-                                                    <span class="comp-qty">{{ bay.q }}×</span>
-                                                    <span class="comp-name">{{ bay.n }}<span *ngIf="bay.q2" class="ammo-count"> ({{ bay.q2 }})</span></span>
-                                                </div>
-                                            </div>
+                                            <unit-component-item [unit]="unit" [comp]="bay" displayStyle="small"></unit-component-item>
                                         }
                                     </div>
                                 } @else {
                                     <!-- Normal components (matrix) -->
                                     @for (comp of getComponentsForArea(area); let i = $index; track trackByComp(comp)) {
-                                    <div class="component-data {{ getTypeClass(comp.t) }}"
-                                        (mouseenter)="onCompMouseEnter(comp, $event)" (mouseleave)="onCompMouseLeave()">
-                                        <div class="comp-title">
-                                            <span class="comp-qty">{{ comp.q }}×</span>
-                                            <span class="comp-name">{{ comp.n }}<span *ngIf="comp.q2" class="ammo-count"> ({{ comp.q2 }})</span></span>
-                                            @if (unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All') {
-                                                <div class="tech-base tech-{{ comp.eq.base | lowercase }}">{{ comp.eq.base == 'IS' ? 'IS' : 'C' }}</div>
-                                            }
-                                        </div>
-                                    </div>
+                                    <unit-component-item [unit]="unit" [comp]="comp" displayStyle="normal"></unit-component-item>
                                     }
                                 }
                             </div>
@@ -157,13 +142,7 @@
                                 <div class="comp-loc">{{ group.l }}</div>
                                 <div class="bay">
                                     @for (bay of group.bays; let j = $index; track j) {
-                                        <div class="subcomponent-data {{ getTypeClass(bay.t) }}"
-                                            (mouseenter)="onCompMouseEnter(bay, $event)" (mouseleave)="onCompMouseLeave()">
-                                            <div class="comp-title">
-                                                <span class="comp-qty">{{ bay.q }}×</span>
-                                                <span class="comp-name">{{ bay.n }}<span *ngIf="bay.q2" class="ammo-count"> ({{ bay.q2 }})</span></span>
-                                            </div>
-                                        </div>
+                                        <unit-component-item [unit]="unit" [comp]="bay" displayStyle="small" class="comp-single"></unit-component-item>
                                     }
                                 </div>
                             </div>
@@ -174,15 +153,8 @@
                         @for (comp of components; let i = $index; track i) {
                             <div class="component-rect">
                                 <div class="comp-loc">{{ comp.l }}</div>
-                                <div class="component-data {{ getTypeClass(comp.t) }}"
-                                    (mouseenter)="onCompMouseEnter(comp, $event)" (mouseleave)="onCompMouseLeave()">
-                                    <div class="comp-title">
-                                        <span class="comp-qty">{{ comp.q }}×</span>
-                                        <span class="comp-name">{{ comp.n }}<span *ngIf="comp.q2" class="ammo-count"> ({{ comp.q2 }})</span></span>
-                                        @if (unit.techBase == 'Mixed' && comp.eq && comp.eq.base != 'All') {
-                                            <div class="tech-base tech-{{ comp.eq.base | lowercase }}">{{ comp.eq.base == 'IS' ? 'IS' : 'C' }}</div>
-                                        }
-                                    </div>
+                                <div class="comp-list">
+                                    <unit-component-item [unit]="unit" [comp]="comp" displayStyle="normal" class="comp-single"></unit-component-item>
                                 </div>
                             </div>
                         }
@@ -192,8 +164,7 @@
                     @if (ammoList.length > 0) {
                         <div class="ammo-list"><span class="info-label muted">Ammo: </span>
                             @for (comp of ammoList; let last = $last; let i = $index; track i) {
-                                <span class="ammo-pill" (mouseenter)="onCompMouseEnter(comp, $event)"
-                                    (mouseleave)="onCompMouseLeave()">({{ comp.n }}) {{ comp.q2 }}</span>@if(!last){, }
+                                <unit-component-item [unit]="unit" [comp]="comp" displayStyle="text"></unit-component-item>@if(!last){, }
                             }
                         </div>
                     }
@@ -318,6 +289,3 @@
 <button *ngIf="hasNext" class="nav-arrow nav-arrow-right" (click)="onNext()" aria-label="Next Unit">
     &#10095;
 </button>
-<floating-comp-info [unit]="unit" [comp]="hoveredComp()" [hoverRect]="hoverRect()" (mouseenter)="onFloatingMouseEnter()"
-    (mouseleave)="onFloatingMouseLeave()">
-</floating-comp-info>

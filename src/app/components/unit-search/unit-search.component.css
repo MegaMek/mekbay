@@ -573,32 +573,7 @@
 .components-pills {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-}
-
-.component-pill {
-    display: flex;
-    align-items: center;
     gap: 4px;
-    padding: 4px 8px;
-    font-size: 0.85em;
-    border: 1px solid;
-    border-left-width: 4px;
-    border-color: var(--type-color);
-    background: rgba(0, 0, 0, 0.3);
-}
-
-.pill-qty {
-    color: #aaa;
-    font-weight: 500;
-}
-
-.pill-name {
-    color: #fff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 200px;
 }
 
 /* Pilot skills */

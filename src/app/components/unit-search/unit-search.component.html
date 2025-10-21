@@ -425,13 +425,7 @@
                 <div class="expanded-components">
                     <div class="components-pills">
                         @for (comp of componentsList; let last = $last; let i = $index; track i) {
-                        <div class="component-pill" [ngClass]="getTypeClass(comp.t)"
-                            (click)="onCompClick(unit, comp, $event)"
-                            (pointerdown)="onCompPointerDown(unit, comp, $event)"
-                            (mouseenter)="onCompMouseEnter(unit, comp, $event)" (mouseleave)="onCompMouseLeave()">
-                            <span class="pill-qty">{{ comp.q }}×</span>
-                            <span class="pill-name">{{ comp.n }}</span>
-                        </div>
+                        <unit-component-item [unit]="unit" [comp]="comp" displayStyle="tiny"></unit-component-item>
                         }
                     </div>
                 </div>
@@ -442,10 +436,7 @@
                 <div class="ammo-list">
                     <span class="info-label muted">Ammo: </span>
                     @for (comp of ammoList; let last = $last; let i = $index; track i) {
-                    <span class="ammo-pill" (click)="onCompClick(unit, comp, $event)"
-                        (pointerdown)="onCompPointerDown(unit, comp, $event)"
-                        (mouseenter)="onCompMouseEnter(unit, comp, $event)" (mouseleave)="onCompMouseLeave()">({{ comp.n
-                        }}) {{ comp.q2 }}</span>@if(!last){<span>, </span>}
+                    <unit-component-item [unit]="unit" [comp]="comp" displayStyle="text"></unit-component-item>@if(!last){<span>, </span>}
                     }
                 </div>
                 }
@@ -454,6 +445,3 @@
         </div>
     </div>
 </ng-template>
-<floating-comp-info [unit]="hoveredUnit()" [comp]="hoveredComp()" [hoverRect]="hoverRect()"
-    (mouseenter)="onFloatingMouseEnter()" (mouseleave)="onFloatingMouseLeave()">
-</floating-comp-info>

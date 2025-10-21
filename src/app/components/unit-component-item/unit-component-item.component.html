@@ -1,0 +1,27 @@
+@let componentTechBase = comp()?.eq?.base ?? 'All';
+@if (displayStyle() === 'text') {
+    <span #component
+        class="component {{ displayStyle() }}-data"
+        (mouseenter)="onMouseEnter($event)" 
+        (click)="onCompClick($event)" 
+        (mouseleave)="onMouseLeave()">{{ comp()?.q }}×{{ comp()?.n }} @if (comp()?.q2) {<span class="ammo-count"> ({{ comp()?.q2 }})</span>}</span>
+} @else {
+<div #component
+    class="component {{ displayStyle() }}-data {{ typeClass() }}"
+    (mouseenter)="onMouseEnter($event)"
+    (click)="onCompClick($event)"
+    (mouseleave)="onMouseLeave()">
+        <div class="comp-title">
+            <span class="comp-qty">{{ comp()?.q }}×</span>
+            <span class="comp-name">{{ comp()?.n }} @if (comp()?.q2) {<span class="ammo-count"> ({{ comp()?.q2 }})</span>}</span>
+            
+            @if (displayStyle() === 'normal') {
+                @if (unit().techBase == 'Mixed' && componentTechBase != 'All') {
+                    <div class="tech-base tech-{{ componentTechBase | lowercase }}">
+                        {{ componentTechBase == 'IS' ? 'IS' : 'C' }}
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}

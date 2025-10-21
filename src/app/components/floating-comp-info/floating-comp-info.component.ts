@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { AfterViewInit, Component, ElementRef, input, signal, SimpleChanges, ViewChild, effect, inject, ChangeDetectionStrategy, viewChild, afterNextRender } from '@angular/core';
+import { Component, input, signal, effect, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
@@ -53,12 +53,10 @@ import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
         '(mouseleave)': 'onMouseLeave()'
     }
 })
-export class FloatingCompInfoComponent implements AfterViewInit {
+export class FloatingCompInfoComponent {
     private dataService = inject(DataService);
-    unit = input.required<Unit | null>();
+    unit = input.required<Unit>();
     comp = input<UnitComponent | null>(null);
-    hoverRect = input<DOMRect | null>(null);
-    floatingDialog = viewChild<ElementRef<HTMLDivElement>>('floatingDialog');
 
     pos = signal<{ x: number, y: number }>({ x: 0, y: 0 });
     equipment = signal<any>(null);
@@ -80,60 +78,18 @@ export class FloatingCompInfoComponent implements AfterViewInit {
         });
 
         effect(() => {
-            // React to changes in comp or hoverRect
             this.comp();
-            this.hoverRect();
-            this.positioned = false;
-            requestAnimationFrame(() => this.updatePosition());
+            this.unit();
+            this.equipmentDisplay = this.computeEquipmentDisplay();
         });
     }
 
-    ngAfterViewInit(): void {
-        this.positioned = false;
-        this.updatePosition();
-    }
-
-    ngAfterViewChecked(): void {
-        // Try to position after every view check until successful
-        if (!this.positioned && this.comp() && this.hoverRect() && this.floatingDialog()) {
-            this.updatePosition();
-        }
+    onMouseEnter() {
+        // overlay service listens for overlay element pointer events; parent keeps component state
     }
     
-    updatePosition() {
-        const currentComp = this.comp();
-        const currentHoverRect = this.hoverRect();
-
-        if (!currentComp || !currentHoverRect) return;
-        const floatingDialog = this.floatingDialog();
-        if (!floatingDialog || !floatingDialog.nativeElement) return;
-
-        const hoverRect = currentHoverRect;
-        const el = floatingDialog.nativeElement;
-        const rect = el.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        let x = hoverRect.x + hoverRect.width - 2;
-        let y = hoverRect.y;
-
-        if (x + rect.width > vw) {
-            const leftX = hoverRect.x - rect.width + 2;
-            x = leftX >= 0 ? leftX : Math.max(0, vw - rect.width);
-        }
-        if (y + rect.height > vh) {
-            y = Math.max(0, vh - rect.height - 8);
-        }
-        if (x < 0) x = 0;
-        if (y < 0) y = 0;
-        this.pos.set({ x, y });
-        this.positioned = true;
-    }
-
-    onMouseEnter() {
-        // This will be handled by the parent via (mouseenter)
-    }
     onMouseLeave() {
-        // This will be handled by the parent via (mouseleave)
+        // overlay service listens for overlay element pointer events; parent keeps component state
     }
 
     get name(): string {
@@ -159,9 +115,11 @@ export class FloatingCompInfoComponent implements AfterViewInit {
     get range(): string | null {
         return this.comp()?.r ?? this.equipment()?.range ?? null;
     }
+
     get minRange(): number | null {
         return this.equipment()?.minr ?? null;
     }
+
     get damage(): string | null {
         const currentComp = this.comp();
         if (currentComp?.d && currentComp.md && Number(currentComp.md) !== Number(currentComp.d)) {

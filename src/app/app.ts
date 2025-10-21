@@ -104,7 +104,6 @@ export class App {
 
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
     public readonly unitSearchComponentRef = viewChild(UnitSearchComponent);
-    private readonly forceBuilderViewer = viewChild(ForceBuilderViewerComponent);
     protected unitSearchPortal!: DomPortal<ElementRef>;
     protected unitSearchPortalMain!: DomPortal<any>;
     protected unitSearchPortalExtended!: DomPortal<any>;

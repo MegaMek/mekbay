@@ -1,7 +1,7 @@
 
 .floating-comp-info {
-    position: fixed;
-    z-index: 9999;
+    position: static;
+    display: block;
     color: #fff;
     padding: 10px 14px;
     box-shadow: 0 2px 12px #0008;

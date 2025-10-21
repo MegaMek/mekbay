@@ -35,7 +35,6 @@ import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStr
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { Unit, UnitComponent } from '../../models/units.model';
-import { FloatingCompInfoComponent } from '../floating-comp-info/floating-comp-info.component';
 import { weaponTypes, getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { DataService } from '../../services/data.service';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
@@ -47,6 +46,7 @@ import { ForceUnit } from '../../models/force-unit.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Router } from '@angular/router';
 import { SvgViewerLiteComponent } from '../svg-viewer-lite/svg-viewer-lite.component';
+import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 
 /*
  * Author: Drake
@@ -106,7 +106,7 @@ interface ManufacturerInfo {
     selector: 'unit-details-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, FloatingCompInfoComponent, StatBarSpecsPipe, FilterAmmoPipe, SvgViewerLiteComponent],
+    imports: [CommonModule, BaseDialogComponent, UnitComponentItemComponent, StatBarSpecsPipe, FilterAmmoPipe, SvgViewerLiteComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css']
 })
@@ -617,11 +617,6 @@ export class UnitDetailsDialogComponent {
             if (this.getComponentsForLocation(code).length > 0) present.add(code);
         }
         return Array.from(present);
-    }
-
-    areaHasContent(areaName: string): boolean {
-        if (areaName === '.' || !areaName) return false;
-        return this.getPresentAreaCodes(areaName).length > 0;
     }
 
     getAreaLabel(areaName: string): string {

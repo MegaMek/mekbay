@@ -1,10 +1,7 @@
 @if (comp()) {
     <div
     #floatingDialog
-    class="floating-comp-info allow-select {{ typeClass }}"
-    [class.visible]="positioned"
-    [style.top.px]="pos().y"
-    [style.left.px]="pos().x">
+    class="floating-comp-info allow-select {{ typeClass }}" [class.visible]="comp()">
     <div class="caption">{{ name }}</div>
     @if(desc){<div class="desc">{{ desc }}</div>}
     <div><span class="muted">Type: </span>{{ typeLabel }}</div>

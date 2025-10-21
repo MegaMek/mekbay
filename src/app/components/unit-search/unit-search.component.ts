@@ -50,12 +50,12 @@ import { LayoutService } from '../../services/layout.service';
 import { getWeaponTypeCSSClass, weaponTypes } from '../../utils/equipment.util';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { FloatingCompInfoComponent } from '../floating-comp-info/floating-comp-info.component';
 import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
 import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
+import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 
 @Pipe({
     name: 'expandedComponents',
@@ -86,7 +86,7 @@ export class ExpandedComponentsPipe implements PipeTransform {
     selector: 'unit-search',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, MultiSelectDropdownComponent, AdjustedBV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, FloatingCompInfoComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.css',
 })
@@ -172,14 +172,6 @@ export class UnitSearchComponent implements OnDestroy {
             cleanup(() => {
                 elScrolledSub.unsubscribe();
             });
-        });
-        effect(() => {
-            this.viewportScrollOffset();
-            if (this.isCompHovered || this.isFloatingHovered) {
-                this.isCompHovered = false;
-                this.isFloatingHovered = false;
-                this.updateFloatingVisibility();
-            }
         });
         effect(() => {
             if (this.advOpen()) {
@@ -861,59 +853,6 @@ export class UnitSearchComponent implements OnDestroy {
         window.removeEventListener('mousemove', this.onAdvPanelDragMove);
         window.removeEventListener('mouseup', this.onAdvPanelDragEnd);
     };
-
-    /* Component Hovering for Expanded View */
-    onCompMouseEnter(unit: Unit, comp: UnitComponent, event: MouseEvent) {
-        this.isCompHovered = true;
-        if (this.hoveredComp() !== comp) {
-            this.hoveredUnit.set(unit);
-            this.hoveredComp.set(comp);
-            const container = event.currentTarget as HTMLElement;
-            this.hoverRect.set(container.getBoundingClientRect());
-        }
-    }
-
-    onCompPointerDown(unit: Unit, comp: UnitComponent, event: MouseEvent) {
-        if (this.hoveredComp() === comp) {
-            this.isCompHovered = false;
-            this.onCompMouseLeave();
-        } else {
-            this.onCompMouseEnter(unit, comp, event);
-        }
-    }
-
-    onCompClick(unit: Unit, comp: UnitComponent, event: MouseEvent) {
-        event.stopPropagation();
-        event.preventDefault();
-    }
-
-    onCompMouseLeave() {
-        this.isCompHovered = false;
-        // Defer to next tick to allow floating window mouseenter to fire first if moving to it
-        afterNextRender(() => {
-            this.updateFloatingVisibility();
-        }, { injector: this.injector });
-    }
-
-    onFloatingMouseEnter() {
-        this.isFloatingHovered = true;
-    }
-
-    onFloatingMouseLeave() {
-        this.isFloatingHovered = false;
-            // Defer to next tick to allow comp mouseenter to fire first if moving to it
-        afterNextRender(() => {
-            this.updateFloatingVisibility();
-        }, { injector: this.injector });
-    }
-
-    private updateFloatingVisibility() {
-        if (!this.isCompHovered && !this.isFloatingHovered) {
-            this.hoveredUnit.set(null);
-            this.hoveredComp.set(null);
-            this.hoverRect.set(null);
-        }
-    }
 
     // Multi-select logic: click with Ctrl/Cmd or Shift to select multiple units
     onUnitCardClick(unit: Unit, event?: MouseEvent, forceMultiSelect = false) {
