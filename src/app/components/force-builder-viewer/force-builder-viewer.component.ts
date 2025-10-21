@@ -107,14 +107,6 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     private lipMoveUnlisten?: () => void;
     private lipUpUnlisten?: () => void;
 
-    //Units autoscroll
-    private autoScrollVelocity = signal<number>(0);     // px/sec (+ down, - up)
-    private autoScrollRafId?: number;
-    private lastAutoScrollTs?: number;
-    private readonly AUTOSCROLL_EDGE = 64;   // px threshold from edge to start scrolling
-    private readonly AUTOSCROLL_MAX = 600;   // px/sec max scroll speed
-    private readonly AUTOSCROLL_MIN = 40;
-
     @HostBinding('class.is-mobile-menu-open')
     get isMobileMenuOpen() {
         return this.layoutService.isMobile() && this.layoutService.isMenuOpen();
@@ -206,7 +198,6 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     ngOnDestroy() {
         this.cleanupTouchListeners();
         this.cleanupLipListeners();
-        this.stopAutoScrollLoop();
     }
 
     private addTouchListeners() {
@@ -354,91 +345,9 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         }
     }
 
-    onUnitDragMoved(event: CdkDragMove<any>) {
-       if (this.forceBuilderService.readOnlyForce()) return;
-
-       const scrollRef = this.scrollableContent?.();
-       if (!scrollRef) {
-           this.stopAutoScrollLoop();
-           return;
-       }
-       const container = scrollRef.nativeElement as HTMLElement;
-       const rect = container.getBoundingClientRect();
-
-       // pointerPosition provided by CdkDragMove when available; fallback to underlying event coords
-       const pointerY = event.pointerPosition?.y ?? (event.event as PointerEvent)?.clientY;
-       if (pointerY == null) {
-           this.stopAutoScrollLoop();
-           return;
-       }
-
-       const topDist = pointerY - rect.top;
-       const bottomDist = rect.bottom - pointerY;
-
-       let ratio = 0;
-       if (topDist < this.AUTOSCROLL_EDGE) {
-           ratio = (this.AUTOSCROLL_EDGE - topDist) / this.AUTOSCROLL_EDGE; // 0..1
-           ratio = Math.max(0, Math.min(1, ratio));
-           ratio = ratio * ratio; // ease-in
-           this.autoScrollVelocity.set(-Math.max(this.AUTOSCROLL_MIN, ratio * this.AUTOSCROLL_MAX));
-       } else if (bottomDist < this.AUTOSCROLL_EDGE) {
-           ratio = (this.AUTOSCROLL_EDGE - bottomDist) / this.AUTOSCROLL_EDGE;
-           ratio = Math.max(0, Math.min(1, ratio));
-           ratio = ratio * ratio;
-           this.autoScrollVelocity.set(Math.max(this.AUTOSCROLL_MIN, ratio * this.AUTOSCROLL_MAX));
-       } else {
-           this.autoScrollVelocity.set(0);
-       }
-
-       if (Math.abs(this.autoScrollVelocity()) > 0.5) {
-           this.startAutoScrollLoop();
-       } else {
-           this.stopAutoScrollLoop();
-       }
-    }
-
     onUnitDragEnd() {
         if (this.forceBuilderService.readOnlyForce()) return;
-        this.stopAutoScrollLoop();
         this.isUnitDragging.set(false);
-    }
-
-       
-    private startAutoScrollLoop() {
-        if (this.autoScrollRafId) return;
-        this.lastAutoScrollTs = performance.now();
-        const step = (ts: number) => {
-            // If RAF was cancelled, abort
-            if (!this.autoScrollRafId) return;
-            const last = this.lastAutoScrollTs ?? ts;
-            // clamp dt to avoid huge jumps
-            const dt = Math.min(100, ts - last) / 1000;
-            this.lastAutoScrollTs = ts;
-
-            const v = this.autoScrollVelocity();
-            if (Math.abs(v) > 0.5) {
-                const scrollRef = this.scrollableContent?.();
-                if (scrollRef) {
-                    const el = scrollRef.nativeElement as HTMLElement;
-                    const delta = v * dt;
-                    // clamp new scrollTop inside scrollable range
-                    el.scrollTop = Math.max(0, Math.min(el.scrollHeight - el.clientHeight, el.scrollTop + delta));
-                }
-                this.autoScrollRafId = requestAnimationFrame(step);
-            } else {
-                this.stopAutoScrollLoop();
-            }
-        };
-        this.autoScrollRafId = requestAnimationFrame(step);
-    }
-
-    private stopAutoScrollLoop() {
-        if (this.autoScrollRafId) {
-            cancelAnimationFrame(this.autoScrollRafId);
-            this.autoScrollRafId = undefined;
-        }
-        this.autoScrollVelocity.set(0);
-        this.lastAutoScrollTs = undefined;
     }
 
     drop(event: CdkDragDrop<ForceUnit[]>) {

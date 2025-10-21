@@ -9,7 +9,7 @@
         <button class="bt-button btn-clone" (click)="forceBuilderService.requestCloneForce()">CLONE FORCE TO
             EDIT</button>
         }
-        <div #scrollableContent class="scrollable-content">
+        <div #scrollableContent class="scrollable-content" cdkScrollable>
             <div class="force-units-list" [class.single-group]="hasSingleGroup()">
                 @for (group of forceBuilderService.force.groups(); let gi = $index; track gi) {
                 <div class="group-container">
@@ -20,7 +20,7 @@
                         </div> 
                     </div>
                     @let units = group.units();
-                    <div class="group-units" cdkDropList 
+                    <div class="group-units" cdkDropList
                         [class.compact-mode]="compactMode()"
                         id="group-{{ group.id }}"
                         cdkDropListOrientation="vertical"
@@ -38,7 +38,7 @@
                             <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item"
                                 (click)="selectUnit(unit)" tabindex="0"
                                 (keydown)="onUnitKeydown($event, i)" cdkDrag [cdkDragDisabled]="forceBuilderService.readOnlyForce()"
-                                (cdkDragStarted)="onUnitDragStart()" (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd()"
+                                (cdkDragStarted)="onUnitDragStart()" (cdkDragEnded)="onUnitDragEnd()"
                                 [cdkDragLockAxis]="lockAxis()!"
                                 cdkDragBoundary=".force-view" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                                 <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode()"
