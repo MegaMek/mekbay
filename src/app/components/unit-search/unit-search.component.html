@@ -18,7 +18,7 @@
         }
     </div>
 
-    <button type="button" class="bt-button expand-btn" (click)="this.expandedView.set(!this.expandedView())"
+    <button type="button" class="bt-button expand-btn square-large" (click)="this.expandedView.set(!this.expandedView())"
         [title]="this.expandedView() ? 'Collapse View' : 'Expand View'"
         [attr.aria-label]="this.expandedView() ? 'Collapse View' : 'Expand View'">
         @if (this.expandedView()) {
@@ -35,7 +35,7 @@
         </svg>
         }
     </button>
-    <button #advBtn class="bt-button adv-btn" [class.active]="isAdvActive()"
+    <button #advBtn class="bt-button adv-btn square-large" [class.active]="isAdvActive()"
         [disabled]="!this.filtersService.isDataReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
             stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
