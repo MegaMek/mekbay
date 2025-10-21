@@ -68,6 +68,7 @@
     justify-content: center;
 }
 
+.build-info,
 .footer-text {
     color: #333;
     font-size: 0.8em;
@@ -79,8 +80,13 @@
     margin-right: 10px;
 }
 
+.build-info:hover,
 .footer-text:hover {
     color: #777;
+}
+
+.build-info {
+    cursor: pointer;
 }
 
 .empty-state-logo {
@@ -189,11 +195,4 @@ svg-viewer {
     cursor: pointer;
     text-align: center;
     margin: -12px 12px;
-}
-
-.build-info {
-    text-align: center;
-    font-size: 0.75rem;
-    color: #666;
-    pointer-events: none;
 }
