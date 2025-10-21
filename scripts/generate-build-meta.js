@@ -37,6 +37,7 @@ export const APP_VERSION_STRING = '${versionString}';
     const version = readVersion();
 
     // commit count (number of commits reachable from HEAD)
+    // TODO: reimplement it with an API call to GitHub so we don't have to use depth: 0 in checkout
     const commitNumber = parseInt(git('git rev-list --count HEAD') || '0', 10);
 
     // short commit hash
