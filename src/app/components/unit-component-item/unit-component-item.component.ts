@@ -35,6 +35,7 @@ export class UnitComponentItemComponent {
     onCompClick(event: MouseEvent) {
         event.stopPropagation();
         event.preventDefault();
+        this.showFloatingOverlay();
     }
 
     onMouseEnter(event: MouseEvent) {
