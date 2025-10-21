@@ -153,26 +153,7 @@ export class UnitSearchComponent implements OnDestroy {
     private advPanelDragStartX = 0;
     private advPanelDragStartWidth = 0;
 
-    /* Hover state for component info popup */
-    hoveredUnit = signal<Unit | null>(null);
-    hoveredComp = signal<UnitComponent | null>(null);
-    hoverRect = signal<DOMRect | null>(null);
-    viewportScrollOffset = signal<number>(0);
-    private isCompHovered = false;
-    private isFloatingHovered = false;
-
     constructor() {
-        effect((cleanup) => {
-            const viewport = this.viewport();
-            if (!viewport) return;
-            const elScrolledSub = viewport.elementScrolled().subscribe(() => {
-                const offset = viewport.measureScrollOffset();
-                this.viewportScrollOffset.set(offset);
-            });
-            cleanup(() => {
-                elScrolledSub.unsubscribe();
-            });
-        });
         effect(() => {
             if (this.advOpen()) {
                 this.advPanelUserColumns();
