@@ -38,9 +38,9 @@
                             <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item"
                                 (click)="selectUnit(unit)" tabindex="0"
                                 (keydown)="onUnitKeydown($event, i)" cdkDrag [cdkDragDisabled]="forceBuilderService.readOnlyForce()"
-                                (cdkDragStarted)="onUnitDragStart()" (cdkDragEnded)="onUnitDragEnd()"
+                                (cdkDragStarted)="onUnitDragStart()" (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd()"
                                 [cdkDragLockAxis]="lockAxis()!"
-                                cdkDragBoundary=".force-view" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
+                                cdkDragBoundary=".scrollable-content" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                                 <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode()"
                                 [class.selected]="unit.id === forceBuilderService.selectedUnit()?.id"
                                 (onRemoveUnit)="removeUnit($event, unit)"
