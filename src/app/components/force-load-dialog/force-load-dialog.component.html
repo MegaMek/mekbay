@@ -34,8 +34,15 @@
                                     (error)="$event.target.src = '/images/unknown.png'" class="unit-icon"
                                     alt="{{ unitEntry.unit?.chassis }} {{ unitEntry.unit?.model }}"
                                     title="{{ unitEntry.unit?.chassis }} {{ unitEntry.unit?.model }}" />
+                                @if (optionsService.options().unitDisplayName === 'chassisModel' 
+                                    || optionsService.options().unitDisplayName === 'both'
+                                    || !unitEntry.alias) {
                                 <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
                                 <div class="unit-chassis">{{ unitEntry.unit?.chassis }}</div>
+                                }
+                                @if (optionsService.options().unitDisplayName === 'alias' || optionsService.options().unitDisplayName === 'both') {
+                                <div class="unit-alias">{{ unitEntry.alias }}</div>
+                                }
                             </div>
                             }
                         </div>

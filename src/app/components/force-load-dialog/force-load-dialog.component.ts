@@ -39,6 +39,7 @@ import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { Pipe, PipeTransform } from "@angular/core";
 import { LoadForceEntry } from '../../models/load-force-entry.model';
+import { OptionsService } from '../../services/options.service';
 
 /*
  * Author: Drake
@@ -80,6 +81,7 @@ export class FormatTimestamp implements PipeTransform {
 export class ForceLoadDialogComponent {
     dialogRef = inject(DialogRef<ForceLoadDialogComponent>);
     dataService = inject(DataService);
+    optionsService = inject(OptionsService);
     cdr = inject(ChangeDetectorRef);
     dialogsService = inject(DialogsService);
     @Output() load = new EventEmitter<LoadForceEntry>();

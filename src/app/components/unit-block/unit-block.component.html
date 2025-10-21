@@ -1,3 +1,4 @@
+@let unitDisplayName = optionsService.options().unitDisplayName;
 @if (compactMode()) {
     <div class="unit-square compact-mode" 
         [class.destroyed]="forceUnit()?.destroyed">
@@ -7,8 +8,15 @@
             class="unit-icon" 
             alt="{{ unit()?.chassis }} {{ unit()?.model }}" 
             title="{{ unit()?.chassis }} {{ unit()?.model }}" />
-        <div class="unit-model">{{ cleanedModel() }}</div>
-        <div class="unit-chassis">{{ unit()?.chassis }}</div>
+        @if (unitDisplayName === 'chassisModel' 
+        || unitDisplayName === 'both'
+        || !forceUnit()?.alias()) {
+            <div class="unit-model">{{ cleanedModel() }}</div>
+            <div class="unit-chassis">{{ unit()?.chassis }}</div>
+        }
+        @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
+            <div class="unit-alias">{{ forceUnit()?.alias() }}</div>
+        }
     </div>
 } @else {
     <div class="unit-card"
@@ -20,13 +28,28 @@
         </div>
         <div class="unit-data-container">
             <div class="secondary-info">
-                <span class="model">{{ unit()?.model }}</span>
+                @if (unitDisplayName === 'chassisModel' 
+                || unitDisplayName === 'both'
+                || !forceUnit()?.alias()) {
+                    <span class="model">{{ unit()?.model }}</span>
+                } @else {
+                    <span class="model">{{ unit()?.chassis }}</span>
+                }
+                <div class="spanner"></div>
                 <div class="role" *ngIf="unit()?.role && (unit()?.role !== 'None')">{{
                     unit()?.role }}
                 </div>
             </div>
             <div class="primary-info">
-                <span class="chassis">{{ unit()?.chassis }}</span>
+                @if (unitDisplayName === 'chassisModel' 
+                || unitDisplayName === 'both'
+                || !forceUnit()?.alias()) {
+                    <span class="chassis">{{ unit()?.chassis }}</span>
+                }
+                @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
+                    <div class="unit-alias"
+                    [class.thin]="unitDisplayName === 'both'">{{ forceUnit()?.alias() }}</div>
+                }
             </div>
             <div class="third-info">
                 <div class="info-area">

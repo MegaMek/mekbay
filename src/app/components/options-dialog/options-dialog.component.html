@@ -14,12 +14,12 @@
                     </select>
                 </div>
                 <div class="option-row">
-                    <label for="pickerStyle">Picker style:</label>
-                    <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"
-                        (change)="onPickerStyleChange($event)">
-                        <option value="default">Automatic (default)</option>
-                        <option value="radial">Always Dial</option>
-                        <option value="linear">Always Linear</option>
+                    <label for="unitDisplayName">Unit Display Name:</label>
+                    <select id="unitDisplayName" class="bt-select" [value]="optionsService.options().unitDisplayName"
+                        (change)="onUnitDisplayNameChange($event)">
+                        <option value="chassisModel">Chassis & Model (default)</option>
+                        <option value="alias">Pilot Name</option>
+                        <option value="both">Both</option>
                     </select>
                 </div>
                 <div class="option-col">
@@ -60,6 +60,15 @@
         @if (activeTab() === 'Advanced') {
             <div class="tab-content">
                 <div class="option-row">
+                    <label for="pickerStyle">Picker style:</label>
+                    <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"
+                        (change)="onPickerStyleChange($event)">
+                        <option value="default">Automatic (default)</option>
+                        <option value="radial">Always Dial</option>
+                        <option value="linear">Always Linear</option>
+                    </select>
+                </div>
+                <div class="option-row">
                     <label for="swipeToNextSheet">Swipe to next sheet:</label>
                     <select id="swipeToNextSheet" class="bt-select" [value]="optionsService.options().swipeToNextSheet"
                         (change)="onSwipeToNextSheetChange($event)">
@@ -69,7 +78,7 @@
                     </select>
                 </div>
                 <div class="option-row">
-                    <label for="canvasInput">Canvas input:</label>
+                    <label for="canvasInput">Drawing input:</label>
                     <select id="canvasInput" class="bt-select" [value]="optionsService.options().canvasInput"
                         (change)="onCanvasInputChange($event)">
                         <option value="all">All</option>

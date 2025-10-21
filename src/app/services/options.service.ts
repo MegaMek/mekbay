@@ -39,16 +39,27 @@ import { UserStateService } from './userState.service';
 /*
  * Author: Drake
  */
+
+const DEFAULT_OPTIONS: Options = {
+    sheetsColor: 'normal',
+    pickerStyle: 'default',
+    quickActions: 'disabled',
+    canvasInput: 'all',
+    swipeToNextSheet: 'horizontal',
+    unitDisplayName: 'chassisModel',
+};
+
 @Injectable({ providedIn: 'root' })
 export class OptionsService {
     private dbService = inject(DbService);
 
     public options = signal<Options>({
-        sheetsColor: 'normal',
-        pickerStyle: 'default',
-        quickActions: 'disabled',
-        canvasInput: 'all',
-        swipeToNextSheet: 'horizontal',
+        sheetsColor: DEFAULT_OPTIONS.sheetsColor,
+        pickerStyle: DEFAULT_OPTIONS.pickerStyle,
+        quickActions: DEFAULT_OPTIONS.quickActions,
+        canvasInput: DEFAULT_OPTIONS.canvasInput,
+        swipeToNextSheet: DEFAULT_OPTIONS.swipeToNextSheet,
+        unitDisplayName: DEFAULT_OPTIONS.unitDisplayName,
     });
 
     constructor() {
@@ -58,11 +69,12 @@ export class OptionsService {
     async initOptions() {
         const saved = await this.dbService.getOptions();
         this.options.set({
-            sheetsColor: saved?.sheetsColor ?? 'normal',
-            pickerStyle: saved?.pickerStyle ?? 'default',
-            quickActions: saved?.quickActions ?? 'disabled',
-            canvasInput: saved?.canvasInput ?? 'all',
-            swipeToNextSheet: saved?.swipeToNextSheet ?? 'horizontal',
+            sheetsColor: saved?.sheetsColor ?? DEFAULT_OPTIONS.sheetsColor,
+            pickerStyle: saved?.pickerStyle ?? DEFAULT_OPTIONS.pickerStyle,
+            quickActions: saved?.quickActions ?? DEFAULT_OPTIONS.quickActions,
+            canvasInput: saved?.canvasInput ?? DEFAULT_OPTIONS.canvasInput,
+            swipeToNextSheet: saved?.swipeToNextSheet ?? DEFAULT_OPTIONS.swipeToNextSheet,
+            unitDisplayName: saved?.unitDisplayName ?? DEFAULT_OPTIONS.unitDisplayName,
         });
     }
 

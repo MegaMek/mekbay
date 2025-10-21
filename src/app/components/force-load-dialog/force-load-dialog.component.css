@@ -169,11 +169,16 @@
         display: block;
     }
 
+    .unit-alias,
     .unit-chassis {
         font-size: 0.7em;
         color: var(--text-color);
         word-break: break-word;
         text-align: center;
+    }
+
+    .unit-alias {
+        font-weight: bold;
     }
     
 }

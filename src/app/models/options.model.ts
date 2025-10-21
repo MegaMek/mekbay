@@ -41,4 +41,5 @@ export interface Options {
     quickActions: 'enabled' | 'disabled';
     canvasInput: 'all' | 'touch' | 'pen';
     swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
+    unitDisplayName: 'chassisModel' | 'alias' | 'both';
 }

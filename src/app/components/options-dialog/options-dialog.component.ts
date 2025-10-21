@@ -113,6 +113,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('pickerStyle', value);
     }
 
+    onUnitDisplayNameChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as 'chassisModel' | 'alias' | 'both';
+        this.optionsService.setOption('unitDisplayName', value);
+    }
+
     onQuickActionsChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'enabled' | 'disabled';
         this.optionsService.setOption('quickActions', value);

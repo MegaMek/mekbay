@@ -46,11 +46,17 @@
         max-width: 100%;
         display: block;
     }
+    
+    .unit-alias,
     .unit-chassis {
         font-size: 0.8em;
         color: var(--text-color);
         word-break: break-word;
         text-align: center;
+    }
+
+    .unit-alias {
+        font-weight: bold;
     }
     
 }
@@ -66,9 +72,16 @@
     align-items: stretch;
     transition: background-color 0.2s, border-color 0.2s;
 
+    .unit-alias,
     .chassis {
         font-weight: bold;
     }
+
+    .unit-alias.thin {
+        font-size: 0.9em;
+        font-weight: normal;
+    }
+
     .info-slot.c3link {
         color: rgb(185, 16, 16);
     }
