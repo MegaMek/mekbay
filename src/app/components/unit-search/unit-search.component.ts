@@ -55,7 +55,7 @@ import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
 import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
-import { FilterAdjustedBV } from '../../pipes/filter-adjusted-bv.pipe';
+import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
 
 @Pipe({
     name: 'expandedComponents',
@@ -86,7 +86,7 @@ export class ExpandedComponentsPipe implements PipeTransform {
     selector: 'unit-search',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, MultiSelectDropdownComponent, FilterAdjustedBV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, FloatingCompInfoComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, MultiSelectDropdownComponent, AdjustedBV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, FloatingCompInfoComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.css',
 })

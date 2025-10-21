@@ -39,10 +39,10 @@ import { BVCalculatorUtil } from "../utils/bv-calculator.util";
  * Author: Drake
  */
 @Pipe({
-    name: 'filterAdjustedBV',
+    name: 'adjustedBV',
     pure: true
 })
-export class FilterAdjustedBV implements PipeTransform {
+export class AdjustedBV implements PipeTransform {
 
     transform(bv: number, gunnery: number, piloting: number): number {
         if (bv === undefined) return 0;
