@@ -61,7 +61,7 @@ export class SvgViewerLiteComponent {
         const container = this.containerRef().nativeElement;
         for (const s of svgs) {
             s.style.display = 'block';
-            s.style.width = '100%';
+            s.style.minWidth = '100%';
             s.style.height = 'auto';
             container.appendChild(s);
         }
