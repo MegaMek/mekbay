@@ -37,9 +37,9 @@
 
 html,
 body {
-    width: 100vw;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
     width: 100dvw;
-    height: 100vh;
     height: 100dvh;
     margin: 0;
     padding: 0;
