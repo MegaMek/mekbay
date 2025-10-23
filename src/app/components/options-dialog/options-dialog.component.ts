@@ -75,7 +75,16 @@ export class OptionsDialogComponent {
         window.addEventListener('pointerdown', this.pointerListener, true);
         window.addEventListener('keydown', this.keyListener, true);
         window.addEventListener('click', this.clickListener, true);
+    }
 
+    isIOS(): boolean {
+        const nav = typeof navigator !== 'undefined' ? navigator : (window as any).navigator;
+        if (!nav) return false;
+        const ua = nav.userAgent || nav.vendor || '';
+        // covers iPhone/iPad/iPod and iPadOS on Intel (Mac with touch points)
+        const isiDevice = /iPad|iPhone|iPod/.test(ua)
+            || (nav.platform === 'MacIntel' && (nav as any).maxTouchPoints > 1);
+        return isiDevice;
     }
 
     updateSheetCacheSize() {
