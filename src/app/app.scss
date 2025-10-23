@@ -1,7 +1,7 @@
 .app-container {
     display: flex;
-    height: 100dvh;
-    width: 100dvw;
+    height: calc(100dvh - env(safe-area-inset-top, 0px));
+    width: calc(100dvw - env(safe-area-inset-left, 0px));
     overflow: hidden;
     position: relative;
     box-sizing: border-box;

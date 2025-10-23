@@ -35,22 +35,27 @@
     --damaged-highlight-color: rgb(255, 105, 105);
 }
 
-html,
-body {
-    padding-top: env(safe-area-inset-top, 0px);
-    padding-left: env(safe-area-inset-left, 0px);
-    width: 100dvw;
-    height: 100dvh;
+html {
     margin: 0;
     padding: 0;
+    width: 100dvw;
+    height: 100dvh;
     background-color: var(--background-color-menu);
     overflow: hidden;
     overscroll-behavior: none;
     font-family: 'Roboto', "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Symbol";
-    box-sizing: border-box;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     user-select: none;
+}
+body {
+    width: calc(100dvw - env(safe-area-inset-left, 0px));
+    height: calc(100dvh - env(safe-area-inset-top, 0px));
+    box-sizing: border-box;
+    margin-top: env(safe-area-inset-top, 0px);
+    margin-left: env(safe-area-inset-left, 0px);
+    overflow: hidden;
+
 }
 
 a {
