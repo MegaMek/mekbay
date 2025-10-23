@@ -161,8 +161,8 @@ interface brushLocation {
         /* Controls */
         .fab-container {
             position: fixed;
-            bottom: env(safe-area-inset-bottom, 0px);
-            right: env(safe-area-inset-right, 0px);
+            bottom: 0;
+            right: 0;
             z-index: 1;
             pointer-events: none;
         }
