@@ -1,8 +1,8 @@
 .notification-container {
     position: fixed;
     --base-bottom-spacing: 24px;
-    bottom: var(--base-bottom-spacing);
-    right: 24px;
+    bottom: calc(var(--base-bottom-spacing) + env(safe-area-inset-bottom, 0px));
+    right: calc(24px + env(safe-area-inset-right, 0px));
     gap: 12px;
     z-index: 10000;
     display: flex;

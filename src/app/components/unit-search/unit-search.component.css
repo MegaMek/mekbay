@@ -10,10 +10,10 @@
 
 .searchbar-container.expanded {
     position: fixed;
-    top: 4px;
-    left: 4px;
-    right: 4px;
-    width: calc(100vw - 8px);
+    top: calc(4px + env(safe-area-inset-top, 0px));
+    left: calc(4px + env(safe-area-inset-left, 0px));
+    right: calc(4px + env(safe-area-inset-right, 0px));
+    width: calc(100vw - 8px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
     z-index: 10;
     background-color: #222;
 }
@@ -126,10 +126,10 @@
 
 .search-overlay  {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
+    top: env(safe-area-inset-top, 0px);
+    left: env(safe-area-inset-left, 0px);
+    width: calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     z-index: 2;
     pointer-events: none;
 }
@@ -152,10 +152,10 @@
 
 .results-dropdown.expanded {
     position: fixed;
-    left: 4px;
-    right: 4px;
-    bottom: 4px;
-    width: calc(100vw - 8px) !important;
+    left: calc(4px + env(safe-area-inset-left, 0px));
+    right: calc(4px + env(safe-area-inset-right, 0px));
+    bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+    width: calc(100vw - 8px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)) !important;
 }
 
 .results-dropdown[style*="right:"] {
