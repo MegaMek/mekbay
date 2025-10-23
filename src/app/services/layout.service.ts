@@ -124,4 +124,27 @@ export class LayoutService {
         this.isTouchInput.set(isTouch);
     };
 
+    public getSafeAreaInsets(): { top: number; bottom: number, left: number; right: number } {
+        try {
+            const rootStyle = getComputedStyle(document.documentElement);
+            const parse = (v: string | null) => {
+                if (!v) return 0;
+                // value might be like "20px" or "env(...)" unresolved; attempt to parse numeric portion
+                const m = v.match(/(-?\d+(\.\d+)?)/);
+                return m ? parseFloat(m[0]) : 0;
+            };
+            const topRaw = rootStyle.getPropertyValue('--safe-area-inset-top') || '';
+            const bottomRaw = rootStyle.getPropertyValue('--safe-area-inset-bottom') || '';
+            const leftRaw = rootStyle.getPropertyValue('--safe-area-inset-left') || '';
+            const rightRaw = rootStyle.getPropertyValue('--safe-area-inset-right') || '';
+            return {
+                top: parse(topRaw) || 0,
+                bottom: parse(bottomRaw) || 0,
+                left: parse(leftRaw) || 0,
+                right: parse(rightRaw) || 0
+            };
+        } catch {
+            return { top: 0, bottom: 0, left: 0, right: 0 };
+        }
+    }
 }

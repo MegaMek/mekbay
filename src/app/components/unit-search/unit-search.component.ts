@@ -291,6 +291,8 @@ export class UnitSearchComponent implements OnDestroy {
 
     updateResultsDropdownPosition() {
         const gap = 5;
+
+        const { top: safeTop, bottom: safeBottom, left: safeLeft, right: safeRight } = this.layoutService.getSafeAreaInsets();
         let dropdownWidth: number;
         let top: number;
         let right: string | undefined;
@@ -299,7 +301,7 @@ export class UnitSearchComponent implements OnDestroy {
             // When expanded, container is fixed at top with 4px margins
             // Calculate position based on the expanded state, not current DOM position
             dropdownWidth = window.innerWidth - 8; // 4px left + 4px right margin
-            top = 4 + 40 + gap; // top margin + searchbar height + gap
+            top = safeTop + 4 + 40 + gap; // top margin + searchbar height + gap
             if (this.advPanelDocked()) {
                 const advPanelWidth = this.advPanelStyle().width;
                 right = advPanelWidth ? `${parseInt(advPanelWidth, 10) + 8}px` : `308px`;
@@ -317,10 +319,10 @@ export class UnitSearchComponent implements OnDestroy {
         let height;
         if (this.filtersService.filteredUnits().length > 0) {
             if (this.expandedView()) {
-                const availableHeight = window.innerHeight - top - 4;
+                const availableHeight = window.innerHeight - top - 4 - safeBottom;
                 height = `${availableHeight}px`;
             } else {
-                const availableHeight = window.innerHeight - top - (window.innerHeight > 600 ? 50 : 10);
+                const availableHeight = window.innerHeight - top - (window.innerHeight > 600 ? 50 : 10) - safeBottom;
                 height = `${availableHeight}px`;
             }
         } else {
@@ -343,6 +345,7 @@ export class UnitSearchComponent implements OnDestroy {
         const advBtn = this.advBtn();
         if (!advBtn) return;
 
+        const { top: safeTop, bottom: safeBottom, left: safeLeft, right: safeRight } = this.layoutService.getSafeAreaInsets();
         const buttonRect = advBtn.nativeElement.getBoundingClientRect();
         const singlePanelWidth = 300;
         const doublePanelWidth = 600;
@@ -366,11 +369,11 @@ export class UnitSearchComponent implements OnDestroy {
         if (spaceToRight >= panelWidth) {
             left = buttonRect.right + gap;
             top = buttonRect.top + window.scrollY;
-            availableHeight = window.innerHeight - top - 4;
+            availableHeight = window.innerHeight - top - 4 - safeBottom;
         } else {
             left = buttonRect.right - panelWidth + window.scrollX;
             top = buttonRect.bottom + gap + window.scrollY;
-            availableHeight = window.innerHeight - top - 4;
+            availableHeight = window.innerHeight - top - 4 - safeBottom;
             left = Math.max(10, left);
         }
 
