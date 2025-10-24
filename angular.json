@@ -19,7 +19,8 @@
             "assets": [
               {
                 "glob": "**/*",
-                "input": "public"
+                "input": "public",
+                "output": "."
               }
             ],
             "styles": [
@@ -29,6 +30,18 @@
           },
           "configurations": {
             "production": {
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public",
+                  "output": "."
+                },
+                {
+                  "glob": "icon-192x192.png",
+                  "input": "public/icons/prod",
+                  "output": "icons"
+                }
+              ],
               "budgets": [
                 {
                   "type": "initial",
@@ -44,6 +57,18 @@
               "outputHashing": "all"
             },
             "development": {
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public",
+                  "output": "."
+                },
+                {
+                  "glob": "icon-192x192.png",
+                  "input": "public/icons/dev",
+                  "output": "icons"
+                }
+              ],
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
@@ -74,6 +99,11 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "icon-192x192.png",
+                "input": "public/icons/dev",
+                "output": "icons"
               }
             ],
             "styles": [
