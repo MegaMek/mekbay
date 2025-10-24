@@ -63,6 +63,7 @@ export interface AdvFilterConfig {
     ignoreValues?: any[]; // Values to ignore in the range filter, e.g. [-1] for heat/dissipation
     multistate?: boolean; // if true, the filter (dropdown) can have multiple states (OR, AND, NOT)
     countable?: boolean; // if true, show amount next to options
+    stepSize?: number; // for range sliders, defines the step size
 }
 
 interface FilterState {
@@ -261,7 +262,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
     { key: '_tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
     { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
-    { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
+    { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5 },
     // { key: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
     { key: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
     { key: 'armorPer', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },

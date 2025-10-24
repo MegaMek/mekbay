@@ -267,7 +267,7 @@
                 </label>
                 <range-slider [min]="optionsData.totalRange[0]" [max]="optionsData.totalRange[1]"
                     [value]="optionsData.value" [availableRange]="optionsData.options"
-                    [interacted]="optionsData.interacted" [curve]="conf.curve ?? 1"
+                    [interacted]="optionsData.interacted" [curve]="conf.curve ?? 1" [stepSize]="conf.stepSize ?? 1"
                     (valueChange)="setAdvFilter(conf.key, $event)">
                 </range-slider>
             </div>
