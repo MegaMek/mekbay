@@ -1,10 +1,10 @@
 .app-container {
-    display: flex;
-    height: calc(100dvh - env(safe-area-inset-top, 0px));
-    width: calc(100dvw - env(safe-area-inset-left, 0px));
-    overflow: hidden;
     position: relative;
+    display: flex;
+    height: 100dvh;
+    width: 100dvw;
     box-sizing: border-box;
+    overflow: hidden;
 }
 
 .main-content {
@@ -25,8 +25,6 @@
 .empty-state-container {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
     height: 100%;
     width: 100%;
     gap: 30px;
@@ -48,11 +46,19 @@
     }
 }
 
-.footer {
+.empty-state-container .header {
+    padding-top: calc(8px + var(--safe-area-inset-top));
+    width: 100%;
+    position: relative;
+}
+
+.empty-state-container .footer {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 16px;
+    bottom: 0;
+    padding: 8px;
+    padding-bottom: calc(8px + var(--safe-area-inset-bottom));
     gap: 8px;
     display: flex;
     flex-direction: column;
@@ -62,14 +68,10 @@
 
 .build-info,
 .footer-text {
-    color: #333;
+    color: #444;
     font-size: 0.8em;
-    margin: 0 auto;
     text-align: center;
-    width: auto;
     transition: color 0.3s ease;
-    margin-left: 10px;
-    margin-right: 10px;
 }
 
 .build-info:hover,
@@ -108,10 +110,10 @@ svg-viewer {
 
 .menu-overlay {
     position: fixed;
-    top: env(safe-area-inset-top, 0px);
-    left: env(safe-area-inset-left, 0px);
-    right: env(safe-area-inset-right, 0px);
-    bottom: env(safe-area-inset-bottom, 0px);
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     background-color: rgba(0, 0, 0, 0.5);
     z-index: 99; /* Below the sidebar */
     opacity: 1;
@@ -168,8 +170,8 @@ svg-viewer {
 
 .popup-menu-button {
     position: absolute;
-    top: 16px;
-    right: 16px;
+    top: calc(16px + var(--safe-area-inset-top));
+    right: calc(16px + var(--safe-area-inset-right));
     pointer-events: auto;
     opacity: 1;
     transition: opacity 0.3s ease;

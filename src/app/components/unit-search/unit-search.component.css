@@ -6,14 +6,15 @@
     flex-direction: row;
     z-index: 4;
     gap: 4px;
+    height: 40px;
 }
 
 .searchbar-container.expanded {
     position: fixed;
-    top: calc(4px + env(safe-area-inset-top, 0px));
-    left: calc(4px + env(safe-area-inset-left, 0px));
-    right: calc(4px + env(safe-area-inset-right, 0px));
-    width: calc(100vw - 8px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    top: calc(4px + var(--safe-area-inset-top));
+    left: 4px;
+    right: 4px;
+    width: calc(100dvw - 8px);
     z-index: 10;
     background-color: #222;
 }
@@ -77,7 +78,7 @@
     background-color: #222;
     color: white;
     z-index: 4;
-    padding: 16px;
+    padding: 10px;
     overflow-y: auto;
     min-width: 300px;
 }
@@ -152,10 +153,10 @@
 
 .results-dropdown.expanded {
     position: fixed;
-    left: calc(4px + env(safe-area-inset-left, 0px));
-    right: calc(4px + env(safe-area-inset-right, 0px));
-    bottom: calc(4px + env(safe-area-inset-bottom, 0px));
-    width: calc(100vw - 8px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)) !important;
+    left: 4px;
+    right: 4px;
+    bottom: max(4px, var(--safe-area-inset-bottom)); /* Will be overwritten anyway by the component... */
+    width: calc(100vw - 8px) !important;
 }
 
 .results-dropdown[style*="right:"] {

@@ -5,11 +5,14 @@
     min-width: 330px;
     flex-shrink: 0;
     background-color: var(--background-color-menu);
-    padding: 10px;
     border-right: 1px solid var(--border-color);
     box-shadow: 2px 0 8px 0 rgba(0,0,0,0.04);
     height: 100%;
     box-sizing: border-box;
+    padding-top: max(8px, var(--safe-area-inset-top));
+    padding-bottom: 8px;
+    padding-right: 8px;
+    padding-left: calc(8px + var(--safe-area-inset-left));
 }
 
 .force-viewer-container {
@@ -21,7 +24,7 @@
 
 .logo {
     display: block;
-    margin: 0 auto 10px auto;
+    margin: 0 auto 8px auto;
     width: 75%;
     flex-shrink: 0;
 }
@@ -112,7 +115,7 @@
 }
 
 .new-group-dropzone:not(:has(unit-block)) {
-    border: 2px dashed var(--border-color);
+    border: 2px dashed var(--text-color-tertiary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -124,12 +127,12 @@
     min-height: 75px;
     align-items: center;
     justify-content: center;
-    border: 2px dashed var(--border-color);
+    border: 2px dashed var(--text-color-tertiary);
 }
 
 .empty-group-placeholder {
     text-align: center;
-    color: var(--background-highlight);
+    color: var(--text-color-tertiary);
     font-size: 0.8em;
     transition: color 0.3s;
     cursor: pointer;
@@ -176,13 +179,9 @@
     flex-direction: column;
 }
 
-.header,
-.footer {
-    flex: 0 0 auto;
-}
-
 .footer {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   justify-content: center;
   align-items: center;
@@ -258,17 +257,18 @@
 :host-context(html.mobile-mode) {
     :host {
         position: fixed;
-        top: env(safe-area-inset-top, 0px);
-        left: env(safe-area-inset-left, 0px);
-        bottom: env(safe-area-inset-bottom, 0px);
+        top: 0px;
+        left: 0px;
+        bottom: 0px;
         width: 90vw;
         max-width: 350px;
-        height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+        height: 100dvh;
         transform: translateX(-100%);
         transition: transform 0.3s ease-in-out;
         z-index: 100;
         box-shadow: none;
         border-right: none;
+        padding-bottom: max(8px, var(--safe-area-inset-bottom));
 
         /* Glassmorphism Effect */
         background-color: rgba(45, 45, 45, 0.8);
@@ -289,7 +289,7 @@
 
     .burger-lip-btn {
         position: absolute;
-        bottom: 30px;
+        bottom: calc(56px + var(--safe-area-inset-bottom));
         left: 100%;
         width: 30px;
         height: 90px;

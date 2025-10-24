@@ -71,7 +71,7 @@
                 <div class="row total-bv">Total BV: {{ forceBuilderService.force.totalBv() | number }}</div>
             }
             <div class="row">
-                <button class="bt-button square-normal" (click)="toggleCompactMode()">
+                <button class="bt-button square" (click)="toggleCompactMode()">
                 @if (compactMode()) {
                     <svg width="20px" height="20px" viewBox="0 0 35 35" fill="currentcolor" version="1.1" xmlns="http://www.w3.org/2000/svg">
                         <path d="M34.999,0H0.001v6.777h34.997L34.999,0L34.999,0z M32.999,4.777H2.001V2h30.997L32.999,4.777L32.999,4.777z"/>
@@ -93,7 +93,7 @@
                 }
                 </button>
                 <div class="spanner"></div>
-                <button class="bt-button square-normal share-btn" (click)="shareForce()" title="Share Force">
+                <button class="bt-button square share-btn" (click)="shareForce()" title="Share Force">
                     <svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor"
                         xmlns="http://www.w3.org/2000/svg">
                         <path fill-rule="evenodd" clip-rule="evenodd"

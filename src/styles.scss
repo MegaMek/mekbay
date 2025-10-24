@@ -14,6 +14,7 @@
     --scrollbar-width: 6px;
     --text-color: #ffffff;
     --text-color-secondary: silver;
+    --text-color-tertiary: #888;
     --bt-yellow: #EAAE3F;
     --bt-yellow-strong: #FFAE16;
     /* --bt-yellow-background: rgba(209, 175, 73, 0.2); */
@@ -35,11 +36,11 @@
     --damaged-highlight-color: rgb(255, 105, 105);
 }
 
-html {
+html, body {
     margin: 0;
     padding: 0;
-    width: 100dvw;
-    height: 100dvh;
+    width: 100vw;
+    height: 100vh;
     background-color: var(--background-color-menu);
     overflow: hidden;
     overscroll-behavior: none;
@@ -47,15 +48,7 @@ html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     user-select: none;
-}
-body {
-    width: calc(100dvw - env(safe-area-inset-left, 0px));
-    height: calc(100dvh - env(safe-area-inset-top, 0px));
     box-sizing: border-box;
-    margin-top: env(safe-area-inset-top, 0px);
-    margin-left: env(safe-area-inset-left, 0px);
-    overflow: hidden;
-
 }
 
 a {
@@ -364,14 +357,7 @@ hr {
         color: #444;
     }
 
-    &.square-normal {
-        flex-shrink: 0;
-        width: 32px;
-        height: 32px;
-        overflow: hidden;
-    }
-
-    &.square-large {
+    &.square {
         flex-shrink: 0;
         width: 40px;
         height: 40px;

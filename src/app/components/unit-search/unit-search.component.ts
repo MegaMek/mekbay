@@ -156,6 +156,7 @@ export class UnitSearchComponent implements OnDestroy {
     constructor() {
         effect(() => {
             if (this.advOpen()) {
+                this.layoutService.isPortraitOrientation();
                 this.advPanelUserColumns();
                 this.updateAdvPanelPosition();
                 this.updateResultsDropdownPosition();
@@ -164,6 +165,7 @@ export class UnitSearchComponent implements OnDestroy {
         effect(() => {
             this.advPanelUserColumns();
             if (this.resultsVisible()) {
+                this.layoutService.isPortraitOrientation();
                 this.updateResultsDropdownPosition();
             }
         });
@@ -284,13 +286,13 @@ export class UnitSearchComponent implements OnDestroy {
         if (this.advOpen()) {
             this.updateAdvPanelPosition();
         }
-        if (this.filtersService.searchText().length > 0 || this.isAdvActive()) {
+        if (this.resultsVisible()) {
             this.updateResultsDropdownPosition();
         }
     }
 
     updateResultsDropdownPosition() {
-        const gap = 5;
+        const gap = 4;
 
         const { top: safeTop, bottom: safeBottom, left: safeLeft, right: safeRight } = this.layoutService.getSafeAreaInsets();
         let dropdownWidth: number;
@@ -313,18 +315,13 @@ export class UnitSearchComponent implements OnDestroy {
 
             const containerRect = container.getBoundingClientRect();
             dropdownWidth = containerRect.width;
-            top = containerRect.bottom + gap + window.scrollY;
+            top = containerRect.bottom + gap;
         }
 
         let height;
         if (this.filtersService.filteredUnits().length > 0) {
-            if (this.expandedView()) {
-                const availableHeight = window.innerHeight - top - 4 - safeBottom;
-                height = `${availableHeight}px`;
-            } else {
-                const availableHeight = window.innerHeight - top - (window.innerHeight > 600 ? 50 : 10) - safeBottom;
-                height = `${availableHeight}px`;
-            }
+            const availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
+            height = `${availableHeight}px`;
         } else {
             height = 'auto';
         }
@@ -349,7 +346,7 @@ export class UnitSearchComponent implements OnDestroy {
         const buttonRect = advBtn.nativeElement.getBoundingClientRect();
         const singlePanelWidth = 300;
         const doublePanelWidth = 600;
-        const gap = 5;
+        const gap = 4;
         const spaceToRight = window.innerWidth - buttonRect.right - gap - 10;
 
         // Use user override if set, else auto
@@ -368,12 +365,12 @@ export class UnitSearchComponent implements OnDestroy {
 
         if (spaceToRight >= panelWidth) {
             left = buttonRect.right + gap;
-            top = buttonRect.top + window.scrollY;
-            availableHeight = window.innerHeight - top - 4 - safeBottom;
+            top = buttonRect.top;
+            availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
         } else {
-            left = buttonRect.right - panelWidth + window.scrollX;
-            top = buttonRect.bottom + gap + window.scrollY;
-            availableHeight = window.innerHeight - top - 4 - safeBottom;
+            left = buttonRect.right - panelWidth;
+            top = buttonRect.bottom + gap;
+            availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
             left = Math.max(10, left);
         }
 

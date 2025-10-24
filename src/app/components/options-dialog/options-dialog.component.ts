@@ -39,6 +39,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DbService } from '../../services/db.service';
 import { UserStateService } from '../../services/userState.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { isIOS } from '../../utils/platform.util';
 
 /*
  * Author: Drake
@@ -57,6 +58,7 @@ export class OptionsDialogComponent {
     dialogRef = inject(DialogRef<OptionsDialogComponent>);
     userStateService = inject(UserStateService);
     dialogsService = inject(DialogsService);
+    isIOS = isIOS();
     
     tabs = ['General', 'Advanced', 'Debug'];
     activeTab = signal(this.tabs[0]);
@@ -75,16 +77,6 @@ export class OptionsDialogComponent {
         window.addEventListener('pointerdown', this.pointerListener, true);
         window.addEventListener('keydown', this.keyListener, true);
         window.addEventListener('click', this.clickListener, true);
-    }
-
-    isIOS(): boolean {
-        const nav = typeof navigator !== 'undefined' ? navigator : (window as any).navigator;
-        if (!nav) return false;
-        const ua = nav.userAgent || nav.vendor || '';
-        // covers iPhone/iPad/iPod and iPadOS on Intel (Mac with touch points)
-        const isiDevice = /iPad|iPhone|iPod/.test(ua)
-            || (nav.platform === 'MacIntel' && (nav as any).maxTouchPoints > 1);
-        return isiDevice;
     }
 
     updateSheetCacheSize() {
