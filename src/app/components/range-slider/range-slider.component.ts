@@ -48,6 +48,9 @@ import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 export class RangeSliderComponent implements OnDestroy {
     private readonly DEBOUNCE_TIME_MS = 150;
     private debounceTimer: any;
+    // Softening offset for log scale to avoid huge jumps near the low end.
+    // Effectively starts the log curve as if the scale began ~-LOG_OFFSET.
+    private readonly LOG_OFFSET = 20;
 
     min = input.required<number>();
     max = input.required<number>();
@@ -109,9 +112,13 @@ export class RangeSliderComponent implements OnDestroy {
 
             // Use log scale if curve == 0
             if (this.curve() == 0) {
-                const shifted = value + this.shift;
-                const logValue = Math.log(shifted + 1);
-                return ((logValue - this.logMin) / (this.logMax - this.logMin)) * 100;
+                // Apply an offset so the log curve doesn't expand the very bottom too much.
+                const offset = this.LOG_OFFSET;
+                const baseLog = Math.log(offset + 1); // equivalent to starting point
+                const maxLog = Math.log(this.max() + this.shift + 1 + offset);
+                const logValue = Math.log(value + this.shift + 1 + offset);
+                // normalize into 0..100%
+                return ((logValue - baseLog) / (maxLog - baseLog)) * 100;
             }
 
             // Use power curve for curve > 0
@@ -123,8 +130,13 @@ export class RangeSliderComponent implements OnDestroy {
     private percentToValue(percent: number): number {
         // Use log scale if curve == 0
         if (this.curve() == 0) {
-            const logValue = this.logMin + percent * (this.logMax - this.logMin);
-            const shifted = Math.exp(logValue) - 1;
+            // Inverse of valueToPercent with the same offset applied.
+            const offset = this.LOG_OFFSET;
+            const baseLog = Math.log(offset + 1);
+            const maxLog = Math.log(this.max() + this.shift + 1 + offset);
+            const logValue = baseLog + percent * (maxLog - baseLog);
+            // exp(logValue)-1 = value + shift + offset  -> subtract offset then shift
+            const shifted = Math.exp(logValue) - 1 - offset;
             const value = shifted - this.shift;
             return this.alignToStep(Math.max(this.min(), Math.min(value, this.max())));
         }
@@ -139,7 +151,7 @@ export class RangeSliderComponent implements OnDestroy {
     private alignToStep(value: number): number {
         const [min, max] = this.availableRange() ?? [this.min(), this.max()];
         if (value <= min || value >= max) return value;
-        const stepRaw = this.stepSize?.() ?? 1;
+        const stepRaw = this.stepSize() ?? 1;
         const step = (typeof stepRaw === 'number' && stepRaw > 0) ? stepRaw : 1;
         // If step is 1, just round to nearest integer for stability
         const steps = Math.round(value / step);
