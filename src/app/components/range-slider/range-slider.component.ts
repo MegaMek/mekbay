@@ -137,10 +137,11 @@ export class RangeSliderComponent implements OnDestroy {
     }
 
     private alignToStep(value: number): number {
+        const [min, max] = this.availableRange() ?? [this.min(), this.max()];
+        if (value <= min || value >= max) return value;
         const stepRaw = this.stepSize?.() ?? 1;
         const step = (typeof stepRaw === 'number' && stepRaw > 0) ? stepRaw : 1;
         // If step is 1, just round to nearest integer for stability
-        const [min, max] = this.availableRange() ?? [this.min(), this.max()];
         const steps = Math.round(value / step);
         const aligned = steps * step;
         // Clamp to bounds and avoid floating point noise
