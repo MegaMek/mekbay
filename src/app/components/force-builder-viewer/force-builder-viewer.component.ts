@@ -140,6 +140,21 @@ export class ForceBuilderViewerComponent implements OnDestroy {
                 }, { injector: this.injector });
             }
         });
+        effect(() => {
+            const height = this.layoutService.windowHeight();
+            const lip =  this.burgerLipBtn()?.nativeElement;
+            if (lip) {
+                if (lip.style.bottom !== 'auto') return; // Nothing to do, we are not using 'top' positioning
+                const topStr = lip.style.top;
+                const lipTop = (topStr ? parseFloat(topStr) : lip.offsetTop) || 0;
+                const maxTop = Math.max(0, height - lip.offsetHeight);
+                if (lipTop > maxTop) {
+                    // Reset lip positioning
+                    this.renderer.setStyle(lip, 'top', null);
+                    this.renderer.setStyle(lip, 'bottom', null);
+                }
+            }
+        });
     }
 
     onUnitKeydown(event: KeyboardEvent, index: number) {
