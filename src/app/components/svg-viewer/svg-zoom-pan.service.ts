@@ -379,6 +379,10 @@ export class SvgZoomPanService {
             }
         } else if (event.touches.length === 2) {
             // Initialize pinch zoom
+            if (this.state.isSwiping) {
+                this.swipeTotalDx = 0;
+                this.swipeCallbacks?.onSwipeEnd(this.swipeTotalDx);
+            }
             this.state.isPanning = false;
             this.state.isSwiping = false;
             const touch1 = event.touches[0];
