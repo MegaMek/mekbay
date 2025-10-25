@@ -31,20 +31,45 @@
  * affiliated with Microsoft.
  */
 
-let isiDevice: boolean | undefined = undefined;
+import { isIOS } from "./platform.util";
 
-export function isIOS(): boolean {
-    if (typeof isiDevice !== 'undefined') {
-        return isiDevice;
+const DEFAULT_VIBRATION_DURATION = 100;
+
+export function vibrate(duration?: number): void {
+    if (typeof window === "undefined") return;
+    if (!duration) {
+        duration = DEFAULT_VIBRATION_DURATION;
     }
-    const nav = typeof navigator !== 'undefined' ? navigator : (window as any).navigator;
-    if (!nav) {
-        isiDevice = false;
-    } else {
-        const ua = nav.userAgent || nav.vendor || '';
-        // covers iPhone/iPad/iPod and iPadOS on Intel (Mac with touch points)
-        isiDevice = /iPad|iPhone|iPod/.test(ua)
-            || (nav.platform === 'MacIntel' && (nav as any).maxTouchPoints > 1);
+    if (navigator.vibrate) {
+        navigator.vibrate(duration);
+    } else if (isIOS()) {
+        simulateiOSVibration();
     }
-    return isiDevice;
+}
+
+// Fallback function for iOS
+function simulateiOSVibration(): void {
+    const switchEl = getSwitchElement();
+    if (!switchEl) return;
+    switchEl.click();
+}
+
+let inputEl: HTMLInputElement | null = null;
+let labelEl: HTMLLabelElement | null = null;
+const HAPTIC_ELEMENT_ID = "___haptic_switch_element___";
+
+function getSwitchElement(): HTMLLabelElement {
+    if (labelEl) return labelEl;
+    inputEl = document.createElement("input");
+    inputEl.style.display = "none";
+    inputEl.id = HAPTIC_ELEMENT_ID;
+    inputEl.type = "checkbox";
+    inputEl.setAttribute("switch", "");
+    document.body.appendChild(inputEl);
+
+    labelEl = document.createElement("label");
+    labelEl.style.display = "none";
+    labelEl.htmlFor = HAPTIC_ELEMENT_ID;
+    document.body.appendChild(labelEl);
+    return labelEl;
 }
