@@ -33,8 +33,16 @@
 
 import { isIOS } from "./platform.util";
 
+/*
+ * Author: Drake
+ */
 const DEFAULT_VIBRATION_DURATION = 10;
 
+/**
+ * Triggers a vibration effect on supported devices.
+ * @param duration The duration of the vibration in milliseconds. Defaults to 10ms.
+ * @returns void
+ */
 export function vibrate(duration?: number): void {
     if (typeof window === "undefined") return;
     if (!duration) {

@@ -37,6 +37,7 @@ import { DataService } from './data.service';
 import { MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { ActivatedRoute, Router } from '@angular/router';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
+import { naturalCompare } from '../utils/sort.util';
 
 /*
  * Author: Drake
@@ -121,28 +122,6 @@ function smartDropdownSort(options: string[], predefinedOrder?: string[]): strin
     }
     return options.sort(naturalCompare);
 }
-
-function naturalCompare(a: string, b: string): number {
-    const regex = /^([^\d]*)(\d+)?(.*)$/;
-    const matchA = a.match(regex);
-    const matchB = b.match(regex);
-
-    const prefixA = matchA ? (matchA[1] + (matchA[3] || '')).trim() : a;
-    const prefixB = matchB ? (matchB[1] + (matchB[3] || '')).trim() : b;
-    const numA = matchA && matchA[2] ? parseInt(matchA[2], 10) : NaN;
-    const numB = matchB && matchB[2] ? parseInt(matchB[2], 10) : NaN;
-
-    if (prefixA === prefixB) {
-        if (!isNaN(numA) && !isNaN(numB)) {
-            return numA - numB;
-        }
-        if (!isNaN(numA)) return -1;
-        if (!isNaN(numB)) return 1;
-        return a.localeCompare(b);
-    }
-    return prefixA.localeCompare(prefixB);
-}
-
 
 function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiStateSelection): Unit[] {
     const orList: Array<{name: string, count: number}> = [];
@@ -655,9 +634,9 @@ export class UnitSearchFiltersService {
         sorted.sort((a: Unit, b: Unit) => {
             let comparison = 0;
             if (sortKey === 'name') {
-                comparison = (a.chassis || '').localeCompare(b.chassis || '');
+                comparison = naturalCompare(a.chassis || '', b.chassis || '');
                 if (comparison === 0) {
-                    comparison = (a.model || '').localeCompare(b.model || '');
+                    comparison = naturalCompare(a.model || '', b.model || '');
                     if (comparison === 0) {
                         comparison = (a.year || 0) - (b.year || 0);
                     }
@@ -674,7 +653,7 @@ export class UnitSearchFiltersService {
                 const aValue = a[key];
                 const bValue = b[key];
                 if (typeof aValue === 'string' && typeof bValue === 'string') {
-                    comparison = aValue.localeCompare(bValue);
+                    comparison = naturalCompare(aValue, bValue);
                 }
                 if (typeof aValue === 'number' && typeof bValue === 'number') {
                     comparison = aValue - bValue;
