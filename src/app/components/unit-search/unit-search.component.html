@@ -336,10 +336,9 @@
                             unit.tons | formatTons }}</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label muted">Tech:</span>
-                        <span class="info-value"
-                            [class.sort-slot]="this.filtersService.selectedSort() === 'techBase'">{{ unit.techBase
-                            }}</span>
+                        <span class="info-label muted">Rules:</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'level'">{{
+                            unit.level }}</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">Intro Year: </span>
@@ -349,9 +348,10 @@
 
                     </div>
                     <div class="info-item">
-                        <span class="info-label muted">Rules:</span>
-                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'level'">{{
-                            unit.level }}</span>
+                        <span class="info-label muted">Tech:</span>
+                        <span class="info-value"
+                            [class.sort-slot]="this.filtersService.selectedSort() === 'techBase'">{{ unit.techBase
+                            }}</span>
                     </div>
                     @if (unit.cost) {
                     <div class="info-item">

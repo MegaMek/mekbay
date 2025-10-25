@@ -39,6 +39,7 @@
                         <strong>{{ formatThousands(unit.bv) }}</strong>
                     }
                 </div>
+                <div><span class="muted">Rules: </span><strong>{{ unit.level }}</strong></div>
                 <div><span class="muted">Tech: </span><strong>{{ unit.techBase }} | {{ unit.techRating }}</strong></div>
                 @if (unit.year) {
                     <div><span class="muted">Intro Year: </span><strong>{{ unit.year }}</strong>
@@ -47,6 +48,7 @@
                         }
                     </div>
                 }
+                <div><span class="muted">C-Bill Cost: </span><strong>{{ formatThousands(unit.cost) }}</strong></div>
                 <div *ngIf="unit.armorType"><span class="muted">Armor Type: </span><strong>{{ unit.armorType }}</strong>
                 </div>
                 <div *ngIf="unit.structureType"><span class="muted">Structure Type: </span><strong>{{ unit.structureType
@@ -59,7 +61,6 @@
                         }}<span *ngIf="unit.run2 != unit.run"> [{{ unit.run2 }}]</span>@if (unit.jump) { / {{ unit.jump }}}</strong></div>
                 <div *ngIf="unit.c3 && unit.c3 != 'None'"><span class="muted">Network: </span><strong>{{ unit.c3
                         }}</strong></div>
-                <div><span class="muted">C-Bill Cost: </span><strong>{{ formatThousands(unit.cost) }}</strong></div>
             </div>
             <div class="quirks-block" *ngIf="unit.quirks && unit.quirks.length > 0">
                 <div class="quirks">
