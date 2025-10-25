@@ -71,8 +71,12 @@ export class LayoutService {
             
             // Listen for orientation changes
             const resizeHandler = () => {
-                this.windowWidth.set(window.innerWidth);
-                this.windowHeight.set(window.innerHeight);
+                const height = window.innerHeight;
+                const width = window.innerWidth;
+                this.windowWidth.set(width);
+                this.windowHeight.set(height);
+                document.body.style.setProperty('--inner-height', `${height}px`);
+                document.body.style.setProperty('--inner-width', `${width}px`);
             };
 
             // Global input listeners
@@ -80,6 +84,7 @@ export class LayoutService {
             window.addEventListener('orientationchange', resizeHandler, { passive: true, capture: true });
             window.addEventListener('resize', resizeHandler, { passive: true, capture: true });
             mediaQuery.addEventListener('change', mediaQueryHandler);
+            resizeHandler();
 
             onCleanup(() => {
                 window.removeEventListener('pointerdown', this.onPointerDown, { capture: true });
