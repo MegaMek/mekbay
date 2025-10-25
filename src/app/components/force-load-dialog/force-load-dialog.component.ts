@@ -174,7 +174,7 @@ export class ForceLoadDialogComponent {
                 const resolved: ResolvedPack = { name: p.name, 
                         units: entries, 
                         bv: entries.reduce((sum, e) => sum + (e.unit?.bv || 0), 0),
-                        _searchText: entries.map(e => p.name + ' ' + [e.chassis, e.model].filter(Boolean).join(' ')).join(' ').toLowerCase() }
+                        _searchText: p.name.toLowerCase() + ' ' + entries.map(e => [e.chassis, e.model].filter(Boolean).join(' ')).join(' ').toLowerCase() }
                 return resolved;
             });
 
