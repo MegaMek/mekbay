@@ -36,7 +36,8 @@
                         (input)="onFilterInput($event)">
                 </div>
             }
-            <div class="options-list">
+            <div #optionsEl class="options-list"
+                [style.maxHeight.px]="maxHeightOptions()">
                 @for (option of filteredOptions(); let i = $index; track option.name) {
                     <label class="option-item"
                         [class.unavailable]="option.available === false"

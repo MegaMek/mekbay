@@ -33,6 +33,7 @@
 
 import { Component, HostListener, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LayoutService } from '../../services/layout.service';
 
 /*
  * Author: Drake
@@ -60,7 +61,9 @@ export interface MultiStateSelection {
 export class MultiSelectDropdownComponent {
     private elementRef = inject(ElementRef);
     private injector = inject(Injector);
+    private layoutService = inject(LayoutService);
     filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
+    optionsEl = viewChild<ElementRef<HTMLDivElement>>('optionsEl');
     
     label = input<string>('');
     multiselect = input<boolean>(true);
@@ -82,6 +85,16 @@ export class MultiSelectDropdownComponent {
                 .map(([name, selection]) => ({ name, state: selection.state, count: selection.count }));
         }
         return (this.selected() as readonly string[] || []).map((name: string) => ({ name, state: 'or' as MultiState, count: 1 }));
+    });
+
+    maxHeightOptions = computed(() => {
+        const windowHeight = this.layoutService.windowHeight();
+        const el = this.optionsEl()?.nativeElement;
+        if (!el) return 248;
+        const rect = el.getBoundingClientRect();
+        const spaceBelow = windowHeight - rect.bottom - 32;
+        console.log('spaceBelow', spaceBelow);
+        return Math.max(spaceBelow, 248);
     });
 
     filteredOptions = computed(() => {
