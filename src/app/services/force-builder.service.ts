@@ -395,7 +395,7 @@ export class ForceBuilderService {
      * @param gunnerySkill Optional gunnery skill to set for the crew
      * @param pilotingSkill Optional piloting skill to set for the crew
      */
-    addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number): ForceUnit | null {
+    addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number, group?: UnitGroup): ForceUnit | null {
         let newForceUnit;
         try {
             newForceUnit = this.force.addUnit(unit);
@@ -426,7 +426,7 @@ export class ForceBuilderService {
         if (this.force.units().length === 1) {
             this.layoutService.openMenu();
         }
-        const unitGroup = this.force.groups().find(group => {
+        const unitGroup = group ?? this.force.groups().find(group => {
             return group.units().some(u => u.id === newForceUnit.id);
         });
         this.generateForceNameIfNeeded();
@@ -627,8 +627,8 @@ export class ForceBuilderService {
         return false;
     }
 
-    public addGroup() {
-        const newGroup = this.force.addGroup();
+    public addGroup(): UnitGroup {
+        return this.force.addGroup();
     }
 
     public removeGroup(group: UnitGroup) {

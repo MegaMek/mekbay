@@ -99,7 +99,7 @@
 
                 <ng-template #addToForcePopupMenu>
                     <div class="popup-menu framed-borders" cdkMenu>
-                        <button class="menu-item" cdkMenuItem>Force Pack</button>
+                        <button class="menu-item" cdkMenuItem (click)="showForcePackDialog()">Add a Force Pack...</button>
                         <!-- <hr />
                         <button class="menu-item" cdkMenuItem>Friendly Force</button>
                         <button class="menu-item" cdkMenuItem>Opposing Force</button> -->
@@ -134,9 +134,9 @@
                             (click)="requestRepairAll()">Repair Force</button>
                         <button class="menu-item" [hidden]="!forceBuilderService.readOnlyForce()" cdkMenuItem
                             (click)="requestCloneForce()">Clone Force</button>
-                        <button class="menu-item" cdkMenuItem (click)="showLoadForceDialog()">Load Force</button>
+                        <button class="menu-item" cdkMenuItem (click)="showLoadForceDialog()">Load Force...</button>
                         <hr />
-                        <button class="menu-item" cdkMenuItem (click)="showOptionsDialog()">Options</button>
+                        <button class="menu-item" cdkMenuItem (click)="showOptionsDialog()">Options...</button>
                     </div>
                 </ng-template>
             </div>

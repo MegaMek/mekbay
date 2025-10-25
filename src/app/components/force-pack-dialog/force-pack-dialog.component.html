@@ -1,0 +1,52 @@
+<base-dialog>
+    <div dialog-header>
+        <div class="title">Force Packs</div>
+    </div>
+
+    <div dialog-body>
+        <div class="search-container">
+            <input
+                #searchInput
+                class="bt-input search-input"
+                type="text"
+                placeholder="Search packs, models, chassis..."
+                [value]="searchText()"
+                (input)="onSearchForcePack($any($event.target).value)" />
+        </div>
+
+        <div class="pack-list">
+            @for (pack of filteredPacks(); let i = $index; track i) {
+            <div class="pack-entry" [class.selected]="selectedPack() === pack" (click)="selectPack(pack)" tabindex="0">
+                <div class="force-header">
+                    <span class="force-name">{{ pack.name }}</span>
+                        <div class="force-info">
+                            <span class="force-bv">BV: {{ pack.bv | number }}</span>
+                        </div>
+                </div>
+                <div class="unit-scroll">
+                    <div class="unit-group">
+                        <div class="units">
+                            @for (pu of pack.units; let j = $index; track j) {
+                            <div class="unit-square compact-mode" [class.missing]="!pu.unit">
+                                <img [src]="pu.unit?.icon ? `https://db.mekbay.com/images/units/${pu.unit?.icon}` : '/images/unknown.png'"
+                                     (error)="$event.target.src = '/images/unknown.png'"
+                                     class="unit-icon"
+                                     alt="{{ pu.chassis }} {{ pu.model || '' }}"
+                                     title="{{ pu.chassis }} {{ pu.model || '' }}" />
+                                <div class="unit-model">{{ pu.unit?.model || pu.model || '' }}</div>
+                                <div class="unit-chassis">{{ pu.unit?.chassis || pu.chassis }}</div>
+                            </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            }
+        </div>
+    </div>
+
+    <div dialog-footer class="footer">
+        <button class="modal-btn bt-button" (click)="onAdd();" [disabled]="!selectedPack()">ADD</button>
+        <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
+    </div>
+</base-dialog>

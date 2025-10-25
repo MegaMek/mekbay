@@ -27,7 +27,7 @@
     width: 100%;
 }
 
-.force-list {
+.pack-list {
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
@@ -37,7 +37,7 @@
     overflow-y: auto;
 }
 
-.force-entry {
+.pack-entry {
     border: 1px solid transparent;
     padding: 8px;
     background: #0003;
@@ -45,12 +45,12 @@
     transition: border-color 0.2s, background 0.2s;
 }
 
-.force-entry:hover {
+.pack-entry:hover {
     border-color: var(--border-color);
     background: var(--background-highlight);
 }
 
-.force-entry.selected {
+.pack-entry.selected {
     border-color: var(--bt-yellow);
     background: var(--bt-yellow-background);
 }
@@ -78,20 +78,6 @@
     font-size: 0.8em;
 }
 
-.force-timestamp {
-    color: var(--text-color-secondary);
-    font-size: 0.8em;
-    margin-left: 1em;
-    text-align: right;
-}
-
-.cloud-icon {
-    width: 16px;
-    height: 16px;
-    vertical-align: text-bottom;
-    opacity: 0.8;
-}
-
 .unit-scroll {
     display: flex;
     flex-direction: row;
@@ -103,19 +89,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    border-right: 2px solid var(--border-color);
-    padding-right: 4px;
     justify-content: flex-end;
-}
-
-.unit-group:last-child {
-    border-right: none;
-    padding-right: 0px;
-}
-
-.unit-group .group-name {
-    font-size: 0.8em;
-    color: var(--text-color-secondary);
 }
 
 .unit-group .units {
@@ -124,16 +98,6 @@
     gap: 2px;
 }
 
-.loading-spinner {
-    text-align: center;
-    padding: 2em;
-    color: #aaa;
-}
-.empty-state {
-    text-align: center;
-    color: #aaa;
-    padding: 2em;
-}
 .modal-btn[disabled] {
     opacity: 0.5;
     cursor: not-allowed;
@@ -152,18 +116,6 @@
     align-items: center;
     overflow: hidden;
     box-sizing: border-box;
-
-    &.destroyed {
-        background-image: repeating-linear-gradient(
-            120deg,
-            #500 0px,
-            #500 12px,
-            #300 12px,
-            #300 24px
-        );
-        border-color: #d00;
-        opacity: 0.85;
-    }
     
     .unit-icon {
         width: 32px;
@@ -171,11 +123,6 @@
         object-fit: contain;
         margin: 0;
         flex-shrink: 0;
-    }
-    
-    &.destroyed .unit-icon {
-        filter: grayscale(1) brightness(0.7) sepia(1) hue-rotate(-30deg) saturate(6) contrast(1.2);
-        transition: filter 0.3s;
     }
     
     .unit-model {
@@ -189,7 +136,6 @@
         display: block;
     }
 
-    .unit-alias,
     .unit-chassis {
         font-size: 0.7em;
         color: var(--text-color);
@@ -202,14 +148,4 @@
         overflow: hidden;
         text-overflow: ellipsis;
     }
-
-    .unit-alias {
-        font-weight: bold;
-    }
-
-    .unit-alias.thin {
-        font-size: 0.6em;
-        font-weight: normal;
-    }
-    
 }

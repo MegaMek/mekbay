@@ -387,6 +387,8 @@ hr {
         text-align: left;
         cursor: pointer;
         width: 100%;
+        font-size: 0.9em;
+        outline: none;
 
         &:hover {
             background-color: var(--background-highlight, #444);

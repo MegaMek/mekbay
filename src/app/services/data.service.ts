@@ -841,7 +841,7 @@ export class DataService {
                             units: loadUnits
                         });
                     }
-                    const entry: LoadForceEntry = {
+                    const entry: LoadForceEntry = new LoadForceEntry({
                         cloud: true,
                         instanceId: raw.instanceId,
                         name: raw.name,
@@ -849,7 +849,7 @@ export class DataService {
                         bv: raw.bv || 0,
                         timestamp: raw.timestamp, 
                         groups: groups
-                    };
+                    });
                     forces.push(entry);
                 } catch (error) {
                     console.error('Failed to deserialize force:', error, raw);

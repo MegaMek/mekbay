@@ -40,11 +40,25 @@ import { DialogsService } from '../../services/dialogs.service';
 import { Pipe, PipeTransform } from "@angular/core";
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { OptionsService } from '../../services/options.service';
+import { FORCE_PACKS } from '../../models/forcepacks.model';
+import { Unit } from '../../models/units.model';
 
 /*
  * Author: Drake
  */
 
+type PackUnitEntry = {
+    chassis: string;
+    model?: string;
+    unit?: Unit | null;
+};
+
+type ResolvedPack = {
+    name: string;
+    units: PackUnitEntry[];
+    _searchText: string;
+    bv: number;
+};
         
 @Pipe({
     name: 'cleanModelString',
@@ -70,8 +84,6 @@ export class FormatTimestamp implements PipeTransform {
     }
 }
 
-type SearchableForce = LoadForceEntry & { _searchText?: string };
-
 @Component({
     selector: 'force-load-dialog',
     standalone: true,
@@ -86,19 +98,34 @@ export class ForceLoadDialogComponent {
     optionsService = inject(OptionsService);
     dialogsService = inject(DialogsService);
     injector = inject(Injector);
-    load = output<LoadForceEntry>();
+    load = output<LoadForceEntry | ResolvedPack>();
     searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
     forces = signal<LoadForceEntry[]>([]);
     selectedForce = signal<LoadForceEntry | null>(null);
     loading = signal<boolean>(true);
 
+    tabs = ['Hangar', 'Force Packs'];
+    activeTab = signal(this.tabs[0]);
+
     searchText = signal<string>('');
     filteredForces = computed<LoadForceEntry[]>(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
         if (tokens.length === 0) return this.forces();
         return this.forces().filter(force => {
-            const hay = (force as SearchableForce)._searchText || '';
+            const hay = force._searchText || '';
+            return tokens.every(t => hay.indexOf(t) !== -1);
+        });
+    });
+    
+    // Force Packs
+    packs = signal<ResolvedPack[]>([]);
+    selectedPack = signal<ResolvedPack | null>(null);
+    filteredPacks = computed<ResolvedPack[]>(() => {
+        const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
+        if (tokens.length === 0) return this.packs();
+        return this.packs().filter(pack => {
+            const hay = pack._searchText || '';
             return tokens.every(t => hay.indexOf(t) !== -1);
         });
     });
@@ -108,9 +135,8 @@ export class ForceLoadDialogComponent {
             this.loading.set(true);
             const result = await this.dataService.listForces();
             const enriched = (result || []).map(f => {
-                const sf: SearchableForce = { ...f };
-                sf._searchText = this.computeSearchText(f);
-                return sf;
+                f._searchText = this.computeSearchText(f);
+                return f;
             });
             this.forces.set(enriched);
             this.loading.set(false);
@@ -119,6 +145,36 @@ export class ForceLoadDialogComponent {
             if (!this.loading()) {
                 afterNextRender(() => this.searchInput()?.nativeElement?.focus(), { injector: this.injector });
             }
+        });
+        effect(() => {
+            const resolved: ResolvedPack[] = FORCE_PACKS.map(p => {
+                const entries: PackUnitEntry[] = p.units.map(u => {
+
+                    // We search the unit by "name", should be a straight 1:1 match if we have no issues with the data
+                    let found = this.dataService.getUnitByName(u.name);
+
+                    if (!found) {
+                        const allUnits = this.dataService.getUnits();
+                        // In case we failed, find unit by matching chassis and model (model may be empty, but "" is a valid model)
+                        found = allUnits.find(unit => {
+                            if ((unit.chassis || '').trim().toLowerCase() !== u.chassis.toLowerCase()) return false;
+                            if (u.model === undefined) {
+                                return true; // no model defined, we pick the first matching chassis
+                            }
+                            return (unit.model === u.model);
+                        });
+                        // fallback: match only on chassis if exact model match not found
+                        if (!found) {
+                            found = allUnits.find(unit => (unit.chassis || '').trim().toLowerCase() === u.chassis.toLowerCase());
+                        }
+                    }
+
+                    return { chassis: u.chassis, model: u.model, unit: found ?? null } as PackUnitEntry;
+                });
+                return { name: p.name, units: entries, _searchText: entries.map(e => [e.chassis, e.model].filter(Boolean).join(' ')).join(' ').toLowerCase() } as ResolvedPack;
+            });
+
+            this.packs.set(resolved);
         });
     }
 
@@ -139,20 +195,31 @@ export class ForceLoadDialogComponent {
     }
 
     selectForce(force: LoadForceEntry) {
+        this.selectedPack.set(null);
         this.selectedForce.set(force);
+    }
+
+    selectPack(p: ResolvedPack) {
+        this.selectedForce.set(null);
+        this.selectedPack.set(p);
     }
 
     onSearch(text: string) {
         this.searchText.set(text);
         // if selected force is filtered out, clear selection
-        const sel = this.selectedForce();
-        if (sel && !this.filteredForces().includes(sel)) {
+        const selForce = this.selectedForce();
+        if (selForce && !this.filteredForces().includes(selForce)) {
             this.selectedForce.set(null);
+        }
+        // if selected pack is filtered out, clear selection
+        const selPack = this.selectedPack();
+        if (selPack && !this.filteredPacks().includes(selPack)) {
+            this.selectedPack.set(null);
         }
     }
 
     onLoad() {
-        const force = this.selectedForce();
+        const force = this.selectedForce() || this.selectedPack();
         if (!force) return;
         this.load.emit(force);
     }

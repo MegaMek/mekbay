@@ -361,7 +361,7 @@ export class DbService {
                                     units: loadUnits
                                 });
                             }
-                            const entry: LoadForceEntry = {
+                            const entry: LoadForceEntry = new LoadForceEntry({
                                 cloud: false,
                                 instanceId: raw.instanceId,
                                 name: raw.name,
@@ -369,7 +369,7 @@ export class DbService {
                                 bv: raw.bv,
                                 timestamp: raw.timestamp, 
                                 groups: groups
-                            };
+                            });
                             result.push(entry);
                         }
                         resolve(result);

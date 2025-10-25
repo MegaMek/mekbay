@@ -59,6 +59,7 @@ import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { APP_VERSION_STRING } from './build-meta';
 import { copyTextToClipboard } from './utils/clipboard.util';
+import { LoadForceEntry } from './models/load-force-entry.model';
 
 
 /*
@@ -254,12 +255,23 @@ export class App {
     showLoadForceDialog(): void {
         const ref = this.dialog.open(ForceLoadDialogComponent);
         ref.componentInstance?.load.subscribe(async (force) => {
-            const requestedForce = await this.dataService.getForce(force.instanceId);
-            if (!requestedForce) {
-                this.toastService.show('Failed to load force.', 'error');
-                return;
+            if (force instanceof LoadForceEntry) {
+                const requestedForce = await this.dataService.getForce(force.instanceId);
+                if (!requestedForce) {
+                    this.toastService.show('Failed to load force.', 'error');
+                    return;
+                }
+                this.forceBuilderService.loadForce(requestedForce);
+            } else {
+                if (force && force.units && force.units.length > 0) {
+                    await this.forceBuilderService.createNewForce();
+                    const group = this.forceBuilderService.addGroup();
+                    for (const unit of force.units) {
+                        if (!unit?.unit) continue;
+                        this.forceBuilderService.addUnit(unit.unit, undefined, undefined, group);
+                    }
+                }
             }
-            this.forceBuilderService.loadForce(requestedForce);
             ref.close();
         });
     }
