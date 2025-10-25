@@ -47,6 +47,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { Router } from '@angular/router';
 import { SvgViewerLiteComponent } from '../svg-viewer-lite/svg-viewer-lite.component';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
+import { copyTextToClipboard } from '../../utils/clipboard.util';
 
 /*
  * Author: Drake
@@ -988,10 +989,11 @@ export class UnitDetailsDialogComponent {
                 url: shareUrl
             }).catch(() => {
                 // fallback if user cancels or error
-                navigator.clipboard.writeText(shareText);
+                copyTextToClipboard(shareUrl);
+                this.toastService.show('Unit link copied to clipboard.', 'success');
             });
         } else {
-            navigator.clipboard.writeText(shareText);
+            copyTextToClipboard(shareText);
             this.toastService.show('Unit link copied to clipboard.', 'success');
         }
     }

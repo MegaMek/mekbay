@@ -59,6 +59,7 @@ import { UnitSearchFiltersService } from './services/unit-search-filters.service
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { APP_VERSION_STRING } from './build-meta';
+import { copyTextToClipboard } from './utils/clipboard.util';
 
 
 /*
@@ -242,8 +243,7 @@ export class App {
     }
 
     copyBuildInfo(): void {
-        if (!navigator.clipboard) return;
-        navigator.clipboard.writeText(this.buildInfo);
+        if (!copyTextToClipboard(this.buildInfo)) return;
         this.toastService.show('Build info copied to clipboard.', 'info');
     }
 

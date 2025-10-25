@@ -88,6 +88,20 @@
         margin-right: 0.5em;
     }
 
+    ::ng-deep .tab-actions-button {
+        background: none;
+        border: none;
+        color: var(--text-color-secondary);
+        cursor: pointer;
+        transition: color 0.3s ease;
+        outline: none;
+        height: 24px;
+        pointer-events: auto;
+    }
+    ::ng-deep .tab-actions-button:hover {
+        color: var(--text-color);
+    }
+
     .tab-button {
         background: none;
         border: none;
