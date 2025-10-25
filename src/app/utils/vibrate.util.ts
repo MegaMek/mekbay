@@ -33,7 +33,7 @@
 
 import { isIOS } from "./platform.util";
 
-const DEFAULT_VIBRATION_DURATION = 100;
+const DEFAULT_VIBRATION_DURATION = 10;
 
 export function vibrate(duration?: number): void {
     if (typeof window === "undefined") return;

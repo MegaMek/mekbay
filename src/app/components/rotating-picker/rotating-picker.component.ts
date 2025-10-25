@@ -34,15 +34,15 @@
 import { CommonModule } from '@angular/common';
 import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, HostListener, viewChild } from '@angular/core';
 import { PickerComponent, PickerChoice, PickerValue, PickerInteractionType, PickerPosition } from '../picker/picker.interface';
-
+import { vibrate } from '../../utils/vibrate.util';
 /*
  * Author: Drake
  */
 const ROTATING_PICKER_DIAMETER = 120;
 const MIN_ROTATION_STEP_DEGREES = 360 / 12;
 const MAX_ROTATION_STEP_DEGREES = 360 / 48;
-const ROTATION_LOWER_LIMIT = 10;
-const ROTATION_UPPER_LIMIT = 100;
+const ROTATION_LOWER_LIMIT = 50;
+const ROTATION_UPPER_LIMIT = 200;
 const START_ARROW_DEG = 0;
 const END_ARROW_DEG = 45;
 const ARROW_DISTANCE = 5;
@@ -722,7 +722,15 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
 
         if (steps !== 0) {
             const newValue = this.currentValue() + steps * this.step();
-            this.currentValue.set(this.clampValue(newValue));
+            const clamped = this.clampValue(newValue);
+            this.currentValue.set(clamped);
+
+            // Haptic feedback for each step changed
+            const changedSteps = Math.round((clamped - oldValue) / this.step()) || 0;
+            for (let i = 0; i < Math.abs(changedSteps); i++) {
+                vibrate();
+            }
+
             this.accumulatedAngle -= steps * this.rotationStepDegrees();
         }
 
