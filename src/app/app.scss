@@ -32,7 +32,7 @@
 }
 
 .main-search {
-    margin-top: max(8%, 100px);
+    margin-top: 80px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -42,7 +42,7 @@
     box-sizing: border-box;
 
     @media (max-height: 400px) {
-        margin-top: 20px;
+        margin-top: 8px;
     }
 }
 
@@ -168,18 +168,39 @@ svg-viewer {
     color: var(--text-color-secondary);
 }
 
-.popup-menu-button {
-    position: absolute;
-    top: calc(16px + var(--safe-area-inset-top));
-    right: calc(16px + var(--safe-area-inset-right));
+.home-buttons {
+    width: 100vw;
+    padding-top: max(16px, var(--safe-area-inset-top));
+    padding-left: max(16px, var(--safe-area-inset-left));
+    padding-right: max(16px, var(--safe-area-inset-right));
+    box-sizing: border-box;
     pointer-events: auto;
     opacity: 1;
     transition: opacity 0.3s ease;
-}
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+    gap: 16px;
+ 
+    button {
+        background: none;
+        border: none;
+        padding: 0px;
+        width: 32px;
+        height: 32px;
+        cursor: pointer;
+        color: var(--text-color-secondary);
+        transition: color 0.3s ease;
+    }
 
-.popup-menu-button.disabled {
-    pointer-events: none;
-    opacity: 0.3;
+    button:hover {
+        color: var(--text-color);
+    }
+
+    button.disabled {
+        pointer-events: none;
+        opacity: 0.3;
+    }
 }
 
 .beta-notice {

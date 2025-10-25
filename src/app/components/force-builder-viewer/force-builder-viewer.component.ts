@@ -38,12 +38,17 @@ import { LayoutService } from '../../services/layout.service';
 import { UnitSearchComponent } from '../unit-search/unit-search.component';
 import { ForceUnit, UnitGroup } from '../../models/force-unit.model';
 import { DragDropModule, CdkDragDrop, transferArrayItem, moveItemInArray, CdkDragMove } from '@angular/cdk/drag-drop'
-import { PopupMenuComponent } from '../../components/popup-menu/popup-menu.component';
 import { Dialog } from '@angular/cdk/dialog';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { Portal, PortalModule } from '@angular/cdk/portal';
 import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
+import { CdkMenuModule } from '@angular/cdk/menu';
+import { OptionsDialogComponent } from '../options-dialog/options-dialog.component';
+import { ForceLoadDialogComponent } from '../force-load-dialog/force-load-dialog.component';
+import { ToastService } from '../../services/toast.service';
+import { DataService } from '../../services/data.service';
+import { PrintUtil } from '../../utils/print.util';
 /*
  * Author: Drake
  */
@@ -56,20 +61,21 @@ const SWIPE_SNAP_THRESHOLD_PERCENT = 0.5;   // Menu snaps open/closed if dragged
     selector: 'force-builder-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, PortalModule, DragDropModule, PopupMenuComponent, UnitBlockComponent],
+    imports: [CommonModule, PortalModule, DragDropModule, CdkMenuModule, UnitBlockComponent],
     templateUrl: './force-builder-viewer.component.html',
     styleUrls: ['./force-builder-viewer.component.scss']
 })
 export class ForceBuilderViewerComponent implements OnDestroy {
     protected forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
+    private dataService = inject(DataService);
+    private toastService = inject(ToastService);
     private elRef = inject(ElementRef<HTMLElement>);
     private renderer = inject(Renderer2);
     private dialog = inject(Dialog);
     private injector = inject(Injector);
     unitSearchPortal = input<Portal<any>>();
     unitSearchComponent = input<UnitSearchComponent>();
-    menuSelect = output<string>();
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
     forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
     private burgerLipBtn = viewChild<ElementRef<HTMLButtonElement>>('burgerLipBtn');
@@ -554,10 +560,6 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         }
     }
 
-    onMenuSelected(option: string) {
-        this.menuSelect.emit(option);
-    }
-
     promptChangeForceName() {
         if (this.forceBuilderService.readOnlyForce()) return;
         this.forceBuilderService.promptChangeForceName();
@@ -687,5 +689,48 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         if (group.units().length === 0) {
             this.forceBuilderService.removeGroup(group);
         }
+    }
+
+    showOptionsMenu(event: MouseEvent, unit: ForceUnit) {
+        event.stopPropagation();
+        this.forceBuilderService.selectUnit(unit);
+    }
+
+    
+    showOptionsDialog(): void {
+        this.dialog.open(OptionsDialogComponent);
+    }
+
+    showLoadForceDialog(): void {
+        const ref = this.dialog.open(ForceLoadDialogComponent);
+        ref.componentInstance?.load.subscribe(async (force) => {
+            const requestedForce = await this.dataService.getForce(force.instanceId);
+            if (!requestedForce) {
+                this.toastService.show('Failed to load force.', 'error');
+                return;
+            }
+            this.forceBuilderService.loadForce(requestedForce);
+            ref.close();
+        });
+    }
+
+    async requestNewForce(): Promise<void> {
+        if (await this.forceBuilderService.createNewForce()) {
+            this.layoutService.closeMenu();
+        }
+    }
+
+    async requestRepairAll(): Promise<void> {
+        if (await this.forceBuilderService.repairAllUnits()) {
+            this.toastService.show(`Repaired all units.`, 'info');
+        }
+    }
+
+    async requestCloneForce(): Promise<void> {
+        this.forceBuilderService.requestCloneForce();
+    }
+
+    printAll(): void {
+        PrintUtil.multipagePrint(this.dataService, this.forceBuilderService.forceUnits());
     }
 }

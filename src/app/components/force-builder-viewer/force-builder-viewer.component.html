@@ -17,47 +17,41 @@
                         <div class="group-name" (click)="promptChangeGroupName(group)">{{ group.name() }}</div>
                         <div class="group-footer">
                             <span class="group-bv">BV: {{ group.totalBV() | number }}</span>
-                        </div> 
+                        </div>
                     </div>
                     @let units = group.units();
-                    <div class="group-units" cdkDropList
-                        [class.compact-mode]="compactMode()"
-                        id="group-{{ group.id }}"
-                        cdkDropListOrientation="vertical"
-                        [cdkDropListData]="units"
+                    <div class="group-units" cdkDropList [class.compact-mode]="compactMode()" id="group-{{ group.id }}"
+                        cdkDropListOrientation="vertical" [cdkDropListData]="units"
                         [cdkDropListConnectedTo]="connectedDropLists()"
                         [cdkDropListDisabled]="compactMode() || forceBuilderService.readOnlyForce()"
-                        (cdkDropListDropped)="drop($event)"> 
+                        (cdkDropListDropped)="drop($event)">
                         @if (units.length === 0) {
-                        <div class="empty-group-placeholder"
-                        (click)="onEmptyGroupClick(group)">
-                            No units in this group.<br/>Drop units here to add them or click to remove it.
+                        <div class="empty-group-placeholder" (click)="onEmptyGroupClick(group)">
+                            No units in this group.<br />Drop units here to add them or click to remove it.
                         </div>
                         }
                         @for (unit of units; let i = $index; track i) {
-                            <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item"
-                                (click)="selectUnit(unit)" tabindex="0"
-                                (keydown)="onUnitKeydown($event, i)" cdkDrag [cdkDragDisabled]="forceBuilderService.readOnlyForce()"
-                                (cdkDragStarted)="onUnitDragStart()" (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd()"
-                                [cdkDragLockAxis]="lockAxis()!"
-                                cdkDragBoundary=".scrollable-content" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
-                                <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode()"
+                        <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item" (click)="selectUnit(unit)"
+                            tabindex="0" (keydown)="onUnitKeydown($event, i)" cdkDrag
+                            [cdkDragDisabled]="forceBuilderService.readOnlyForce()" (cdkDragStarted)="onUnitDragStart()"
+                            (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd()"
+                            [cdkDragLockAxis]="lockAxis()!" cdkDragBoundary=".scrollable-content"
+                            [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
+                            <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode()"
                                 [class.selected]="unit.id === forceBuilderService.selectedUnit()?.id"
-                                (onRemoveUnit)="removeUnit($event, unit)"
-                                (onInfo)="showUnitInfo($event, unit)"
+                                (onRemoveUnit)="removeUnit($event, unit)" (onInfo)="showUnitInfo($event, unit)"
                                 (onToggleC3)="toggleC3Link($event, unit)"></unit-block>
-                            </div>
+                        </div>
                         }
                     </div>
                 </div>
                 }
-                @if (!compactMode() && !forceBuilderService.readOnlyForce() && !isUnitDragging() && !forceBuilderService.force.hasMaxGroups()) {
-                    <button class="bt-button btn-add-group" (click)="forceBuilderService.addGroup()">+ Add Group</button>
+                @if (!compactMode() && !forceBuilderService.readOnlyForce() && !isUnitDragging() &&
+                !forceBuilderService.force.hasMaxGroups()) {
+                <button class="bt-button btn-add-group" (click)="forceBuilderService.addGroup()">+ Add Group</button>
                 }
-                <div class="group-container new-group-dropzone" cdkDropList
-                    id="new-group-dropzone"
-                    [cdkDropListConnectedTo]="connectedDropLists()"
-                    [cdkDropListData]="[]"
+                <div class="group-container new-group-dropzone" cdkDropList id="new-group-dropzone"
+                    [cdkDropListConnectedTo]="connectedDropLists()" [cdkDropListData]="[]"
                     [class.visible]="isUnitDragging() && !hasEmptyGroups() && !forceBuilderService.force.hasMaxGroups()"
                     [cdkDropListDisabled]="forceBuilderService.readOnlyForce()"
                     (cdkDropListDropped)="dropForNewGroup($event)">
@@ -68,30 +62,49 @@
         </div>
         <div class="footer">
             @if (!hasSingleGroup()) {
-                <div class="row total-bv">Total BV: {{ forceBuilderService.force.totalBv() | number }}</div>
+            <div class="row total-bv">Total BV: {{ forceBuilderService.force.totalBv() | number }}</div>
             }
             <div class="row">
                 <button class="bt-button square" (click)="toggleCompactMode()">
-                @if (compactMode()) {
-                    <svg width="20px" height="20px" viewBox="0 0 35 35" fill="currentcolor" version="1.1" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M34.999,0H0.001v6.777h34.997L34.999,0L34.999,0z M32.999,4.777H2.001V2h30.997L32.999,4.777L32.999,4.777z"/>
-                        <rect y="8.642" width="35" height="11.072"/>
-                        <rect y="21.928" width="35" height="13.072"/>
+                    @if (compactMode()) {
+                    <svg width="20px" height="20px" viewBox="0 0 35 35" fill="currentcolor" version="1.1"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="M34.999,0H0.001v6.777h34.997L34.999,0L34.999,0z M32.999,4.777H2.001V2h30.997L32.999,4.777L32.999,4.777z" />
+                        <rect y="8.642" width="35" height="11.072" />
+                        <rect y="21.928" width="35" height="13.072" />
                     </svg>
-                } @else {
-                    <svg width="20px" height="20px" viewBox="0 0 31 31" fill="currentcolor" version="1.1" xmlns="http://www.w3.org/2000/svg">
-                        <rect x="1" y="1" width="7" height="7"/>
-                        <rect x="12" y="1" width="7" height="7"/>
-                        <rect x="23" y="1" width="7" height="7"/>
-                        <rect x="1" y="12" width="7" height="7"/>
-                        <rect x="12" y="12" width="7" height="7"/>
-                        <rect x="23" y="12" width="7" height="7"/>
-                        <rect x="1" y="23" width="7" height="7"/>
-                        <rect x="12" y="23" width="7" height="7"/>
-                        <rect x="23" y="23" width="7" height="7"/>
+                    } @else {
+                    <svg width="20px" height="20px" viewBox="0 0 31 31" fill="currentcolor" version="1.1"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <rect x="1" y="1" width="7" height="7" />
+                        <rect x="12" y="1" width="7" height="7" />
+                        <rect x="23" y="1" width="7" height="7" />
+                        <rect x="1" y="12" width="7" height="7" />
+                        <rect x="12" y="12" width="7" height="7" />
+                        <rect x="23" y="12" width="7" height="7" />
+                        <rect x="1" y="23" width="7" height="7" />
+                        <rect x="12" y="23" width="7" height="7" />
+                        <rect x="23" y="23" width="7" height="7" />
                     </svg>
-                }
+                    }
                 </button>
+                <button class="bt-button square" [cdkMenuTriggerFor]="addToForcePopupMenu" title="Add to Force">
+                    <svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path fill-rule="evenodd" clip-rule="evenodd"
+                            d="M11.25 12.75V18H12.75V12.75H18V11.25H12.75V6H11.25V11.25H6V12.75H11.25Z" />
+                    </svg>
+                </button>
+
+                <ng-template #addToForcePopupMenu>
+                    <div class="popup-menu framed-borders" cdkMenu>
+                        <button class="menu-item" cdkMenuItem>Force Pack</button>
+                        <!-- <hr />
+                        <button class="menu-item" cdkMenuItem>Friendly Force</button>
+                        <button class="menu-item" cdkMenuItem>Opposing Force</button> -->
+                    </div>
+                </ng-template>
                 <div class="spanner"></div>
                 <button class="bt-button square share-btn" (click)="shareForce()" title="Share Force">
                     <svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor"
@@ -100,21 +113,39 @@
                             d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z" />
                     </svg>
                 </button>
-                <popup-menu class="popup-menu-button" [options]="[
-                { label: 'New Force', value: 'new' },
-                { label: 'Repair Force', value: 'repairAll', hidden: forceBuilderService.readOnlyForce() },
-                { label: 'Clone Force', value: 'cloneForce', hidden: !forceBuilderService.readOnlyForce() },
-                { label: 'Load Force', value: 'load' },
-                { label: 'Print All', value: 'print' },
-                { separator: true },
-                { label: 'Options', value: 'options' }]" (menuSelect)="onMenuSelected($event)"></popup-menu>
+                <button class="bt-button square" title="Print All" (click)="printAll()">
+                    <svg stroke="currentColor" width="20px" height="20px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="M7 17H5C3.89543 17 3 16.1046 3 15V11C3 9.34315 4.34315 8 6 8H7M7 17V14H17V17M7 17V18C7 19.1046 7.89543 20 9 20H15C16.1046 20 17 19.1046 17 18V17M17 17H19C20.1046 17 21 16.1046 21 15V11C21 9.34315 19.6569 8 18 8H17M7 8V6C7 4.89543 7.89543 4 9 4H15C16.1046 4 17 4.89543 17 6V8M7 8H17M15 11H17"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </button>
+                <button class="bt-button square" [cdkMenuTriggerFor]="generalMenu" title="Menu">
+                    <svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path fill-rule="evenodd" clip-rule="evenodd"
+                            d="M12 7C10.3431 7 9 5.65685 9 4C9 2.34315 10.3431 1 12 1C13.6569 1 15 2.34315 15 4C15 5.65685 13.6569 7 12 7ZM12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9ZM12 17C10.3431 17 9 18.3431 9 20C9 21.6569 10.3431 23 12 23C13.6569 23 15 21.6569 15 20C15 18.3431 13.6569 17 12 17Z" />
+                    </svg>
+                </button>
+                <ng-template #generalMenu>
+                    <div class="popup-menu framed-borders" cdkMenu>
+                        <button class="menu-item" cdkMenuItem (click)="requestNewForce()">New Force</button>
+                        <button class="menu-item" [hidden]="forceBuilderService.readOnlyForce()" cdkMenuItem
+                            (click)="requestRepairAll()">Repair Force</button>
+                        <button class="menu-item" [hidden]="!forceBuilderService.readOnlyForce()" cdkMenuItem
+                            (click)="requestCloneForce()">Clone Force</button>
+                        <button class="menu-item" cdkMenuItem (click)="showLoadForceDialog()">Load Force</button>
+                        <hr />
+                        <button class="menu-item" cdkMenuItem (click)="showOptionsDialog()">Options</button>
+                    </div>
+                </ng-template>
             </div>
-    
+
             <!-- Burger button that acts as a "lip" on mobile -->
             <button *ngIf="layoutService.isMobile()" #burgerLipBtn class="burger-lip-btn"
                 (pointerdown)="onLipPointerDown($event)" (click)="onLipClick($event)">
                 <span class="burger-icon">{{ layoutService.isMenuOpen() ? '«' : '»' }}</span>
             </button>
-            </div>
+        </div>
     </div>
 </div>

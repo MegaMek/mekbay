@@ -370,8 +370,40 @@ hr {
     }
 }
 
+.popup-menu {
+    background-color: var(--background-color-menu);
+    padding: 8px 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 160px;
+    box-shadow: 0 2px 8px #000a;
+    overflow-x: auto;
+    
+    .menu-item {
+        background: none;
+        border: none;
+        color: #fff;
+        padding: 10px 20px;
+        text-align: left;
+        cursor: pointer;
+        width: 100%;
 
+        &:hover {
+            background-color: var(--background-highlight, #444);
+        }
 
+        &:disabled {
+            color: var(--text-color-tertiary);
+            cursor: not-allowed;
+        }
+    }
+
+    hr {
+        border: none;
+        border-top: 1px solid #444;
+        margin: 6px 28px;
+    }
+}
 
 /* Unit Card */
 .unit-card {
@@ -1169,10 +1201,10 @@ hr {
         svg-viewer,
         .svg-viewer-container,
         .svg-viewer-container .slides {
-            width: 8.5in !important;
-            height: 11in !important;
-            padding: 0 !important;
-            margin: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            padding: 0;
+            margin: 0;
             left: 0;
             top: 0;
             display: block;
@@ -1180,25 +1212,35 @@ hr {
         }
 
         .svg-viewer-container .slide {
-            width: 8.5in !important;
-            height: 11in !important;
-            padding: 0 !important;
-            margin: 0 !important;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             background: white !important;
-            display: block;
+            width: 100% !important;
+            height: 100% !important;
+            padding: 0 !important;
+            margin: 0 auto !important;
+            box-sizing: border-box;
+            page-break-after: always;
+            break-after: page;
+            overflow: hidden;
+            background: white !important;
             transform: none !important;
 
             > svg {
                 display: block;
                 box-sizing: border-box;
-                width: 100% !important;
-                height: 100% !important;
-                max-width: calc(100% - 0.32in);
-                max-height: calc(100% - 0.32in);
+                padding: 0;
+                margin: 0in 0.16in;
                 transform: none !important;
+                height: 100%;
+                width: auto;
+                max-width: 100%;
+                min-width: 0;
+                max-height: 100%;
                 page-break-inside: avoid;
-                break-inside: avoid;
-                margin: 0.16in;
+                page-break-after: auto !important;
+                break-after: auto !important;
             }
         }
     }
@@ -1211,13 +1253,8 @@ hr {
 
     @page {
         size: auto;
-        /* size: letter portrait; */
-        /* size: 612pt 792pt; */
-        /* margin: auto; */
-        /* margin: 8mm; */
         margin: 0cm;
         padding: 0cm !important;
-        /* margin: 0cm !important; */
         overflow: hidden;
     }
 

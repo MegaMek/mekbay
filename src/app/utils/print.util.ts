@@ -107,6 +107,9 @@ export class PrintUtil {
                     if (!/xmlns:xlink=/.test(cleanedAttrs)) {
                         cleanedAttrs += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
                     }
+                    if (!/preserveAspectRatio=/.test(cleanedAttrs)) {
+                        cleanedAttrs += ' preserveAspectRatio="xMidYMid meet"';
+                    }
                     return `<svg${cleanedAttrs}>`;
                 }
             );
@@ -182,63 +185,53 @@ export class PrintUtil {
         overlay.id = 'multipage-container';
         overlay.innerHTML = `
             <style>
-                #multipage-container {
-                    width: 100% !important;
-                    height: 100% !important;
-                    padding: 0;
-                    margin: 0;
-                    left: 0;
-                    top: 0;
-                    display: block;
-                    background: transparent !important;
-                }
-                #multipage-container .svg-container { 
-                    width: 8.5in !important;
-                    height: 11in !important;
-                    background: white !important;
-                    display: flex;
-                    justify-content: center;
-                    align-items: flex-start;  
-                    overflow: hidden;
-                    page-break-after: always;
-                    break-after: page;
-                }
-                #multipage-container .svg-container.last-svg { 
-                    page-break-after: auto !important;
-                    break-after: auto !important;
-                }
-                #multipage-container .svg-container > svg {
-                    display: block;
-                    box-sizing: border-box;
-                    width: 100% !important;
-                    height: 100% !important;
-                    max-width: calc(100% - 0.32in);
-                    max-height: calc(100% - 0.32in);
-                    margin: 0.16in;
-                    transform: none !important;
-                    page-break-inside: avoid;
-                    break-inside: avoid;
-                }   
                 @media print {
                     body, html {
                         margin: 0 !important;
                         padding: 0 !important;
-                        width: 100vw;
-                        height: 100vh;
+                        height: 100% !important;
+                        width: 100% !important;
                     }
                     #multipage-container {
+                        width: 100% !important;
+                        height: 100% !important;
+                        padding: 0;
+                        margin: 0;
+                        left: 0;
+                        top: 0;
                         display: block;
+                        background: transparent !important;
                     }
                     #multipage-container .svg-container {
-                        width: 8.5in !important;
-                        height: 11in !important;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        background: white !important;
+                        width: 100% !important;
+                        height: 100% !important;
                         margin: 0 auto !important;
                         box-sizing: border-box;
                         page-break-after: always;
+                        break-after: page;
+                        overflow: hidden;
+                    }
+                    #multipage-container .svg-container.last-svg { 
+                        page-break-after: auto !important;
+                        break-after: auto !important;
                     }
                     #multipage-container .svg-container > svg {
-                        width: 100% !important;
-                        height: 100% !important;
+                        display: block;
+                        box-sizing: border-box;
+                        padding: 0;
+                        margin: 0in 0.16in;
+                        transform: none !important;
+                        height: 100%;
+                        width: auto;
+                        max-width: 100%;
+                        min-width: 0;
+                        max-height: 100%;
+                        page-break-inside: avoid;
+                        break-inside: avoid;
                     }
                 }
             </style>${bodyContent}`;
@@ -259,7 +252,8 @@ export class PrintUtil {
         }
 
         // Remove overlay on first user interaction
-        const removeOverlay = () => {
+        const removeOverlay = (evt: Event) => {
+            console.trace('PrintUtil', evt);
             overlay.remove();
             document.body.classList.remove('multipage-container-active');
             
@@ -274,17 +268,13 @@ export class PrintUtil {
                 }
             }
 
-            window.removeEventListener('afterprint', removeOverlay, true);
             window.removeEventListener('click', removeOverlay, true);
             window.removeEventListener('keydown', removeOverlay, true);
-            window.removeEventListener('mousemove', removeOverlay, true);
-            window.removeEventListener('touchstart', removeOverlay, true);
+            window.removeEventListener('pointerdown', removeOverlay, true);
         };
-        window.addEventListener('afterprint', removeOverlay, true);
         window.addEventListener('click', removeOverlay, true);
         window.addEventListener('keydown', removeOverlay, true);
-        window.addEventListener('mousemove', removeOverlay, true);
-        window.addEventListener('touchstart', removeOverlay, true);
+        window.addEventListener('pointerdown', removeOverlay, true);
     }
 
     private static async waitForSvgImagesToLoad(root: ParentNode): Promise<void> {

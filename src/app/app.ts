@@ -45,7 +45,6 @@ import { LayoutModule } from '@angular/cdk/layout';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
 import { OptionsService } from './services/options.service';
 import { OptionsDialogComponent } from './components/options-dialog/options-dialog.component';
-import { PopupMenuComponent } from './components/popup-menu/popup-menu.component';
 import { PrintUtil } from './utils/print.util';
 import { LicenseDialogComponent } from './components/license-dialog/license-dialog.component';
 import { ToastsComponent } from './components/toasts/toasts.component';
@@ -75,7 +74,6 @@ import { copyTextToClipboard } from './utils/clipboard.util';
         SvgViewerComponent,
         ForceBuilderViewerComponent,
         LayoutModule,
-        PopupMenuComponent,
         UpdateButtonComponent,
         UnitSearchComponent,
         OverlayModule,
@@ -113,12 +111,6 @@ export class App {
     isOverlayVisible = computed(() => {
         return this.layoutService.isMobile() && (this.layoutService.isMenuOpen() || this.layoutService.isMenuDragging());
     });
-
-    popupMenuOptions = [
-        { label: 'Load Force', value: 'load' },
-        { separator: true },
-        { label: 'Options', value: 'options' }
-    ];
 
     constructor() {
         this.dataService.initialize();
@@ -259,6 +251,19 @@ export class App {
         this.dialog.open(BetaDialogComponent);
     }
 
+    showLoadForceDialog(): void {
+        const ref = this.dialog.open(ForceLoadDialogComponent);
+        ref.componentInstance?.load.subscribe(async (force) => {
+            const requestedForce = await this.dataService.getForce(force.instanceId);
+            if (!requestedForce) {
+                this.toastService.show('Failed to load force.', 'error');
+                return;
+            }
+            this.forceBuilderService.loadForce(requestedForce);
+            ref.close();
+        });
+    }
+
     showSingleUnitDetails(unit: Unit, tab?: string) {
         const ref = this.dialog.open(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
@@ -283,47 +288,5 @@ export class App {
 
     closeMenu() {
         this.layoutService.closeMenu();
-    }
-
-    async onMenuSelected(option: string) {
-        switch (option) {
-            case 'new': {
-                if (await this.forceBuilderService.createNewForce()) {
-                    this.layoutService.closeMenu();
-                }
-                break;
-            }
-            case 'repairAll': {
-                if (await this.forceBuilderService.repairAllUnits()) {
-                    this.toastService.show(`Repaired all units.`, 'info');
-                }
-                break;
-            }
-            case 'cloneForce': {
-                this.forceBuilderService.requestCloneForce();
-                break;
-            }
-            case 'load': {
-                const ref = this.dialog.open(ForceLoadDialogComponent);
-                ref.componentInstance?.load.subscribe(async (force) => {
-                    const requestedForce = await this.dataService.getForce(force.instanceId);
-                    if (!requestedForce) {
-                        this.toastService.show('Failed to load force.', 'error');
-                        return;
-                    }
-                    this.forceBuilderService.loadForce(requestedForce);
-                    ref.close();
-                });
-                break;
-            }
-            case 'options': {
-                this.dialog.open(OptionsDialogComponent);
-                break;
-            }
-            case 'print': {
-                PrintUtil.multipagePrint(this.dataService, this.forceBuilderService.forceUnits());
-                break;
-            }
-        }
     }
 }
