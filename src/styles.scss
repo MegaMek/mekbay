@@ -108,6 +108,11 @@ hr {
     transition: opacity 400ms cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
+.cdk-overlay-pane {
+    padding-bottom: calc(8px + var(--safe-area-inset-bottom)) !important;
+    box-sizing: border-box;
+}
+
 .framed-borders {
     background-repeat: no-repeat;
     background-origin: border-box;

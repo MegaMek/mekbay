@@ -6,7 +6,7 @@
     flex-shrink: 0;
     background-color: var(--background-color-menu);
     border-right: 1px solid var(--border-color);
-    box-shadow: 2px 0 8px 0 rgba(0,0,0,0.04);
+    box-shadow: 2px 0 8px 0 rgba(0, 0, 0, 0.04);
     height: 100%;
     box-sizing: border-box;
     padding-top: max(8px, var(--safe-area-inset-top));
@@ -48,7 +48,7 @@
 }
 
 .group-header {
-    position: sticky; 
+    position: sticky;
     top: 0px;
     z-index: 1;
     background-color: var(--background-highlight);
@@ -180,12 +180,12 @@
 }
 
 .footer {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 2px;
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
 }
 
 .footer .row {
@@ -220,15 +220,15 @@
 }
 
 .options-btn {
-  background: #222;
-  color: #fff;
-  border: none;
-  border-radius: 50%;
-  width: 36px;
-  height: 36px;
-  font-size: 1.3em;
-  box-shadow: 0 2px 8px #0006;
-  cursor: pointer;
+    background: #222;
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    font-size: 1.3em;
+    box-shadow: 0 2px 8px #0006;
+    cursor: pointer;
 }
 
 .cdk-drag-preview {
@@ -236,8 +236,8 @@
     background-color: var(--background-color-menu);
     box-sizing: border-box;
     box-shadow: 0 5px 5px -3px rgba(0, 0, 0, 0.2),
-                0 8px 10px 1px rgba(0, 0, 0, 0.14),
-                0 3px 14px 2px rgba(0, 0, 0, 0.12);
+        0 8px 10px 1px rgba(0, 0, 0, 0.14),
+        0 3px 14px 2px rgba(0, 0, 0, 0.12);
 }
 
 .cdk-drag-placeholder ::ng-deep .unit-card {
@@ -314,7 +314,7 @@
         background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px;
         background-position: top right, top right, bottom right, bottom right;
     }
-    
+
     .burger-lip-btn:focus {
         outline: none;
     }
@@ -322,7 +322,7 @@
     .burger-lip-btn:active {
         outline: none;
     }
-    
+
     .burger-icon {
         font-size: 24px;
         font-weight: bold;

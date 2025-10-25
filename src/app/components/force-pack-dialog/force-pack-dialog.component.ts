@@ -114,7 +114,11 @@ export class ForcePackDialogComponent {
 
                     return { chassis: u.chassis, model: u.model, unit: found ?? null } as PackUnitEntry;
                 });
-                return { name: p.name, units: entries, _searchText: entries.map(e => [e.chassis, e.model].filter(Boolean).join(' ')).join(' ').toLowerCase() } as ResolvedPack;
+                const resolved: ResolvedPack = { name: p.name, 
+                        units: entries, 
+                        bv: entries.reduce((sum, e) => sum + (e.unit?.bv || 0), 0),
+                        _searchText: entries.map(e => p.name + ' ' + [e.chassis, e.model].filter(Boolean).join(' ')).join(' ').toLowerCase() }
+                return resolved;
             });
 
             this.packs.set(resolved);
