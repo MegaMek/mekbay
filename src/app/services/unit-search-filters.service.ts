@@ -279,7 +279,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: 'as' },
     { key: 'as.SZ', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
     { key: 'as.TMM', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.OV', label: 'OV', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
+    { key: 'as.OV', label: 'Overheat Value', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
     { key: 'as.Th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, ignoreValues: [-1], game: 'as' },
     { key: 'as.dmg._dmgS', label: 'Damage (Short)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
     { key: 'as.dmg._dmgM', label: 'Damage (Medium)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
