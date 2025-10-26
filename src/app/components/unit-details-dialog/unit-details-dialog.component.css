@@ -232,14 +232,15 @@
 .stat-bar {
     flex: 1 1 0;
     height: 20px;
-    position: relative;
+    position: absolute;
     display: flex;
     align-items: center;
     overflow: hidden;
+    width: 100%;
 }
 
 .stat-bar-fill {
-    background: #888;
+    background: #666;
     height: 100%;
     transition: width 0.3s;
 }
@@ -260,6 +261,8 @@
     color: #fff;
     font-size: 1em;
     padding: 1px;
+    position: relative;
+    width: 100%;
 }
 
 /* Type Summary */
