@@ -73,10 +73,6 @@ export class OptionsDialogComponent {
     constructor() {
         this.updateSheetCacheSize();
         this.updateCanvasMemorySize();
-        // Debug tab event listeners
-        window.addEventListener('pointerdown', this.pointerListener, true);
-        window.addEventListener('keydown', this.keyListener, true);
-        window.addEventListener('click', this.clickListener, true);
     }
 
     updateSheetCacheSize() {
@@ -102,6 +98,11 @@ export class OptionsDialogComponent {
 
     onClose() {
         this.dialogRef.close();
+    }
+
+    onGameSystemChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as 'cbt' | 'as';
+        this.optionsService.setOption('gameSystem', value);
     }
 
     onSheetsColorChange(event: Event) {
@@ -220,40 +221,5 @@ export class OptionsDialogComponent {
             this.userUuidError = e?.message || 'An unknown error occurred.';
             return;
         }
-    }
-
-
-    /* Debug Tab */
-    
-    debugLogs = signal<string[]>([]);
-
-    private pointerListener = (event: PointerEvent) => {
-        this.addDebugLog(`pointerdown: button=${event.button} pointerType=${event.pointerType} isPrimary=${event.isPrimary} ctrlKey=${event.ctrlKey} shiftKey=${event.shiftKey} altKey=${event.altKey} metaKey=${event.metaKey}`);
-    };
-
-    private keyListener = (event: KeyboardEvent) => {
-        this.addDebugLog(`keydown: key=${event.key}, code=${event.code} ctrlKey=${event.ctrlKey} shiftKey=${event.shiftKey} altKey=${event.altKey} metaKey=${event.metaKey}`);
-    };
-
-    private clickListener = (event: MouseEvent) => {
-        this.addDebugLog(`click: button=${event.button} ctrlKey=${event.ctrlKey} shiftKey=${event.shiftKey} altKey=${event.altKey} metaKey=${event.metaKey}`);
-    };
-
-    private addDebugLog(msg: string) {
-        const logs = this.debugLogs().slice(0, 99); // Keep only the latest 100 logs
-        logs.unshift(`[${new Date().toLocaleTimeString()}] ${msg}`);
-        this.debugLogs.set(logs);
-    }
-
-    ngOnDestroy() {
-        if (typeof window !== 'undefined') {
-            window.removeEventListener('pointerdown', this.pointerListener, true);
-            window.removeEventListener('keydown', this.keyListener, true);
-            window.removeEventListener('click', this.clickListener, true);
-        }
-    }
-
-    clearDebugLogs() {
-        this.debugLogs.set([]);
     }
 }

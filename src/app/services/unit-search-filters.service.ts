@@ -38,6 +38,7 @@ import { MultiState, MultiStateSelection } from '../components/multi-select-drop
 import { ActivatedRoute, Router } from '@angular/router';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { naturalCompare } from '../utils/sort.util';
+import { OptionsService } from './options.service';
 
 /*
  * Author: Drake
@@ -47,7 +48,7 @@ export interface SortOption {
     label: string;    
     slotLabel?: string; // Optional label prefix to show in the slot (e.g., "BV")
     slotIcon?: string;  // Optional icon for the slot (e.g., '/images/calendar.svg')
-
+    gameSystem?: 'cbt' | 'as';
 }
 
 export enum AdvFilterType {
@@ -55,6 +56,7 @@ export enum AdvFilterType {
     RANGE = 'range'
 }
 export interface AdvFilterConfig {
+    game?: 'cbt' | 'as';
     key: string;
     label: string;
     type: AdvFilterType;
@@ -123,6 +125,19 @@ function smartDropdownSort(options: string[], predefinedOrder?: string[]): strin
     return options.sort(naturalCompare);
 }
 
+function getProperty(obj: any, key?: string) {
+    if (!obj || !key) return undefined;
+    // If key does not contain dot, fast path
+    if (key.indexOf('.') === -1) return (obj as any)[key];
+    const parts = key.split('.');
+    let cur: any = obj;
+    for (const p of parts) {
+        if (cur == null) return undefined;
+        cur = cur[p];
+    }
+    return cur;
+}
+
 function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiStateSelection): Unit[] {
     const orList: Array<{name: string, count: number}> = [];
     const andList: Array<{name: string, count: number}> = [];
@@ -158,7 +173,7 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
                 counts: needsQuantityCounting ? cached.componentCounts : undefined
             };
         } else {
-            const propValue = (unit as any)[key];
+            const propValue = getProperty(unit, key);
             const unitValues = Array.isArray(propValue) ? propValue : [propValue];
             const names = new Set(unitValues.filter(v => v != null));
             
@@ -219,44 +234,55 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
 export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'era', label: 'Era', type: AdvFilterType.DROPDOWN, external: true },
     { key: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true },
-    { key: 'type', label: 'Type', type: AdvFilterType.DROPDOWN },
-    { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN },
+    { key: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'cbt' },
+    { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: 'cbt' },
     {
         key: 'techBase', label: 'Tech', type: AdvFilterType.DROPDOWN,
         sortOptions: ['Inner Sphere', 'Clan', 'Mixed']
     },
-    { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN },
+    { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN, game: 'cbt' },
     {
         key: 'weightClass', label: 'Weight Class', type: AdvFilterType.DROPDOWN,
         sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*']
     },
     {
-        key: 'level', label: 'Rules', type: AdvFilterType.DROPDOWN,
+        key: 'level', label: 'Rules', type: AdvFilterType.DROPDOWN, game: 'cbt',
         sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial']
     },
-    { key: 'c3', label: 'Network', type: AdvFilterType.DROPDOWN },
-    { key: 'moveType', label: 'Motive', type: AdvFilterType.DROPDOWN },
-    { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true },
-    { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true },
-    { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
-    { key: '_tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
-    { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
-    { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5 },
-    // { key: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
-    { key: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
-    { key: 'armorPer', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
-    { key: 'internal', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
-    { key: '_mdSumNoPhysical', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
-    { key: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
-    { key: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1] },
-    { key: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1] },
-    { key: '_dissipationEfficiency', label: 'Dissipation Efficiency', type: AdvFilterType.RANGE, curve: 1 },
-    { key: '_maxRange', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
-    { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9 },
-    { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9 },
-    { key: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9 },
+    { key: 'c3', label: 'Network', type: AdvFilterType.DROPDOWN, game: 'cbt' },
+    { key: 'moveType', label: 'Motive', type: AdvFilterType.DROPDOWN, game: 'cbt' },
+    { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: 'cbt' },
+    { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: 'cbt' },
+    { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN, game: 'cbt' },
+    { key: '_tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true, game: 'cbt' },
+    { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
+    { key: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'as' },
+    { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: 'cbt' },
+    { key: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
+    { key: 'armorPer', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
+    { key: 'internal', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
+    { key: '_mdSumNoPhysical', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
+    { key: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
+    { key: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'cbt' },
+    { key: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'cbt' },
+    { key: '_dissipationEfficiency', label: 'Dissipation Efficiency', type: AdvFilterType.RANGE, curve: 1, game: 'cbt' },
+    { key: '_maxRange', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
+    { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
+    { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
+    { key: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
     { key: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
-    { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE },
+    { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
+    { key: 'as.move', label: 'Move', type: AdvFilterType.DROPDOWN, game: 'as' },
+    { key: 'as.role', label: 'Role', type: AdvFilterType.DROPDOWN, game: 'as' },
+    { key: 'as.damage', label: 'Damage', type: AdvFilterType.DROPDOWN, game: 'as' },
+    { key: 'as.armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'as' },
+    { key: 'as.structure', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'as' },
+    { key: 'as.size', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
+    { key: 'as.astype', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'as' },
+    { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: 'as' },
+    { key: 'as.nose', label: 'Nose', type: AdvFilterType.DROPDOWN, game: 'as' },
+    { key: 'as.side', label: 'Side', type: AdvFilterType.DROPDOWN, game: 'as' },
+    { key: 'as.aft', label: 'Aft', type: AdvFilterType.DROPDOWN, game: 'as' },
 ];
 
 export const SORT_OPTIONS: SortOption[] = [
@@ -267,8 +293,9 @@ export const SORT_OPTIONS: SortOption[] = [
             key: f.key, 
             label: f.label,
             slotLabel: f.label,
+            gameSystem: f.game,
             // slotIcon: f.slotIcon
-        }))
+        } as SortOption))
 ];
 
 const unitComponentCache = new WeakMap<Unit, {
@@ -305,8 +332,8 @@ interface SearchTokens {
 
 @Injectable({ providedIn: 'root' })
 export class UnitSearchFiltersService {
-    private QUERY_PARAMS = ['q', 'sort', 'sortDir', 'filters', 'expanded', 'gunnery', 'piloting'];
-    public dataService = inject(DataService);
+    dataService = inject(DataService);
+    optionsService = inject(OptionsService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
     
@@ -345,6 +372,8 @@ export class UnitSearchFiltersService {
         this.loadFiltersFromUrlOnStartup();
         this.updateUrlOnFiltersChange();
     }
+
+    gameSystem = computed(() => this.optionsService.options().gameSystem);
 
     dynamicInternalLabel = computed(() => {
         const units = this.filteredUnits();
@@ -520,7 +549,8 @@ export class UnitSearchFiltersService {
             .filter(([, s]) => s.interactedWith)
             .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
 
-
+        const currentGame = this.gameSystem();
+        
         // Handle external (ID-based) filters first
         const selectedEraNames = activeFilters['era'] as string[] || [];
         const selectedFactionNames = activeFilters['faction'] as string[] || [];
@@ -547,6 +577,7 @@ export class UnitSearchFiltersService {
 
         // Handle standard (property-based) filters
         for (const conf of ADVANCED_FILTERS) {
+            if (conf.game && conf.game !== currentGame) continue;
             if (conf.external) continue;
 
             const filterState = state[conf.key];
@@ -561,7 +592,13 @@ export class UnitSearchFiltersService {
             }
             
             if (conf.type === AdvFilterType.DROPDOWN && Array.isArray(val) && val.length > 0) {
-                results = results.filter(u => val.includes((u as any)[conf.key]));
+                results = results.filter(u => {
+                    const v = getProperty(u, conf.key);
+                    if (Array.isArray(v)) {
+                        return v.some((vv: any) => val.includes(vv));
+                    }
+                    return val.includes(v);
+                });
                 continue;
             }
 
@@ -574,7 +611,7 @@ export class UnitSearchFiltersService {
                     });
                 } else {
                     results = results.filter(u => {
-                        const unitValue = (u as any)[conf.key];
+                        const unitValue = getProperty(u, conf.key);
                         if (conf.ignoreValues && conf.ignoreValues.includes(unitValue)) 
                         {
                             if (val[0] === 0) return true; // If the range starts at 0, we allow -1 values
@@ -718,7 +755,7 @@ export class UnitSearchFiltersService {
                         }
                     } else {
                         for (const unit of contextUnits) {
-                            const propValue = (unit as any)[conf.key];
+                            const propValue = getProperty(unit, conf.key);
                             const values = Array.isArray(propValue) ? propValue : [propValue];
                             for (const value of values) {
                                 if (value) nameSet.add(value);
@@ -760,7 +797,7 @@ export class UnitSearchFiltersService {
                                 }
                             } else {
                                 // Handle other properties (simplified for brevity)
-                                const propValue = (unit as any)[conf.key];
+                                const propValue = getProperty(unit, conf.key);
                                 const values = Array.isArray(propValue) ? propValue : [propValue];
                                 const valueSet = new Set(values);
                                 
@@ -783,7 +820,7 @@ export class UnitSearchFiltersService {
                                     filteredNameSet.add(component.n);
                                 }
                             } else {
-                                const propValue = (unit as any)[conf.key];
+                                const propValue = getProperty(unit, conf.key);
                                 const values = Array.isArray(propValue) ? propValue : [propValue];
                                 for (const value of values) {
                                     if (value) filteredNameSet.add(value);
@@ -859,7 +896,9 @@ export class UnitSearchFiltersService {
                         .map(faction => ({ name: faction.name, img: faction.img }));
                 }
             } else {
-                const allOptions = Array.from(new Set(contextUnits.map(u => (u as any)[conf.key]).filter(v => v != null && v !== '')));
+                const allOptions = Array.from(new Set(contextUnits
+                    .map(u => getProperty(u, conf.key))
+                    .filter(v => v != null && v !== '')));
                 const sortedOptions = smartDropdownSort(allOptions, conf.sortOptions);
                 availableOptions = sortedOptions.map(name => ({ name }));
             }
@@ -952,7 +991,9 @@ export class UnitSearchFiltersService {
     }
 
     private getValidFilterValues(units: Unit[], conf: AdvFilterConfig): number[] {
-        let vals = units.map(u => (u as any)[conf.key]).filter(v => typeof v === 'number');
+        let vals = units
+            .map(u => getProperty(u, conf.key))
+            .filter(v => typeof v === 'number') as number[];
         if (conf.ignoreValues && conf.ignoreValues.length > 0) {
             vals = vals.filter(v => !conf.ignoreValues!.includes(v));
         }
@@ -1079,7 +1120,7 @@ export class UnitSearchFiltersService {
                 }
             } else {
                 for (const unit of this.units) {
-                    const propValue = (unit as any)[conf.key];
+                    const propValue = getProperty(unit, conf.key);
                     if (Array.isArray(propValue)) {
                         propValue.forEach(v => { if (v != null && v !== '') values.add(v); });
                     } else if (propValue != null && propValue !== '') {

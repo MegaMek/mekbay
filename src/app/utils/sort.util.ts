@@ -40,6 +40,11 @@ type CacheEntry = { parts: Part[] };
 let naturalCompareCache = new Map<string, CacheEntry>();
 
 function tokenizeForNaturalCompare(s: string): CacheEntry {
+    // Normalize input
+    if (typeof s !== 'string') {
+        if (s == null) s = '';
+        else s = String(s);
+    }
     const re = /(\d+|[A-Za-z]+|[^A-Za-z\d]+)/g;
     const rawParts = s.match(re) || [s];
     const parts: Part[] = rawParts.map(p => {
@@ -55,10 +60,11 @@ function tokenizeForNaturalCompare(s: string): CacheEntry {
 }
 
 function getCachedParts(s: string): CacheEntry {
-    const existing = naturalCompareCache.get(s);
+    const key = (typeof s === 'string') ? s : (s == null ? '' : String(s));
+    const existing = naturalCompareCache.get(key);
     if (existing) return existing;
-    const entry = tokenizeForNaturalCompare(s);
-    naturalCompareCache.set(s, entry);
+    const entry = tokenizeForNaturalCompare(key);
+    naturalCompareCache.set(key, entry);
     return entry;
 }
 

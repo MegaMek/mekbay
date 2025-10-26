@@ -56,6 +56,7 @@ import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
+import { OptionsService } from '../../services/options.service';
 
 @Pipe({
     name: 'expandedComponents',
@@ -95,6 +96,7 @@ export class UnitSearchComponent implements OnDestroy {
     filtersService = inject(UnitSearchFiltersService);
     dataService = inject(DataService);
     forceBuilderService = inject(ForceBuilderService);
+    optionsService = inject(OptionsService);
     private injector = inject(Injector);
     private dialog = inject(Dialog);
     private dialogsService = inject(DialogsService);
@@ -111,6 +113,7 @@ export class UnitSearchComponent implements OnDestroy {
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
     resultsDropdown = viewChild<ElementRef<HTMLElement>>('resultsDropdown');
 
+    gameSystem = computed(() => this.optionsService.options().gameSystem);
     autoFocus = input(false);
     expandedView = this.filtersService.expandedView;
     advOpen = this.filtersService.advOpen;

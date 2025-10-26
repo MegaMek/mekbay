@@ -112,20 +112,13 @@
         <!-- Debug options -->
         @if (activeTab() === 'Debug') {
             <div class="tab-content">
-                <div class="option-col">
-                    <div class="option-row">
-                        <span>Event Logger</span>
-                        <button class="bt-button" (click)="clearDebugLogs()">CLEAR</button>
-                    </div>
-                    <div class="description">
-                        <p>Logs pointerdown, keydown, and click events globally while this dialog is open.</p>
-                    </div>
-                    <div style="overflow:auto;font-family:monospace;font-size:0.9em;">
-                        <div *ngFor="let log of debugLogs()">{{ log }}</div>
-                        @if (debugLogs().length === 0) {
-                            <div style="color:#888;">No events logged yet.</div>
-                        }
-                    </div>
+                <div class="option-row">
+                    <label for="gameSystem">Game System:</label>
+                    <select id="gameSystem" class="bt-select" [value]="optionsService.options().gameSystem"
+                        (change)="onGameSystemChange($event)">
+                        <option value="cbt">BattleTech Classic (default)</option>
+                        <option value="as">Alpha Strike</option>
+                    </select>
                 </div>
             </div>
         }

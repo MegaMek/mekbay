@@ -46,6 +46,7 @@ const DEFAULT_OPTIONS: Options = {
     canvasInput: 'all',
     swipeToNextSheet: 'horizontal',
     unitDisplayName: 'chassisModel',
+    gameSystem: 'cbt',
 };
 
 @Injectable({ providedIn: 'root' })
@@ -59,6 +60,7 @@ export class OptionsService {
         canvasInput: DEFAULT_OPTIONS.canvasInput,
         swipeToNextSheet: DEFAULT_OPTIONS.swipeToNextSheet,
         unitDisplayName: DEFAULT_OPTIONS.unitDisplayName,
+        gameSystem: DEFAULT_OPTIONS.gameSystem,
     });
 
     constructor() {
@@ -74,6 +76,7 @@ export class OptionsService {
             canvasInput: saved?.canvasInput ?? DEFAULT_OPTIONS.canvasInput,
             swipeToNextSheet: saved?.swipeToNextSheet ?? DEFAULT_OPTIONS.swipeToNextSheet,
             unitDisplayName: saved?.unitDisplayName ?? DEFAULT_OPTIONS.unitDisplayName,
+            gameSystem: saved?.gameSystem ?? DEFAULT_OPTIONS.gameSystem,
         });
     }
 

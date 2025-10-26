@@ -158,9 +158,11 @@
                 <select #sortSel class="bt-input sort-select"
                     (change)="this.filtersService.setSortOrder(sortSel.value)">
                     @for (opt of SORT_OPTIONS; let i = $index; track i) {
-                    <option [value]="opt.key" [selected]="opt.key === this.filtersService.selectedSort()">
-                        {{ opt.label }}
-                    </option>
+                        @if (!opt.gameSystem || opt.gameSystem === this.gameSystem()) {
+                        <option [value]="opt.key" [selected]="opt.key === this.filtersService.selectedSort()">
+                            {{ opt.label }}
+                        </option>
+                        }
                     }
                 </select><button type="button" class="bt-button sort-direction-btn"
                     (click)="this.filtersService.setSortDirection(this.filtersService.selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
@@ -238,7 +240,7 @@
     <div class="adv-panel-content" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         <!-- Dropdown filters -->
         @for (conf of ADVANCED_FILTERS; let i = $index; track i) {
-        @if (this.filtersService.advOptions()[conf.key]; as optionsData) {
+        @if ((!conf.game || conf.game === gameSystem()) && this.filtersService.advOptions()[conf.key]; as optionsData) {
         @if (optionsData.type === 'dropdown') {
         <div class="filter-row">
             <multi-select-dropdown class="dropdown" [label]="optionsData.label" [options]="optionsData.options"
@@ -251,7 +253,7 @@
         }
         <!-- Range Filters -->
         @for (conf of ADVANCED_FILTERS; let i = $index; track i) {
-        @if (this.filtersService.advOptions()[conf.key]; as optionsData) {
+        @if ((!conf.game || conf.game === gameSystem()) && this.filtersService.advOptions()[conf.key]; as optionsData) {
         @if (optionsData.type === 'range') {
         <div class="filter-row">
             <div class="range">

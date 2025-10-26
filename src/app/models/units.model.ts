@@ -123,6 +123,7 @@ export interface Unit {
         doors: number; // number of doors
     }[];
     sheets: string[];
+    as: AlphaStrikeUnitStats;
     _chassis?: string; // For pre-compiled search
     _model?: string; // For pre-compiled search
     _displayType: string;
@@ -138,4 +139,25 @@ export interface Units {
     version: string;
     etag: string;
     units: Unit[];
+}
+
+/*
+"as":{"move":"14v","role":"Scout","armor":"1","size":"3","specials":["ATMO","BAR","CT10","ENE","FC","LG","SEAL","SOA"],"astype":"SV","structure":"3"}},
+"as":{"damage":"2/2/0","move":"12j","role":"Scout","armor":"7","size":"3","specials":["AMS","ECM","PRB","RCN"],"astype":"BM","structure":"3"}},
+"as":{"damage":"6/6/4","move":"10","role":"Missile Boat","armor":"7","size":"3","specials":["CASE","ECM","IF2","LRM2/2/2"],"astype":"BM","structure":"4"}},
+"as":{"nose":"53/54/22/8, CAP149/149/149/53, MSL8/8/8/8, PNT4","move":"2","side":"46/46/35/16, CAP62/62/62/38, MSL3/3/3/3, PNT2","role":"None","armor":"495","size":"4","specials":["AT50-D8","CK415-D12","CRW9","DT8","HPG","KF","LF","MFB2","SPC","ST20-D12"],"astype":"WS","aft":"22/23/14/-, CAP15/15/15/15, MSL3/3/3/3, PNT2","structure":"90"}},
+*/
+
+export interface AlphaStrikeUnitStats {
+    damage?: string;
+    move: string;
+    role?: string;
+    armor: number;
+    structure: number;
+    size: string;
+    specials: string[];
+    asType: string;
+    nose?: string;
+    side?: string;
+    aft?: string;
 }

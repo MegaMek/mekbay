@@ -64,7 +64,9 @@ export interface UnitTypeMaxStats {
         alphaNoPhysical: [number, number],
         alphaNoPhysicalNoOneshots: [number, number],
         maxRange: [number, number],
-        dpt: [number, number]
+        dpt: [number, number],
+        "as.armor": [number, number],
+        "as.structure": [number, number],
     }
 }
 
@@ -404,7 +406,9 @@ export class DataService {
                 alphaNoPhysical: number[],
                 alphaNoPhysicalNoOneshots: number[],
                 maxRange: number[],
-                dpt: number[]
+                dpt: number[],
+                "as.armor": number[],
+                "as.structure": number[],
             }
         } = {};
 
@@ -457,7 +461,9 @@ export class DataService {
                     alphaNoPhysical: [],
                     alphaNoPhysicalNoOneshots: [],
                     maxRange: [],
-                    dpt: []
+                    dpt: [],
+                    "as.armor": [],
+                    "as.structure": [],
                 };
             }
             statsByType[t].armor.push(unit.armor || 0);
@@ -472,6 +478,8 @@ export class DataService {
             statsByType[t].alphaNoPhysicalNoOneshots.push(unit._mdSumNoPhysicalNoOneshots || 0);
             statsByType[t].maxRange.push(unit._maxRange || 0);
             statsByType[t].dpt.push(unit.dpt || 0);
+            statsByType[t]["as.armor"].push(unit.as.armor || 0);
+            statsByType[t]["as.structure"].push(unit.as.structure || 0);
         }
 
         // Compute max for each stat per unit type
@@ -516,6 +524,14 @@ export class DataService {
                 dpt: [
                     Math.min(...stats.dpt, 0),
                     Math.max(...stats.dpt, 0)
+                ],
+                "as.armor": [
+                    Math.min(...stats["as.armor"], 0),
+                    Math.max(...stats["as.armor"], 0)
+                ],
+                "as.structure": [
+                    Math.min(...stats["as.structure"], 0),
+                    Math.max(...stats["as.structure"], 0)
                 ]
             };
         }

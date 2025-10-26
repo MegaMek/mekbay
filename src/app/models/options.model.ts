@@ -42,4 +42,5 @@ export interface Options {
     canvasInput: 'all' | 'touch' | 'pen';
     swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
     unitDisplayName: 'chassisModel' | 'alias' | 'both';
+    gameSystem: 'cbt' | 'as';
 }
