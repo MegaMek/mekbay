@@ -93,7 +93,6 @@ export class MultiSelectDropdownComponent {
         if (!el) return 248;
         const rect = el.getBoundingClientRect();
         const spaceBelow = windowHeight - rect.bottom - 32;
-        console.log('spaceBelow', spaceBelow);
         return Math.max(spaceBelow, 248);
     });
 

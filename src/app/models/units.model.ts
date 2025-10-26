@@ -116,6 +116,12 @@ export interface Unit {
         notes?: string;
         systems?: { label?: string, manufacturer?: string, model?: string }[];
     };
+    cargo?: {
+        n: number; // number of the cargo bay
+        type: string; // type of cargo bay
+        capacity: string; // capacity of the cargo bay
+        doors: number; // number of doors
+    }[];
     sheets: string[];
     _chassis?: string; // For pre-compiled search
     _model?: string; // For pre-compiled search

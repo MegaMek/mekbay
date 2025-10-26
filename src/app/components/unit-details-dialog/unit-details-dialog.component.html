@@ -177,6 +177,17 @@
                 }
             }
 
+            @if (unit.cargo && unit.cargo.length > 0) {
+                <div class="cargo-list">
+                    <span class="info-label muted">Cargo: </span>
+                    @for (cargo of unit.cargo; let last = $last; let i = $index; track i) {
+                        <span class="cargo-entry">
+                            <strong>Bay {{ cargo.n }}:</strong> {{ cargo.type }} ({{ cargo.capacity }}) ({{ cargo.doors }} door{{ cargo.doors > 1 ? 's' : '' }})
+                        </span>
+                    }
+                </div>
+            }
+
             <div class="spanner"></div>
 
             <div class="bottom-info">
