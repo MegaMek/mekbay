@@ -65,8 +65,6 @@ export interface UnitTypeMaxStats {
         alphaNoPhysicalNoOneshots: [number, number],
         maxRange: [number, number],
         dpt: [number, number],
-        "as.armor": [number, number],
-        "as.structure": [number, number],
     }
 }
 
@@ -407,8 +405,6 @@ export class DataService {
                 alphaNoPhysicalNoOneshots: number[],
                 maxRange: number[],
                 dpt: number[],
-                "as.armor": number[],
-                "as.structure": number[],
             }
         } = {};
 
@@ -420,6 +416,12 @@ export class DataService {
             unit._mdSumNoPhysicalNoOneshots = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp, true) : 0;
             unit._maxRange = unit.comp ? this.weaponsMaxRange(unit, unit.comp) : 0;
             unit._dissipationEfficiency = (unit.heat && unit.dissipation) ? unit.dissipation - unit.heat : 0;
+            if (unit.as) {
+                unit.as.dmg._dmgS = parseFloat(unit.as.dmg.dmgS) || 0;
+                unit.as.dmg._dmgM = parseFloat(unit.as.dmg.dmgM) || 0;
+                unit.as.dmg._dmgL = parseFloat(unit.as.dmg.dmgL) || 0;
+                unit.as.dmg._dmgE = parseFloat(unit.as.dmg.dmgE) || 0;
+            }
             if (unit.comp) {
                 if (unit.armorType) {
                     let armorName = unit.armorType;
@@ -462,8 +464,6 @@ export class DataService {
                     alphaNoPhysicalNoOneshots: [],
                     maxRange: [],
                     dpt: [],
-                    "as.armor": [],
-                    "as.structure": [],
                 };
             }
             statsByType[t].armor.push(unit.armor || 0);
@@ -478,8 +478,6 @@ export class DataService {
             statsByType[t].alphaNoPhysicalNoOneshots.push(unit._mdSumNoPhysicalNoOneshots || 0);
             statsByType[t].maxRange.push(unit._maxRange || 0);
             statsByType[t].dpt.push(unit.dpt || 0);
-            statsByType[t]["as.armor"].push(unit.as.armor || 0);
-            statsByType[t]["as.structure"].push(unit.as.structure || 0);
         }
 
         // Compute max for each stat per unit type
@@ -525,14 +523,6 @@ export class DataService {
                     Math.min(...stats.dpt, 0),
                     Math.max(...stats.dpt, 0)
                 ],
-                "as.armor": [
-                    Math.min(...stats["as.armor"], 0),
-                    Math.max(...stats["as.armor"], 0)
-                ],
-                "as.structure": [
-                    Math.min(...stats["as.structure"], 0),
-                    Math.max(...stats["as.structure"], 0)
-                ]
             };
         }
     }

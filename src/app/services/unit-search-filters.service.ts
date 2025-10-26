@@ -242,7 +242,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     },
     { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN, game: 'cbt' },
     {
-        key: 'weightClass', label: 'Weight Class', type: AdvFilterType.DROPDOWN,
+        key: 'weightClass', label: 'Weight Class', type: AdvFilterType.DROPDOWN, game: 'cbt',
         sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*']
     },
     {
@@ -272,17 +272,21 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
     { key: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
     { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'as.move', label: 'Move', type: AdvFilterType.DROPDOWN, game: 'as' },
-    { key: 'as.role', label: 'Role', type: AdvFilterType.DROPDOWN, game: 'as' },
-    { key: 'as.damage', label: 'Damage', type: AdvFilterType.DROPDOWN, game: 'as' },
-    { key: 'as.armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'as' },
-    { key: 'as.structure', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'as' },
-    { key: 'as.size', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.astype', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'as' },
+
+    /* Alpha Strike specific filters */
+    { key: 'as.TP', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'as' },
+    { key: 'as.MV', label: 'Move', type: AdvFilterType.DROPDOWN, game: 'as' },
     { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: 'as' },
-    { key: 'as.nose', label: 'Nose', type: AdvFilterType.DROPDOWN, game: 'as' },
-    { key: 'as.side', label: 'Side', type: AdvFilterType.DROPDOWN, game: 'as' },
-    { key: 'as.aft', label: 'Aft', type: AdvFilterType.DROPDOWN, game: 'as' },
+    { key: 'as.SZ', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
+    { key: 'as.TMM', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
+    { key: 'as.OV', label: 'OV', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
+    { key: 'as.Th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
+    { key: 'as.dmg._dmgS', label: 'Damage (Short)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
+    { key: 'as.dmg._dmgM', label: 'Damage (Medium)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
+    { key: 'as.dmg._dmgL', label: 'Damage (Long)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
+    { key: 'as.dmg._dmgE', label: 'Damage (Extreme)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
+    { key: 'as.Arm', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'as' },
+    { key: 'as.Str', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'as' },
 ];
 
 export const SORT_OPTIONS: SortOption[] = [
