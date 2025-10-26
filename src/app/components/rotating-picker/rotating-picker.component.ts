@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, HostListener, viewChild } from '@angular/core';
+import { Component, ElementRef, AfterViewInit, OnDestroy, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, HostListener, viewChild } from '@angular/core';
 import { PickerComponent, PickerChoice, PickerValue, PickerInteractionType, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 /*
@@ -458,6 +458,7 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
     private isDragging = false;
     private lastPointerAngle = 0;
     private accumulatedAngle = 0;
+    private lastDragChangedValue = false;
     private activePointerId: number | null = null;
 
     // Keyboard input state
@@ -689,7 +690,13 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
                 this.isDragging = true;
                 this.containerRef().nativeElement.classList.add('grabbing');
                 this.lastPointerAngle = this.getPointerAngle(event);
-                this.accumulatedAngle = 0;
+                // If the previous drag already produced a value change, clear any leftover
+                // partial arc so the next drag starts fresh. Otherwise keep accumulatedAngle
+                // so many small nudges across separate drags can add up.
+                if (this.lastDragChangedValue) {
+                    this.accumulatedAngle = 0;
+                    this.lastDragChangedValue = false;
+                }
             } else {
                 // Not dragging and not in the start zone, so do nothing.
                 return;
@@ -732,6 +739,7 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
             }
 
             this.accumulatedAngle -= steps * this.rotationStepDegrees();
+            this.lastDragChangedValue = true;
         }
 
         this.rotationAngle.update(angle => angle + deltaAngle);
