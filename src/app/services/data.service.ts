@@ -417,10 +417,12 @@ export class DataService {
             unit._maxRange = unit.comp ? this.weaponsMaxRange(unit, unit.comp) : 0;
             unit._dissipationEfficiency = (unit.heat && unit.dissipation) ? unit.dissipation - unit.heat : 0;
             if (unit.as) {
-                unit.as.dmg._dmgS = parseFloat(unit.as.dmg.dmgS) || 0;
-                unit.as.dmg._dmgM = parseFloat(unit.as.dmg.dmgM) || 0;
-                unit.as.dmg._dmgL = parseFloat(unit.as.dmg.dmgL) || 0;
-                unit.as.dmg._dmgE = parseFloat(unit.as.dmg.dmgE) || 0;
+                if (unit.as.dmg) {
+                    unit.as.dmg._dmgS = parseFloat(unit.as.dmg.dmgS) || 0;
+                    unit.as.dmg._dmgM = parseFloat(unit.as.dmg.dmgM) || 0;
+                    unit.as.dmg._dmgL = parseFloat(unit.as.dmg.dmgL) || 0;
+                    unit.as.dmg._dmgE = parseFloat(unit.as.dmg.dmgE) || 0;
+                }
             }
             if (unit.comp) {
                 if (unit.armorType) {
