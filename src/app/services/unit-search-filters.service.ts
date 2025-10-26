@@ -280,7 +280,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'as.SZ', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
     { key: 'as.TMM', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
     { key: 'as.OV', label: 'OV', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.Th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
+    { key: 'as.Th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, ignoreValues: [-1], game: 'as' },
     { key: 'as.dmg._dmgS', label: 'Damage (Short)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
     { key: 'as.dmg._dmgM', label: 'Damage (Medium)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
     { key: 'as.dmg._dmgL', label: 'Damage (Long)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
