@@ -545,14 +545,14 @@ export class SvgCanvasOverlayComponent {
     onPointerDown(event: PointerEvent) {
         const mode = this.mode();
         if (mode === 'none') return;
+        event.preventDefault();
+        event.stopPropagation();
         const inputFilter = this.optionsService.options().canvasInput;
         if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
         if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
         if (!this.MULTITOUCH && this.activePointers.size > 0) { // single pointer mode
             return;
         };
-        event.preventDefault();
-        event.stopPropagation();
         const pos = this.getPointerPosition(event);
         if (!pos) return;
         const interactionMode = this.isEraseButton(event.button) ? 'eraser' : this.mode() === 'brush' ? 'brush' : 'eraser';
