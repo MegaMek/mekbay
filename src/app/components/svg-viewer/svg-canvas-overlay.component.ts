@@ -43,10 +43,14 @@ import { ForceUnit } from '../../models/force-unit.model';
  * Author: Drake
  */
 
-interface brushLocation {
+interface BrushLocation {
+    startX: number;
+    startY: number;
+    moved: boolean;
     x: number;
     y: number;
     mode: 'brush' | 'eraser';
+    event: PointerEvent;
 }
 
 @Component({
@@ -318,11 +322,13 @@ interface brushLocation {
 `,
 })
 export class SvgCanvasOverlayComponent {
-    private static INTERNAL_SCALE = 2;
-    private static INITIAL_BRUSH_SIZE = 3;
-    private static INITIAL_ERASER_SIZE = 6;
-    private static BRUSH_MULTIPLIER = 1.0 * SvgCanvasOverlayComponent.INTERNAL_SCALE;
-    private static ERASER_MULTIPLIER = 2.0 * SvgCanvasOverlayComponent.INTERNAL_SCALE;
+    private readonly MULTITOUCH = false;
+    private readonly INTERNAL_SCALE = 2;
+    private readonly MOVE_THRESHOLD = 4; // in pixels
+    private readonly INITIAL_BRUSH_SIZE = 3;
+    private readonly INITIAL_ERASER_SIZE = 6;
+    private readonly BRUSH_MULTIPLIER = 1.0 * this.INTERNAL_SCALE;
+    private readonly ERASER_MULTIPLIER = 2.0 * this.INTERNAL_SCALE;
     MIN_STROKE_SIZE = 1;
     MAX_STROKE_SIZE = 16;
     private destroyRef = inject(DestroyRef);
@@ -337,28 +343,30 @@ export class SvgCanvasOverlayComponent {
     width = input(200);
     height = input(200);
 
-    activePointers = new Map<number, brushLocation>();
+    activePointers = new Map<number, BrushLocation>();
+    
     lastReducedIndex = 0;
     unit = input<ForceUnit | null>(null);
     mode = signal<'brush' | 'eraser' | 'none'>('none');
     brushColor = signal<string>('#f00');
     colorOptions = ['#f00', '#00f', '#0f0', '#f0f', '#0ff', '#ff0'];
-    brushSize = signal<number>(SvgCanvasOverlayComponent.INITIAL_BRUSH_SIZE);
-    eraserSize = signal<number>(SvgCanvasOverlayComponent.INITIAL_ERASER_SIZE);
+    brushSize = signal<number>(this.INITIAL_BRUSH_SIZE);
+    eraserSize = signal<number>(this.INITIAL_ERASER_SIZE);
     strokeSize = computed(() => {
         return this.mode() === 'brush' ? this.brushSize() : this.eraserSize();
     });
 
     canvasHeight = computed(() => {
         this.unit();
-        return this.height() * SvgCanvasOverlayComponent.INTERNAL_SCALE;
+        return this.height() * this.INTERNAL_SCALE;
     });
     canvasWidth = computed(() => {
-        return this.width() * SvgCanvasOverlayComponent.INTERNAL_SCALE;
+        return this.width() * this.INTERNAL_SCALE;
     });
 
     private nativePointerDown = (event: PointerEvent) => this.onPointerDown(event);
     private nativePointerUp = (event: PointerEvent) => this.onPointerUp(event);
+    private nativePointerCancel = (event: PointerEvent) => this.onPointerCancel(event);
     private nativePointerMove = (event: PointerEvent) => this.onPointerMove(event);
 
     canvasTransformStyle = computed(() => {
@@ -421,9 +429,15 @@ export class SvgCanvasOverlayComponent {
     removeMoveAndUpListeners() {
         window.removeEventListener('pointermove', this.nativePointerMove);
         window.removeEventListener('pointerup', this.nativePointerUp);
+        window.removeEventListener('pointercancel', this.nativePointerCancel);
     }
 
     bubbleInterceptor(event: Event) {
+        const inputFilter = this.optionsService.options().canvasInput;
+        if (event instanceof PointerEvent) {
+            if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
+            if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
+        }
         event.stopPropagation();
     }
 
@@ -437,6 +451,7 @@ export class SvgCanvasOverlayComponent {
     }
 
     toggleDrawMode() {
+        this.activePointers.clear();
         if (this.mode() === 'none') {
             this.mode.set('brush');
         } else {
@@ -445,6 +460,7 @@ export class SvgCanvasOverlayComponent {
     }
 
     toggleEraser() {
+        this.activePointers.clear();
         if (this.mode() === 'eraser') {
             this.mode.set('brush');
         } else {
@@ -477,7 +493,7 @@ export class SvgCanvasOverlayComponent {
 
     private getStrokeSizeScaledByMode(mode: 'brush' | 'eraser'): number {
         const paintMode = mode === 'brush';
-        const scaler = paintMode ? SvgCanvasOverlayComponent.BRUSH_MULTIPLIER : SvgCanvasOverlayComponent.ERASER_MULTIPLIER;
+        const scaler = paintMode ? this.BRUSH_MULTIPLIER : this.ERASER_MULTIPLIER;
         return this.strokeSize() * scaler;
     }
     
@@ -486,6 +502,7 @@ export class SvgCanvasOverlayComponent {
     }
 
     clearCanvas() {
+        this.activePointers.clear();
         const ctx = this.getCanvasContext();
         if (!ctx) return;
         ctx.clearRect(0, 0, this.canvasWidth(), this.canvasHeight());
@@ -505,20 +522,20 @@ export class SvgCanvasOverlayComponent {
         return button === 5 || button === 2; // X1 (back) button or right-click
     }
 
-    draw(ctx: CanvasRenderingContext2D, brushLocation: brushLocation, toPos: { x: number, y: number }) {
+    draw(ctx: CanvasRenderingContext2D, mode: 'brush' | 'eraser', fromPos: { x: number, y: number }, toPos: { x: number, y: number }) {
         ctx.save();
-        if (brushLocation.mode === 'eraser') {
+        if (mode === 'eraser') {
             ctx.globalCompositeOperation = 'destination-out';
             ctx.strokeStyle = 'rgba(0,0,0,1)';
         } else {
             ctx.globalCompositeOperation = 'source-over';
             ctx.strokeStyle = this.brushColor();
         }
-        ctx.lineWidth = this.getStrokeSizeScaledByMode(brushLocation.mode);
+        ctx.lineWidth = this.getStrokeSizeScaledByMode(mode);
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.beginPath();
-        ctx.moveTo(brushLocation.x, brushLocation.y);
+        ctx.moveTo(fromPos.x, fromPos.y);
         ctx.lineTo(toPos.x, toPos.y);
         ctx.stroke();
         ctx.restore();
@@ -530,7 +547,7 @@ export class SvgCanvasOverlayComponent {
         // draw initial dot
         const ctx = this.getCanvasContext();
         if (ctx) {
-            this.draw(ctx, pos, pos);
+            this.draw(ctx, pos.mode, { x: pos.startX, y: pos.startY }, { x: pos.x+0.01, y: pos.y+0.01 });
         }
     }
 
@@ -540,23 +557,35 @@ export class SvgCanvasOverlayComponent {
         const inputFilter = this.optionsService.options().canvasInput;
         if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
         if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
+        if (!this.MULTITOUCH && this.activePointers.size > 0) { // single pointer mode
+            return;
+        };
         event.preventDefault();
         event.stopPropagation();
         const pos = this.getPointerPosition(event);
         if (!pos) return;
         const interactionMode = this.isEraseButton(event.button) ? 'eraser' : this.mode() === 'brush' ? 'brush' : 'eraser';
-        this.activePointers.set(event.pointerId, { ...pos, mode: interactionMode });
+        const moved = event.pointerType !== 'touch'; // pen and mouse are precise enough to not need a movement threshold check
+        this.activePointers.set(event.pointerId, { ...pos, mode: interactionMode, startX: pos.x, startY: pos.y, moved, event });
         if (this.activePointers.size === 1) {
             window.addEventListener('pointermove', this.nativePointerMove);
             window.addEventListener('pointerup', this.nativePointerUp);
+            window.addEventListener('pointercancel', this.nativePointerCancel);
         }
-        this.startDraw(event.pointerId);
+        if (moved) {
+            this.startDraw(event.pointerId);
+        }
     }
 
     async onPointerUp(event: PointerEvent) {
-        if (this.activePointers.has(event.pointerId) === false) return;
+        if (!this.activePointers.has(event.pointerId)) return;
         event.preventDefault();
         event.stopPropagation();
+        const pointer = this.activePointers.get(event.pointerId);
+        if (pointer && pointer.moved === false) {
+            // draw a dot if no movement
+            this.startDraw(event.pointerId);
+        }
         this.activePointers.delete(event.pointerId);
         if (this.activePointers.size === 0) {
             this.removeMoveAndUpListeners();
@@ -569,8 +598,16 @@ export class SvgCanvasOverlayComponent {
         unit.setModified();
     }
 
+    async onPointerCancel(event: PointerEvent) {
+        if (!this.activePointers.has(event.pointerId)) return;
+        this.activePointers.delete(event.pointerId);
+        if (this.activePointers.size === 0) {
+            this.removeMoveAndUpListeners();
+        }
+    }
+
     onPointerMove(event: PointerEvent) {
-        if (this.activePointers.has(event.pointerId) === false) return;
+        if (!this.activePointers.has(event.pointerId)) return;
         event.preventDefault();
         event.stopPropagation();
         const pos = this.getPointerPosition(event);
@@ -579,8 +616,22 @@ export class SvgCanvasOverlayComponent {
         if (!ctx) return;
         const fromPos = this.activePointers.get(event.pointerId);
         if (!fromPos) return;
-        this.draw(ctx, fromPos ?? pos, pos);
-        this.activePointers.set(event.pointerId, { x: pos.x, y: pos.y, mode: fromPos.mode });
+        if (fromPos.moved === false) {
+            // detect moved after threshold
+            const dx = pos.x - fromPos.startX;
+            const dy = pos.y - fromPos.startY;
+            const distSq = dx * dx + dy * dy;
+            const threshold = this.MOVE_THRESHOLD * this.INTERNAL_SCALE;
+            if (distSq >= (threshold*threshold)) {
+                fromPos.moved = true;
+                this.startDraw(event.pointerId);
+            }
+        }
+        if (fromPos.moved) {
+            this.draw(ctx, fromPos.mode, fromPos, pos);
+        }
+        const newPos = { ...fromPos, x: pos.x, y: pos.y };
+        this.activePointers.set(event.pointerId, newPos);
     }
 
     public async exportImageData(): Promise<Blob | null> {
