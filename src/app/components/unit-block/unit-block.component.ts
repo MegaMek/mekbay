@@ -4,13 +4,12 @@ import { ForceUnit } from '../../models/force-unit.model';
 import { Unit } from '../../models/units.model';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
-import { PilotStatsPipe } from '../../pipes/pilot-stats.pipe';
 import { OptionsService } from '../../services/options.service';
 
 @Component({
     selector: 'unit-block',
     standalone: true,
-    imports: [CommonModule, FormatNumberPipe, FormatTonsPipe, PilotStatsPipe],
+    imports: [CommonModule, FormatNumberPipe, FormatTonsPipe],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
     styleUrls: ['./unit-block.component.scss'],

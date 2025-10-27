@@ -61,7 +61,7 @@
                         <img src="/images/weight.svg" class="icon" alt="Tonnage">
                     </div>
                     <div class="info-slot numeric">
-                        <span class="value">{{ forceUnit() | pilotStats }}</span>
+                        <span class="value">{{ forceUnit()?.getPilotStats() }}</span>
                         <img src="/images/helmet.svg" class="icon" alt="Pilot">
                     </div>
                     <div *ngIf="unit()?.c3 !== 'None'" class="info-slot c3link"

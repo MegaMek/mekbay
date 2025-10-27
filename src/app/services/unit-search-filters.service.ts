@@ -254,7 +254,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: 'cbt' },
     { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: 'cbt' },
     { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN, game: 'cbt' },
-    { key: '_tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true, game: 'cbt' },
+    { key: '_tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
     { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
     { key: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'as' },
     { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: 'cbt' },

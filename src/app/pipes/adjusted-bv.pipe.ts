@@ -40,7 +40,7 @@ import { BVCalculatorUtil } from "../utils/bv-calculator.util";
  */
 @Pipe({
     name: 'adjustedBV',
-    pure: true
+    pure: true // Pure pipes are only called when the input changes
 })
 export class AdjustedBV implements PipeTransform {
 

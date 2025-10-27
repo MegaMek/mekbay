@@ -586,14 +586,17 @@ export class ForceUnit {
             this.setModified();
         }
     }
+
     getArmorPoints(loc: string, rear?: boolean): number {
         const locKey = rear ? `${loc}-rear` : loc;
         return this.locations?.armor.get(locKey)?.points || 0;
     }
+
     getArmorHits(loc: string, rear?: boolean): number {
         const locKey = rear ? `${loc}-rear` : loc;
         return this.state.locations()[locKey]?.armor || 0;
     }
+
     addArmorHits(loc: string, hits: number, rear?: boolean) {
         const locKey = rear ? `${loc}-rear` : loc;
         const locations = { ...this.state.locations() };
@@ -608,6 +611,7 @@ export class ForceUnit {
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
         this.setModified();
     }
+
     setArmorHits(loc: string, hits: number, rear?: boolean) {
         const locKey = rear ? `${loc}-rear` : loc;
         const locations = { ...this.state.locations() };
@@ -618,12 +622,15 @@ export class ForceUnit {
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
         this.setModified();
     }
+
     getInternalPoints(loc: string): number {
         return this.locations?.internal.get(loc)?.points || 0;
     }
+
     getInternalHits(loc: string): number {
         return this.state.locations()[loc]?.internal || 0;
     }
+
     addInternalHits(loc: string, hits: number) {
         const locations = { ...this.state.locations() };
         if (locations[loc] === undefined) {
@@ -636,6 +643,7 @@ export class ForceUnit {
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
         this.setModified();
     }
+
     setInternalHits(loc: string, hits: number) {
         const locations = { ...this.state.locations() };
         if (locations[loc] === undefined) {
@@ -645,17 +653,20 @@ export class ForceUnit {
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
         this.setModified();
     }
+
     isArmorLocDestroyed(loc: string, rear: boolean = false): boolean {
         const locKey = rear ? `${loc}-rear` : loc;
         if (!this.locations?.armor.has(locKey)) return false;
         const hits = this.getArmorHits(loc, rear);
         return hits >= this.getArmorPoints(loc, rear);
     }
+
     isInternalLocDestroyed(loc: string): boolean {
         if (!this.locations?.internal.has(loc)) return false;
         const hits = this.getInternalHits(loc);
         return hits >= this.getInternalPoints(loc);
     }
+
     getBv = computed<number>(() => {
         const adjustedBv = this.state.adjustedBv();
         if (adjustedBv !== null) {
@@ -663,17 +674,31 @@ export class ForceUnit {
         }
         return this.unit.bv;
     })
+
     getCrewMembers = this.state.crew;
+
+    public getPilotStats = computed<string>(() => {
+        const crew = this.state.crew();
+        if (crew.length === 0) return 'N/A';
+        const pilot = crew[0];
+        if (!pilot) return 'N/A';
+        return `${pilot.getSkill('gunnery')} / ${pilot.getSkill('piloting')}`;
+    });
+
     getCrewMember(crewId: number): CrewMember {
         return this.state.crew()[crewId];
     }
+
     setCrewMember(crewId: number, crewMember: CrewMember) {
-        const crew = [...this.state.crew()];
-        crew[crewId] = crewMember;
-        this.state.crew.set(crew);
+        this.state.crew.update(crew => {
+            const newCrew = [...crew];
+            newCrew[crewId] = crewMember;
+            return newCrew;
+        });
         this.recalculateBv();
         this.setModified();
     }
+
     recalculateBv() {
         const pilot = this.getCrewMember(0);
         let gunnery = pilot.getSkill('gunnery');
