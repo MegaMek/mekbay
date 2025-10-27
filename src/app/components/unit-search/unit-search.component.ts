@@ -57,6 +57,7 @@ import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { OptionsService } from '../../services/options.service';
+import { LongPressDirective } from '../../directives/long-press.directive';
 
 @Pipe({
     name: 'expandedComponents',
@@ -87,7 +88,7 @@ export class ExpandedComponentsPipe implements PipeTransform {
     selector: 'unit-search',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.css',
 })
@@ -152,7 +153,6 @@ export class UnitSearchComponent implements OnDestroy {
 
     private resizeObserver?: ResizeObserver;
     private tagSelectorOverlayRef?: OverlayRef;
-    private advPanelDragActive = false;
     private advPanelDragStartX = 0;
     private advPanelDragStartWidth = 0;
 
@@ -803,7 +803,6 @@ export class UnitSearchComponent implements OnDestroy {
         if (!this.advPanelDocked() || !this.expandedView()) return;
         event.preventDefault();
         event.stopPropagation();
-        this.advPanelDragActive = true;
         this.advPanelDragStartX = event.clientX;
         this.advPanelDragStartWidth = parseInt(this.advPanelStyle().width, 10) || 300;
 
@@ -816,7 +815,6 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     onAdvPanelDragMove = (event: PointerEvent) => {
-        if (!this.advPanelDragActive) return;
         const delta = event.clientX - this.advPanelDragStartX;
         const newWidth = this.advPanelDragStartWidth - delta;
         // Snap to 1 or 2 columns
@@ -828,7 +826,6 @@ export class UnitSearchComponent implements OnDestroy {
     };
 
     onAdvPanelDragEnd = (event: PointerEvent) => {
-        this.advPanelDragActive = false;
         try {
             (event.target as HTMLElement).releasePointerCapture(event.pointerId);
         } catch(e) { /* ignore */ }
@@ -837,10 +834,20 @@ export class UnitSearchComponent implements OnDestroy {
         window.removeEventListener('pointercancel', this.onAdvPanelDragEnd);
     };
 
+    multiSelectUnit(unit: Unit) {
+        const selected = new Set(this.selectedUnits());
+        if (selected.has(unit.name)) {
+            selected.delete(unit.name);
+        } else {
+            selected.add(unit.name);
+        }
+        this.selectedUnits.set(selected);
+    }
+
     // Multi-select logic: click with Ctrl/Cmd or Shift to select multiple units
-    onUnitCardClick(unit: Unit, event?: MouseEvent, forceMultiSelect = false) {
+    onUnitCardClick(unit: Unit, event?: MouseEvent) {
         const multiSelect = event ? (event.ctrlKey || event.metaKey || event.shiftKey) : false;
-        if (event && (multiSelect || forceMultiSelect)) {
+        if (event && multiSelect) {
             // Multi-select logic
             const selected = new Set(this.selectedUnits());
             if (selected.has(unit.name)) {

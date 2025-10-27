@@ -54,8 +54,11 @@
             <div class="results-dropdown-item unit-card"
                 *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
                 [class.active]="activeIndex() === i" [class.selected]="isUnitSelected(unit)"
-                (mouseenter)="activeIndex.set(i)" (click)="onUnitCardClick(unit, $event)"
-                (contextmenu)="onUnitCardClick(unit, $event, true); $event.preventDefault();">
+                (mouseenter)="activeIndex.set(i)" 
+                longPress
+                (shortPress)="onUnitCardClick(unit)" 
+                (longPress)="multiSelectUnit(unit)" 
+                >
 
                 @if (this.expandedView()) {
                 <ng-container *ngTemplateOutlet="expandedView; context: { unit: unit }"></ng-container>
@@ -202,7 +205,7 @@
 </div>
 
 @if (this.expandedView() && this.advPanelDocked()) {
-<div class="adv-panel-drag-handle" (pointerdown)="onAdvPanelDragStart($event)" (click)="$event.stopPropagation();"
+<div class="adv-panel-drag-handle" (pointerdown)="onAdvPanelDragStart($event)" (click)="$event.stopPropagation();" (contextmenu)="$event.stopPropagation()"
     [style.right.px]="this.advPanelUserColumns() === 2 ? 602 : 302" title="Drag to resize advanced filter panel" aria-label="Drag to resize advanced filter panel">
     <div class="drag-bar"></div>
 </div>
