@@ -140,7 +140,6 @@ export class ShareForceDialogComponent {
     toastService = inject(ToastService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
-    instanceId: string = '';
     shareUrl: string = '';
     cleanUrl: string = '';
 
@@ -153,8 +152,6 @@ export class ShareForceDialogComponent {
         const origin = window.location.origin || '';
         // We get the query Parameters from the force builder
         const queryParameters = this.forceBuilderService.queryParameters();
-
-        this.instanceId = queryParameters.instance || '';
 
         const instanceTree = this.router.createUrlTree([], {
             relativeTo: this.route,
