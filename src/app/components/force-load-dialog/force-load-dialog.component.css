@@ -156,13 +156,11 @@
     &.destroyed {
         background-image: repeating-linear-gradient(
             140deg,
-            #500 0px,
-            #500 12px,
-            #300 12px,
-            #300 24px
+            #500B 0px,
+            #500B 12px,
+            #300A 12px,
+            #300A 24px
         );
-        border-color: #d00;
-        opacity: 0.85;
     }
     
     .unit-icon {
