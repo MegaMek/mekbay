@@ -57,7 +57,7 @@ import { PickerComponent, PickerChoice, PickerValue } from '../picker/picker.int
                     [attr.data-title]="isSelected(choice) ? title() : null"
                     (mouseenter)="setHoveredChoice(choice)"
                     (mouseleave)="resetHovered()"
-                    (touchstart)="setHoveredChoice(choice)"
+                    (pointerdown)="setHoveredChoice(choice)"
                     (click)="handleChoiceClick($event, choice)">
                     {{ choice.label }}
                 </div>
@@ -311,8 +311,8 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
             window.addEventListener('pointerup', this.handleQuickClickPointerUp, { once: true, capture: true });
         }
 
+        window.addEventListener('pointermove', this.pointerMoveListener, { capture: true });
         window.addEventListener('pointerdown', this.handleOutsideClick, { capture: true });
-        window.addEventListener('touchmove', this.onTouchMove, { passive: false });
 
         this.pickerRef()?.nativeElement?.addEventListener('pointerdown', this.onPointerDownInside, { capture: true });
         this.pickerRef()?.nativeElement?.addEventListener('contextmenu', (event: MouseEvent) => {
@@ -327,8 +327,8 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         
         window.removeEventListener('pointerup', this.handleQuickClickPointerUp, true);
         window.removeEventListener('pointerup', this.pointerUpListener, true);
+        window.removeEventListener('pointermove', this.pointerMoveListener, true);
         window.removeEventListener('pointerdown', this.handleOutsideClick, true);
-        window.removeEventListener('touchmove', this.onTouchMove);
 
         this.pickerRef()?.nativeElement?.removeEventListener('pointerdown', this.onPointerDownInside, { capture: true });
     }
@@ -457,11 +457,9 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         }
     };
 
-    private readonly onTouchMove = (event: TouchEvent): void => {
-        const touch = event.touches[0];
-        if (!touch) return;
-        
-        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    
+    private readonly pointerMoveListener = (event: PointerEvent): void => {
+        const element = document.elementFromPoint(event.clientX, event.clientY);
         const cell = element?.closest('.value-cell') as HTMLElement | null;
         
         if (cell) {
@@ -477,4 +475,5 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
             this.resetHovered();
         }
     };
+
 }
