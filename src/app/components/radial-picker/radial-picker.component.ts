@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, AfterViewInit, OnDestroy, signal, computed, output, ChangeDetectionStrategy, viewChild } from '@angular/core';
+import { Component, ElementRef, signal, computed, output, ChangeDetectionStrategy, viewChild, effect, afterNextRender, inject, Injector } from '@angular/core';
 import { PickerChoice, PickerComponent, PickerValue } from '../picker/picker.interface';
 
 /*
@@ -51,7 +51,8 @@ const BEGIN_END_SECTOR_PADDING = 110;
     templateUrl: 'radial-picker.component.html',
     styleUrls: ['radial-picker.component.css']
 })
-export class RadialPickerComponent implements AfterViewInit, OnDestroy, PickerComponent {
+export class RadialPickerComponent implements PickerComponent {
+    private readonly injector = inject(Injector);
 
     // Input signals
     readonly interactionType = signal<'mouse' | 'touch'>('mouse');
@@ -117,6 +118,15 @@ export class RadialPickerComponent implements AfterViewInit, OnDestroy, PickerCo
     private readonly sectorPadding = 0;
     private longPressTimeout?: number;
     private pointerDownInside = false;
+
+    constructor() {
+        effect((cleanup) => {
+            afterNextRender(() => {
+                this.setupEventListeners();
+            }, { injector: this.injector });
+            cleanup(() => this.cleanupEventListeners());
+        })
+    }
 
     // Helper methods
     isSelected(choice: PickerChoice): boolean {
@@ -360,13 +370,8 @@ export class RadialPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         this.cancelled.emit();
     }
 
-    // Lifecycle hooks
-    ngAfterViewInit(): void {
-        this.setupEventListeners();
-    }
-
-    ngOnDestroy(): void {
-        this.cleanupEventListeners();
+    private noContextMenu(event: MouseEvent): void {
+        event.preventDefault();
     }
 
     private setupEventListeners(): void {
@@ -380,14 +385,14 @@ export class RadialPickerComponent implements AfterViewInit, OnDestroy, PickerCo
             window.addEventListener('pointerup', this.handleQuickClickPointerUp, { once: true, capture: true });
         }
 
-        window.addEventListener('mousedown', this.handleOutsideClick, { capture: true });
-        window.addEventListener('touchmove', this.onTouchMove, { passive: false });
-
-        const nativeElement = this.pickerRef().nativeElement;
-        nativeElement.addEventListener('pointerdown', this.onPointerDownInside, { capture: true });
-        nativeElement.addEventListener('contextmenu', (event: MouseEvent) => {
-            event.preventDefault();
-        });
+        window.addEventListener('pointerdown', this.handleOutsideClick, { capture: true });
+        window.addEventListener('pointermove', this.onPointerMove, { passive: false });
+        
+        const el = this.pickerRef().nativeElement;
+        if (el) {
+            el.addEventListener('pointerdown', this.onPointerDownInside, { capture: true });
+            el.addEventListener('contextmenu', this.noContextMenu);
+        }
     }
 
     private cleanupEventListeners(): void {
@@ -397,14 +402,19 @@ export class RadialPickerComponent implements AfterViewInit, OnDestroy, PickerCo
 
         window.removeEventListener('pointerup', this.handleQuickClickPointerUp, true);
         window.removeEventListener('pointerup', this.pointerUpListener, true);
-        window.removeEventListener('mousedown', this.handleOutsideClick, true);
-        window.removeEventListener('touchmove', this.onTouchMove);
+        window.removeEventListener('pointerdown', this.handleOutsideClick, true);
+        window.removeEventListener('pointermove', this.onPointerMove);
 
-        this.pickerRef().nativeElement?.removeEventListener('pointerdown', this.onPointerDownInside, { capture: true });
+        const el = this.pickerRef().nativeElement;
+        if (el) {
+            el.removeEventListener('pointerdown', this.onPointerDownInside, { capture: true });
+            el.removeEventListener('contextmenu', this.noContextMenu);
+        }
     }
 
-    private readonly onPointerDownInside = (): void => {
+    private readonly onPointerDownInside = (event: PointerEvent): void => {
         this.pointerDownInside = true;
+        event.stopPropagation();
     };
 
     private readonly handleQuickClickPointerUp = (event: PointerEvent): void => {
@@ -424,18 +434,15 @@ export class RadialPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         this.pick(hoveredChoice.value);
     };
 
-    private readonly handleOutsideClick = (ev: MouseEvent): void => {
-        const target = ev.target as HTMLElement;
+    private readonly handleOutsideClick = (event: PointerEvent): void => {
+        const target = event.target as HTMLElement;
         if (!target?.closest('.radial-picker-container') || target?.classList.contains('radial-inner-circle')) {
             this.cancel();
         }
     };
 
-    private readonly onTouchMove = (event: TouchEvent): void => {
-        const touch = event.touches[0];
-        if (!touch) return;
-
-        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    private readonly onPointerMove = (event: PointerEvent): void => {
+        const element = document.elementFromPoint(event.clientX, event.clientY);
         const sector = element?.closest('.radial-sector') as HTMLElement | null;
 
         if (sector) {

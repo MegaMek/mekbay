@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, AfterViewInit, OnDestroy, signal, output, computed, DestroyRef, inject, ChangeDetectionStrategy, viewChild } from '@angular/core';
+import { Component, ElementRef, signal, output, computed, inject, Injector, ChangeDetectionStrategy, viewChild, afterNextRender, effect } from '@angular/core';
 import { PickerComponent, PickerChoice, PickerValue } from '../picker/picker.interface';
 
 /*
@@ -55,8 +55,8 @@ import { PickerComponent, PickerChoice, PickerValue } from '../picker/picker.int
                     [class.highlight]="isHovered(choice) && !choice.disabled"
                     [class.disabled]="choice.disabled"
                     [attr.data-title]="isSelected(choice) ? title() : null"
-                    (mouseenter)="setHoveredChoice(choice)"
-                    (mouseleave)="resetHovered()"
+                    (pointerenter)="setHoveredChoice(choice)"
+                    (pointerleave)="resetHovered()"
                     (pointerdown)="setHoveredChoice(choice)"
                     (click)="handleChoiceClick($event, choice)">
                     {{ choice.label }}
@@ -220,8 +220,8 @@ import { PickerComponent, PickerChoice, PickerValue } from '../picker/picker.int
     }
 `]
 })
-export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerComponent {
-    private readonly destroyRef = inject(DestroyRef);
+export class LinearPickerComponent implements PickerComponent {
+    private readonly injector = inject(Injector);
 
     // Input signals
     readonly interactionType = signal<'mouse' | 'touch'>('mouse');
@@ -249,6 +249,23 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
     // Private properties
     private longPressTimeout?: number;
     private pointerDownInside = false;
+
+    constructor() {
+        effect((cleanup) => {
+            afterNextRender(() => {
+                this.setupEventListeners();
+                requestAnimationFrame(() => {
+                    if (this.pickerRef()?.nativeElement) {
+                        this.centerSelectedCell();
+                    }
+                });
+            }, { injector: this.injector });
+
+            cleanup(() => {
+                this.cleanupEventListeners();
+            });
+        });
+    }
 
     // Helper methods
     isSelected(choice: PickerChoice): boolean {
@@ -287,18 +304,8 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         this.cancelled.emit();
     }
 
-    // Lifecycle hooks
-    ngAfterViewInit(): void {
-        requestAnimationFrame(() => {
-            if (this.pickerRef()?.nativeElement) {
-                this.centerSelectedCell();
-            }
-        });
-        this.setupEventListeners();
-    }
-
-    ngOnDestroy(): void {
-        this.cleanupEventListeners();
+    private noContextMenu(event: MouseEvent): void {
+        event.preventDefault();
     }
 
     private setupEventListeners(): void {
@@ -314,10 +321,11 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         window.addEventListener('pointermove', this.pointerMoveListener, { capture: true });
         window.addEventListener('pointerdown', this.handleOutsideClick, { capture: true });
 
-        this.pickerRef()?.nativeElement?.addEventListener('pointerdown', this.onPointerDownInside, { capture: true });
-        this.pickerRef()?.nativeElement?.addEventListener('contextmenu', (event: MouseEvent) => {
-            event.preventDefault();
-        });
+        const el = this.pickerRef()?.nativeElement;
+        if (el) {
+            el.addEventListener('pointerdown', this.onPointerDownInside, { capture: true });
+            el.addEventListener('contextmenu', this.noContextMenu);
+        }
     }
 
     private cleanupEventListeners(): void {
@@ -330,7 +338,11 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         window.removeEventListener('pointermove', this.pointerMoveListener, true);
         window.removeEventListener('pointerdown', this.handleOutsideClick, true);
 
-        this.pickerRef()?.nativeElement?.removeEventListener('pointerdown', this.onPointerDownInside, { capture: true });
+        const el = this.pickerRef()?.nativeElement;
+        if (el) {
+            el.removeEventListener('pointerdown', this.onPointerDownInside, { capture: true });
+            el.removeEventListener('contextmenu', this.noContextMenu);
+        }
     }
 
     private centerSelectedCell(): void {
@@ -450,8 +462,8 @@ export class LinearPickerComponent implements AfterViewInit, OnDestroy, PickerCo
         this.pick(hoveredChoice.value);
     };
 
-    private readonly handleOutsideClick = (ev: MouseEvent): void => {
-        const target = ev.target as HTMLElement;
+    private readonly handleOutsideClick = (event: PointerEvent): void => {
+        const target = event.target as HTMLElement;
         if (!target?.closest('.linear-picker')) {
             this.cancel();
         }
