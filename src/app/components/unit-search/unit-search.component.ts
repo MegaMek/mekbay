@@ -799,28 +799,23 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     /* Adv Panel Dragging */
-    onAdvPanelDragHandleClick(event: MouseEvent) {
+    onAdvPanelDragStart(event: PointerEvent) {
+        if (!this.advPanelDocked() || !this.expandedView()) return;
+        event.preventDefault();
         event.stopPropagation();
-        event.preventDefault();
-        if (!this.advPanelDocked() || !this.expandedView()) return;
-        // Toggle between 1 and 2 columns
-        const current = this.advPanelUserColumns() || 1;
-        const next = current === 1 ? 2 : 1;
-        this.advPanelUserColumns.set(next);
-    }
-
-    onAdvPanelDragStart(event: MouseEvent) {
-        if (!this.advPanelDocked() || !this.expandedView()) return;
-        event.preventDefault();
         this.advPanelDragActive = true;
         this.advPanelDragStartX = event.clientX;
         this.advPanelDragStartWidth = parseInt(this.advPanelStyle().width, 10) || 300;
 
-        window.addEventListener('mousemove', this.onAdvPanelDragMove);
-        window.addEventListener('mouseup', this.onAdvPanelDragEnd);
+        window.addEventListener('pointermove', this.onAdvPanelDragMove);
+        window.addEventListener('pointerup', this.onAdvPanelDragEnd);
+        window.addEventListener('pointercancel', this.onAdvPanelDragEnd);
+        try {
+            (event.target as HTMLElement).setPointerCapture(event.pointerId);
+        } catch(e) { /* ignore */ }
     }
 
-    onAdvPanelDragMove = (event: MouseEvent) => {
+    onAdvPanelDragMove = (event: PointerEvent) => {
         if (!this.advPanelDragActive) return;
         const delta = event.clientX - this.advPanelDragStartX;
         const newWidth = this.advPanelDragStartWidth - delta;
@@ -832,10 +827,14 @@ export class UnitSearchComponent implements OnDestroy {
         }
     };
 
-    onAdvPanelDragEnd = () => {
+    onAdvPanelDragEnd = (event: PointerEvent) => {
         this.advPanelDragActive = false;
-        window.removeEventListener('mousemove', this.onAdvPanelDragMove);
-        window.removeEventListener('mouseup', this.onAdvPanelDragEnd);
+        try {
+            (event.target as HTMLElement).releasePointerCapture(event.pointerId);
+        } catch(e) { /* ignore */ }
+        window.removeEventListener('pointermove', this.onAdvPanelDragMove);
+        window.removeEventListener('pointerup', this.onAdvPanelDragEnd);
+        window.removeEventListener('pointercancel', this.onAdvPanelDragEnd);
     };
 
     // Multi-select logic: click with Ctrl/Cmd or Shift to select multiple units

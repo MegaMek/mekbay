@@ -84,20 +84,21 @@
 }
 
 .adv-panel-drag-handle {
-    position: absolute;
-    left: 0;
-    top: 0;
+    position: fixed;
+    top: 50%;
+    height: 40px;
+    right: 302px;
     width: 8px;
-    height: 100%;
+    transform: translateY(-50%);
     cursor: ew-resize;
-    z-index: 20;
+    z-index: 40;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .adv-panel-drag-handle .drag-bar {
-    width: 4px;
+    width: 8px;
     height: 40px;
     background: var(--text-color-secondary);
     border-radius: 2px;

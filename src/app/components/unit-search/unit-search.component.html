@@ -201,14 +201,14 @@
     </div>
 </div>
 
+@if (this.expandedView() && this.advPanelDocked()) {
+<div class="adv-panel-drag-handle" (pointerdown)="onAdvPanelDragStart($event)" (click)="$event.stopPropagation();"
+    [style.right.px]="this.advPanelUserColumns() === 2 ? 602 : 302" title="Drag to resize advanced filter panel" aria-label="Drag to resize advanced filter panel">
+    <div class="drag-bar"></div>
+</div>
+}
 <div #advPanel class="adv-panel framed-borders" [hidden]="!advOpen()" [ngStyle]="advPanelStyle()"
     [class.docked]="advPanelDocked()">
-    @if (this.expandedView() && this.advPanelDocked()) {
-    <div class="adv-panel-drag-handle" (mousedown)="onAdvPanelDragStart($event)"
-        (click)="onAdvPanelDragHandleClick($event)">
-        <div class="drag-bar"></div>
-    </div>
-    }
     <div class="adv-panel-header" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         <div class="pilot-skills-section framed-borders">
             <div class="pilot-skills-controls">
