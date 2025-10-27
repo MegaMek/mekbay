@@ -166,9 +166,6 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             );
         }
 
-        // Setup zoom and pan event listeners
-        this.zoomPanService.setupEventListeners(this.containerRef().nativeElement);
-
         // Monitor picker open state
         effect(() => {
             const pickerOpen = this.interactionService.isAnyPickerOpen();

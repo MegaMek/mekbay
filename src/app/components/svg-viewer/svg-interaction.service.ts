@@ -197,35 +197,38 @@ export class SvgInteractionService {
     }
 
     private addSvgTapHandler(
-        el: Element,
-        handler: (evt: Event, primaryAction: boolean) => void,
+        el: SVGElement,
+        handler: (evt: PointerEvent, primaryAction: boolean) => void,
         signal: AbortSignal
     ) {
         let longTouchTimer: any = null;
         el.classList.add('interactive');
         const eventOptions = { passive: false, signal };
 
-        el.addEventListener('pointerdown', (evt: Event) => {
-            evt.stopPropagation();
+        let pointerId: number | null = null;
+
+        el.addEventListener('pointerdown', (evt: PointerEvent) => {
             evt.preventDefault();
-            const pEvt = evt as PointerEvent;
-            this.state.interactionMode.set(pEvt.pointerType === 'mouse' ? 'mouse' : 'touch');
-            this.state.clickTarget = el as SVGElement;
+            this.state.interactionMode.set(evt.pointerType === 'mouse' ? 'mouse' : 'touch');
+            this.state.clickTarget = el;
             this.zoomPanService.pointerMoved = false;
             clearLongTouch();
             longTouchTimer = setTimeout(() => {
                 upHandlerSecondary(evt);
             }, 300);
+            pointerId = evt.pointerId;
         }, eventOptions);
 
         const clearLongTouch = () => {
+            pointerId = null;
             if (longTouchTimer) {
                 clearTimeout(longTouchTimer);
                 longTouchTimer = null;
             }
         };
 
-        const upHandlerSecondary = (evt: Event) => {
+        const upHandlerSecondary = (evt: PointerEvent) => {
+            if (evt.pointerId !== pointerId) return;
             clearLongTouch();
             evt.stopPropagation();
             evt.preventDefault();
@@ -235,25 +238,21 @@ export class SvgInteractionService {
             this.state.clickTarget = null;
         };
 
-        const upHandler = (evt: Event) => {
+        const upHandler = (evt: PointerEvent) => {
+            if (evt.pointerId !== pointerId) return;
             clearLongTouch();
             evt.stopPropagation();
             evt.preventDefault();
             if (this.state.clickTarget && !this.zoomPanService.pointerMoved) {
                 let isLeftClick = true;
-                if (evt instanceof PointerEvent) {
-                    isLeftClick = evt.button === 0;
-                } else if (evt instanceof MouseEvent) {
-                    isLeftClick = evt.button === 0;
-                }
+                isLeftClick = evt.button === 0;
                 handler(evt, isLeftClick);
             }
             this.state.clickTarget = null;
         };
 
-        el.addEventListener('pointerleave', clearLongTouch, eventOptions);
+        el.addEventListener('pointercancel', clearLongTouch, eventOptions);
         el.addEventListener('pointerup', upHandler, eventOptions);
-        el.addEventListener('touchend', upHandler, eventOptions);
     }
 
     private setupPipInteractions(svg: SVGSVGElement, signal: AbortSignal) {
@@ -290,10 +289,11 @@ export class SvgInteractionService {
             this.toastService.show(`${amountText} hits (${remaining}/${totalTroops})`, 'info', toastId);
         };
         svg.querySelectorAll('.soldierPip').forEach(el => {
+            const svgEl = el as SVGElement;
 
-            this.addSvgTapHandler(el, (evt: Event, primaryAction: boolean) => {
-                if (this.state.clickTarget !== el) return;
-                const soldierId = el.getAttribute('soldier-id') as number | null;
+            this.addSvgTapHandler(svgEl, (evt: Event, primaryAction: boolean) => {
+                if (this.state.clickTarget !== svgEl) return;
+                const soldierId = svgEl.getAttribute('soldier-id') as number | null;
                 if (!soldierId) return;
                 const newHealth = totalTroops - (soldierId - 1);
                 const deltaChange = newHealth - getHits();
@@ -357,10 +357,9 @@ export class SvgInteractionService {
                 this.toastService.show(`${amountText} ${rear ? ' rear' : ''} ${location} hits in ${loc} (${remaining}/${totalPips})`, 'info', armorToastId);
             };
 
-            const createAndShowPicker = (event: Event) => {
-                const x = (event instanceof MouseEvent) ? event.clientX : (event instanceof TouchEvent) ? event.touches[0].clientX : 0;
-                const y = (event instanceof MouseEvent) ? event.clientY : (event instanceof TouchEvent) ? event.touches[0].clientY : 0;
-
+            const createAndShowPicker = (event: PointerEvent) => {
+                const x = event.clientX;
+                const y = event.clientY;
                 
                 if (!isStructure && !isShield) {
                     // We recalculate modular armor status, in case we added/removed some crits (destroyed or repaired)
@@ -468,7 +467,7 @@ export class SvgInteractionService {
                 });
             }
 
-            this.addSvgTapHandler(svgEl, (event: Event, primaryAction: boolean) => {
+            this.addSvgTapHandler(svgEl, (event: PointerEvent, primaryAction: boolean) => {
                 createAndShowPicker(event);
             }, signal);
         });
@@ -476,9 +475,10 @@ export class SvgInteractionService {
 
     private setupCritLocInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         svg.querySelectorAll('.critLoc').forEach(el => {
-            this.addSvgTapHandler(el, (evt: Event, primaryAction: boolean) => {
-                if (this.state.clickTarget !== el) return;
-                const id = el.getAttribute('id');
+            const svgEl = el as SVGElement;
+            this.addSvgTapHandler(svgEl, (evt: Event, primaryAction: boolean) => {
+                if (this.state.clickTarget !== svgEl) return;
+                const id = svgEl.getAttribute('id');
                 if (!id) return;
                 let critLoc = this.unit()?.getCritLoc(id);
                 if (!critLoc) return;
@@ -819,11 +819,8 @@ export class SvgInteractionService {
         let heatScale: SVGElement | null = svg.getElementById('heatScale') as SVGGElement | null;
         if (!heatScale) return;
 
-        let globalTouchMoveHandler: ((evt: Event) => void) | null = null;
-        let globalPointerMoveHandler: ((evt: Event) => void) | null = null;
-        let globalPointerUpHandler: (() => void) | null = null;
-        let globalTouchEndHandler: (() => void) | null = null;
-        let globalPointerLeaveHandler: (() => void) | null = null;
+        // Track active pointers locally to detect multi-touch and abort heat drag if needed
+        let activePointer: number | null = null;
 
         const findClosestHeat = (clientY: number): SVGElement | null => {
             let closestHeat: SVGElement | null = null;
@@ -840,106 +837,68 @@ export class SvgInteractionService {
             return closestHeat;
         };
 
-        const registerGlobalHandlers = (interactionType: 'touch' | 'mouse') => {
+        let localAbortSignal: AbortController | null = null;
+
+        const registerEventListenersHeatScale = (el: Element) => {
             // Unregister any existing handlers first
-            unregisterGlobalHandlers();
+            if (localAbortSignal) {
+                localAbortSignal.abort();
+            }
+            localAbortSignal = new AbortController();
 
-            if (interactionType === 'touch') {
-                globalTouchMoveHandler = (evt: Event) => {
-                    if (!this.state.isHeatDragging) return;
-                    const touchEvt = evt as TouchEvent;
-
-                    // If pinch detected (2 or more touches), cancel drag and reset heat
-                    if (touchEvt.touches.length > 1) {
-                        endHeatDrag();
-                        return;
-                    }
-
-                    evt.stopPropagation();
-                    this.zoomPanService.isPanning = false;
-                    const touchY = touchEvt.touches[0].clientY;
-
-                    const closestHeat = findClosestHeat(touchY);
-                    if (closestHeat) {
-                        this.state.clickTarget = closestHeat;
-                        const heatValue = Number(closestHeat.getAttribute('heat'));
-                        this.state.heatMarkerData.set({
-                            el: this.state.clickTarget,
-                            heat: heatValue
-                        });
-                    }
-                };
-
-                globalTouchEndHandler = () => {
-                    completeHeatDrag();
-                };
-
-                svg.addEventListener('touchmove', globalTouchMoveHandler, { passive: false, signal });
-                svg.addEventListener('touchend', globalTouchEndHandler, { passive: false, signal });
-            } else {
-                globalPointerMoveHandler = (evt: Event) => {
-                    if (!this.state.isHeatDragging) return;
-                    const pointerEvt = evt as PointerEvent;
-
-                    // Only handle mouse events
-                    if (pointerEvt.pointerType !== 'mouse') return;
-
-                    evt.stopPropagation();
-                    this.zoomPanService.isPanning = false;
-                    const mouseY = pointerEvt.clientY;
-
-                    const closestHeat = findClosestHeat(mouseY);
-                    if (closestHeat) {
-                        this.state.clickTarget = closestHeat;
-                        const heatValue = Number(closestHeat.getAttribute('heat'));
-                        this.state.heatMarkerData.set({
-                            el: this.state.clickTarget,
-                            heat: heatValue
-                        });
-                    }
-                };
-
-                globalPointerUpHandler = () => {
-                    completeHeatDrag();
-                };
-
-                globalPointerLeaveHandler = () => {
+            // Pointerdown to track active pointers (needed to detect multi-touch)
+            const onPointerDown = (evt: PointerEvent) => {
+                if (activePointer !== evt.pointerId) {
                     endHeatDrag();
-                };
+                    return;
+                }
+                activePointer = evt.pointerId;
+            };
 
-                svg.addEventListener('pointermove', globalPointerMoveHandler, { passive: false, signal });
-                svg.addEventListener('pointerup', globalPointerUpHandler, { passive: false, signal });
-                svg.addEventListener('pointerleave', globalPointerLeaveHandler, { passive: false, signal });
-            }
-        };
+            const onPointerMove = (evt: PointerEvent) => {
+                if (!this.state.isHeatDragging) return;
 
-        const unregisterGlobalHandlers = () => {
-            if (globalTouchMoveHandler) {
-                svg.removeEventListener('touchmove', globalTouchMoveHandler);
-                globalTouchMoveHandler = null;
-            }
-            if (globalTouchEndHandler) {
-                svg.removeEventListener('touchend', globalTouchEndHandler);
-                globalTouchEndHandler = null;
-            }
-            if (globalPointerMoveHandler) {
-                svg.removeEventListener('pointermove', globalPointerMoveHandler);
-                globalPointerMoveHandler = null;
-            }
-            if (globalPointerUpHandler) {
-                svg.removeEventListener('pointerup', globalPointerUpHandler);
-                globalPointerUpHandler = null;
-            }
-            if (globalPointerLeaveHandler) {
-                svg.removeEventListener('pointerleave', globalPointerLeaveHandler);
-                globalPointerLeaveHandler = null;
-            }
+                // Wrong pointer, we autofail
+                if (activePointer !== evt.pointerId) {
+                    endHeatDrag();
+                    return;
+                }
+
+                evt.stopPropagation();
+                this.zoomPanService.isPanning = false;
+                const clientY = evt.clientY;
+
+                const closestHeat = findClosestHeat(clientY);
+                if (closestHeat) {
+                    this.state.clickTarget = closestHeat;
+                    const heatValue = Number(closestHeat.getAttribute('heat'));
+                    this.state.heatMarkerData.set({
+                        el: this.state.clickTarget,
+                        heat: heatValue
+                    });
+                }
+            };
+
+            const onPointerCancel = (e: Event) => {
+                endHeatDrag();
+            };
+
+            const onPointerUp = (e: Event) => {
+                e.stopPropagation();
+                completeHeatDrag();
+            };
+
+            svg.addEventListener('pointerdown', onPointerDown, { passive: false, signal: localAbortSignal.signal });
+            svg.addEventListener('pointermove', onPointerMove, { passive: false, signal: localAbortSignal.signal });
+            el.addEventListener('pointerup', onPointerUp, { passive: false, signal: localAbortSignal.signal });
+            el.addEventListener('pointercancel', onPointerCancel, { passive: false, signal: localAbortSignal.signal });
         };
 
         const endHeatDrag = () => {
             this.state.isHeatDragging = false;
             this.state.heatMarkerData.set(null);
-            unregisterGlobalHandlers();
+            activePointer = null;
+            localAbortSignal?.abort();
         };
 
         const completeHeatDrag = () => {
@@ -951,8 +910,6 @@ export class SvgInteractionService {
         const overflowFrame = svg.querySelector('#heatScale .overflowFrame');
         const overflowButton = svg.querySelector('#heatScale .overflowButton');
         if (overflowFrame && overflowButton) {
-            (overflowButton as SVGElement).style.cursor = 'pointer';
-
             const promptHeatOverflow = async (evt: Event) => {
                 if (!this.unit()) return;
                 const ref = this.dialog.open<number | null>(InputDialogComponent, {
@@ -977,7 +934,7 @@ export class SvgInteractionService {
 
             el.addEventListener('pointerdown', (evt: Event) => {
                 if (this.unit() === null) return;
-                evt.stopPropagation();
+                evt.preventDefault();
                 const pEvt = evt as PointerEvent;
                 const interactionType = pEvt.pointerType === 'mouse' ? 'mouse' : 'touch';
                 this.state.interactionMode.set(interactionType);
@@ -991,44 +948,25 @@ export class SvgInteractionService {
                     el: this.state.clickTarget,
                     heat: heatValue
                 });
+                activePointer = pEvt.pointerId;
 
-                // Register global handlers for this interaction type
-                registerGlobalHandlers(interactionType);
+                registerEventListenersHeatScale(el);
+                try {
+                    el.setPointerCapture(pEvt.pointerId);
+                } catch (e) { /* Ignore */ }
             }, { passive: false, signal });
-
-            el.addEventListener('touchstart', (evt: Event) => {
-                if (this.unit() === null) return;
-                evt.stopPropagation();
-                this.zoomPanService.isPanning = false;
-            }, { passive: false, signal });
-
-            // Remove individual element handlers since we're using global ones
-            const handleUp = (evt: Event) => {
-                evt.stopPropagation();
-                completeHeatDrag();
-            };
-
-            el.addEventListener('pointerup', handleUp, { passive: false, signal });
-            el.addEventListener('touchend', handleUp, { passive: false, signal });
         });
-
-        // Store cleanup function for when component is destroyed
-        const originalCleanup = this.cleanup.bind(this);
-        this.cleanup = () => {
-            unregisterGlobalHandlers();
-            originalCleanup();
-        };
     }
 
     private setupCrewHitInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         svg.querySelectorAll('.crewHit').forEach(el => {
-            this.addSvgTapHandler(el, () => {
-                if (this.state.clickTarget !== el) return;
-                const svgElement = el as SVGElement;
+            const svgEl = el as SVGElement;
+            this.addSvgTapHandler(svgEl, () => {
+                if (this.state.clickTarget !== svgEl) return;
                 const unit = this.unit();
                 if (!unit) return;
-                const crewId = parseInt(svgElement.getAttribute('crewId') || '0');
-                const hitValue = parseInt(svgElement.getAttribute('hit') || '0');
+                const crewId = parseInt(svgEl.getAttribute('crewId') || '0');
+                const hitValue = parseInt(svgEl.getAttribute('hit') || '0');
                 const member = unit.getCrewMember(crewId);
                 const currentHits = member.getHits();
                 if (currentHits > hitValue) {
@@ -1091,9 +1029,10 @@ export class SvgInteractionService {
 
     private setupCrewNameInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         svg.querySelectorAll('.crewNameButton').forEach(el => {
-            this.addSvgTapHandler(el, (evt: Event, primaryAction: boolean) => {
-                if (this.state.clickTarget !== el) return;
-                const crewId = Number(el.getAttribute('crew') || 0);
+            const svgEl = el as SVGElement;
+            this.addSvgTapHandler(svgEl, (evt: Event, primaryAction: boolean) => {
+                if (this.state.clickTarget !== svgEl) return;
+                const crewId = Number(svgEl.getAttribute('crew') || 0);
                 this.editCrewName(crewId);
             }, signal);
         });
@@ -1312,14 +1251,14 @@ export class SvgInteractionService {
             instance.beginEndPadding.set(0);
             instance.useCurvedText.set(true);
             instance.innerRadius.set(40);
-            const x = this.getEventX(opts.event, rect);
-            const y = this.getEventY(opts.event, rect);
+            const x = opts.event.clientX;
+            const y = opts.event.clientY;
             instance.position.set({ x: opts.position?.x ?? x, y: opts.position?.y ?? y });
         } else if (opts.targetType === 'armor') {
             instance.beginEndPadding.set(50);
             instance.innerRadius.set(50);
-            const x = this.getEventX(opts.event, rect);
-            const y = this.getEventY(opts.event, rect);
+            const x = opts.event.clientX;
+            const y = opts.event.clientY;
             instance.position.set({ x: opts.position?.x ?? x, y: opts.position?.y ?? y });
         } else {
             const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
@@ -1336,18 +1275,6 @@ export class SvgInteractionService {
         return compRef;
     }
 
-    private getEventX(event: Event, rect: DOMRect): number {
-        if (event instanceof MouseEvent) return event.clientX;
-        if (event instanceof TouchEvent) return event.touches[0].clientX;
-        return rect.left + rect.width / 2;
-    }
-
-    private getEventY(event: Event, rect: DOMRect): number {
-        if (event instanceof MouseEvent) return event.clientY;
-        if (event instanceof TouchEvent) return event.touches[0].clientY;
-        return rect.top + rect.height / 2;
-    }
-
     public removePicker() {
         if (this.pickerRef) {
             this.pickerRef.destroy();
@@ -1362,7 +1289,7 @@ export class SvgInteractionService {
     }
     
     isAnyPickerOpen(): boolean {
-        return this.state.isPickerOpen();
+        return this.state.isPickerOpen() || (this.state.heatMarkerData() !== null);
     }
 
     private async editCrewName(crewId: number) {

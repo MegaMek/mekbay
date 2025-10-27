@@ -62,9 +62,6 @@ interface BrushLocation {
     <div #canvasOverlay class="svg-canvas-overlay" [class.active]="mode() !== 'none'">
         <div #canvasContainer class="drawing-canvas"
             [ngStyle]="canvasTransformStyle()"
-            (touchstart)="bubbleInterceptor($event)"
-            (touchend)="bubbleInterceptor($event)"
-            (touchmove)="bubbleInterceptor($event)"
         >
             <canvas #canvas [width]="canvasWidth()" [height]="canvasHeight()"></canvas>
         </div>
@@ -75,9 +72,6 @@ interface BrushLocation {
         (pointermove)="$event.stopPropagation()"
         (click)="$event.stopPropagation()"
         (dblclick)="$event.stopPropagation()"
-        (touchstart)="$event.stopPropagation()"
-        (touchend)="$event.stopPropagation()"
-        (touchmove)="$event.stopPropagation()"
     >
       <button class="fab main-fab"  
         [ngStyle]="mainFabStyle()"
@@ -117,9 +111,6 @@ interface BrushLocation {
             (pointermove)="$event.stopPropagation()"
             (click)="$event.stopPropagation()"
             (dblclick)="$event.stopPropagation()"
-            (touchstart)="$event.stopPropagation()"
-            (touchend)="$event.stopPropagation()"
-            (touchmove)="$event.stopPropagation()"
             (contextmenu)="$event.stopPropagation()"
           />
           <span class="line-width-value">{{ strokeSize() }}</span>
@@ -335,6 +326,7 @@ export class SvgCanvasOverlayComponent {
     height = input(200);
 
     activePointers = new Map<number, BrushLocation>();
+    primaryPointerId: number | null = null;
     
     lastReducedIndex = 0;
     unit = input<ForceUnit | null>(null);
@@ -407,7 +399,7 @@ export class SvgCanvasOverlayComponent {
             if (container) {
                 container.removeEventListener('pointerdown', this.nativePointerDown);
             }
-            this.removeMoveAndUpListeners();
+            this.removeEventListeners();
         });
     }
 
@@ -417,7 +409,7 @@ export class SvgCanvasOverlayComponent {
             container.addEventListener('pointerdown', this.nativePointerDown);
         }
     }
-    removeMoveAndUpListeners() {
+    removeEventListeners() {
         window.removeEventListener('pointermove', this.nativePointerMove);
         window.removeEventListener('pointerup', this.nativePointerUp);
         window.removeEventListener('pointercancel', this.nativePointerCancel);
@@ -545,19 +537,60 @@ export class SvgCanvasOverlayComponent {
     onPointerDown(event: PointerEvent) {
         const mode = this.mode();
         if (mode === 'none') return;
-        event.preventDefault();
-        event.stopPropagation();
         const inputFilter = this.optionsService.options().canvasInput;
         if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
         if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
-        if (!this.MULTITOUCH && this.activePointers.size > 0) { // single pointer mode
+        // single pointer mode handling: if there's already a primary pointer that hasn't moved
+        // and the incoming pointer has the same pointerType, propagate the saved primary
+        // pointerdown event (which was previously prevented/stopped) and then ignore this new pointer.
+        // The idea is to drop the current drawing and switch to a zoom/pan interaction instead if I see 2 fingers without the first having had a movement.
+        if (!this.MULTITOUCH && this.activePointers.size > 0) {
+            const primaryId = this.primaryPointerId;
+            const primary = primaryId !== null ? this.activePointers.get(primaryId) : undefined;
+            if (primary && primary.moved === false && primary.event && primary.event.pointerType === event.pointerType) {
+                try {
+                    const orig = primary.event as PointerEvent;
+                    const cloned = new PointerEvent(orig.type, {
+                        bubbles: true,
+                        cancelable: true,
+                        pointerId: orig.pointerId,
+                        pointerType: orig.pointerType,
+                        clientX: orig.clientX,
+                        clientY: orig.clientY,
+                        button: orig.button,
+                        buttons: orig.buttons,
+                        pressure: orig.pressure,
+                        tiltX: (orig as any).tiltX ?? 0,
+                        tiltY: (orig as any).tiltY ?? 0,
+                        isPrimary: orig.isPrimary,
+                        ctrlKey: orig.ctrlKey,
+                        altKey: orig.altKey,
+                        shiftKey: orig.shiftKey,
+                        metaKey: orig.metaKey,
+                    });
+                    const target = (orig.target as EventTarget) || this.canvasContainer().nativeElement;
+                    target.dispatchEvent(cloned);
+                } catch (err) {
+                    // fall through silently if re-dispatch fails
+                    console.error('Failed to re-dispatch primary pointer event', err);
+                }
+                this.activePointers.clear();
+                this.primaryPointerId = null;
+                this.removeEventListeners();
+                return;
+            }
             return;
         };
         const pos = this.getPointerPosition(event);
         if (!pos) return;
+        event.stopPropagation();
+        event.preventDefault();
         const interactionMode = this.isEraseButton(event.button) ? 'eraser' : this.mode() === 'brush' ? 'brush' : 'eraser';
         const moved = event.pointerType !== 'touch'; // pen and mouse are precise enough to not need a movement threshold check
         this.activePointers.set(event.pointerId, { ...pos, mode: interactionMode, startX: pos.x, startY: pos.y, moved, event });
+        if (this.activePointers.size === 1) {
+            this.primaryPointerId = event.pointerId;
+        }
         if (this.activePointers.size === 1) {
             window.addEventListener('pointermove', this.nativePointerMove);
             window.addEventListener('pointerup', this.nativePointerUp);
@@ -579,7 +612,8 @@ export class SvgCanvasOverlayComponent {
         }
         this.activePointers.delete(event.pointerId);
         if (this.activePointers.size === 0) {
-            this.removeMoveAndUpListeners();
+            this.primaryPointerId = null;
+            this.removeEventListeners();
         }
         const unit = this.unit();
         if (!unit) return;
@@ -593,7 +627,8 @@ export class SvgCanvasOverlayComponent {
         if (!this.activePointers.has(event.pointerId)) return;
         this.activePointers.delete(event.pointerId);
         if (this.activePointers.size === 0) {
-            this.removeMoveAndUpListeners();
+            this.primaryPointerId = null;
+            this.removeEventListeners();
         }
     }
 
