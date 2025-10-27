@@ -39,7 +39,7 @@ export class UnitComponentItemComponent {
         this.showFloatingOverlay();
     }
 
-    onMouseEnter(event: MouseEvent) {
+    onPointerEnter(event: MouseEvent) {
         this.showFloatingOverlay();
     }
 
@@ -48,14 +48,11 @@ export class UnitComponentItemComponent {
         this.floatingOverlayService.show(this.unit(), this.comp(), el);
     }
 
-    onMouseLeave() {
+    onPointerLeave() {
         this.floatingOverlayService.hideWithDelay();
     }
 
-    onFloatingMouseEnter() {
-    }
-
-    onFloatingMouseLeave() {
+    onFloatingPointerLeave() {
         this.floatingOverlayService.hideWithDelay();
     }
 }

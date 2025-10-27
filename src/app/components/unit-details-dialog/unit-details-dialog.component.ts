@@ -784,14 +784,14 @@ export class UnitDetailsDialogComponent {
 
     onPrev() {
         if (this.hasPrev) {
-            this.onFloatingMouseLeave();
+            this.onFloatingPointerLeave();
             this.unitIndex.set(this.unitIndex() - 1);
         }
     }
 
     onNext() {
         if (this.hasNext) {
-            this.onFloatingMouseLeave();
+            this.onFloatingPointerLeave();
             this.unitIndex.set(this.unitIndex() + 1);
         }
     }
@@ -941,30 +941,9 @@ export class UnitDetailsDialogComponent {
         return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
-    onCompMouseEnter(comp: UnitComponent, event: MouseEvent) {
-        this.isCompHovered = true;
-        if (this.hoveredComp() !== comp) {
-            this.hoveredComp.set(comp);
-            const container = event.currentTarget as HTMLElement;
-            this.hoverRect.set(container.getBoundingClientRect());
-        }
-    }
-
-    onCompMouseLeave() {
-        this.isCompHovered = false;
-        // Defer to next tick to allow floating window mouseenter to fire first if moving to it
-        afterNextRender(() => {
-            this.updateFloatingVisibility()
-        }, { injector: this.injector });
-    }
-
-    onFloatingMouseEnter() {
-        this.isFloatingHovered = true;
-    }
-
-    onFloatingMouseLeave() {
+    onFloatingPointerLeave() {
         this.isFloatingHovered = false;
-        // Defer to next tick to allow comp mouseenter to fire first if moving to it
+        // Defer to next tick to allow comp pointer events to fire first if moving to it
         afterNextRender(() => {
             this.updateFloatingVisibility()
         }, { injector: this.injector });

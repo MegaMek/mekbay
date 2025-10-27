@@ -140,7 +140,7 @@ export class FloatingOverlayService {
             this.compRef = this.overlayRef.attach(portal);
             // keep overlay open while pointer is over it
             const pane = this.overlayRef.overlayElement;
-            pane.addEventListener('mouseenter', () => {
+            pane.addEventListener('pointerenter', () => {
                 this.isPointerOver = true;
                 // cancel any pending hide while pointer is over the overlay
                 if (this.hideTimeout) {
@@ -148,7 +148,7 @@ export class FloatingOverlayService {
                     this.hideTimeout = null;
                 }
             });
-            pane.addEventListener('mouseleave', () => {
+            pane.addEventListener('pointerleave', () => {
                 this.isPointerOver = false;
                 this.hideWithDelay();
             });
