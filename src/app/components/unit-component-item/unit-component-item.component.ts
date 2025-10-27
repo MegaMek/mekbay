@@ -18,6 +18,7 @@ export class UnitComponentItemComponent {
     injector = inject(Injector);
     public floatingOverlayService = inject(FloatingOverlayService);
     unit = input.required<Unit>();
+    damaged = input<boolean>(false);
     comp = input<UnitComponent | null>(null);
     displayStyle = input<ComponentDisplayStyle>('normal');
     componentEl = viewChild.required<ElementRef<HTMLDivElement>>('component');
