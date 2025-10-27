@@ -60,6 +60,7 @@ export interface ZoomPanState {
     translate: WritableSignal<{ x: number; y: number }>;
     isPanning: boolean;
     isSwiping: boolean;
+    swipeStarted: boolean;
     last: { x: number; y: number };
     pointerStart: { x: number; y: number };
     pointerMoved: boolean;
@@ -77,6 +78,7 @@ export interface SwipeCallbacks {
 
 @Injectable()
 export class SvgZoomPanService {
+    private readonly SWIPE_THRESHOLD = 10; // px
     private layoutService = inject(LayoutService);
     private injector = inject(Injector);
 
@@ -102,6 +104,7 @@ export class SvgZoomPanService {
         translate: signal({ x: 0, y: 0 }),
         isPanning: false,
         isSwiping: false,
+        swipeStarted: false,
         last: { x: 0, y: 0 },
         pointerStart: { x: 0, y: 0 },
         pointerMoved: false,
@@ -283,12 +286,9 @@ export class SvgZoomPanService {
         this.state.pointerStart = { x: event.clientX, y: event.clientY };
         this.state.pointerMoved = false;
         this.swipeTotalDx = 0;
-
-        if (this.state.isSwiping) {
-            this.swipeCallbacks?.onSwipeStart();
-        }
-
-        (event.target as HTMLElement).setPointerCapture(event.pointerId);
+        try {
+            (event.target as HTMLElement).setPointerCapture(event.pointerId);
+        } catch (e) { /* ignore */ }
     }
 
     private onPointerMove(event: PointerEvent) {
@@ -312,6 +312,15 @@ export class SvgZoomPanService {
         this.lastMove = now;
 
         if (this.state.isSwiping) {
+
+            if (!this.state.swipeStarted) {
+                if (Math.abs(event.clientX - this.state.pointerStart.x) < this.SWIPE_THRESHOLD) {
+                    return; // wait until threshold exceeded
+                }
+                this.state.swipeStarted = true;
+                this.swipeCallbacks?.onSwipeStart();
+            }
+
             // Full-finger tracking for swipe
             this.swipeTotalDx = event.clientX - this.state.pointerStart.x;
             this.state.last = { x: event.clientX, y: event.clientY };
@@ -349,13 +358,18 @@ export class SvgZoomPanService {
         }
     }
 
-    private onPointerUp() {
+    private onPointerUp(event: PointerEvent) {
         if (this.state.isSwiping) {
             this.swipeCallbacks?.onSwipeEnd(this.swipeTotalDx);
+            this.state.swipeStarted = false;
             this.swipeTotalDx = 0;
         }
         this.state.isPanning = false;
         this.state.isSwiping = false;
+        try {
+            (event.target as HTMLElement).releasePointerCapture(event.pointerId);
+        } catch (e) { /* ignore */ }
+
     }
 
     private onTouchStart(event: TouchEvent) {
