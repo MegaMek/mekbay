@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, computed, OnDestroy, ElementRef, input, output, effect, ChangeDetectionStrategy, HostListener, viewChild } from '@angular/core';
+import { Component, signal, computed, ElementRef, input, output, effect, ChangeDetectionStrategy, HostListener, viewChild } from '@angular/core';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 /*
  * Author: Drake
@@ -45,7 +45,7 @@ import { FormatNumberPipe } from '../../pipes/format-number.pipe';
     templateUrl: './range-slider.component.html',
     styleUrl: './range-slider.component.css',
 })
-export class RangeSliderComponent implements OnDestroy {
+export class RangeSliderComponent {
     private readonly DEBOUNCE_TIME_MS = 150;
     private debounceTimer: any;
     // Softening offset for log scale to avoid huge jumps near the low end.
@@ -89,6 +89,9 @@ export class RangeSliderComponent implements OnDestroy {
             const newRight = Math.max(this.min(), Math.min(val[1], this.max()));
             this.left.set(this.alignToStep(newLeft));
             this.right.set(this.alignToStep(newRight));
+        });
+        effect((cleanup) => {
+            cleanup(() => { clearTimeout(this.debounceTimer) });
         });
     }
 
@@ -273,7 +276,7 @@ export class RangeSliderComponent implements OnDestroy {
         this.valueChange.emit([this.left(), this.right()]);
     }
 
-    startDrag(which: 'min' | 'max', event: MouseEvent | TouchEvent) {
+    startDrag(which: 'min' | 'max', event: PointerEvent) {
         event.preventDefault();
         this.dragging.set(which);
         this.focusedThumb.set(which);
@@ -282,20 +285,22 @@ export class RangeSliderComponent implements OnDestroy {
         } else {
             this.rightThumbRef().nativeElement.focus();
         }
-        window.addEventListener('mousemove', this.onDragBound);
-        window.addEventListener('touchmove', this.onDragBound, { passive: false });
-        window.addEventListener('mouseup', this.onDragEndBound);
-        window.addEventListener('touchend', this.onDragEndBound);
+        const container = this.containerRef().nativeElement as HTMLElement;
+        container.addEventListener('pointermove', this.onDrag);
+        container.addEventListener('pointerup', this.onDragEnd);
+        container.addEventListener('pointercancel', this.onDragEnd);
+        try {
+            container.setPointerCapture(event.pointerId);
+        } catch (e) { /* ignore */ }
     }
 
-    onDrag = (event: MouseEvent | TouchEvent) => {
+    onDrag = (event: PointerEvent) => {
         if (!this.dragging()) return;
         event.preventDefault();
         clearTimeout(this.debounceTimer);
 
         const rect = this.containerRef().nativeElement.getBoundingClientRect();
-        const clientX = (event instanceof MouseEvent) ? event.clientX : event.touches[0].clientX;
-        let percent = (clientX - rect.left) / rect.width;
+        let percent = (event.clientX - rect.left) / rect.width;
         percent = Math.max(0, Math.min(1, percent));
 
         let value = this.percentToValue(percent);
@@ -329,23 +334,20 @@ export class RangeSliderComponent implements OnDestroy {
             this.valueChange.emit([this.left(), this.right()]);
         }, this.DEBOUNCE_TIME_MS);
     };
-    onDragBound = this.onDrag.bind(this);
 
-    onDragEnd = () => {
+    onDragEnd = (event: PointerEvent) => {
         clearTimeout(this.debounceTimer);
         if (this.dragging()) {
             this.valueChange.emit([this.left(), this.right()]);
         }
         this.dragging.set(null);
-        window.removeEventListener('mousemove', this.onDragBound);
-        window.removeEventListener('touchmove', this.onDragBound);
-        window.removeEventListener('mouseup', this.onDragEndBound);
-        window.removeEventListener('touchend', this.onDragEndBound);
-    };
-    onDragEndBound = this.onDragEnd.bind(this);
+        const container = this.containerRef().nativeElement as HTMLElement;
+        container.removeEventListener('pointermove', this.onDrag);
+        container.removeEventListener('pointerup', this.onDragEnd);
+        container.removeEventListener('pointercancel', this.onDragEnd);
 
-    ngOnDestroy() {
-        clearTimeout(this.debounceTimer);
-        this.onDragEnd();
-    }
+        try {
+            container.releasePointerCapture(event.pointerId);
+        } catch (e) { /* ignore */ }
+    };
 }

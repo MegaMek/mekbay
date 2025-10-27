@@ -6,7 +6,7 @@
     <!-- Left Thumb -->
     <div #leftThumb class="thumb thumb-left" [style.left.%]="valueToPercent(left())"
         [class.active]="isLeftThumbActive()" [class.focused]="focusedThumb() === 'min'"
-        (mousedown)="startDrag('min', $event)" (touchstart)="startDrag('min', $event)" (focus)="onThumbFocus('min')"
+        (pointerdown)="startDrag('min', $event)" (focus)="onThumbFocus('min')"
         (blur)="onThumbBlur()" (dblclick)="resetThumb('min', $event)" (dbltap)="resetThumb('min', $event)" tabindex="0">
         @if (dragging() === 'min' || focusedThumb() === 'min') {
         <div class="thumb-label">
@@ -18,7 +18,7 @@
     <!-- Right Thumb -->
     <div #rightThumb class="thumb thumb-right" [style.left.%]="valueToPercent(right())"
         [class.active]="isRightThumbActive()" [class.focused]="focusedThumb() === 'max'"
-        (mousedown)="startDrag('max', $event)" (touchstart)="startDrag('max', $event)" (focus)="onThumbFocus('max')"
+        (pointerdown)="startDrag('max', $event)" (focus)="onThumbFocus('max')"
         (blur)="onThumbBlur()" (dblclick)="resetThumb('max', $event)" (dbltap)="resetThumb('max', $event)" tabindex="0">
         @if (dragging() === 'max' || focusedThumb() === 'max') {
         <div class="thumb-label">

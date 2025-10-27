@@ -5,6 +5,7 @@
     margin: 8px;
     margin-left: 18px;
     user-select: none;
+    touch-action: none;
 }
 
 .slider-track {
@@ -15,13 +16,13 @@
     height: 4px;
     margin-left: -11px;
     width: calc(100% + 22px);
-    background: #666;
+    background-color: #666;
     transform: translateY(-50%);
     z-index: 1;
 }
 
 .slider-track.active {
-    background: var(--bt-yellow-background-bright);
+    background-color: var(--bt-yellow-background-bright);
 }
 
 .thumb {
@@ -79,7 +80,7 @@
     position: absolute;
     top: -28px;
     transform: translateX(-50%);
-    background: var(--bt-yellow);
+    background-color: var(--bt-yellow);
     color: #000;
     padding: 2px 8px;
     border-radius: 4px;
