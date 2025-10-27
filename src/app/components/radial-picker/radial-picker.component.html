@@ -47,8 +47,8 @@
                 [class.selected]="isSelected(choice)"
                 [class.highlight]="isHovered(choice) && !choice.disabled"
                 [class.disabled]="choice.disabled"
-                (mouseenter)="setHoveredChoice(choice)"
-                (mouseleave)="resetHovered()"
+                (pointerenter)="setHoveredChoice(choice)"
+                (pointerleave)="resetHovered()"
                 (touchstart)="setHoveredChoice(choice)"
                 (click)="handleChoiceClick($event, choice)"
             ></path>
@@ -62,8 +62,8 @@
                     [class.selected]="isSelected(choice)"
                     [class.highlight]="isHovered(choice) && !choice.disabled"
                     [class.disabled]="choice.disabled"
-                    (mouseenter)="setHoveredChoice(choice)"
-                    (mouseleave)="resetHovered()"
+                    (pointerenter)="setHoveredChoice(choice)"
+                    (pointerleave)="resetHovered()"
                     (touchstart)="setHoveredChoice(choice)"
                     (click)="handleChoiceClick($event, choice)"
                 >
@@ -86,8 +86,8 @@
                     [class.selected]="isSelected(choice)"
                     [class.highlight]="isHovered(choice) && !choice.disabled"
                     [class.disabled]="choice.disabled"
-                    (mouseenter)="setHoveredChoice(choice)"
-                    (mouseleave)="resetHovered()"
+                    (pointerenter)="setHoveredChoice(choice)"
+                    (pointerleave)="resetHovered()"
                     (touchstart)="setHoveredChoice(choice)"
                     (click)="handleChoiceClick($event, choice)"
                 >{{ choice.label }}</text>

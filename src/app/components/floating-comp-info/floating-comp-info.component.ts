@@ -49,8 +49,8 @@ import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
     templateUrl: './floating-comp-info.component.html',
     styleUrls: ['./floating-comp-info.component.css'],
     host: {
-        '(mouseenter)': 'onMouseEnter()',
-        '(mouseleave)': 'onMouseLeave()'
+        '(pointerenter)': 'onPointerEnter()',
+        '(pointerleave)': 'onPointerLeave()'
     }
 })
 export class FloatingCompInfoComponent {
@@ -84,11 +84,11 @@ export class FloatingCompInfoComponent {
         });
     }
 
-    onMouseEnter() {
+    onPointerEnter() {
         // overlay service listens for overlay element pointer events; parent keeps component state
     }
-    
-    onMouseLeave() {
+
+    onPointerLeave() {
         // overlay service listens for overlay element pointer events; parent keeps component state
     }
 
