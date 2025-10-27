@@ -574,6 +574,7 @@ export class UnitSearchComponent implements OnDestroy {
         const filteredUnits = this.filtersService.filteredUnits();
         const filteredUnitIndex = filteredUnits.findIndex(u => u.name === unit.name);
         const ref = this.dialog.open(UnitDetailsDialogComponent, {
+            disableClose: true,
             data: <UnitDetailsDialogData>{
                 unitList: filteredUnits,
                 unitIndex: filteredUnitIndex,
@@ -582,6 +583,10 @@ export class UnitSearchComponent implements OnDestroy {
             }
         });
         this.unitDetailsDialogOpen.set(true);
+
+        setTimeout(() => {
+            try { if ('disableClose' in ref) (ref as any).disableClose = false; } catch (e) { /* ignore */ }
+        }, 500);
 
         ref.closed.subscribe(() => {
             this.unitDetailsDialogOpen.set(false);
@@ -845,7 +850,7 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     // Multi-select logic: click with Ctrl/Cmd or Shift to select multiple units
-    onUnitCardClick(unit: Unit, event?: MouseEvent) {
+    onUnitCardClick(unit: Unit, event: MouseEvent) {
         const multiSelect = event ? (event.ctrlKey || event.metaKey || event.shiftKey) : false;
         if (event && multiSelect) {
             // Multi-select logic

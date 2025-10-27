@@ -6,8 +6,8 @@ import { Directive, HostListener, input, effect, output, ElementRef, inject } fr
 })
 export class LongPressDirective {
     longPressDuration = input<number>(300); // ms
-    longPress = output();
-    shortPress = output();
+    longPress = output<PointerEvent>();
+    shortPress = output<PointerEvent>();
     
     private longPressed = false;
     private el = inject(ElementRef<HTMLElement>);
@@ -16,6 +16,7 @@ export class LongPressDirective {
     private startY = 0;
     private pointerId?: number;
     private readonly MOVE_THRESHOLD = 10; // px
+    private pointerDownEvent: PointerEvent | null = null;
 
     constructor() {
         effect((cleanup) => {
@@ -27,12 +28,15 @@ export class LongPressDirective {
     onPointerDown(event: PointerEvent) {
         // Only left button
         if (event.button && event.button !== 0) return;
-
+    
+        try { event.preventDefault(); } catch (e) { /* ignore */ }
+    
         this.longPressed = false;
         this.clearTimer();
         this.startX = event.clientX;
         this.startY = event.clientY;
         this.pointerId = event.pointerId;
+        this.pointerDownEvent = event;
 
         try {
             (event.target as HTMLElement).setPointerCapture(this.pointerId);
@@ -41,7 +45,7 @@ export class LongPressDirective {
         this.timeoutId = setTimeout(() => {
             this.clearTimer();
             this.longPressed = true;
-            this.longPress.emit();
+            this.longPress.emit(event);
         }, this.longPressDuration());
     }
 
@@ -58,7 +62,9 @@ export class LongPressDirective {
     @HostListener('pointerup', ['$event'])
     onPointerUp(event: PointerEvent) {
         if (!this.longPressed) {
-            this.shortPress.emit();
+            event.preventDefault();
+            event.stopPropagation();
+            this.shortPress.emit(this.pointerDownEvent ?? event);
         }
         this.clearTimer();
     }
@@ -75,7 +81,7 @@ export class LongPressDirective {
         event.stopPropagation();
         if (!this.timeoutId) {
             this.longPressed = true;
-            this.longPress.emit();
+            this.longPress.emit(this.pointerDownEvent!);
             this.clearTimer();
         }
     }
