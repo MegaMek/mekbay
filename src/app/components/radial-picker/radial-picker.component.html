@@ -49,7 +49,7 @@
                 [class.disabled]="choice.disabled"
                 (pointerenter)="setHoveredChoice(choice)"
                 (pointerleave)="resetHovered()"
-                (touchstart)="setHoveredChoice(choice)"
+                (pointerdown)="setHoveredChoice(choice)"
                 (click)="handleChoiceClick($event, choice)"
             ></path>
             
@@ -64,7 +64,7 @@
                     [class.disabled]="choice.disabled"
                     (pointerenter)="setHoveredChoice(choice)"
                     (pointerleave)="resetHovered()"
-                    (touchstart)="setHoveredChoice(choice)"
+                    (pointerdown)="setHoveredChoice(choice)"
                     (click)="handleChoiceClick($event, choice)"
                 >
                     <textPath 
@@ -88,7 +88,7 @@
                     [class.disabled]="choice.disabled"
                     (pointerenter)="setHoveredChoice(choice)"
                     (pointerleave)="resetHovered()"
-                    (touchstart)="setHoveredChoice(choice)"
+                    (pointerdown)="setHoveredChoice(choice)"
                     (click)="handleChoiceClick($event, choice)"
                 >{{ choice.label }}</text>
             }

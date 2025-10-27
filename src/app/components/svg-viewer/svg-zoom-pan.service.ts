@@ -123,7 +123,10 @@ export class SvgZoomPanService {
     private interactionService!: SvgInteractionService;
     private swipeCallbacks?: SwipeCallbacks;
     private swipeTotalDx = 0;
-    
+
+    // Track active pointers
+    private pointers = new Map<number, { x: number; y: number; pointerType?: string }>();
+
     constructor() { }
 
     initialize(
@@ -176,17 +179,12 @@ export class SvgZoomPanService {
         // Mouse wheel zoom
         container.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
 
-        // Pointer events for pan
+        // Pointer events for pan/zoom
         container.addEventListener('pointerdown', this.onPointerDown.bind(this));
         container.addEventListener('pointermove', this.onPointerMove.bind(this));
         container.addEventListener('pointerup', this.onPointerUp.bind(this));
         container.addEventListener('pointerleave', this.onPointerUp.bind(this));
         container.addEventListener('pointercancel', this.onPointerUp.bind(this));
-
-        // Touch events for pinch-zoom
-        container.addEventListener('touchstart', this.onTouchStart.bind(this), { passive: false });
-        container.addEventListener('touchmove', this.onTouchMove.bind(this), { passive: false });
-        container.addEventListener('touchend', this.onTouchEnd.bind(this), { passive: false });
 
         // Double-click to reset view
         container.addEventListener('dblclick', (event: MouseEvent) => {
@@ -271,13 +269,46 @@ export class SvgZoomPanService {
     }
 
     private onPointerDown(event: PointerEvent) {
-        // if (this.isPickerOpen()) return; // Prevent interaction if picker is open but creates problems with the pickers on pointerdown
-
         // Prevent panning if the sidebar menu is being dragged
         if (this.layoutService.isMenuDragging()) return;
 
-        if (event.button !== 0) return; // Only handle left button
+        // Only consider primary button for mouse/pen; touch pointers won't have button
+        if (event.pointerType !== 'touch' && event.button !== 0) return;
 
+        // Track pointer
+        this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, pointerType: event.pointerType });
+
+        try {
+            (event.target as HTMLElement).setPointerCapture(event.pointerId);
+        } catch (e) { /* ignore */ }
+
+        // If two active pointers: start pinch
+        if (this.pointers.size === 2) {
+            // End any swipe state
+            if (this.state.isSwiping) {
+                this.swipeTotalDx = 0;
+                this.swipeCallbacks?.onSwipeEnd(this.swipeTotalDx);
+            }
+            this.state.isPanning = false;
+            this.state.isSwiping = false;
+
+            const entries = Array.from(this.pointers.values());
+            const p1 = entries[0];
+            const p2 = entries[1];
+            this.state.touchStartDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            this.state.touchStartScale = this.state.scale();
+
+            const container = this.containerRef.nativeElement;
+            const rect = container.getBoundingClientRect();
+            this.state.touchCenter = {
+                x: ((p1.x + p2.x) / 2) - rect.left,
+                y: ((p1.y + p2.y) / 2) - rect.top
+            };
+            this.state.prevTouchCenter = { ...this.state.touchCenter };
+            return;
+        }
+
+        // Single pointer behavior (mouse or single touch)
         const isZoomedOut = this.state.scale() <= this.state.minScale * 1.01;
         this.state.isSwiping = isZoomedOut;
         this.state.isPanning = !isZoomedOut;
@@ -286,12 +317,18 @@ export class SvgZoomPanService {
         this.state.pointerStart = { x: event.clientX, y: event.clientY };
         this.state.pointerMoved = false;
         this.swipeTotalDx = 0;
-        try {
-            (event.target as HTMLElement).setPointerCapture(event.pointerId);
-        } catch (e) { /* ignore */ }
+
+        if (!event.isPrimary) {
+            this.interactionService.removePicker();
+        }
     }
 
     private onPointerMove(event: PointerEvent) {
+        // Update stored pointer if tracked
+        if (this.pointers.has(event.pointerId)) {
+            this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, pointerType: event.pointerType });
+        }
+
         if (!event.isPrimary) {
             this.interactionService.removePicker();
         }
@@ -304,146 +341,68 @@ export class SvgZoomPanService {
             return;
         }
 
-        if (!this.state.isPanning && !this.state.isSwiping) return;
-        if (event.buttons !== 1) return; // Only handle left button
-
         const now = Date.now();
         if (now - this.lastMove < 8) return; // ~120fps throttling
         this.lastMove = now;
 
-        if (this.state.isSwiping) {
+        // If two pointers active -> pinch zoom handling
+        if (this.pointers.size === 2) {
+            const entries = Array.from(this.pointers.values());
+            const p1 = entries[0];
+            const p2 = entries[1];
 
-            if (!this.state.swipeStarted) {
-                if (Math.abs(event.clientX - this.state.pointerStart.x) < this.SWIPE_THRESHOLD) {
-                    return; // wait until threshold exceeded
-                }
-                this.state.swipeStarted = true;
-                this.swipeCallbacks?.onSwipeStart();
-            }
-
-            // Full-finger tracking for swipe
-            this.swipeTotalDx = event.clientX - this.state.pointerStart.x;
-            this.state.last = { x: event.clientX, y: event.clientY };
-
-            // Mark as moved if movement exceeds small threshold
-            if (!this.state.pointerMoved) {
-                const totalDx = this.swipeTotalDx;
-                const totalDy = event.clientY - this.state.pointerStart.y;
-                if (Math.abs(totalDx) > 2 || Math.abs(totalDy) > 2) {
-                    this.state.pointerMoved = true;
-                }
-            }
-
-            this.swipeCallbacks?.onSwipeMove(this.swipeTotalDx);
-            return;
-        }
-
-        // Panning path
-        const dx = event.clientX - this.state.last.x;
-        const dy = event.clientY - this.state.last.y;
-        this.state.last = { x: event.clientX, y: event.clientY };
-
-        const translate = this.state.translate();
-        this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
-
-        this.clampPan();
-        this.applyTransform();
-
-        if (!this.state.pointerMoved) {
-            const totalDx = event.clientX - this.state.pointerStart.x;
-            const totalDy = event.clientY - this.state.pointerStart.y;
-            if (Math.abs(totalDx) > POINTER_MOVE_SENSIBILITY || Math.abs(totalDy) > POINTER_MOVE_SENSIBILITY) {
-                this.state.pointerMoved = true;
-            }
-        }
-    }
-
-    private onPointerUp(event: PointerEvent) {
-        if (this.state.isSwiping) {
-            this.swipeCallbacks?.onSwipeEnd(this.swipeTotalDx);
-            this.state.swipeStarted = false;
-            this.swipeTotalDx = 0;
-        }
-        this.state.isPanning = false;
-        this.state.isSwiping = false;
-        try {
-            (event.target as HTMLElement).releasePointerCapture(event.pointerId);
-        } catch (e) { /* ignore */ }
-
-    }
-
-    private onTouchStart(event: TouchEvent) {
-        // if (this.isPickerOpen()) return;
-
-        // Prevent pinch-zoom if the sidebar menu is being dragged
-        if (this.layoutService.isMenuDragging()) return;
-
-        if (event.touches.length === 1) {
-            const touch = event.touches[0];
-            const isZoomedOut = this.state.scale() <= this.state.minScale * 1.01;
-            this.state.isSwiping = isZoomedOut;
-            this.state.isPanning = !isZoomedOut;
-            this.state.last = { x: touch.clientX, y: touch.clientY };
-            this.state.pointerStart = { x: touch.clientX, y: touch.clientY };
-            this.state.pointerMoved = false;
-            this.swipeTotalDx = 0;
-
-            if (this.state.isSwiping) {
-                this.swipeCallbacks?.onSwipeStart();
-            }
-        } else if (event.touches.length === 2) {
-            // Initialize pinch zoom
-            if (this.state.isSwiping) {
-                this.swipeTotalDx = 0;
-                this.swipeCallbacks?.onSwipeEnd(this.swipeTotalDx);
-            }
-            this.state.isPanning = false;
-            this.state.isSwiping = false;
-            const touch1 = event.touches[0];
-            const touch2 = event.touches[1];
-
-            // Calculate distance between touches
-            this.state.touchStartDistance = Math.hypot(
-                touch2.clientX - touch1.clientX,
-                touch2.clientY - touch1.clientY
-            );
-
-            this.state.touchStartScale = this.state.scale();
+            // compute current distance and center
+            const currentDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            const scaleChange = this.state.touchStartDistance > 0 ? (currentDistance / this.state.touchStartDistance) : 1;
+            let newScale = this.state.touchStartScale * scaleChange;
+            newScale = Math.max(this.state.minScale, Math.min(this.state.maxScale, newScale));
 
             const container = this.containerRef.nativeElement;
             const rect = container.getBoundingClientRect();
-            this.state.touchCenter = {
-                x: ((touch1.clientX + touch2.clientX) / 2) - rect.left,
-                y: ((touch1.clientY + touch2.clientY) / 2) - rect.top
+            const newTouchCenter = {
+                x: ((p1.x + p2.x) / 2) - rect.left,
+                y: ((p1.y + p2.y) / 2) - rect.top
             };
-            this.state.prevTouchCenter = { ...this.state.touchCenter };
-        }
-    }
 
-    private onTouchMove(event: TouchEvent) {
-        if (this.isPickerOpen()) return;
+            const translate = this.state.translate();
+            const dx = newTouchCenter.x - this.state.prevTouchCenter.x;
+            const dy = newTouchCenter.y - this.state.prevTouchCenter.y;
+            this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
+            this.state.prevTouchCenter = { ...newTouchCenter };
 
-        if (this.layoutService.isMenuDragging()) {
-            this.state.isPanning = false;
-            this.state.isSwiping = false;
+            // smooth update via rAF
+            if (!this._rafPending) {
+                this._rafPending = true;
+                requestAnimationFrame(() => {
+                    if (newScale !== this.state.scale()) {
+                        const translateInner = this.state.translate();
+                        const newX = newTouchCenter.x - ((newTouchCenter.x - translateInner.x) * (newScale / this.state.scale()));
+                        const newY = newTouchCenter.y - ((newTouchCenter.y - translateInner.y) * (newScale / this.state.scale()));
+                        this.state.translate.set({ x: newX, y: newY });
+                        this.state.scale.set(newScale);
+                    }
+                    this.clampPan();
+                    this.applyTransform();
+                    this._rafPending = false;
+                });
+            }
+
+            this.state.pointerMoved = true;
             return;
         }
 
-        const now = Date.now();
-        if (now - this.lastMove < 8) return; // ~120fps throttling
-        this.lastMove = now;
-
-        if (event.touches.length === 1 && (this.state.isPanning || this.state.isSwiping)) {
-            const touch = event.touches[0];
+        // Single pointer behavior: panning or swiping
+        if (this.pointers.size === 1 && (this.state.isPanning || this.state.isSwiping)) {
+            const p = Array.from(this.pointers.values())[0];
 
             if (this.state.isSwiping) {
-                // Single touch swipe
-                this.swipeTotalDx = touch.clientX - this.state.pointerStart.x;
-                this.state.last = { x: touch.clientX, y: touch.clientY };
+                // Single pointer swipe
+                this.swipeTotalDx = p.x - this.state.pointerStart.x;
+                this.state.last = { x: p.x, y: p.y };
 
                 if (!this.state.pointerMoved) {
                     const totalDx = this.swipeTotalDx;
-                    const totalDy = touch.clientY - this.state.pointerStart.y;
+                    const totalDy = p.y - this.state.pointerStart.y;
                     if (Math.abs(totalDx) > POINTER_MOVE_SENSIBILITY || Math.abs(totalDy) > POINTER_MOVE_SENSIBILITY) {
                         this.state.pointerMoved = true;
                     }
@@ -453,94 +412,61 @@ export class SvgZoomPanService {
                 return;
             }
 
-            // Single touch pan
-            const dx = touch.clientX - this.state.last.x;
-            const dy = touch.clientY - this.state.last.y;
-            this.state.last = { x: touch.clientX, y: touch.clientY };
+            // Panning path
+            const dx = p.x - this.state.last.x;
+            const dy = p.y - this.state.last.y;
+            this.state.last = { x: p.x, y: p.y };
 
-            if (this.state.isPanning) {
-                const translate = this.state.translate();
-                this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
-                this.clampPan();
-                this.applyTransform();
-            }
+            const translate = this.state.translate();
+            this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
 
-            // Mark as moved if movement exceeds threshold
+            this.clampPan();
+            this.applyTransform();
+
             if (!this.state.pointerMoved) {
-                const totalDx = touch.clientX - this.state.pointerStart.x;
-                const totalDy = touch.clientY - this.state.pointerStart.y;
+                const totalDx = p.x - this.state.pointerStart.x;
+                const totalDy = p.y - this.state.pointerStart.y;
                 if (Math.abs(totalDx) > POINTER_MOVE_SENSIBILITY || Math.abs(totalDy) > POINTER_MOVE_SENSIBILITY) {
                     this.state.pointerMoved = true;
                 }
             }
-        } else if (event.touches.length === 2) {
-            // Pinch zoom
-            this.state.pointerMoved = true;
-            const touch1 = event.touches[0];
-            const touch2 = event.touches[1];
-
-            const currentDistance = Math.hypot(
-                touch2.clientX - touch1.clientX,
-                touch2.clientY - touch1.clientY
-            );
-
-            const scaleChange = currentDistance / this.state.touchStartDistance;
-            let newScale = this.state.touchStartScale * scaleChange;
-            newScale = Math.max(this.state.minScale, Math.min(this.state.maxScale, newScale));
-
-            // Calculate new center between fingers
-            const container = this.containerRef.nativeElement;
-            const rect = container.getBoundingClientRect();
-            const newTouchCenter = {
-                x: ((touch1.clientX + touch2.clientX) / 2) - rect.left,
-                y: ((touch1.clientY + touch2.clientY) / 2) - rect.top
-            };
-
-            const translate = this.state.translate();
-            const dx = newTouchCenter.x - this.state.prevTouchCenter.x;
-            const dy = newTouchCenter.y - this.state.prevTouchCenter.y;
-            this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
-            this.state.prevTouchCenter = { ...newTouchCenter };
-
-            if (!this._rafPending) {
-                this._rafPending = true;
-                requestAnimationFrame(() => {
-                    if (newScale !== this.state.scale()) {
-                        const translate = this.state.translate();
-                        const newX = newTouchCenter.x - ((newTouchCenter.x - translate.x) * (newScale / this.state.scale()));
-                        const newY = newTouchCenter.y - ((newTouchCenter.y - translate.y) * (newScale / this.state.scale()));
-                        this.state.translate.set({ x: newX, y: newY });
-                        this.state.scale.set(newScale);
-                    }
-                    this.clampPan();
-                    this.applyTransform();
-                    this._rafPending = false;
-                });
-            }
         }
     }
 
-    private onTouchEnd(event: TouchEvent) {
-        if (event.touches.length === 0) {
-            if (this.state.isSwiping) {
-                this.swipeCallbacks?.onSwipeEnd(this.swipeTotalDx);
-                this.swipeTotalDx = 0;
-            }
-            this.state.isPanning = false;
-            this.state.isSwiping = false;
-            this.state.touchStartDistance = 0;
-        } else if (event.touches.length === 1) {
-            // Transition from pinch to pan
-            const touch = event.touches[0];
+    private onPointerUp(event: PointerEvent) {
+        // Remove pointer from tracking
+        const hadPointer = this.pointers.delete(event.pointerId);
+
+        try {
+            (event.target as HTMLElement).releasePointerCapture(event.pointerId);
+        } catch (e) { /* ignore */ }
+
+        // If we had two pointers and now one remains: transition from pinch to single-pointer pan/swipe
+        if (hadPointer && this.pointers.size === 1) {
+            const remaining = Array.from(this.pointers.values())[0];
             const isZoomedOut = this.state.scale() <= this.state.minScale * 1.01;
             this.state.isSwiping = isZoomedOut;
             this.state.isPanning = !isZoomedOut;
-            this.state.last = { x: touch.clientX, y: touch.clientY };
+            this.state.last = { x: remaining.x, y: remaining.y };
+            this.state.pointerStart = { x: remaining.x, y: remaining.y };
             this.state.touchStartDistance = 0;
 
             if (this.state.isSwiping) {
                 this.swipeCallbacks?.onSwipeStart();
             }
+            return;
+        }
+
+        // If no pointers remain: finalize
+        if (this.pointers.size === 0) {
+            if (this.state.isSwiping) {
+                this.swipeCallbacks?.onSwipeEnd(this.swipeTotalDx);
+                this.state.swipeStarted = false;
+                this.swipeTotalDx = 0;
+            }
+            this.state.isPanning = false;
+            this.state.isSwiping = false;
+            this.state.touchStartDistance = 0;
         }
     }
 
