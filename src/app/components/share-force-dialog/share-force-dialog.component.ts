@@ -53,13 +53,13 @@ import { copyTextToClipboard } from '../../utils/clipboard.util';
     <div class="content">
         <h2 dialog-title>{{ forceBuilderService.force.name }}</h2>
         <div dialog-content class="content">
-            <label class="description">Live battle record: share the current deployment as a read‑only field report — includes damage, heat, and status effects.</label>
+            <label class="description">Live battle record: share the current deployment as a read-only field report — includes damage, pilots, and status conditions.</label>
             <div class="row">
                 <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="shareUrl"/>
                 <button class="bt-button" (click)="share(shareUrl)">SHARE</button>
             </div>
 
-            <label class="description">Clean roster: share a pristine copy of the force — no damage, heat, pilot wounds, or status conditions.</label>
+            <label class="description">Clean roster: share a pristine copy of the force — no damage, pilots, or status conditions.</label>
             <div class="row">
                 <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="cleanUrl"/>
                 <button class="bt-button" (click)="share(cleanUrl)">SHARE</button>
@@ -140,6 +140,7 @@ export class ShareForceDialogComponent {
     toastService = inject(ToastService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
+    instanceId: string = '';
     shareUrl: string = '';
     cleanUrl: string = '';
 
@@ -150,9 +151,10 @@ export class ShareForceDialogComponent {
 
     private buildUrls() {
         const origin = window.location.origin || '';
-        const basePath = this.router.serializeUrl(this.router.createUrlTree([], { relativeTo: this.route }));
         // We get the query Parameters from the force builder
         const queryParameters = this.forceBuilderService.queryParameters();
+
+        this.instanceId = queryParameters.instance || '';
 
         const instanceTree = this.router.createUrlTree([], {
             relativeTo: this.route,
