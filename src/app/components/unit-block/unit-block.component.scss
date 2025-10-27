@@ -26,6 +26,16 @@
         );
         border-color: #d00;
         opacity: 0.85;
+
+        &:hover{
+            background-image: repeating-linear-gradient(
+                140deg,
+                #600 0px,
+                #600 12px,
+                #400 12px,
+                #400 24px
+            );
+        }
     }
     
     .unit-icon {
