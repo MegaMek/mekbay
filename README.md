@@ -1,10 +1,12 @@
-[![CD/CI Release](https://github.com/MegaMek/mekbay/actions/workflows/main.yml/badge.svg)](https://github.com/MegaMek/mekbay/actions/workflows/main.yml)
+[![CD/CI Release](https://github.com/MegaMek/mekbay/actions/workflows/main.yml/badge.svg)](https://github.com/MegaMek/mekbay/actions/workflows/main.yml)[![CD/CI Next Release](https://github.com/MegaMek/mekbay/actions/workflows/next.yml/badge.svg)](https://github.com/MegaMek/mekbay/actions/workflows/next.yml)
 
 # Mekbay
 
 A web-based application for managing BattleTech forces with interactive record sheets that can be used online or printed.
 
 **🌐 Latest stable build:** [https://mekbay.com](https://mekbay.com)
+
+**🌐 Latest experimental build:** [https://next.mekbay.com](https://next.mekbay.com) (can break anytime! use at your own risk!)
 
 ## Overview
 
