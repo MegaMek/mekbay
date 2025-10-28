@@ -1,9 +1,10 @@
 <main>
     <div class="app-container" [class.menu-open]="this.layoutService.isMenuOpen()">
         @if (this.hasUnits()) {
-        <force-builder-viewer [unitSearchPortal]="unitSearchPortalForceBuilder()"
-            [unitSearchComponent]="unitSearchComponentRef()">
-        </force-builder-viewer>
+            <!-- <force-builder-viewer [unitSearchPortal]="unitSearchPortalForceBuilder()"
+                [unitSearchComponent]="unitSearchComponentRef()">
+            </force-builder-viewer> -->
+            <sidebar></sidebar>
         }
         <div class="extended-search-container">
             <div [cdkPortalOutlet]="unitSearchPortalExtended"></div>
@@ -67,11 +68,6 @@
             </div>
             }
         </div>
-
-        <!-- Overlay to close the menu on mobile -->
-        @if (isOverlayVisible()) {
-        <div class="menu-overlay" (click)="closeMenu()" [style.opacity]="this.layoutService.menuOpenRatio()"></div>
-        }
         <update-button [updateAvailable]="updateAvailable()"></update-button>
         <app-toasts></app-toasts>
         <div #unitSearchContainer>

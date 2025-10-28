@@ -108,25 +108,6 @@ svg-viewer {
     height: 100%;
 }
 
-.menu-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    z-index: 99; /* Below the sidebar */
-    opacity: 1;
-}
-
-.app-container.is-dragging .menu-overlay {
-    transition: none;
-}
-
-.app-container:not(.menu-open) .menu-overlay {
-    pointer-events: none;
-}
-
 .spinner {
     width: 44px;
     height: 44px;

@@ -45,7 +45,7 @@ import { LayoutModule } from '@angular/cdk/layout';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
 import { OptionsService } from './services/options.service';
 import { OptionsDialogComponent } from './components/options-dialog/options-dialog.component';
-import { PrintUtil } from './utils/print.util';
+import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { LicenseDialogComponent } from './components/license-dialog/license-dialog.component';
 import { ToastsComponent } from './components/toasts/toasts.component';
 import { WsService } from './services/ws.service';
@@ -76,6 +76,7 @@ import { LoadForceEntry } from './models/load-force-entry.model';
         ForceBuilderViewerComponent,
         LayoutModule,
         UpdateButtonComponent,
+        SidebarComponent,
         UnitSearchComponent,
         OverlayModule,
         PortalModule
@@ -108,10 +109,6 @@ export class App {
     protected unitSearchPortalMain!: DomPortal<any>;
     protected unitSearchPortalExtended!: DomPortal<any>;
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
-
-    isOverlayVisible = computed(() => {
-        return this.layoutService.isMobile() && (this.layoutService.isMenuOpen() || this.layoutService.isMenuDragging());
-    });
 
     constructor() {
         this.dataService.initialize();
