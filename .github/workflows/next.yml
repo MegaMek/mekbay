@@ -1,0 +1,45 @@
+name: CD/CI Release
+run-name: Deploy MekBay to next.mekbay.com
+on:
+  push:
+    branches:
+      - next
+jobs:
+  build-and-deploy:
+    name: Build and Upload
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get latest code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0    # fetch full history so commit count is accurate. 
+          ref: refs/heads/next
+          # TODO: reimplement it with an API call to GitHub so we don't have to use depth: 0 in checkout
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'latest'
+
+      - name: Generate build metadata
+        run: node ./scripts/generate-build-meta.js
+
+      - name: Install NPM and Build Angular Project
+        run: |  
+          npm ci
+          npm run build
+
+      - name: Get LFTP
+        run: sudo apt-get install -y --no-install-recommends lftp
+
+      - name: Configure LFTP
+        run: mkdir ~/.lftp && echo "set ssl:verify-certificate false;" >> ~/.lftp/rc
+
+      - name: Load Secrets
+        run: echo "machine ${{ secrets.FTP_HOST }} login ${{ secrets.FTP_USER }} password ${{ secrets.FTP_PASSWORD }}" > ~/.netrc
+
+      - name: Upload Folder (with cleanup)  
+        run: |
+          lftp -c "set ftp:list-options -a; 
+          open -u ${{ secrets.FTP_USER }},${{ secrets.FTP_PASSWORD }} ${{ secrets.FTP_HOST }};
+          mirror --parallel=100 -R --delete --transfer-all --no-perms --verbose ./dist/browser/ ./mekbay_next/"
