@@ -1,4 +1,4 @@
-name: CD/CI Release
+name: CD/CI Next Release
 run-name: Deploy MekBay to next.mekbay.com
 on:
   push:
