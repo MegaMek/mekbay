@@ -1194,7 +1194,7 @@ export class UnitSearchFiltersService {
                     const subParts: string[] = [];
                     
                     for (const [name, selectionValue] of Object.entries(selection)) {
-                        if (selectionValue.state !== 'off') {
+                        if (selectionValue.state !== false) {
                             // URL encode names that might contain spaces or special characters
                             let part = encodeURIComponent(name);
                             
@@ -1330,9 +1330,9 @@ export class UnitSearchFiltersService {
             }
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             if (conf.multistate) {
-                // For multistate dropdowns, check if all states are 'off' or object is empty
+                // For multistate dropdowns, check if all states are false or object is empty
                 if (!value || typeof value !== 'object' || Object.keys(value).length === 0 ||
-                    Object.values(value).every((selectionValue: any) => selectionValue.state === 'off')) {
+                    Object.values(value).every((selectionValue: any) => selectionValue.state === false)) {
                     interacted = false;
                 }
             } else {
