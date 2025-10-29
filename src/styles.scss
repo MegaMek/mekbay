@@ -785,7 +785,7 @@ hr {
             pointer-events: none;
         }
 
-        .picker-active text {
+        .picker-active.critSlot text {
             text-decoration: underline !important;
         }
 
@@ -854,6 +854,11 @@ hr {
             stroke-linejoin: round;
             stroke-linecap: round;
             vector-effect: non-scaling-stroke;
+        }
+
+        .pip.disabled {
+            stroke: var(--disabled-color) !important;
+            fill: #666 !important;
         }
 
         .pip.fresh:not(.damaged) {
@@ -1069,6 +1074,11 @@ hr {
 
         .pip.detached {
             stroke: gray;
+        }
+
+        .pip.disabled {
+            stroke: var(--disabled-color) !important;
+            fill: #666 !important;
         }
 
         .pip.damaged {

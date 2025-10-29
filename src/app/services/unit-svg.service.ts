@@ -670,6 +670,7 @@ export class UnitSvgService implements OnDestroy {
         const destroyedSuperCooledMyomer = this.unit.getCritSlots().filter(slot => slot.name && slot.name.includes('SuperCooledMyomer') && slot.destroyed).length;
 
         let damagedHeatSinkCount = 0;
+        let turnedOffHeatSinkCount = this.unit.getHeat().heatsinksOff || 0;
         let dissipationFromHittableHeatsinks = 0;
         let dissipationLostFromDestroyedHittableHeatsinks = 0;
         heatsinkGroups.forEach(group => {
@@ -705,11 +706,27 @@ export class UnitSvgService implements OnDestroy {
                     }
                 }
                 idx++;  
+            });            
+            
+            idx = 0;
+            allHsPips.reverse().forEach(pip => {
+                if (idx < turnedOffHeatSinkCount) {
+                    if (!pip.classList.contains('disabled')) {
+                        pip.classList.add('disabled');
+                    }
+                } else {
+                    if (pip.classList.contains('disabled')) {
+                        pip.classList.remove('disabled');
+                    }
+                }
+                idx++;
             });
+
         }
         let engineHeatsinksCount = totalHeatsinkPips - heatsinkGroups.size;
         let healthyHeatsinkPips = totalHeatsinkPips - damagedHeatSinkCount;
         let totalDissipation = (engineHeatsinksCount * (hasDoubleHeatsinks ? 2 : 1)) + (dissipationFromHittableHeatsinks - dissipationLostFromDestroyedHittableHeatsinks);
+        totalDissipation = Math.max(0, totalDissipation - (turnedOffHeatSinkCount * (hasDoubleHeatsinks ? 2 : 1)));
 
         if (destroyedSuperCooledMyomer > 0) {
             totalDissipation -= destroyedSuperCooledMyomer * (hasDoubleHeatsinks ? 2 : 1);

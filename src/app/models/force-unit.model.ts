@@ -83,11 +83,12 @@ export interface SerializedUnit {
 export interface SerializedState {
     modified: boolean;
     destroyed: boolean;
+    shutdown: boolean;
     c3Linked: boolean;
     crew: any[]; // Serialized CrewMember objects
     crits: CriticalSlot[];
     locations: Record<string, LocationData>;
-    heat: { current: number, previous: number };
+    heat: { current: number, previous: number, heatsinksOff?: number };
     inventory?: MountedEquipment[];
 }
 
@@ -500,6 +501,12 @@ export class ForceUnit {
     setDestroyed(destroyed: boolean) {
         this.state.destroyed.set(destroyed);
     }
+    get shutdown(): boolean {
+        return this.state.shutdown();
+    }
+    setShutdown(shutdown: boolean) {
+        this.state.shutdown.set(shutdown);
+    }
     get c3Linked(): boolean {
         return this.state.c3Linked();
     }
@@ -515,7 +522,18 @@ export class ForceUnit {
     setHeat(heat: number) {
         const storedHeat = this.state.heat();
         if (heat === storedHeat.current) return; // No change
-        this.state.heat.set({ current: heat, previous: storedHeat.current });
+        const newHeatData: HeatProfile = { current: heat, previous: storedHeat.current };
+        if (storedHeat.heatsinksOff !== undefined) {
+            newHeatData.heatsinksOff = storedHeat.heatsinksOff;
+        }
+        this.state.heat.set(newHeatData);
+        this.setModified();
+    }
+    setHeatsinksOff(heatsinksOff: number) {
+        const storedHeat = this.state.heat();
+        if (heatsinksOff === storedHeat.heatsinksOff) return; // No change
+        const newHeatData: HeatProfile = { current: storedHeat.current, previous: storedHeat.previous, heatsinksOff: heatsinksOff };
+        this.state.heat.set(newHeatData);
         this.setModified();
     }
     getCritSlots = this.state.crits;
@@ -756,6 +774,7 @@ export class ForceUnit {
         this.state.heat.set({ current: 0, previous: 0 });
         // Clear destroyed state
         this.state.destroyed.set(false);
+        this.state.shutdown.set(false);
         // Clear inventory destroyed items
         const inventory = this.state.inventory().map(item => {
             if (item.destroyed) {
@@ -782,6 +801,7 @@ export class ForceUnit {
                 locations: this.state.locations(),
                 modified: this.state.modified(),
                 destroyed: this.state.destroyed(),
+                shutdown: this.state.shutdown(),
                 c3Linked: this.state.c3Linked(),
             };
         if (this.hasDirectInventory()) {
@@ -821,6 +841,7 @@ export class ForceUnit {
             this.state.heat.set(data.state.heat);
             this.state.modified.set(data.state.modified ?? false);
             this.state.destroyed.set(data.state.destroyed ?? false);
+            this.state.shutdown.set(data.state.shutdown ?? false);
             this.state.c3Linked.set(data.state.c3Linked ?? false);
             if (data.state.inventory) {
                 this.state.inventory.set(data.state.inventory);
@@ -837,9 +858,16 @@ export interface LocationData {
     internal?: number;
 }
 
+interface HeatProfile {
+    current: number;
+    previous: number;
+    heatsinksOff?: number;
+}
+
 export class ForceUnitState {
     public modified: WritableSignal<boolean>;
     public destroyed: WritableSignal<boolean>;
+    public shutdown: WritableSignal<boolean>;
     public c3Linked: WritableSignal<boolean>;
     /** Adjusted Battle Value, if any */
     public adjustedBv: WritableSignal<number | null>;
@@ -850,13 +878,14 @@ export class ForceUnitState {
     /** Locations and their armor/structure and other properties */
     public locations: WritableSignal<Record<string, LocationData>> = signal({});
     /** Heat state of the unit */
-    public heat: WritableSignal<{ current: number, previous: number }>;
+    public heat: WritableSignal<HeatProfile>;
     /** Inventory of the unit */
     public inventory: WritableSignal<MountedEquipment[]>;
 
     constructor() {
         this.modified = signal(false);
         this.destroyed = signal(false);
+        this.shutdown = signal(false);
         this.c3Linked = signal(false);
         this.adjustedBv = signal(null);
         this.crew = signal([]);

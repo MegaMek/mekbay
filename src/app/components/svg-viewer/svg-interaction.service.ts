@@ -838,7 +838,8 @@ export class SvgInteractionService {
     }
 
     private setupHeatInteractions(svg: SVGSVGElement, signal: AbortSignal) {
-        if (!this.unit()) return;
+        const unit = this.unit();
+        if (!unit) return;
 
         let heatScale: SVGElement | null = svg.getElementById('heatScale') as SVGGElement | null;
         if (!heatScale) return;
@@ -927,7 +928,7 @@ export class SvgInteractionService {
 
         const completeHeatDrag = () => {
             if (!this.state.isHeatDragging) return;
-            this.unit()?.setHeat(Number(this.state.clickTarget?.getAttribute('heat') || 0));
+            unit.setHeat(Number(this.state.clickTarget?.getAttribute('heat') || 0));
             endHeatDrag();
         };
 
@@ -935,19 +936,18 @@ export class SvgInteractionService {
         const overflowButton = svg.querySelector('#heatScale .overflowButton');
         if (overflowFrame && overflowButton) {
             const promptHeatOverflow = async (evt: Event) => {
-                if (!this.unit()) return;
                 const ref = this.dialog.open<number | null>(InputDialogComponent, {
                     data: {
                         message: 'Heat',
                         inputType: 'number',
-                        defaultValue: this.unit()!.getHeat().current,
+                        defaultValue: unit.getHeat().current,
                         placeholder: 'Heat value'
                     } as InputDialogData
                 });
                 const newHeatValue = await firstValueFrom(ref.closed);
                 if (newHeatValue === null || isNaN(Number(newHeatValue))) return;
                 const heatValue = Math.max(0, Number(newHeatValue));
-                this.unit()!.setHeat(heatValue);
+                unit.setHeat(heatValue);
             };
 
             overflowButton.addEventListener('click', promptHeatOverflow, { passive: false, signal });
@@ -957,7 +957,6 @@ export class SvgInteractionService {
             el.classList.add('interactive');
 
             el.addEventListener('pointerdown', (evt: Event) => {
-                if (this.unit() === null) return;
                 evt.preventDefault();
                 const pEvt = evt as PointerEvent;
                 const interactionType = pEvt.pointerType === 'mouse' ? 'mouse' : 'touch';
@@ -980,6 +979,48 @@ export class SvgInteractionService {
                 } catch (e) { /* Ignore */ }
             }, { passive: false, signal });
         });
+
+        const heatDataPanel = svg.getElementById('heatDataPanel') as SVGElement | null;
+        if (heatDataPanel) {
+            
+            const totalHeatsinkPips = heatDataPanel.querySelectorAll<SVGElement>('.pip.hsPip').length;
+            // Setup interactions for the heat data panel that allows to turn on/off heat sinks and reduce the dissipation power
+            const getHeatsinkPickerChoices = (unit: ForceUnit): PickerChoice[] => {
+                
+                const choices: PickerChoice[] = [];
+                const turnedOffHeatsinks = (unit.getHeat().heatsinksOff || 0);
+                const totalValidAndActiveHeatsinks = turnedOffHeatsinks - totalHeatsinkPips;
+                for (let i = totalValidAndActiveHeatsinks; i <= turnedOffHeatsinks; i++) {
+                    choices.push({ label: `${i}`, value: i });
+                }
+                return choices;
+            }
+
+            this.addSvgTapHandler(heatDataPanel, (event: PointerEvent) => {
+                if (this.state.clickTarget !== heatDataPanel) return;
+                const pickerInstance: PickerInstance = this.showPicker({
+                    event: event,
+                    el: heatDataPanel,
+                    title: `Active Heatsinks`,
+                    values: getHeatsinkPickerChoices(unit),
+                    selected: 0,
+                    suggestedPickerStyle: 'radial',
+                    targetType: 'heatsinks',
+                    onPick: (val: PickerValue) => {
+                        this.removePicker();
+                        if (val) {
+                            const heatsinksOff = (unit.getHeat().heatsinksOff || 0) - (val as number);
+                            unit.setHeatsinksOff(heatsinksOff);
+                            this.toastService.show(`Heatsink settings updated.`, 'info');
+                        }
+                    },
+                    onCancel: () => {
+                        this.removePicker();
+                    }
+                });
+                
+            }, signal);
+        }
     }
 
     private setupCrewHitInteractions(svg: SVGSVGElement, signal: AbortSignal) {
@@ -1176,7 +1217,7 @@ export class SvgInteractionService {
         if (pickerStyle === 'linear') {
             compRef = this.createLinearPicker(envInjector, opts, rect);
         } else {
-            if (opts.targetType === 'armor') {
+            if (opts.targetType === 'armor' || opts.targetType === 'heatsinks') {
                 compRef = this.createRotatingPicker(envInjector, opts, rect);
             } else {
                 compRef = this.createRadialPicker(envInjector, opts, rect);
