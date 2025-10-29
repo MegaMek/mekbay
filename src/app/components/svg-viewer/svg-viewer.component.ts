@@ -269,12 +269,12 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
         if (referenceTables.length === 0) return; // no reference tables to hide/show
         if (fluffImageInSheet) {
-            injectedEl?.style.setProperty('display', 'block');
+            injectedEl.style.setProperty('display', 'block');
             referenceTables.forEach((rt) => {
                 rt.style.display = 'none';
             });
         } else {
-            injectedEl?.style.setProperty('display', 'none');
+            injectedEl.style.setProperty('display', 'none');
             referenceTables.forEach((rt) => {
                 rt.style.display = 'block';
             });
