@@ -129,9 +129,9 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             previousUnit = currentUnit;
         }, { injector: this.injector });
         this.fluffImageInjectEffectRef = effect(() => {
-            this.optionsService.options().fluffImageInSheet;
             const svg = this.currentSvg();
             if (!svg) return;
+            this.optionsService.options().fluffImageInSheet;
             this.setFluffImageVisibility();
         });
     }
