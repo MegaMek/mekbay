@@ -111,7 +111,8 @@
                                     min="1"
                                     class="quantity-field"
                                     (input)="onQuantityInput(option.name, $event)"
-                                    (click)="$event.stopPropagation()" />
+                                    (click)="$event.stopPropagation()"
+                                    (wheel)="onQuantityWheel(option.name, $event)" />
                             </div>
                         }
                     </label>
