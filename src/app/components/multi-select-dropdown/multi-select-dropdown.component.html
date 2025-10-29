@@ -7,6 +7,7 @@
             }
             @for (option of selectedOptions(); let i = $index; track i) {
                 <span class="pill"
+                      (click)="openAndScrollTo(option.name, $event)"
                       [ngClass]="{
                         'pill-or': option.state === 'or',
                         'pill-and': option.state === 'and',
@@ -40,6 +41,7 @@
                 [style.maxHeight.px]="maxHeightOptions()">
                 @for (option of filteredOptions(); let i = $index; track option.name) {
                     <label class="option-item"
+                        [attr.data-option-name]="option.name"
                         [class.unavailable]="option.available === false"
                         [class.selected-single]="!multiselect() && isSelected(option.name)"
                         (click)="!multiselect() ? onSingleSelect(option.name) : null"

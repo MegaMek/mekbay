@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, HostListener, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector } from '@angular/core';
+import { Component, HostListener, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LayoutService } from '../../services/layout.service';
 
@@ -108,7 +108,23 @@ export class MultiSelectDropdownComponent {
         return this.options().filter(option => normalize(option.name).includes(filter));
     });
 
-    constructor() {}
+    private openListener = (ev: Event) => {
+        const ce = ev as CustomEvent;
+        // if another instance opened, close this one
+        if (ce.detail !== this && this.isOpen()) {
+            this.isOpen.set(false);
+            this.filterText.set('');
+        }
+    };
+
+    constructor() {
+        effect((cleanup) => {
+            document.addEventListener('multi-select-dropdown-open', this.openListener as EventListener);
+            cleanup(() => {
+                document.removeEventListener('multi-select-dropdown-open', this.openListener as EventListener);
+            });
+        });
+    }
 
     @HostListener('document:click', ['$event'])
     onDocumentClick(event: MouseEvent) {
@@ -120,6 +136,10 @@ export class MultiSelectDropdownComponent {
 
     toggleDropdown() {
         this.isOpen.set(!this.isOpen());
+        if (this.isOpen()) {
+            // notify other instances
+            document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
+        }
         this.filterText.set('');        
         afterNextRender(() => {
             if (this.isOpen()) {
@@ -127,6 +147,36 @@ export class MultiSelectDropdownComponent {
                 if (inputEl) {
                     inputEl.focus();
                 }
+            }
+        }, { injector: this.injector });
+    }
+
+    openAndScrollTo(optionName: string, event: MouseEvent) {
+        document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
+        event.stopPropagation();
+        this.isOpen.set(true);
+        this.filterText.set('');
+        afterNextRender(() => {
+            const container = this.optionsEl()?.nativeElement;
+            if (!container) return;
+
+            const items = Array.from(container.querySelectorAll<HTMLElement>('.option-item'));
+            for (const item of items) {
+                if (item.getAttribute('data-option-name') === optionName) {
+                    // scrollIntoView on the found item; prefer nearest block to avoid excessive scrolling
+                    try {
+                        item.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    } catch {
+                        // fallback for environments that don't support options
+                        item.scrollIntoView();
+                    }
+                    break;
+                }
+            }
+
+            const inputEl = this.filterInput()?.nativeElement;
+            if (inputEl) {
+                inputEl.focus();
             }
         }, { injector: this.injector });
     }
