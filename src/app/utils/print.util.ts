@@ -51,8 +51,11 @@ export class PrintUtil {
         if (!clean) {
             for (const unit of forceUnits) {
                 unit.disabledSaving = true;
-                originalHeats.set(unit, unit.getHeat());
-                unit.setHeatsinksOff(0);
+                const unitHeat = unit.getHeat();
+                originalHeats.set(unit, unitHeat);
+                if (unitHeat.heatsinksOff !== undefined) {
+                    unit.setHeatsinksOff(0);
+                }
                 unit.setHeat(0);
             }
         }
