@@ -45,7 +45,7 @@ export interface DropdownOption {
     count?: number;
 }
 
-export type MultiState = 'off' | 'or' | 'and' | 'not';
+export type MultiState = false | 'or' | 'and' | 'not';
 export interface MultiStateSelection {
   [key: string]: { state: MultiState; count: number };
 }
@@ -83,7 +83,7 @@ export class MultiSelectDropdownComponent {
         if (this.multistate()) {
             const sel = (this.selected() as MultiStateSelection) || {};
             return Object.entries(sel)
-                .filter(([_, selection]) => selection.state !== 'off')
+                .filter(([_, selection]) => selection.state !== false)
                 .map(([name, selection]) => ({ name, state: selection.state, count: selection.count }));
         }
         return (this.selected() as readonly string[] || []).map((name: string) => ({ name, state: 'or' as MultiState, count: 1 }));
@@ -213,16 +213,16 @@ export class MultiSelectDropdownComponent {
         if (this.multistate()) {
             const sel = this.selected();
             const currentSelection: MultiStateSelection = (sel && !Array.isArray(sel)) ? { ...sel } : {};
-            const current = currentSelection[optionName] || { state: 'off' as MultiState, count: 1 };
+            const current = currentSelection[optionName] || { state: false as MultiState, count: 1 };
             let nextState: MultiState;
             switch (current.state) {
-                case 'off': nextState = 'or'; break;
+                case false: nextState = 'or'; break;
                 case 'or': nextState = 'and'; break;
                 case 'and': nextState = 'not'; break;
-                case 'not': nextState = 'off'; break;
+                case 'not': nextState = false; break;
                 default: nextState = 'or';
             }
-            if (nextState === 'off') {
+            if (nextState === false) {
                 delete currentSelection[optionName];
             } else {
                 const count = nextState === 'not' ? 1 : current.count;
@@ -275,9 +275,9 @@ export class MultiSelectDropdownComponent {
     getState(optionName: string): MultiState {
         if (this.multistate()) {
             const sel = this.selected() as MultiStateSelection;
-            return sel[optionName]?.state || 'off';
+            return sel[optionName]?.state || false;
         }
-        return this.isSelected(optionName) ? 'or' : 'off';
+        return this.isSelected(optionName) ? 'or' : false;
     }
 
     getCount(optionName: string): number {
