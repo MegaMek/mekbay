@@ -131,7 +131,6 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         }, { injector: this.injector });
         
         this.fluffImageInjectEffectRef = effect(() => {
-            if (!this.svgAttached()) return;
             const svg = this.currentSvg();
             if (!svg) return;
             const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
@@ -142,7 +141,9 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             if (fluffImageInSheet) {
                 if (svg.getElementById('fluff-image-injected')) return; // already injected, we skip
                 const fluffImageUrl = `https://db.mekbay.com/images/fluff/${fluffImage}`;
-                this.injectFluffToSvg(svg, fluffImageUrl);
+                afterNextRender(() => {
+                    this.injectFluffToSvg(svg, fluffImageUrl);
+                }, { injector: this.injector });
             } else {
                 svg.getElementById('fluff-image-injected')?.remove();
                 svg.querySelectorAll<SVGGraphicsElement>('.referenceTable').forEach((rt) => {
@@ -265,6 +266,8 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             slides.appendChild(slide);
             this.currentSlideEl = slide;
 
+            this.prepareSvgForDisplay(svg);
+
             this.currentSvg.set(svg);
 
             // Setup events for the newly attached SVG
@@ -275,9 +278,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             this.svgDimensionsUpdated();
             this.restoreViewState();
             this.resetCanvas();
-            afterNextRender(() => {
-                this.svgAttached.set(true);
-            }, { injector: this.injector });
+            this.svgAttached.set(true);
         } else {
             this.loadError.set('Loading record sheet...');
         }
@@ -638,18 +639,30 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         }
     }
 
+    // This method prepares the SVG for display to prevent flickering effects due to modifications we apply after display
+    // Example: hiding reference tables if fluff image is to be injected
+    private prepareSvgForDisplay(svg: SVGSVGElement) {
+        const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
+        if (!fluffImageInSheet) return;
+        const fluffImage = this.unit()?.getUnit()?.fluff?.img;
+        if (!fluffImage) return; // no fluff image to inject
+        if (fluffImage.endsWith('hud.png')) return; // default fluff image, we skip
+        const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
+        referenceTables.forEach((rt) => {
+            rt.style.display = 'none';
+        });
+    }
     
     private injectFluffToSvg(svg: SVGSVGElement, imageUrl: string) {
         const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
         if (referenceTables.length === 0) return; // We don't have a place where to put the fluff image
         // We calculate the width/height using all the reference tables and also the top/left most position
-        
         const pt = svg.createSVGPoint();
         let minX = Number.POSITIVE_INFINITY;
         let minY = Number.POSITIVE_INFINITY;
         let maxX = Number.NEGATIVE_INFINITY;
         let maxY = Number.NEGATIVE_INFINITY;
-        let topLeftElement: SVGGraphicsElement = referenceTables[0];
+        let topLeftElement: SVGGraphicsElement = referenceTables[0]; // We guess the first one is the top left most
         referenceTables.forEach((rt: SVGGraphicsElement) => {
             const bbox = rt.getBBox();
             const ctm = rt.getCTM() ?? svg.getCTM() ?? new DOMMatrix();
@@ -676,6 +689,10 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             minY = Math.min(minY, rtMinY);
             maxX = Math.max(maxX, rtMaxX);
             maxY = Math.max(maxY, rtMaxY);
+            // Check if this rt is more top-left than the current topLeftElement
+            if (rtMinY < minY || (rtMinY === minY && rtMinX < minX)) {
+                topLeftElement = rt;
+            }
         });
         if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return;
         // Determine parent to inject into (parent of top/left most referenceTable if available)
