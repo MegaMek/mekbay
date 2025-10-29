@@ -861,6 +861,10 @@ hr {
             fill: #666 !important;
         }
 
+        .pip.damaged {
+            fill: var(--damage-color) !important;
+        }
+
         .pip.fresh:not(.damaged) {
             stroke: #03a9f4 !important;
             stroke-width: 1.5px;
