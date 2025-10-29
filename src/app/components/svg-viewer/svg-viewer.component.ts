@@ -267,6 +267,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (!injectedEl) return; // we don't have a fluff image to switch to
         const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
         const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
+        if (referenceTables.length === 0) return; // no reference tables to hide/show
         if (fluffImageInSheet) {
             injectedEl?.style.setProperty('display', 'block');
             referenceTables.forEach((rt) => {
