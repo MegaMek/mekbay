@@ -110,6 +110,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('sheetsColor', value);
     }
 
+    onFluffImageInSheetChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('fluffImageInSheet', value);
+    }
+
     onPickerStyleChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'radial' | 'linear';
         this.optionsService.setOption('pickerStyle', value);

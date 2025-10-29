@@ -14,6 +14,14 @@
                     </select>
                 </div>
                 <div class="option-row">
+                    <label for="fluffImageInSheet">Intel Image in Sheet:</label>
+                    <select id="fluffImageInSheet" class="bt-select" [value]="optionsService.options().fluffImageInSheet"
+                        (change)="onFluffImageInSheetChange($event)">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled</option>
+                    </select>
+                </div>
+                <div class="option-row">
                     <label for="unitDisplayName">Unit Display Name:</label>
                     <select id="unitDisplayName" class="bt-select" [value]="optionsService.options().unitDisplayName"
                         (change)="onUnitDisplayNameChange($event)">

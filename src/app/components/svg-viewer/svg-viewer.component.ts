@@ -76,6 +76,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     containerHeight = 0;
 
     private unitChangeEffectRef: EffectRef | null = null;
+    private fluffImageInjectEffectRef: EffectRef | null = null;
     currentSvg = signal<SVGSVGElement | null>(null);
 
     // Slides/swipe state
@@ -114,7 +115,6 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             // If there was a previous unit, save its view state
             const currentUnit = this.unit();
             await currentUnit?.load();
-            const svg = currentUnit?.svg() ?? null;
 
             // If there was a previous unit, save its view state
             if (previousUnit && previousUnit !== currentUnit) {
@@ -128,6 +128,12 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
             previousUnit = currentUnit;
         }, { injector: this.injector });
+        this.fluffImageInjectEffectRef = effect(() => {
+            const svg = this.currentSvg();
+            if (!svg) return;
+            this.optionsService.options().fluffImageInSheet;
+            this.setFluffImageVisibility();
+        });
     }
 
     @HostListener('window:resize', ['$event'])
@@ -208,6 +214,9 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (this.unitChangeEffectRef) {
             this.unitChangeEffectRef.destroy();
         }
+        if (this.fluffImageInjectEffectRef) {
+            this.fluffImageInjectEffectRef.destroy();
+        }
 
         // Cleanup services
         this.interactionService.cleanup();
@@ -249,15 +258,37 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             this.svgDimensionsUpdated();
             this.restoreViewState();
             this.resetCanvas();
+            this.setFluffImageVisibility();
         } else {
             this.loadError.set('Loading record sheet...');
         }
     }
-
+    
     protected async resetCanvas() {
         const canvasOverlay = this.canvasOverlay();
         if (!canvasOverlay) return;
         this.setSlideX(canvasOverlay.nativeElement, 0, false);
+    }
+
+    private setFluffImageVisibility() {
+        const svg = this.currentSvg();
+        if (!svg) return;
+        const injectedEl = svg.getElementById('fluff-image-injected') as HTMLElement | null;
+        if (!injectedEl) return; // we don't have a fluff image to switch to
+        const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
+        const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
+        if (referenceTables.length === 0) return; // no reference tables to hide/show
+        if (fluffImageInSheet) {
+            injectedEl.style.setProperty('display', 'block');
+            referenceTables.forEach((rt) => {
+                rt.style.display = 'none';
+            });
+        } else {
+            injectedEl.style.setProperty('display', 'none');
+            referenceTables.forEach((rt) => {
+                rt.style.display = 'block';
+            });
+        }
     }
 
     retryLoad() {

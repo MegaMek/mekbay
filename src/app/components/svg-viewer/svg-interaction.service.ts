@@ -194,6 +194,7 @@ export class SvgInteractionService {
         this.setupSkillInteractions(svg, signal);
         this.setupCrewNameInteractions(svg, signal);
         this.setupInventoryInteractions(svg, signal);
+        this.setupFluffImageInteraction(svg, signal);
     }
 
     private addSvgTapHandler(
@@ -703,6 +704,29 @@ export class SvgInteractionService {
                 entry.el.classList.toggle('selected');
             }, { signal });
         });
+    }
+
+    private setupFluffImageInteraction(svg: SVGSVGElement, signal: AbortSignal) {
+        const fluffImageEl = svg.getElementById('fluff-image-injected') as HTMLElement | null;
+        if (!fluffImageEl) return;
+            const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
+        if (referenceTables.length === 0) return;
+        referenceTables.forEach(tableEl => {
+            tableEl.addEventListener('click', (event) => {
+                event.stopPropagation();
+                fluffImageEl.style.display = 'block';
+                referenceTables.forEach(tableEl => {
+                    tableEl.style.display = 'none';
+                });
+            }, { signal });
+        });
+        fluffImageEl.addEventListener('click', (event) => {
+            event.stopPropagation();
+            fluffImageEl.style.display = 'none';
+            referenceTables.forEach(tableEl => {
+                tableEl.style.display = 'block';
+            });
+        }, { signal });
     }
 
     private setupDirectInventoryInteractions(svg: SVGSVGElement, signal: AbortSignal) {
