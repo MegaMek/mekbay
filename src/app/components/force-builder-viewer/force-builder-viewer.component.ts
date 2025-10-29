@@ -211,7 +211,6 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         const unitList = this.forceBuilderService.forceUnits();
         const unitIndex = unitList.findIndex(u => u.id === unit.id);
         const ref = this.dialog.open(UnitDetailsDialogComponent, {
-            disableClose: true,
             data: <UnitDetailsDialogData>{
                 unitList: unitList,
                 unitIndex: unitIndex

@@ -278,7 +278,6 @@ export class App {
 
     showSingleUnitDetails(unit: Unit, tab?: string) {
         const ref = this.dialog.open(UnitDetailsDialogComponent, {
-            disableClose: true,
             data: <UnitDetailsDialogData>{
                 unitList: [unit],
                 unitIndex: 0

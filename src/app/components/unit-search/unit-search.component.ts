@@ -584,6 +584,10 @@ export class UnitSearchComponent implements OnDestroy {
         });
         this.unitDetailsDialogOpen.set(true);
 
+        setTimeout(() => {
+            try { if ('disableClose' in ref) (ref as any).disableClose = false; } catch (e) { /* ignore */ }
+        }, 500);
+        
         ref.closed.subscribe(() => {
             this.unitDetailsDialogOpen.set(false);
         });
