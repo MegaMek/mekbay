@@ -858,7 +858,7 @@ export interface LocationData {
     internal?: number;
 }
 
-interface HeatProfile {
+export interface HeatProfile {
     current: number;
     previous: number;
     heatsinksOff?: number;

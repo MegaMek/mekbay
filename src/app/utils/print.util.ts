@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit } from '../models/force-unit.model';
+import { ForceUnit, HeatProfile } from '../models/force-unit.model';
 import { DataService } from '../services/data.service';
 import { OptionsService } from '../services/options.service';
 
@@ -47,11 +47,12 @@ export class PrintUtil {
         }
 
         // Store original heat values and set to 0 for printing
-        const originalHeats = new Map<ForceUnit, { current: number, previous: number }>();
+        const originalHeats = new Map<ForceUnit, HeatProfile>();
         if (!clean) {
             for (const unit of forceUnits) {
                 unit.disabledSaving = true;
                 originalHeats.set(unit, unit.getHeat());
+                unit.setHeatsinksOff(0);
                 unit.setHeat(0);
             }
         }
@@ -191,7 +192,7 @@ export class PrintUtil {
      */
     private static async generateMultipagePrintContainer(svgStrings: string[],
         forceUnits: ForceUnit[],
-        originalHeats: Map<ForceUnit, { current: number, previous: number }>, triggerPrint: boolean = true): Promise<void> {
+        originalHeats: Map<ForceUnit, HeatProfile>, triggerPrint: boolean = true): Promise<void> {
         let bodyContent = '';
         for (let i = 0; i < svgStrings.length; i++) {
             if (i === svgStrings.length - 1) {
@@ -282,6 +283,9 @@ export class PrintUtil {
                     if (heat) {
                         unit.setHeat(heat.previous);
                         unit.setHeat(heat.current);
+                        if (heat.heatsinksOff !== undefined) {
+                            unit.setHeatsinksOff(heat.heatsinksOff);
+                        }
                         unit.disabledSaving = false;
                     }
                 }
