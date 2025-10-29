@@ -1056,6 +1056,7 @@ hr {
 
         image {
             filter: invert(1) hue-rotate(180deg);
+            mix-blend-mode: screen;
         }
 
         #faded-arrow {
