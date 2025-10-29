@@ -71,7 +71,7 @@
     color: #444;
     font-size: 0.8em;
     text-align: center;
-    transition: color 0.3s ease;
+    transition: color 0.2s;
 }
 
 .build-info:hover,
@@ -190,7 +190,7 @@ svg-viewer {
         height: 32px;
         cursor: pointer;
         color: var(--text-color-secondary);
-        transition: color 0.3s ease;
+        transition: color 0.2s;
     }
 
     button:hover {

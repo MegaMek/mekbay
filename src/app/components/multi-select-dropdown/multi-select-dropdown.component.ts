@@ -74,6 +74,8 @@ export class MultiSelectDropdownComponent {
     
     selectionChange = output<MultiStateSelection | readonly string[]>();
 
+    showUnavailable = signal(false);
+    showUnavailableToggle = computed(() => this.multistate() && this.options().some(o => o.available === false));
     isOpen = signal(false);
     filterText = signal('');
 
@@ -102,11 +104,19 @@ export class MultiSelectDropdownComponent {
         function normalize(str: string) {
             return str.toLowerCase().replace(/[^a-z0-9]/gi, '');
         }
-        if (!filter) {
-            return this.options();
+        const nameFiltered = filter ? this.options().filter(option => normalize(option.name).includes(filter)) : this.options();
+        // if the toggle is off, hide unavailable items
+        if (!this.showUnavailable()) {
+            return nameFiltered.filter(option => option.available !== false || this.isSelected(option.name));
         }
-        return this.options().filter(option => normalize(option.name).includes(filter));
+        return nameFiltered;
     });
+
+    toggleUnavailable(event: MouseEvent) {
+        // prevent the click from closing the dropdown
+        event.stopPropagation();
+        this.showUnavailable.set(!this.showUnavailable());
+    }
 
     private openListener = (ev: Event) => {
         const ce = ev as CustomEvent;
@@ -140,7 +150,7 @@ export class MultiSelectDropdownComponent {
             // notify other instances
             document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
         }
-        this.filterText.set('');        
+        this.filterText.set('');
         afterNextRender(() => {
             if (this.isOpen()) {
                 const inputEl = this.filterInput()?.nativeElement;
@@ -186,7 +196,20 @@ export class MultiSelectDropdownComponent {
         this.filterText.set(inputElement.value);
     }
 
-    onOptionToggle(optionName: string) {
+    onOptionToggle(optionName: string, event?: MouseEvent) {
+        const container = this.optionsEl()?.nativeElement;
+
+        // Preserve the item's visible top within the container viewport (pixels from container top)
+        let preservedVisibleTop: number | null = null;
+        if (container) {
+            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + optionName + '"]');
+            if (item) {
+                const containerRect = container.getBoundingClientRect();
+                const itemRect = item.getBoundingClientRect();
+                preservedVisibleTop = itemRect.top - containerRect.top;
+            }
+        }
+
         if (this.multistate()) {
             const sel = this.selected();
             const currentSelection: MultiStateSelection = (sel && !Array.isArray(sel)) ? { ...sel } : {};
@@ -218,6 +241,35 @@ export class MultiSelectDropdownComponent {
             }
             this.selectionChange.emit(newSelection);
         }
+
+        // restore the preserved scroll after the DOM updates
+        afterNextRender(() => {
+            const container = this.optionsEl()?.nativeElement;
+            if (!container || preservedVisibleTop === null) {
+                return;
+            }
+
+            // find the same item after update
+            const itemAfter = container.querySelector<HTMLElement>('.option-item[data-option-name="' + optionName + '"]');
+            if (!itemAfter) {
+                return;
+            }
+
+            const containerRect = container.getBoundingClientRect();
+            const itemRect = itemAfter.getBoundingClientRect();
+
+            // item offset within the scrollable content (distance from content top)
+            const itemAfterOffsetTop = (itemRect.top - containerRect.top) + container.scrollTop;
+
+            // desired visible top within container is the preservedVisibleTop
+            let newScrollTop = itemAfterOffsetTop - preservedVisibleTop;
+            newScrollTop = Math.max(0, Math.min(container.scrollHeight - container.clientHeight, newScrollTop));
+
+            // apply only if it meaningfully changes the scroll to avoid jitter
+            if (Math.abs(container.scrollTop - newScrollTop) > 0.5) {
+                container.scrollTop = newScrollTop;
+            }
+        }, { injector: this.injector });
     }
 
     getState(optionName: string): MultiState {
@@ -283,14 +335,8 @@ export class MultiSelectDropdownComponent {
     isSelected(optionName: string): MultiState | boolean {
         if (this.multistate()) {
             const sel = this.selected() as MultiStateSelection;
-            return sel[optionName]?.state || 'off';
+            return sel[optionName]?.state || false;
         }
         return this.selectedOptions().some(o => o.name === optionName);
-        // if (this.multistate()) {
-        //     const sel = this.selected();
-        //     const currentSelection: MultiStateSelection = (sel && !Array.isArray(sel)) ? { ...sel } : {};
-        //     return currentSelection[optionName].state || 'off';
-        // }
-        // return this.selectedOptions().some(o => o.name === optionName);
     }
 }

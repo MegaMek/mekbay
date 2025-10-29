@@ -402,7 +402,7 @@
     border: none;
     font-size: 2rem;
     cursor: pointer;
-    transition: color 0.15s;
+    transition: color 0.2s;
     outline: none;
     padding: 6px 1px;
     pointer-events: auto;
