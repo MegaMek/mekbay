@@ -43,4 +43,5 @@ export interface Options {
     swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
     unitDisplayName: 'chassisModel' | 'alias' | 'both';
     gameSystem: 'cbt' | 'as';
+    fluffImageInSheet: boolean;
 }

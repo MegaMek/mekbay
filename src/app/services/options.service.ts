@@ -47,6 +47,7 @@ const DEFAULT_OPTIONS: Options = {
     swipeToNextSheet: 'horizontal',
     unitDisplayName: 'chassisModel',
     gameSystem: 'cbt',
+    fluffImageInSheet: true,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -61,6 +62,7 @@ export class OptionsService {
         swipeToNextSheet: DEFAULT_OPTIONS.swipeToNextSheet,
         unitDisplayName: DEFAULT_OPTIONS.unitDisplayName,
         gameSystem: DEFAULT_OPTIONS.gameSystem,
+        fluffImageInSheet: DEFAULT_OPTIONS.fluffImageInSheet,
     });
 
     constructor() {
@@ -77,6 +79,7 @@ export class OptionsService {
             swipeToNextSheet: saved?.swipeToNextSheet ?? DEFAULT_OPTIONS.swipeToNextSheet,
             unitDisplayName: saved?.unitDisplayName ?? DEFAULT_OPTIONS.unitDisplayName,
             gameSystem: saved?.gameSystem ?? DEFAULT_OPTIONS.gameSystem,
+            fluffImageInSheet: saved?.fluffImageInSheet ?? DEFAULT_OPTIONS.fluffImageInSheet,
         });
     }
 

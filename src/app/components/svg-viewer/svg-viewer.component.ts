@@ -76,7 +76,9 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     containerHeight = 0;
 
     private unitChangeEffectRef: EffectRef | null = null;
+    private fluffImageInjectEffectRef: EffectRef | null = null;
     currentSvg = signal<SVGSVGElement | null>(null);
+    svgAttached = signal(false);
 
     // Slides/swipe state
     private currentSlideEl: HTMLDivElement | null = null;
@@ -114,7 +116,6 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             // If there was a previous unit, save its view state
             const currentUnit = this.unit();
             await currentUnit?.load();
-            const svg = currentUnit?.svg() ?? null;
 
             // If there was a previous unit, save its view state
             if (previousUnit && previousUnit !== currentUnit) {
@@ -128,6 +129,26 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
             previousUnit = currentUnit;
         }, { injector: this.injector });
+        
+        this.fluffImageInjectEffectRef = effect(() => {
+            if (!this.svgAttached()) return;
+            const svg = this.currentSvg();
+            if (!svg) return;
+            const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
+            const fluffImage = this.unit()?.getUnit()?.fluff?.img;
+            if (!fluffImage) return; // no fluff image to inject
+            if (svg.getElementById('fluff-image')) return; // already present from the original sheet, we skip
+            if (fluffImageInSheet) {
+                if (svg.getElementById('fluff-image-injected')) return; // already injected, we skip
+                const fluffImageUrl = `https://db.mekbay.com/images/fluff/${fluffImage}`;
+                this.injectFluffToSvg(svg, fluffImageUrl);
+            } else {
+                svg.getElementById('fluff-image-injected')?.remove();
+                svg.querySelectorAll<SVGGraphicsElement>('.referenceTable').forEach((rt) => {
+                    rt.style.display = 'block';
+                });
+            }
+        });
     }
 
     @HostListener('window:resize', ['$event'])
@@ -208,6 +229,9 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (this.unitChangeEffectRef) {
             this.unitChangeEffectRef.destroy();
         }
+        if (this.fluffImageInjectEffectRef) {
+            this.fluffImageInjectEffectRef.destroy();
+        }
 
         // Cleanup services
         this.interactionService.cleanup();
@@ -215,6 +239,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
 
     displaySvg(): void {
+        this.svgAttached.set(false);
         const currentUnit = this.unit();
         const slides = this.slidesRef().nativeElement;
         Array.from(slides.querySelectorAll('.slide')).forEach((el: Element) => el.remove());
@@ -249,11 +274,14 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             this.svgDimensionsUpdated();
             this.restoreViewState();
             this.resetCanvas();
+            afterNextRender(() => {
+                this.svgAttached.set(true);
+            }, { injector: this.injector });
         } else {
             this.loadError.set('Loading record sheet...');
         }
     }
-
+    
     protected async resetCanvas() {
         const canvasOverlay = this.canvasOverlay();
         if (!canvasOverlay) return;
@@ -608,4 +636,74 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             this.setSlideX(this.currentSlideEl, 0, false);
         }
     }
+
+    
+    private injectFluffToSvg(svg: SVGSVGElement, imageUrl: string) {
+        const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
+        if (referenceTables.length === 0) return; // We don't have a place where to put the fluff image
+        // We calculate the width/height using all the reference tables and also the top/left most position
+        
+        const pt = svg.createSVGPoint();
+        let minX = Number.POSITIVE_INFINITY;
+        let minY = Number.POSITIVE_INFINITY;
+        let maxX = Number.NEGATIVE_INFINITY;
+        let maxY = Number.NEGATIVE_INFINITY;
+        let topLeftElement: SVGGraphicsElement = referenceTables[0];
+        referenceTables.forEach((rt: SVGGraphicsElement) => {
+            const bbox = rt.getBBox();
+            const ctm = rt.getCTM() ?? svg.getCTM() ?? new DOMMatrix();
+            const corners = [
+                { x: bbox.x, y: bbox.y },
+                { x: bbox.x + bbox.width, y: bbox.y },
+                { x: bbox.x, y: bbox.y + bbox.height },
+                { x: bbox.x + bbox.width, y: bbox.y + bbox.height },
+            ];
+            let rtMinX = Number.POSITIVE_INFINITY;
+            let rtMinY = Number.POSITIVE_INFINITY;
+            let rtMaxX = Number.NEGATIVE_INFINITY;
+            let rtMaxY = Number.NEGATIVE_INFINITY;
+            for (const c of corners) {
+                pt.x = c.x; pt.y = c.y;
+                const p = pt.matrixTransform(ctm);
+                rtMinX = Math.min(rtMinX, p.x);
+                rtMinY = Math.min(rtMinY, p.y);
+                rtMaxX = Math.max(rtMaxX, p.x);
+                rtMaxY = Math.max(rtMaxY, p.y);
+            }
+
+            minX = Math.min(minX, rtMinX);
+            minY = Math.min(minY, rtMinY);
+            maxX = Math.max(maxX, rtMaxX);
+            maxY = Math.max(maxY, rtMaxY);
+        });
+        if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return;
+        // Determine parent to inject into (parent of top/left most referenceTable if available)
+        let injectParent: ParentNode = svg;
+        if (topLeftElement?.parentElement) {
+            injectParent = topLeftElement.parentElement;
+        }
+        const parentCTM = (injectParent as any).getCTM ? (injectParent as SVGGraphicsElement).getCTM() : null;
+        const invParent = parentCTM ? parentCTM.inverse() : new DOMMatrix();
+        pt.x = minX; pt.y = minY;
+        const localTL = pt.matrixTransform(invParent);
+        pt.x = maxX; pt.y = maxY;
+        const localBR = pt.matrixTransform(invParent);
+
+        const localWidth = localBR.x - localTL.x;
+        const localHeight = localBR.y - localTL.y;
+        // We create an image element
+        const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+        img.setAttribute('id', 'fluff-image-injected');
+        img.setAttribute('href', imageUrl);
+        img.setAttribute('x', localTL.x.toString());
+        img.setAttribute('y', localTL.y.toString());
+        img.setAttribute('width', Math.max(0, localWidth).toString());
+        img.setAttribute('height', Math.max(0, localHeight).toString());
+        injectParent.appendChild(img);
+        // We hide the reference tables
+        referenceTables.forEach((rt) => {
+            rt.style.display = 'none';
+        });
+    }
+
 }
