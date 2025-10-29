@@ -76,6 +76,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     containerHeight = 0;
 
     private unitChangeEffectRef: EffectRef | null = null;
+    private fluffImageInjectEffectRef: EffectRef | null = null;
     currentSvg = signal<SVGSVGElement | null>(null);
 
     // Slides/swipe state
@@ -127,6 +128,12 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
             previousUnit = currentUnit;
         }, { injector: this.injector });
+        this.fluffImageInjectEffectRef = effect(() => {
+            this.optionsService.options().fluffImageInSheet;
+            const svg = this.currentSvg();
+            if (!svg) return;
+            this.setFluffImageVisibility();
+        });
     }
 
     @HostListener('window:resize', ['$event'])
@@ -206,6 +213,9 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         // Cleanup effects
         if (this.unitChangeEffectRef) {
             this.unitChangeEffectRef.destroy();
+        }
+        if (this.fluffImageInjectEffectRef) {
+            this.fluffImageInjectEffectRef.destroy();
         }
 
         // Cleanup services
