@@ -421,12 +421,6 @@
     color: var(--text-color);
 }
 
-@media (max-width: 680px) {
-    .nav-arrow {
-        display: none;
-    }
-}
-
 /* Matrix layout (3 columns, 3 rows) */
 .components-matrix {
     display: grid;
