@@ -1063,8 +1063,8 @@ export const FORCE_PACKS: ForcePack[] = [
       },
       {
         "chassis": "Griffin",
-        "model": "GRF-2N",
-        "name": "BMGriffin_GRF2N"
+        "model": "GRF-4N",
+        "name": "BMGriffin_GRF4N"
       },
       {
         "chassis": "Mad Cat (Timber Wolf)",
