@@ -133,20 +133,18 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         this.fluffImageInjectEffectRef = effect(() => {
             const svg = this.currentSvg();
             if (!svg) return;
+            const injectedEl = svg.getElementById('fluff-image-injected') as HTMLElement | null;
+            if (!injectedEl) return; // we don't have a fluff image to switch to
             const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
-            const fluffImage = this.unit()?.getUnit()?.fluff?.img;
-            if (!fluffImage) return; // no fluff image to inject
-            if (fluffImage.endsWith('hud.png')) return;
-            if (svg.getElementById('fluff-image')) return; // already present from the original sheet, we skip
+            const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
             if (fluffImageInSheet) {
-                if (svg.getElementById('fluff-image-injected')) return; // already injected, we skip
-                const fluffImageUrl = `https://db.mekbay.com/images/fluff/${fluffImage}`;
-                afterNextRender(() => {
-                    this.injectFluffToSvg(svg, fluffImageUrl);
-                }, { injector: this.injector });
+                injectedEl?.style.setProperty('display', 'block');
+                referenceTables.forEach((rt) => {
+                    rt.style.display = 'none';
+                });
             } else {
-                svg.getElementById('fluff-image-injected')?.remove();
-                svg.querySelectorAll<SVGGraphicsElement>('.referenceTable').forEach((rt) => {
+                injectedEl?.style.setProperty('display', 'none');
+                referenceTables.forEach((rt) => {
                     rt.style.display = 'block';
                 });
             }
@@ -265,8 +263,6 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             slide.appendChild(svg);
             slides.appendChild(slide);
             this.currentSlideEl = slide;
-
-            this.prepareSvgForDisplay(svg);
 
             this.currentSvg.set(svg);
 
@@ -638,90 +634,4 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             this.setSlideX(this.currentSlideEl, 0, false);
         }
     }
-
-    // This method prepares the SVG for display to prevent flickering effects due to modifications we apply after display
-    // Example: hiding reference tables if fluff image is to be injected
-    private prepareSvgForDisplay(svg: SVGSVGElement) {
-        const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
-        if (!fluffImageInSheet) return;
-        const fluffImage = this.unit()?.getUnit()?.fluff?.img;
-        if (!fluffImage) return; // no fluff image to inject
-        if (fluffImage.endsWith('hud.png')) return; // default fluff image, we skip
-        const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
-        referenceTables.forEach((rt) => {
-            rt.style.display = 'none';
-        });
-    }
-    
-    private injectFluffToSvg(svg: SVGSVGElement, imageUrl: string) {
-        const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
-        if (referenceTables.length === 0) return; // We don't have a place where to put the fluff image
-        // We calculate the width/height using all the reference tables and also the top/left most position
-        const pt = svg.createSVGPoint();
-        let minX = Number.POSITIVE_INFINITY;
-        let minY = Number.POSITIVE_INFINITY;
-        let maxX = Number.NEGATIVE_INFINITY;
-        let maxY = Number.NEGATIVE_INFINITY;
-        let topLeftElement: SVGGraphicsElement = referenceTables[0]; // We guess the first one is the top left most
-        referenceTables.forEach((rt: SVGGraphicsElement) => {
-            const bbox = rt.getBBox();
-            const ctm = rt.getCTM() ?? svg.getCTM() ?? new DOMMatrix();
-            const corners = [
-                { x: bbox.x, y: bbox.y },
-                { x: bbox.x + bbox.width, y: bbox.y },
-                { x: bbox.x, y: bbox.y + bbox.height },
-                { x: bbox.x + bbox.width, y: bbox.y + bbox.height },
-            ];
-            let rtMinX = Number.POSITIVE_INFINITY;
-            let rtMinY = Number.POSITIVE_INFINITY;
-            let rtMaxX = Number.NEGATIVE_INFINITY;
-            let rtMaxY = Number.NEGATIVE_INFINITY;
-            for (const c of corners) {
-                pt.x = c.x; pt.y = c.y;
-                const p = pt.matrixTransform(ctm);
-                rtMinX = Math.min(rtMinX, p.x);
-                rtMinY = Math.min(rtMinY, p.y);
-                rtMaxX = Math.max(rtMaxX, p.x);
-                rtMaxY = Math.max(rtMaxY, p.y);
-            }
-
-            minX = Math.min(minX, rtMinX);
-            minY = Math.min(minY, rtMinY);
-            maxX = Math.max(maxX, rtMaxX);
-            maxY = Math.max(maxY, rtMaxY);
-            // Check if this rt is more top-left than the current topLeftElement
-            if (rtMinY < minY || (rtMinY === minY && rtMinX < minX)) {
-                topLeftElement = rt;
-            }
-        });
-        if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return;
-        // Determine parent to inject into (parent of top/left most referenceTable if available)
-        let injectParent: ParentNode = svg;
-        if (topLeftElement?.parentElement) {
-            injectParent = topLeftElement.parentElement;
-        }
-        const parentCTM = (injectParent as any).getCTM ? (injectParent as SVGGraphicsElement).getCTM() : null;
-        const invParent = parentCTM ? parentCTM.inverse() : new DOMMatrix();
-        pt.x = minX; pt.y = minY;
-        const localTL = pt.matrixTransform(invParent);
-        pt.x = maxX; pt.y = maxY;
-        const localBR = pt.matrixTransform(invParent);
-
-        const localWidth = localBR.x - localTL.x;
-        const localHeight = localBR.y - localTL.y;
-        // We create an image element
-        const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-        img.setAttribute('id', 'fluff-image-injected');
-        img.setAttribute('href', imageUrl);
-        img.setAttribute('x', localTL.x.toString());
-        img.setAttribute('y', localTL.y.toString());
-        img.setAttribute('width', Math.max(0, localWidth).toString());
-        img.setAttribute('height', Math.max(0, localHeight).toString());
-        injectParent.appendChild(img);
-        // We hide the reference tables
-        referenceTables.forEach((rt) => {
-            rt.style.display = 'none';
-        });
-    }
-
 }

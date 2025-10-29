@@ -88,6 +88,7 @@ export class RsPolyfillUtil {
         this.addInventoryLines(svg);
         this.adjustArmorPips(unit, svg);
         this.addHitMod(svg);
+        this.injectFluffImage(unit, svg);
     }
 
     public static fixSvg(svg: SVGSVGElement): void {
@@ -556,5 +557,77 @@ export class RsPolyfillUtil {
             rect.setAttribute('pointer-events', 'all');
             overflowFrameEl.parentElement?.insertBefore(rect, overflowFrameEl);
         }
+    }
+
+    private static injectFluffImage(unit: Unit, svg: SVGSVGElement) {
+        const fluffImage = unit?.fluff?.img;
+        if (!fluffImage) return; // no fluff image to inject
+        if (fluffImage.endsWith('hud.png')) return; // default fluff image, we skip
+        const fluffImageUrl = `https://db.mekbay.com/images/fluff/${fluffImage}`;
+        const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
+        if (referenceTables.length === 0) return; // We don't have a place where to put the fluff image
+        // We calculate the width/height using all the reference tables and also the top/left most position
+        const pt = svg.createSVGPoint();
+        let minX = Number.POSITIVE_INFINITY;
+        let minY = Number.POSITIVE_INFINITY;
+        let maxX = Number.NEGATIVE_INFINITY;
+        let maxY = Number.NEGATIVE_INFINITY;
+        let topLeftElement: SVGGraphicsElement = referenceTables[0]; // We guess the first one is the top left most
+        referenceTables.forEach((rt: SVGGraphicsElement) => {
+            const bbox = rt.getBBox();
+            const ctm = rt.getCTM() ?? svg.getCTM() ?? new DOMMatrix();
+            const corners = [
+                { x: bbox.x, y: bbox.y },
+                { x: bbox.x + bbox.width, y: bbox.y },
+                { x: bbox.x, y: bbox.y + bbox.height },
+                { x: bbox.x + bbox.width, y: bbox.y + bbox.height },
+            ];
+            let rtMinX = Number.POSITIVE_INFINITY;
+            let rtMinY = Number.POSITIVE_INFINITY;
+            let rtMaxX = Number.NEGATIVE_INFINITY;
+            let rtMaxY = Number.NEGATIVE_INFINITY;
+            for (const c of corners) {
+                pt.x = c.x; pt.y = c.y;
+                const p = pt.matrixTransform(ctm);
+                rtMinX = Math.min(rtMinX, p.x);
+                rtMinY = Math.min(rtMinY, p.y);
+                rtMaxX = Math.max(rtMaxX, p.x);
+                rtMaxY = Math.max(rtMaxY, p.y);
+            }
+
+            minX = Math.min(minX, rtMinX);
+            minY = Math.min(minY, rtMinY);
+            maxX = Math.max(maxX, rtMaxX);
+            maxY = Math.max(maxY, rtMaxY);
+            // Check if this rt is more top-left than the current topLeftElement
+            if (rtMinY < minY || (rtMinY === minY && rtMinX < minX)) {
+                topLeftElement = rt;
+            }
+        });
+        if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return;
+        // Determine parent to inject into (parent of top/left most referenceTable if available)
+        let injectParent: ParentNode = svg;
+        if (topLeftElement?.parentElement) {
+            injectParent = topLeftElement.parentElement;
+        }
+        const parentCTM = (injectParent as any).getCTM ? (injectParent as SVGGraphicsElement).getCTM() : null;
+        const invParent = parentCTM ? parentCTM.inverse() : new DOMMatrix();
+        pt.x = minX; pt.y = minY;
+        const localTL = pt.matrixTransform(invParent);
+        pt.x = maxX; pt.y = maxY;
+        const localBR = pt.matrixTransform(invParent);
+
+        const localWidth = localBR.x - localTL.x;
+        const localHeight = localBR.y - localTL.y;
+        // We create an image element
+        const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+        img.setAttribute('id', 'fluff-image-injected');
+        img.setAttribute('href', fluffImageUrl);
+        img.setAttribute('x', localTL.x.toString());
+        img.setAttribute('y', localTL.y.toString());
+        img.setAttribute('width', Math.max(0, localWidth).toString());
+        img.setAttribute('height', Math.max(0, localHeight).toString());
+        img.style.display = 'none';
+        injectParent.appendChild(img);
     }
 }

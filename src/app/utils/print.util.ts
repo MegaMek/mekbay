@@ -33,13 +33,14 @@
 
 import { ForceUnit } from '../models/force-unit.model';
 import { DataService } from '../services/data.service';
+import { OptionsService } from '../services/options.service';
 
 /*
  * Author: Drake
  */
 export class PrintUtil {
 
-    public static async multipagePrint(dataService: DataService, forceUnits: ForceUnit[], clean: boolean = false, triggerPrint: boolean = true): Promise<void> {
+    public static async multipagePrint(dataService: DataService, optionsService: OptionsService, forceUnits: ForceUnit[], clean: boolean = false, triggerPrint: boolean = true): Promise<void> {
         if (forceUnits.length === 0) {
             console.warn('No units to export.');
             return;
@@ -69,6 +70,24 @@ export class PrintUtil {
             }
             
             await this.nextAnimationFrames(2);
+
+            // Turn on/off fluff image
+            const injectedEl = svg.getElementById('fluff-image-injected') as HTMLElement | null;
+            if (injectedEl) {
+                const fluffImageInSheet = optionsService.options().fluffImageInSheet;
+                const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
+                if (fluffImageInSheet) {
+                    injectedEl.style.setProperty('display', 'block');
+                    referenceTables.forEach((rt) => {
+                        rt.style.display = 'none';
+                    });
+                } else {
+                    injectedEl.style.setProperty('display', 'none');
+                    referenceTables.forEach((rt) => {
+                        rt.style.display = 'block';
+                    });
+                }
+            }
 
             // Ensure font-size has units
             svg.querySelectorAll('[style]').forEach(el => {

@@ -51,6 +51,7 @@ import { DataService } from '../../services/data.service';
 import { PrintUtil } from '../../utils/print.util';
 import { ForcePackDialogComponent } from '../force-pack-dialog/force-pack-dialog.component';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
+import { OptionsService } from '../../services/options.service';
 /*
  * Author: Drake
  */
@@ -71,6 +72,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     protected forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
     private dataService = inject(DataService);
+    private optionsService = inject(OptionsService);
     private toastService = inject(ToastService);
     private elRef = inject(ElementRef<HTMLElement>);
     private renderer = inject(Renderer2);
@@ -758,6 +760,6 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     }
 
     printAll(): void {
-        PrintUtil.multipagePrint(this.dataService, this.forceBuilderService.forceUnits());
+        PrintUtil.multipagePrint(this.dataService, this.optionsService, this.forceBuilderService.forceUnits());
     }
 }
