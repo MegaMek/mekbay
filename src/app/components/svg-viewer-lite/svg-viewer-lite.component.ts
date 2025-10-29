@@ -55,6 +55,7 @@ export class SvgViewerLiteComponent {
             const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
             const fluffImage = this.unit()?.fluff?.img;
             if (!fluffImage) return; // no fluff image to inject
+            if (fluffImage.endsWith('hud.png')) return;
             for (const svg of this.svgs()) {
                 if (svg.getElementById('fluff-image')) continue; // already present from the original sheet, we skip
                 if (fluffImageInSheet) {

@@ -137,6 +137,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
             const fluffImage = this.unit()?.getUnit()?.fluff?.img;
             if (!fluffImage) return; // no fluff image to inject
+            if (fluffImage.endsWith('hud.png')) return;
             if (svg.getElementById('fluff-image')) return; // already present from the original sheet, we skip
             if (fluffImageInSheet) {
                 if (svg.getElementById('fluff-image-injected')) return; // already injected, we skip
