@@ -22,6 +22,8 @@ import { LayoutService } from '../../services/layout.service';
     styleUrls: ['./sidebar.component.scss'],
 })
 export class SidebarComponent {
+    private readonly COLLAPSED_WIDTH = 100;
+    private readonly EXPANDED_WIDTH = 300;
     layout = inject(LayoutService);
 
     // drag state for phone
@@ -60,13 +62,30 @@ export class SidebarComponent {
 
     // desktop dock width based on expanded state
     public desktopDockWidth = computed(() => {
-        return this.layout.isMenuOpen() ? 300 : 150;
+        return this.layout.isMenuOpen() ? this.EXPANDED_WIDTH : this.COLLAPSED_WIDTH;
     });
 
-    // tablet overlay width (full width similar to desktop open width)
-    public tabletOverlayWidthPx = computed(() => Math.min(360, Math.max(300, this.phoneWidthPx())));
+    constructor() {
+        effect((cleanup) => {
+            const cat = this.viewportCategory();
+            let offset = 0;
+            if (cat === 'phone') {
+                offset = 0;
+            } else if (cat === 'tablet') {
+                offset = this.COLLAPSED_WIDTH;
+            } else {
+                // desktop: use computed dock width (150 collapsed / 300 expanded)
+                offset = this.desktopDockWidth();
+            }
+            document.documentElement.style.setProperty('--sidebar-offset', `${offset}px`);
+            document.documentElement.classList.toggle('sidebar-docked', offset > 0);
 
-    constructor() {}
+            cleanup(() => {
+                document.documentElement.style.removeProperty('--sidebar-offset');
+                document.documentElement.classList.remove('sidebar-docked');
+            });
+        });
+    }
 
     // Toggle button logic (tablet + desktop share the button)
     public onToggleButtonClick() {

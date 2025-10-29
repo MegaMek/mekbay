@@ -14,6 +14,8 @@
     overflow: hidden;
     background-color: var(--background-color-menu);
     position: relative;
+    /* push content when sidebar is docked (tablet/desktop) */
+    margin-left: var(--sidebar-offset, 0);
 }
 
 .content-area {

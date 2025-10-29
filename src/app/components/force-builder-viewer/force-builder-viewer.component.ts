@@ -37,7 +37,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { UnitSearchComponent } from '../unit-search/unit-search.component';
 import { ForceUnit, UnitGroup } from '../../models/force-unit.model';
-import { DragDropModule, CdkDragDrop, transferArrayItem, moveItemInArray, CdkDragMove } from '@angular/cdk/drag-drop'
+import { DragDropModule, CdkDragDrop, moveItemInArray, CdkDragMove } from '@angular/cdk/drag-drop'
 import { Dialog } from '@angular/cdk/dialog';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { Portal, PortalModule } from '@angular/cdk/portal';
@@ -209,6 +209,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         const unitList = this.forceBuilderService.forceUnits();
         const unitIndex = unitList.findIndex(u => u.id === unit.id);
         const ref = this.dialog.open(UnitDetailsDialogComponent, {
+            disableClose: true,
             data: <UnitDetailsDialogData>{
                 unitList: unitList,
                 unitIndex: unitIndex

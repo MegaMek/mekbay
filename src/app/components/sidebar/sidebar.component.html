@@ -7,10 +7,6 @@
 
         <nav class="nav">
             <p>{{ viewportCategory() }}</p>
-            <a class="nav-item" href="#">Home</a>
-            <a class="nav-item" href="#">Games</a>
-            <a class="nav-item" href="#">Servers</a>
-            <a class="nav-item" href="#">Settings</a>
         </nav>
 
         <div class="spacer"></div>
@@ -55,7 +51,7 @@
     <!-- tablet overlay when expanded -->
     @if (layout.isMenuOpen()) {
         <div class="tablet-overlay-panel" (pointerdown)="$event.stopPropagation()"
-            [style.width.px]="tabletOverlayWidthPx()">
+            [style.width.px]="desktopDockWidth()">
             <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
         </div>
     }
