@@ -45,6 +45,7 @@ function tokenizeForNaturalCompare(s: string): CacheEntry {
         if (s == null) s = '';
         else s = String(s);
     }
+    s = s.trim();
     const re = /(\d+|[A-Za-z]+|[^A-Za-z\d]+)/g;
     const rawParts = s.match(re) || [s];
     const parts: Part[] = rawParts.map(p => {
