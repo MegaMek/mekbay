@@ -394,15 +394,36 @@ hr {
         width: 100%;
         font-size: 0.9em;
         outline: none;
+        display: flex;
+        align-items: center;
+        flex-direction: row;
+        color: var(--text-color-secondary);
+        transition: color 0.2s, background-color 0.2s;
 
         &:hover {
             background-color: var(--background-highlight, #444);
+            color: var(--text-color);
         }
 
         &:disabled {
             color: var(--text-color-tertiary);
             cursor: not-allowed;
         }
+
+        .icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            margin-right: 8px;
+        
+            svg {
+                width: 100%;
+                height: 100%;
+            }
+        }
+
     }
 
     hr {
