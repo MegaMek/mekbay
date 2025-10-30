@@ -190,6 +190,7 @@ export class SvgZoomPanService {
 
         // Double-click to reset view
         container.addEventListener('dblclick', (event: MouseEvent) => {
+            if (this.pointers.size > 0) return;
             const target = event.target as Element;
             const isInteractiveElement = SvgZoomPanService.NON_INTERACTIVE_SELECTORS.some(selector =>
                 target.closest(selector)
@@ -202,7 +203,7 @@ export class SvgZoomPanService {
         });
     }
 
-    cleanupEventListeners() {   
+    cleanupEventListeners() {
         const container = this.containerRef.nativeElement;
         container.removeEventListener('pointermove', this.onPointerMove.bind(this));
         container.removeEventListener('pointerup', this.onPointerUp.bind(this));
@@ -305,6 +306,23 @@ export class SvgZoomPanService {
         // Track pointer
         this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, pointerType: event.pointerType });
 
+        // If this produces two active pointers, initialize pinch baseline so a
+        // re-added pointer doesn't reset scale back to the old touchStartScale.
+        if (this.pointers.size === 2) {
+            if (!this.state.waitingForFirstEvent) { // We are already interacting, we need to reset pinch state
+                const entries = Array.from(this.pointers.values());
+                const p1 = entries[0];
+                const p2 = entries[1];
+                this.state.touchStartDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                this.state.touchStartScale = this.state.scale();
+                const rect = this.containerRef.nativeElement.getBoundingClientRect();
+                this.state.touchCenter = {
+                    x: ((p1.x + p2.x) / 2) - rect.left,
+                    y: ((p1.y + p2.y) / 2) - rect.top
+                };
+                this.state.prevTouchCenter = { ...this.state.touchCenter };
+            }
+        } else
         if (this.pointers.size === 1) {
             const container = this.containerRef.nativeElement;
             container.addEventListener('pointermove', this.onPointerMove.bind(this));
@@ -337,7 +355,7 @@ export class SvgZoomPanService {
         this.lastMove = now;
 
         if (this.state.waitingForFirstEvent) {
-            
+
             const ps = this.state.pointerStart;
             const dx = event.clientX - ps.x;
             const dy = event.clientY - ps.y;
@@ -349,7 +367,7 @@ export class SvgZoomPanService {
             try {
                 this.containerRef.nativeElement.setPointerCapture(event.pointerId);
             } catch (e) { /* ignore */ }
-        
+
             // If two active pointers: start pinch
             if (this.pointers.size === 2) {
                 // End any swipe state

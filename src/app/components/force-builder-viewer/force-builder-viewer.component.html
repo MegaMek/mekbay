@@ -161,14 +161,54 @@
                 </button>
                 <ng-template #generalMenu>
                     <div class="popup-menu framed-borders" cdkMenu>
-                        <button class="menu-item" cdkMenuItem (click)="requestNewForce()">New Force</button>
+                        <button class="menu-item" cdkMenuItem (click)="requestNewForce()">
+                            <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" fill="currentColor"/>
+                                    <path d="M14 2v6h6" fill="currentColor"/>
+                                    <rect x="7" y="12" width="10" height="1.5" rx="0.75" fill="white" opacity="0.15"/>
+                                    <rect x="7" y="15" width="6" height="1.5" rx="0.75" fill="white" opacity="0.15"/>
+                                </svg></span> New Force</button>
                         <button class="menu-item" [hidden]="forceBuilderService.readOnlyForce()" cdkMenuItem
-                            (click)="requestRepairAll()">Repair Force</button>
-                        <button class="menu-item" [hidden]="!forceBuilderService.readOnlyForce()" cdkMenuItem
-                            (click)="requestCloneForce()">Clone Force</button>
-                        <button class="menu-item" cdkMenuItem (click)="showLoadForceDialog()">Load Force...</button>
+                            (click)="requestRepairAll()">
+                            <span class="icon"><svg fill="currentColor" height="32px" width="32px" version="1.1"
+                                    xmlns="http://www.w3.org/2000/svg" viewBox="0 0 143.734 143.734"
+                                    xml:space="preserve">
+                                    <path d="M119.743,103.298l-29.84-29.84l24.22-24.22c7.864,1.826,16.457-0.269,22.597-6.408
+		c6.719-6.713,8.562-16.367,5.74-24.81l-11.403,11.397c-4.034,4.046-10.693,3.92-14.893-0.28
+		c-4.183-4.189-4.314-10.848-0.286-14.887l11.397-11.397c-8.425-2.84-18.074-0.985-24.804,5.74
+		c-6.128,6.122-8.216,14.714-6.385,22.591l-24.22,24.214L47.657,31.189c1.826-7.87-0.28-16.463-6.402-22.597
+		c-6.713-6.719-16.361-8.568-24.804-5.746l11.397,11.403c4.04,4.034,3.92,10.699-0.286,14.893
+		c-4.189,4.189-10.836,4.314-14.887,0.286L1.277,18.026c-2.828,8.431-0.979,18.092,5.752,24.81
+		c6.116,6.134,14.708,8.216,22.591,6.396l24.208,24.202l-29.834,29.834c-5.43-0.376-10.979,1.426-15.114,5.585
+		c-7.626,7.614-7.626,19.965,0,27.591c7.602,7.608,19.959,7.608,27.573,0c4.147-4.147,5.943-9.702,5.597-15.132l29.816-29.828
+		l29.84,29.84c-0.37,5.43,1.438,10.985,5.585,15.126c7.608,7.62,19.971,7.62,27.585,0c7.614-7.614,7.614-19.965,0-27.585
+		C130.728,104.719,125.173,102.917,119.743,103.298z M25.311,132.56l-9.923-2.649l-2.643-9.923l7.25-7.262l9.923,2.655l2.655,9.917
+		L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.655l7.268,7.262L128.335,129.929z" />
+                                </svg></span> Repair Force</button>
+                        <button class="menu-item" cdkMenuItem
+                            (click)="requestCloneForce()">
+                            <span class="icon"><svg width="32px" height="32px" viewBox="0 0 16 16" fill="none"
+                                    xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M0 0H10V4H4V10H0V0Z" fill="currentColor" />
+                                    <path d="M16 6H6V16H16V6Z" fill="currentColor" />
+                                </svg>
+                            </span> Clone Force</button>
+                        <button class="menu-item" cdkMenuItem (click)="showLoadForceDialog()">
+                            <span class="icon">
+                                <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
+                                    xmlns="http://www.w3.org/2000/svg">
+                                    <path
+                                        d="m572.501 747-254.933 815.893-101.867-31.786 278.507-890.774h1105.813v-320H783.808L612.181 107H.021v1546.667c0 88.213 71.787 160 160 160h1388.054c75.946 0 141.973-54.08 156.906-128.64L1892.608 747H572.501Z"
+                                        fill-rule="evenodd" />
+                                </svg></span> Load Force...</button>
                         <hr />
-                        <button class="menu-item" cdkMenuItem (click)="showOptionsDialog()">Options...</button>
+                        <button class="menu-item" cdkMenuItem (click)="showOptionsDialog()">
+                            <span class="icon"><svg fill="currentColor" width="32px" height="32px"
+                                    viewBox="0 0 1920 1920" xmlns="http://www.w3.org/2000/svg">
+                                    <path
+                                        d="M1703.534 960c0-41.788-3.84-84.48-11.633-127.172l210.184-182.174-199.454-340.856-265.186 88.433c-66.974-55.567-143.323-99.389-223.85-128.415L1158.932 0h-397.78L706.49 269.704c-81.43 29.138-156.423 72.282-223.962 128.414l-265.073-88.32L18 650.654l210.184 182.174C220.39 875.52 216.55 918.212 216.55 960s3.84 84.48 11.633 127.172L18 1269.346l199.454 340.856 265.186-88.433c66.974 55.567 143.322 99.389 223.85 128.415L761.152 1920h397.779l54.663-269.704c81.318-29.138 156.424-72.282 223.963-128.414l265.073 88.433 199.454-340.856-210.184-182.174c7.793-42.805 11.633-85.497 11.633-127.285m-743.492 395.294c-217.976 0-395.294-177.318-395.294-395.294 0-217.976 177.318-395.294 395.294-395.294 217.977 0 395.294 177.318 395.294 395.294 0 217.976-177.317 395.294-395.294 395.294"
+                                        fill-rule="evenodd" />
+                                </svg></span> Options...</button>
                     </div>
                 </ng-template>
             </div>

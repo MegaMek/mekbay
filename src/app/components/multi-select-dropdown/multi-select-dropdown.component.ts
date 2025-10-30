@@ -45,7 +45,7 @@ export interface DropdownOption {
     count?: number;
 }
 
-export type MultiState = 'off' | 'or' | 'and' | 'not';
+export type MultiState = false | 'or' | 'and' | 'not';
 export interface MultiStateSelection {
   [key: string]: { state: MultiState; count: number };
 }
@@ -83,7 +83,7 @@ export class MultiSelectDropdownComponent {
         if (this.multistate()) {
             const sel = (this.selected() as MultiStateSelection) || {};
             return Object.entries(sel)
-                .filter(([_, selection]) => selection.state !== 'off')
+                .filter(([_, selection]) => selection.state !== false)
                 .map(([name, selection]) => ({ name, state: selection.state, count: selection.count }));
         }
         return (this.selected() as readonly string[] || []).map((name: string) => ({ name, state: 'or' as MultiState, count: 1 }));
@@ -213,16 +213,16 @@ export class MultiSelectDropdownComponent {
         if (this.multistate()) {
             const sel = this.selected();
             const currentSelection: MultiStateSelection = (sel && !Array.isArray(sel)) ? { ...sel } : {};
-            const current = currentSelection[optionName] || { state: 'off' as MultiState, count: 1 };
+            const current = currentSelection[optionName] || { state: false as MultiState, count: 1 };
             let nextState: MultiState;
             switch (current.state) {
-                case 'off': nextState = 'or'; break;
+                case false: nextState = 'or'; break;
                 case 'or': nextState = 'and'; break;
                 case 'and': nextState = 'not'; break;
-                case 'not': nextState = 'off'; break;
+                case 'not': nextState = false; break;
                 default: nextState = 'or';
             }
-            if (nextState === 'off') {
+            if (nextState === false) {
                 delete currentSelection[optionName];
             } else {
                 const count = nextState === 'not' ? 1 : current.count;
@@ -241,7 +241,11 @@ export class MultiSelectDropdownComponent {
             }
             this.selectionChange.emit(newSelection);
         }
+        
+        this.restoreScrollPosition(optionName, preservedVisibleTop);
+    }
 
+    restoreScrollPosition(optionName: string, preservedVisibleTop: number | null) {
         // restore the preserved scroll after the DOM updates
         afterNextRender(() => {
             const container = this.optionsEl()?.nativeElement;
@@ -275,9 +279,9 @@ export class MultiSelectDropdownComponent {
     getState(optionName: string): MultiState {
         if (this.multistate()) {
             const sel = this.selected() as MultiStateSelection;
-            return sel[optionName]?.state || 'off';
+            return sel[optionName]?.state || false;
         }
-        return this.isSelected(optionName) ? 'or' : 'off';
+        return this.isSelected(optionName) ? 'or' : false;
     }
 
     getCount(optionName: string): number {
@@ -290,6 +294,18 @@ export class MultiSelectDropdownComponent {
 
     setCount(optionName: string, count: number) {
         if (!this.countable() || !this.multistate()) return;
+        const container = this.optionsEl()?.nativeElement;
+        // Preserve the item's visible top within the container viewport (pixels from container top)
+        let preservedVisibleTop: number | null = null;
+        if (container) {
+            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + optionName + '"]');
+            if (item) {
+                const containerRect = container.getBoundingClientRect();
+                const itemRect = item.getBoundingClientRect();
+                preservedVisibleTop = itemRect.top - containerRect.top;
+            }
+        }
+
         
         const sel = this.selected() as MultiStateSelection;
         const currentSelection: MultiStateSelection = { ...sel };
@@ -302,6 +318,7 @@ export class MultiSelectDropdownComponent {
             };
             this.selectionChange.emit(currentSelection);
         }
+        this.restoreScrollPosition(optionName, preservedVisibleTop);
     }
  
     onQuantityInput(optionName: string, event: Event) {
@@ -309,6 +326,23 @@ export class MultiSelectDropdownComponent {
         const value = parseInt(inputElement.value, 10);
         if (!isNaN(value)) {
             this.setCount(optionName, value);
+        }
+    }
+
+    onQuantityWheel(optionName: string, event: WheelEvent) {
+        // stop the wheel from scrolling the outer container
+        event.preventDefault();
+        event.stopPropagation();
+
+        // Adjust the count by 1 step per wheel event (wheel down -> decrease)
+        const delta = event.deltaY;
+        if (delta === 0) return;
+
+        const step = delta > 0 ? -1 : 1;
+        const current = this.getCount(optionName) || 1;
+        const next = Math.max(1, current + step);
+        if (next !== current) {
+            this.setCount(optionName, next);
         }
     }
 

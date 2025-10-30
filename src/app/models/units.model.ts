@@ -77,7 +77,7 @@ export interface Unit {
     pv: number;
     cost: number;
     level: number;
-    techBase: string;
+    techBase: 'Inner Sphere' | 'Clan' | 'Mixed';
     techRating: string;
     type: string;
     subtype: string;

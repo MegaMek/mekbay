@@ -64,7 +64,7 @@ const OPTIONS_KEY = 'options';
 const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
 
-const MAX_SHEET_CACHE_COUNT = 2000; // Max number of sheets to cache
+const MAX_SHEET_CACHE_COUNT = 5000; // Max number of sheets to cache
 
 export interface StoredSheet {
     key: string;
@@ -512,8 +512,29 @@ export class DbService {
         });
     }
 
-    public async getSheetsStoreSize(): Promise<number> {
-        return await this.getStoreSize(SHEETS_STORE);
+    private async getStoreCount(storeName: string): Promise<number> {
+        const db = await this.dbPromise;
+        return new Promise<number>((resolve, reject) => {
+            const transaction = db.transaction(storeName, 'readonly');
+            const store = transaction.objectStore(storeName);
+            const request = store.count();
+
+            request.onsuccess = () => {
+                resolve(request.result);
+            };
+
+            request.onerror = () => {
+                reject(request.error);
+            };
+        });
+    }
+
+    public async getSheetsStoreSize(): Promise<{memorySize: number, count: number}> {
+        const [memorySize, count] = await Promise.all([
+            this.getStoreSize(SHEETS_STORE),
+            this.getStoreCount(SHEETS_STORE)
+        ]);
+        return { memorySize, count };
     }
 
     public async getCanvasStoreSize(): Promise<number> {

@@ -394,11 +394,9 @@
 
 .nav-arrow {
     position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
     background-color: transparent;
     color: gray;
-    z-index: 10;
+    bottom: 0px;
     border: none;
     font-size: 2rem;
     cursor: pointer;
@@ -412,21 +410,15 @@
 }
 
 .nav-arrow-left {
-    left: 0px;
+    left: 4px;
 }
 
 .nav-arrow-right {
-    right: 0px;
+    right: 4px;
 }
 
 .nav-arrow:hover {
     color: var(--text-color);
-}
-
-@media (max-width: 680px) {
-    .nav-arrow {
-        display: none;
-    }
 }
 
 /* Matrix layout (3 columns, 3 rows) */

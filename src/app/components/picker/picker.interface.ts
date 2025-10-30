@@ -42,7 +42,7 @@ export interface PickerPosition {
     y: number;
 }
 
-export type PickerTargetType = 'skill' | 'crit' | 'armor' | 'inventory';
+export type PickerTargetType = 'skill' | 'crit' | 'armor' | 'inventory' | 'heatsinks';
 
 export type PickerInteractionType = 'mouse' | 'touch';
 export type PickerValue = string | number;

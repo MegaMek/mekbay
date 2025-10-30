@@ -194,7 +194,7 @@ export class SvgInteractionService {
         this.setupSkillInteractions(svg, signal);
         this.setupCrewNameInteractions(svg, signal);
         this.setupInventoryInteractions(svg, signal);
-        this.setupFluffImageInteraction(svg, signal);
+        // this.setupFluffImageInteraction(svg, signal);
     }
 
     private addSvgTapHandler(
@@ -215,6 +215,7 @@ export class SvgInteractionService {
             this.zoomPanService.pointerMoved = false;
             clearLongTouch();
             longTouchTimer = setTimeout(() => {
+                console.log('long touch detected');
                 upHandlerSecondary(evt);
             }, 300);
             pointerId = evt.pointerId;
@@ -252,7 +253,16 @@ export class SvgInteractionService {
             this.state.clickTarget = null;
         };
 
-        el.addEventListener('pointercancel', clearLongTouch, eventOptions);
+        const cancelHandler = (evt: PointerEvent) => {
+            if (evt.pointerId !== pointerId) return;
+            clearLongTouch();
+            evt.stopPropagation();
+            evt.preventDefault();
+            this.state.clickTarget = null;
+        };
+
+        el.addEventListener('pointerleave', cancelHandler, eventOptions);
+        el.addEventListener('pointercancel', cancelHandler, eventOptions);
         el.addEventListener('pointerup', upHandler, eventOptions);
     }
 
@@ -589,25 +599,25 @@ export class SvgInteractionService {
                             const ammoOptions: AmmoEquipment[] = [];
                             if (!critSlot.name || !critSlot.eq) return;
                             const ammoItem = critSlot.eq;
-                            let originalAmmo = ammoItem;
+                            let originalAmmo = ammoItem as AmmoEquipment;
                             if (critSlot.originalName && critSlot.originalName !== critSlot.name) {
-                                originalAmmo = equipmentList[critSlot.originalName];
+                                originalAmmo = equipmentList[critSlot.originalName] as AmmoEquipment;
                             }
                             if (ammoItem instanceof AmmoEquipment) {
-                                let baseAmmo = ammoItem;
-                                if (ammoItem.baseAmmo) {
-                                    if (equipmentList[ammoItem.baseAmmo]) {
-                                        baseAmmo = equipmentList[ammoItem.baseAmmo] as AmmoEquipment;
-                                    } else {
-                                        console.warn(`Base ammo ${ammoItem.baseAmmo} not found for ${ammoItem.name}`);
-                                    }
-                                }
-                                ammoOptions.push(baseAmmo);
-                                for (const entry of Object.values(equipmentList)) {
-                                    if (entry instanceof AmmoEquipment && entry.baseAmmo === baseAmmo.internalName) {
-                                        ammoOptions.push(entry);
-                                    }
-                                }
+                                const baseOrder: Record<string, number> = { 'All': 0, 'IS': 1, 'Clan': 2 };
+                                const unitBlueprint = unit.getUnit();
+                                const compatibleAmmo = Object.values(equipmentList)
+                                    .filter((e): e is AmmoEquipment => (e instanceof AmmoEquipment) && (originalAmmo.compatibleAmmo(e, unitBlueprint)))
+                                    .sort((a, b) => {
+                                        const ao = baseOrder[(a.base || '')] ?? 3;
+                                        const bo = baseOrder[(b.base || '')] ?? 3;
+                                        if (ao !== bo) return ao - bo;
+                                        if (!a.baseAmmo && b.baseAmmo) {
+                                            return -1;
+                                        }
+                                        return a.name.localeCompare(b.name);
+                                    });
+                                ammoOptions.push(...compatibleAmmo);
                             }
                             const ref = this.dialog.open<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
                                 data: {
@@ -706,28 +716,28 @@ export class SvgInteractionService {
         });
     }
 
-    private setupFluffImageInteraction(svg: SVGSVGElement, signal: AbortSignal) {
-        const fluffImageEl = svg.getElementById('fluff-image-injected') as HTMLElement | null;
-        if (!fluffImageEl) return;
-            const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
-        if (referenceTables.length === 0) return;
-        referenceTables.forEach(tableEl => {
-            tableEl.addEventListener('click', (event) => {
-                event.stopPropagation();
-                fluffImageEl.style.display = 'block';
-                referenceTables.forEach(tableEl => {
-                    tableEl.style.display = 'none';
-                });
-            }, { signal });
-        });
-        fluffImageEl.addEventListener('click', (event) => {
-            event.stopPropagation();
-            fluffImageEl.style.display = 'none';
-            referenceTables.forEach(tableEl => {
-                tableEl.style.display = 'block';
-            });
-        }, { signal });
-    }
+    // private setupFluffImageInteraction(svg: SVGSVGElement, signal: AbortSignal) {
+    //     const fluffImageEl = svg.getElementById('fluff-image-injected') as HTMLElement | null;
+    //     if (!fluffImageEl) return;
+    //         const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
+    //     if (referenceTables.length === 0) return;
+    //     referenceTables.forEach(tableEl => {
+    //         tableEl.addEventListener('click', (event) => {
+    //             event.stopPropagation();
+    //             fluffImageEl.style.display = 'block';
+    //             referenceTables.forEach(tableEl => {
+    //                 tableEl.style.display = 'none';
+    //             });
+    //         }, { signal });
+    //     });
+    //     fluffImageEl.addEventListener('click', (event) => {
+    //         event.stopPropagation();
+    //         fluffImageEl.style.display = 'none';
+    //         referenceTables.forEach(tableEl => {
+    //             tableEl.style.display = 'block';
+    //         });
+    //     }, { signal });
+    // }
 
     private setupDirectInventoryInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         this.unit()?.getInventory().forEach(entry => {
@@ -838,7 +848,8 @@ export class SvgInteractionService {
     }
 
     private setupHeatInteractions(svg: SVGSVGElement, signal: AbortSignal) {
-        if (!this.unit()) return;
+        const unit = this.unit();
+        if (!unit) return;
 
         let heatScale: SVGElement | null = svg.getElementById('heatScale') as SVGGElement | null;
         if (!heatScale) return;
@@ -908,7 +919,6 @@ export class SvgInteractionService {
             };
 
             const onPointerUp = (e: Event) => {
-                e.stopPropagation();
                 completeHeatDrag();
             };
 
@@ -927,7 +937,7 @@ export class SvgInteractionService {
 
         const completeHeatDrag = () => {
             if (!this.state.isHeatDragging) return;
-            this.unit()?.setHeat(Number(this.state.clickTarget?.getAttribute('heat') || 0));
+            unit.setHeat(Number(this.state.clickTarget?.getAttribute('heat') || 0));
             endHeatDrag();
         };
 
@@ -935,19 +945,18 @@ export class SvgInteractionService {
         const overflowButton = svg.querySelector('#heatScale .overflowButton');
         if (overflowFrame && overflowButton) {
             const promptHeatOverflow = async (evt: Event) => {
-                if (!this.unit()) return;
                 const ref = this.dialog.open<number | null>(InputDialogComponent, {
                     data: {
                         message: 'Heat',
                         inputType: 'number',
-                        defaultValue: this.unit()!.getHeat().current,
+                        defaultValue: unit.getHeat().current,
                         placeholder: 'Heat value'
                     } as InputDialogData
                 });
                 const newHeatValue = await firstValueFrom(ref.closed);
                 if (newHeatValue === null || isNaN(Number(newHeatValue))) return;
                 const heatValue = Math.max(0, Number(newHeatValue));
-                this.unit()!.setHeat(heatValue);
+                unit.setHeat(heatValue);
             };
 
             overflowButton.addEventListener('click', promptHeatOverflow, { passive: false, signal });
@@ -957,7 +966,6 @@ export class SvgInteractionService {
             el.classList.add('interactive');
 
             el.addEventListener('pointerdown', (evt: Event) => {
-                if (this.unit() === null) return;
                 evt.preventDefault();
                 const pEvt = evt as PointerEvent;
                 const interactionType = pEvt.pointerType === 'mouse' ? 'mouse' : 'touch';
@@ -980,6 +988,48 @@ export class SvgInteractionService {
                 } catch (e) { /* Ignore */ }
             }, { passive: false, signal });
         });
+
+        const heatDataPanel = svg.getElementById('heatDataPanel') as SVGElement | null;
+        if (heatDataPanel) {
+            
+            const totalHeatsinkPips = heatDataPanel.querySelectorAll<SVGElement>('.pip.hsPip').length;
+            // Setup interactions for the heat data panel that allows to turn on/off heat sinks and reduce the dissipation power
+            const getHeatsinkPickerChoices = (unit: ForceUnit): PickerChoice[] => {
+                
+                const choices: PickerChoice[] = [];
+                const turnedOffHeatsinks = (unit.getHeat().heatsinksOff || 0);
+                const totalValidAndActiveHeatsinks = turnedOffHeatsinks - totalHeatsinkPips;
+                for (let i = totalValidAndActiveHeatsinks; i <= turnedOffHeatsinks; i++) {
+                    choices.push({ label: `${i}`, value: i });
+                }
+                return choices;
+            }
+
+            this.addSvgTapHandler(heatDataPanel, (event: PointerEvent) => {
+                if (this.state.clickTarget !== heatDataPanel) return;
+                const pickerInstance: PickerInstance = this.showPicker({
+                    event: event,
+                    el: heatDataPanel,
+                    title: `Active Heatsinks`,
+                    values: getHeatsinkPickerChoices(unit),
+                    selected: 0,
+                    suggestedPickerStyle: 'radial',
+                    targetType: 'heatsinks',
+                    onPick: (val: PickerValue) => {
+                        this.removePicker();
+                        if (val) {
+                            const heatsinksOff = (unit.getHeat().heatsinksOff || 0) - (val as number);
+                            unit.setHeatsinksOff(heatsinksOff);
+                            this.toastService.show(`Heatsink settings updated.`, 'info');
+                        }
+                    },
+                    onCancel: () => {
+                        this.removePicker();
+                    }
+                });
+                
+            }, signal);
+        }
     }
 
     private setupCrewHitInteractions(svg: SVGSVGElement, signal: AbortSignal) {
@@ -1176,7 +1226,7 @@ export class SvgInteractionService {
         if (pickerStyle === 'linear') {
             compRef = this.createLinearPicker(envInjector, opts, rect);
         } else {
-            if (opts.targetType === 'armor') {
+            if (opts.targetType === 'armor' || opts.targetType === 'heatsinks') {
                 compRef = this.createRotatingPicker(envInjector, opts, rect);
             } else {
                 compRef = this.createRadialPicker(envInjector, opts, rect);

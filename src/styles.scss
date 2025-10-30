@@ -394,15 +394,36 @@ hr {
         width: 100%;
         font-size: 0.9em;
         outline: none;
+        display: flex;
+        align-items: center;
+        flex-direction: row;
+        color: var(--text-color-secondary);
+        transition: color 0.2s, background-color 0.2s;
 
         &:hover {
             background-color: var(--background-highlight, #444);
+            color: var(--text-color);
         }
 
         &:disabled {
             color: var(--text-color-tertiary);
             cursor: not-allowed;
         }
+
+        .icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            margin-right: 8px;
+        
+            svg {
+                width: 100%;
+                height: 100%;
+            }
+        }
+
     }
 
     hr {
@@ -785,7 +806,7 @@ hr {
             pointer-events: none;
         }
 
-        .picker-active text {
+        .picker-active.critSlot text {
             text-decoration: underline !important;
         }
 
@@ -854,6 +875,15 @@ hr {
             stroke-linejoin: round;
             stroke-linecap: round;
             vector-effect: non-scaling-stroke;
+        }
+
+        .pip.disabled {
+            stroke: var(--disabled-color) !important;
+            fill: #666 !important;
+        }
+
+        .pip.damaged {
+            fill: var(--damage-color) !important;
         }
 
         .pip.fresh:not(.damaged) {
@@ -1046,7 +1076,12 @@ hr {
         }
 
         image {
-            filter: invert(1) hue-rotate(180deg);
+            transform: none;
+            filter: invert(1);
+        }
+
+        #fluff-image-injected {
+            mix-blend-mode: lighten;
         }
 
         #faded-arrow {
@@ -1069,6 +1104,11 @@ hr {
 
         .pip.detached {
             stroke: gray;
+        }
+
+        .pip.disabled {
+            stroke: var(--disabled-color) !important;
+            fill: #666 !important;
         }
 
         .pip.damaged {

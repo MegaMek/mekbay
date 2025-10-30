@@ -547,7 +547,7 @@ export class ForceBuilderService {
 
     public async requestCloneForce() {
         const confirmed = await this.dialogsService.showQuestion(
-            'Cloning this force will create a copy that you own and can edit. Do you want to proceed?',
+            'Create a separate, editable copy of this force. The original will remain unchanged. Do you want to proceed?',
             'Clone Force',
             'info');
         if (confirmed === 'yes') {
@@ -565,7 +565,7 @@ export class ForceBuilderService {
             } finally {
                 this.force.loading = false;
             }
-            this.toastService.show(`Force cloned. You can now edit this copy.`, 'success');
+            this.toastService.show(`A copy of this force was created and saved. You can now edit the copy without affecting the original.`, 'success');
             resolve(true);
         });
     }

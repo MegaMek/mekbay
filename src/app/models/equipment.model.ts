@@ -31,6 +31,8 @@
  * affiliated with Microsoft.
  */
 
+import { Unit } from "./units.model";
+
 /*
  * Author: Drake
  */
@@ -79,7 +81,7 @@ export interface IEquipment {
     minr: string;
     bv: number;
     crit: number;
-    base: string;
+    base: 'IS' | 'Clan' | 'All';
     hittable: boolean;
     spreadable: boolean;
     flags: Set<string>;
@@ -161,7 +163,7 @@ export class Equipment implements IEquipment {
     minr: string;
     bv: number;
     crit: number;
-    base: string;
+    base: 'IS' | 'Clan' | 'All';
     hittable: boolean;
     spreadable: boolean;
     flags: Set<string>;
@@ -243,5 +245,69 @@ export class AmmoEquipment extends Equipment implements IAmmo {
         this.ammoRatio = data.ammoRatio;
         this.subMunition = data.subMunition;
         this.munitionType = new Set(data.munitionType ? Array.from(data.munitionType) : []);
+    }
+
+    // This is straight from MM, it could probably be optimized further
+    public equalsAmmoTypeOnly(other: AmmoEquipment): boolean {
+        if (!(other instanceof AmmoEquipment)) return false;
+        if (this.ammoType === 'Multi-Missile Launcher') {
+            if (this.flags.has('F_MML_LRM') !== other.flags.has('F_MML_LRM')) {
+                return false;
+            }
+        } else
+        if (this.ammoType === 'AR10') {
+            if (this.flags.has('F_AR10_BARRACUDA') !== other.flags.has('F_AR10_BARRACUDA')) {
+                return false;
+            }
+            if (this.flags.has('F_AR10_WHITE_SHARK') !== other.flags.has('F_AR10_WHITE_SHARK')) {
+                return false;
+            }
+            if (this.flags.has('F_AR10_KILLER_WHALE') !== other.flags.has('F_AR10_KILLER_WHALE')) {
+                return false;
+            }
+            if (this.flags.has('F_NUCLEAR') !== other.flags.has('F_NUCLEAR')) {
+                return false;
+            }
+        } 
+        return (this.ammoType === other.ammoType);
+    }
+
+    public compatibleAmmo(other: AmmoEquipment, unit: Unit): boolean {
+        if (this.ammoType !== other.ammoType) {
+            return false; // different ammo types cannot mix
+        }
+        if (this.base !== other.base) {
+            if (!unit) {
+                if (this.base !== 'All' && other.base !== 'All') {
+                    return false; // different base ammo cannot mix (Clan/IS variants)
+                }
+            } else if (unit.techBase !== 'Mixed') {
+                if (unit.techBase === 'Clan' && this.base === 'IS') {
+                    return false; // IS ammo cannot mix with Clan unit
+                }
+                if (unit.techBase === 'Inner Sphere' && this.base === 'Clan') {
+                    return false; // Clan ammo cannot mix with IS unit
+                }
+            }
+        }
+        if (this.flags.has('M_CASELESS') !== other.flags.has('M_CASELESS')) {
+            return false; // caseless ammo cannot mix with cased ammo
+        }
+        if (this.flags.has('F_BATTLEARMOR') !== other.flags.has('F_BATTLEARMOR')) {
+            return false; // battle armor ammo cannot mix with regular ammo
+        }
+        if (this.ammoType === 'AR10') {
+            return true; // all AR10 ammo is compatible
+        }
+        if (this.rackSize !== other.rackSize) {
+            return false; // different rack sizes cannot mix
+        }
+        if (this.ammoType === 'Multi-Missile Launcher') {
+            return true; // all MML ammo of same rack size is compatible
+        }
+        if (this.ammoType === 'LB-X Autocannon') {
+            return true; // all LB-X ammo of same rack size is compatible
+        }
+        return  this.equalsAmmoTypeOnly(other); // for other types, check the ammo type
     }
 }
