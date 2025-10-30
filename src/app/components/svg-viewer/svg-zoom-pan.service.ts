@@ -350,7 +350,7 @@ export class SvgZoomPanService {
             return;
         }
 
-        const now = performance.now();
+        const now = Date.now();
         if (now - this.lastMove < 8) return; // ~120fps throttling
         this.lastMove = now;
 
