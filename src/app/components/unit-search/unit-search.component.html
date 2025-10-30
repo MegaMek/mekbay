@@ -56,7 +56,7 @@
                 [class.active]="activeIndex() === i" [class.selected]="isUnitSelected(unit)"
                 (pointerenter)="activeIndex.set(i)" 
                 longPress
-                (shortPress)="onUnitCardClick(unit, $event)" 
+                (click)="onUnitCardClick(unit, $event)" 
                 (longPress)="multiSelectUnit(unit)" 
                 >
 
