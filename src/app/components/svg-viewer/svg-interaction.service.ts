@@ -909,7 +909,6 @@ export class SvgInteractionService {
             };
 
             const onPointerUp = (e: Event) => {
-                e.stopPropagation();
                 completeHeatDrag();
             };
 
