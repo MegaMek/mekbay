@@ -58,7 +58,6 @@ import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { OptionsService } from '../../services/options.service';
 import { LongPressDirective } from '../../directives/long-press.directive';
-import { I } from '@angular/cdk/keycodes';
 
 @Pipe({
     name: 'expandedComponents',
