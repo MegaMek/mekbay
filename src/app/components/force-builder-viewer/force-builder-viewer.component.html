@@ -1,8 +1,4 @@
 <div class="force-viewer-container">
-    <div class="header">
-        <img class="logo" src="/images/logo.png" alt="Mekbay">
-        <div [cdkPortalOutlet]="unitSearchPortal()"></div>
-    </div>
     <div id="force-view" class="force-view">
         <div class="force-name" (click)="promptChangeForceName()">{{ forceName() }}</div>
         @if (forceBuilderService.readOnlyForce()) {

@@ -9,22 +9,27 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
-    background: linear-gradient(#0f1724, #071021);
+    background-color: rgba(45, 45, 45, 0.8);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
     color: #e6eef8;
     box-sizing: border-box;
-    padding: 1rem;
+    padding-left: max(8px, var(--safe-area-inset-left));
+    padding-right: 8px;
+    padding-top: max(8px, var(--safe-area-inset-top));
+    padding-bottom: max(8px, var(--safe-area-inset-bottom));
 }
 
-.brand {
+.header {
     display: flex;
     align-items: center;
-    gap: .5rem;
+    justify-self: center;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .logo {
-    width: 40px;
     height: 40px;
-    background: #1f2937;
     border-radius: 6px;
     display: flex;
     align-items: center;
@@ -112,7 +117,6 @@
     z-index: 80;
     will-change: transform;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
-    overflow: auto;
 }
 
 .phone-drawer.open {
@@ -131,11 +135,6 @@
     bottom: 0;
     z-index: 40;
     box-shadow: 2px 0 12px rgba(0, 0, 0, 0.06);
-    overflow: auto;
-}
-
-.docked-collapsed {
-    width: 150px;
 }
 
 .tablet-overlay-panel {
@@ -144,6 +143,5 @@
     background: transparent;
     align-self: stretch;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-    overflow: auto;
     z-index: 70;
 }

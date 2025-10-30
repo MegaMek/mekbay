@@ -1,13 +1,8 @@
 import { CommonModule } from '@angular/common';
-import {
-    ChangeDetectionStrategy,
-    Component,
-    effect,
-    inject,
-    signal,
-    computed
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal, computed, input } from '@angular/core';
+import { Portal, PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
+import { UnitSearchComponent } from '../unit-search/unit-search.component';
 
 /*
  * Main Sidebar component
@@ -17,14 +12,16 @@ import { LayoutService } from '../../services/layout.service';
     selector: 'sidebar',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [CommonModule, PortalModule],
     templateUrl: './sidebar.component.html',
     styleUrls: ['./sidebar.component.scss'],
 })
 export class SidebarComponent {
-    private readonly COLLAPSED_WIDTH = 100;
+    private readonly COLLAPSED_WIDTH = 80;
     private readonly EXPANDED_WIDTH = 300;
     layout = inject(LayoutService);
+    unitSearchPortal = input<Portal<any>>();
+    unitSearchComponent = input<UnitSearchComponent>();
 
     // drag state for phone
     private dragging = signal(false);
@@ -34,7 +31,9 @@ export class SidebarComponent {
     private activePointerId: number | null = null;
 
     // derived signals
-    public viewportCategory = this.layout.viewportCategory;
+    public isPhone = this.layout.isPhone;
+    public isTablet = this.layout.isTablet;
+    public isDesktop = this.layout.isDesktop;
 
     // computed phone drawer width in px
     public phoneWidthPx = computed(() => {
@@ -68,11 +67,10 @@ export class SidebarComponent {
 
     constructor() {
         effect((cleanup) => {
-            const cat = this.viewportCategory();
             let offset = 0;
-            if (cat === 'phone') {
+            if (this.isPhone()) {
                 offset = 0;
-            } else if (cat === 'tablet') {
+            } else if (this.isTablet()) {
                 offset = this.COLLAPSED_WIDTH;
             } else {
                 // desktop: use computed dock width (150 collapsed / 300 expanded)
@@ -86,17 +84,32 @@ export class SidebarComponent {
                 document.documentElement.classList.remove('sidebar-docked');
             });
         });
+        // If a unit-search component instance is passed in, have the sidebar
+        // control its `buttonOnly` input only when the portal provided to this
+        // sidebar is the active host. Otherwise ensure the component stays false.
+        effect(() => {
+            const comp = this.unitSearchComponent?.();
+            const portal = this.unitSearchPortal?.();
+            if (!comp) return;
+            if (portal) {
+                // Sidebar pilots the control while the portal is hosted here
+                comp.buttonOnly.set(!this.isPhone() && !this.layout.isMenuOpen());
+            } else {
+                // Revert to main-app default when not hosted in sidebar
+                comp.buttonOnly.set(false);
+            }
+        });
     }
 
     // Toggle button logic (tablet + desktop share the button)
     public onToggleButtonClick() {
-        const cat = this.viewportCategory();
+        this.isPhone();
         this.layout.isMenuOpen.update(v => !v);
     }
 
     // PHONE: handle pointer down on left edge to start drag
     public onPhoneEdgePointerDown(ev: PointerEvent) {
-        if (this.viewportCategory() !== 'phone') { return; }
+        if (!this.isPhone()) { return; }
         // only primary pointer
         if (ev.isPrimary === false) { return; }
 
@@ -112,7 +125,7 @@ export class SidebarComponent {
 
     // PHONE: allow starting a drag from the open drawer to swipe it closed
     public onPhoneDrawerPointerDown(ev: PointerEvent) {
-        if (this.viewportCategory() !== 'phone') { return; }
+        if (!this.isPhone()) { return; }
         if (ev.isPrimary === false) { return; }
 
         // only start drag when the drawer is at least slightly open (prevents accidental captures when fully closed)
@@ -221,6 +234,4 @@ export class SidebarComponent {
         this.layout.menuOpenRatio.set(0);
     }
 
-    // small helpers used by template property bindings (callable signals)
-    public viewportCategoryValue() { return this.viewportCategory(); }
 }

@@ -32,7 +32,7 @@
  */
 
 import { isPlatformBrowser } from '@angular/common';
-import { Injectable, signal, effect, PLATFORM_ID, inject, computed } from '@angular/core';
+import { Injectable, signal, effect, PLATFORM_ID, inject, computed, untracked } from '@angular/core';
 
 /*
  * Author: Drake
@@ -48,15 +48,15 @@ export class LayoutService {
     public isMobile = computed(() => {
         return  this.windowWidth() < this.PHONE_BREAKPOINT || this.isPortraitOrientation();
     });
-    public viewportCategory = computed(() => {
+    public isPhone = computed(() => {
+        return this.windowWidth() < this.PHONE_BREAKPOINT;
+    });
+    public isTablet = computed(() => {
         const width = this.windowWidth();
-        if (width < this.PHONE_BREAKPOINT) {
-            return 'phone';
-        } else if (width < this.TABLET_BREAKPOINT) {
-            return 'tablet';
-        } else {
-            return 'desktop';
-        }
+        return width >= this.PHONE_BREAKPOINT && width < this.TABLET_BREAKPOINT;
+    });
+    public isDesktop = computed(() => {
+        return this.windowWidth() >= this.TABLET_BREAKPOINT;
     });
     /** A signal representing the open state of the mobile menu. */
     public isMenuOpen = signal(false);
@@ -70,6 +70,13 @@ export class LayoutService {
     private readonly platformId: object = inject(PLATFORM_ID);
 
     constructor() {
+        effect(() => {
+            untracked(() => {
+                if (this.isDesktop()) {
+                    this.isMenuOpen.set(true);
+                }
+            });
+        });
         effect((onCleanup) => {
             if (!isPlatformBrowser(this.platformId)) return;
             this.isTouchInput.set(('ontouchstart' in window) || navigator.maxTouchPoints > 0);

@@ -116,6 +116,7 @@ export class UnitSearchComponent implements OnDestroy {
 
     gameSystem = computed(() => this.optionsService.options().gameSystem);
     autoFocus = input(false);
+    buttonOnly = signal(false);
     expandedView = this.filtersService.expandedView;
     advOpen = this.filtersService.advOpen;
     advPanelDocked = computed(() => this.expandedView() && this.advOpen() && this.layoutService.windowWidth() >= 900);

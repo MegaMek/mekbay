@@ -1,18 +1,24 @@
 <!-- Single canonical content template, reused in different wrappers -->
 <ng-template #sidebarContent>
     <div class="sidebar-inner">
-        <div class="brand">
-            <div class="logo">MM</div>
+        <div class="header">
+            <div class="brand" (click)="!isPhone() && onToggleButtonClick()" aria-label="Mekbay">
+            @if (!isPhone() && !layout.isMenuOpen()) {
+                <img class="logo" src="/icons/icon-192x192.png" alt="Mekbay">
+            } @else {
+                <img class="logo" src="/images/logo.png" alt="Mekbay">
+            }
+            </div>
+            <div [cdkPortalOutlet]="unitSearchPortal()"></div>
         </div>
 
         <nav class="nav">
-            <p>{{ viewportCategory() }}</p>
         </nav>
 
         <div class="spacer"></div>
 
         <div class="footer">
-            @if (viewportCategory() !== 'phone') {
+            @if (!isPhone()) {
                 <button class="collapse-btn" (click)="onToggleButtonClick()" aria-label="Toggle sidebar">
                     <span *ngIf="layout.isMenuOpen()">Collapse</span>
                     <span *ngIf="!layout.isMenuOpen()">Expand</span>
@@ -24,14 +30,14 @@
 
 
 <!-- overlay backdrop -->
-@if ((viewportCategory() !== 'desktop')) {
+@if (!isDesktop()) {
     <div class="backdrop"
         (pointerdown)="onBackdropPointerDown()" [style.opacity]="backdropOpacity()"
         [class.visible]="(layout.isMenuOpen() || layout.isMenuDragging() || layout.menuOpenRatio() > 0)">
     </div>
 }
 <!-- PHONE: off-canvas overlay (draggable) -->
-@if (viewportCategory() === 'phone') {
+@if (isPhone()) {
     <!-- edge area to start drag (10% width) -->
     <div class="touch-edge" (pointerdown)="onPhoneEdgePointerDown($event)" [attr.aria-hidden]="true"></div>
     <!-- off-canvas container -->
@@ -44,13 +50,14 @@
 }
 
 <!-- TABLET: docked collapsed + optional overlay expansion -->
-@if (viewportCategory() === 'tablet') {
-    <aside class="docked docked-collapsed" role="navigation" [style.width.px]="150">
-        <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
-    </aside>
-
-    <!-- tablet overlay when expanded -->
-    @if (layout.isMenuOpen()) {
+@if (isTablet()) {
+    @if (!layout.isMenuOpen()) {
+        <!-- tablet docked collapsed -->
+        <aside class="docked docked-collapsed" role="navigation" [style.width.px]="80">
+            <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
+        </aside>
+    } @else {
+        <!-- tablet overlay when expanded -->
         <div class="tablet-overlay-panel" (pointerdown)="$event.stopPropagation()"
             [style.width.px]="desktopDockWidth()">
             <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
@@ -59,7 +66,7 @@
 }
 
 <!-- DESKTOP: docked (pushes content). Single dock element that changes width -->
-@if (viewportCategory() === 'desktop') {
+@if (isDesktop()) {
     <aside class="docked" role="navigation" [style.width.px]="desktopDockWidth()">
         <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
     </aside>

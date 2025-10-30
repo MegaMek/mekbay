@@ -4,7 +4,7 @@
             <!-- <force-builder-viewer [unitSearchPortal]="unitSearchPortalForceBuilder()"
                 [unitSearchComponent]="unitSearchComponentRef()">
             </force-builder-viewer> -->
-            <sidebar></sidebar>
+            <sidebar [unitSearchPortal]="unitSearchPortalForceBuilder()" [unitSearchComponent]="unitSearchComponentRef()"></sidebar>
         }
         <div class="extended-search-container">
             <div [cdkPortalOutlet]="unitSearchPortalExtended"></div>
