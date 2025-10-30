@@ -309,18 +309,19 @@ export class SvgZoomPanService {
         // If this produces two active pointers, initialize pinch baseline so a
         // re-added pointer doesn't reset scale back to the old touchStartScale.
         if (this.pointers.size === 2) {
-            const entries = Array.from(this.pointers.values());
-            const p1 = entries[0];
-            const p2 = entries[1];
-            this.state.touchStartDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-            this.state.touchStartScale = this.state.scale();
-            const rect = this.containerRef.nativeElement.getBoundingClientRect();
-            this.state.touchCenter = {
-                x: ((p1.x + p2.x) / 2) - rect.left,
-                y: ((p1.y + p2.y) / 2) - rect.top
-            };
-            this.state.prevTouchCenter = { ...this.state.touchCenter };
-            return;
+            if (!this.state.waitingForFirstEvent) { // We are already interacting, we need to reset pinch state
+                const entries = Array.from(this.pointers.values());
+                const p1 = entries[0];
+                const p2 = entries[1];
+                this.state.touchStartDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                this.state.touchStartScale = this.state.scale();
+                const rect = this.containerRef.nativeElement.getBoundingClientRect();
+                this.state.touchCenter = {
+                    x: ((p1.x + p2.x) / 2) - rect.left,
+                    y: ((p1.y + p2.y) / 2) - rect.top
+                };
+                this.state.prevTouchCenter = { ...this.state.touchCenter };
+            }
         } else
         if (this.pointers.size === 1) {
             const container = this.containerRef.nativeElement;
