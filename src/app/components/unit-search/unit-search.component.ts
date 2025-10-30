@@ -58,6 +58,8 @@ import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { OptionsService } from '../../services/options.service';
 import { LongPressDirective } from '../../directives/long-press.directive';
+import { SearchFavoritesMenuComponent, SerializedFavorite } from '../search-favorites-menu/search-favorites-menu.component';
+
 
 @Pipe({
     name: 'expandedComponents',
@@ -111,6 +113,7 @@ export class UnitSearchComponent implements OnDestroy {
     viewport = viewChild(CdkVirtualScrollViewport);
     searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
+    favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
     resultsDropdown = viewChild<ElementRef<HTMLElement>>('resultsDropdown');
 
@@ -154,6 +157,7 @@ export class UnitSearchComponent implements OnDestroy {
 
     private resizeObserver?: ResizeObserver;
     private tagSelectorOverlayRef?: OverlayRef;
+    private favoritesOverlayRef?: OverlayRef; 
     private advPanelDragStartX = 0;
     private advPanelDragStartWidth = 0;
 
@@ -204,6 +208,7 @@ export class UnitSearchComponent implements OnDestroy {
     ngOnDestroy() {
         this.resizeObserver?.disconnect();
         this.tagSelectorOverlayRef?.dispose();
+        this.favoritesOverlayRef?.dispose();
     }
 
     private setupItemHeightTracking() {
@@ -907,5 +912,167 @@ export class UnitSearchComponent implements OnDestroy {
             this.closeAllPanels();
         }
         this.expandedView.set(!isExpanded);
+    }
+
+    clearSearch() {
+        this.filtersService.searchText.set('');
+        this.activeIndex.set(null);
+        this.focusInput();
+    }
+
+
+    // -------------------------
+    // Favorites overlay/menu
+    // -------------------------
+    openFavorites(event: MouseEvent) {
+        event.stopPropagation();
+
+        // If already open, close it
+        if (this.favoritesOverlayRef) {
+            this.favoritesOverlayRef.dispose();
+            this.favoritesOverlayRef = undefined;
+            return;
+        }
+
+        const target = this.favBtn()?.nativeElement || (event.target as HTMLElement);
+        const positionStrategy = this.overlay.position()
+            .flexibleConnectedTo(target)
+            .withPositions([
+                {
+                    originX: 'start',
+                    originY: 'bottom',
+                    overlayX: 'start',
+                    overlayY: 'top',
+                    offsetY: 4
+                },
+                {
+                    originX: 'end',
+                    originY: 'bottom',
+                    overlayX: 'end',
+                    overlayY: 'top',
+                    offsetY: 4
+                },
+                {
+                    originX: 'start',
+                    originY: 'top',
+                    overlayX: 'start',
+                    overlayY: 'bottom',
+                    offsetY: -4
+                }
+            ])
+            .withPush(false);
+
+        this.favoritesOverlayRef = this.overlay.create({
+            positionStrategy,
+            scrollStrategy: this.overlay.scrollStrategies.close(),
+            hasBackdrop: true,
+            backdropClass: 'cdk-overlay-transparent-backdrop',
+            panelClass: 'favorites-overlay-panel'
+        });
+
+        const portal = new ComponentPortal(SearchFavoritesMenuComponent, null, this.injector);
+        const compRef = this.favoritesOverlayRef.attach(portal);
+
+        const favorites: SerializedFavorite[] = [];
+        // Pass current favorites
+        compRef.setInput('favorites', favorites);
+
+        // Handle selection
+        compRef.instance.select.subscribe((favorite: SerializedFavorite) => {
+            if (favorite) {
+                this.applyFavorite(favorite);
+            }
+            this.closeFavorites();
+        });
+
+        // Handle save request
+        compRef.instance.saveRequest.subscribe(() => {
+            this.saveCurrentSearch();
+        });
+
+        this.favoritesOverlayRef.backdropClick().subscribe(() => {
+            this.closeFavorites();
+        });
+    }
+
+    closeFavorites() {
+        try { this.favoritesOverlayRef?.dispose(); } catch { /* ignore */ }
+        this.favoritesOverlayRef = undefined;
+    }
+
+    private saveCurrentSearch() {
+        const name = window.prompt('Name for saved search:');
+        if (name === null) return; // cancelled
+        const trimmed = (name || '').trim();
+        if (!trimmed) return;
+
+        const fav = this.prepareSerializedFavorite(trimmed);
+        // DO THE SAVING!
+    }
+
+    private prepareSerializedFavorite(name: string): SerializedFavorite {
+        const fav: SerializedFavorite = { name };
+
+        const q = this.filtersService.searchText();
+        if (q && q.trim().length > 0) fav.q = q.trim();
+
+        const sort = this.filtersService.selectedSort();
+        if (sort && sort !== 'name') fav.sort = sort;
+
+        const sortDir = this.filtersService.selectedSortDirection();
+        if (sortDir && sortDir !== 'asc') fav.sortDir = sortDir;
+
+        const g = this.filtersService.pilotGunnerySkill();
+        if (typeof g === 'number' && g !== 4) fav.gunnery = g;
+
+        const p = this.filtersService.pilotPilotingSkill();
+        if (typeof p === 'number' && p !== 5) fav.piloting = p;
+
+        // Save only interacted filters
+        const state = this.filtersService.filterState();
+        const savedFilters: Record<string, any> = {};
+        for (const [key, val] of Object.entries(state)) {
+            if (val.interactedWith) {
+                savedFilters[key] = val.value;
+            }
+        }
+        if (Object.keys(savedFilters).length > 0) {
+            fav.filters = savedFilters;
+        }
+
+        return fav;
+    }
+
+    private applyFavorite(fav: SerializedFavorite) {
+        // Reset all filters first
+        this.filtersService.clearFilters();
+
+        // Apply search text
+        if (fav.q) {
+            this.filtersService.searchText.set(fav.q);
+        }
+
+        // Apply filters
+        if (fav.filters) {
+            for (const [key, value] of Object.entries(fav.filters)) {
+                this.filtersService.setFilter(key, value);
+            }
+        }
+
+        // Apply sort
+        if (fav.sort) this.filtersService.setSortOrder(fav.sort);
+        if (fav.sortDir) this.filtersService.setSortDirection(fav.sortDir);
+
+        // Apply pilot skills if provided
+        if (typeof fav.gunnery === 'number' || typeof fav.piloting === 'number') {
+            const g = typeof fav.gunnery === 'number' ? fav.gunnery : this.filtersService.pilotGunnerySkill();
+            const p = typeof fav.piloting === 'number' ? fav.piloting : this.filtersService.pilotPilotingSkill();
+            this.filtersService.setPilotSkills(g, p);
+        }
+
+        // Focus search input after applying
+        afterNextRender(() => {
+            try { this.searchInput()?.nativeElement.focus(); } catch { /* ignore */ }
+        }, { injector: this.injector });
     }
 }
