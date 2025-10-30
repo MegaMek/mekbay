@@ -35,6 +35,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { AmmoEquipment } from '../../models/equipment.model';
+import { DialogsService } from '../../services/dialogs.service';
 
 /*
  * Author: Drake
@@ -93,14 +94,9 @@ export interface SetAmmoDialogData {
             </div>
         </div>
         <div dialog-actions>
-            @for (btn of buttons; let i = $index; track i) {
-                <button
-                    (click)="btn.value === 'ok' ? submit() : close()"
-                    class="bt-button {{ btn.class }}"
-                >
-                    {{ btn.label }}
-                </button>
-            }
+            <button (click)="submit()" class="bt-button">CONFIRM</button>
+            <button (click)="dump()" class="bt-button danger">DUMP</button>
+            <button (click)="close()" class="bt-button cancel">DISMISS</button>
         </div>
     </div>
     `,
@@ -223,11 +219,11 @@ export interface SetAmmoDialogData {
 })
 
 export class SetAmmoDialogComponent {
+    private dialogsService = inject(DialogsService)
     inputNameRef = viewChild.required<ElementRef<HTMLSelectElement>>('inputNameRef');
     inputQuantityRef = viewChild.required<ElementRef<HTMLInputElement>>('inputQuantityRef');
     public dialogRef: DialogRef<{name: string; quantity: number, totalAmmo: number} | null, SetAmmoDialogComponent> = inject(DialogRef);
     readonly data: SetAmmoDialogData = inject(DIALOG_DATA);
-    buttons: { label: string; value: 'ok' | 'cancel'; class?: string }[];
     public totalKgAvailable: number;
     
     // Add a signal to track the currently selected ammo
@@ -249,10 +245,6 @@ export class SetAmmoDialogComponent {
     });
 
     constructor() {
-        this.buttons = [
-            { label: 'OK', value: 'ok' },
-            { label: 'CANCEL', value: 'cancel' }
-        ];
         this.totalKgAvailable = this.data.originalAmmo.kgPerShot * this.data.originalTotalAmmo;
     }
 
@@ -270,6 +262,13 @@ export class SetAmmoDialogComponent {
             nativeEl.value = newMaxQuantity.toString();
         } else if (currentQuantity > newMaxQuantity) {
             nativeEl.value = newMaxQuantity.toString();
+        }
+    }
+
+    async dump() {
+        const result = await this.dialogsService.showQuestion('Are you sure you want to dump all ammo?', 'Confirm Dump', 'danger')
+        if (result === 'yes') {
+            this.dialogRef.close({ name: this.data.currentAmmo.internalName, quantity: 0, totalAmmo: this.data.quantity });
         }
     }
 
