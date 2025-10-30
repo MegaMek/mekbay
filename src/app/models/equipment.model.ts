@@ -272,13 +272,21 @@ export class AmmoEquipment extends Equipment implements IAmmo {
         return (this.ammoType === other.ammoType);
     }
 
-    public compatibleAmmo(other: AmmoEquipment): boolean {
+    public compatibleAmmo(other: AmmoEquipment, unit: Unit): boolean {
         if (this.ammoType !== other.ammoType) {
             return false; // different ammo types cannot mix
         }
         if (this.base !== other.base) {
             if (this.base !== 'All' && other.base !== 'All') {
                 return false; // different base ammo cannot mix (Clan/IS variants)
+            }
+            if (unit && unit.techBase !== 'Mixed') {
+                if (unit.techBase === 'Clan' && this.base === 'IS') {
+                    return false; // IS ammo cannot mix with Clan unit
+                }
+                if (unit.techBase === 'Inner Sphere' && this.base === 'Clan') {
+                    return false; // Clan ammo cannot mix with IS unit
+                }
             }
         }
         if (this.flags.has('M_CASELESS') !== other.flags.has('M_CASELESS')) {

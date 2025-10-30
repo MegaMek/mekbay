@@ -594,9 +594,10 @@ export class SvgInteractionService {
                                 originalAmmo = equipmentList[critSlot.originalName] as AmmoEquipment;
                             }
                             if (ammoItem instanceof AmmoEquipment) {
-                                    const baseOrder: Record<string, number> = { 'All': 0, 'IS': 1, 'Clan': 2 };
+                                const baseOrder: Record<string, number> = { 'All': 0, 'IS': 1, 'Clan': 2 };
+                                const unitBlueprint = unit.getUnit();
                                 const compatibleAmmo = Object.values(equipmentList)
-                                    .filter((e): e is AmmoEquipment => (e instanceof AmmoEquipment) && (originalAmmo.compatibleAmmo(e)))
+                                    .filter((e): e is AmmoEquipment => (e instanceof AmmoEquipment) && (originalAmmo.compatibleAmmo(e, unitBlueprint)))
                                     .sort((a, b) => {
                                         const ao = baseOrder[(a.base || '')] ?? 3;
                                         const bo = baseOrder[(b.base || '')] ?? 3;
