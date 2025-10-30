@@ -67,6 +67,7 @@ export class OptionsDialogComponent {
     userUuid = computed(() => this.userStateService.uuid() || '');
     userUuidError = '';
     sheetCacheSize = signal(0);
+    sheetCacheCount = signal(0);
     canvasMemorySize = signal(0);
 
 
@@ -76,8 +77,9 @@ export class OptionsDialogComponent {
     }
 
     updateSheetCacheSize() {
-        this.dbService.getSheetsStoreSize().then(size => {
-            this.sheetCacheSize.set(size);
+        this.dbService.getSheetsStoreSize().then(({ memorySize, count }) => {
+            this.sheetCacheSize.set(memorySize);
+            this.sheetCacheCount.set(count);
         });
     }
 
