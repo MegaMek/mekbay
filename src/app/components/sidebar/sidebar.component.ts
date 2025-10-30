@@ -29,6 +29,7 @@ export class SidebarComponent {
     // drag state for phone
     private dragging = signal(false);
     private startX = 0;
+    private startY = 0;
     private startRatio = 0;
     private activePointerId: number | null = null;
 
@@ -109,23 +110,57 @@ export class SidebarComponent {
         this.startDrag(ev);
     }
 
+    // PHONE: allow starting a drag from the open drawer to swipe it closed
+    public onPhoneDrawerPointerDown(ev: PointerEvent) {
+        if (this.viewportCategory() !== 'phone') { return; }
+        if (ev.isPrimary === false) { return; }
+
+        // only start drag when the drawer is at least slightly open (prevents accidental captures when fully closed)
+        const currentRatio = this.layout.menuOpenRatio();
+        if (currentRatio <= 0.01 && !this.layout.isMenuOpen()) { return; }
+
+        ev.preventDefault();
+        (ev.target as Element)?.setPointerCapture?.(ev.pointerId);
+
+        this.startDrag(ev);
+    }
+
     // start drag common
     private startDrag(startEvent: PointerEvent) {
         this.activePointerId = startEvent.pointerId;
         this.dragging.set(true);
         this.layout.isMenuDragging.set(true);
         this.startX = startEvent.clientX;
+        this.startY = startEvent.clientY;
         this.startRatio = this.layout.menuOpenRatio();
 
         // set pointer capture on target if available
         const target = startEvent.target as Element | null;
         try { target?.setPointerCapture?.(startEvent.pointerId); } catch { /* ignore */ }
+        let gestureDecided = false;
+        let gestureIsHorizontal = false;
 
         const move = (ev: PointerEvent) => {
             if (ev.pointerId !== this.activePointerId) { return; }
+            const dx = ev.clientX - this.startX;
+            const dy = ev.clientY - this.startY;
+            // decide gesture direction once (wait for a small noise threshold)
+            if (!gestureDecided) {
+                const threshold = 6; // px
+                if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) {
+                    return; // not enough movement yet
+                }
+                gestureDecided = true;
+                gestureIsHorizontal = Math.abs(dx) > Math.abs(dy);
+                if (!gestureIsHorizontal) {
+                    // not a horizontal swipe -> cancel gesture and revert
+                    cancel(ev);
+                    return;
+                }
+                // if horizontal, continue and handle as before
+            }
             // compute delta relative to start
             const w = this.phoneWidthPx();
-            const dx = ev.clientX - this.startX;
             let newRatio = this.startRatio + dx / w;
             newRatio = Math.max(0, Math.min(1, newRatio));
             this.layout.menuOpenRatio.set(newRatio);

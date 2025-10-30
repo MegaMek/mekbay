@@ -35,7 +35,8 @@
     <!-- edge area to start drag (10% width) -->
     <div class="touch-edge" (pointerdown)="onPhoneEdgePointerDown($event)" [attr.aria-hidden]="true"></div>
     <!-- off-canvas container -->
-    <div class="phone-drawer" role="navigation" [style.width.px]="phoneWidthPx()" [style.transform]="phoneTransform()"
+    <div class="phone-drawer" role="navigation" (pointerdown)="onPhoneDrawerPointerDown($event)"
+        [style.width.px]="phoneWidthPx()" [style.transform]="phoneTransform()"
         [class.open]="drawerOpenState()" [class.dragging]="layout.isMenuDragging()">
         <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
     </div>
