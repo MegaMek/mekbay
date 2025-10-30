@@ -735,7 +735,7 @@ export class UnitSvgService implements OnDestroy {
 
         const hsCountElement = svg.querySelector('#hsCount');
         if (hsCountElement) {
-            if (healthyHeatsinkPips !== totalDissipation) {
+            if (healthyHeatsinkPips !== totalDissipation || (turnedOffHeatSinkCount > 0)) {
                 hsCountElement.textContent = `${healthyHeatsinkPips.toString()} (${totalDissipation.toString()})`;
             } else {
                 hsCountElement.textContent = totalDissipation.toString();
