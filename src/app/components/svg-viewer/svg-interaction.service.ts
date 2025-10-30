@@ -215,6 +215,7 @@ export class SvgInteractionService {
             this.zoomPanService.pointerMoved = false;
             clearLongTouch();
             longTouchTimer = setTimeout(() => {
+                console.log('long touch detected');
                 upHandlerSecondary(evt);
             }, 300);
             pointerId = evt.pointerId;
@@ -252,7 +253,16 @@ export class SvgInteractionService {
             this.state.clickTarget = null;
         };
 
-        el.addEventListener('pointercancel', clearLongTouch, eventOptions);
+        const cancelHandler = (evt: PointerEvent) => {
+            if (evt.pointerId !== pointerId) return;
+            clearLongTouch();
+            evt.stopPropagation();
+            evt.preventDefault();
+            this.state.clickTarget = null;
+        };
+
+        el.addEventListener('pointerleave', cancelHandler, eventOptions);
+        el.addEventListener('pointercancel', cancelHandler, eventOptions);
         el.addEventListener('pointerup', upHandler, eventOptions);
     }
 
