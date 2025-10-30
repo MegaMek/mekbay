@@ -606,11 +606,6 @@ export class SvgInteractionService {
                                         }
                                         return a.name.localeCompare(b.name);
                                     });
-                                const idx = compatibleAmmo.findIndex(a => a.name === originalAmmo.name);
-                                if (idx > -1) {
-                                    const [orig] = compatibleAmmo.splice(idx, 1);
-                                    compatibleAmmo.unshift(orig);
-                                }
                                 ammoOptions.push(...compatibleAmmo);
                             }
                             const ref = this.dialog.open<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
