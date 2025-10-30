@@ -31,6 +31,8 @@
  * affiliated with Microsoft.
  */
 
+import { Unit } from "./units.model";
+
 /*
  * Author: Drake
  */
@@ -79,7 +81,7 @@ export interface IEquipment {
     minr: string;
     bv: number;
     crit: number;
-    base: string;
+    base: 'IS' | 'Clan' | 'All';
     hittable: boolean;
     spreadable: boolean;
     flags: Set<string>;
@@ -161,7 +163,7 @@ export class Equipment implements IEquipment {
     minr: string;
     bv: number;
     crit: number;
-    base: string;
+    base: 'IS' | 'Clan' | 'All';
     hittable: boolean;
     spreadable: boolean;
     flags: Set<string>;
@@ -275,10 +277,15 @@ export class AmmoEquipment extends Equipment implements IAmmo {
             return false; // different ammo types cannot mix
         }
         if (this.base !== other.base) {
-            return false; // different base ammo cannot mix (Clan/IS variants)
+            if (this.base !== 'All' && other.base !== 'All') {
+                return false; // different base ammo cannot mix (Clan/IS variants)
+            }
         }
         if (this.flags.has('M_CASELESS') !== other.flags.has('M_CASELESS')) {
             return false; // caseless ammo cannot mix with cased ammo
+        }
+        if (this.flags.has('F_BATTLEARMOR') !== other.flags.has('F_BATTLEARMOR')) {
+            return false; // battle armor ammo cannot mix with regular ammo
         }
         if (this.ammoType === 'AR10') {
             return true; // all AR10 ammo is compatible

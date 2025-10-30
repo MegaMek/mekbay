@@ -589,22 +589,23 @@ export class SvgInteractionService {
                             const ammoOptions: AmmoEquipment[] = [];
                             if (!critSlot.name || !critSlot.eq) return;
                             const ammoItem = critSlot.eq;
-                            let originalAmmo = ammoItem;
+                            let originalAmmo = ammoItem as AmmoEquipment;
                             if (critSlot.originalName && critSlot.originalName !== critSlot.name) {
-                                originalAmmo = equipmentList[critSlot.originalName];
+                                originalAmmo = equipmentList[critSlot.originalName] as AmmoEquipment;
                             }
                             if (ammoItem instanceof AmmoEquipment) {
-                                let baseAmmo = ammoItem;
-                                if (ammoItem.baseAmmo) {
-                                    if (equipmentList[ammoItem.baseAmmo]) {
-                                        baseAmmo = equipmentList[ammoItem.baseAmmo] as AmmoEquipment;
-                                    } else {
-                                        console.warn(`Base ammo ${ammoItem.baseAmmo} not found for ${ammoItem.name}`);
-                                    }
-                                }
+                                    const baseOrder: Record<string, number> = { 'All': 0, 'IS': 1, 'Clan': 2 };
                                 const compatibleAmmo = Object.values(equipmentList)
-                                    .filter(e => (e instanceof AmmoEquipment) && (baseAmmo.compatibleAmmo(e)))
-                                    .sort((a, b) => a.name.localeCompare(b.name)) as AmmoEquipment[];
+                                    .filter((e): e is AmmoEquipment => (e instanceof AmmoEquipment) && (originalAmmo.compatibleAmmo(e)))
+                                    .sort((a, b) => {
+                                        const ao = baseOrder[(a.base || '')] ?? 3;
+                                        const bo = baseOrder[(b.base || '')] ?? 3;
+                                        if (ao !== bo) return ao - bo;
+                                        if (!a.baseAmmo && b.baseAmmo) {
+                                            return -1;
+                                        }
+                                        return a.name.localeCompare(b.name);
+                                    });
                                 const idx = compatibleAmmo.findIndex(a => a.name === originalAmmo.name);
                                 if (idx > -1) {
                                     const [orig] = compatibleAmmo.splice(idx, 1);
