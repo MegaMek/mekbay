@@ -1078,6 +1078,9 @@ hr {
         image {
             transform: none;
             filter: invert(1);
+        }
+
+        #fluff-image-injected {
             mix-blend-mode: lighten;
         }
 
