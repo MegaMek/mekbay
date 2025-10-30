@@ -18,7 +18,7 @@ import { UnitSearchComponent } from '../unit-search/unit-search.component';
 })
 export class SidebarComponent {
     private readonly COLLAPSED_WIDTH = 80;
-    private readonly EXPANDED_WIDTH = 300;
+    private readonly EXPANDED_WIDTH = 330;
     layout = inject(LayoutService);
     unitSearchPortal = input<Portal<any>>();
     unitSearchComponent = input<UnitSearchComponent>();
