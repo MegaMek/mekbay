@@ -58,6 +58,7 @@ export class SvgViewerLiteComponent {
             if (fluffImage.endsWith('hud.png')) return;
             for (const svg of this.svgs()) {
                 if (svg.getElementById('fluff-image')) continue; // already present from the original sheet, we skip
+                if (svg.getElementById('fluffImage')) continue; // already present from the original sheet, we skip
                 if (fluffImageInSheet) {
                     if (svg.getElementById('fluff-image-injected')) return; // already injected, we skip
                     const fluffImageUrl = `https://db.mekbay.com/images/fluff/${fluffImage}`;
