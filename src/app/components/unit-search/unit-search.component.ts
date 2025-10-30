@@ -58,6 +58,7 @@ import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { OptionsService } from '../../services/options.service';
 import { LongPressDirective } from '../../directives/long-press.directive';
+import { I } from '@angular/cdk/keycodes';
 
 @Pipe({
     name: 'expandedComponents',
@@ -594,7 +595,7 @@ export class UnitSearchComponent implements OnDestroy {
         });
 
         ref.componentInstance?.add.subscribe(newUnit => {
-            if (!this.forceBuilderService.hasUnits()) {
+            if (this.forceBuilderService.forceUnits().length === 1) {
                 // If this is the first unit being added, close the search panel
                 this.closeAllPanels();
             }
@@ -899,5 +900,13 @@ export class UnitSearchComponent implements OnDestroy {
         };
         this.clearSelection();
         this.closeAllPanels();
+    }
+
+    toggleExpandedView() {
+        const isExpanded = this.expandedView();
+        if (isExpanded && this.buttonOnly()) {
+            this.closeAllPanels();
+        }
+        this.expandedView.set(!isExpanded);
     }
 }
