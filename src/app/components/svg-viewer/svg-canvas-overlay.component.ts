@@ -307,12 +307,12 @@ export class SvgCanvasOverlayComponent {
     private readonly MULTITOUCH = false;
     private readonly INTERNAL_SCALE = 2;
     private readonly MOVE_THRESHOLD = 4; // in pixels
-    private readonly INITIAL_BRUSH_SIZE = 3;
-    private readonly INITIAL_ERASER_SIZE = 6;
+    private readonly INITIAL_BRUSH_SIZE = 2;
+    private readonly INITIAL_ERASER_SIZE = 4;
     private readonly BRUSH_MULTIPLIER = 1.0 * this.INTERNAL_SCALE;
     private readonly ERASER_MULTIPLIER = 2.0 * this.INTERNAL_SCALE;
     MIN_STROKE_SIZE = 1;
-    MAX_STROKE_SIZE = 16;
+    MAX_STROKE_SIZE = 10;
     private destroyRef = inject(DestroyRef);
     private zoomPanService = inject(SvgZoomPanService);
     private injector = inject(Injector);
@@ -333,8 +333,8 @@ export class SvgCanvasOverlayComponent {
     mode = signal<'brush' | 'eraser' | 'none'>('none');
     brushColor = signal<string>('#f00');
     colorOptions = ['#f00', '#00f', '#0f0', '#f0f', '#0ff', '#ff0'];
-    brushSize = signal<number>(this.INITIAL_BRUSH_SIZE);
-    eraserSize = signal<number>(this.INITIAL_ERASER_SIZE);
+    brushSize = signal<number>(this.optionsService.options().lastCanvasState?.brushSize ?? this.INITIAL_BRUSH_SIZE);
+    eraserSize = signal<number>(this.optionsService.options().lastCanvasState?.eraserSize ?? this.INITIAL_ERASER_SIZE);
     strokeSize = computed(() => {
         return this.mode() === 'brush' ? this.brushSize() : this.eraserSize();
     });
@@ -426,11 +426,18 @@ export class SvgCanvasOverlayComponent {
 
     onStrokeSizeChange(event: Event) {
         const value = +(event.target as HTMLInputElement).value;
+        const canvasState = this.optionsService.options().lastCanvasState ?? {
+            brushSize: this.INITIAL_BRUSH_SIZE,
+            eraserSize: this.INITIAL_ERASER_SIZE
+        };
         if (this.mode() === 'brush') {
             this.brushSize.set(value);
+            canvasState.brushSize = value;
         } else {
             this.eraserSize.set(value);
+            canvasState.eraserSize = value;
         }
+        this.optionsService.setOption('lastCanvasState', { ...canvasState });
     }
 
     toggleDrawMode() {

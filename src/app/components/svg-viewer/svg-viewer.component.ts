@@ -33,7 +33,7 @@
 
 import { Component, input, ElementRef, AfterViewInit, OnDestroy, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, viewChild, ComponentRef, ViewContainerRef, TemplateRef, afterNextRender, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ForceUnit } from '../../models/force-unit.model';
+import { ForceUnit, IViewState } from '../../models/force-unit.model';
 import { SvgZoomPanService, SwipeCallbacks } from './svg-zoom-pan.service';
 import { SvgInteractionService } from './svg-interaction.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -198,8 +198,15 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         );
     }
 
+    private lastViewState: IViewState | null = null;
+
     protected restoreViewState(): void {
+        if (!this.optionsService.options().syncZoomBetweenSheets && this.lastViewState) {
+            this.zoomPanService.restoreViewState(this.lastViewState);
+            return;
+        }
         const viewState = this.unit()?.viewState || null;
+        this.lastViewState = viewState;
         this.zoomPanService.restoreViewState(viewState);
     }
 

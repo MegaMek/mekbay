@@ -82,7 +82,6 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     unitSearchComponent = input<UnitSearchComponent>();
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
     forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
-    private burgerLipBtn = viewChild<ElementRef<HTMLButtonElement>>('burgerLipBtn');
 
     compactMode = signal<boolean>(false);
 
@@ -150,21 +149,6 @@ export class ForceBuilderViewerComponent implements OnDestroy {
                 }, { injector: this.injector });
             }
         });
-        effect(() => {
-            const height = this.layoutService.windowHeight();
-            const lip =  this.burgerLipBtn()?.nativeElement;
-            if (lip) {
-                if (lip.style.bottom !== 'auto') return; // Nothing to do, we are not using 'top' positioning
-                const topStr = lip.style.top;
-                const lipTop = (topStr ? parseFloat(topStr) : lip.offsetTop) || 0;
-                const maxTop = Math.max(0, height - lip.offsetHeight);
-                if (lipTop > maxTop) {
-                    // Reset lip positioning
-                    this.renderer.setStyle(lip, 'top', null);
-                    this.renderer.setStyle(lip, 'bottom', null);
-                }
-            }
-        });
     }
 
     onUnitKeydown(event: KeyboardEvent, index: number) {
@@ -230,7 +214,6 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     ngOnDestroy() {
         this.cleanupTouchListeners();
-        this.cleanupLipListeners();
         this.stopAutoScrollLoop();
     }
 
@@ -572,112 +555,6 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     promptChangeGroupName(group: UnitGroup) {
         if (this.forceBuilderService.readOnlyForce()) return;
         this.forceBuilderService.promptChangeGroupName(group);
-    }
-
-    // --- Lip vertical drag handlers ---
-    onLipPointerDown(event: PointerEvent) {
-        if (!this.layoutService.isMobile()) return;
-        const lipBtn = this.burgerLipBtn();
-        if (!lipBtn) return;
-
-        const btnEl = lipBtn.nativeElement;
-        this.isLipDragging = true;
-        this.lipMoved = false;
-        this.ignoreNextLipClick = false;
-        this.lipPointerId = event.pointerId;
-
-        // Calculate current top relative to host
-        const hostRect = this.elRef.nativeElement.getBoundingClientRect();
-        const btnRect = btnEl.getBoundingClientRect();
-        const currentTop = btnRect.top - hostRect.top;
-
-        this.lipStartTop = currentTop;
-        this.lipStartY = event.clientY;
-
-        // Ensure we're using 'top' for positioning during drag
-        this.renderer.setStyle(btnEl, 'top', `${currentTop}px`);
-        this.renderer.setStyle(btnEl, 'bottom', 'auto');
-
-        // Capture pointer and listen for move/up on the element
-        try { btnEl.setPointerCapture(event.pointerId); } catch {}
-        this.lipMoveUnlisten = this.renderer.listen(btnEl, 'pointermove', (e: PointerEvent) => this.onLipPointerMove(e));
-        this.lipUpUnlisten = this.renderer.listen(btnEl, 'pointerup', (e: PointerEvent) => this.onLipPointerUp(e));
-
-        // Prevent scroll/page gestures
-        event.preventDefault();
-        event.stopPropagation();
-    }
-
-    private onLipPointerMove(event: PointerEvent) {
-        if (!this.isLipDragging || event.pointerId !== this.lipPointerId) return;
-        const lipBtn = this.burgerLipBtn();
-        if (!lipBtn) return;
-
-        const btnEl = lipBtn.nativeElement;
-
-        const deltaY = event.clientY - this.lipStartY;
-        const proposedTop = this.lipStartTop + deltaY;
-
-        const hostHeight = this.elRef.nativeElement.offsetHeight;
-        const btnHeight = btnEl.offsetHeight;
-
-        const minTop = 0;
-        const maxTop = Math.max(0, hostHeight - btnHeight);
-        const clampedTop = Math.min(Math.max(proposedTop, minTop), maxTop);
-
-        // Update position
-        this.renderer.setStyle(btnEl, 'top', `${clampedTop}px`);
-
-        // Mark as moved when there is perceptible movement
-        if (!this.lipMoved && Math.abs(deltaY) > 3) {
-            this.lipMoved = true;
-        }
-
-        event.preventDefault();
-        event.stopPropagation();
-    }
-
-    private onLipPointerUp(event: PointerEvent) {
-        if (!this.isLipDragging || event.pointerId !== this.lipPointerId) return;
-        const lipBtn = this.burgerLipBtn();
-        if (!lipBtn) return;
-
-        // If the lip actually moved, suppress the subsequent click
-        if (this.lipMoved) {
-            this.ignoreNextLipClick = true;
-        }
-
-        const btnEl = lipBtn.nativeElement;
-        try { btnEl.releasePointerCapture(event.pointerId); } catch {}
-
-        this.isLipDragging = false;
-        this.lipPointerId = null;
-        this.cleanupLipListeners();
-
-        event.preventDefault();
-        event.stopPropagation();
-    }
-
-    private cleanupLipListeners() {
-        if (this.lipMoveUnlisten) {
-            this.lipMoveUnlisten();
-            this.lipMoveUnlisten = undefined;
-        }
-        if (this.lipUpUnlisten) {
-            this.lipUpUnlisten();
-            this.lipUpUnlisten = undefined;
-        }
-    }
-
-    onLipClick(event: MouseEvent) {
-        // If a drag just happened, prevent the toggle click
-        if (this.ignoreNextLipClick) {
-            this.ignoreNextLipClick = false;
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-        }
-        this.toggleMenu();
     }
 
     shareForce() {

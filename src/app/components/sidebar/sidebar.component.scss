@@ -43,6 +43,47 @@
             width: 56px;
         }
     }
+
+    
+    .burger-lip-btn {
+        position: absolute;
+        bottom: calc(56px + var(--safe-area-inset-bottom));
+        left: 100%;
+        width: 30px;
+        height: 90px;
+        border: none;
+        background-color: rgba(45, 45, 45, 0.8);
+        backdrop-filter: blur(5px);
+        -webkit-backdrop-filter: blur(5px);
+        color: var(--text-color);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        touch-action: none;
+        outline: none;
+        -webkit-tap-highlight-color: transparent;
+        background-repeat: no-repeat;
+        background-origin: border-box;
+        background-image:
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white);
+        background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+        background-position: top right, top right, bottom right, bottom right;
+        
+        &:active,
+        &:focus {
+            outline: none;
+        }
+    
+        .burger-icon {
+            font-size: 24px;
+            font-weight: bold;
+        }
+    }
+
+
 }
 
 .footer {

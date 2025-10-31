@@ -208,12 +208,6 @@
                     </div>
                 </ng-template>
             </div>
-
-            <!-- Burger button that acts as a "lip" on mobile -->
-            <button *ngIf="layoutService.isMobile()" #burgerLipBtn class="burger-lip-btn"
-                (pointerdown)="onLipPointerDown($event)" (click)="onLipClick($event)">
-                <span class="burger-icon">{{ layoutService.isMenuOpen() ? '«' : '»' }}</span>
-            </button>
         </div>
     </div>
 </div>

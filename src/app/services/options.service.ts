@@ -48,6 +48,7 @@ const DEFAULT_OPTIONS: Options = {
     unitDisplayName: 'chassisModel',
     gameSystem: 'cbt',
     fluffImageInSheet: true,
+    syncZoomBetweenSheets: false,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -60,6 +61,7 @@ export class OptionsService {
         quickActions: DEFAULT_OPTIONS.quickActions,
         canvasInput: DEFAULT_OPTIONS.canvasInput,
         swipeToNextSheet: DEFAULT_OPTIONS.swipeToNextSheet,
+        syncZoomBetweenSheets: DEFAULT_OPTIONS.syncZoomBetweenSheets,
         unitDisplayName: DEFAULT_OPTIONS.unitDisplayName,
         gameSystem: DEFAULT_OPTIONS.gameSystem,
         fluffImageInSheet: DEFAULT_OPTIONS.fluffImageInSheet,
@@ -77,9 +79,12 @@ export class OptionsService {
             quickActions: saved?.quickActions ?? DEFAULT_OPTIONS.quickActions,
             canvasInput: saved?.canvasInput ?? DEFAULT_OPTIONS.canvasInput,
             swipeToNextSheet: saved?.swipeToNextSheet ?? DEFAULT_OPTIONS.swipeToNextSheet,
+            syncZoomBetweenSheets: saved?.syncZoomBetweenSheets ?? DEFAULT_OPTIONS.syncZoomBetweenSheets,
             unitDisplayName: saved?.unitDisplayName ?? DEFAULT_OPTIONS.unitDisplayName,
             gameSystem: saved?.gameSystem ?? DEFAULT_OPTIONS.gameSystem,
             fluffImageInSheet: saved?.fluffImageInSheet ?? DEFAULT_OPTIONS.fluffImageInSheet,
+            lastCanvasState: saved?.lastCanvasState,
+            sidebarLipPosition: saved?.sidebarLipPosition,
         });
     }
 

@@ -1,8 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, effect, inject, signal, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2, untracked, afterNextRender, Injector } from '@angular/core';
 import { Portal, PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { UnitSearchComponent } from '../unit-search/unit-search.component';
+import { OptionsService } from '../../services/options.service';
 
 /*
  * Main Sidebar component
@@ -19,9 +20,15 @@ import { UnitSearchComponent } from '../unit-search/unit-search.component';
 export class SidebarComponent {
     readonly COLLAPSED_WIDTH = 80;
     readonly EXPANDED_WIDTH = 330;
+    injector = inject(Injector);
+    elRef = inject(ElementRef<HTMLElement>);
     layout = inject(LayoutService);
+    options = inject(OptionsService);
+    renderer = inject(Renderer2);
     unitSearchPortal = input<Portal<any>>();
     unitSearchComponent = input<UnitSearchComponent>();
+
+    private burgerLipBtn = viewChild<ElementRef<HTMLButtonElement>>('burgerLipBtn');
 
     // drag state for phone
     private dragging = signal(false);
@@ -99,11 +106,34 @@ export class SidebarComponent {
                 comp.buttonOnly.set(false);
             }
         });
+        // Lip button repositioning
+        effect(() => {
+            const height = this.layout.windowHeight();
+            const lip =  this.burgerLipBtn()?.nativeElement;
+            if (lip) {
+                if (lip.style.bottom !== 'auto') {
+                    const savedPos = untracked(() => this.options.options().sidebarLipPosition);
+                    if (savedPos) {
+                        // switch to top positioning
+                        this.renderer.setStyle(lip, 'top', savedPos);
+                        this.renderer.setStyle(lip, 'bottom', 'auto');
+                    } else {
+                        return; // still bottom positioned
+                    }
+                };
+                const topStr = lip.style.top;
+                const lipTop = (topStr ? parseFloat(topStr) : lip.offsetTop) || 0;
+                const maxTop = Math.max(0, height - lip.offsetHeight);
+                if (lipTop > maxTop) {
+                    // Reset lip positioning
+                    this.renderer.setStyle(lip, 'top', null);
+                    this.renderer.setStyle(lip, 'bottom', null);
+                }
+            }
+        });
     }
 
-    // Toggle button logic (tablet + desktop share the button)
-    public onToggleButtonClick() {
-        this.isPhone();
+    public toggleMenuOpenClose() {
         this.layout.isMenuOpen.update(v => !v);
     }
 
@@ -232,6 +262,88 @@ export class SidebarComponent {
     public onBackdropPointerDown() {
         this.layout.isMenuOpen.set(false);
         this.layout.menuOpenRatio.set(0);
+    }
+
+
+    /* --------------------------------------------------------
+     * Lip button
+     */
+    private lipPointerId: number | null = null;
+    private lipStartY = 0;
+    private lipStartTop = 0;
+    private lipMoved = false;
+    private ignoreNextLipClick = false;
+    private lipUnlistenMove?: () => void;
+    private lipUnlistenUp?: () => void;
+
+    onLipPointerDown(event: PointerEvent) {
+        const lip = this.burgerLipBtn()?.nativeElement;
+        if (!lip || event.isPrimary === false) return;
+
+        // compute current top relative to sidebar host
+        const hostRect = this.elRef.nativeElement.getBoundingClientRect();
+        const btnRect = lip.getBoundingClientRect();
+        const currentTop = btnRect.top - hostRect.top;
+
+        this.lipPointerId = event.pointerId;
+        this.lipStartY = event.clientY;
+        this.lipStartTop = currentTop;
+        this.lipMoved = false;
+        this.ignoreNextLipClick = false;
+
+        // switch to top positioning so we can move it
+        this.renderer.setStyle(lip, 'top', `${currentTop}px`);
+        this.renderer.setStyle(lip, 'bottom', 'auto');
+
+        try { lip.setPointerCapture(event.pointerId); } catch { /* ignore */ }
+
+        const move = (ev: PointerEvent) => {
+            if (ev.pointerId !== this.lipPointerId) return;
+            const dy = ev.clientY - this.lipStartY;
+            const hostHeight = this.elRef.nativeElement.offsetHeight;
+            const btnHeight = lip.offsetHeight;
+            const minTop = 0;
+            const maxTop = Math.max(0, hostHeight - btnHeight);
+            const newTop = Math.min(Math.max(this.lipStartTop + dy, minTop), maxTop);
+            this.renderer.setStyle(lip, 'top', `${newTop}px`);
+            if (!this.lipMoved && Math.abs(dy) > 4) this.lipMoved = true;
+            ev.preventDefault();
+            ev.stopPropagation();
+        };
+
+        const up = (ev: PointerEvent) => {
+            if (ev.pointerId !== this.lipPointerId) return;
+            try { lip.releasePointerCapture(ev.pointerId); } catch { /* ignore */ }
+            if (this.lipMoved) this.ignoreNextLipClick = true;
+            this.lipPointerId = null;
+            this.lipStartY = 0;
+            this.lipStartTop = 0;
+            this.lipMoved = false;
+            this.cleanupLipListeners();
+            ev.preventDefault();
+            ev.stopPropagation();
+            this.options.setOption('sidebarLipPosition', lip.style.top);
+        };
+
+        // keep the listeners in renderer so Angular can clean them properly
+        // use 'window' target for global pointer move/up handling
+        this.lipUnlistenMove = this.renderer.listen('window', 'pointermove', move);
+        this.lipUnlistenUp = this.renderer.listen('window', 'pointerup', up);
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    private cleanupLipListeners() {
+        if (this.lipUnlistenMove) { this.lipUnlistenMove(); this.lipUnlistenMove = undefined; }
+        if (this.lipUnlistenUp) { this.lipUnlistenUp(); this.lipUnlistenUp = undefined; }
+    }
+
+    onLipButtonClick() {
+        if (this.ignoreNextLipClick) {
+            this.ignoreNextLipClick = false;
+            return;
+        }
+        this.toggleMenuOpenClose();
     }
 
 }

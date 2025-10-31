@@ -33,7 +33,7 @@
 
 import { signal, computed, WritableSignal, EventEmitter, Injector } from '@angular/core';
 import { BVCalculatorUtil } from "../utils/bv-calculator.util";
-import { DataService } from '../services/data.service'; 
+import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { Equipment } from './equipment.model';
 import { UnitSvgService } from '../services/unit-svg.service';
@@ -205,7 +205,7 @@ export class Force {
     public hasMaxGroups = computed<boolean>(() => {
         return this.groups().length >= MAX_GROUPS;
     });
-    
+
     public addGroup(name: string = 'Group'): UnitGroup {
         if (this.hasMaxGroups()) {
             throw new Error(`Cannot add more than ${MAX_GROUPS} groups`);
@@ -395,6 +395,12 @@ export interface MountedEquipment {
     consumed?: number;
 }
 
+export interface IViewState {
+    scale: number;
+    translateX: number;
+    translateY: number;
+}
+
 export class ForceUnit {
     private unit: Unit; // Original unit data
     force: Force;
@@ -402,11 +408,7 @@ export class ForceUnit {
     svg: WritableSignal<SVGSVGElement | null> = signal(null); // SVG representation of the unit
     private svgService: UnitSvgService | null = null;
     private loadingPromise: Promise<void> | null = null;
-    viewState: {
-        scale: number;
-        translateX: number;
-        translateY: number;
-    };
+    viewState: IViewState;
     initialized = false;
     locations?: {
         armor: Map<string, { loc: string; rear: boolean; points?: number }>;
@@ -441,7 +443,7 @@ export class ForceUnit {
             translateX: 0,
             translateY: 0
         };
-        
+
         this.dataService = dataService;
         this.unitInitializer = unitInitializer;
         this.injector = injector;
@@ -451,7 +453,7 @@ export class ForceUnit {
             crew[i] = new CrewMember(i, this);
         }
         this.state.crew.set(crew);
-    }    
+    }
     public async load() {
         if (this.isLoaded) return;
         if (this.loadingPromise) {
@@ -618,7 +620,7 @@ export class ForceUnit {
     addArmorHits(loc: string, hits: number, rear?: boolean) {
         const locKey = rear ? `${loc}-rear` : loc;
         const locations = { ...this.state.locations() };
-        
+
         if (locations[locKey] === undefined) {
             locations[locKey] = {};
         }
@@ -795,15 +797,15 @@ export class ForceUnit {
 
     public serialize(): SerializedUnit {
         const stateObj: SerializedState = {
-                crew: this.state.crew().map(crew => crew.serialize()),
-                crits: this.state.crits().map(({ uid, el, eq, ...rest }) => rest), // We remove UID and the SVGElement as they are linked at load time
-                heat: this.state.heat(),
-                locations: this.state.locations(),
-                modified: this.state.modified(),
-                destroyed: this.state.destroyed(),
-                shutdown: this.state.shutdown(),
-                c3Linked: this.state.c3Linked(),
-            };
+            crew: this.state.crew().map(crew => crew.serialize()),
+            crits: this.state.crits().map(({ uid, el, eq, ...rest }) => rest), // We remove UID and the SVGElement as they are linked at load time
+            heat: this.state.heat(),
+            locations: this.state.locations(),
+            modified: this.state.modified(),
+            destroyed: this.state.destroyed(),
+            shutdown: this.state.shutdown(),
+            c3Linked: this.state.c3Linked(),
+        };
         if (this.hasDirectInventory()) {
             // stateObj.inventory = [];
         }
@@ -956,7 +958,7 @@ export class CrewMember {
         }
         return value;
     }
-    
+
     getName(): string {
         return this.name || '';
     }
@@ -967,7 +969,7 @@ export class CrewMember {
         this.unit.setCrewMember(this.id, this);
         this.unit.setModified();
     }
-    
+
     getHits(): number {
         return this.hits;
     }

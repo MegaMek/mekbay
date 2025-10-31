@@ -60,7 +60,7 @@ export class OptionsDialogComponent {
     dialogsService = inject(DialogsService);
     isIOS = isIOS();
     
-    tabs = ['General', 'Advanced', 'Debug'];
+    tabs = ['General', 'Sheets', 'Advanced', 'Experimental'];
     activeTab = signal(this.tabs[0]);
 
     uuidInput = viewChild.required<ElementRef<HTMLInputElement>>('uuidInput');
@@ -115,6 +115,11 @@ export class OptionsDialogComponent {
     onFluffImageInSheetChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('fluffImageInSheet', value);
+    }
+
+    onSyncZoomBetweenSheetsChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('syncZoomBetweenSheets', value);
     }
 
     onPickerStyleChange(event: Event) {

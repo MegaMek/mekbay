@@ -3,7 +3,7 @@
     <div class="sidebar-inner"
         [class.tiny]="!layout.isMenuOpen() && !isPhone()">
         <div class="header">
-            <div class="brand" (click)="!isPhone() && onToggleButtonClick()" aria-label="Mekbay">
+            <div class="brand" (click)="!isPhone() && toggleMenuOpenClose()" aria-label="Mekbay">
             @if (!isPhone() && !layout.isMenuOpen()) {
                 <img class="logo" src="/icons/icon-192x192.png" alt="Mekbay">
             } @else {
@@ -16,13 +16,11 @@
         <div class="spanner"></div>
 
         <div class="footer">
-            @if (!isPhone()) {
-                <button class="collapse-btn" (click)="onToggleButtonClick()" aria-label="Toggle sidebar">
-                    <span *ngIf="layout.isMenuOpen()">Collapse</span>
-                    <span *ngIf="!layout.isMenuOpen()">Expand</span>
-                </button>
-            }
         </div>
+        <button #burgerLipBtn class="burger-lip-btn" (click)="onLipButtonClick()" 
+            (pointerdown)="onLipPointerDown($event)" aria-label="Toggle sidebar">
+            <span class="burger-icon">{{ layout.isMenuOpen() ? '«' : '»' }}</span>
+        </button>
     </div>
 </ng-template>
 
