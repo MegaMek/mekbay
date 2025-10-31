@@ -20,7 +20,7 @@ import { CdkMenuModule } from '@angular/cdk/menu';
     styleUrls: ['./sidebar.component.scss'],
 })
 export class SidebarComponent {
-    readonly COLLAPSED_WIDTH = 80;
+    readonly COLLAPSED_WIDTH = 64;
     readonly EXPANDED_WIDTH = 330;
     injector = inject(Injector);
     elRef = inject(ElementRef<HTMLElement>);
@@ -126,10 +126,8 @@ export class SidebarComponent {
                 const topStr = lip.style.top;
                 const lipTop = (topStr ? parseFloat(topStr) : lip.offsetTop) || 0;
                 const maxTop = Math.max(0, height - lip.offsetHeight);
-                if (lipTop > maxTop) {
-                    // Reset lip positioning
-                    this.renderer.setStyle(lip, 'top', null);
-                    this.renderer.setStyle(lip, 'bottom', null);
+                if (lipTop > (maxTop + 1)) {
+                    this.renderer.setStyle(lip, 'top', `${maxTop}px`);
                 }
             }
         });

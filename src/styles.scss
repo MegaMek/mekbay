@@ -375,8 +375,8 @@ hr {
 
     &.square-large {
         flex-shrink: 0;
-        width: 56px;
-        height: 56px;
+        width: 48px;
+        height: 48px;
         overflow: hidden;
     }
 
@@ -1091,7 +1091,16 @@ hr {
             filter: invert(1);
         }
 
+        #fluff-image-fo {
+            transform: none;
+            mix-blend-mode: lighten;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
         #fluff-image-injected {
+            transform: none;
+            filter: invert(1);
             mix-blend-mode: lighten;
         }
 

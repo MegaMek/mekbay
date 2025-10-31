@@ -619,15 +619,28 @@ export class RsPolyfillUtil {
 
         const localWidth = localBR.x - localTL.x;
         const localHeight = localBR.y - localTL.y;
-        // We create an image element
-        const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-        img.setAttribute('id', 'fluff-image-injected');
-        img.setAttribute('href', fluffImageUrl);
-        img.setAttribute('x', localTL.x.toString());
-        img.setAttribute('y', localTL.y.toString());
-        img.setAttribute('width', Math.max(0, localWidth).toString());
-        img.setAttribute('height', Math.max(0, localHeight).toString());
-        img.style.display = 'none';
-        injectParent.appendChild(img);
+        const rootX = minX;
+        const rootY = minY;
+        const rootW = Math.max(0, localWidth);
+        const rootH = Math.max(0, localHeight);
+
+        const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+        fo.setAttribute('id', 'fluff-image-fo');
+        fo.setAttribute('x', rootX.toString());
+        fo.setAttribute('y', rootY.toString());
+        fo.setAttribute('width', rootW.toString());
+        fo.setAttribute('height', rootH.toString());
+        fo.setAttribute('style', 'display: none;');
+
+        const htmlImg = document.createElementNS('http://www.w3.org/1999/xhtml', 'img');
+        htmlImg.setAttribute('id', 'fluff-image-injected');
+        htmlImg.setAttribute('src', fluffImageUrl);
+        htmlImg.setAttribute('alt', '');
+        htmlImg.style.width = '100%';
+        htmlImg.style.height = '100%';
+        htmlImg.style.objectFit = 'contain';
+
+        fo.appendChild(htmlImg);
+        svg.appendChild(fo); // we append directly to root svg to avoid coordinate issues
     }
 }

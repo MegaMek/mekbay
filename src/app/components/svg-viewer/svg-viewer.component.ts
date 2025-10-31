@@ -280,7 +280,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     private setFluffImageVisibility() {
         const svg = this.currentSvg();
         if (!svg) return;
-        const injectedEl = svg.getElementById('fluff-image-injected') as HTMLElement | null;
+        const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
         if (!injectedEl) return; // we don't have a fluff image to switch to
         const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
         const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
