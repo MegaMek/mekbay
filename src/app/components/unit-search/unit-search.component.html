@@ -68,7 +68,7 @@
             <div class="results-dropdown-item unit-card"
                 *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
                 [class.active]="activeIndex() === i" [class.selected]="isUnitSelected(unit)"
-                (pointerenter)="activeIndex.set(i)" longPress (click)="onUnitCardClick(unit, $event)"
+                (pointerenter)="activeIndex.set(i)" longPress (shortPress)="onUnitCardClick(unit, $event)"
                 (longPress)="multiSelectUnit(unit)">
 
                 @if (this.expandedView()) {

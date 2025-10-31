@@ -7,7 +7,7 @@ import { Directive, HostListener, input, effect, output, ElementRef, inject } fr
 export class LongPressDirective {
     longPressDuration = input<number>(300); // ms
     longPress = output<PointerEvent>();
-    shortPress = output<PointerEvent>();
+    shortPress = output<MouseEvent>();
     
     private longPressed = false;
     private el = inject(ElementRef<HTMLElement>);
@@ -17,6 +17,7 @@ export class LongPressDirective {
     private pointerId?: number;
     private readonly MOVE_THRESHOLD = 10; // px
     private pointerDownEvent: PointerEvent | null = null;
+    private disableNextClick = false;
 
     constructor() {
         effect((cleanup) => {
@@ -37,6 +38,7 @@ export class LongPressDirective {
         this.startY = event.clientY;
         this.pointerId = event.pointerId;
         this.pointerDownEvent = event;
+        this.disableNextClick = false;
 
         try {
             (event.target as HTMLElement).setPointerCapture(this.pointerId);
@@ -46,6 +48,7 @@ export class LongPressDirective {
             this.clearTimer();
             this.longPressed = true;
             this.longPress.emit(event);
+            this.disableNextClick = true;
         }, this.longPressDuration());
     }
 
@@ -61,11 +64,6 @@ export class LongPressDirective {
 
     @HostListener('pointerup', ['$event'])
     onPointerUp(event: PointerEvent) {
-        if (!this.longPressed) {
-            event.preventDefault();
-            event.stopPropagation();
-            this.shortPress.emit(this.pointerDownEvent ?? event);
-        }
         this.clearTimer();
     }
 
@@ -73,6 +71,13 @@ export class LongPressDirective {
     onClick(event: MouseEvent) {
         event.preventDefault();
         event.stopPropagation();
+        if (this.disableNextClick) {
+            this.disableNextClick = false;
+            return;
+        }
+        if (!this.longPressed) {
+            this.shortPress.emit(event);
+        }
     }
 
     @HostListener('contextmenu', ['$event'])
