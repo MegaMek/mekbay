@@ -20,7 +20,8 @@
     padding-bottom: max(4px, var(--safe-area-inset-bottom));
     box-sizing: border-box;
 
-    .header {
+    .header,
+    .footer {
         display: flex;
         align-items: center;
         justify-self: center;
@@ -82,14 +83,6 @@
             font-weight: bold;
         }
     }
-
-
-}
-
-.footer {
-    display: flex;
-    justify-content: center;
-    padding-top: .5rem;
 }
 
 .collapse-btn {

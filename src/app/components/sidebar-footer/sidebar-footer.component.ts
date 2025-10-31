@@ -41,6 +41,7 @@ export class SidebarFooterComponent {
     renderer = inject(Renderer2);
 
     compactMode = signal<boolean>(false);
+    singleButton = input<boolean>(false);
 
     constructor() {}
 
