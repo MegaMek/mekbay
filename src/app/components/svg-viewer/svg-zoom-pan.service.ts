@@ -525,10 +525,6 @@ export class SvgZoomPanService {
             this.state.last = { x: remaining.x, y: remaining.y };
             this.state.pointerStart = { x: remaining.x, y: remaining.y };
             this.state.touchStartDistance = 0;
-
-            if (this.state.isSwiping) {
-                this.swipeCallbacks?.onSwipeStart();
-            }
             return;
         }
 
