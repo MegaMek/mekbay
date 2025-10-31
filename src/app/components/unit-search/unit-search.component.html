@@ -224,7 +224,7 @@
     <div class="drag-bar"></div>
 </div>
 }
-<div #advPanel class="adv-panel framed-borders" [hidden]="!advOpen()" [ngStyle]="advPanelStyle()"
+<div #advPanel class="adv-panel framed-borders has-shadow" [hidden]="!advOpen()" [ngStyle]="advPanelStyle()"
     [class.docked]="advPanelDocked()">
     <div class="adv-panel-header" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         <div class="pilot-skills-section framed-borders">

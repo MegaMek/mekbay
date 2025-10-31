@@ -156,8 +156,7 @@ export class UnitSearchComponent implements OnDestroy {
     itemSize = signal(75);
 
     private resizeObserver?: ResizeObserver;
-    private tagSelectorOverlayRef?: OverlayRef;
-    private favoritesOverlayRef?: OverlayRef; 
+    private managedOverlays = new Map<string, { overlayRef: OverlayRef, clickListener?: (ev: MouseEvent) => void, triggerElement?: HTMLElement }>();
     private advPanelDragStartX = 0;
     private advPanelDragStartWidth = 0;
 
@@ -181,8 +180,8 @@ export class UnitSearchComponent implements OnDestroy {
             if (this.autoFocus() &&
                 this.filtersService.isDataReady() &&
                 this.searchInput().nativeElement) {
-                    afterNextRender(() => {
-                        this.searchInput().nativeElement.focus();
+                afterNextRender(() => {
+                    this.searchInput().nativeElement.focus();
                 }, { injector: this.injector });
             }
         });
@@ -207,8 +206,80 @@ export class UnitSearchComponent implements OnDestroy {
 
     ngOnDestroy() {
         this.resizeObserver?.disconnect();
-        this.tagSelectorOverlayRef?.dispose();
-        this.favoritesOverlayRef?.dispose();
+        for (const key of Array.from(this.managedOverlays.keys())) {
+            this.closeManagedOverlay(key);
+        }
+    }
+
+    private createManagedOverlay<T>(key: string, target: HTMLElement | ElementRef<HTMLElement>, portal: ComponentPortal<T>, opts?: {
+        positions?: Array<any>,
+        hasBackdrop?: boolean,
+        backdropClass?: string,
+        panelClass?: string,
+        scrollStrategy?: any,
+        closeOnOutsideClick?: boolean
+    }) {
+        // close existing with same key first
+        this.closeManagedOverlay(key);
+
+        const el = (target as ElementRef<HTMLElement>)?.nativeElement ?? (target as HTMLElement);
+        const positionStrategy = this.overlay.position()
+            .flexibleConnectedTo(el)
+            .withPositions(opts?.positions ?? [
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
+            ])
+            .withPush(false);
+
+        const overlayRef = this.overlay.create({
+            positionStrategy,
+            scrollStrategy: opts?.scrollStrategy ?? this.overlay.scrollStrategies.close(),
+            hasBackdrop: Boolean(opts?.hasBackdrop),
+            backdropClass: opts?.backdropClass,
+            panelClass: opts?.panelClass ?? undefined
+        });
+
+        const compRef = overlayRef.attach(portal);
+
+        const entry: { overlayRef: OverlayRef, clickListener?: (ev: MouseEvent) => void, triggerElement?: HTMLElement } = { overlayRef };
+
+        if (opts?.hasBackdrop) {
+            // Backdrop clicks -> close
+            overlayRef.backdropClick().subscribe(() => this.closeManagedOverlay(key));
+        } else if (opts?.closeOnOutsideClick ?? true) {
+            // Capture-phase click listener: close when clicking outside overlay, but do not call stopPropagation.
+            // Remember the trigger element so clicks on the trigger won't cause the listener to close the overlay
+            // before the button's own handler runs.
+            const triggerEl = el as HTMLElement;
+            const listener = (ev: MouseEvent) => {
+                const overlayEl = overlayRef.overlayElement;
+                if (!overlayEl) return;
+                const clicked = ev.target as Node;
+                // If click is inside the overlay OR inside the trigger element, ignore it here.
+                if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked))) {
+                    return;
+                }
+                this.closeManagedOverlay(key);
+            };
+            document.addEventListener('click', listener, true);
+            entry.clickListener = listener;
+            entry.triggerElement = triggerEl;
+        }
+
+        this.managedOverlays.set(key, entry);
+        return compRef;
+    }
+
+    private closeManagedOverlay(key: string) {
+        const entry = this.managedOverlays.get(key);
+        if (!entry) return;
+        try { entry.overlayRef.dispose(); } catch { /* ignore */ }
+        if (entry.clickListener) {
+            document.removeEventListener('click', entry.clickListener, true);
+        }
+        entry.triggerElement = undefined; // remove any stored trigger reference
+        this.managedOverlays.delete(key);
     }
 
     private setupItemHeightTracking() {
@@ -268,7 +339,7 @@ export class UnitSearchComponent implements OnDestroy {
         return unit.name;
     }
 
-    focusInput() {            
+    focusInput() {
         try { this.searchInput()?.nativeElement.focus(); } catch { /* ignore */ }
     }
 
@@ -593,7 +664,7 @@ export class UnitSearchComponent implements OnDestroy {
         setTimeout(() => {
             try { if ('disableClose' in ref) (ref as any).disableClose = false; } catch (e) { /* ignore */ }
         }, 500);
-        
+
         ref.closed.subscribe(() => {
             this.unitDetailsDialogOpen.set(false);
         });
@@ -684,34 +755,12 @@ export class UnitSearchComponent implements OnDestroy {
 
         // Create overlay positioned near the click
         const target = event.target as HTMLElement;
-        const positionStrategy = this.overlay.position()
-            .flexibleConnectedTo(target)
-            .withPositions([
-                {
-                    originX: 'start',
-                    originY: 'bottom',
-                    overlayX: 'start',
-                    overlayY: 'top',
-                    offsetY: 4
-                },
-                {
-                    originX: 'start',
-                    originY: 'top',
-                    overlayX: 'start',
-                    overlayY: 'bottom',
-                    offsetY: -4
-                }
-            ]);
-
-        this.tagSelectorOverlayRef = this.overlay.create({
-            positionStrategy,
-            scrollStrategy: this.overlay.scrollStrategies.reposition(),
-            hasBackdrop: true,
-            backdropClass: 'cdk-overlay-transparent-backdrop'
-        });
-
         const portal = new ComponentPortal(TagSelectorComponent, null, this.injector);
-        const componentRef = this.tagSelectorOverlayRef.attach(portal);
+        const componentRef = this.createManagedOverlay('tagSelector', target, portal, {
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            hasBackdrop: false,
+            panelClass: 'tag-selector-overlay'
+        });
 
         // Pass data to the component
         componentRef.instance.tags = tagOptions;
@@ -721,12 +770,6 @@ export class UnitSearchComponent implements OnDestroy {
             .map(u => u._tags || [])
             .reduce((a, b) => a.filter(tag => b.includes(tag)), unitsToTag[0]._tags || []);
         componentRef.instance.assignedTags = commonTags;
-
-        // Handle backdrop click to close
-        this.tagSelectorOverlayRef.backdropClick().subscribe(() => {
-            this.tagSelectorOverlayRef?.dispose();
-            this.tagSelectorOverlayRef = undefined;
-        });
 
         // Handle tag removal for all selected units
         componentRef.instance.tagRemoved.subscribe(async (tagToRemove: string) => {
@@ -751,8 +794,7 @@ export class UnitSearchComponent implements OnDestroy {
 
         // Handle tag selection for all selected units
         componentRef.instance.tagSelected.subscribe(async (selectedTag: string) => {
-            this.tagSelectorOverlayRef?.dispose();
-            this.tagSelectorOverlayRef = undefined;
+             this.closeManagedOverlay('tagSelector');
 
             // If "Add new tag..." was selected, show text input dialog
             if (selectedTag === '__new__') {
@@ -822,7 +864,7 @@ export class UnitSearchComponent implements OnDestroy {
         window.addEventListener('pointercancel', this.onAdvPanelDragEnd);
         try {
             (event.target as HTMLElement).setPointerCapture(event.pointerId);
-        } catch(e) { /* ignore */ }
+        } catch (e) { /* ignore */ }
     }
 
     onAdvPanelDragMove = (event: PointerEvent) => {
@@ -839,7 +881,7 @@ export class UnitSearchComponent implements OnDestroy {
     onAdvPanelDragEnd = (event: PointerEvent) => {
         try {
             (event.target as HTMLElement).releasePointerCapture(event.pointerId);
-        } catch(e) { /* ignore */ }
+        } catch (e) { /* ignore */ }
         window.removeEventListener('pointermove', this.onAdvPanelDragMove);
         window.removeEventListener('pointerup', this.onAdvPanelDragEnd);
         window.removeEventListener('pointercancel', this.onAdvPanelDragEnd);
@@ -873,11 +915,11 @@ export class UnitSearchComponent implements OnDestroy {
         // Single click: open details and clear selection
         this.showUnitDetails(unit);
     }
-    
+
     isUnitSelected(unit: Unit): boolean {
         return this.selectedUnits().has(unit.name);
     }
-    
+
     clearSelection() {
         if (this.selectedUnits().size > 0) {
             this.selectedUnits.set(new Set());
@@ -920,7 +962,6 @@ export class UnitSearchComponent implements OnDestroy {
         this.focusInput();
     }
 
-
     /* ------------------------------------------
      * Favorites overlay/menu
      */
@@ -929,76 +970,32 @@ export class UnitSearchComponent implements OnDestroy {
         event.stopPropagation();
 
         // If already open, close it
-        if (this.favoritesOverlayRef) {
-            this.favoritesOverlayRef.dispose();
-            this.favoritesOverlayRef = undefined;
+        if (this.managedOverlays.has('favorites')) {
+            this.closeManagedOverlay('favorites');
             return;
         }
-
         const target = this.favBtn()?.nativeElement || (event.target as HTMLElement);
-        const positionStrategy = this.overlay.position()
-            .flexibleConnectedTo(target)
-            .withPositions([
-                {
-                    originX: 'start',
-                    originY: 'bottom',
-                    overlayX: 'start',
-                    overlayY: 'top',
-                    offsetY: 4
-                },
-                {
-                    originX: 'end',
-                    originY: 'bottom',
-                    overlayX: 'end',
-                    overlayY: 'top',
-                    offsetY: 4
-                },
-                {
-                    originX: 'start',
-                    originY: 'top',
-                    overlayX: 'start',
-                    overlayY: 'bottom',
-                    offsetY: -4
-                }
-            ])
-            .withPush(false);
-
-        this.favoritesOverlayRef = this.overlay.create({
-            positionStrategy,
-            scrollStrategy: this.overlay.scrollStrategies.close(),
-            hasBackdrop: true,
-            backdropClass: 'cdk-overlay-transparent-backdrop',
-            panelClass: 'favorites-overlay-panel'
-        });
-
         const portal = new ComponentPortal(SearchFavoritesMenuComponent, null, this.injector);
-        const compRef = this.favoritesOverlayRef.attach(portal);
+        const compRef = this.createManagedOverlay('favorites', target, portal, {
+            hasBackdrop: false,
+            panelClass: 'favorites-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.close()
+        });
 
         const favorites: SerializedSearchFilter[] = [];
-        // Pass current favorites
         compRef.setInput('favorites', favorites);
-
-        // Handle selection
         compRef.instance.select.subscribe((favorite: SerializedSearchFilter) => {
-            if (favorite) {
-                this.applyFavorite(favorite);
-            }
-            this.closeFavorites();
+            if (favorite) this.applyFavorite(favorite);
+            this.closeManagedOverlay('favorites');
         });
-
-        // Handle save request
         compRef.instance.saveRequest.subscribe(() => {
             this.saveCurrentSearch();
-        });
-
-        this.favoritesOverlayRef.backdropClick().subscribe(() => {
-            this.closeFavorites();
         });
     }
 
     closeFavorites() {
-        try { this.favoritesOverlayRef?.dispose(); } catch { /* ignore */ }
-        this.favoritesOverlayRef = undefined;
+        this.closeManagedOverlay('favorites');
     }
 
     private async saveCurrentSearch() {

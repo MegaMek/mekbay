@@ -25,7 +25,7 @@
     </div>
 
     @if (isOpen()) {
-        <div class="options-dropdown framed-borders">
+        <div class="options-dropdown framed-borders has-shadow">
             @if (options().length > 20 || showUnavailableToggle()) {
                 <div class="filter-container" (click)="$event.stopPropagation()">
                     <div class="filter-row">

@@ -8,7 +8,7 @@ import { SerializedSearchFilter } from '../../services/unit-search-filters.servi
     standalone: true,
     imports: [CommonModule],
     template: `
-    <div class="favorites-menu framed-borders">
+    <div class="favorites-menu framed-borders has-shadow">
         <div class="favorites-list">
             @let favorites = this.favorites();
             @if (!favorites || favorites.length === 0) {

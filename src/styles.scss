@@ -113,6 +113,10 @@ hr {
     box-sizing: border-box;
 }
 
+.has-shadow {
+    box-shadow: 0 2px 3px 0 rgba(0, 0, 0, 0.5);
+}
+
 .framed-borders {
     background-repeat: no-repeat;
     background-origin: border-box;

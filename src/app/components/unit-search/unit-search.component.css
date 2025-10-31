@@ -83,6 +83,10 @@
     min-width: 300px;
 }
 
+.adv-panel.docked {
+    box-shadow: none;
+}
+
 .adv-panel-drag-handle {
     position: fixed;
     top: 50%;
