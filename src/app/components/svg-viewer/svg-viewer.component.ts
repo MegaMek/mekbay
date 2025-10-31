@@ -552,7 +552,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (!this.swipeActive || !this.currentSlideEl) return;
 
         const width = this.containerWidth || 1;
-        const threshold = width * 0.5;
+        const threshold = this.svgWidth * 0.5;
         const commitPrev = totalDx > threshold && !!this.prevSlideEl && !!this.prevUnit;
         const commitNext = totalDx < -threshold && !!this.nextSlideEl && !!this.nextUnit;
 
