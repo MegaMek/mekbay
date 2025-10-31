@@ -94,6 +94,17 @@ type RangeFilterOptions = {
     curve?: number;
 };
 
+export interface SerializedSearchFilter {
+    name: string;
+    q?: string;
+    sort?: string;
+    sortDir?: 'asc' | 'desc';
+    filters?: Record<string, any>;
+    gunnery?: number;
+    piloting?: number;
+}
+
+
 type AdvFilterOptions = DropdownFilterOptions | RangeFilterOptions;
 
 const DEFAULT_FILTER_CURVE = 0;
@@ -1410,5 +1421,63 @@ export class UnitSearchFiltersService {
         }
         
         return BVCalculatorUtil.calculateAdjustedBV(unit.bv, gunnery, piloting);
+    }
+
+    
+    public serializeCurrentSearchFilter(name: string): SerializedSearchFilter {
+        const filter: SerializedSearchFilter = { name };
+
+        const q = this.searchText();
+        if (q && q.trim().length > 0) filter.q = q.trim();
+
+        const sort = this.selectedSort();
+        if (sort && sort !== 'name') filter.sort = sort;
+
+        const sortDir = this.selectedSortDirection();
+        if (sortDir && sortDir !== 'asc') filter.sortDir = sortDir;
+
+        const g = this.pilotGunnerySkill();
+        if (typeof g === 'number' && g !== 4) filter.gunnery = g;
+
+        const p = this.pilotPilotingSkill();
+        if (typeof p === 'number' && p !== 5) filter.piloting = p;
+
+        // Save only interacted filters
+        const state = this.filterState();
+        const savedFilters: Record<string, any> = {};
+        for (const [key, val] of Object.entries(state)) {
+            if (val.interactedWith) {
+                savedFilters[key] = val.value;
+            }
+        }
+        if (Object.keys(savedFilters).length > 0) {
+            filter.filters = savedFilters;
+        }
+        return filter;
+    }
+
+    public applySerializedSearchFilter(filter: SerializedSearchFilter): void {
+        // Reset all filters first
+        this.clearFilters();
+        // Apply search text
+        if (filter.q) {
+            this.searchText.set(filter.q);
+        }
+        // Apply filters
+        if (filter.filters) {
+            for (const [key, value] of Object.entries(filter.filters)) {
+                this.setFilter(key, value);
+            }
+        }
+        // Apply sort
+        if (filter.sort) this.setSortOrder(filter.sort);
+        if (filter.sortDir) this.setSortDirection(filter.sortDir);
+
+        // Apply pilot skills if provided
+        if (typeof filter.gunnery === 'number' || typeof filter.piloting === 'number') {
+            const g = typeof filter.gunnery === 'number' ? filter.gunnery : this.pilotGunnerySkill();
+            const p = typeof filter.piloting === 'number' ? filter.piloting : this.pilotPilotingSkill();
+            this.setPilotSkills(g, p);
+        }
     }
 }

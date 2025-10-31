@@ -159,8 +159,8 @@ export class InputDialogComponent {
 
     constructor() {
         this.buttons = this.data.buttons ?? [
-            { label: 'OK', value: 'ok' },
-            { label: 'CANCEL', value: 'cancel' }
+            { label: 'CONFIRM', value: 'ok' },
+            { label: 'DISMISS', value: 'cancel' }
         ];
     }
 

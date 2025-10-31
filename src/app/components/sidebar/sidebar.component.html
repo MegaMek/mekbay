@@ -1,6 +1,7 @@
 <!-- Single canonical content template, reused in different wrappers -->
 <ng-template #sidebarContent>
-    <div class="sidebar-inner">
+    <div class="sidebar-inner"
+        [class.tiny]="!layout.isMenuOpen() && !isPhone()">
         <div class="header">
             <div class="brand" (click)="!isPhone() && onToggleButtonClick()" aria-label="Mekbay">
             @if (!isPhone() && !layout.isMenuOpen()) {
@@ -12,10 +13,7 @@
             <div [cdkPortalOutlet]="unitSearchPortal()"></div>
         </div>
 
-        <nav class="nav">
-        </nav>
-
-        <div class="spacer"></div>
+        <div class="spanner"></div>
 
         <div class="footer">
             @if (!isPhone()) {
@@ -53,7 +51,7 @@
 @if (isTablet()) {
     @if (!layout.isMenuOpen()) {
         <!-- tablet docked collapsed -->
-        <aside class="docked docked-collapsed" role="navigation" [style.width.px]="80">
+        <aside class="docked docked-collapsed" role="navigation" [style.width.px]="this.COLLAPSED_WIDTH">
             <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
         </aside>
     } @else {

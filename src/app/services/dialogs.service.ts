@@ -31,10 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, Input, inject } from '@angular/core';
 import { firstValueFrom, Subject } from 'rxjs';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { Dialog } from '@angular/cdk/dialog';
+import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
 
 /*
  * Author: Drake
@@ -90,7 +91,7 @@ export class DialogsService {
             disableClose: true, // Prevents closing by clicking outside or pressing Escape
             panelClass: 'danger',
             data: <ConfirmDialogData<string>>{
-                title,
+            title,
                 message,
                 buttons: [
                     { label: 'DISMISS', value: 'nop', class: 'danger' }
@@ -100,4 +101,19 @@ export class DialogsService {
         // Wait for dialog to close, we don't really care about the result
         await firstValueFrom(dialogRef.closed); 
     }
+
+    async prompt(message: string, title: string, defaultValue = ''): Promise<string | null> {
+        const dialogRef = this.dialog.open<string>(InputDialogComponent, {
+            disableClose: true, // Prevents closing by clicking outside or pressing Escape
+            data: <InputDialogData>{
+                title,
+                message,
+                inputType: 'text',
+                defaultValue
+            }
+        });
+        const result = await firstValueFrom(dialogRef.closed);
+        return result ?? null;
+    }
+
 }

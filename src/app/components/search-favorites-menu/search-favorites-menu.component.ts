@@ -1,15 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, input, output } from '@angular/core';
+import { SerializedSearchFilter } from '../../services/unit-search-filters.service';
 
-export interface SerializedFavorite {
-    name: string;
-    q?: string;
-    sort?: string;
-    sortDir?: 'asc' | 'desc';
-    filters?: Record<string, any>;
-    gunnery?: number;
-    piloting?: number;
-}
 
 @Component({
     selector: 'search-favorites-menu',
@@ -20,7 +12,7 @@ export interface SerializedFavorite {
         <div class="favorites-list">
             @let favorites = this.favorites();
             @if (!favorites || favorites.length === 0) {
-                <div class="no-favorites">No saved searches</div>
+                <div class="no-favorites">No Tactical Bookmarks</div>
             } @else {
                 @for (f of favorites; let i = $index; track i) {
                     <div *ngIf="f" class="favorite-item"
@@ -31,7 +23,7 @@ export interface SerializedFavorite {
             }
         </div>
         <div class="favorites-actions">
-            <button type="button" class="bt-button" (click)="onSave()">SAVE SEARCH</button>
+            <button type="button" class="bt-button" (click)="onSave()">ADD TO LIBRARY</button>
         </div>
     </div>
     `,
@@ -75,11 +67,11 @@ export interface SerializedFavorite {
     `]
 })
 export class SearchFavoritesMenuComponent {
-    favorites = input<SerializedFavorite[]>([]);
-    select = output<SerializedFavorite>();
+    favorites = input<SerializedSearchFilter[]>([]);
+    select = output<SerializedSearchFilter>();
     saveRequest = output<void>();
 
-    selectFavorite(favorite: SerializedFavorite) {
+    selectFavorite(favorite: SerializedSearchFilter) {
         this.select.emit(favorite);
     }
 

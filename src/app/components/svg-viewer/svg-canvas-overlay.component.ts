@@ -540,6 +540,7 @@ export class SvgCanvasOverlayComponent {
         const inputFilter = this.optionsService.options().canvasInput;
         if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
         if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
+
         // single pointer mode handling: if there's already a primary pointer that hasn't moved
         // and the incoming pointer has the same pointerType, propagate the saved primary
         // pointerdown event (which was previously prevented/stopped) and then ignore this new pointer.

@@ -8,61 +8,41 @@
 .sidebar-inner {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100%;
     background-color: rgba(45, 45, 45, 0.8);
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
     color: #e6eef8;
     box-sizing: border-box;
-    padding-left: max(8px, var(--safe-area-inset-left));
-    padding-right: 8px;
-    padding-top: max(8px, var(--safe-area-inset-top));
-    padding-bottom: max(8px, var(--safe-area-inset-bottom));
-}
+    padding-left: max(4px, var(--safe-area-inset-left));
+    padding-right: 4px;
+    padding-top: max(4px, var(--safe-area-inset-top));
+    padding-bottom: max(4px, var(--safe-area-inset-bottom));
+    box-sizing: border-box;
 
-.header {
-    display: flex;
-    align-items: center;
-    justify-self: center;
-    flex-direction: column;
-    gap: 8px;
-}
+    .header {
+        display: flex;
+        align-items: center;
+        justify-self: center;
+        flex-direction: column;
+        gap: 8px;
+    }
 
-.logo {
-    height: 40px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-}
+    .logo {
+        height: 56px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+    }
 
-.title {
-    font-weight: 600;
-    font-size: 1.05rem;
-}
-
-.nav {
-    margin-top: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: .25rem;
-}
-
-.nav-item {
-    padding: .5rem .75rem;
-    border-radius: 6px;
-    color: inherit;
-    text-decoration: none;
-    display: block;
-}
-
-.nav-item:hover {
-    background: rgba(255, 255, 255, 0.03);
-}
-
-.spacer {
-    flex: 1 1 auto;
+    &.tiny {
+        .logo {
+            height: 56px;
+            width: 56px;
+        }
+    }
 }
 
 .footer {
@@ -74,9 +54,6 @@
 .collapse-btn {
     background: transparent;
     color: inherit;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    padding: .4rem .6rem;
-    border-radius: 6px;
     cursor: pointer;
 }
 

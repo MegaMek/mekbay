@@ -369,6 +369,13 @@ hr {
         overflow: hidden;
     }
 
+    &.square-large {
+        flex-shrink: 0;
+        width: 56px;
+        height: 56px;
+        overflow: hidden;
+    }
+
     &.borderless {
         border: none;
         background: none;

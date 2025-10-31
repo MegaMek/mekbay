@@ -36,7 +36,7 @@ import { Component, signal, ElementRef, OnDestroy, computed, HostListener, effec
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
-import { UnitSearchFiltersService, ADVANCED_FILTERS, SORT_OPTIONS, AdvFilterType, SortOption } from '../../services/unit-search-filters.service';
+import { UnitSearchFiltersService, ADVANCED_FILTERS, SORT_OPTIONS, AdvFilterType, SortOption, SerializedSearchFilter } from '../../services/unit-search-filters.service';
 import { Unit, UnitComponent } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Dialog } from '@angular/cdk/dialog';
@@ -58,7 +58,7 @@ import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { OptionsService } from '../../services/options.service';
 import { LongPressDirective } from '../../directives/long-press.directive';
-import { SearchFavoritesMenuComponent, SerializedFavorite } from '../search-favorites-menu/search-favorites-menu.component';
+import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
 
 
 @Pipe({
@@ -268,8 +268,8 @@ export class UnitSearchComponent implements OnDestroy {
         return unit.name;
     }
 
-    focusInput() {
-        this.searchInput().nativeElement.focus();
+    focusInput() {            
+        try { this.searchInput()?.nativeElement.focus(); } catch { /* ignore */ }
     }
 
     setSearch(val: string) {
@@ -921,9 +921,10 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
 
-    // -------------------------
-    // Favorites overlay/menu
-    // -------------------------
+    /* ------------------------------------------
+     * Favorites overlay/menu
+     */
+
     openFavorites(event: MouseEvent) {
         event.stopPropagation();
 
@@ -973,12 +974,12 @@ export class UnitSearchComponent implements OnDestroy {
         const portal = new ComponentPortal(SearchFavoritesMenuComponent, null, this.injector);
         const compRef = this.favoritesOverlayRef.attach(portal);
 
-        const favorites: SerializedFavorite[] = [];
+        const favorites: SerializedSearchFilter[] = [];
         // Pass current favorites
         compRef.setInput('favorites', favorites);
 
         // Handle selection
-        compRef.instance.select.subscribe((favorite: SerializedFavorite) => {
+        compRef.instance.select.subscribe((favorite: SerializedSearchFilter) => {
             if (favorite) {
                 this.applyFavorite(favorite);
             }
@@ -1000,79 +1001,22 @@ export class UnitSearchComponent implements OnDestroy {
         this.favoritesOverlayRef = undefined;
     }
 
-    private saveCurrentSearch() {
-        const name = window.prompt('Name for saved search:');
+    private async saveCurrentSearch() {
+        const name = await this.dialogsService.prompt('Enter a name for this Tactical Bookmark (e.g. "Clan Raid - 3058")', 'Save Tactical Bookmark', '');
         if (name === null) return; // cancelled
         const trimmed = (name || '').trim();
         if (!trimmed) return;
 
-        const fav = this.prepareSerializedFavorite(trimmed);
+        const fav = this.filtersService.serializeCurrentSearchFilter(trimmed);
         // DO THE SAVING!
+        console.log(fav);
     }
 
-    private prepareSerializedFavorite(name: string): SerializedFavorite {
-        const fav: SerializedFavorite = { name };
-
-        const q = this.filtersService.searchText();
-        if (q && q.trim().length > 0) fav.q = q.trim();
-
-        const sort = this.filtersService.selectedSort();
-        if (sort && sort !== 'name') fav.sort = sort;
-
-        const sortDir = this.filtersService.selectedSortDirection();
-        if (sortDir && sortDir !== 'asc') fav.sortDir = sortDir;
-
-        const g = this.filtersService.pilotGunnerySkill();
-        if (typeof g === 'number' && g !== 4) fav.gunnery = g;
-
-        const p = this.filtersService.pilotPilotingSkill();
-        if (typeof p === 'number' && p !== 5) fav.piloting = p;
-
-        // Save only interacted filters
-        const state = this.filtersService.filterState();
-        const savedFilters: Record<string, any> = {};
-        for (const [key, val] of Object.entries(state)) {
-            if (val.interactedWith) {
-                savedFilters[key] = val.value;
-            }
-        }
-        if (Object.keys(savedFilters).length > 0) {
-            fav.filters = savedFilters;
-        }
-
-        return fav;
-    }
-
-    private applyFavorite(fav: SerializedFavorite) {
-        // Reset all filters first
-        this.filtersService.clearFilters();
-
-        // Apply search text
-        if (fav.q) {
-            this.filtersService.searchText.set(fav.q);
-        }
-
-        // Apply filters
-        if (fav.filters) {
-            for (const [key, value] of Object.entries(fav.filters)) {
-                this.filtersService.setFilter(key, value);
-            }
-        }
-
-        // Apply sort
-        if (fav.sort) this.filtersService.setSortOrder(fav.sort);
-        if (fav.sortDir) this.filtersService.setSortDirection(fav.sortDir);
-
-        // Apply pilot skills if provided
-        if (typeof fav.gunnery === 'number' || typeof fav.piloting === 'number') {
-            const g = typeof fav.gunnery === 'number' ? fav.gunnery : this.filtersService.pilotGunnerySkill();
-            const p = typeof fav.piloting === 'number' ? fav.piloting : this.filtersService.pilotPilotingSkill();
-            this.filtersService.setPilotSkills(g, p);
-        }
-
+    private applyFavorite(fav: SerializedSearchFilter) {
+        this.filtersService.applySerializedSearchFilter(fav);
         // Focus search input after applying
         afterNextRender(() => {
-            try { this.searchInput()?.nativeElement.focus(); } catch { /* ignore */ }
+            this.focusInput();
         }, { injector: this.injector });
     }
 }

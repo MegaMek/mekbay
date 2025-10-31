@@ -37,7 +37,7 @@ import { Unit, UnitComponent, Units } from '../models/units.model';
 import { Faction, Factions } from '../models/factions.model';
 import { Era, Eras } from '../models/eras.model';
 import { DbService, StoredTags } from './db.service';
-import { ADVANCED_FILTERS, AdvFilterType } from './unit-search-filters.service';
+import { ADVANCED_FILTERS, AdvFilterType, SerializedSearchFilter } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, IAmmo, IEquipment, IWeapon, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { Quirk, Quirks } from '../models/quirks.model';
@@ -1007,20 +1007,60 @@ export class DataService {
         return response.data || null;
     }
 
+    /* ----------------------------------------------------------
+     * Tags
+     */
+
     public async saveUnitTags(units: Unit[]): Promise<void> {
         const tagsToSave: StoredTags = {};
-
         for (const unit of units) {
             if (unit._tags && unit._tags.length > 0) {
                 tagsToSave[unit.name] = unit._tags;
             }
         }
-
         await this.dbService.saveTags(tagsToSave);
         this.notifyStoreUpdated('update', 'tags');
     }
 
+    private async getTagsCloud(instanceId: string): Promise<StoredTags | null> {
+        const ws = await this.canUseCloud();
+        if (!ws) return null;
+        const uuid = this.userStateService.uuid();
+        const payload = {
+            action: 'getTags',
+            uuid,
+            instanceId,
+        };
+        const response = await this.wsService.sendAndWaitForResponse(payload);
+        return response.data || null;
+    }
+
+    /* ----------------------------------------------------------
+     * Favorites searches
+     */
+
+    public async saveFavoriteSearch(fav: SerializedSearchFilter): Promise<void> {
+    }
+
+    private async getFavoriteSearchCloud(instanceId: string): Promise<SerializedSearchFilter | null> {
+        const ws = await this.canUseCloud();
+        if (!ws) return null;
+        const uuid = this.userStateService.uuid();
+        const payload = {
+            action: 'getFavoriteSearch',
+            uuid,
+            instanceId,
+        };
+        const response = await this.wsService.sendAndWaitForResponse(payload);
+        return response.data || null;
+    }
+
+    /* ----------------------------------------------------------
+     * Canvas Data
+     */
+
     public deleteCanvasDataOfUnit(unit: ForceUnit): void {
         this.dbService.deleteCanvasData(unit.id);
     }
+
 }

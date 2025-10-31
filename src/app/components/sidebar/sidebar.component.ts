@@ -17,8 +17,8 @@ import { UnitSearchComponent } from '../unit-search/unit-search.component';
     styleUrls: ['./sidebar.component.scss'],
 })
 export class SidebarComponent {
-    private readonly COLLAPSED_WIDTH = 80;
-    private readonly EXPANDED_WIDTH = 330;
+    readonly COLLAPSED_WIDTH = 80;
+    readonly EXPANDED_WIDTH = 330;
     layout = inject(LayoutService);
     unitSearchPortal = input<Portal<any>>();
     unitSearchComponent = input<UnitSearchComponent>();
@@ -37,8 +37,8 @@ export class SidebarComponent {
 
     // computed phone drawer width in px
     public phoneWidthPx = computed(() => {
-        if (typeof window === 'undefined') { return 350; }
-        const w = Math.min(window.innerWidth * 0.9, 350);
+        if (typeof window === 'undefined') { return this.EXPANDED_WIDTH; }
+        const w = Math.min(window.innerWidth * 0.9, this.EXPANDED_WIDTH);
         return Math.max(280, Math.round(w));
     });
 
