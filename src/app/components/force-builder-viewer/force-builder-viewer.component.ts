@@ -561,10 +561,6 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         this.dialog.open(ShareForceDialogComponent);
     }
 
-    toggleCompactMode() {
-        this.compactMode.set(!this.compactMode());
-    }
-
     onEmptyGroupClick(group: UnitGroup) {
         if (this.forceBuilderService.readOnlyForce()) return;
         if (group.units().length === 0) {
@@ -572,71 +568,4 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         }
     }
 
-    showOptionsMenu(event: MouseEvent, unit: ForceUnit) {
-        event.stopPropagation();
-        this.forceBuilderService.selectUnit(unit);
-    }
-
-    
-    showOptionsDialog(): void {
-        this.dialog.open(OptionsDialogComponent);
-    }
-
-    showLoadForceDialog(): void {
-        const ref = this.dialog.open(ForceLoadDialogComponent);
-        ref.componentInstance?.load.subscribe(async (force) => {
-            if (force instanceof LoadForceEntry) {
-                const requestedForce = await this.dataService.getForce(force.instanceId);
-                if (!requestedForce) {
-                    this.toastService.show('Failed to load force.', 'error');
-                    return;
-                }
-                this.forceBuilderService.loadForce(requestedForce);
-            } else {
-                if (force && force.units && force.units.length > 0) {
-                    await this.forceBuilderService.createNewForce();
-                    const group = this.forceBuilderService.addGroup();
-                    for (const unit of force.units) {
-                        if (!unit?.unit) continue;
-                        this.forceBuilderService.addUnit(unit.unit, undefined, undefined, group);
-                    }
-                }
-            }
-            ref.close();
-        });
-    }
-
-    showForcePackDialog(): void {
-        const ref = this.dialog.open(ForcePackDialogComponent);
-        ref.componentInstance?.add.subscribe(async (pack) => {
-            if (pack) {
-                const group = this.forceBuilderService.addGroup();
-                for (const unit of pack.units) {
-                    if (!unit?.unit) continue;
-                    this.forceBuilderService.addUnit(unit.unit, undefined, undefined, group);
-                }
-            }
-            ref.close();
-        });
-    }
-
-    async requestNewForce(): Promise<void> {
-        if (await this.forceBuilderService.createNewForce()) {
-            this.layoutService.closeMenu();
-        }
-    }
-
-    async requestRepairAll(): Promise<void> {
-        if (await this.forceBuilderService.repairAllUnits()) {
-            this.toastService.show(`Repaired all units.`, 'info');
-        }
-    }
-
-    async requestCloneForce(): Promise<void> {
-        this.forceBuilderService.requestCloneForce();
-    }
-
-    printAll(): void {
-        PrintUtil.multipagePrint(this.dataService, this.optionsService, this.forceBuilderService.forceUnits());
-    }
 }

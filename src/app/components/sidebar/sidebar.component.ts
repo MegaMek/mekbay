@@ -4,6 +4,8 @@ import { Portal, PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { UnitSearchComponent } from '../unit-search/unit-search.component';
 import { OptionsService } from '../../services/options.service';
+import { SidebarFooterComponent } from '../sidebar-footer/sidebar-footer.component';
+import { CdkMenuModule } from '@angular/cdk/menu';
 
 /*
  * Main Sidebar component
@@ -13,7 +15,7 @@ import { OptionsService } from '../../services/options.service';
     selector: 'sidebar',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, PortalModule],
+    imports: [CommonModule, PortalModule, CdkMenuModule, SidebarFooterComponent],
     templateUrl: './sidebar.component.html',
     styleUrls: ['./sidebar.component.scss'],
 })
