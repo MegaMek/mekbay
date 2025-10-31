@@ -246,6 +246,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'era', label: 'Era', type: AdvFilterType.DROPDOWN, external: true },
     { key: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true },
     { key: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'cbt' },
+    { key: 'as.TP', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'as' },
     { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: 'cbt' },
     {
         key: 'techBase', label: 'Tech', type: AdvFilterType.DROPDOWN,
@@ -284,8 +285,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
     { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
 
-    /* Alpha Strike specific filters */
-    { key: 'as.TP', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'as' },
+    /* Alpha Strike specific filters (but some are above) */
     { key: 'as.MV', label: 'Move', type: AdvFilterType.DROPDOWN, game: 'as' },
     { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: 'as' },
     { key: 'as.SZ', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
