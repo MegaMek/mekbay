@@ -86,6 +86,10 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     private swipeStarted = false;
     private swipeActive = false;
     private swipeOffsetX = 0;
+    // swipe physics
+    private swipeLastTimestamp = 0;
+    private swipeLastDx = 0;
+    private swipeVelocity = 0; // px / s
 
     private prevUnit: ForceUnit | null = null;
     private nextUnit: ForceUnit | null = null;
@@ -513,6 +517,11 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         this.swipeActive = true;
         this.swipeOffsetX = 0;
 
+        // reset physics trackers
+        this.swipeLastTimestamp = performance.now();
+        this.swipeLastDx = 0;
+        this.swipeVelocity = 0;
+
         // Disable transitions while dragging
         this.setSlideX(this.currentSlideEl, 0, false);
         if (this.canvasOverlay()) {
@@ -524,6 +533,18 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
     private onSwipeMove(totalDx: number) {
         if (!this.swipeActive || !this.currentSlideEl) return;
+
+        const now = performance.now();
+        const dtMs = Math.max(1, now - this.swipeLastTimestamp);
+        const dt = dtMs / 1000; // seconds
+
+        // compute velocity and acceleration
+        const dx = totalDx - this.swipeLastDx;
+        const curVel = dx / dt; // px / s (instantaneous)
+
+        this.swipeVelocity = curVel;
+        this.swipeLastDx = totalDx;
+        this.swipeLastTimestamp = now;
 
         this.swipeOffsetX = totalDx;
 
@@ -552,9 +573,17 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (!this.swipeActive || !this.currentSlideEl) return;
 
         const width = this.containerWidth || 1;
-        const threshold = this.svgWidth * 0.5;
-        const commitPrev = totalDx > threshold && !!this.prevSlideEl && !!this.prevUnit;
-        const commitNext = totalDx < -threshold && !!this.nextSlideEl && !!this.nextUnit;
+        const threshold = Math.min(this.svgWidth, this.containerWidth) * 0.5;
+        const minimumThreshold = Math.min(this.svgWidth, this.containerWidth) * 0.1;
+        // physics-based thresholds
+        const velocityThreshold = 2000; // px/s
+        // consider commit if distance OR a sufficiently strong flick (velocity/accel)
+        console.log(`Swipe end: totalDx=${totalDx}, velocity=${this.swipeVelocity.toFixed(2)} px/s`);
+        const flickPrev = (this.swipeVelocity > velocityThreshold);
+        const flickNext = (this.swipeVelocity < -velocityThreshold);
+
+        const commitPrev = (totalDx > threshold && !!this.prevSlideEl && !!this.prevUnit) || ((totalDx > minimumThreshold) && flickPrev && !!this.prevSlideEl && !!this.prevUnit);
+        const commitNext = (totalDx < -threshold && !!this.nextSlideEl && !!this.nextUnit) || ((totalDx < -minimumThreshold) && flickNext && !!this.nextSlideEl && !!this.nextUnit);
 
         if (commitPrev) {
             const currentViewState = this.zoomPanService.getViewState();
