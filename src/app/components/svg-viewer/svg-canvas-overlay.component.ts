@@ -307,10 +307,10 @@ export class SvgCanvasOverlayComponent {
     private readonly MULTITOUCH = false;
     private readonly INTERNAL_SCALE = 2;
     private readonly MOVE_THRESHOLD = 4; // in pixels
-    private readonly INITIAL_BRUSH_SIZE = 2;
-    private readonly INITIAL_ERASER_SIZE = 4;
-    private readonly BRUSH_MULTIPLIER = 1.0 * this.INTERNAL_SCALE;
-    private readonly ERASER_MULTIPLIER = 2.0 * this.INTERNAL_SCALE;
+    private readonly INITIAL_BRUSH_SIZE = 3;
+    private readonly INITIAL_ERASER_SIZE = 5;
+    private readonly BRUSH_MULTIPLIER = 1.0;// * this.INTERNAL_SCALE;
+    private readonly ERASER_MULTIPLIER = 2.0;// * this.INTERNAL_SCALE;
     MIN_STROKE_SIZE = 1;
     MAX_STROKE_SIZE = 10;
     private destroyRef = inject(DestroyRef);

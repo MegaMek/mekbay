@@ -480,14 +480,12 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (direction === 'prev' && this.prevSlideEl && this.prevSvg) {
             this.prevSlideEl.innerHTML = '';
             this.prevSlideEl.appendChild(this.prevSvg);
-            this.prevSlideEl.classList.add('fade-in');
             svgElement = this.prevSvg;
         } else
         if (direction === 'next' && this.nextSlideEl && this.nextSvg) {
             this.nextSlideEl.innerHTML = '';
             const svgToAppend = (this.nextUnit === this.prevUnit) ? this.nextSvg.cloneNode(true) as SVGSVGElement : this.nextSvg;
             this.nextSlideEl.appendChild(svgToAppend);
-            this.nextSlideEl.classList.add('fade-in');
             svgElement = this.nextSvg;
         }
         if (!svgElement) return;
@@ -573,10 +571,11 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (!this.swipeActive || !this.currentSlideEl) return;
 
         const width = this.containerWidth || 1;
-        const threshold = Math.min(this.svgWidth, this.containerWidth) * 0.5;
-        const minimumThreshold = Math.min(this.svgWidth, this.containerWidth) * 0.1;
+        const referenceWidth = Math.min(this.svgWidth, this.containerWidth);
+        const threshold = referenceWidth * 0.5;
+        const minimumThreshold = referenceWidth * 0.05;
         // physics-based thresholds
-        const velocityThreshold = 2000; // px/s
+        const velocityThreshold = referenceWidth * 2; // px/s
         // consider commit if distance OR a sufficiently strong flick (velocity/accel)
         console.log(`Swipe end: totalDx=${totalDx}, velocity=${this.swipeVelocity.toFixed(2)} px/s`);
         const flickPrev = (this.swipeVelocity > velocityThreshold);
