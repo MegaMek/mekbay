@@ -20,5 +20,13 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ]
+  ],
+  "url_handlers": [
+    {
+      "origin": "https://mekbay.com"
+    }
+  ],
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  }
 }
