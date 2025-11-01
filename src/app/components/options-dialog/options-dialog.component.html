@@ -145,7 +145,7 @@
         @if (activeTab() === 'Debug') {
             <div class="tab-content debug">
                 <div class="logs-list">
-                    @for (log of logger.logs().slice().reverse(); let i = $index; track i) {
+                    @for (log of logger.logs(); let i = $index; track i) {
                         <div class="log-row log-{{ log.type.toLowerCase() }}">
                             <span class="log-timestamp">{{ log.timestamp | date:'short' }}</span>
                             <span class="log-message">{{ log.message }}</span>
