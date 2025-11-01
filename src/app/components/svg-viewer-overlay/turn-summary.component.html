@@ -19,8 +19,6 @@
     </div>
     <div class="phaseTitle">Combat:</div>
     <div class="summary-entry">Damage received: {{ damageReceived() }}</div>
-    <div class="phaseTitle">Heat:</div>
-    <div class="summary-entry">Total Heat: n/a</div>
     @if (hasPSRChecks()) {
     <button role="button" class="summary-entry bt-button warning" (click)="openPsrWarning($event)" tabindex="0">
         ⚠ PSR Check! ({{ PSRChecksCount() }})
