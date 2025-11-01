@@ -2,7 +2,7 @@
     <div dialog-header>
         <div class="title">Options</div>
     </div>
-    <div dialog-body>
+    <div dialog-body class="dialog-body">
         @if (activeTab() === 'General') {
             <div class="tab-content">
                 <div class="option-row">
@@ -152,6 +152,7 @@
                         </div>
                     }
                 </div>
+                <div class="spanner"></div>
                 <div class="option-row debug-controls">
                     <button class="bt-button" (click)="logger.clear()">CLEAR</button>
                 </div>

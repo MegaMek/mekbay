@@ -1,3 +1,9 @@
+.dialog-body {
+    display: block;
+    height: 100%;
+    overflow-y: auto;
+}
+
 .option-row {
   display: flex; 
   flex-direction: row;
@@ -58,6 +64,12 @@ input {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.debug-controls {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
 }
 
 /* Individual log rows */
