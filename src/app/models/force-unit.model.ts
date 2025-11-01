@@ -43,6 +43,7 @@ import { UnitInitializerService } from '../components/svg-viewer/unit-initialize
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { generateUUID } from '../services/ws.service';
 import { LoggerService } from '../services/logger.service';
+import { getMotiveModesByUnit, MotiveModes } from './motiveModes.model';
 /*
  * Author: Drake
  */
@@ -798,6 +799,10 @@ export class ForceUnit {
         this.setModified();
     }
 
+    public getAvailableMotiveModes(): MotiveModes[] {
+        return getMotiveModesByUnit(this.getUnit());
+    }
+
     public resetTurnState() {
         this.state.resetTurnState();
     }
@@ -974,8 +979,11 @@ export class TurnState {
                 mod += 6;
             }
         }
-        if ((this.unitState.unit.getUnit().subtype === 'Battle Armor')
-        || (this.unitState.unit.getUnit().type === 'VTOL')) {
+        const baseUnit = this.unitState.unit.getUnit();
+        if (baseUnit.subtype === 'Battle Armor') {
+            mod += 1;
+        }
+        if (baseUnit.moveType === 'VTOL' || baseUnit.moveType === 'WiGE') {
             mod += 1;
         }
         return mod;
