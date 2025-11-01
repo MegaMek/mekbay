@@ -84,13 +84,26 @@ export class TurnSummaryPanelComponent {
     PSRChecksCount = computed(() => {
         const unit = this.unit();
         if (!unit) return 0;
-        return unit.turnState().PSRChecksCount();
+        return unit.turnState().getPSRChecks().length;
     });
 
     currentMoveMode = computed(() => {
         const u = this.unit();
         if (!u) return null;
         return u.turnState().moveMode();
+    });
+
+
+    getTargetModifierAsDefender = computed(() => {
+        const u = this.unit();
+        if (!u) return 0;
+        return u.turnState().getTargetModifierAsDefender();
+    });
+
+    getTargetModifierAsAttacker = computed(() => {
+        const u = this.unit();
+        if (!u) return 0;
+        return u.turnState().getTargetModifierAsAttacker();
     });
 
     close() {
@@ -120,7 +133,7 @@ export class TurnSummaryPanelComponent {
         });
     }
 
-    selectMove(mode: 'walk' | 'run' | 'jump') {
+    selectMove(mode: 'stationary' | 'walk' | 'run' | 'jump') {
         const u = this.unit();
         if (!u) return;
         const turnState = u.turnState();

@@ -417,7 +417,7 @@ export class ForceUnit {
         armor: Map<string, { loc: string; rear: boolean; points?: number }>;
         internal: Map<string, { loc: string; points?: number }>;
     };
-    private state: ForceUnitState = new ForceUnitState();
+    private state: ForceUnitState = new ForceUnitState( this );
 
     // Dependencies for deferred loading
     private dataService: DataService;
@@ -877,24 +877,113 @@ export interface HeatProfile {
     heatsinksOff?: number;
 }
 
+export interface PSRCheck {
+    difficulty: number;
+    reason: string;
+}
 export class TurnState {
+    unitState: ForceUnitState;
     moveMode = signal<'stationary' |'walk' | 'run' | 'jump' | null>(null);
     moveDistance = signal<number | null>(null);
     dmgReceived = signal<number>(0);
+    legsFeetHitThisTurn = signal<number>(0);
+    hipsHitThisTurn = signal<number>(0);
+    gyrosHitThisTurn = signal<number>(0);
+    gyrosDestroyedThisTurn = signal<number>(0);
+    legsDestroyedThisTurn = signal<number>(0);
+    shutdownThisTurn = signal<boolean>(false);
 
-    hasPSRCheck(): boolean {
-        return this.dmgReceived() >= 20;
-    }
-
-    PSRChecksCount = computed(() => {
-        return this.hasPSRCheck() ? 1 : 0; //TODO: More complex PSR checks in future
+    autoFall = computed<boolean>(() => {
+        return this.legsDestroyedThisTurn() > 0 || this.gyrosDestroyedThisTurn() > 0;
     });
 
-    constructor() {}
+    getPSRChecks = computed<PSRCheck[]>(() => {
+        const checks: PSRCheck[] = [];
+        if (this.dmgReceived() >= 20) {
+            checks.push({
+                difficulty: 1,
+                reason: 'Received 20 or more damage this turn'
+            });
+        }
+        if (this.shutdownThisTurn()) {
+            checks.push({
+                difficulty: 3,
+                reason: 'Shutdown this turn'
+            });
+        }
+        for (let i = 0; i < this.legsFeetHitThisTurn(); i++) {
+            checks.push({
+                difficulty: 1,
+                reason: 'Legs/Feet hit this turn'
+            });
+        }
+        for (let i = 0; i < this.hipsHitThisTurn(); i++) {
+            checks.push({
+                difficulty: 2,
+                reason: 'Hips hit this turn'
+            });
+        }
+        for (let i = 0; i < this.gyrosHitThisTurn(); i++) {
+            checks.push({
+                difficulty: 3,
+                reason: 'Gyros hit this turn'
+            });
+        }
+        // if (this.legsDestroyedThisTurn() > 0) {
+        //     checks.push({
+        //         difficulty: 5,
+        //         reason: 'Legs destroyed this turn'
+        //     });
+        // }
+        return checks;
+    });
 
-    addDmgReceived(amount: number) {
-        this.dmgReceived.set(this.dmgReceived() + amount);
-    }
+    getTargetModifierAsAttacker = computed<number>(() => {
+        let mod = 0;
+        const moveMode = this.moveMode();
+        if (moveMode === 'walk') {
+            mod += 1;
+        } else if (moveMode === 'run') {
+            mod += 2;
+        } else if (moveMode === 'jump') {
+            mod += 3;
+        }
+        return mod;
+    });
+
+    getTargetModifierAsDefender = computed<number>(() => {
+        let mod = 0;
+        if (this.unitState.prone()) { mod += 1; }
+        if (this.unitState.immobile()) { mod -= 4; }
+        if (this.unitState.skidding()) { mod += 2; }
+        const moveMode = this.moveMode();
+        if (moveMode !== 'stationary' && moveMode !== null) {
+            if (moveMode === 'jump') { mod += 1; }
+            const moveDistance = this.moveDistance() || 0;
+            if (moveDistance >= 3 && moveDistance <= 4) {
+                mod += 1;
+            } else if (moveDistance >= 5 && moveDistance <= 6) {
+                mod += 2;
+            } else if (moveDistance >= 7 && moveDistance <= 9) {
+                mod += 3;
+            } else if (moveDistance >= 10 && moveDistance <= 17) {
+                mod += 4;
+            } else if (moveDistance >= 18 && moveDistance <= 24) {
+                mod += 5;
+            } else if (moveDistance >= 25) {
+                mod += 6;
+            }
+        }
+        if ((this.unitState.unit.getUnit().subtype === 'Battle Armor')
+        || (this.unitState.unit.getUnit().type === 'VTOL')) {
+            mod += 1;
+        }
+        return mod;
+    });
+
+    hasPSRCheck = computed<boolean>(() => {
+        return this.getPSRChecks().length > 0;
+    });
 
     currentPhase = computed<'I' | 'M' | 'W' | 'P' | 'H'>(() => {
         if (this.moveMode() === null) {
@@ -903,43 +992,45 @@ export class TurnState {
             return 'W';
         }
     });
+
+    constructor(unitState: ForceUnitState) {
+        this.unitState = unitState;
+    }
+
+    addDmgReceived(amount: number) {
+        this.dmgReceived.set(this.dmgReceived() + amount);
+    }
 }
 
 export class ForceUnitState {
-    public modified: WritableSignal<boolean>;
-    public destroyed: WritableSignal<boolean>;
-    public shutdown: WritableSignal<boolean>;
-    public c3Linked: WritableSignal<boolean>;
+    public unit: ForceUnit ;
+    public modified = signal(false);
+    public immobile = signal(false);
+    public prone = signal(false);
+    public skidding  = signal(false);
+    public destroyed = signal(false);
+    public shutdown = signal(false);
+    public c3Linked = signal(false);
     /** Adjusted Battle Value, if any */
-    public adjustedBv: WritableSignal<number | null>;
+    public adjustedBv = signal<number | null>(null);
     /** Crew members assigned to this unit */
-    public crew: WritableSignal<CrewMember[]>;
+    public crew = signal<CrewMember[]>([]);
     /** Critical hits on this unit */
-    public crits: WritableSignal<CriticalSlot[]>;
+    public crits = signal<CriticalSlot[]>([]);
     /** Locations and their armor/structure and other properties */
-    public locations: WritableSignal<Record<string, LocationData>> = signal({});
+    public locations = signal<Record<string, LocationData>>({});
     /** Heat state of the unit */
-    public heat: WritableSignal<HeatProfile>;
+    public heat = signal<HeatProfile>({ current: 0, previous: 0 });
     /** Inventory of the unit */
-    public inventory: WritableSignal<MountedEquipment[]>;
-    public readonly turnState: WritableSignal<TurnState>;
+    public inventory = signal<MountedEquipment[]>([]);
+    public readonly turnState = signal(new TurnState(this));
 
-    constructor() {
-        this.modified = signal(false);
-        this.destroyed = signal(false);
-        this.shutdown = signal(false);
-        this.c3Linked = signal(false);
-        this.adjustedBv = signal(null);
-        this.crew = signal([]);
-        this.crits = signal([]);
-        this.locations = signal({});
-        this.heat = signal({ current: 0, previous: 0 });
-        this.inventory = signal([]);
-        this.turnState = signal(new TurnState());
+    constructor(unit: ForceUnit) {
+        this.unit = unit;
     }
     
     resetTurnState() {
-        this.turnState.set(new TurnState());
+        this.turnState.set(new TurnState(this));
     }
 }
 

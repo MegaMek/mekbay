@@ -79,10 +79,10 @@ export class SvgInteractionOverlayComponent {
         return unit.turnState().hasPSRCheck();
     });
 
-    psrCount = computed(() => {
+    psrCount = computed<number>(() => {
         const unit = this.unit();
-        if (!unit) return false;
-        return unit.turnState().PSRChecksCount();
+        if (!unit) return 0;
+        return unit.turnState().getPSRChecks().length;
     });
 
     currentPhase = computed(() => {
@@ -101,7 +101,7 @@ export class SvgInteractionOverlayComponent {
         const hostHeight = hostRect.height;
 
         // If the unit sheet, once scaled, would be larger than the viewport,
-        // we consider the container "fixed" (reduced to fit).
+        // we then fix the position of the overlay to avoid overflow
         return (this.width() * scale > hostWidth) && (this.height() * scale > hostHeight);
     });
 
