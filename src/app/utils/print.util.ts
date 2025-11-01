@@ -31,21 +31,18 @@
  * affiliated with Microsoft.
  */
 
-import { inject } from '@angular/core/primitives/di';
 import { ForceUnit, HeatProfile } from '../models/force-unit.model';
 import { DataService } from '../services/data.service';
-import { LoggerService } from '../services/logger.service';
 import { OptionsService } from '../services/options.service';
 
 /*
  * Author: Drake
  */
 export class PrintUtil {
-    static logger = inject(LoggerService);
 
     public static async multipagePrint(dataService: DataService, optionsService: OptionsService, forceUnits: ForceUnit[], clean: boolean = false, triggerPrint: boolean = true): Promise<void> {
         if (forceUnits.length === 0) {
-            this.logger.warn('No units to export.');
+            console.warn('No units to export.');
             return;
         }
 

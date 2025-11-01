@@ -271,7 +271,7 @@ export class DataService {
                 this.loadUnitTags(this.getUnits());
             }
         } catch (err) {
-            this.logger.error('Error handling store update broadcast', err);
+            this.logger.error('Error handling store update broadcast: ' + err);
         }
     }
 
