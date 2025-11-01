@@ -32,6 +32,7 @@ export class SidebarComponent {
     unitSearchComponent = input<UnitSearchComponent>();
 
     private burgerLipBtn = viewChild<ElementRef<HTMLButtonElement>>('burgerLipBtn');
+    private forceBuilderViewer = viewChild<ForceBuilderViewerComponent>('forceBuilderViewer');
 
     // drag state for phone
     private dragging = signal(false);
@@ -158,6 +159,13 @@ export class SidebarComponent {
         if (!this.isPhone()) { return; }
         if (ev.isPrimary === false) { return; }
 
+        if (this.unitSearchComponent() && this.unitSearchComponent()?.resultsVisible()) {
+            return;
+        }
+        if (this.forceBuilderViewer() && this.forceBuilderViewer()?.isUnitDragging()) {
+            return;
+        }
+
         // only start drag when the drawer is at least slightly open (prevents accidental captures when fully closed)
         const currentRatio = this.layout.menuOpenRatio();
         if (currentRatio <= 0.01 && !this.layout.isMenuOpen()) { return; }
@@ -186,6 +194,11 @@ export class SidebarComponent {
             const dx = ev.clientX - this.startX;
             const dy = ev.clientY - this.startY;
             // decide gesture direction once (wait for a small noise threshold)
+            
+            if (this.forceBuilderViewer() && this.forceBuilderViewer()?.isUnitDragging()) {
+                cancel(ev);
+                return;
+            }
             if (!gestureDecided) {
                 const threshold = 6; // px
                 if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) {
@@ -253,7 +266,7 @@ export class SidebarComponent {
             this.layout.isMenuDragging.set(false);
         };
 
-        window.addEventListener('pointermove', move, { passive: true, capture: true });
+        window.addEventListener('pointermove', move, { passive: false, capture: true });
         window.addEventListener('pointerup', up, { passive: true, capture: true });
         window.addEventListener('pointercancel', cancel, { passive: true, capture: true });
     }

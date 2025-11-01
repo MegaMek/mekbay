@@ -13,7 +13,7 @@
             <div [cdkPortalOutlet]="unitSearchPortal()"></div>
         </div>
 
-        <force-builder-viewer [miniMode]="!this.isPhone() && !this.layout.isMenuOpen()"></force-builder-viewer>
+        <force-builder-viewer #forceBuilderViewer [miniMode]="!this.isPhone() && !this.layout.isMenuOpen()"></force-builder-viewer>
 
         <div class="spanner"></div>
 

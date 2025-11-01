@@ -70,16 +70,12 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         return this.compactModeService.compactMode();
     });
 
-    lockAxis = computed(() => {
-        return !this.compactMode() ? 'y' : null;
-    });
-
     hasEmptyGroups = computed(() => {
         return this.forceBuilderService.force.groups().some(g => g.units().length === 0);
     });
 
     // --- Gesture State ---
-    isUnitDragging = signal<boolean>(false); // Flag for unit drag/sorting
+    public readonly isUnitDragging = signal<boolean>(false); // Flag for unit drag/sorting
 
     //Units autoscroll
     private autoScrollVelocity = signal<number>(0);     // px/sec (+ down, - up)

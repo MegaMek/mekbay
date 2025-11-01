@@ -39,7 +39,7 @@
                         tabindex="0" (keydown)="onUnitKeydown($event, i)" cdkDrag
                         [cdkDragDisabled]="forceBuilderService.readOnlyForce()" (cdkDragStarted)="onUnitDragStart()"
                         (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd()"
-                        [cdkDragLockAxis]="lockAxis()!" cdkDragBoundary=".scrollable-content"
+                        cdkDragLockAxis="y" cdkDragBoundary=".scrollable-content"
                         [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                         <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode() || miniMode()"
                             [class.miniMode]="miniMode()"

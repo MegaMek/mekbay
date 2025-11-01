@@ -17,6 +17,7 @@
         min-height: 0;
         overscroll-behavior: none;
         scrollbar-width: none;
+        touch-action: pan-y;
     }
 }
 

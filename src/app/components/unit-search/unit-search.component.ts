@@ -149,7 +149,7 @@ export class UnitSearchComponent implements OnDestroy {
         return this.advOpen() || this.resultsVisible();
     });
 
-    resultsVisible = computed(() => {
+    public readonly resultsVisible = computed(() => {
         if (this.expandedView()) {
             return true;
         }
