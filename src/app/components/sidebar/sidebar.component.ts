@@ -22,7 +22,7 @@ import { ForceBuilderViewerComponent } from '../force-builder-viewer/force-build
 })
 export class SidebarComponent {
     readonly COLLAPSED_WIDTH = 64;
-    readonly EXPANDED_WIDTH = 330;
+    readonly EXPANDED_WIDTH = 360;
     injector = inject(Injector);
     elRef = inject(ElementRef<HTMLElement>);
     layout = inject(LayoutService);

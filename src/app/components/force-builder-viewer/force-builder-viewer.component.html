@@ -17,6 +17,8 @@
                             <span class="group-bv">BV: {{ group.totalBV() | number }}</span>
                         </div>
                     </div>
+                } @else {
+                    <hr />
                 }
                 @let units = group.units();
                 <div class="group-units" cdkDropList [class.compact-mode]="compactMode() || miniMode()" id="group-{{ group.id }}"
@@ -50,8 +52,7 @@
                 @if (!forceBuilderService.readOnlyForce() && !isUnitDragging() && !forceBuilderService.force.hasMaxGroups()) {
                 <button class="bt-button btn-add-group" (click)="forceBuilderService.addGroup()">+ Add Group</button>
                 }
-            }
-            <div class="group-container new-group-dropzone" cdkDropList id="new-group-dropzone"
+                <div class="group-container new-group-dropzone" cdkDropList id="new-group-dropzone"
                 [cdkDropListConnectedTo]="connectedDropLists()" [cdkDropListData]="[]"
                 [class.visible]="isUnitDragging() && !hasEmptyGroups() && !forceBuilderService.force.hasMaxGroups()"
                 [cdkDropListDisabled]="forceBuilderService.readOnlyForce()"
@@ -59,11 +60,14 @@
                 <div class="group-name">New Group</div>
                 <div class="new-group-placeholder">Drop units here to form a new group</div>
             </div>
+            }
         </div>
     </div>
-    <div class="footer">
-        @if (!hasSingleGroup()) {
-        <div class="row total-bv">Total BV: {{ forceBuilderService.force.totalBv() | number }}</div>
-        }
-    </div>
+    @if (!miniMode()) {
+        <div class="footer">
+            @if (!hasSingleGroup()) {
+            <div class="row total-bv">Total BV: {{ forceBuilderService.force.totalBv() | number }}</div>
+            }
+        </div>
+    }
 </div>

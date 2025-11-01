@@ -1,24 +1,23 @@
 :host {
     display: flex;
     flex-direction: column;
-    flex-grow: 1;
-    gap: 8px;
-    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .force-view {
     display: flex;
     flex-direction: column;
-    gap: 8px;
     flex: 1 1 auto;
     min-height: 0;
-}
 
-.scrollable-content {
-    flex: 1 1 auto;
-    overflow-y: auto;
-    min-height: 0;
-    overscroll-behavior: none;
+    .scrollable-content {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        min-height: 0;
+        overscroll-behavior: none;
+        scrollbar-width: none;
+    }
 }
 
 .force-name {
@@ -79,6 +78,20 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+
+    &:first-child > hr,
+    &:last-child > hr {
+        display: none;
+    }
+
+    hr {
+        border: none;
+        height: 1px;
+        background-color: var(--text-color-tertiary);
+        margin: 6px 0;
+        width: 100%;
+        box-sizing: border-box;
+    }
 }
 
 .group-units {
@@ -171,6 +184,7 @@
     justify-content: center;
     align-items: center;
     gap: 2px;
+
     .row {
         display: flex;
         flex-direction: row;
@@ -179,7 +193,7 @@
         gap: 4px;
         box-sizing: border-box;
         width: 100%;
- 
+
         &.total-bv {
             background-color: var(--background-highlight);
             justify-content: center;
