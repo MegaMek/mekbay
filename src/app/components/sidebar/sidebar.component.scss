@@ -15,7 +15,7 @@
     -webkit-backdrop-filter: blur(5px);
     color: #e6eef8;
     box-sizing: border-box;
-    padding-left: max(4px, var(--safe-area-inset-left));
+    padding-left: 4px;
     padding-right: 4px;
     padding-top: max(4px, var(--safe-area-inset-top));
     padding-bottom: max(4px, var(--safe-area-inset-bottom));
@@ -130,6 +130,7 @@
     z-index: 80;
     will-change: transform;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    touch-action: none;
 }
 
 .phone-drawer.open {
