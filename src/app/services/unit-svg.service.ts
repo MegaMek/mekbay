@@ -48,7 +48,7 @@ import { LoggerService } from './logger.service';
  */
 @Injectable()
 export class UnitSvgService implements OnDestroy {
-    logger = inject(LoggerService);
+    protected logger: LoggerService;
     
     private dataEffectRef: EffectRef | null = null;
     private armorEffectRef: EffectRef | null = null;
@@ -60,7 +60,9 @@ export class UnitSvgService implements OnDestroy {
         protected dataService: DataService,
         protected unitInitializer: UnitInitializerService,
         protected injector: Injector
-    ) { }
+    ) {
+        this.logger = this.injector.get(LoggerService);
+     }
 
     public async loadAndInitialize(): Promise<void> {
         if (this.unit.svg()) {
