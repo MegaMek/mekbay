@@ -346,6 +346,7 @@ export class SvgCanvasOverlayComponent {
         return this.height() * this.INTERNAL_SCALE;
     });
     canvasWidth = computed(() => {
+        this.unit();
         return this.width() * this.INTERNAL_SCALE;
     });
 

@@ -42,6 +42,7 @@ import { LoggerService } from '../../services/logger.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { LayoutService } from '../../services/layout.service';
 
 /*
  * Author: Drake
@@ -52,53 +53,97 @@ import { ComponentPortal } from '@angular/cdk/portal';
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule],
     template: `
-        <svg class="PSRwarning" (click)="openPsrWarning($event)" tabindex="0" role="button" aria-label="PSR Warning"
-            fill="currentColor" width="32px" height="32px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-         <path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/>
-         </svg>
+        <div class="container" [ngStyle]="containerStyle()">
+            <svg class="PSRwarning" (click)="openPsrWarning($event)" tabindex="0" role="button" aria-label="PSR Warning"
+                fill="currentColor" width="32px" height="32px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/>
+            </svg>
+        </div>
    `,
     styles: `
-         :host {
-             position: absolute;
-             top: 0; left: 0; right: 0; bottom: 0;
-             pointer-events: none;
-             z-index: 1;
+        :host {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+        }
+        .container {   
+            width: 100%;
+            height: 100%;
+            display: block;
+            position: relative;
+        }
+        .PSRwarning {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            color: #ffcc00;
+            opacity: 0.8;
+            pointer-events: auto;
+            cursor: pointer;
+            outline: none;
+        }
+        .PSRwarning:hover {
+            opacity: 1.0;
+        }
+        @media print {
+            :host {
+                display: none !important;
             }
-            .PSRwarning {
-                position: absolute;
-                top: 8px;
-                right: 8px;
-                color: #ffcc00;
-                opacity: 0.8;
-                pointer-events: auto;
-                cursor: pointer;
-            }
-            .PSRwarning:hover {
-                opacity: 1.0;
-            }
-         @media print {
-             :host {
-                 display: none !important;
-             }
-         }
+        }
  `,
- })
- export class SvgInteractionOverlayComponent {
-     logger = inject(LoggerService);
-     private destroyRef = inject(DestroyRef);
-     private injector = inject(Injector);
-     private dialogsService = inject(DialogsService);
-     overlayManager = inject(OverlayManagerService);
-     optionsService = inject(OptionsService);
-     dbService = inject(DbService);
-     private overlay = inject(Overlay);
- 
-     unit = input<ForceUnit | null>(null);
-     width = input(200);
-     height = input(200);
- 
-     constructor() {}
- 
+})
+export class SvgInteractionOverlayComponent {
+    logger = inject(LoggerService);
+    private destroyRef = inject(DestroyRef);
+    private injector = inject(Injector);
+    private dialogsService = inject(DialogsService);
+    private layoutService = inject(LayoutService);
+    private zoomPanService = inject(SvgZoomPanService);
+    overlayManager = inject(OverlayManagerService);
+    optionsService = inject(OptionsService);
+    dbService = inject(DbService);
+    private overlay = inject(Overlay);
+    private host = inject(ElementRef<HTMLElement>);
+
+    unit = input<ForceUnit | null>(null);
+    width = input(200);
+    height = input(200);
+
+    containerStyle = computed(() => {
+        const unit = this.unit();
+        const state = this.zoomPanService.getState();
+        const scale = state.scale();
+        const translate = state.translate();
+        const hostEl = this.host?.nativeElement as HTMLElement | null;
+        const hostRect = hostEl ? hostEl.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
+        const hostWidth = hostRect.width;
+        const hostHeight = hostRect.height;
+        // We make the container fit to the unit's sheet size.
+        // But if the sheet is too zoomed in, so that it exceeds the viewport size,
+        // we limit it to the viewport size to avoid overflow.
+        const translateX = Math.max(0, translate.x);
+        const translateY = Math.max(0, translate.y);
+        let width = this.width();
+        let height = this.height();
+        if (width * scale > hostWidth) {
+            width = hostWidth / scale;
+        }
+        if (height * scale > hostHeight) {
+            height = hostHeight / scale;
+        }
+        let finalWidth = width * scale;
+        let finalHeight = height * scale;
+        const style = {
+            width: finalWidth + 'px',
+            height: finalHeight + 'px',
+            left: translateX + 'px',
+            top: translateY + 'px',
+        };
+        return style;
+    });
+
+    constructor() { }
+
     openPsrWarning(event: MouseEvent) {
         event.stopPropagation();
 
@@ -117,7 +162,7 @@ import { ComponentPortal } from '@angular/cdk/portal';
             scrollStrategy: this.overlay.scrollStrategies.close()
         });
     }
- }
+}
 @Component({
     selector: 'psr-warning-panel',
     standalone: true,
