@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, Injector, ElementRef, Renderer2, effect, inject, OnDestroy, ChangeDetectionStrategy, viewChild, viewChildren, output, input, signal, afterNextRender, WritableSignal } from '@angular/core';
+import { Component, computed, Injector, ElementRef, Renderer2, effect, inject, OnDestroy, ChangeDetectionStrategy, viewChild, viewChildren, output, input, signal, afterNextRender, WritableSignal, Host, HostBinding } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';

@@ -21,7 +21,7 @@
                     <hr />
                 }
                 @let units = group.units();
-                <div class="group-units" cdkDropList [class.compact-mode]="compactMode() || miniMode()" id="group-{{ group.id }}"
+                <div class="group-units" cdkDropList [class.compact-mode]="compactMode()" [class.mini-mode]="miniMode()"  id="group-{{ group.id }}"
                     cdkDropListOrientation="vertical" [cdkDropListData]="units"
                     [cdkDropListConnectedTo]="connectedDropLists()"
                     [cdkDropListDisabled]="compactMode() || forceBuilderService.readOnlyForce() || miniMode()"
