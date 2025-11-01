@@ -671,11 +671,14 @@ export class DataService {
         const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
 
         if (svgDoc.getElementsByTagName('parsererror').length) {
+            const parseMsg = `Failed to parse SVG ${sheetFileName}`;
+            alert(parseMsg + ': ' + svgText.slice(0, 200));
             throw new Error('Failed to parse SVG');
         }
 
         const svgElement = svgDoc.documentElement as unknown as SVGSVGElement;
         if (!svgElement) {
+            alert('Invalid SVG content: Failed to find the SVG root element after parsing.');
             throw new Error('Invalid SVG content: Failed to find the SVG root element after parsing.');
         }
         RsPolyfillUtil.fixSvg(svgElement);
