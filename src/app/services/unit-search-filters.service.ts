@@ -39,6 +39,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { naturalCompare } from '../utils/sort.util';
 import { OptionsService } from './options.service';
+import { LoggerService } from './logger.service';
 
 /*
  * Author: Drake
@@ -351,6 +352,7 @@ export class UnitSearchFiltersService {
     optionsService = inject(OptionsService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
+    logger = inject(LoggerService);
     
     ADVANCED_FILTERS = ADVANCED_FILTERS;
     pilotGunnerySkill = signal(4);
@@ -1088,7 +1090,7 @@ export class UnitSearchFiltersService {
                         }
                         this.filterState.set(validFilters);
                     } catch (error) {
-                        console.warn('Failed to parse filters from URL:', error);
+                        this.logger.warn('Failed to parse filters from URL: ' + error);
                     }
                 }
 
@@ -1321,7 +1323,7 @@ export class UnitSearchFiltersService {
                 }
             }
         } catch (error) {
-            console.warn('Failed to parse compact filters from URL:', error);
+            this.logger.warn('Failed to parse compact filters from URL: ' + error);
         }
         
         return filterState;

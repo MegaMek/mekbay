@@ -31,8 +31,10 @@
  * affiliated with Microsoft.
  */
 
+import { inject } from '@angular/core/primitives/di';
 import { ForceUnit } from '../models/force-unit.model';
 import { Unit } from '../models/units.model';
+import { LoggerService } from '../services/logger.service';
 
 /*
  * Author: Drake
@@ -81,6 +83,7 @@ function isOnlyCombatVehicles(units: ForceUnit[]): boolean {
 }
 
 export class LanceTypeIdentifierUtil {
+    private static readonly logger = inject(LoggerService);
     private static readonly definitions: LanceTypeDefinition[] = [
         // Air Lance
         {
@@ -859,7 +862,7 @@ export class LanceTypeIdentifierUtil {
         if (definition.parent) {
             const parentDefinition = this.definitions.find(d => d.id === definition.parent);
             if (!parentDefinition) {
-                console.error(`Parent definition '${definition.parent}' not found for '${definition.id}'`);
+                this.logger.error(`Parent definition '${definition.parent}' not found for '${definition.id}'`);
                 return false;
             }
             
@@ -883,7 +886,7 @@ export class LanceTypeIdentifierUtil {
             }
             return definition.validator(units);
         } catch (error) {
-            console.error(`Error validating lance type ${definition.id}:`, error);
+            this.logger.error(`Error validating lance type ${definition.id}: ${error}`);
             return false;
         }
     }
@@ -912,7 +915,7 @@ export class LanceTypeIdentifierUtil {
                     matches.push(definition);
                 }
             } catch (error) {
-                console.error(`Error validating lance type ${definition.id}:`, error);
+                this.logger.error(`Error validating lance type ${definition.id}: ${error}`);
             }
         }
         

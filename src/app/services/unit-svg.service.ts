@@ -37,6 +37,7 @@ import { DataService } from './data.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { heatLevels, linkedLocs, uidTranslations } from '../components/svg-viewer/common';
+import { LoggerService } from './logger.service';
 
 /*
  * Author: Drake
@@ -47,6 +48,8 @@ import { heatLevels, linkedLocs, uidTranslations } from '../components/svg-viewe
  */
 @Injectable()
 export class UnitSvgService implements OnDestroy {
+    logger = inject(LoggerService);
+    
     private dataEffectRef: EffectRef | null = null;
     private armorEffectRef: EffectRef | null = null;
     private destroyEffectRef: EffectRef | null = null;
@@ -103,7 +106,7 @@ export class UnitSvgService implements OnDestroy {
             // Set up the effect to keep the SVG updated
             this.setupDataEffect();
         } catch (error) {
-            console.error(`Failed to load or initialize SVG for ${this.unit.getUnit().name}`, error);
+            this.logger.error(`Failed to load or initialize SVG for ${this.unit.getUnit().name}: ${error}`);
             this.unit.svg.set(null);
         }
     }
@@ -133,7 +136,7 @@ export class UnitSvgService implements OnDestroy {
                         requestAnimationFrame(check);
                     } else {
                         // Timed out. Log a warning but don't block the app.
-                        console.warn('SVG layout check timed out. Proceeding anyway.');
+                        this.logger.warn('SVG layout check timed out. Proceeding anyway.');
                         resolve();
                     }
                 } catch (e) {
@@ -142,7 +145,7 @@ export class UnitSvgService implements OnDestroy {
                         retries++;
                         requestAnimationFrame(check);
                     } else {
-                        console.error('Failed to get SVG BBox after multiple retries.', e);
+                        this.logger.error('Failed to get SVG BBox after multiple retries: ' + e);
                         reject(new Error('SVG layout failed to initialize.'));
                     }
                 }

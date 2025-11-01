@@ -271,7 +271,7 @@ export class DataService {
                 this.loadUnitTags(this.getUnits());
             }
         } catch (err) {
-            console.error('Error handling store update broadcast', err);
+            this.logger.error('Error handling store update broadcast', err);
         }
     }
 
@@ -661,7 +661,13 @@ export class DataService {
     private async fetchAndCacheSheet(sheetFileName: string): Promise<SVGSVGElement> {
         this.logger.info(`Fetching sheet: ${sheetFileName}`);
         const src = `https://db.mekbay.com/sheets/${sheetFileName}`;
-        const resp = await fetch(src);
+        let resp: Response;
+        try {
+            resp = await fetch(src);
+            throw new Error(`Network response was not ok: ${resp.statusText}`);
+        } catch (err) {
+            throw new Error(`Exception during fetch: ${err}`);
+        }
         if (!resp.ok) {
             throw new Error(`Failed to fetch SVG: ${resp.statusText}`);
         }
@@ -862,7 +868,7 @@ export class DataService {
                     });
                     forces.push(entry);
                 } catch (error) {
-                    console.error('Failed to deserialize force:', error, raw);
+                    this.logger.error('Failed to deserialize force: ' + error + ' ' + raw);
                 }
             }
         }
@@ -941,7 +947,7 @@ export class DataService {
             };
             const response = await this.wsService.sendAndWaitForResponse(payload);
             if (response && response.code === 'not_owner') {
-                console.warn('Cannot save force to cloud: not the owner, we regenerated a new instanceId.');
+                this.logger.warn('Cannot save force to cloud: not the owner, we regenerated a new instanceId.');
                 const oldInstanceId = force.instanceId();
                 force.instanceId.set(generateUUID());
                 force.owned.set(true);

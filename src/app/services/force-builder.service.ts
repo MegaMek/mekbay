@@ -353,7 +353,7 @@ export class ForceBuilderService {
             const unit = unitMap.get(unitName);
             
             if (!unit) {
-                console.warn(`Unit "${unitName}" not found in dataService`);
+                this.logger.warn(`Unit "${unitName}" not found in dataService`);
                 continue;
             }
 

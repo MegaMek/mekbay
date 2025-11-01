@@ -38,6 +38,7 @@ import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceUnit } from '../../models/force-unit.model';
+import { LoggerService } from '../../services/logger.service';
 
 /*
  * Author: Drake
@@ -313,6 +314,7 @@ export class SvgCanvasOverlayComponent {
     private readonly ERASER_MULTIPLIER = 2.0;// * this.INTERNAL_SCALE;
     MIN_STROKE_SIZE = 1;
     MAX_STROKE_SIZE = 10;
+    logger = inject(LoggerService);
     private destroyRef = inject(DestroyRef);
     private zoomPanService = inject(SvgZoomPanService);
     private injector = inject(Injector);
@@ -580,7 +582,7 @@ export class SvgCanvasOverlayComponent {
                     target.dispatchEvent(cloned);
                 } catch (err) {
                     // fall through silently if re-dispatch fails
-                    console.error('Failed to re-dispatch primary pointer event', err);
+                    this.logger.error('Failed to re-dispatch primary pointer event: ' + err);
                 }
                 this.activePointers.clear();
                 this.primaryPointerId = null;
@@ -690,7 +692,7 @@ export class SvgCanvasOverlayComponent {
                 ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
             };
             img.onerror = (err) => {
-                console.error('Failed to load image for canvas import', err);
+                this.logger.error('Failed to load image for canvas import: ' + err);
             };
             img.src = URL.createObjectURL(blob);
     }
