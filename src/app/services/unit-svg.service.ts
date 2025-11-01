@@ -906,6 +906,17 @@ export class UnitSvgService implements OnDestroy {
             svg.querySelectorAll<SVGElement>(`.${CSS.escape(el.id)}-rect`).forEach((rectEl: SVGElement) => {
                 rectEl.style.display = 'block';
             });
+            if (el === mpWalkEl) {
+               const textEl = svg.querySelector<SVGElement>(`text.${CSS.escape(el.id)}-rect`);
+                if (textEl) {
+                    const distance = turnState?.moveDistance() || 0;
+                    if (distance > 0) {
+                        textEl.textContent = '+1';
+                    } else {
+                        textEl.textContent = '+0';
+                    }
+                }
+            }
         }
     }
 }

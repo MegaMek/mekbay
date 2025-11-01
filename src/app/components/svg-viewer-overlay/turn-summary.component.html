@@ -1,5 +1,5 @@
 <div class="summary glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
-    <div class="header">Turn Summary</div>
+    <div class="header">Turn Phases</div>
     <div class="phaseTitle">Movement:</div>
     <div class="summary-entry">
         <div class="row">
@@ -15,6 +15,16 @@
                 aria-pressed="{{ currentMoveMode() === 'jump' }}" (click)="selectMove('jump')">
                 Jump
             </button>
+        </div>
+        <div class="row">
+            <div class="move-slider-container" #sliderContainer tabindex="0" (keydown)="onKeyDown($event)">
+                <input class="range" type="range" min="0" max="24" [value]="moveDistance()"
+                    (input)="onMoveDistanceInput($event)" aria-label="Move distance" />
+                <div class="thumb-marker" [style.left.%]="moveDistancePercent()" (pointerdown)="startDrag($event)">
+                    <div class="hex"
+                    [class.valueAssigned]="hasMoveDistance()">{{ moveDistanceLabel() }}</div>
+                </div>
+            </div>
         </div>
     </div>
     <div class="phaseTitle">Combat:</div>

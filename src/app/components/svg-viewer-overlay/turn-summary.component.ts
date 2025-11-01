@@ -58,10 +58,16 @@ import { SvgInteractionOverlayComponent } from './svg-viewer-overlay.component';
     styleUrls: [`./turn-summary.component.scss`]
 })
 export class TurnSummaryPanelComponent {
+    private readonly MOVE_MIN = 0;
+    private readonly MOVE_MAX = 25;
+
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private overlay = inject(Overlay);
     unit = inject(SvgInteractionOverlayComponent).unit;
+    sliderContainer = viewChild.required<ElementRef<HTMLDivElement>>('sliderContainer');
+    private activePointerId: number | null = null;
+    private dragging = false;
 
     damageReceived = computed(() => {
         const unit = this.unit();
@@ -89,6 +95,10 @@ export class TurnSummaryPanelComponent {
 
     close() {
         this.overlayManager.closeManagedOverlay('turnSummary');
+    }
+
+    endTurn() {
+        this.unit()?.resetTurnState();
     }
 
     openPsrWarning(event: MouseEvent) {
@@ -122,9 +132,99 @@ export class TurnSummaryPanelComponent {
         }
     }
 
-    endTurn() {
-        this.unit()?.resetTurnState();
-        this.close();
+    moveDistance = computed(() => {
+        const u = this.unit();
+        if (!u) return 0;
+        return u.turnState().moveDistance() || 0;
+    });
+
+    moveDistancePercent = computed(() => {
+        const max = this.MOVE_MAX;
+        const val = this.moveDistance() || 0;
+        return Math.max(0, Math.min(100, (val / max) * 100));
+    });
+
+    hasMoveDistance = computed(() => {
+        const u = this.unit();
+        if (!u) return false;
+        return u.turnState().moveDistance() !== null;
+    });
+
+    moveDistanceLabel = computed(() => {
+        const v = this.moveDistance();
+        if (v >= this.MOVE_MAX) {
+            return `${this.MOVE_MAX}+`;
+        }
+        return `${v}`;
+    });
+
+    private percentToValue(percent: number): number {
+        const v = this.MOVE_MIN + percent * (this.MOVE_MAX - this.MOVE_MIN);
+        return this.alignToStep(v);
+    }
+
+    private alignToStep(value: number): number {
+        const stepped = Math.round(value / 1);
+        return Math.max(this.MOVE_MIN, Math.min(this.MOVE_MAX, stepped));
+    }
+    onMoveDistanceInput(event: Event) {
+        const el = event.target as HTMLInputElement;
+        const value = Number(el.value || 0);
+        const u = this.unit();
+        if (!u) return;
+        u.turnState().moveDistance.set(this.alignToStep(value));
+    }
+
+    // Pointer down on the visual hex: start capturing and listen for moves
+    startDrag(event: PointerEvent) {
+        event.preventDefault();
+        const container = this.sliderContainer()?.nativeElement;
+        if (!container) return;
+        this.activePointerId = event.pointerId;
+        this.dragging = true;
+        try {
+            (event.target as Element).setPointerCapture(this.activePointerId);
+        } catch { /* ignore */ }
+        window.addEventListener('pointermove', this.onPointerMove);
+        window.addEventListener('pointerup', this.onPointerUp, { once: true });
+        this.onPointerMove(event);
+    }
+
+    private onPointerMove = (ev: PointerEvent) => {
+        if (this.activePointerId != null && ev.pointerId !== this.activePointerId) return;
+        const container = this.sliderContainer()?.nativeElement;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const x = ev.clientX - rect.left;
+        const percent = Math.max(0, Math.min(1, rect.width > 0 ? x / rect.width : 0));
+        const value = this.percentToValue(percent);
+        const u = this.unit();
+        if (!u) return;
+        u.turnState().moveDistance.set(value);
+    };
+
+    private onPointerUp = (ev: PointerEvent) => {
+        if (this.activePointerId != null) {
+            try {
+                (ev.target as Element).releasePointerCapture(this.activePointerId);
+            } catch { /* ignore */ }
+        }
+        this.activePointerId = null;
+        this.dragging = false;
+        window.removeEventListener('pointermove', this.onPointerMove);
+    };
+
+    // keyboard support when the slider container is focused
+    onKeyDown(event: KeyboardEvent) {
+        const u = this.unit();
+        if (!u) return;
+        let delta = 0;
+        if (event.key === 'ArrowRight' || event.key === 'ArrowUp') delta = 1;
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') delta = -1;
+        if (delta === 0) return;
+        event.preventDefault();
+        const next = this.alignToStep((u.turnState().moveDistance() || 0) + delta);
+        u.turnState().moveDistance.set(next);
     }
 }
 

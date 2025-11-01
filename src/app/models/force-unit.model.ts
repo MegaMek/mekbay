@@ -879,7 +879,7 @@ export interface HeatProfile {
 
 export class TurnState {
     moveMode = signal<'stationary' |'walk' | 'run' | 'jump' | null>(null);
-    moveDistance = signal<number>(0);
+    moveDistance = signal<number | null>(null);
     dmgReceived = signal<number>(0);
 
     hasPSRCheck(): boolean {
