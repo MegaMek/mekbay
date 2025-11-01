@@ -1001,6 +1001,18 @@ export class TurnState {
         }
     });
 
+    heatGenerated = computed(() => {
+        return 0;
+    });
+
+    heatDissipated = computed(() => {
+        return 0;
+    });
+
+    totalHeatDelta = computed(() => {
+        return 0;
+    });
+
     constructor(unitState: ForceUnitState) {
         this.unitState = unitState;
     }

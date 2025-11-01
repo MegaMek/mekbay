@@ -93,7 +93,6 @@ export class TurnSummaryPanelComponent {
         return u.turnState().moveMode();
     });
 
-
     getTargetModifierAsDefender = computed(() => {
         const u = this.unit();
         if (!u) return 0;
@@ -104,6 +103,24 @@ export class TurnSummaryPanelComponent {
         const u = this.unit();
         if (!u) return 0;
         return u.turnState().getTargetModifierAsAttacker();
+    });
+
+    heatGenerated = computed(() => {
+        const u = this.unit();
+        if (!u) return 0;
+        return u.turnState().heatGenerated();
+    });
+
+    heatDissipated = computed(() => {
+        const u = this.unit();
+        if (!u) return 0;
+        return u.turnState().heatDissipated();
+    });
+
+    totalHeatDelta = computed(() => {
+        const u = this.unit();
+        if (!u) return 0;
+        return u.turnState().totalHeatDelta();
     });
 
     close() {
