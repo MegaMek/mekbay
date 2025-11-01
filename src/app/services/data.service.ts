@@ -649,7 +649,12 @@ export class DataService {
             console.log(`Sheet ${sheetFileName} found in cache.`);
             return sheet;
         }
-        return this.fetchAndCacheSheet(sheetFileName);
+        try {
+            return this.fetchAndCacheSheet(sheetFileName);
+        } catch (err) {
+            alert(`Error fetching sheet ${sheetFileName}: ${err}`);
+            throw err;
+        }
     }
 
     private async fetchSheetETag(sheetFileName: string): Promise<string> {
