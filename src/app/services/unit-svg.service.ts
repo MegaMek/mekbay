@@ -225,7 +225,6 @@ export class UnitSvgService implements OnDestroy {
             this.destroyEffectRef = null;
         }
         this.unit.svg.set(null); // Clear SVG on destruction
-        console.log(`UnitSvgService for ${this.unit.getUnit().name} destroyed.`);
     }
 
     protected evaluateDestroyed() {

@@ -46,6 +46,7 @@ import { Force, ForceUnit, SerializedForce, SerializedGroup, SerializedUnit } fr
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
+import { LoggerService } from './logger.service';
 
 /*
  * Author: Drake
@@ -92,6 +93,7 @@ export type BroadcastPayload = {
     providedIn: 'root'
 })
 export class DataService {
+    private logger = inject(LoggerService);
     private broadcast?: BroadcastChannel;
     private injector = inject(Injector);
     private http = inject(HttpClient);
@@ -167,7 +169,7 @@ export class DataService {
                         } else if (equipment.type === 'misc') {
                             newData.equipment[unitType][equipmentInternalName] = new MiscEquipment(equipment);
                         } else {
-                            console.log(`Unknown equipment type for ${equipmentInternalName}: ${equipment.type}`);
+                            this.logger.warn(`Unknown equipment type for ${equipmentInternalName}: ${equipment.type}`);
                             newData.equipment[unitType][equipmentInternalName] = new Equipment(equipment);
                         }
                     }
@@ -564,7 +566,7 @@ export class DataService {
                 const etag = await this.getRemoteETag(`${store.key}.json`);
                 if (localData && localData.etag === etag) {
                     this.data[store.key as keyof LocalStore] = localData;
-                    console.log(`${store.key} is up to date. (ETag: ${etag})`);
+                    this.logger.info(`${store.key} is up to date. (ETag: ${etag})`);
                     return;
                 }
                 await this.fetchFromRemote(store);
@@ -580,15 +582,15 @@ export class DataService {
 
     public async initialize(): Promise<void> {
         this.isDataReady.set(false);
-        console.log('Initializing data service...');
+        this.logger.info('Initializing data service...');
         await this.dbService.waitForDbReady();
-        console.log('Database is ready, checking for updates...');
+        this.logger.info('Database is ready, checking for updates...');
         try {
             await this.checkForUpdate();
-            console.log('All data stores are ready.');
+            this.logger.info('All data stores are ready.');
             this.isDataReady.set(true);
         } catch (error) {
-            console.error('Could not check version, trying to load from cache.', error);
+            this.logger.error('Could not check version, trying to load from cache. ' + error);
             let allDataReady = true;
             for (const store of this.remoteStores) {
                 let localData = await store.getFromLocalStorage();
@@ -608,7 +610,7 @@ export class DataService {
 
     private async fetchFromRemote<T extends object>(remoteStore: RemoteStore<T>): Promise<void> {
         this.isDownloading.set(true);
-        console.log(`Downloading ${remoteStore.key}...`);
+        this.logger.info(`Downloading ${remoteStore.key}...`);
         return new Promise<void>((resolve, reject) => {
             this.http.get<T>(remoteStore.url, {
                 reportProgress: false,
@@ -628,14 +630,14 @@ export class DataService {
                         }
                         this.data[remoteStore.key as keyof LocalStore] = processedData;
                         await remoteStore.putInLocalStorage(data); // Save original data with etag
-                        console.log(`${remoteStore.key} updated. (ETag: ${etag})`);
+                        this.logger.info(`${remoteStore.key} updated. (ETag: ${etag})`);
                         resolve();
                     } catch (error) {
                         reject(error);
                     }
                 },
                 error: (err) => {
-                    console.error(`Failed to download ${remoteStore.key}`, err);
+                    this.logger.error(`Failed to download ${remoteStore.key}: ` + err);
                     reject(err);
                 }
             });
@@ -646,7 +648,7 @@ export class DataService {
         const etag = await this.fetchSheetETag(sheetFileName);
         const sheet: SVGSVGElement | null = await this.dbService.getSheet(sheetFileName, etag);
         if (sheet) {
-            console.log(`Sheet ${sheetFileName} found in cache.`);
+            this.logger.info(`Sheet ${sheetFileName} found in cache.`);
             return sheet;
         }
         return this.fetchAndCacheSheet(sheetFileName);
@@ -657,7 +659,7 @@ export class DataService {
     }
 
     private async fetchAndCacheSheet(sheetFileName: string): Promise<SVGSVGElement> {
-        console.log(`Fetching sheet: ${sheetFileName}`);
+        this.logger.info(`Fetching sheet: ${sheetFileName}`);
         const src = `https://db.mekbay.com/sheets/${sheetFileName}`;
         const resp = await fetch(src);
         if (!resp.ok) {
@@ -678,7 +680,7 @@ export class DataService {
         }
         RsPolyfillUtil.fixSvg(svgElement);
         await this.dbService.saveSheet(sheetFileName, svgElement, etag);
-        console.log(`Sheet ${sheetFileName} fetched and cached.`);
+        this.logger.info(`Sheet ${sheetFileName} fetched and cached.`);
         return svgElement;
     }
 
@@ -739,11 +741,11 @@ export class DataService {
     }
 
     public async listForces(): Promise<LoadForceEntry[]> {
-        console.log(`Retrieving local forces...`);
+        this.logger.info(`Retrieving local forces...`);
         const localForces = await this.dbService.listForces(this, this.unitInitializer, this.injector);
-        console.log(`Retrieving cloud forces...`);
+        this.logger.info(`Retrieving cloud forces...`);
         const cloudForces = await this.listForcesCloud();
-        console.log(`Found ${localForces.length} local forces and ${cloudForces.length} cloud forces.`);
+        this.logger.info(`Found ${localForces.length} local forces and ${cloudForces.length} cloud forces.`);
         const forceMap = new Map<string, LoadForceEntry>();
         const getTimestamp = (f: any) => {
             if (f && typeof f.timestamp === 'number') return f.timestamp;
@@ -764,7 +766,7 @@ export class DataService {
             }
         }
         const mergedForces = Array.from(forceMap.values()).sort((a, b) => getTimestamp(b) - getTimestamp(a));
-        console.log(`Found ${mergedForces.length} unique forces.`);
+        this.logger.info(`Found ${mergedForces.length} unique forces.`);
         return mergedForces;
     }
 

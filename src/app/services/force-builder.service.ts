@@ -47,6 +47,7 @@ import { UnitInitializerService } from '../components/svg-viewer/unit-initialize
 import { DialogsService } from './dialogs.service';
 import { generateUUID } from './ws.service';
 import { ToastService } from './toast.service';
+import { LoggerService } from './logger.service';
 
 /*
  * Author: Drake
@@ -55,6 +56,7 @@ import { ToastService } from './toast.service';
     providedIn: 'root'
 })
 export class ForceBuilderService {
+    logger = inject(LoggerService);
     dataService = inject(DataService);
     layoutService = inject(LayoutService);
     toastService = inject(ToastService);
@@ -97,13 +99,13 @@ export class ForceBuilderService {
 
         this.currentForce.set(newForce);
 
-        console.log(`ForceBuilderService: Setting new force with name "${this.force.name}" and instance ID "${this.force.instanceId()}"`);
+        this.logger.info(`ForceBuilderService: Setting new force with name "${this.force.name}" and instance ID "${this.force.instanceId()}"`);
 
         // Subscribe to new force's changed event
         this.forceChangedSubscription = this.currentForce().changed.subscribe(() => {
             this.dataService.saveForce(this.force);
             const forceInstanceId = this.force.instanceId();
-            console.log(`ForceBuilderService: Auto-saved force with instance ID ${forceInstanceId}`);
+            this.logger.info(`ForceBuilderService: Auto-saved force with instance ID ${forceInstanceId}`);
         });
     }
 
@@ -194,8 +196,8 @@ export class ForceBuilderService {
         this.setForce(force);
         this.selectUnit(force.units()[0] || null);
         this.urlStateInitialized = true; // Re-enable URL state initialization
-        
-        console.log(`ForceBuilderService: Loaded force with name "${force.name}" and instance ID "${force.instanceId()}"`);
+
+        this.logger.info(`ForceBuilderService: Loaded force with name "${force.name}" and instance ID "${force.instanceId()}"`);
     }
 
     async createNewForce(name: string = 'New Force'): Promise<boolean> {
@@ -212,7 +214,7 @@ export class ForceBuilderService {
         this.setForce(newForce);
         this.urlStateInitialized = true; // Re-enable URL state initialization
         
-        console.log(`ForceBuilderService: Created new force with name "${name}"`);
+        this.logger.info(`ForceBuilderService: Created new force with name "${name}"`);
         return true;
     }
     
@@ -321,7 +323,7 @@ export class ForceBuilderService {
                             const forceUnits = this.parseUnitsFromUrl(unitsParam);
                             
                             if (forceUnits.length > 0) {
-                                console.log(`ForceBuilderService: Loaded ${forceUnits.length} units from URL on startup.`);
+                                this.logger.info(`ForceBuilderService: Loaded ${forceUnits.length} units from URL on startup.`);
                                 this.force.setUnits(forceUnits);
                                 this.selectUnit(forceUnits[0]);
                                 if (this.layoutService.isMobile()) {
@@ -642,7 +644,7 @@ export class ForceBuilderService {
      * @param force The updated force instance.
      */
     remoteForceUpdate(force: Force) {
-        console.log(`ForceBuilderService: Remote force update received for instance ID ${force.instanceId()}`);
+        this.logger.info(`ForceBuilderService: Remote force update received for instance ID ${force.instanceId()}`);
         // this.setForce(force);
         // this.selectUnit(force.units()[0] || null);
         // this.force.emitChanged();

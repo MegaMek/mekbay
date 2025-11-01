@@ -142,6 +142,21 @@
                 </div>
             </div>
         }
+        @if (activeTab() === 'Debug') {
+            <div class="tab-content debug">
+                <div class="logs-list">
+                    @for (log of logger.logs().slice().reverse(); let i = $index; track i) {
+                        <div class="log-row log-{{ log.type.toLowerCase() }}">
+                            <span class="log-timestamp">{{ log.timestamp | date:'short' }}</span>
+                            <span class="log-message">{{ log.message }}</span>
+                        </div>
+                    }
+                </div>
+                <div class="option-row debug-controls">
+                    <button class="bt-button" (click)="logger.clear()">CLEAR</button>
+                </div>
+            </div>
+        }
     </div>
     <div dialog-footer>
         <button class="modal-btn bt-button" (click)="onClose()">DISMISS</button>

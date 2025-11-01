@@ -40,6 +40,7 @@ import { DbService } from '../../services/db.service';
 import { UserStateService } from '../../services/userState.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { isIOS } from '../../utils/platform.util';
+import { LoggerService } from '../../services/logger.service';
 
 /*
  * Author: Drake
@@ -53,6 +54,7 @@ import { isIOS } from '../../utils/platform.util';
     styleUrls: ['./options-dialog.component.css']
 })
 export class OptionsDialogComponent {
+    logger = inject(LoggerService)
     optionsService = inject(OptionsService);
     dbService = inject(DbService);
     dialogRef = inject(DialogRef<OptionsDialogComponent>);
@@ -60,7 +62,7 @@ export class OptionsDialogComponent {
     dialogsService = inject(DialogsService);
     isIOS = isIOS();
     
-    tabs = ['General', 'Sheets', 'Advanced', 'Experimental'];
+    tabs = ['General', 'Sheets', 'Advanced', 'Experimental', 'Debug'];
     activeTab = signal(this.tabs[0]);
 
     uuidInput = viewChild.required<ElementRef<HTMLInputElement>>('uuidInput');

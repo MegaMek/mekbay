@@ -576,7 +576,6 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         // physics-based thresholds
         const velocityThreshold = referenceWidth * 2; // px/s
         // consider commit if distance OR a sufficiently strong flick (velocity/accel)
-        console.log(`Swipe end: totalDx=${totalDx}, velocity=${this.swipeVelocity.toFixed(2)} px/s`);
         const flickPrev = (this.swipeVelocity > velocityThreshold);
         const flickNext = (this.swipeVelocity < -velocityThreshold);
 

@@ -44,3 +44,46 @@ input {
   font-size: 0.9em;
   margin-bottom: 0.5em;
 }
+
+.tab-content.debug {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.logs-list {
+  flex-grow: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Individual log rows */
+.log-row {
+  display: flex;
+  align-items: flex-start;
+  font-size: 0.85em;
+  word-break: break-word;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.log-timestamp {
+  color: var(--text-color-secondary);
+  text-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.log-info {
+  color: var(--text-color-secondary);
+}
+
+.log-warn {
+  color: #f5cc00;
+}
+
+.log-error {
+  color: #d32f2f;
+}

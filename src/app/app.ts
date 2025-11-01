@@ -60,6 +60,7 @@ import { OverlayModule } from '@angular/cdk/overlay';
 import { APP_VERSION_STRING } from './build-meta';
 import { copyTextToClipboard } from './utils/clipboard.util';
 import { LoadForceEntry } from './models/load-force-entry.model';
+import { LoggerService } from './services/logger.service';
 
 
 /*
@@ -84,6 +85,7 @@ import { LoadForceEntry } from './models/load-force-entry.model';
     styleUrl: './app.scss'
 })
 export class App {
+    logger = inject(LoggerService);
     private swUpdate = inject(SwUpdate);
     protected dataService = inject(DataService);
     private forceBuilderService = inject(ForceBuilderService);
@@ -172,7 +174,7 @@ export class App {
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
     @HostListener('window:online')
     onOnline() {
-        console.log('Back online!');
+        this.logger.info('Back online!');
         this.checkForUpdate();
     }
 
@@ -187,7 +189,7 @@ export class App {
         if (now - this.lastUpdateCheck < (this.updateCheckInterval / 4)) {
             return;
         }
-        console.log('Checking for updates...');
+        this.logger.info('Checking for updates...');
         this.lastUpdateCheck = now;
 
         if (this.swUpdate.isEnabled) {
@@ -197,7 +199,7 @@ export class App {
                     this.updateAvailable.set(true);
                 }
             } catch (err) {
-                console.error('Error checking for updates:', err);
+                this.logger.error('Error checking for updates:' + err);
             }
         }
     }

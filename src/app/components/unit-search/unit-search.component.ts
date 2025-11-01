@@ -1006,7 +1006,6 @@ export class UnitSearchComponent implements OnDestroy {
 
         const fav = this.filtersService.serializeCurrentSearchFilter(trimmed);
         // DO THE SAVING!
-        console.log(fav);
     }
 
     private applyFavorite(fav: SerializedSearchFilter) {

@@ -215,7 +215,6 @@ export class SvgInteractionService {
             this.zoomPanService.pointerMoved = false;
             clearLongTouch();
             longTouchTimer = setTimeout(() => {
-                console.log('long touch detected');
                 upHandlerSecondary(evt);
             }, 300);
             pointerId = evt.pointerId;
