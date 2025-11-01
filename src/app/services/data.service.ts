@@ -47,6 +47,7 @@ import { UnitInitializerService } from '../components/svg-viewer/unit-initialize
 import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
+import { firstValueFrom } from 'rxjs';
 
 /*
  * Author: Drake
@@ -538,10 +539,17 @@ export class DataService {
     }
 
     private async getRemoteETag(filename: string): Promise<string> {
-        const src = `https://db.mekbay.com/${filename}`;
-        const resp = await fetch(src, { method: 'HEAD' });
-        const etag = resp.headers.get('ETag') || '';
-        return etag;
+         const src = `https://db.mekbay.com/${filename}`;
+        try {
+            const resp = await firstValueFrom(
+                this.http.head(src, { observe: 'response' as const })
+            );
+            const etag = resp.headers.get('ETag') || '';
+            return etag;
+        } catch (err) {
+            this.logger.warn(`Failed to fetch ETag via HttpClient HEAD for ${src}: ${err}`);
+            return '';
+        }
     }
 
     private postprocessData(): void {
