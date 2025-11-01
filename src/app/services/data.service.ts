@@ -661,27 +661,47 @@ export class DataService {
     private async fetchAndCacheSheet(sheetFileName: string): Promise<SVGSVGElement> {
         this.logger.info(`Fetching sheet: ${sheetFileName}`);
         const src = `https://db.mekbay.com/sheets/${sheetFileName}`;
-        const resp = await fetch(src);
-        if (!resp.ok) {
-            throw new Error(`Failed to fetch SVG: ${resp.statusText}`);
-        }
-        const etag = resp.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
-        const svgText = await resp.text();
-        const parser = new DOMParser();
-        const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
 
-        if (svgDoc.getElementsByTagName('parsererror').length) {
-            throw new Error('Failed to parse SVG');
-        }
+        return new Promise<SVGSVGElement>((resolve, reject) => {
+            this.http.get<string>(src, {
+                reportProgress: false,
+                observe: 'response' as const,
+                responseType: 'text' as 'json',
+            }).subscribe({
+                next: async (response) => {
+                    try {
+                        const etag = response.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
+                        const svgText = response.body;
+                        if (!svgText) {
+                            throw new Error(`No body received for sheet ${sheetFileName}`);
+                        }
 
-        const svgElement = svgDoc.documentElement as unknown as SVGSVGElement;
-        if (!svgElement) {
-            throw new Error('Invalid SVG content: Failed to find the SVG root element after parsing.');
-        }
-        RsPolyfillUtil.fixSvg(svgElement);
-        await this.dbService.saveSheet(sheetFileName, svgElement, etag);
-        this.logger.info(`Sheet ${sheetFileName} fetched and cached.`);
-        return svgElement;
+                        const parser = new DOMParser();
+                        const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
+
+                        if (svgDoc.getElementsByTagName('parsererror').length) {
+                            throw new Error('Failed to parse SVG');
+                        }
+
+                        const svgElement = svgDoc.documentElement as unknown as SVGSVGElement;
+                        if (!svgElement) {
+                            throw new Error('Invalid SVG content: Failed to find the SVG root element after parsing.');
+                        }
+
+                        RsPolyfillUtil.fixSvg(svgElement);
+                        await this.dbService.saveSheet(sheetFileName, svgElement, etag);
+                        this.logger.info(`Sheet ${sheetFileName} fetched and cached.`);
+                        resolve(svgElement);
+                    } catch (error) {
+                        reject(error);
+                    }
+                },
+                error: (err) => {
+                    this.logger.error(`Failed to download sheet ${sheetFileName}: ` + err);
+                    reject(err);
+                }
+            });
+        });
     }
 
     private isCloudNewer(localRaw: any, cloudRaw: any): boolean {

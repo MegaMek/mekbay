@@ -47,7 +47,7 @@ export class SvgViewerLiteComponent {
                     this.cleanContainer();
                     this.attachSvgs();
                 } catch (err) {
-                    this.logger.error('svg-viewer-lite: failed to load sheet: ' + err);
+                    this.logger.error('svg-viewer-lite: failed to load sheet: ' + JSON.stringify(err));
                     this.svgs.set([]);
                 }
             })();
