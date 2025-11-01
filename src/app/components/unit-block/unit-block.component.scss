@@ -80,6 +80,36 @@
     
 }
 
+:host(.miniMode) .unit-square.compact-mode {
+    width: 56px;
+    min-width: 56px;
+    overflow: hidden;
+
+    .unit-icon {
+        width: 24px;
+        height: 24px;
+    }
+
+    .unit-model {
+        font-size: 0.6em;
+    }
+
+    .unit-alias,
+    .unit-chassis {
+        font-size: 0.7em;
+    }
+
+    .unit-model,
+    .unit-alias,
+    .unit-chassis {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-all;
+    }
+} 
+
+
+
 .unit-card {
     pointer-events: none;
     position: relative;

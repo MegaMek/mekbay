@@ -73,7 +73,6 @@ import { LoadForceEntry } from './models/load-force-entry.model';
         CommonModule,
         ToastsComponent,
         SvgViewerComponent,
-        ForceBuilderViewerComponent,
         LayoutModule,
         UpdateButtonComponent,
         SidebarComponent,

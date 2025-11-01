@@ -1,3 +1,7 @@
+:host {
+    display: block;
+}
+
 .searchbar-container {
     position: relative;
     width: 100%;
@@ -6,7 +10,6 @@
     flex-direction: row;
     z-index: 4;
     gap: 4px;
-    height: 40px;
 }
 
 .searchbar-container.expanded {

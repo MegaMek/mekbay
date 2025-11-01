@@ -78,6 +78,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     private unitChangeEffectRef: EffectRef | null = null;
     private fluffImageInjectEffectRef: EffectRef | null = null;
     currentSvg = signal<SVGSVGElement | null>(null);
+    private lastViewState: IViewState | null = null;
 
     // Slides/swipe state
     private currentSlideEl: HTMLDivElement | null = null;
@@ -186,6 +187,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     // Lifecycle hooks implementation for base class
     protected saveViewState(unit: ForceUnit): void {
         const viewState = this.zoomPanService.getViewState();
+        this.lastViewState = viewState;
         unit.viewState = {
             scale: viewState.scale,
             translateX: viewState.translateX,
@@ -202,15 +204,12 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         );
     }
 
-    private lastViewState: IViewState | null = null;
-
     protected restoreViewState(): void {
-        if (!this.optionsService.options().syncZoomBetweenSheets && this.lastViewState) {
+        if (this.optionsService.options().syncZoomBetweenSheets && this.lastViewState) {
             this.zoomPanService.restoreViewState(this.lastViewState);
             return;
         }
         const viewState = this.unit()?.viewState || null;
-        this.lastViewState = viewState;
         this.zoomPanService.restoreViewState(viewState);
     }
 

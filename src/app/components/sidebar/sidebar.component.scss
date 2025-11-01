@@ -19,6 +19,7 @@
     padding-top: max(4px, var(--safe-area-inset-top));
     padding-bottom: max(4px, var(--safe-area-inset-bottom));
     box-sizing: border-box;
+    gap: 8px;
 
     .header,
     .footer {

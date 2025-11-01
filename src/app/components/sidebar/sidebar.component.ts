@@ -6,6 +6,7 @@ import { UnitSearchComponent } from '../unit-search/unit-search.component';
 import { OptionsService } from '../../services/options.service';
 import { SidebarFooterComponent } from '../sidebar-footer/sidebar-footer.component';
 import { CdkMenuModule } from '@angular/cdk/menu';
+import { ForceBuilderViewerComponent } from '../force-builder-viewer/force-builder-viewer.component';
 
 /*
  * Main Sidebar component
@@ -15,7 +16,7 @@ import { CdkMenuModule } from '@angular/cdk/menu';
     selector: 'sidebar',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, PortalModule, CdkMenuModule, SidebarFooterComponent],
+    imports: [CommonModule, PortalModule, CdkMenuModule, SidebarFooterComponent, ForceBuilderViewerComponent],
     templateUrl: './sidebar.component.html',
     styleUrls: ['./sidebar.component.scss'],
 })
