@@ -61,6 +61,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     private dialog = inject(Dialog);
     private injector = inject(Injector);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
+    private newGroupDropzone = viewChild<ElementRef<HTMLElement>>('newGroupDropzone');
     forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
 
     miniMode = input<boolean>(false);
@@ -307,7 +308,9 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     connectedDropLists(): string[] {
         const groups = this.forceBuilderService.force.groups() || [];
         const ids = groups.map(g => `group-${g.id}`);
-        ids.push('new-group-dropzone');
+        if (this.newGroupDropzone()?.nativeElement) {
+            ids.push('new-group-dropzone');
+        }
         return ids;
     }
 

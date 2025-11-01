@@ -8,7 +8,8 @@
     }
     <div #scrollableContent class="scrollable-content" cdkScrollable>
         <div class="force-units-list" [class.single-group]="hasSingleGroup()">
-            @for (group of forceBuilderService.force.groups(); let gi = $index; track gi) {
+            @let groups = forceBuilderService.force.groups();
+            @for (group of groups; let gi = $index; track gi) {
             <div class="group-container">
                 @if (!miniMode()) {
                     <div class="group-header">
@@ -18,13 +19,15 @@
                         </div>
                     </div>
                 } @else {
-                    <hr />
+                    @if (gi !== 0) {
+                        <hr />
+                    }
                 }
                 @let units = group.units();
                 <div class="group-units" cdkDropList [class.compact-mode]="compactMode()" [class.mini-mode]="miniMode()"  id="group-{{ group.id }}"
                     cdkDropListOrientation="vertical" [cdkDropListData]="units"
                     [cdkDropListConnectedTo]="connectedDropLists()"
-                    [cdkDropListDisabled]="compactMode() || forceBuilderService.readOnlyForce() || miniMode()"
+                    [cdkDropListDisabled]="compactMode() || forceBuilderService.readOnlyForce()"
                     (cdkDropListDropped)="drop($event)">
                     @if (units.length === 0) {
                     <div class="empty-group-placeholder" (click)="onEmptyGroupClick(group)">
@@ -52,7 +55,7 @@
                 @if (!forceBuilderService.readOnlyForce() && !isUnitDragging() && !forceBuilderService.force.hasMaxGroups()) {
                 <button class="bt-button btn-add-group" (click)="forceBuilderService.addGroup()">+ Add Group</button>
                 }
-                <div class="group-container new-group-dropzone" cdkDropList id="new-group-dropzone"
+                <div #newGroupDropzone class="group-container new-group-dropzone" cdkDropList id="new-group-dropzone"
                 [cdkDropListConnectedTo]="connectedDropLists()" [cdkDropListData]="[]"
                 [class.visible]="isUnitDragging() && !hasEmptyGroups() && !forceBuilderService.force.hasMaxGroups()"
                 [cdkDropListDisabled]="forceBuilderService.readOnlyForce()"
