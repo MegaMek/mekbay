@@ -347,7 +347,7 @@ export class Force {
                     try {
                         units.push(ForceUnit.deserialize(unitData, force, dataService, unitInitializer, injector));
                     } catch (err) {
-                            const logger = injector.get(LoggerService);
+                        const logger = injector.get(LoggerService);
                         logger.error(`Force.deserialize error on unit "${unitData.unit}": ${err}`);
                         continue; // Ignore this unit
                     }
