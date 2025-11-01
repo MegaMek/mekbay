@@ -43,7 +43,7 @@ interface LogEntry {
 
 @Injectable({ providedIn: 'root' })
 export class LoggerService {
-    private readonly MAX_LOGS = 10000;
+    private readonly MAX_LOGS = 1000;
     public readonly logs = signal<LogEntry[]>([]);
     
     constructor() {}
