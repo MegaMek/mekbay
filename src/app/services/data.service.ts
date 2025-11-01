@@ -643,18 +643,13 @@ export class DataService {
     }
 
     public async getSheet(sheetFileName: string): Promise<SVGSVGElement> {
-        try {
         const etag = await this.fetchSheetETag(sheetFileName);
         const sheet: SVGSVGElement | null = await this.dbService.getSheet(sheetFileName, etag);
         if (sheet) {
             console.log(`Sheet ${sheetFileName} found in cache.`);
             return sheet;
         }
-            return this.fetchAndCacheSheet(sheetFileName);
-        } catch (err) {
-            alert(`Error fetching sheet ${sheetFileName}: ${err}`);
-            throw err;
-        }
+        return this.fetchAndCacheSheet(sheetFileName);
     }
 
     private async fetchSheetETag(sheetFileName: string): Promise<string> {
@@ -666,9 +661,7 @@ export class DataService {
         const src = `https://db.mekbay.com/sheets/${sheetFileName}`;
         const resp = await fetch(src);
         if (!resp.ok) {
-            const msg = `Failed to fetch SVG ${sheetFileName}: ${resp.status} ${resp.statusText}`;
-            alert(msg);
-            throw new Error(msg);
+            throw new Error(`Failed to fetch SVG: ${resp.statusText}`);
         }
         const etag = resp.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
         const svgText = await resp.text();
@@ -676,14 +669,11 @@ export class DataService {
         const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
 
         if (svgDoc.getElementsByTagName('parsererror').length) {
-            const parseMsg = `Failed to parse SVG ${sheetFileName}`;
-            alert(parseMsg + ': ' + svgText.slice(0, 200));
             throw new Error('Failed to parse SVG');
         }
 
         const svgElement = svgDoc.documentElement as unknown as SVGSVGElement;
         if (!svgElement) {
-            alert('Invalid SVG content: Failed to find the SVG root element after parsing.');
             throw new Error('Invalid SVG content: Failed to find the SVG root element after parsing.');
         }
         RsPolyfillUtil.fixSvg(svgElement);
