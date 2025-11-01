@@ -42,6 +42,7 @@
         object-fit: contain;
         margin: 0;
         flex-shrink: 0;
+        pointer-events: none;
     }
     
     &.destroyed .unit-icon {
