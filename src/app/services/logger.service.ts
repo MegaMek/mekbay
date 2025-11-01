@@ -74,6 +74,11 @@ export class LoggerService {
         this.log('INFO', message);
     }
 
+    handleError(error: any): void {
+        const message = error?.message ? error.message : error.toString();
+        this.error(`Unhandled error: ${message}`);
+    }
+
     public clear() {
         this.logs.set([]);
     }
