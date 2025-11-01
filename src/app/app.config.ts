@@ -42,18 +42,18 @@ import { LoggerService } from './services/logger.service';
  * Author: Drake
  */
 export const appConfig: ApplicationConfig = {
-  providers: [
-    provideZonelessChangeDetection(),
-    {
-      provide: ErrorHandler,
-      useClass: LoggerService,
-    },
-    provideBrowserGlobalErrorListeners(),
-    provideRouter(routes),
-    provideHttpClient(),
-    provideServiceWorker('ngsw-worker.js', {
-      enabled: !isDevMode(),
-      registrationStrategy: 'registerWhenStable:30000'
-    })
-  ]
+    providers: [
+        provideZonelessChangeDetection(),
+        {
+            provide: ErrorHandler,
+            useExisting: LoggerService,
+        },
+        provideBrowserGlobalErrorListeners(),
+        provideRouter(routes),
+        provideHttpClient(),
+        provideServiceWorker('ngsw-worker.js', {
+            enabled: !isDevMode(),
+            registrationStrategy: 'registerWhenStable:30000'
+        })
+    ]
 };
