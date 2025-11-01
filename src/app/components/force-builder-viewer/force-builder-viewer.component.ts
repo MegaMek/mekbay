@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, Injector, ElementRef, Renderer2, effect, inject, OnDestroy, ChangeDetectionStrategy, viewChild, viewChildren, output, input, signal, afterNextRender, WritableSignal, Host, HostBinding } from '@angular/core';
+import { Component, computed, Injector, ElementRef, effect, inject, OnDestroy, ChangeDetectionStrategy, viewChild, viewChildren, input, signal, afterNextRender } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
@@ -41,9 +41,6 @@ import { Dialog } from '@angular/cdk/dialog';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
-import { ToastService } from '../../services/toast.service';
-import { DataService } from '../../services/data.service';
-import { OptionsService } from '../../services/options.service';
 import { CompactModeService } from '../../services/compact-mode.service';
 
 /*
