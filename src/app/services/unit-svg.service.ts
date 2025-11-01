@@ -875,7 +875,7 @@ export class UnitSvgService implements OnDestroy {
         const mpRunEl = svg.getElementById('mpRun') as SVGElement | null;
         const mpJumpEl = svg.getElementById('mpJump') as SVGElement | null;
 
-        if (moveMode === 'walk') {
+        if (moveMode === 'walk' || moveMode === 'stationary') {
             el = mpWalkEl;
         } else if (moveMode === 'run') {
             el = mpRunEl;
@@ -910,10 +910,10 @@ export class UnitSvgService implements OnDestroy {
                const textEl = svg.querySelector<SVGElement>(`text.${CSS.escape(el.id)}-rect`);
                 if (textEl) {
                     const distance = turnState?.moveDistance() || 0;
-                    if (distance > 0) {
-                        textEl.textContent = '+1';
-                    } else {
+                    if (moveMode === 'stationary') {
                         textEl.textContent = '+0';
+                    } else {
+                        textEl.textContent = '+1';
                     }
                 }
             }

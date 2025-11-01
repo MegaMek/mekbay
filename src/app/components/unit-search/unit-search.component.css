@@ -157,7 +157,7 @@
     z-index: 3;
     background-color: #222;
     container-type: inline-size;
-    padding: 1px;
+    padding: 2px;
 }
 
 .results-dropdown.expanded {

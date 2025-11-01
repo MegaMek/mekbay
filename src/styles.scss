@@ -123,41 +123,15 @@ hr {
     box-shadow: rgba(0, 0, 0, 0.4) 0px 2px 4px, rgba(0, 0, 0, 0.3) 0px 7px 13px -3px;
 }
 
-.framed-borders-for-sheet {
-    background-repeat: no-repeat;
-    background-origin: border-box;
-    border-top: 1px solid #000;
-    border-bottom: 1px solid #000;
-    background-image:
-        linear-gradient( #000,  #000), linear-gradient( #000,  #000),
-        linear-gradient( #000,  #000), linear-gradient( #000,  #000);
-    background-size: 1px 12px, 1px 12px, 1px 12px, 1px 12px;
-    background-position: top left, top right, bottom left, bottom right;
-    background-color: #fff;
-    color: #000;
-}
-
-.night-mode .framed-borders-for-sheet {
-    border-top-color: white;
-    border-bottom-color: white;
-    background-image:
-        linear-gradient(white, white), linear-gradient(white, white),
-        linear-gradient(white, white), linear-gradient(white, white);
-    background-color: var(--background-color);
-    color: var(--text-color);
-}
-
-
-
 .framed-borders {
     background-repeat: no-repeat;
     background-origin: border-box;
-    border-top: 1px solid white;
-    border-bottom: 1px solid white;
+    border-top: 2px solid white;
+    border-bottom: 2px solid white;
     background-image:
         linear-gradient(white, white), linear-gradient(white, white),
         linear-gradient(white, white), linear-gradient(white, white);
-    background-size: 1px 12px, 1px 12px, 1px 12px, 1px 12px;
+    background-size: 2px 12px, 2px 12px, 2px 12px, 2px 12px;
     background-position: top left, top right, bottom left, bottom right;
 }
 
@@ -174,7 +148,7 @@ hr {
         linear-gradient(#666, #666),
         linear-gradient(#666, #666),
         linear-gradient(#666, #666);
-    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
 
     &.active,
@@ -189,7 +163,7 @@ hr {
             linear-gradient(white, white),
             linear-gradient(white, white),
             linear-gradient(white, white);
-        background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
         background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 }
@@ -197,7 +171,7 @@ hr {
 
 .bt-input {
     padding: 8px;
-    border: 1px transparent;
+    border: 2px transparent;
     color: white;
     background: var(--background-input);
     box-sizing: border-box;
@@ -213,7 +187,7 @@ hr {
         linear-gradient(#666, #666),
         linear-gradient(#666, #666),
         linear-gradient(#666, #666);
-    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
 
     &:focus,
@@ -228,7 +202,7 @@ hr {
             linear-gradient(white, white),
             linear-gradient(white, white),
             linear-gradient(white, white);
-        background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
         background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 
@@ -257,7 +231,7 @@ hr {
     touch-action: manipulation;
     cursor: pointer;
     padding: 8px 20px 8px 8px;
-    border: 1px transparent;
+    border: 2px transparent;
     box-sizing: border-box;
     background: rgba(40, 40, 40);
     color: white;
@@ -277,7 +251,7 @@ hr {
         linear-gradient(#666, #666);
     background-repeat: no-repeat;
     background-position: right 6px center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
-    background-size: 12px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-size: 12px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
 
 
     &:focus,
@@ -293,7 +267,7 @@ hr {
             linear-gradient(white, white),
             linear-gradient(white, white),
             linear-gradient(white, white);
-        background-size: 12px 12px, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+        background-size: 12px 12px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
         background-position: right 6px center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 
@@ -320,11 +294,10 @@ hr {
     justify-content: center;
     background: var(--background-input);
     color: #bbb;
-    border: 1px solid white;
     font-weight: bold;
     box-sizing: border-box;
     text-align: center;
-    border: 1px solid transparent;
+    border: 2px solid transparent;
     transition: all 0.2s ease-in-out;
     min-height: 32px;
     background-repeat: no-repeat;
@@ -334,7 +307,7 @@ hr {
         linear-gradient(#666, #666), linear-gradient(#666, #666),
         linear-gradient(#666, #666), linear-gradient(#666, #666),
         linear-gradient(#666, #666), linear-gradient(#666, #666);
-    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
 
     &:hover {
@@ -345,7 +318,7 @@ hr {
             linear-gradient(white, white), linear-gradient(white, white),
             linear-gradient(white, white), linear-gradient(white, white),
             linear-gradient(white, white), linear-gradient(white, white);
-        background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
         background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 
