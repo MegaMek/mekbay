@@ -266,7 +266,7 @@ export class SidebarComponent {
             this.layout.isMenuDragging.set(false);
         };
 
-        window.addEventListener('pointermove', move, { passive: false, capture: true });
+        window.addEventListener('pointermove', move, { passive: true, capture: true });
         window.addEventListener('pointerup', up, { passive: true, capture: true });
         window.addEventListener('pointercancel', cancel, { passive: true, capture: true });
     }
