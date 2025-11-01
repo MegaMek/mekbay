@@ -1,0 +1,32 @@
+<div class="summary glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
+    <div class="header">Turn Summary</div>
+    <div class="phaseTitle">Movement:</div>
+    <div class="summary-entry">
+        <div class="row">
+            <button type="button" class="bt-button move-button" [class.selected]="currentMoveMode() === 'walk'"
+                aria-pressed="{{ currentMoveMode() === 'walk' }}" (click)="selectMove('walk')">
+                Walk
+            </button>
+            <button type="button" class="bt-button move-button" [class.selected]="currentMoveMode() === 'run'"
+                aria-pressed="{{ currentMoveMode() === 'run' }}" (click)="selectMove('run')">
+                Run
+            </button>
+            <button type="button" class="bt-button move-button" [class.selected]="currentMoveMode() === 'jump'"
+                aria-pressed="{{ currentMoveMode() === 'jump' }}" (click)="selectMove('jump')">
+                Jump
+            </button>
+        </div>
+    </div>
+    <div class="phaseTitle">Combat:</div>
+    <div class="summary-entry">Damage received: {{ damageReceived() }}</div>
+    <div class="phaseTitle">Heat:</div>
+    <div class="summary-entry">Total Heat: n/a</div>
+    @if (hasPSRChecks()) {
+    <button role="button" class="summary-entry bt-button warning" (click)="openPsrWarning($event)" tabindex="0">
+        ⚠ PSR Check! ({{ PSRChecksCount() }})
+    </button>
+    }
+    <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurn()">
+        End Turn
+    </button>
+</div>

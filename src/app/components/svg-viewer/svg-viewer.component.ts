@@ -38,7 +38,7 @@ import { SvgZoomPanService, SwipeCallbacks } from './svg-zoom-pan.service';
 import { SvgInteractionService } from './svg-interaction.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { SvgCanvasOverlayComponent } from './svg-canvas-overlay.component';
-import { SvgInteractionOverlayComponent } from './svg-interaction-overlay.component';
+import { SvgInteractionOverlayComponent } from '../svg-viewer-overlay/svg-viewer-overlay.component';
 import { OptionsService } from '../../services/options.service';
 import { Unit } from '../../models/units.model';
 

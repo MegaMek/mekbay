@@ -84,6 +84,7 @@
     padding: 10px;
     overflow-y: auto;
     min-width: 300px;
+    scrollbar-width: thin;
 }
 
 .adv-panel.docked {
@@ -186,6 +187,7 @@
     flex: 1;
     min-height: 0;
     touch-action: pan-y;
+    scrollbar-width: thin;
 }
 
 .results-dropdown-item {

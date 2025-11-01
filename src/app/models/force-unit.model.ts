@@ -523,6 +523,7 @@ export class ForceUnit {
     getUnit(): Unit {
         return this.unit;
     }
+    turnState: TurnState = this.state.turnState;
     getHeat = this.state.heat;
     setHeat(heat: number) {
         const storedHeat = this.state.heat();
@@ -632,6 +633,7 @@ export class ForceUnit {
         }
         locations[locKey].armor += hits;
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
+        this.state.turnState.addDmgReceived(hits);
         this.setModified();
     }
 
@@ -664,6 +666,7 @@ export class ForceUnit {
         }
         locations[loc].internal += hits;
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
+        this.state.turnState.addDmgReceived(hits);
         this.setModified();
     }
 
@@ -791,19 +794,12 @@ export class ForceUnit {
             return { ...item };
         });
         this.state.inventory.set(inventory);
+        this.state.turnState.reset();
         this.setModified();
     }
 
     public hasDirectInventory(): boolean {
         return (!this.svg()?.querySelector('.critSlot')) && (this.getUnit().type !== 'Infantry') || false;
-    }
-
-    public hasPSRChecks(): boolean {
-        return this.getPSRChecksCount() > 0;
-    }
-
-    public getPSRChecksCount() : number {
-        return 0;
     }
 
     public serialize(): SerializedUnit {
@@ -877,6 +873,40 @@ export interface HeatProfile {
     heatsinksOff?: number;
 }
 
+export class TurnState {
+    moveMode = signal<'stationary' |'walk' | 'run' | 'jump' | null>(null);
+    moveDistance = signal<number>(0);
+    dmgReceived = signal<number>(0);
+
+    hasPSRCheck(): boolean {
+        return this.dmgReceived() >= 20;
+    }
+
+    PSRChecksCount = computed(() => {
+        return this.hasPSRCheck() ? 1 : 0; //TODO: More complex PSR checks in future
+    });
+
+    constructor() {}
+
+    addDmgReceived(amount: number) {
+        this.dmgReceived.set(this.dmgReceived() + amount);
+    }
+
+    currentPhase = computed<'I' | 'M' | 'W' | 'P' | 'H'>(() => {
+        if (this.moveMode() === null) {
+            return 'M';
+        } else {
+            return 'W';
+        }
+    });
+
+    reset() {
+        this.moveMode.set(null);
+        this.moveDistance.set(0);
+        this.dmgReceived.set(0);
+    }
+}
+
 export class ForceUnitState {
     public modified: WritableSignal<boolean>;
     public destroyed: WritableSignal<boolean>;
@@ -894,6 +924,7 @@ export class ForceUnitState {
     public heat: WritableSignal<HeatProfile>;
     /** Inventory of the unit */
     public inventory: WritableSignal<MountedEquipment[]>;
+    public readonly turnState: TurnState;
 
     constructor() {
         this.modified = signal(false);
@@ -906,6 +937,7 @@ export class ForceUnitState {
         this.locations = signal({});
         this.heat = signal({ current: 0, previous: 0 });
         this.inventory = signal([]);
+        this.turnState = new TurnState();
     }
 }
 

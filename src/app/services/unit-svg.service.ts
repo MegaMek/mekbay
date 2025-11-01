@@ -192,6 +192,7 @@ export class UnitSvgService implements OnDestroy {
         this.updateHeatSinkPips();
         this.updateInventory();
         this.updateHitMod();
+        this.updateTurnState();
     }
     
     private setupDataEffect(): void {
@@ -860,5 +861,50 @@ export class UnitSvgService implements OnDestroy {
                 entry.el.classList.remove('damagedInventory');   
             }
         });
+    }
+
+    protected updateTurnState() {
+        const svg = this.unit.svg();
+        if (!svg) return;
+        const unit = this.unit;
+        const turnState = unit.turnState;
+        // Update move mode display
+        const moveMode = turnState.moveMode();
+        let el: SVGElement | null = null;
+        const mpWalkEl = svg.getElementById('mpWalk') as SVGElement | null;
+        const mpRunEl = svg.getElementById('mpRun') as SVGElement | null;
+        const mpJumpEl = svg.getElementById('mpJump') as SVGElement | null;
+
+        if (moveMode === 'walk') {
+            el = mpWalkEl;
+        } else if (moveMode === 'run') {
+            el = mpRunEl;
+        } else if (moveMode === 'jump') {
+            el = mpJumpEl;
+        }
+        svg.querySelectorAll('.movementType').forEach(modeEl => {
+            modeEl.classList.remove('currentMoveMode');
+            modeEl.classList.remove('unusedMoveMode');
+        });
+        if (el) {
+            el.classList.add('currentMoveMode');
+            const sibling = el.previousElementSibling as SVGElement | null;
+            sibling?.classList.add('currentMoveMode');
+            svg.querySelectorAll<SVGElement>(`.${CSS.escape(el.id)}-rect`).forEach((rectEl: SVGElement) => {
+                rectEl.style.display = 'block';
+            });
+            for (const otherEl of [mpWalkEl, mpRunEl, mpJumpEl]) {
+                    if (!otherEl) continue;
+                    if (otherEl !== el && otherEl !== sibling) {
+                        otherEl?.classList.add('unusedMoveMode');
+                        const sibling = otherEl.previousElementSibling as SVGElement | null;
+                        sibling?.classList.add('unusedMoveMode');
+                        // Use an ID selector and the generic overload so TypeScript treats results as SVGElement
+                        svg.querySelectorAll<SVGElement>(`.${CSS.escape(otherEl.id)}-rect`).forEach((rectEl: SVGElement) => {
+                            rectEl.style.display = 'none';
+                        });
+                    }
+                }
+        }
     }
 }

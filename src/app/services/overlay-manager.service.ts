@@ -73,11 +73,13 @@ export class OverlayManagerService {
         const positionStrategy = this.overlay.position()
             .flexibleConnectedTo(el)
             .withPositions(opts?.positions ?? [
-                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
-                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
-                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
+                { originX: 'end', originY: 'bottom', overlayX: 'end',   overlayY: 'top',    offsetY: 4 }, // prefer left-extension
+                { originX: 'end', originY: 'top',    overlayX: 'end',   overlayY: 'bottom', offsetY: -4 },
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top',  offsetY: 4 },
+                { originX: 'start', originY: 'top',    overlayX: 'start', overlayY: 'bottom',offsetY: -4 }
             ])
-            .withPush(true);
+            .withPush(true)
+            .withViewportMargin(4);
 
         const overlayRef = this.overlay.create({
             positionStrategy,

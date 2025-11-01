@@ -60,6 +60,7 @@ export class UnitSvgMekService extends UnitSvgService {
         this.updateHeatSinkPips();
         this.updateInventory();
         this.updateHitMod();
+        this.updateTurnState();
     }
 
     private updateCritSlotDisplay(criticalSlots: CriticalSlot[]) {

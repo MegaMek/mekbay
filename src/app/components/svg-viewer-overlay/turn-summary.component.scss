@@ -1,0 +1,73 @@
+.summary {
+    pointer-events: auto;
+    min-width: 200px;
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    gap: 8px;
+    transition: opacity 0.2s;
+
+    .header {
+        font-weight: bold;
+        margin-bottom: 4px;
+        text-align: center;
+    }
+
+    .phaseTitle {
+        text-align: center;
+    }
+}
+
+.summary-entry {
+    text-wrap: nowrap;
+    font-size: 0.9em;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    .row {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+    }
+
+    &.bt-button {
+        pointer-events: auto;
+        cursor: pointer;
+        outline: none;
+        padding: 4px 8px;
+
+
+        &:hover {
+            opacity: 1.0;
+        }
+
+        :host-context(.night-mode) {
+            &.bt-button {
+                color: #fff;
+            }
+        }
+
+        &.warning {
+            background-color: #ffcc00;
+            color: #222;
+
+            &:hover {
+                background-color: #ffdd33;
+            }
+        }
+    }
+
+    .move-button {
+        padding: 6px 10px;
+        min-width: 56px;
+        text-align: center;
+    }
+
+    .move-button.selected {
+        background-color: var(--bt-yellow);
+        color: #000;
+    }
+}
