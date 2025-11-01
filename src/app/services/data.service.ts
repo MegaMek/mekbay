@@ -661,13 +661,7 @@ export class DataService {
     private async fetchAndCacheSheet(sheetFileName: string): Promise<SVGSVGElement> {
         this.logger.info(`Fetching sheet: ${sheetFileName}`);
         const src = `https://db.mekbay.com/sheets/${sheetFileName}`;
-        let resp: Response;
-        try {
-            resp = await fetch(src);
-            throw new Error(`Network response was not ok: ${resp.statusText}`);
-        } catch (err) {
-            throw new Error(`Exception during fetch: ${err}`);
-        }
+        const resp = await fetch(src);
         if (!resp.ok) {
             throw new Error(`Failed to fetch SVG: ${resp.statusText}`);
         }
