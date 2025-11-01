@@ -98,6 +98,7 @@ export interface Unit {
     run: number; // Without MASC systems
     run2: number; // With MASC systems
     jump: number;
+    umu: number; // UMU movement points
     c3: string;
     dpt: number;
     comp: UnitComponent[];

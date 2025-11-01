@@ -283,6 +283,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
     { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
     { key: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
+    { key: 'umu', label: 'UMU MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
     { key: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
     { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
 
