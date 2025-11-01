@@ -643,13 +643,13 @@ export class DataService {
     }
 
     public async getSheet(sheetFileName: string): Promise<SVGSVGElement> {
+        try {
         const etag = await this.fetchSheetETag(sheetFileName);
         const sheet: SVGSVGElement | null = await this.dbService.getSheet(sheetFileName, etag);
         if (sheet) {
             console.log(`Sheet ${sheetFileName} found in cache.`);
             return sheet;
         }
-        try {
             return this.fetchAndCacheSheet(sheetFileName);
         } catch (err) {
             alert(`Error fetching sheet ${sheetFileName}: ${err}`);
