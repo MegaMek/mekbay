@@ -55,11 +55,26 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
     imports: [CommonModule, TooltipDirective],
     template: `
         <div class="container" [ngStyle]="containerStyle()">
-            <svg class="PSRwarning" (click)="openPsrWarning($event)" tabindex="0" role="button" aria-label="PSR Warning" title="PSR Warning"
-                [tooltip]="'This unit has a PSR (Pilot Skill Roll) warning.'"
-                fill="currentColor" width="32px" height="32px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-            <path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/>
-            </svg>
+            @if (hasPSRChecks()) {
+                <svg class="PSRwarning preventZoomReset" (click)="openPsrWarning($event)" tabindex="0" role="button" aria-label="PSR Warning" title="PSR Warning"
+                    [tooltip]="'This unit has a PSR (Pilot Skill Roll) warning.'"
+                    fill="currentColor" width="40px" height="40px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                <path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Z" />
+                <text x="50%" y="55%" text-anchor="middle" dominant-baseline="mathematical" fill="#000" font-size="8" font-weight="bold" pointer-events="none">
+                    {{ psrCount() }}!
+                </text>
+                </svg>
+            }
+            <div class="preventZoomReset summary framed-borders-for-sheet">
+                <div class="header">Turn Summary</div>
+                <div class="summary-entry">Total damage: 21</div>
+                <button role="button" class="summary-entry button warning" (click)="openPsrWarning($event)" tabindex="0">
+                    ⚠ PSR Check! ({{ psrCount() }})
+                </button>
+                <button role="button" class="summary-entry button" tabindex="0">
+                    End Turn
+                </button>
+            </div>
         </div>
    `,
     styles: `
@@ -67,6 +82,7 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
             pointer-events: none;
+            z-index: 2;
         }
         .container {   
             width: 100%;
@@ -78,15 +94,59 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
             position: absolute;
             top: 8px;
             right: 8px;
-            color: #ffcc00;
+            color: var(--bt-yellow);
             opacity: 0.8;
             pointer-events: auto;
             cursor: pointer;
             outline: none;
+            transition: opacity 0.2s;
         }
         .PSRwarning:hover {
             opacity: 1.0;
         }
+        .summary {
+            pointer-events: auto;
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            padding: 4px;
+            opacity: 0.8;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            transition: opacity 0.2s;
+            display: none;
+        }
+        .summary:hover {
+            opacity: 1.0;
+        }
+        .header {
+            font-weight: bold;
+            margin-bottom: 4px;
+            text-align: center;
+        }
+        .summary-entry {
+            font-size: 0.9em;
+        }
+
+        .summary-entry.button {
+            pointer-events: auto;
+            cursor: pointer;
+            outline: none;
+            background: none;
+            border: var(--background-color-light);
+            border: 1px solid var(--border-color);
+            padding: 4px 8px;
+        }
+        .summary-entry.button.warning {
+            color: #ffcc00;
+        }
+
+        .summary-entry.button:hover {
+            background-color: #eee;
+            opacity: 1.0;
+        }
+
         @media print {
             :host {
                 display: none !important;
@@ -110,6 +170,18 @@ export class SvgInteractionOverlayComponent {
     unit = input<ForceUnit | null>(null);
     width = input(200);
     height = input(200);
+
+    hasPSRChecks = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return unit.hasPSRChecks();
+    });
+
+    psrCount = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return unit.getPSRChecksCount() + 1;
+    });
 
     containerStyle = computed(() => {
         const unit = this.unit();

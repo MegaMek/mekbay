@@ -162,8 +162,6 @@ export class SidebarComponent {
         const currentRatio = this.layout.menuOpenRatio();
         if (currentRatio <= 0.01 && !this.layout.isMenuOpen()) { return; }
 
-        ev.preventDefault();
-
         this.startDrag(ev);
     }
 
@@ -177,9 +175,11 @@ export class SidebarComponent {
         this.startRatio = this.layout.menuOpenRatio();
 
         // set pointer capture on target if available
-        try { this.elRef.nativeElement.setPointerCapture?.(startEvent.pointerId); } catch { /* ignore */ }
         let gestureDecided = false;
+        let gestureDecisionCompleted = false;
         let gestureIsHorizontal = false;
+        
+        try { this.elRef.nativeElement.setPointerCapture(startEvent.pointerId); } catch { /* ignore */ }
 
         const move = (ev: PointerEvent) => {
             if (ev.pointerId !== this.activePointerId) { return; }
@@ -199,6 +199,10 @@ export class SidebarComponent {
                     return;
                 }
                 // if horizontal, continue and handle as before
+                if (!gestureDecisionCompleted) {
+                    gestureDecisionCompleted = true;
+                    this.unitSearchComponent()?.closeAllPanels();
+                }
             }
             // compute delta relative to start
             const w = this.phoneWidthPx();
@@ -249,7 +253,7 @@ export class SidebarComponent {
             this.layout.isMenuDragging.set(false);
         };
 
-        window.addEventListener('pointermove', move, { passive: false, capture: true });
+        window.addEventListener('pointermove', move, { passive: true, capture: true });
         window.addEventListener('pointerup', up, { passive: true, capture: true });
         window.addEventListener('pointercancel', cancel, { passive: true, capture: true });
     }

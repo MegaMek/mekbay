@@ -798,6 +798,14 @@ export class ForceUnit {
         return (!this.svg()?.querySelector('.critSlot')) && (this.getUnit().type !== 'Infantry') || false;
     }
 
+    public hasPSRChecks(): boolean {
+        return this.getPSRChecksCount() > 0;
+    }
+
+    public getPSRChecksCount() : number {
+        return 0;
+    }
+
     public serialize(): SerializedUnit {
         const stateObj: SerializedState = {
             crew: this.state.crew().map(crew => crew.serialize()),

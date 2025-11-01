@@ -253,7 +253,7 @@ export class UnitSearchComponent implements OnDestroy {
         });
     }
 
-    closeAllPanels() {
+    public closeAllPanels() {
         this.focused.set(false);
         this.advOpen.set(false);
         this.activeIndex.set(null);

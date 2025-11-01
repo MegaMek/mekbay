@@ -96,7 +96,8 @@ export class SvgZoomPanService {
         '.overflowButton',
         '.structure',
         '.crewHit',
-        '.inventoryEntry'
+        '.inventoryEntry',
+        '.preventZoomReset'
     ];
 
     private state: ZoomPanState = {
