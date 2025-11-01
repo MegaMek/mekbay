@@ -77,7 +77,7 @@ export class OverlayManagerService {
                 { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
                 { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
             ])
-            .withPush(false);
+            .withPush(true);
 
         const overlayRef = this.overlay.create({
             positionStrategy,

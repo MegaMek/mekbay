@@ -71,7 +71,7 @@
                 <div class="quirks">
                     <div class="muted">Quirks: </div>
                     @for (quirk of unit.quirks; let i = $index; track i) {
-                        <div class="quirk" [ngClass]="getQuirkClass(quirk)" [title]="getQuirkDesc(quirk)">{{ quirk }}</div>
+                        <div class="quirk" [ngClass]="getQuirkClass(quirk)" [tooltip]="getQuirkDesc(quirk)">{{ quirk }}</div>
                     }
                 </div>
             </div>

@@ -48,6 +48,7 @@ import { Router } from '@angular/router';
 import { SvgViewerLiteComponent } from '../svg-viewer-lite/svg-viewer-lite.component';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { TooltipDirective } from '../../directives/tooltip.directive';
 
 /*
  * Author: Drake
@@ -107,7 +108,7 @@ interface ManufacturerInfo {
     selector: 'unit-details-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, UnitComponentItemComponent, StatBarSpecsPipe, FilterAmmoPipe, SvgViewerLiteComponent],
+    imports: [CommonModule, BaseDialogComponent, UnitComponentItemComponent, StatBarSpecsPipe, FilterAmmoPipe, SvgViewerLiteComponent, TooltipDirective],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css']
 })
