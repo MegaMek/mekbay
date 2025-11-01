@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2, untracked, afterNextRender, Injector } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2, untracked, afterNextRender, Injector, WritableSignal } from '@angular/core';
 import { Portal, PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { UnitSearchComponent } from '../unit-search/unit-search.component';
@@ -16,6 +16,7 @@ import { ForcePackDialogComponent } from '../force-pack-dialog/force-pack-dialog
 import { PrintUtil } from '../../utils/print.util';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
+import { CompactModeService } from '../../services/compact-mode.service';
 
 /*
  * Sidebar footer component
@@ -39,15 +40,17 @@ export class SidebarFooterComponent {
     dialog = inject(Dialog);
     dataService = inject(DataService);
     renderer = inject(Renderer2);
+    compactModeService = inject(CompactModeService);
 
-    compactMode = signal<boolean>(false);
+    compactMode = computed(() => {
+        return this.compactModeService.compactMode();
+    });
     singleButton = input<boolean>(false);
 
     constructor() {}
-
     
     toggleCompactMode() {
-        this.compactMode.set(!this.compactMode());
+        this.compactModeService.toggle();
     }
 
     showOptionsMenu(event: MouseEvent, unit: ForceUnit) {

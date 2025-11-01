@@ -44,6 +44,7 @@ import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { ToastService } from '../../services/toast.service';
 import { DataService } from '../../services/data.service';
 import { OptionsService } from '../../services/options.service';
+import { CompactModeService } from '../../services/compact-mode.service';
 
 /*
  * Author: Drake
@@ -59,18 +60,17 @@ import { OptionsService } from '../../services/options.service';
 export class ForceBuilderViewerComponent implements OnDestroy {
     protected forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
-    private dataService = inject(DataService);
-    private optionsService = inject(OptionsService);
-    private toastService = inject(ToastService);
-    private elRef = inject(ElementRef<HTMLElement>);
-    private renderer = inject(Renderer2);
+    compactModeService = inject(CompactModeService);
     private dialog = inject(Dialog);
     private injector = inject(Injector);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
     forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
 
     miniMode = input<boolean>(false);
-    compactMode = signal<boolean>(false);
+
+    compactMode = computed(() => {
+        return this.compactModeService.compactMode();
+    });
 
     lockAxis = computed(() => {
         return !this.compactMode() ? 'y' : null;
