@@ -663,10 +663,10 @@ export class DataService {
         const src = `https://db.mekbay.com/sheets/${sheetFileName}`;
 
         return new Promise<SVGSVGElement>((resolve, reject) => {
-            this.http.get<string>(src, {
+            this.http.get(src, {
                 reportProgress: false,
                 observe: 'response' as const,
-                responseType: 'text' as 'json',
+                responseType: 'text' as const,
             }).subscribe({
                 next: async (response) => {
                     try {
