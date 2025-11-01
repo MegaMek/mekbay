@@ -59,6 +59,8 @@ import { UnitComponentItemComponent } from '../unit-component-item/unit-componen
 import { OptionsService } from '../../services/options.service';
 import { LongPressDirective } from '../../directives/long-press.directive';
 import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
+import { OverlayManagerService } from '../../services/overlay-manager.service';
+
 
 
 @Pipe({
@@ -100,6 +102,8 @@ export class UnitSearchComponent implements OnDestroy {
     dataService = inject(DataService);
     forceBuilderService = inject(ForceBuilderService);
     optionsService = inject(OptionsService);
+    overlayManager = inject(OverlayManagerService);
+
     private injector = inject(Injector);
     private dialog = inject(Dialog);
     private dialogsService = inject(DialogsService);
@@ -156,7 +160,6 @@ export class UnitSearchComponent implements OnDestroy {
     itemSize = signal(75);
 
     private resizeObserver?: ResizeObserver;
-    private managedOverlays = new Map<string, { overlayRef: OverlayRef, clickListener?: (ev: MouseEvent) => void, triggerElement?: HTMLElement }>();
     private advPanelDragStartX = 0;
     private advPanelDragStartWidth = 0;
 
@@ -206,80 +209,7 @@ export class UnitSearchComponent implements OnDestroy {
 
     ngOnDestroy() {
         this.resizeObserver?.disconnect();
-        for (const key of Array.from(this.managedOverlays.keys())) {
-            this.closeManagedOverlay(key);
-        }
-    }
-
-    private createManagedOverlay<T>(key: string, target: HTMLElement | ElementRef<HTMLElement>, portal: ComponentPortal<T>, opts?: {
-        positions?: Array<any>,
-        hasBackdrop?: boolean,
-        backdropClass?: string,
-        panelClass?: string,
-        scrollStrategy?: any,
-        closeOnOutsideClick?: boolean
-    }) {
-        // close existing with same key first
-        this.closeManagedOverlay(key);
-
-        const el = (target as ElementRef<HTMLElement>)?.nativeElement ?? (target as HTMLElement);
-        const positionStrategy = this.overlay.position()
-            .flexibleConnectedTo(el)
-            .withPositions(opts?.positions ?? [
-                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
-                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
-                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
-            ])
-            .withPush(false);
-
-        const overlayRef = this.overlay.create({
-            positionStrategy,
-            scrollStrategy: opts?.scrollStrategy ?? this.overlay.scrollStrategies.close(),
-            hasBackdrop: Boolean(opts?.hasBackdrop),
-            backdropClass: opts?.backdropClass,
-            panelClass: opts?.panelClass ?? undefined
-        });
-
-        const compRef = overlayRef.attach(portal);
-
-        const entry: { overlayRef: OverlayRef, clickListener?: (ev: MouseEvent) => void, triggerElement?: HTMLElement } = { overlayRef };
-
-        if (opts?.hasBackdrop) {
-            // Backdrop clicks -> close
-            overlayRef.backdropClick().subscribe(() => this.closeManagedOverlay(key));
-        } else if (opts?.closeOnOutsideClick ?? true) {
-            // Capture-phase click listener: close when clicking outside overlay, but do not call stopPropagation.
-            // Remember the trigger element so clicks on the trigger won't cause the listener to close the overlay
-            // before the button's own handler runs.
-            const triggerEl = el as HTMLElement;
-            const listener = (ev: MouseEvent) => {
-                const overlayEl = overlayRef.overlayElement;
-                if (!overlayEl) return;
-                const clicked = ev.target as Node;
-                // If click is inside the overlay OR inside the trigger element, ignore it here.
-                if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked))) {
-                    return;
-                }
-                this.closeManagedOverlay(key);
-            };
-            document.addEventListener('click', listener, true);
-            entry.clickListener = listener;
-            entry.triggerElement = triggerEl;
-        }
-
-        this.managedOverlays.set(key, entry);
-        return compRef;
-    }
-
-    private closeManagedOverlay(key: string) {
-        const entry = this.managedOverlays.get(key);
-        if (!entry) return;
-        try { entry.overlayRef.dispose(); } catch { /* ignore */ }
-        if (entry.clickListener) {
-            document.removeEventListener('click', entry.clickListener, true);
-        }
-        entry.triggerElement = undefined; // remove any stored trigger reference
-        this.managedOverlays.delete(key);
+        this.overlayManager.closeAllManagedOverlays();
     }
 
     private setupItemHeightTracking() {
@@ -756,7 +686,7 @@ export class UnitSearchComponent implements OnDestroy {
         // Create overlay positioned near the click
         const target = event.target as HTMLElement;
         const portal = new ComponentPortal(TagSelectorComponent, null, this.injector);
-        const componentRef = this.createManagedOverlay('tagSelector', target, portal, {
+        const componentRef = this.overlayManager.createManagedOverlay('tagSelector', target, portal, {
             scrollStrategy: this.overlay.scrollStrategies.reposition(),
             hasBackdrop: false,
             panelClass: 'tag-selector-overlay'
@@ -794,7 +724,7 @@ export class UnitSearchComponent implements OnDestroy {
 
         // Handle tag selection for all selected units
         componentRef.instance.tagSelected.subscribe(async (selectedTag: string) => {
-             this.closeManagedOverlay('tagSelector');
+             this.overlayManager.closeManagedOverlay('tagSelector');
 
             // If "Add new tag..." was selected, show text input dialog
             if (selectedTag === '__new__') {
@@ -970,13 +900,13 @@ export class UnitSearchComponent implements OnDestroy {
         event.stopPropagation();
 
         // If already open, close it
-        if (this.managedOverlays.has('favorites')) {
-            this.closeManagedOverlay('favorites');
+        if (this.overlayManager.has('favorites')) {
+            this.overlayManager.closeManagedOverlay('favorites');
             return;
         }
         const target = this.favBtn()?.nativeElement || (event.target as HTMLElement);
         const portal = new ComponentPortal(SearchFavoritesMenuComponent, null, this.injector);
-        const compRef = this.createManagedOverlay('favorites', target, portal, {
+        const compRef = this.overlayManager.createManagedOverlay('favorites', target, portal, {
             hasBackdrop: false,
             panelClass: 'favorites-overlay-panel',
             closeOnOutsideClick: true,
@@ -987,7 +917,7 @@ export class UnitSearchComponent implements OnDestroy {
         compRef.setInput('favorites', favorites);
         compRef.instance.select.subscribe((favorite: SerializedSearchFilter) => {
             if (favorite) this.applyFavorite(favorite);
-            this.closeManagedOverlay('favorites');
+            this.overlayManager.closeManagedOverlay('favorites');
         });
         compRef.instance.saveRequest.subscribe(() => {
             this.saveCurrentSearch();
@@ -995,7 +925,7 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     closeFavorites() {
-        this.closeManagedOverlay('favorites');
+        this.overlayManager.closeManagedOverlay('favorites');
     }
 
     private async saveCurrentSearch() {

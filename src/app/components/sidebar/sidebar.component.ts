@@ -149,7 +149,6 @@ export class SidebarComponent {
         if (ev.clientX > maxStartX) { return; }
 
         ev.preventDefault();
-        (ev.target as Element)?.setPointerCapture?.(ev.pointerId);
 
         this.startDrag(ev);
     }
@@ -164,7 +163,6 @@ export class SidebarComponent {
         if (currentRatio <= 0.01 && !this.layout.isMenuOpen()) { return; }
 
         ev.preventDefault();
-        (ev.target as Element)?.setPointerCapture?.(ev.pointerId);
 
         this.startDrag(ev);
     }
@@ -179,8 +177,7 @@ export class SidebarComponent {
         this.startRatio = this.layout.menuOpenRatio();
 
         // set pointer capture on target if available
-        const target = startEvent.target as Element | null;
-        try { target?.setPointerCapture?.(startEvent.pointerId); } catch { /* ignore */ }
+        try { this.elRef.nativeElement.setPointerCapture?.(startEvent.pointerId); } catch { /* ignore */ }
         let gestureDecided = false;
         let gestureIsHorizontal = false;
 
@@ -240,9 +237,7 @@ export class SidebarComponent {
 
         const cleanup = () => {
             try {
-                // release pointer capture for active pointer on document elements if possible
-                const el = document.elementFromPoint(this.startX, 10);
-                (el as Element)?.releasePointerCapture?.(this.activePointerId!);
+                this.elRef.nativeElement.releasePointerCapture?.(this.activePointerId!);
             } catch {
                 // ignore
             }
@@ -254,7 +249,7 @@ export class SidebarComponent {
             this.layout.isMenuDragging.set(false);
         };
 
-        window.addEventListener('pointermove', move, { passive: true, capture: true });
+        window.addEventListener('pointermove', move, { passive: false, capture: true });
         window.addEventListener('pointerup', up, { passive: true, capture: true });
         window.addEventListener('pointercancel', cancel, { passive: true, capture: true });
     }

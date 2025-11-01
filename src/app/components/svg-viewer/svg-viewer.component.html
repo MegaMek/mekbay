@@ -7,6 +7,12 @@
             [width]="this.svgWidth"
             [height]="this.svgHeight"
         ></svg-canvas-overlay>
+        <svg-interaction-overlay
+            #interactionOverlay
+            [unit]="unit()"
+            [width]="this.svgWidth"
+            [height]="this.svgHeight"
+        ></svg-interaction-overlay>
     }
 </div>
 @if (!readOnly()) {

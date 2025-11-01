@@ -38,6 +38,7 @@ import { SvgZoomPanService, SwipeCallbacks } from './svg-zoom-pan.service';
 import { SvgInteractionService } from './svg-interaction.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { SvgCanvasOverlayComponent } from './svg-canvas-overlay.component';
+import { SvgInteractionOverlayComponent } from './svg-interaction-overlay.component';
 import { OptionsService } from '../../services/options.service';
 import { Unit } from '../../models/units.model';
 
@@ -48,7 +49,7 @@ import { Unit } from '../../models/units.model';
     selector: 'svg-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, SvgCanvasOverlayComponent],
+    imports: [CommonModule, SvgCanvasOverlayComponent, SvgInteractionOverlayComponent],
     providers: [SvgZoomPanService, SvgInteractionService],
     templateUrl: './svg-viewer.component.html',
     styleUrls: ['./svg-viewer.component.css']
@@ -68,6 +69,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     diffHeatArrowRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatArrow');
     diffHeatTextRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatText');
     canvasOverlay = viewChild<SvgCanvasOverlayComponent>('canvasOverlay');
+    interactionOverlay = viewChild<SvgInteractionOverlayComponent>('interactionOverlay');
 
     loadError = signal<string | null>(null);
     svgWidth = 0;
