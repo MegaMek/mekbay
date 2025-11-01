@@ -661,7 +661,9 @@ export class DataService {
         const src = `https://db.mekbay.com/sheets/${sheetFileName}`;
         const resp = await fetch(src);
         if (!resp.ok) {
-            throw new Error(`Failed to fetch SVG: ${resp.statusText}`);
+            const msg = `Failed to fetch SVG ${sheetFileName}: ${resp.status} ${resp.statusText}`;
+            alert(msg);
+            throw new Error(msg);
         }
         const etag = resp.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
         const svgText = await resp.text();
