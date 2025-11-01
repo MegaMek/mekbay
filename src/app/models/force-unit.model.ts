@@ -42,6 +42,7 @@ import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { generateUUID } from '../services/ws.service';
+import { LoggerService } from '../services/logger.service';
 /*
  * Author: Drake
  */
@@ -326,7 +327,8 @@ export class Force {
                         try {
                             groupUnits.push(ForceUnit.deserialize(unitData, force, dataService, unitInitializer, injector));
                         } catch (err) {
-                            console.error(`Force.deserialize error on unit "${unitData.unit}":`, err);
+                            const logger = injector.get(LoggerService);
+                            logger.error(`Force.deserialize error on unit "${unitData.unit}": ${err}`);
                             continue;
                         }
                     }
@@ -345,7 +347,8 @@ export class Force {
                     try {
                         units.push(ForceUnit.deserialize(unitData, force, dataService, unitInitializer, injector));
                     } catch (err) {
-                        console.error(`Force.deserialize error on unit "${unitData.unit}":`, err);
+                        const logger = injector.get(LoggerService);
+                        logger.error(`Force.deserialize error on unit "${unitData.unit}": ${err}`);
                         continue; // Ignore this unit
                     }
                 }

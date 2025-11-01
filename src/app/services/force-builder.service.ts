@@ -176,7 +176,7 @@ export class ForceBuilderService {
         
         if (result === 'yes') {
             this.dataService.saveForce(this.force).catch(err => {
-                console.error('Error saving force:', err);
+                this.logger.error('Error saving force: ' + err);
             });
         } else if (result === 'no') {
         } else {
