@@ -76,19 +76,19 @@ export class SvgInteractionOverlayComponent {
     hasPSRChecks = computed(() => {
         const unit = this.unit();
         if (!unit) return false;
-        return unit.turnState.hasPSRCheck();
+        return unit.turnState().hasPSRCheck();
     });
 
     psrCount = computed(() => {
         const unit = this.unit();
         if (!unit) return false;
-        return unit.turnState.PSRChecksCount();
+        return unit.turnState().PSRChecksCount();
     });
 
     currentPhase = computed(() => {
         const unit = this.unit();
         if (!unit) return '';
-        return unit.turnState.currentPhase();
+        return unit.turnState().currentPhase();
     });
 
     fixedPosition = computed(() => {

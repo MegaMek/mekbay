@@ -66,25 +66,25 @@ export class TurnSummaryPanelComponent {
     damageReceived = computed(() => {
         const unit = this.unit();
         if (!unit) return 0;
-        return unit.turnState.dmgReceived();
+        return unit.turnState().dmgReceived();
     });
 
     hasPSRChecks = computed(() => {
         const unit = this.unit();
         if (!unit) return false;
-        return unit.turnState.hasPSRCheck();
+        return unit.turnState().hasPSRCheck();
     });
 
     PSRChecksCount = computed(() => {
         const unit = this.unit();
         if (!unit) return 0;
-        return unit.turnState.PSRChecksCount();
+        return unit.turnState().PSRChecksCount();
     });
 
     currentMoveMode = computed(() => {
         const u = this.unit();
         if (!u) return null;
-        return u.turnState.moveMode();
+        return u.turnState().moveMode();
     });
 
     close() {
@@ -113,16 +113,17 @@ export class TurnSummaryPanelComponent {
     selectMove(mode: 'walk' | 'run' | 'jump') {
         const u = this.unit();
         if (!u) return;
-        const current = u.turnState.moveMode();
+        const turnState = u.turnState();
+        const current = turnState.moveMode();
         if (current === mode) {
-            u.turnState.moveMode.set(null);
+            turnState.moveMode.set(null);
         } else {
-            u.turnState.moveMode.set(mode);
+            turnState.moveMode.set(mode);
         }
     }
 
     endTurn() {
-        this.unit()?.turnState.reset();
+        this.unit()?.resetTurnState();
         this.close();
     }
 }
@@ -135,7 +136,7 @@ export class TurnSummaryPanelComponent {
     imports: [CommonModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-    <div class="panel preventZoomReset framed-borders-for-sheet has-shadow" (click)="$event.stopPropagation()">
+    <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
         <div class="header">PSR Check</div>
         <div class="body">
             This unit has a PSR (Pilot Skill Roll) warning.

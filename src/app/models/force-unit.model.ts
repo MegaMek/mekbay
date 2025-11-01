@@ -523,7 +523,7 @@ export class ForceUnit {
     getUnit(): Unit {
         return this.unit;
     }
-    turnState: TurnState = this.state.turnState;
+    turnState: WritableSignal<TurnState> = this.state.turnState;
     getHeat = this.state.heat;
     setHeat(heat: number) {
         const storedHeat = this.state.heat();
@@ -633,7 +633,7 @@ export class ForceUnit {
         }
         locations[locKey].armor += hits;
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
-        this.state.turnState.addDmgReceived(hits);
+        this.state.turnState().addDmgReceived(hits);
         this.setModified();
     }
 
@@ -666,7 +666,7 @@ export class ForceUnit {
         }
         locations[loc].internal += hits;
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
-        this.state.turnState.addDmgReceived(hits);
+        this.state.turnState().addDmgReceived(hits);
         this.setModified();
     }
 
@@ -794,8 +794,12 @@ export class ForceUnit {
             return { ...item };
         });
         this.state.inventory.set(inventory);
-        this.state.turnState.reset();
+        this.resetTurnState();
         this.setModified();
+    }
+
+    public resetTurnState() {
+        this.state.resetTurnState();
     }
 
     public hasDirectInventory(): boolean {
@@ -899,12 +903,6 @@ export class TurnState {
             return 'W';
         }
     });
-
-    reset() {
-        this.moveMode.set(null);
-        this.moveDistance.set(0);
-        this.dmgReceived.set(0);
-    }
 }
 
 export class ForceUnitState {
@@ -924,7 +922,7 @@ export class ForceUnitState {
     public heat: WritableSignal<HeatProfile>;
     /** Inventory of the unit */
     public inventory: WritableSignal<MountedEquipment[]>;
-    public readonly turnState: TurnState;
+    public readonly turnState: WritableSignal<TurnState>;
 
     constructor() {
         this.modified = signal(false);
@@ -937,7 +935,11 @@ export class ForceUnitState {
         this.locations = signal({});
         this.heat = signal({ current: 0, previous: 0 });
         this.inventory = signal([]);
-        this.turnState = new TurnState();
+        this.turnState = signal(new TurnState());
+    }
+    
+    resetTurnState() {
+        this.turnState.set(new TurnState());
     }
 }
 

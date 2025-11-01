@@ -49,7 +49,7 @@ import { LoggerService } from './logger.service';
 @Injectable()
 export class UnitSvgService implements OnDestroy {
     protected logger: LoggerService;
-    
+
     private dataEffectRef: EffectRef | null = null;
     private armorEffectRef: EffectRef | null = null;
     private destroyEffectRef: EffectRef | null = null;
@@ -62,7 +62,7 @@ export class UnitSvgService implements OnDestroy {
         protected injector: Injector
     ) {
         this.logger = this.injector.get(LoggerService);
-     }
+    }
 
     public async loadAndInitialize(): Promise<void> {
         if (this.unit.svg()) {
@@ -183,7 +183,7 @@ export class UnitSvgService implements OnDestroy {
         const critSlots = this.unit.getCritSlots();
         const locations = this.unit.getLocations();
         const inventory = this.unit.getInventory();
-        
+
         // Update all displays
         this.updateBVDisplay();
         this.updateCrewDisplay(crew);
@@ -194,7 +194,7 @@ export class UnitSvgService implements OnDestroy {
         this.updateHitMod();
         this.updateTurnState();
     }
-    
+
     private setupDataEffect(): void {
         // Armor effect
         this.armorEffectRef = effect(() => {
@@ -560,8 +560,8 @@ export class UnitSvgService implements OnDestroy {
                         pip.classList.add('fresh');
                     }
                 } else if (pip.classList.contains('fresh')) {
-                        pip.classList.remove('fresh');
-                    }
+                    pip.classList.remove('fresh');
+                }
             }
         });
 
@@ -695,7 +695,7 @@ export class UnitSvgService implements OnDestroy {
             totalHeatsinkPips = allHsPips.length;
             let idx = 0;
             allHsPips.forEach(pip => {
-                if (idx < (damagedHeatSinkCount+destroyedSuperCooledMyomer)) {
+                if (idx < (damagedHeatSinkCount + destroyedSuperCooledMyomer)) {
                     if (!pip.classList.contains('damaged')) {
                         pip.classList.add('fresh');
                         pip.classList.add('damaged');
@@ -710,9 +710,9 @@ export class UnitSvgService implements OnDestroy {
                         pip.classList.remove('fresh');
                     }
                 }
-                idx++;  
-            });            
-            
+                idx++;
+            });
+
             idx = 0;
             allHsPips.reverse().forEach(pip => {
                 if (idx < turnedOffHeatSinkCount) {
@@ -827,7 +827,7 @@ export class UnitSvgService implements OnDestroy {
             }
         });
     }
-    
+
     protected calculateHitModifiers(unit: ForceUnit, entry: MountedEquipment, additionalModifiers: number): number | null {
         if (entry.equipment) {
             if (entry.equipment.flags.has('F_WEAPON_ENHANCEMENT')) {
@@ -858,7 +858,7 @@ export class UnitSvgService implements OnDestroy {
                 entry.el.classList.add('damagedInventory');
                 entry.el.classList.remove('selected');
             } else {
-                entry.el.classList.remove('damagedInventory');   
+                entry.el.classList.remove('damagedInventory');
             }
         });
     }
@@ -867,7 +867,7 @@ export class UnitSvgService implements OnDestroy {
         const svg = this.unit.svg();
         if (!svg) return;
         const unit = this.unit;
-        const turnState = unit.turnState;
+        const turnState = unit.turnState();
         // Update move mode display
         const moveMode = turnState.moveMode();
         let el: SVGElement | null = null;
@@ -882,6 +882,19 @@ export class UnitSvgService implements OnDestroy {
         } else if (moveMode === 'jump') {
             el = mpJumpEl;
         }
+        // cleanup
+        for (const otherEl of [mpWalkEl, mpRunEl, mpJumpEl]) {
+            if (!otherEl) continue;
+            if (otherEl !== el) {
+                otherEl?.classList.add('unusedMoveMode');
+                const sibling = otherEl.previousElementSibling as SVGElement | null;
+                sibling?.classList.add('unusedMoveMode');
+                // Use an ID selector and the generic overload so TypeScript treats results as SVGElement
+                svg.querySelectorAll<SVGElement>(`.${CSS.escape(otherEl.id)}-rect`).forEach((rectEl: SVGElement) => {
+                    rectEl.style.display = 'none';
+                });
+            }
+        }
         svg.querySelectorAll('.movementType').forEach(modeEl => {
             modeEl.classList.remove('currentMoveMode');
             modeEl.classList.remove('unusedMoveMode');
@@ -893,18 +906,6 @@ export class UnitSvgService implements OnDestroy {
             svg.querySelectorAll<SVGElement>(`.${CSS.escape(el.id)}-rect`).forEach((rectEl: SVGElement) => {
                 rectEl.style.display = 'block';
             });
-            for (const otherEl of [mpWalkEl, mpRunEl, mpJumpEl]) {
-                    if (!otherEl) continue;
-                    if (otherEl !== el && otherEl !== sibling) {
-                        otherEl?.classList.add('unusedMoveMode');
-                        const sibling = otherEl.previousElementSibling as SVGElement | null;
-                        sibling?.classList.add('unusedMoveMode');
-                        // Use an ID selector and the generic overload so TypeScript treats results as SVGElement
-                        svg.querySelectorAll<SVGElement>(`.${CSS.escape(otherEl.id)}-rect`).forEach((rectEl: SVGElement) => {
-                            rectEl.style.display = 'none';
-                        });
-                    }
-                }
         }
     }
 }
