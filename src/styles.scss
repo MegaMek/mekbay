@@ -724,6 +724,12 @@ hr {
         }
     }
 
+    #fluff-image-fo {
+        transform: none;
+        pointer-events: none;
+        overflow: hidden;
+    }
+
     .interactive {
         cursor: pointer;
         touch-action: manipulation;
@@ -1092,10 +1098,7 @@ hr {
         }
 
         #fluff-image-fo {
-            transform: none;
             mix-blend-mode: lighten;
-            pointer-events: none;
-            overflow: hidden;
         }
 
         #fluff-image-injected {
