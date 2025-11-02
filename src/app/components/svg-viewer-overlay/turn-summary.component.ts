@@ -59,8 +59,8 @@ import { canChangeAirborneGround, MotiveModeOption, MotiveModes } from '../../mo
     styleUrls: [`./turn-summary.component.scss`]
 })
 export class TurnSummaryPanelComponent {
-    private readonly MOVE_MIN = 0;
-    private readonly MOVE_MAX = 25;
+    readonly MOVE_MIN = 0;
+    readonly MOVE_MAX = 25;
 
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
