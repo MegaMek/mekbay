@@ -69,18 +69,6 @@ export class TurnSummaryPanelComponent {
     sliderContainer = viewChild.required<ElementRef<HTMLDivElement>>('sliderContainer');
     private activePointerId: number | null = null;
 
-    airborne = computed(() => {
-        const unit = this.unit();
-        if (!unit) return false;
-        return unit.turnState().airborne();
-    });
-
-    canSwitchAirborneMode = computed(() => {
-        const unit = this.unit();
-        if (!unit) return false;
-        return canChangeAirborneGround(unit.getUnit());
-    });
-
     damageReceived = computed(() => {
         const unit = this.unit();
         if (!unit) return 0;
@@ -168,12 +156,18 @@ export class TurnSummaryPanelComponent {
         });
     }
 
-    moveModes = computed<MotiveModeOption[]>(() => {
-        const u = this.unit();
-        if (!u) return [];
-        return u.getAvailableMotiveModes();
+    airborne = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return unit.turnState().airborne();
     });
-    
+
+    canSwitchAirborneMode = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return canChangeAirborneGround(unit.getUnit());
+    });
+
     setAirborne(airborne: boolean) {
         const u = this.unit();
         if (!u) return;
@@ -185,6 +179,12 @@ export class TurnSummaryPanelComponent {
         turnState.moveDistance.set(null);
     }
 
+    moveModes = computed<MotiveModeOption[]>(() => {
+        const u = this.unit();
+        if (!u) return [];
+        return u.getAvailableMotiveModes();
+    });
+    
     selectMove(mode: MotiveModes) {
         const u = this.unit();
         if (!u) return;

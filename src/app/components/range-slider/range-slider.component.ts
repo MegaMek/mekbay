@@ -280,12 +280,11 @@ export class RangeSliderComponent {
         event.preventDefault();
         this.dragging.set(which);
         this.focusedThumb.set(which);
-        if (which === 'min') {
-            this.leftThumbRef().nativeElement.focus();
-        } else {
-            this.rightThumbRef().nativeElement.focus();
-        }
+        const thumbEl = which === 'min' ? this.leftThumbRef().nativeElement : this.rightThumbRef().nativeElement;
+        try { thumbEl.classList.add('dragging'); thumbEl.focus(); } catch (e) { /* ignore */ }
         const container = this.containerRef().nativeElement as HTMLElement;
+        try { container.classList.add('dragging'); } catch (e) { /* ignore */ }
+
         container.addEventListener('pointermove', this.onDrag);
         container.addEventListener('pointerup', this.onDragEnd);
         container.addEventListener('pointercancel', this.onDragEnd);
@@ -340,6 +339,7 @@ export class RangeSliderComponent {
         if (this.dragging()) {
             this.valueChange.emit([this.left(), this.right()]);
         }
+        try { (this.containerRef().nativeElement as HTMLElement).classList.remove('dragging'); } catch (e) { /* ignore */ }
         this.dragging.set(null);
         const container = this.containerRef().nativeElement as HTMLElement;
         container.removeEventListener('pointermove', this.onDrag);

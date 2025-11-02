@@ -178,5 +178,10 @@
             color: #000;
             }
         }
+
+        .hex:active {
+            cursor: grabbing;
+            cursor: -webkit-grabbing;
+        }
     }
 }

@@ -3,18 +3,19 @@
     <div class="group">
         <div class="phaseTitle">Movement</div>
         <div class="summary-entry">
-        @if (canSwitchAirborneMode()) {        
+            @if (canSwitchAirborneMode()) {
             <div class="row grid">
-                <button type="button" class="bt-button move-button" [class.selected]="airborne()"
-                    aria-pressed="{{ airborne() }}" (click)="setAirborne(true)">
+                <button type="button" class="bt-button move-button" [class.selected]="airborne() === true"
+                    aria-pressed="{{ airborne() === true }}" (click)="setAirborne(true)">
                     Airborne
                 </button>
-                <button type="button" class="bt-button move-button" [class.selected]="!airborne()"
-                    aria-pressed="{{ !airborne() }}" (click)="setAirborne(false)">
+                <button type="button" class="bt-button move-button" [class.selected]="airborne() === false"
+                    aria-pressed="{{ airborne() === false }}" (click)="setAirborne(false)">
                     Grounded
                 </button>
             </div>
-        }
+            }
+            @if (canSwitchAirborneMode() === false || airborne() !== null) {
             <div class="row grid">
                 @for (moveMode of moveModes(); track moveMode.mode) {
                 @let mode = moveMode.mode;
@@ -43,6 +44,7 @@
                     </div>
                 </div>
             </div>
+            }
             }
         </div>
     </div>

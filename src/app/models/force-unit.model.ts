@@ -810,7 +810,7 @@ export class ForceUnit {
     }
 
     public getAvailableMotiveModes(): MotiveModeOption[] {
-        return getMotiveModesOptionsByUnit(this.getUnit(), this.turnState().airborne());
+        return getMotiveModesOptionsByUnit(this.getUnit(), this.turnState().airborne() ?? false);
     }
 
     // TODO: must be reworded, create an history list of modifiers applied so that we can apply the proper sequence for Hip/Foot/Leg
@@ -927,7 +927,7 @@ interface PSRChecks {
 
 export class TurnState {
     unitState: ForceUnitState;
-    airborne = signal<boolean>(false);
+    airborne = signal<boolean | null>(null);
     moveMode = signal<MotiveModes | null>(null);
     moveDistance = signal<number | null>(null);
     dmgReceived = signal<number>(0);
