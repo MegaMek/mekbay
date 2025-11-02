@@ -167,6 +167,7 @@ export class SvgInteractionOverlayComponent {
             panelClass: 'turn-summary-overlay-panel',
             closeOnOutsideClick: false,
             closeOnOutsideClickOnly: true,
+            closeOnClickInside: this.nativeElement,
             scrollStrategy: this.overlay.scrollStrategies.reposition()
         });
     }

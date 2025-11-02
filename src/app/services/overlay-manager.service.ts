@@ -49,6 +49,7 @@ type ManagedEntry = {
     pointerDownListener?: (ev: PointerEvent) => void;
     pointerUpListener?: (ev: PointerEvent) => void;
     pointerStart?: { id: number | null; x: number; y: number } | null;
+    closeAreaElement?: HTMLElement | null;
 };
 // Movement threshold (px) to consider a pointer interaction a "click"
 const CLICK_MOVE_THRESHOLD = 10;
@@ -81,7 +82,8 @@ export class OverlayManagerService {
             panelClass?: string,
             scrollStrategy?: any,
             closeOnOutsideClick?: boolean,
-            closeOnOutsideClickOnly?: boolean
+            closeOnOutsideClickOnly?: boolean,
+            closeOnClickInside?: HTMLElement
         }
     ) {
         // close existing with same key first
@@ -111,6 +113,17 @@ export class OverlayManagerService {
 
         const entry: ManagedEntry = { overlayRef };
 
+        const resolveEl = (v?: HTMLElement | ElementRef<HTMLElement> | null): HTMLElement | null => {
+            if (!v) return null;
+            // ElementRef-like detection
+            // (avoid importing types at top; runtime duck-typing)
+            const anyV = v as any;
+            if (anyV && anyV.nativeElement) return anyV.nativeElement as HTMLElement;
+            return v as HTMLElement;
+        };
+        
+        entry.closeAreaElement = resolveEl(opts?.closeOnClickInside);
+
         if (opts?.hasBackdrop) {
             overlayRef.backdropClick().subscribe(() => this.closeManagedOverlay(key));
         } else if (opts?.closeOnOutsideClickOnly ?? false) {
@@ -122,6 +135,9 @@ export class OverlayManagerService {
             const clickFallback = (ev: MouseEvent) => {
                 const overlayEl = overlayRef.overlayElement;
                 const clicked = ev.target as Node;
+                if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
+                    return;
+                }
                 if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked))) {
                     return;
                 }
@@ -137,6 +153,9 @@ export class OverlayManagerService {
                     }
                     const overlayEl = overlayRef.overlayElement;
                     const targetNode = ev.target as Node;
+                    if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
+                        return;
+                    }
                     // Ignore pointerdown that started inside the overlay or trigger element
                     if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
                         return;
@@ -150,6 +169,9 @@ export class OverlayManagerService {
                     if (!entry.pointerStart) return;
                     // ensure matching pointer id (or allow - for some devices pointerId may differ; be lenient)
                     // compute movement distance
+                    if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
+                        return;
+                    }
                     const dx = ev.clientX - entry.pointerStart.x;
                     const dy = ev.clientY - entry.pointerStart.y;
                     const distSq = dx * dx + dy * dy;
@@ -179,6 +201,9 @@ export class OverlayManagerService {
             const listener = (ev: MouseEvent) => {
                 const overlayEl = overlayRef.overlayElement;
                 if (!overlayEl) return;
+                if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
+                    return;
+                }
                 const clicked = ev.target as Node;
                 if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked))) {
                     return;
@@ -291,4 +316,11 @@ export class OverlayManagerService {
         }
         this.removeGlobalListeners();
     }
+    
+    private areaOverlapping(ev: MouseEvent, area: HTMLElement): boolean {
+        const rect = area.getBoundingClientRect();
+        return ev.clientX >= rect.left && ev.clientX <= rect.right &&
+               ev.clientY >= rect.top && ev.clientY <= rect.bottom;
+    }
+
 }
