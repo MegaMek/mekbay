@@ -44,6 +44,8 @@ type ManagedEntry = {
     overlayRef: OverlayRef;
     clickListener?: (ev: MouseEvent) => void;
     triggerElement?: HTMLElement;
+    resizeObserver?: ResizeObserver;
+    mutationObserver?: MutationObserver;
 };
 
 @Injectable({ providedIn: 'root' })
@@ -52,6 +54,16 @@ export class OverlayManagerService {
     private injector = inject(Injector);
     private document = inject(DOCUMENT) as Document;
     private managed = new Map<string, ManagedEntry>();
+
+    // RAF id used to throttle position updates
+    private rafId: number | null = null;
+    // bound listener so it can be removed
+    private onGlobalChange = () => this.schedulePositionUpdate();
+
+    /** Public: request a reposition for all managed overlays (safe, throttled). */
+    repositionAll() {
+        this.schedulePositionUpdate();
+    }
 
     createManagedOverlay<T>(
         key: string,
@@ -111,8 +123,62 @@ export class OverlayManagerService {
             entry.triggerElement = triggerEl;
         }
 
+        // observe element size/attribute changes so overlays reposition when the trigger moves
+        try {
+            const ro = new ResizeObserver(() => this.schedulePositionUpdate());
+            ro.observe(el);
+            entry.resizeObserver = ro;
+        } catch { /* ResizeObserver may not be available in some test envs */ }
+
+        try {
+            const mo = new MutationObserver(() => this.schedulePositionUpdate());
+            // watch for style/class changes that commonly indicate a positional transform
+            mo.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+            entry.mutationObserver = mo;
+        } catch { /* ignore */ }
+
         this.managed.set(key, entry);
+
+        // ensure global listeners are active while we have overlays
+        this.addGlobalListeners();
+        // initial position update to ensure correct placement immediately
+        this.schedulePositionUpdate();
+
         return compRef;
+    }
+ 
+    /** Request a reposition for all managed overlays (throttled via RAF). */
+    private schedulePositionUpdate() {
+        if (this.rafId != null) return;
+        this.rafId = window.requestAnimationFrame(() => {
+            this.rafId = null;
+            this.updateAllPositions();
+        });
+    }
+
+    /** Invoke updatePosition() on every managed overlayRef. */
+    private updateAllPositions() {
+        for (const entry of this.managed.values()) {
+            try { entry.overlayRef.updatePosition(); } catch { /* ignore */ }
+        }
+    }
+    /** Add global listeners (resize/scroll/orientationchange) while overlays exist */
+    private addGlobalListeners() {
+        // Attach once when the first overlay is added
+        if (this.managed.size === 1) {
+            window.addEventListener('resize', this.onGlobalChange, true);
+            window.addEventListener('scroll', this.onGlobalChange, true);
+            window.addEventListener('orientationchange', this.onGlobalChange, true);
+        }
+    }
+
+    /** Remove global listeners when no overlays remain */
+    private removeGlobalListeners() {
+        if (this.managed.size === 0) {
+            window.removeEventListener('resize', this.onGlobalChange, true);
+            window.removeEventListener('scroll', this.onGlobalChange, true);
+            window.removeEventListener('orientationchange', this.onGlobalChange, true);
+        }
     }
 
     closeManagedOverlay(key: string) {
@@ -122,8 +188,18 @@ export class OverlayManagerService {
         if (entry.clickListener) {
             this.document.removeEventListener('click', entry.clickListener, true);
         }
+        // disconnect observers
+        try { entry.resizeObserver?.disconnect(); } catch { /* ignore */ }
+        try { entry.mutationObserver?.disconnect(); } catch { /* ignore */ }
         entry.triggerElement = undefined;
         this.managed.delete(key);
+
+        // if no overlays left, remove global listeners; otherwise schedule update
+        if (this.managed.size === 0) {
+            this.removeGlobalListeners();
+        } else {
+            this.schedulePositionUpdate();
+        }
     }
 
     has(key: string): boolean {
@@ -134,5 +210,11 @@ export class OverlayManagerService {
         for (const key of Array.from(this.managed.keys())) {
             this.closeManagedOverlay(key);
         }
+        // cleanup listeners and any pending RAF
+        if (this.rafId != null) {
+            window.cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
+        this.removeGlobalListeners();
     }
 }

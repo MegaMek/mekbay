@@ -106,6 +106,7 @@ export class SvgInteractionOverlayComponent {
     });
 
     containerStyle = computed(() => {
+        this.overlayManager.repositionAll();
         if (this.fixedPosition()) {
             return {};
         }

@@ -44,6 +44,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { SvgInteractionOverlayComponent } from './svg-viewer-overlay.component';
+import { MotiveModeOption, MotiveModes } from '../../models/motiveModes.model';
 
 /*
  * Author: Drake
@@ -67,7 +68,6 @@ export class TurnSummaryPanelComponent {
     unit = inject(SvgInteractionOverlayComponent).unit;
     sliderContainer = viewChild.required<ElementRef<HTMLDivElement>>('sliderContainer');
     private activePointerId: number | null = null;
-    private dragging = false;
 
     damageReceived = computed(() => {
         const unit = this.unit();
@@ -95,14 +95,20 @@ export class TurnSummaryPanelComponent {
 
     getTargetModifierAsDefender = computed(() => {
         const u = this.unit();
-        if (!u) return 0;
-        return u.turnState().getTargetModifierAsDefender();
+        let value = 0;
+        if (u) {
+            value = u.turnState().getTargetModifierAsDefender();
+        }
+        return value >= 0 ? `+${value}` : `${value}`;
     });
 
     getTargetModifierAsAttacker = computed(() => {
         const u = this.unit();
-        if (!u) return 0;
-        return u.turnState().getTargetModifierAsAttacker();
+        let value = 0;
+        if (u) {
+            value = u.turnState().getTargetModifierAsAttacker();
+        }
+        return value >= 0 ? `+${value}` : `${value}`;
     });
 
     heatGenerated = computed(() => {
@@ -150,7 +156,13 @@ export class TurnSummaryPanelComponent {
         });
     }
 
-    selectMove(mode: 'stationary' | 'walk' | 'run' | 'jump') {
+    moveModes = computed<MotiveModeOption[]>(() => {
+        const u = this.unit();
+        if (!u) return [];
+        return u.getAvailableMotiveModes();
+    });
+
+    selectMove(mode: MotiveModes) {
         const u = this.unit();
         if (!u) return;
         const turnState = u.turnState();
@@ -159,6 +171,9 @@ export class TurnSummaryPanelComponent {
             turnState.moveMode.set(null);
         } else {
             turnState.moveMode.set(mode);
+            if (mode === 'stationary') {
+                turnState.moveDistance.set(null);
+            }
         }
     }
 
@@ -197,6 +212,7 @@ export class TurnSummaryPanelComponent {
         const stepped = Math.round(value / 1);
         return Math.max(this.MOVE_MIN, Math.min(this.MOVE_MAX, stepped));
     }
+
     onMoveDistanceInput(event: Event) {
         const el = event.target as HTMLInputElement;
         const value = Number(el.value || 0);
@@ -211,7 +227,6 @@ export class TurnSummaryPanelComponent {
         const container = this.sliderContainer()?.nativeElement;
         if (!container) return;
         this.activePointerId = event.pointerId;
-        this.dragging = true;
         try {
             (event.target as Element).setPointerCapture(this.activePointerId);
         } catch { /* ignore */ }
@@ -240,7 +255,6 @@ export class TurnSummaryPanelComponent {
             } catch { /* ignore */ }
         }
         this.activePointerId = null;
-        this.dragging = false;
         window.removeEventListener('pointermove', this.onPointerMove);
     };
 

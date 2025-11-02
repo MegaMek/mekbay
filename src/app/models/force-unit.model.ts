@@ -43,7 +43,7 @@ import { UnitInitializerService } from '../components/svg-viewer/unit-initialize
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { generateUUID } from '../services/ws.service';
 import { LoggerService } from '../services/logger.service';
-import { getMotiveModesByUnit, MotiveModes } from './motiveModes.model';
+import { getMotiveModesByUnit, getMotiveModesOptionsByUnit, MotiveModeOption, MotiveModes } from './motiveModes.model';
 /*
  * Author: Drake
  */
@@ -799,8 +799,8 @@ export class ForceUnit {
         this.setModified();
     }
 
-    public getAvailableMotiveModes(): MotiveModes[] {
-        return getMotiveModesByUnit(this.getUnit());
+    public getAvailableMotiveModes(): MotiveModeOption[] {
+        return getMotiveModesOptionsByUnit(this.getUnit());
     }
 
     public resetTurnState() {
@@ -888,7 +888,7 @@ export interface PSRCheck {
 }
 export class TurnState {
     unitState: ForceUnitState;
-    moveMode = signal<'stationary' |'walk' | 'run' | 'jump' | null>(null);
+    moveMode = signal<MotiveModes | null>(null);
     moveDistance = signal<number | null>(null);
     dmgReceived = signal<number>(0);
     legsFeetHitThisTurn = signal<number>(0);
@@ -994,7 +994,7 @@ export class TurnState {
     });
 
     currentPhase = computed<'I' | 'M' | 'W' | 'P' | 'H'>(() => {
-        if (this.moveMode() === null) {
+        if (this.moveMode() === null || (this.moveMode() !== 'stationary' && this.moveDistance() === null)) {
             return 'M';
         } else {
             return 'W';

@@ -2,6 +2,11 @@ import { Unit } from "./units.model";
 
 export type MotiveModes = 'stationary' | 'walk' | 'run' | 'jump' | 'UMU';
 
+export interface MotiveModeOption {
+    mode: MotiveModes;
+    label: string;
+}
+
 export function getMotiveModeLabel(mode: MotiveModes, unit: Unit): string {
     let isVehicle = unit.type === 'VTOL' || unit.type === 'Naval' || unit.type === 'Tank';
     switch (mode) {
@@ -35,4 +40,12 @@ export function getMotiveModesByUnit(unit: Unit): MotiveModes[] {
         modes.push('UMU');
     }
     return modes;
+}
+
+export function getMotiveModesOptionsByUnit(unit: Unit): MotiveModeOption[] {
+    const modes = getMotiveModesByUnit(unit);
+    return modes.map(mode => ({
+        mode,
+        label: getMotiveModeLabel(mode, unit)
+    }));
 }

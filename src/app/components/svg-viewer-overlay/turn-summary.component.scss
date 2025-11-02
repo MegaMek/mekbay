@@ -1,22 +1,33 @@
 .summary {
     pointer-events: auto;
-    min-width: 200px;
+    min-width: 280px;
+    max-width: 280px;
+    max-height: 70dvh;
     display: flex;
     flex-direction: column;
     padding: 8px;
-    gap: 8px;
+    gap: 12px;
+    font-size: 0.95em;
     transition: opacity 0.2s;
+    overflow-x: hidden;
+    overflow-y: auto;
 
     .header {
         font-weight: bold;
-        margin-bottom: 4px;
         text-align: center;
     }
 
     .phaseTitle {
         text-align: center;
     }
+
+    .group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
 }
+
 
 .summary-entry {
     text-wrap: nowrap;
@@ -30,7 +41,13 @@
         flex-direction: row;
         justify-content: space-between;
         align-items: center;
-        gap: 8px;
+        gap: 4px;
+        &.wrap {
+            flex-wrap: wrap;
+            .bt-button {
+                flex: 1 1 auto;
+            };
+        }
     }
 
     &.bt-button {
