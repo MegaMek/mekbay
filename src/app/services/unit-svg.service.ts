@@ -304,6 +304,7 @@ export class UnitSvgService implements OnDestroy {
     protected updateCrewDisplay(crew: CrewMember[]) {
         const svg = this.unit.svg();
         if (!svg) return;
+        const PSRMod = this.unit.PSRModifiers();
 
         crew.forEach(member => {
             const crewId = member.getId();
@@ -330,7 +331,12 @@ export class UnitSvgService implements OnDestroy {
                 const selector = skill.asf ? `#${skill.elementName}` : `#${skill.elementName}${crewId}`;
                 const svgElement = svg.querySelector(selector) as SVGElement | null;
                 if (svgElement) {
-                    svgElement.textContent = member.getSkill(skill.name, skill.asf).toString();
+                    const skillValue = member.getSkill(skill.name, skill.asf).toString();
+                    if (PSRMod && skill.name === 'piloting') {
+                        svgElement.textContent = `${skillValue}+${PSRMod}`;
+                    } else {
+                        svgElement.textContent = skillValue;
+                    }
                 }
             });
 

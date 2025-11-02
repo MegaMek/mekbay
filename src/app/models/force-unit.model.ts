@@ -809,6 +809,7 @@ export class ForceUnit {
         return getMotiveModesOptionsByUnit(this.getUnit());
     }
 
+    // TODO: must be reworded, create an history list of modifiers applied so that we can apply the proper sequence for Hip/Foot/Leg
     PSRModifiers = computed<number>(() => {
         let modifier = 0;
         const critSlots = this.getCritSlots();
@@ -824,7 +825,7 @@ export class ForceUnit {
         const destroyedLegsActuatorsCount = critSlots.filter(slot => slot.loc && slot.name  && !hipLocations.has(slot.loc) && slot.name.includes('Leg') && slot.destroyed).length;
         const destroyedGyroCount = critSlots.filter(slot => slot.name && slot.name.includes('Gyro') && slot.destroyed).length;
 
-        return destroyedFeetCount + destroyedLegsActuatorsCount + (destroyedGyroCount * 2);
+        return modifier + destroyedFeetCount + destroyedLegsActuatorsCount + (destroyedGyroCount * 2);
     });
 
     public resetTurnState() {
