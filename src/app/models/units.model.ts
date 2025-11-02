@@ -79,7 +79,7 @@ export interface Unit {
     level: number;
     techBase: 'Inner Sphere' | 'Clan' | 'Mixed';
     techRating: string;
-    type: string;
+    type: 'Aero' | 'Handheld Weapon' | 'Infantry' | 'Mek' | 'Naval' | 'ProtoMek' | 'Tank' | 'VTOL';
     subtype: string;
     omni: number;
     engine: string;
@@ -93,7 +93,7 @@ export interface Unit {
     internal: number;
     heat: number;
     dissipation: number;
-    moveType: string;
+    moveType: 'Aerodyne' | 'Biped' | 'Hover' | 'Hydrofoil' | 'Jump' | 'Leg' | 'Microcopter' | 'Motorized' | 'Motorized SCUBA' | 'Naval' | 'None' | 'Quad' | 'Rail' | 'Spheroid' | 'Submarine' | 'Tracked' | 'Tripod' | 'UMU' | 'VTOL' | 'Wheeled' | 'WiGE';
     walk: number;
     run: number; // Without MASC systems
     run2: number; // With MASC systems
