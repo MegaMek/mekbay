@@ -104,6 +104,7 @@ export interface CriticalSlot {
     consumed?: number; // If is an ammo slot: how much ammo have been consumed. If is a F_MODULAR_ARMOR, is the armor points used
     destroyed?: boolean; // If this location is destroyed (can be from 0 hits if the structure is completely destroyed)
     originalName?: string; // saved original name in case we override the current name
+    armored?: boolean; // If this critical slot is armored (for locations that can be armored)
     el?: SVGElement;
     eq?: Equipment;
 }
@@ -565,6 +566,10 @@ export class ForceUnit {
         return this.state.crits().find(c => c.loc === loc && c.slot === slot) || null;
     }
     setCritSlot(slot: CriticalSlot) {
+        const destroyed = (slot.hits || 0) > (slot.armored ? 1 : 0);
+        if (slot.destroyed != destroyed) {
+            slot.destroyed = destroyed;
+        }
         const crits = [...this.state.crits()];
         const existingIndex = crits.findIndex(c => c.loc === slot.loc && c.slot === slot.slot);
         if (existingIndex !== -1) {
@@ -573,6 +578,7 @@ export class ForceUnit {
             crits.push(slot); // Add new crit
         }
         this.setCritSlots(crits);
+        this.turnState().evaluateCritSlot(slot);
     }
     getCritLoc(name: string): CriticalSlot | null {
         return this.state.crits().find(c => c.name === name) || null;
@@ -803,6 +809,24 @@ export class ForceUnit {
         return getMotiveModesOptionsByUnit(this.getUnit());
     }
 
+    PSRModifiers = computed<number>(() => {
+        let modifier = 0;
+        const critSlots = this.getCritSlots();
+        const destroyedHips = critSlots.filter(slot => slot.name && slot.name.includes('Hip') && slot.destroyed);
+        const hipLocations = new Set<string>();
+        for (const hip of destroyedHips) {
+            modifier += 2;
+            if (hip.loc) {
+                hipLocations.add(hip.loc);
+            }
+        }
+        const destroyedFeetCount = critSlots.filter(slot => slot.loc && slot.name  && !hipLocations.has(slot.loc) && slot.name.includes('Foot') && slot.destroyed).length;
+        const destroyedLegsActuatorsCount = critSlots.filter(slot => slot.loc && slot.name  && !hipLocations.has(slot.loc) && slot.name.includes('Leg') && slot.destroyed).length;
+        const destroyedGyroCount = critSlots.filter(slot => slot.name && slot.name.includes('Gyro') && slot.destroyed).length;
+
+        return destroyedFeetCount + destroyedLegsActuatorsCount + (destroyedGyroCount * 2);
+    });
+
     public resetTurnState() {
         this.state.resetTurnState();
     }
@@ -886,20 +910,27 @@ export interface PSRCheck {
     difficulty: number;
     reason: string;
 }
+
+interface PSRChecks {
+    legsFeetHit?: number;
+    hipsHit?: number;
+    gyrosHit?: number;
+    gyrosDestroyed?: boolean;
+    legsDestroyed?: number;
+    shutdown?: boolean;
+}
+
 export class TurnState {
     unitState: ForceUnitState;
+    airborne = signal<boolean>(false);
     moveMode = signal<MotiveModes | null>(null);
     moveDistance = signal<number | null>(null);
     dmgReceived = signal<number>(0);
-    legsFeetHitThisTurn = signal<number>(0);
-    hipsHitThisTurn = signal<number>(0);
-    gyrosHitThisTurn = signal<number>(0);
-    gyrosDestroyedThisTurn = signal<number>(0);
-    legsDestroyedThisTurn = signal<number>(0);
-    shutdownThisTurn = signal<boolean>(false);
+    psrChecks = signal<PSRChecks>({});
 
     autoFall = computed<boolean>(() => {
-        return this.legsDestroyedThisTurn() > 0 || this.gyrosDestroyedThisTurn() > 0;
+        return (this.psrChecks().legsDestroyed || 0) > 0 
+        || this.psrChecks().gyrosDestroyed === true;
     });
 
     getPSRChecks = computed<PSRCheck[]>(() => {
@@ -910,36 +941,38 @@ export class TurnState {
                 reason: 'Received 20 or more damage this turn'
             });
         }
-        if (this.shutdownThisTurn()) {
+        if (this.psrChecks().shutdown) {
             checks.push({
                 difficulty: 3,
                 reason: 'Shutdown this turn'
             });
         }
-        for (let i = 0; i < this.legsFeetHitThisTurn(); i++) {
+        const psr = this.psrChecks();
+        for (let i = 0; i < (psr.legsFeetHit || 0); i++) {
             checks.push({
                 difficulty: 1,
                 reason: 'Legs/Feet hit this turn'
             });
         }
-        for (let i = 0; i < this.hipsHitThisTurn(); i++) {
+        for (let i = 0; i < (psr.hipsHit || 0); i++) {
             checks.push({
                 difficulty: 2,
                 reason: 'Hips hit this turn'
             });
         }
-        for (let i = 0; i < this.gyrosHitThisTurn(); i++) {
+        for (let i = 0; i < (psr.gyrosHit || 0); i++) {
             checks.push({
                 difficulty: 3,
                 reason: 'Gyros hit this turn'
             });
         }
-        // if (this.legsDestroyedThisTurn() > 0) {
+        // if ((psr.legsDestroyedThisTurn || 0) > 0) {
         //     checks.push({
         //         difficulty: 5,
         //         reason: 'Legs destroyed this turn'
         //     });
         // }
+        console.log(checks);
         return checks;
     });
 
@@ -1002,7 +1035,20 @@ export class TurnState {
     });
 
     heatGenerated = computed(() => {
-        return 0;
+        let heat = 0;
+        const moveMode = this.moveMode();
+        if (moveMode === 'walk') {
+            heat += 1;
+        } else if (moveMode === 'run') {
+            heat += 2;
+        } else if (moveMode === 'jump') {
+            const distance = this.moveDistance() || 0;
+            heat += Math.max(3, distance);
+        }
+        const critSlots = this.unitState.unit.getCritSlots();
+        const engineHits = critSlots.filter(slot => slot.name && slot.name.includes('Engine') && slot.destroyed).length;
+        heat += engineHits * 5;
+        return heat;
     });
 
     heatDissipated = computed(() => {
@@ -1019,6 +1065,35 @@ export class TurnState {
 
     addDmgReceived(amount: number) {
         this.dmgReceived.set(this.dmgReceived() + amount);
+    }
+
+    evaluateCritSlot(crit: CriticalSlot) {
+        let isPsrRelevant = false;
+        const delta = (crit.hits && crit.hits > 0) ? 1 : -1;
+        const psr = this.psrChecks();
+        if (crit.name?.includes('Foot') || crit.name?.includes('Leg')) {
+            psr.legsFeetHit = Math.max(0, (psr.legsFeetHit || 0) + delta);
+            isPsrRelevant = true;
+        } else if (crit.name?.includes('Hip')) {
+            psr.hipsHit = Math.max(0, (psr.hipsHit || 0) + delta);
+            isPsrRelevant = true;
+        } else if (crit.name?.includes('Gyro')) {
+            psr.gyrosHit = Math.max(0, (psr.gyrosHit || 0) + delta);
+            isPsrRelevant = true;
+            if (delta > 0 && !psr.gyrosDestroyed) {
+                // This is an Hit. Check if gyros are destroyed
+                const critSlots = this.unitState.unit.getCritSlots();
+                const gyroHits = critSlots.filter(slot => slot.name && slot.name.includes('Gyro') && slot.destroyed).length;
+                if (gyroHits === 2 && (gyroHits-delta < 2) && !psr.gyrosDestroyed) { // It's destroyed this turn
+                    psr.gyrosDestroyed = true;
+                } else if (gyroHits < 2) {
+                    psr.gyrosDestroyed = false;
+                }
+            }
+        }
+        if (isPsrRelevant) {
+            this.psrChecks.set({ ...psr });
+        }
     }
 }
 
