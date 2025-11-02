@@ -48,7 +48,7 @@ const DEFAULT_OPTIONS: Options = {
     unitDisplayName: 'chassisModel',
     gameSystem: 'cbt',
     fluffImageInSheet: true,
-    syncZoomBetweenSheets: false,
+    syncZoomBetweenSheets: true,
 };
 
 @Injectable({ providedIn: 'root' })
