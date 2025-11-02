@@ -977,7 +977,6 @@ export class TurnState {
         //         reason: 'Legs destroyed this turn'
         //     });
         // }
-        console.log(checks);
         return checks;
     });
 

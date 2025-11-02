@@ -46,7 +46,12 @@ type ManagedEntry = {
     triggerElement?: HTMLElement;
     resizeObserver?: ResizeObserver;
     mutationObserver?: MutationObserver;
+    pointerDownListener?: (ev: PointerEvent) => void;
+    pointerUpListener?: (ev: PointerEvent) => void;
+    pointerStart?: { id: number | null; x: number; y: number } | null;
 };
+// Movement threshold (px) to consider a pointer interaction a "click"
+const CLICK_MOVE_THRESHOLD = 10;
 
 @Injectable({ providedIn: 'root' })
 export class OverlayManagerService {
@@ -75,7 +80,8 @@ export class OverlayManagerService {
             backdropClass?: string,
             panelClass?: string,
             scrollStrategy?: any,
-            closeOnOutsideClick?: boolean
+            closeOnOutsideClick?: boolean,
+            closeOnOutsideClickOnly?: boolean
         }
     ) {
         // close existing with same key first
@@ -107,7 +113,68 @@ export class OverlayManagerService {
 
         if (opts?.hasBackdrop) {
             overlayRef.backdropClick().subscribe(() => this.closeManagedOverlay(key));
-        } else if (opts?.closeOnOutsideClick ?? true) {
+        } else if (opts?.closeOnOutsideClickOnly ?? false) {
+            // Close only for "click-like" pointer interactions (no large movement / swipes)
+            const triggerEl = el as HTMLElement;
+            
+            // Fallback for environments without pointer events: keep the old click behavior
+            // We unregister this if a pointerdown listener triggers
+            const clickFallback = (ev: MouseEvent) => {
+                const overlayEl = overlayRef.overlayElement;
+                const clicked = ev.target as Node;
+                if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked))) {
+                    return;
+                }
+                this.closeManagedOverlay(key);
+            };
+
+            const onPointerDown = (ev: PointerEvent) => {
+                try {
+                    if (entry.clickListener) {
+                        // remove fallback listener once pointer interaction starts
+                        this.document.removeEventListener('click', entry.clickListener, true);
+                        entry.clickListener = undefined;
+                    }
+                    const overlayEl = overlayRef.overlayElement;
+                    const targetNode = ev.target as Node;
+                    // Ignore pointerdown that started inside the overlay or trigger element
+                    if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
+                        return;
+                    }
+                    // record start position and pointer id
+                    entry.pointerStart = { id: ev.pointerId, x: ev.clientX, y: ev.clientY };
+                } catch { /* ignore */ }
+            };
+            const onPointerUp = (ev: PointerEvent) => {
+                try {
+                    if (!entry.pointerStart) return;
+                    // ensure matching pointer id (or allow - for some devices pointerId may differ; be lenient)
+                    // compute movement distance
+                    const dx = ev.clientX - entry.pointerStart.x;
+                    const dy = ev.clientY - entry.pointerStart.y;
+                    const distSq = dx * dx + dy * dy;
+                    if (distSq <= (CLICK_MOVE_THRESHOLD * CLICK_MOVE_THRESHOLD)) {
+                        // pointer up considered a click -> ensure it occurred outside overlay/trigger before closing
+                        const overlayEl = overlayRef.overlayElement;
+                        const targetNode = ev.target as Node;
+                        if (!overlayEl?.contains(targetNode) && !(triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
+                            this.closeManagedOverlay(key);
+                        }
+                    }
+                } catch { /* ignore */ }
+                // clear start state
+                entry.pointerStart = null;
+            };
+            // attach listeners capturing phase to detect outside interactions
+            this.document.addEventListener('pointerdown', onPointerDown, true);
+            this.document.addEventListener('pointerup', onPointerUp, true);
+            // store references for later cleanup
+            entry.pointerDownListener = onPointerDown;
+            entry.pointerUpListener = onPointerUp;
+            this.document.addEventListener('click', clickFallback, true);
+            entry.clickListener = clickFallback;
+            entry.triggerElement = triggerEl;
+        } else if (opts?.closeOnOutsideClick ?? ( opts?.closeOnOutsideClickOnly ? false : true )) {
             const triggerEl = el as HTMLElement;
             const listener = (ev: MouseEvent) => {
                 const overlayEl = overlayRef.overlayElement;
@@ -187,6 +254,13 @@ export class OverlayManagerService {
         try { entry.overlayRef.dispose(); } catch { /* ignore */ }
         if (entry.clickListener) {
             this.document.removeEventListener('click', entry.clickListener, true);
+        }
+        // remove pointer listeners if present
+        if (entry.pointerDownListener) {
+            this.document.removeEventListener('pointerdown', entry.pointerDownListener, true);
+        }
+        if (entry.pointerUpListener) {
+            this.document.removeEventListener('pointerup', entry.pointerUpListener, true);
         }
         // disconnect observers
         try { entry.resizeObserver?.disconnect(); } catch { /* ignore */ }
