@@ -73,10 +73,7 @@ export class StatBarSpecsPipe implements PipeTransform {
         }
         let jumpLabel = 'Jump';
         let jumpValue = unit.jump;
-        if (unit.umu > 0) {
-            jumpValue = unit.umu;
-            jumpLabel = 'UMU';
-        } else if (unit.moveType === 'VTOL') {
+        if (unit.moveType === 'VTOL') {
             jumpLabel = 'VTOL';
         }
         const statDefs = [
@@ -90,6 +87,10 @@ export class StatBarSpecsPipe implements PipeTransform {
             { key: 'runMP', label: 'Top Speed', value: unit.run2, max: maxStats.run2MP[1] },
             { key: 'jumpMP', label: jumpLabel, value: jumpValue, max: maxStats.jumpMP[1] },
         ];
+
+        if (unit.umu > 0) {
+            statDefs.push({ key: 'umuMP', label: 'UMU', value: unit.umu, max: maxStats.umuMP[1] });
+        }
 
         const filteredStats: statBarSpec[] = statDefs.filter(def => {
             const statMaxArr = maxStats[def.key as keyof typeof maxStats] as [number, number];
