@@ -51,7 +51,11 @@
     <div class="phaseTitle">As Attacker</div>
     <div class="summary-entry">
         <div class="row">
-            <span>Attack Modifier:</span><span>{{ getTargetModifierAsAttacker() }}</span>
+            @let modifierAtk = getTargetModifierAsAttacker();
+            <span>Attack Modifier:</span><span>{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>
+        </div>
+        <div class="row">
+            <dice-roller #diceComp [diceCount]="2" [modifier]="modifierAtk"></dice-roller>
         </div>
     </div>
     <div class="group">

@@ -103,13 +103,13 @@ export class TurnSummaryPanelComponent {
         return value >= 0 ? `+${value}` : `${value}`;
     });
 
-    getTargetModifierAsAttacker = computed(() => {
+    getTargetModifierAsAttacker = computed<number>(() => {
         const u = this.unit();
         let value = 0;
         if (u) {
             value = u.turnState().getTargetModifierAsAttacker();
         }
-        return value >= 0 ? `+${value}` : `${value}`;
+        return value;
     });
 
     heatGenerated = computed(() => {

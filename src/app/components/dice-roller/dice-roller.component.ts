@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, effect, input, output, signal } from '@angular/core';
+import { Component, computed, effect, input, output, signal } from '@angular/core';
 
 /*
  * Author: Drake
@@ -43,10 +43,12 @@ import { Component, effect, input, output, signal } from '@angular/core';
 })
 export class DiceRollerComponent {
     diceCount = input<number>(2);
+    modifier = input<number>(0);
     rollDurationMs = input<number>(500);
     animationIntervalMs = input<number>(50);
     freezeOnRollEnd = input<number>(0);
     rolled = signal<boolean>(false);
+    diceSum = signal<number>(0);
 
     // outputs
     finished = output<{ results: number[]; sum: number }>();
@@ -61,8 +63,14 @@ export class DiceRollerComponent {
     private _canCloseOverlay = false;
 
     constructor() {
-        this._resetArrays();
+        let lastDiceCount = 0;
         effect((cleanup) => {
+            if (this.diceCount() === lastDiceCount) {
+                return;
+            }
+            lastDiceCount = this.diceCount();
+            this._resetArrays();
+            this._clearTimers();
             cleanup(() => {
                 this._clearTimers();
             });
@@ -111,6 +119,7 @@ export class DiceRollerComponent {
 
             // emit finished event
             const results = this.diceResults();
+            this.sumDie();
             this.rolled.set(true);
             this.finished.emit({ results: results.map(v => v ?? 0), sum: this.diceSum() });
         }, this.rollDurationMs());
@@ -135,8 +144,16 @@ export class DiceRollerComponent {
         return !this.isRolling() && this.rolled();
     }
 
-    diceSum(): number {
-        return this.diceResults().reduce((s, v) => (s || 0) + (v || 0), 0) || 0;
+    sumDie() {
+        const results = this.diceResults();
+        let sum = 0;
+        for (const v of results) {
+            if (v !== null) {
+                sum += v;
+            }
+        }
+        sum += this.modifier();
+        this.diceSum.set(sum);
     }
 
     private _resetArrays() {

@@ -20,9 +20,6 @@
     box-sizing: border-box;
 }
 
-.die.rolling {
-}
-
 /* overlay */
 .dice-overlay {
     position: fixed;
@@ -65,10 +62,15 @@
     justify-content: center;
 }
 
+.modifier.large {
+    font-size: 32px;
+    font-weight: bold;
+    color: #fff;
+}
+
 /* sum text shown under overlay dice once finished */
 .overlay-sum {
     color: #fff;
     font-size: 48px;
     font-weight: bold;
-    text-shadow: 0 1px 0 rgba(0,0,0,0.6);
 }
