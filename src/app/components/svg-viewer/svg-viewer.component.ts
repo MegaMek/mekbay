@@ -49,7 +49,7 @@ import { Unit } from '../../models/units.model';
     selector: 'svg-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, SvgCanvasOverlayComponent /*, SvgInteractionOverlayComponent */],
+    imports: [CommonModule, SvgCanvasOverlayComponent, SvgInteractionOverlayComponent],
     providers: [SvgZoomPanService, SvgInteractionService],
     templateUrl: './svg-viewer.component.html',
     styleUrls: ['./svg-viewer.component.css']
