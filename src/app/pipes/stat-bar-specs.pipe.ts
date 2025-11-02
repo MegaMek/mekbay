@@ -71,6 +71,14 @@ export class StatBarSpecsPipe implements PipeTransform {
         } else {
             armorValue = `${unit.armor} (${unit.armorPer}%)`;
         }
+        let jumpLabel = 'Jump';
+        let jumpValue = unit.jump;
+        if (unit.umu > 0) {
+            jumpValue = unit.umu;
+            jumpLabel = 'UMU';
+        } else if (unit.moveType === 'VTOL') {
+            jumpLabel = 'VTOL';
+        }
         const statDefs = [
             { key: 'armor', label: armorLabel, value: unit.armor, valueText: armorValue, max: maxStats.armor[1] },
             { key: 'internal', label: structureLabel, value: unit.internal, max: maxStats.internal[1] },
@@ -80,7 +88,7 @@ export class StatBarSpecsPipe implements PipeTransform {
             { key: 'heat', label: 'Heat', value: unit.heat, max: maxStats.heat[1] },
             { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, max: maxStats.dissipation[1] },
             { key: 'runMP', label: 'Top Speed', value: unit.run2, max: maxStats.run2MP[1] },
-            { key: 'jumpMP', label: 'Jump', value: unit.jump, max: maxStats.jumpMP[1] },
+            { key: 'jumpMP', label: jumpLabel, value: jumpValue, max: maxStats.jumpMP[1] },
         ];
 
         const filteredStats: statBarSpec[] = statDefs.filter(def => {
