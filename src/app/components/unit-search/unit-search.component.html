@@ -398,8 +398,7 @@
                     @if (unit.engine) {
                     <div class="info-item">
                         <span class="info-label muted">Engine:</span>
-                        <span class="info-value">@if(unit.engineRating){{{ unit.engineRating }} }{{
-                            unit.engine }}</span>
+                        <span class="info-value">@if(unit.engineRating){ {{ unit.engineRating }} }{{  unit.engine }}</span>
                     </div>
                     }
                     @if (unit.c3) {
@@ -411,8 +410,10 @@
                     @if (unit.walk) {
                     <div class="info-item">
                         <span class="info-label muted">Movement:</span>
-                        <span class="info-value">{{ unit.walk }} / {{ unit.run }}@if(unit.run2 != unit.run){ [{{
-                            unit.run2 }}]}@if(unit.jump){ / {{ unit.jump }}}</span>
+                        <span class="info-value">{{ unit.walk }} / {{ unit.run }}
+                            @if(unit.run2 != unit.run){ [{{  unit.run2 }}]}
+                            @if(unit.jump){ / {{ unit.jump }} }
+                        </span>
                     </div>
                     }
                 </div>
@@ -420,7 +421,6 @@
             </div>
 
             <div class="expanded-stats">
-                <!-- Stat Bars -->
                 <div class="stat-bars-columns">
                     @if((unit | statBarSpecs); as specsList) {
                     @for (spec of specsList; let i = $index; track i) {
