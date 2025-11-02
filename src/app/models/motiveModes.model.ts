@@ -14,7 +14,7 @@ export function canChangeAirborneGround(unit: Unit): boolean {
 }
 
 export function getMotiveModeLabel(mode: MotiveModes, unit: Unit, airborne: boolean = false): string {
-    let isVehicle = unit.type === 'VTOL' || unit.type === 'Naval' || unit.type === 'Tank';
+    let isVehicle = unit.type === 'VTOL' || unit.type === 'Naval' || unit.type === 'Tank' || unit.type === 'Aero';
     switch (mode) {
         case 'stationary':
             return 'Stationary';
@@ -44,6 +44,9 @@ export function getMotiveModesByUnit(unit: Unit, airborne: boolean = false): Mot
     }
     if (unit.umu > 0) {
         modes.push('UMU');
+    }
+    if (airborne && unit.moveType === 'VTOL') {
+        modes.push('VTOL');
     }
     return modes;
 }
