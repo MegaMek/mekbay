@@ -57,6 +57,7 @@ import { TurnSummaryPanelComponent } from './turn-summary.component';
     styleUrls: ['./svg-viewer-overlay.component.scss']
 })
 export class SvgInteractionOverlayComponent {
+    readonly FIXED_THRESHOLD_ASPECT_RATIO = 1.0; // Above this ratio, we consider the overlay to be "portrait" and always fix its position
     logger = inject(LoggerService);
     private destroyRef = inject(DestroyRef);
     private injector = inject(Injector);
@@ -100,11 +101,14 @@ export class SvgInteractionOverlayComponent {
         const state = this.zoomPanService.getState();
         const translate = state.translate();
         const scale = state.scale();
+        const aspectRatio = window.innerHeight / window.innerWidth;
+        if (aspectRatio > this.FIXED_THRESHOLD_ASPECT_RATIO) {
+            return true; // Letter or more vertical gets always fixed
+        }
         const hostEl = this.host?.nativeElement as HTMLElement | null;
         const hostRect = hostEl ? hostEl.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
         const hostWidth = hostRect.width;
         const hostHeight = hostRect.height;
-
         // If the unit sheet, once scaled, would be larger than the viewport,
         // we then fix the position of the overlay to avoid overflow
         const shouldFix = (this.width() * scale > hostWidth) && (this.height() * scale > hostHeight);
@@ -167,7 +171,7 @@ export class SvgInteractionOverlayComponent {
             panelClass: 'turn-summary-overlay-panel',
             closeOnOutsideClick: false,
             closeOnOutsideClickOnly: true,
-            closeOnClickInside: this.nativeElement,
+            sensitiveAreaReferenceElement: this.nativeElement,
             scrollStrategy: this.overlay.scrollStrategies.reposition()
         });
     }

@@ -33,6 +33,7 @@ export class SidebarComponent {
 
     private burgerLipBtn = viewChild<ElementRef<HTMLButtonElement>>('burgerLipBtn');
     private forceBuilderViewer = viewChild<ForceBuilderViewerComponent>('forceBuilderViewer');
+    private footer = viewChild<SidebarFooterComponent>('footer');
 
     // drag state for phone
     private dragging = signal(false);
@@ -136,6 +137,7 @@ export class SidebarComponent {
     }
 
     public toggleMenuOpenClose() {
+        this.footer()?.closeAllMenus();
         this.layout.isMenuOpen.update(v => !v);
     }
 
@@ -186,6 +188,7 @@ export class SidebarComponent {
         let gestureDecided = false;
         let gestureDecisionCompleted = false;
         let gestureIsHorizontal = false;
+        this.footer()?.closeAllMenus();
         
         try { this.elRef.nativeElement.setPointerCapture(startEvent.pointerId); } catch { /* ignore */ }
 

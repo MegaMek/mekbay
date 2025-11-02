@@ -81,9 +81,10 @@ export class OverlayManagerService {
             backdropClass?: string,
             panelClass?: string,
             scrollStrategy?: any,
+            closeOnOutsidePointerDown?: boolean,
             closeOnOutsideClick?: boolean,
             closeOnOutsideClickOnly?: boolean,
-            closeOnClickInside?: HTMLElement
+            sensitiveAreaReferenceElement?: HTMLElement
         }
     ) {
         // close existing with same key first
@@ -121,11 +122,33 @@ export class OverlayManagerService {
             if (anyV && anyV.nativeElement) return anyV.nativeElement as HTMLElement;
             return v as HTMLElement;
         };
-        
-        entry.closeAreaElement = resolveEl(opts?.closeOnClickInside);
+
+        entry.closeAreaElement = resolveEl(opts?.sensitiveAreaReferenceElement);
 
         if (opts?.hasBackdrop) {
             overlayRef.backdropClick().subscribe(() => this.closeManagedOverlay(key));
+        } else if (opts?.closeOnOutsidePointerDown ?? false) {
+            const triggerEl = el as HTMLElement;
+            const onPointerDown = (ev: PointerEvent) => {
+                try {
+                    const overlayEl = overlayRef.overlayElement;
+                    const targetNode = ev.target as Node;
+                    if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
+                        return;
+                    }
+                    // Ignore pointerdown that started inside the overlay or trigger element
+                    if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
+                        return;
+                    }
+                    // record start position and pointer id
+                    entry.pointerStart = { id: ev.pointerId, x: ev.clientX, y: ev.clientY };
+                } catch { /* ignore */ }
+            };
+            // attach listeners capturing phase to detect outside interactions
+            this.document.addEventListener('pointerdown', onPointerDown, true);
+            // store references for later cleanup
+            entry.pointerDownListener = onPointerDown;
+            entry.triggerElement = triggerEl;
         } else if (opts?.closeOnOutsideClickOnly ?? false) {
             // Close only for "click-like" pointer interactions (no large movement / swipes)
             const triggerEl = el as HTMLElement;

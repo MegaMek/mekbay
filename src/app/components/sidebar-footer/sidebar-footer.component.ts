@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2, untracked, afterNextRender, Injector, WritableSignal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2, untracked, afterNextRender, Injector, WritableSignal, viewChildren, QueryList, ViewChildren } from '@angular/core';
 import { Portal, PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { UnitSearchComponent } from '../unit-search/unit-search.component';
@@ -14,7 +14,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { DataService } from '../../services/data.service';
 import { ForcePackDialogComponent } from '../force-pack-dialog/force-pack-dialog.component';
 import { PrintUtil } from '../../utils/print.util';
-import { CdkMenuModule } from '@angular/cdk/menu';
+import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 
@@ -41,6 +41,7 @@ export class SidebarFooterComponent {
     dataService = inject(DataService);
     renderer = inject(Renderer2);
     compactModeService = inject(CompactModeService);
+    menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 
     compactMode = computed(() => {
         return this.compactModeService.compactMode();
@@ -123,5 +124,15 @@ export class SidebarFooterComponent {
 
     printAll(): void {
         PrintUtil.multipagePrint(this.dataService, this.optionsService, this.forceBuilderService.forceUnits());
+    }
+
+    closeAllMenus(): void {
+        const menuTriggers = this.menuTriggers();
+        if (!menuTriggers) { return; }
+        menuTriggers.forEach(t => {
+            try {
+                (t as any).closeMenu?.() ?? (t as any).close?.();
+            } catch(ignored) {}
+        });
     }
 }
