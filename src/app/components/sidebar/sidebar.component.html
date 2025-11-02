@@ -10,7 +10,7 @@
                 <img class="logo" src="/images/logo.png" alt="Mekbay">
             }
             </div>
-            <div [cdkPortalOutlet]="unitSearchPortal()"></div>
+            <div class="searchPortal" [cdkPortalOutlet]="unitSearchPortal()"></div>
         </div>
 
         <force-builder-viewer #forceBuilderViewer [miniMode]="!this.isPhone() && !this.layout.isMenuOpen()"></force-builder-viewer>

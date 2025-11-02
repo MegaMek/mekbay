@@ -32,6 +32,10 @@
         justify-self: center;
         flex-direction: column;
         gap: 8px;
+
+        .searchPortal {
+            width: 100%;
+        }
     }
 
     .logo {
