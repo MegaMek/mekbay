@@ -44,8 +44,21 @@
         gap: 4px;
         &.wrap {
             flex-wrap: wrap;
+            
             .bt-button {
                 flex: 1 1 auto;
+            };
+        }
+        &.grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+            gap: 4px;
+            align-items: center;
+
+            .bt-button {
+                width: 100%;
+                min-width: 0;
+                box-sizing: border-box;
             };
         }
     }
@@ -55,7 +68,7 @@
         cursor: pointer;
         outline: none;
         padding: 4px 8px;
-
+        box-sizing: border-box;
 
         &:hover {
             opacity: 1.0;
@@ -79,7 +92,6 @@
 
     .move-button {
         padding: 6px 10px;
-        min-width: 56px;
         text-align: center;
     }
 

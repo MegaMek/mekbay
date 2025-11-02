@@ -73,6 +73,10 @@ export class SvgInteractionOverlayComponent {
     width = input(200);
     height = input(200);
 
+    get nativeElement(): HTMLElement {
+        return this.host.nativeElement;
+    }
+
     hasPSRChecks = computed(() => {
         const unit = this.unit();
         if (!unit) return false;
@@ -94,6 +98,7 @@ export class SvgInteractionOverlayComponent {
     fixedPosition = computed(() => {
         const unit = this.unit();
         const state = this.zoomPanService.getState();
+        const translate = state.translate();
         const scale = state.scale();
         const hostEl = this.host?.nativeElement as HTMLElement | null;
         const hostRect = hostEl ? hostEl.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
@@ -102,7 +107,8 @@ export class SvgInteractionOverlayComponent {
 
         // If the unit sheet, once scaled, would be larger than the viewport,
         // we then fix the position of the overlay to avoid overflow
-        return (this.width() * scale > hostWidth) && (this.height() * scale > hostHeight);
+        const shouldFix = (this.width() * scale > hostWidth) && (this.height() * scale > hostHeight);
+        return shouldFix;
     });
 
     containerStyle = computed(() => {
@@ -159,8 +165,8 @@ export class SvgInteractionOverlayComponent {
         const compRef = this.overlayManager.createManagedOverlay('turnSummary', target, portal, {
             hasBackdrop: false,
             panelClass: 'turn-summary-overlay-panel',
-            closeOnOutsideClick: true,
-            scrollStrategy: this.overlay.scrollStrategies.close()
+            closeOnOutsideClick: false,
+            scrollStrategy: this.overlay.scrollStrategies.reposition()
         });
     }
 }

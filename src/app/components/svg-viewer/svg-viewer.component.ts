@@ -365,13 +365,26 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
     private slideCanvasX(x: number, animate = false) {
         const el = this.canvasOverlay()?.nativeElement;
-        if (!el) return;
-        if (animate) {
-            el.style.transition = 'transform 250ms ease-out';
-        } else {
-            el.style.transition = 'none';
-        }
-        el.style.transform = `translateX(${x}px)`;
+        if (el) {
+            if (animate) {
+                el.style.transition = 'transform 250ms ease-out';
+            } else {
+                el.style.transition = 'none';
+            }
+            el.style.transform = `translateX(${x}px)`;
+        };
+    }
+
+    private slideInteractionX(x: number, animate = false) {
+        const interactionEl = this.interactionOverlay()?.nativeElement;
+        if (interactionEl) {
+            if (animate) {
+                interactionEl.style.transition = 'transform 250ms ease-out';
+            } else {
+                interactionEl.style.transition = 'none';
+            }
+            interactionEl.style.transform = `translateX(${x}px)`;
+        };
     }
 
     private async preloadNeighbors() {
@@ -526,6 +539,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (this.canvasOverlay()) {
             this.slideCanvasX(0, false);
         }
+        this.slideInteractionX(0, false);
         if (this.prevSlideEl) this.setSlideX(this.prevSlideEl, -this.containerWidth, false);
         if (this.nextSlideEl) this.setSlideX(this.nextSlideEl, this.containerWidth, false);
     }
@@ -559,6 +573,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         // Follow the finger
         this.setSlideX(this.currentSlideEl, this.swipeOffsetX, false);
         this.slideCanvasX(this.swipeOffsetX, false);
+        this.slideInteractionX(this.swipeOffsetX, false);
         if (this.prevSlideEl) {
             this.setSlideX(this.prevSlideEl, -this.containerWidth + this.swipeOffsetX, false);
         }
@@ -594,6 +609,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             // Animate commit to prev (current -> right, prev -> center)
             this.setSlideX(this.currentSlideEl, width, true);
             this.slideCanvasX(width, true);
+            this.slideInteractionX(width, true);
             if (this.prevSlideEl) this.setSlideX(this.prevSlideEl, 0, true);
 
             const onDone = () => {            
@@ -618,6 +634,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             // Animate commit to next (current -> left, next -> center)
             this.setSlideX(this.currentSlideEl, -width, true);
             this.slideCanvasX(-width, true);
+            this.slideInteractionX(-width, true);
             if (this.nextSlideEl) this.setSlideX(this.nextSlideEl, 0, true);
 
             const onDone = () => {
@@ -634,6 +651,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         // Cancel swipe: animate back to original
         this.setSlideX(this.currentSlideEl, 0, true);
         this.slideCanvasX(0, true);
+        this.slideInteractionX(0, true);
         if (this.prevSlideEl) this.setSlideX(this.prevSlideEl, -width, true);
         if (this.nextSlideEl) this.setSlideX(this.nextSlideEl, width, true);
 
@@ -673,5 +691,6 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (keepCurrent && this.currentSlideEl) {
             this.setSlideX(this.currentSlideEl, 0, false);
         }
+        this.slideInteractionX(0, false);
     }
 }

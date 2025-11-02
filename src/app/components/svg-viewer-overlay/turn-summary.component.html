@@ -3,7 +3,7 @@
     <div class="group">
         <div class="phaseTitle">Movement</div>
         <div class="summary-entry">
-            <div class="row wrap">
+            <div class="row grid">
                 @for (moveMode of moveModes(); track moveMode.mode) {
                 @let mode = moveMode.mode;
                 <button type="button" class="bt-button move-button" [class.selected]="currentMoveMode() === mode"
