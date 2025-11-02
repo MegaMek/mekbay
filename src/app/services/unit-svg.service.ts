@@ -886,10 +886,23 @@ export class UnitSvgService implements OnDestroy {
         // cleanup
         for (const otherEl of [mpWalkEl, mpRunEl, mpJumpEl, mpAltMode]) {
             if (!otherEl) continue;
+            if (!el) {
+                otherEl?.classList.remove('unusedMoveMode');
+                otherEl?.classList.remove('currentMoveMode');
+                const sibling = otherEl.previousElementSibling as SVGElement | null;
+                sibling?.classList.remove('unusedMoveMode');
+                sibling?.classList.remove('currentMoveMode');
+                // Use an ID selector and the generic overload so TypeScript treats results as SVGElement
+                svg.querySelectorAll<SVGElement>(`.${CSS.escape(otherEl.id)}-rect`).forEach((rectEl: SVGElement) => {
+                    rectEl.style.display = 'none';
+                });
+            } else
             if (otherEl !== el || (moveMode === 'stationary')) {
                 otherEl?.classList.add('unusedMoveMode');
+                otherEl?.classList.remove('currentMoveMode');
                 const sibling = otherEl.previousElementSibling as SVGElement | null;
                 sibling?.classList.add('unusedMoveMode');
+                sibling?.classList.remove('currentMoveMode');
                 // Use an ID selector and the generic overload so TypeScript treats results as SVGElement
                 svg.querySelectorAll<SVGElement>(`.${CSS.escape(otherEl.id)}-rect`).forEach((rectEl: SVGElement) => {
                     rectEl.style.display = 'none';

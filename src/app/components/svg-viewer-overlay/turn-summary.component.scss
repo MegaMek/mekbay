@@ -28,6 +28,11 @@
     }
 }
 
+@media print {
+    :host {
+        display: none !important;
+    }
+}
 
 .summary-entry {
     text-wrap: nowrap;

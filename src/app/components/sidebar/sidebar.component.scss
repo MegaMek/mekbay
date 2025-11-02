@@ -4,6 +4,12 @@
     z-index: 60;
 }
 
+@media print {
+    :host {
+        display: none !important;
+    }
+}
+
 /* Common inner container */
 .sidebar-inner {
     display: flex;

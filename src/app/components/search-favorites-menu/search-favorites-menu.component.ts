@@ -28,6 +28,11 @@ import { SerializedSearchFilter } from '../../services/unit-search-filters.servi
     </div>
     `,
     styles: [`
+        @media print {
+            :host {
+                display: none !important;
+            }
+        }
         .favorites-menu {
             width: 300px;
             max-height: 500px;

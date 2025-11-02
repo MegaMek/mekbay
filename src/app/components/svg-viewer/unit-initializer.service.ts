@@ -162,6 +162,7 @@ export class UnitInitializerService {
         critSlotsEl.forEach(critSlotEl => {
             const uid = critSlotEl.getAttribute('uid');
             const loc = critSlotEl.getAttribute('loc');
+            const armored = critSlotEl.getAttribute('armored') === '1';
             if (!loc) return;
 
             const slot = parseInt(critSlotEl.getAttribute('slot') as string, 10);
@@ -173,6 +174,9 @@ export class UnitInitializerService {
                 critSlot.uid = uid ?? undefined;
                 if (critSlot.name) {
                     critSlot.eq = equipmentList[critSlot.name];
+                }
+                if (armored) {
+                    critSlot.armored = true; // in case it was added later
                 }
                 criticalSlots.push(critSlot);
                 return;
@@ -190,6 +194,9 @@ export class UnitInitializerService {
 
             if (critSlotEl.classList.contains('ammoSlot')) {
                 critSlot.consumed = 0;
+            }
+            if (armored) {
+                critSlot.armored = true;
             }
             criticalSlots.push(critSlot);
             newSlotsFound = true;

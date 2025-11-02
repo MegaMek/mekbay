@@ -291,6 +291,11 @@ export class TurnSummaryPanelComponent {
     </div>
     `,
     styles: [`
+        @media print {
+            :host {
+                display: none !important;
+            }
+        }
         .panel {
             pointer-events: auto;
             min-width: 200px;

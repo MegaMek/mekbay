@@ -688,7 +688,7 @@ export class RsPolyfillUtil {
             rect.setAttribute('width', rectWidth.toString());
             rect.setAttribute('height', rectHeight.toString());
             rect.setAttribute('fill', '#000');
-            rect.setAttribute('class', moveEl.id + '-rect');
+            rect.setAttribute('class', moveEl.id + '-rect noprint');
             rect.setAttribute('display', 'none');
 
             
@@ -702,7 +702,7 @@ export class RsPolyfillUtil {
             text.setAttribute('font-size', fontSize.toString());
             text.setAttribute('font-weight', 'bold');
             text.setAttribute('fill', '#fff');
-            text.setAttribute('class', moveEl.id + '-rect');
+            text.setAttribute('class', moveEl.id + '-rect noprint');
             rect.setAttribute('display', 'none');
             if (moveEl == mpWalkEl) text.textContent = '+1';
             else if (moveEl == mpRunEl) text.textContent = '+2';

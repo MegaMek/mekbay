@@ -73,7 +73,6 @@ export class UnitSvgMekService extends UnitSvgService {
 
             const uid = el.getAttribute('uid');
             const systemSlot = el.getAttribute('type') === 'sys';
-            const armored = el.getAttribute('armored') === '1';
             const modularArmor = el.getAttribute('modularArmor') === '1';
             const isAmmo = el.classList.contains('ammoSlot');
 
@@ -102,7 +101,7 @@ export class UnitSvgMekService extends UnitSvgService {
 
             el.classList.toggle('damaged', !!criticalSlot.destroyed);
 
-            if (armored && !criticalSlot.destroyed) {
+            if (criticalSlot.armored && !criticalSlot.destroyed) {
                 const armorPip = el.querySelector('.armoredLocPip');
                 if (armorPip) {
                     const isHit = (criticalSlot.hits ?? 0) > 0;
@@ -728,13 +727,9 @@ export class UnitSvgMekService extends UnitSvgService {
             if (critSlotsInLoc.length === 0) continue;
             for (const critSlot of critSlotsInLoc) {
                 if (!critSlot) continue;
-                let armored = false;
-                if (critSlot.el) {
-                    armored = critSlot.el.getAttribute('armored') == '1';
-                }
-                const maxHits = armored ? 2 : 1;
+                const maxHits = critSlot.armored ? 2 : 1;
                 const destroyed = (locDestroyed || (critSlot.hits ?? 0) >= maxHits);
-                if (!destroyed != !critSlot.destroyed) {
+                if (!!destroyed !== !!critSlot.destroyed) {
                     critSlot.destroyed = destroyed;
                     this.unit.setCritSlot(critSlot);
                 }
