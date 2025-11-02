@@ -1,0 +1,30 @@
+<div class="dice-roller-root">
+    <div class="row dice-row" (click)="roll()">
+        @for (value of diceResults(); let i = $index; track i) {
+        <div class="die" tabindex="0" (click)="onDieClick()" [class.rolling]="isRolling()">
+            <span>{{ value === null ? '?' : value }}</span>
+        </div>
+        }
+        @if (rollFinished()) {
+        <div class="sum"> = {{ diceSum() }}</div>
+        }
+    </div>
+
+    <!-- overlay -->
+    @if (overlayVisible()) {
+    <div class="dice-overlay" (click)="onOverlayBackgroundClick()">
+        <div class="dice-overlay-inner" (click)="$event.stopPropagation()">
+            <div class="overlay-dice-row">
+                @for (value of diceResults(); let i = $index; track i) {
+                <div class="die large">
+                    <span>{{ value === null ? '?' : value }}</span>
+                </div>
+                }
+            </div>
+            @if (rollFinished()) {
+            <div class="overlay-sum">{{ diceSum() }}</div>
+            }
+        </div>
+    </div>
+    }
+</div>

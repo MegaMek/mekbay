@@ -1,0 +1,74 @@
+.dice-row {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.die {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border-color, #666);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    background: var(--surface, #fff);
+    color: var(--text, #111);
+    border-radius: 2px;
+    cursor: pointer;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+.die.rolling {
+}
+
+/* overlay */
+.dice-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.dice-overlay-inner {
+    pointer-events: none;
+    background: transparent;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.overlay-dice-row {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: center;
+}
+
+/* big die in overlay */
+.die.large {
+    width: 64px;
+    height: 64px;
+    font-size: 28px;
+    border-radius: 6px;
+    border-width: 2px;
+    background: var(--surface, #fff);
+    color: var(--text, #111);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* sum text shown under overlay dice once finished */
+.overlay-sum {
+    color: #fff;
+    font-size: 48px;
+    font-weight: bold;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.6);
+}

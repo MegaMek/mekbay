@@ -37,8 +37,8 @@
             @if (currentMoveMode() !== 'stationary' && currentMoveMode() !== null) {
             <div class="row">
                 <div class="move-slider-container" #sliderContainer tabindex="0" (keydown)="onKeyDown($event)">
-                    <input class="range" type="range" [attr.min]="MOVE_MIN" [attr.max]="MOVE_MAX" [value]="moveDistance()"
-                        (input)="onMoveDistanceInput($event)" aria-label="Move distance" />
+                    <input class="range" type="range" [attr.min]="MOVE_MIN" [attr.max]="MOVE_MAX"
+                        [value]="moveDistance()" (input)="onMoveDistanceInput($event)" aria-label="Move distance" />
                     <div class="thumb-marker" [style.left.%]="moveDistancePercent()" (pointerdown)="startDrag($event)">
                         <div class="hex" [class.valueAssigned]="hasMoveDistance()">{{ moveDistanceLabel() }}</div>
                     </div>
@@ -86,4 +86,12 @@
     <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurn()">
         End Turn
     </button>
+
+    <div class="group">
+        <div class="summary-entry">
+            <div class="row">
+                <dice-roller #diceComp [diceCount]="2"></dice-roller>
+            </div>
+        </div>
+    </div>
 </div>

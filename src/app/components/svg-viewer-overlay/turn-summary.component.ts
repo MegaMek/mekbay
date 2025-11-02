@@ -45,6 +45,7 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { SvgInteractionOverlayComponent } from './svg-viewer-overlay.component';
 import { canChangeAirborneGround, MotiveModeOption, MotiveModes } from '../../models/motiveModes.model';
+import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 
 /*
  * Author: Drake
@@ -53,7 +54,7 @@ import { canChangeAirborneGround, MotiveModeOption, MotiveModes } from '../../mo
 @Component({
     selector: 'turn-summary-panel',
     standalone: true,
-    imports: [CommonModule],
+    imports: [CommonModule, DiceRollerComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './turn-summary.component.html',
     styleUrls: [`./turn-summary.component.scss`]
