@@ -129,7 +129,6 @@ export class DiceRollerComponent {
         this.roll();
     }
 
-    // overlay background click — only closes if roll finished & 1s passed
     onOverlayBackgroundClick() {
         if (this.isRolling()) {
             return;
