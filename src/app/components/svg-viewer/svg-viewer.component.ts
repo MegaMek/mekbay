@@ -49,7 +49,7 @@ import { Unit } from '../../models/units.model';
     selector: 'svg-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, SvgCanvasOverlayComponent, SvgInteractionOverlayComponent],
+    imports: [CommonModule, SvgCanvasOverlayComponent /*, SvgInteractionOverlayComponent */],
     providers: [SvgZoomPanService, SvgInteractionService],
     templateUrl: './svg-viewer.component.html',
     styleUrls: ['./svg-viewer.component.css']
@@ -69,7 +69,6 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     diffHeatArrowRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatArrow');
     diffHeatTextRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatText');
     canvasOverlay = viewChild<SvgCanvasOverlayComponent>('canvasOverlay');
-    interactionOverlay = viewChild<SvgInteractionOverlayComponent>('interactionOverlay');
 
     loadError = signal<string | null>(null);
     svgWidth = 0;

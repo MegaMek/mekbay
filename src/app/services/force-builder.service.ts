@@ -99,7 +99,9 @@ export class ForceBuilderService {
 
         this.currentForce.set(newForce);
 
-        this.logger.info(`ForceBuilderService: Setting new force with name "${this.force.name}" and instance ID "${this.force.instanceId()}"`);
+        const instanceId = this.force.instanceId();
+
+        this.logger.info(`ForceBuilderService: Setting new force with name "${this.force.name}" "${ instanceId ? ` and instance ID ${instanceId}` : '' }"`);
 
         // Subscribe to new force's changed event
         this.forceChangedSubscription = this.currentForce().changed.subscribe(() => {
