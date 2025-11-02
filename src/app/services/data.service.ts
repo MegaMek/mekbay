@@ -37,7 +37,7 @@ import { Unit, UnitComponent, Units } from '../models/units.model';
 import { Faction, Factions } from '../models/factions.model';
 import { Era, Eras } from '../models/eras.model';
 import { DbService, StoredTags } from './db.service';
-import { ADVANCED_FILTERS, AdvFilterType } from './unit-search-filters.service';
+import { ADVANCED_FILTERS, AdvFilterType, SerializedSearchFilter } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, IAmmo, IEquipment, IWeapon, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { Quirk, Quirks } from '../models/quirks.model';
@@ -46,6 +46,7 @@ import { Force, ForceUnit, SerializedForce, SerializedGroup, SerializedUnit } fr
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
+import { LoggerService } from './logger.service';
 import { firstValueFrom } from 'rxjs';
 
 /*
@@ -61,6 +62,7 @@ export interface UnitTypeMaxStats {
         dissipationEfficiency: [number, number],
         runMP: [number, number],
         run2MP: [number, number],
+        umuMP: [number, number],
         jumpMP: [number, number],
         alphaNoPhysical: [number, number],
         alphaNoPhysicalNoOneshots: [number, number],
@@ -93,6 +95,7 @@ export type BroadcastPayload = {
     providedIn: 'root'
 })
 export class DataService {
+    private logger = inject(LoggerService);
     private broadcast?: BroadcastChannel;
     private injector = inject(Injector);
     private http = inject(HttpClient);
@@ -168,7 +171,7 @@ export class DataService {
                         } else if (equipment.type === 'misc') {
                             newData.equipment[unitType][equipmentInternalName] = new MiscEquipment(equipment);
                         } else {
-                            console.log(`Unknown equipment type for ${equipmentInternalName}: ${equipment.type}`);
+                            this.logger.warn(`Unknown equipment type for ${equipmentInternalName}: ${equipment.type}`);
                             newData.equipment[unitType][equipmentInternalName] = new Equipment(equipment);
                         }
                     }
@@ -270,7 +273,7 @@ export class DataService {
                 this.loadUnitTags(this.getUnits());
             }
         } catch (err) {
-            console.error('Error handling store update broadcast', err);
+            this.logger.error('Error handling store update broadcast: ' + err);
         }
     }
 
@@ -402,6 +405,7 @@ export class DataService {
                 runMP: number[],
                 run2MP: number[],
                 jumpMP: number[],
+                umuMP: number[],
                 alphaNoPhysical: number[],
                 alphaNoPhysicalNoOneshots: number[],
                 maxRange: number[],
@@ -463,6 +467,7 @@ export class DataService {
                     runMP: [],
                     run2MP: [],
                     jumpMP: [],
+                    umuMP: [],
                     alphaNoPhysical: [],
                     alphaNoPhysicalNoOneshots: [],
                     maxRange: [],
@@ -477,6 +482,7 @@ export class DataService {
             statsByType[t].runMP.push(unit.run || 0);
             statsByType[t].run2MP.push(unit.run2 || 0);
             statsByType[t].jumpMP.push(unit.jump || 0);
+            statsByType[t].umuMP.push(unit.umu || 0);
             statsByType[t].alphaNoPhysical.push(unit._mdSumNoPhysical || 0);
             statsByType[t].alphaNoPhysicalNoOneshots.push(unit._mdSumNoPhysicalNoOneshots || 0);
             statsByType[t].maxRange.push(unit._maxRange || 0);
@@ -510,6 +516,9 @@ export class DataService {
                 jumpMP: [
                     Math.min(...stats.jumpMP, 0),
                     Math.max(...stats.jumpMP, 0)],
+                umuMP: [
+                    Math.min(...stats.umuMP, 0),
+                    Math.max(...stats.umuMP, 0)],
                 alphaNoPhysical: [
                     Math.min(...stats.alphaNoPhysical, 0),
                     Math.max(...stats.alphaNoPhysical, 0)
@@ -532,7 +541,7 @@ export class DataService {
 
     public getUnitTypeMaxStats(type: string) {
         return this.unitTypeMaxStats[type] || {
-            armor: 0, internal: 0, heat: 0, dissipation: 0, dissipationEfficiency: 0, runMP: 0, run2MP: 0, jumpMP: 0, alphaNoPhysical: 0, alphaNoPhysicalNoOneshots: 0
+            armor: 0, internal: 0, heat: 0, dissipation: 0, dissipationEfficiency: 0, runMP: 0, run2MP: 0, jumpMP: 0, umuMP: 0, alphaNoPhysical: 0, alphaNoPhysicalNoOneshots: 0
         };
     }
 
@@ -545,7 +554,7 @@ export class DataService {
             const etag = resp.headers.get('ETag') || '';
             return etag;
         } catch (err) {
-            console.warn(`Failed to fetch ETag via HttpClient HEAD for ${src}: ${err}`);
+            this.logger.warn(`Failed to fetch ETag via HttpClient HEAD for ${src}: ${err}`);
             return '';
         }
     }
@@ -572,7 +581,7 @@ export class DataService {
                 const etag = await this.getRemoteETag(`${store.key}.json`);
                 if (localData && localData.etag === etag) {
                     this.data[store.key as keyof LocalStore] = localData;
-                    console.log(`${store.key} is up to date. (ETag: ${etag})`);
+                    this.logger.info(`${store.key} is up to date. (ETag: ${etag})`);
                     return;
                 }
                 await this.fetchFromRemote(store);
@@ -588,15 +597,15 @@ export class DataService {
 
     public async initialize(): Promise<void> {
         this.isDataReady.set(false);
-        console.log('Initializing data service...');
+        this.logger.info('Initializing data service...');
         await this.dbService.waitForDbReady();
-        console.log('Database is ready, checking for updates...');
+        this.logger.info('Database is ready, checking for updates...');
         try {
             await this.checkForUpdate();
-            console.log('All data stores are ready.');
+            this.logger.info('All data stores are ready.');
             this.isDataReady.set(true);
         } catch (error) {
-            console.error('Could not check version, trying to load from cache.', error);
+            this.logger.error('Could not check version, trying to load from cache. ' + error);
             let allDataReady = true;
             for (const store of this.remoteStores) {
                 let localData = await store.getFromLocalStorage();
@@ -616,7 +625,7 @@ export class DataService {
 
     private async fetchFromRemote<T extends object>(remoteStore: RemoteStore<T>): Promise<void> {
         this.isDownloading.set(true);
-        console.log(`Downloading ${remoteStore.key}...`);
+        this.logger.info(`Downloading ${remoteStore.key}...`);
         return new Promise<void>((resolve, reject) => {
             this.http.get<T>(remoteStore.url, {
                 reportProgress: false,
@@ -636,14 +645,14 @@ export class DataService {
                         }
                         this.data[remoteStore.key as keyof LocalStore] = processedData;
                         await remoteStore.putInLocalStorage(data); // Save original data with etag
-                        console.log(`${remoteStore.key} updated. (ETag: ${etag})`);
+                        this.logger.info(`${remoteStore.key} updated. (ETag: ${etag})`);
                         resolve();
                     } catch (error) {
                         reject(error);
                     }
                 },
                 error: (err) => {
-                    console.error(`Failed to download ${remoteStore.key}`, err);
+                    this.logger.error(`Failed to download ${remoteStore.key}: ` + err);
                     reject(err);
                 }
             });
@@ -654,7 +663,7 @@ export class DataService {
         const etag = await this.fetchSheetETag(sheetFileName);
         const sheet: SVGSVGElement | null = await this.dbService.getSheet(sheetFileName, etag);
         if (sheet) {
-            console.log(`Sheet ${sheetFileName} found in cache.`);
+            this.logger.info(`Sheet ${sheetFileName} found in cache.`);
             return sheet;
         }
         return this.fetchAndCacheSheet(sheetFileName);
@@ -665,7 +674,7 @@ export class DataService {
     }
 
     private async fetchAndCacheSheet(sheetFileName: string): Promise<SVGSVGElement> {
-        console.info(`Fetching sheet: ${sheetFileName}`);
+        this.logger.info(`Fetching sheet: ${sheetFileName}`);
         const src = `https://db.mekbay.com/sheets/${sheetFileName}`;
 
         return new Promise<SVGSVGElement>((resolve, reject) => {
@@ -696,14 +705,14 @@ export class DataService {
 
                         RsPolyfillUtil.fixSvg(svgElement);
                         await this.dbService.saveSheet(sheetFileName, svgElement, etag);
-                        console.info(`Sheet ${sheetFileName} fetched and cached.`);
+                        this.logger.info(`Sheet ${sheetFileName} fetched and cached.`);
                         resolve(svgElement);
                     } catch (error) {
                         reject(error);
                     }
                 },
                 error: (err) => {
-                    console.error(`Failed to download sheet ${sheetFileName}: ` + err);
+                    this.logger.error(`Failed to download sheet ${sheetFileName}: ` + err);
                     reject(err);
                 }
             });
@@ -767,11 +776,11 @@ export class DataService {
     }
 
     public async listForces(): Promise<LoadForceEntry[]> {
-        console.log(`Retrieving local forces...`);
+        this.logger.info(`Retrieving local forces...`);
         const localForces = await this.dbService.listForces(this, this.unitInitializer, this.injector);
-        console.log(`Retrieving cloud forces...`);
+        this.logger.info(`Retrieving cloud forces...`);
         const cloudForces = await this.listForcesCloud();
-        console.log(`Found ${localForces.length} local forces and ${cloudForces.length} cloud forces.`);
+        this.logger.info(`Found ${localForces.length} local forces and ${cloudForces.length} cloud forces.`);
         const forceMap = new Map<string, LoadForceEntry>();
         const getTimestamp = (f: any) => {
             if (f && typeof f.timestamp === 'number') return f.timestamp;
@@ -792,7 +801,7 @@ export class DataService {
             }
         }
         const mergedForces = Array.from(forceMap.values()).sort((a, b) => getTimestamp(b) - getTimestamp(a));
-        console.log(`Found ${mergedForces.length} unique forces.`);
+        this.logger.info(`Found ${mergedForces.length} unique forces.`);
         return mergedForces;
     }
 
@@ -888,7 +897,7 @@ export class DataService {
                     });
                     forces.push(entry);
                 } catch (error) {
-                    console.error('Failed to deserialize force:', error, raw);
+                    this.logger.error('Failed to deserialize force: ' + error + ' ' + raw);
                 }
             }
         }
@@ -967,7 +976,7 @@ export class DataService {
             };
             const response = await this.wsService.sendAndWaitForResponse(payload);
             if (response && response.code === 'not_owner') {
-                console.warn('Cannot save force to cloud: not the owner, we regenerated a new instanceId.');
+                this.logger.warn('Cannot save force to cloud: not the owner, we regenerated a new instanceId.');
                 const oldInstanceId = force.instanceId();
                 force.instanceId.set(generateUUID());
                 force.owned.set(true);
@@ -1035,20 +1044,60 @@ export class DataService {
         return response.data || null;
     }
 
+    /* ----------------------------------------------------------
+     * Tags
+     */
+
     public async saveUnitTags(units: Unit[]): Promise<void> {
         const tagsToSave: StoredTags = {};
-
         for (const unit of units) {
             if (unit._tags && unit._tags.length > 0) {
                 tagsToSave[unit.name] = unit._tags;
             }
         }
-
         await this.dbService.saveTags(tagsToSave);
         this.notifyStoreUpdated('update', 'tags');
     }
 
+    private async getTagsCloud(instanceId: string): Promise<StoredTags | null> {
+        const ws = await this.canUseCloud();
+        if (!ws) return null;
+        const uuid = this.userStateService.uuid();
+        const payload = {
+            action: 'getTags',
+            uuid,
+            instanceId,
+        };
+        const response = await this.wsService.sendAndWaitForResponse(payload);
+        return response.data || null;
+    }
+
+    /* ----------------------------------------------------------
+     * Favorites searches
+     */
+
+    public async saveFavoriteSearch(fav: SerializedSearchFilter): Promise<void> {
+    }
+
+    private async getFavoriteSearchCloud(instanceId: string): Promise<SerializedSearchFilter | null> {
+        const ws = await this.canUseCloud();
+        if (!ws) return null;
+        const uuid = this.userStateService.uuid();
+        const payload = {
+            action: 'getFavoriteSearch',
+            uuid,
+            instanceId,
+        };
+        const response = await this.wsService.sendAndWaitForResponse(payload);
+        return response.data || null;
+    }
+
+    /* ----------------------------------------------------------
+     * Canvas Data
+     */
+
     public deleteCanvasDataOfUnit(unit: ForceUnit): void {
         this.dbService.deleteCanvasData(unit.id);
     }
+
 }

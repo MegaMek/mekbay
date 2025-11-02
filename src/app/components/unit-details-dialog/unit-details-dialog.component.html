@@ -62,8 +62,12 @@
                             unit.engineRating }} </span>{{ unit.engine }}</strong></div>
                 <div *ngIf="unit.moveType && unit.moveType != 'None'"><span class="muted">Motive Type: </span><strong>{{
                         unit.moveType }}</strong></div>
-                <div *ngIf="unit.walk"><span class="muted">Movement: </span><strong>{{ unit.walk }} / {{ unit.run
-                        }}<span *ngIf="unit.run2 != unit.run"> [{{ unit.run2 }}]</span>@if (unit.jump) { / {{ unit.jump }}}</strong></div>
+                <div *ngIf="unit.walk || unit.run || unit.jump || unit.umu"><span class="muted">Movement: </span>
+                    <strong>{{ unit.walk }} / {{ unit.run
+                        }}<span *ngIf="unit.run2 != unit.run"> [{{ unit.run2 }}]</span>
+                        @if (unit.umu) { / {{ unit.umu }}} 
+                        @else if (unit.jump) { / {{ unit.jump }}}
+                    </strong></div>
                 <div *ngIf="unit.c3 && unit.c3 != 'None'"><span class="muted">Network: </span><strong>{{ unit.c3
                         }}</strong></div>
             </div>
@@ -71,7 +75,7 @@
                 <div class="quirks">
                     <div class="muted">Quirks: </div>
                     @for (quirk of unit.quirks; let i = $index; track i) {
-                        <div class="quirk" [ngClass]="getQuirkClass(quirk)" [title]="getQuirkDesc(quirk)">{{ quirk }}</div>
+                        <div class="quirk" [ngClass]="getQuirkClass(quirk)" [tooltip]="getQuirkDesc(quirk)">{{ quirk }}</div>
                     }
                 </div>
             </div>

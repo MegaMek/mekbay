@@ -41,7 +41,7 @@ html, body {
     padding: 0;
     width: 100vw;
     height: 100vh;
-    background-color: var(--background-color-menu);
+    background-color: var(--background-color);
     overflow: hidden;
     overscroll-behavior: none;
     font-family: 'Roboto', "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Symbol";
@@ -90,6 +90,12 @@ hr {
     min-height: 0;
 }
 
+.glass {
+    background-color: rgba(45, 45, 45, 0.8);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+}
+
 .modal-btn {
     padding: 8px 36px;
     font-size: 1.1em;
@@ -113,15 +119,19 @@ hr {
     box-sizing: border-box;
 }
 
+.has-shadow {
+    box-shadow: rgba(0, 0, 0, 0.4) 0px 2px 4px, rgba(0, 0, 0, 0.3) 0px 7px 13px -3px;
+}
+
 .framed-borders {
     background-repeat: no-repeat;
     background-origin: border-box;
-    border-top: 1px solid white;
-    border-bottom: 1px solid white;
+    border-top: 2px solid white;
+    border-bottom: 2px solid white;
     background-image:
         linear-gradient(white, white), linear-gradient(white, white),
         linear-gradient(white, white), linear-gradient(white, white);
-    background-size: 1px 12px, 1px 12px, 1px 12px, 1px 12px;
+    background-size: 2px 12px, 2px 12px, 2px 12px, 2px 12px;
     background-position: top left, top right, bottom left, bottom right;
 }
 
@@ -138,9 +148,22 @@ hr {
         linear-gradient(#666, #666),
         linear-gradient(#666, #666),
         linear-gradient(#666, #666);
-    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
 
+    &:hover {
+        background-image:
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white);
+    }
+
+    &:focus,
     &.active,
     &.open {
         outline: none;
@@ -153,7 +176,7 @@ hr {
             linear-gradient(white, white),
             linear-gradient(white, white),
             linear-gradient(white, white);
-        background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
         background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 }
@@ -161,7 +184,7 @@ hr {
 
 .bt-input {
     padding: 8px;
-    border: 1px transparent;
+    border: 2px transparent;
     color: white;
     background: var(--background-input);
     box-sizing: border-box;
@@ -177,8 +200,20 @@ hr {
         linear-gradient(#666, #666),
         linear-gradient(#666, #666),
         linear-gradient(#666, #666);
-    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+
+    &:hover {
+        background-image:
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white);
+    }
 
     &:focus,
     &:focus-visible {
@@ -192,7 +227,7 @@ hr {
             linear-gradient(white, white),
             linear-gradient(white, white),
             linear-gradient(white, white);
-        background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
         background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 
@@ -221,7 +256,7 @@ hr {
     touch-action: manipulation;
     cursor: pointer;
     padding: 8px 20px 8px 8px;
-    border: 1px transparent;
+    border: 2px transparent;
     box-sizing: border-box;
     background: rgba(40, 40, 40);
     color: white;
@@ -241,11 +276,12 @@ hr {
         linear-gradient(#666, #666);
     background-repeat: no-repeat;
     background-position: right 6px center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
-    background-size: 12px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-size: 12px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
 
 
     &:focus,
     &:focus-visible,
+    &:hover,
     &.open {
         outline: none;
         background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23ffffff'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e"),
@@ -257,7 +293,7 @@ hr {
             linear-gradient(white, white),
             linear-gradient(white, white),
             linear-gradient(white, white);
-        background-size: 12px 12px, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+        background-size: 12px 12px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
         background-position: right 6px center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 
@@ -284,11 +320,10 @@ hr {
     justify-content: center;
     background: var(--background-input);
     color: #bbb;
-    border: 1px solid white;
     font-weight: bold;
     box-sizing: border-box;
     text-align: center;
-    border: 1px solid transparent;
+    border: 2px solid transparent;
     transition: all 0.2s ease-in-out;
     min-height: 32px;
     background-repeat: no-repeat;
@@ -298,7 +333,7 @@ hr {
         linear-gradient(#666, #666), linear-gradient(#666, #666),
         linear-gradient(#666, #666), linear-gradient(#666, #666),
         linear-gradient(#666, #666), linear-gradient(#666, #666);
-    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
 
     &:hover {
@@ -309,7 +344,7 @@ hr {
             linear-gradient(white, white), linear-gradient(white, white),
             linear-gradient(white, white), linear-gradient(white, white),
             linear-gradient(white, white), linear-gradient(white, white);
-        background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
+        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
         background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 
@@ -369,6 +404,13 @@ hr {
         overflow: hidden;
     }
 
+    &.square-large {
+        flex-shrink: 0;
+        width: 48px;
+        height: 48px;
+        overflow: hidden;
+    }
+
     &.borderless {
         border: none;
         background: none;
@@ -376,7 +418,6 @@ hr {
 }
 
 .popup-menu {
-    background-color: var(--background-color-menu);
     padding: 8px 0;
     display: flex;
     flex-direction: column;
@@ -397,12 +438,10 @@ hr {
         display: flex;
         align-items: center;
         flex-direction: row;
-        color: var(--text-color-secondary);
         transition: color 0.2s, background-color 0.2s;
 
         &:hover {
             background-color: var(--background-highlight, #444);
-            color: var(--text-color);
         }
 
         &:disabled {
@@ -713,6 +752,12 @@ hr {
         }
     }
 
+    #fluff-image-fo {
+        transform: none;
+        pointer-events: none;
+        overflow: hidden;
+    }
+
     .interactive {
         cursor: pointer;
         touch-action: manipulation;
@@ -969,6 +1014,13 @@ hr {
         #suit5 > image {
             pointer-events: none;
         }
+
+        .currentMoveMode {
+            font-weight: bold;
+        }
+        .unusedMoveMode {
+            opacity: 0.5;
+        }
     }
 }
 
@@ -1080,7 +1132,13 @@ hr {
             filter: invert(1);
         }
 
+        #fluff-image-fo {
+            mix-blend-mode: lighten;
+        }
+
         #fluff-image-injected {
+            transform: none;
+            filter: invert(1);
             mix-blend-mode: lighten;
         }
 
@@ -1234,7 +1292,6 @@ hr {
     }
 
     force-builder-viewer,
-    .menu-overlay,
     .header {
         display: none !important;
     }

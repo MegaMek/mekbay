@@ -39,6 +39,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { naturalCompare } from '../utils/sort.util';
 import { OptionsService } from './options.service';
+import { LoggerService } from './logger.service';
 
 /*
  * Author: Drake
@@ -93,6 +94,17 @@ type RangeFilterOptions = {
     interacted: boolean;
     curve?: number;
 };
+
+export interface SerializedSearchFilter {
+    name: string;
+    q?: string;
+    sort?: string;
+    sortDir?: 'asc' | 'desc';
+    filters?: Record<string, any>;
+    gunnery?: number;
+    piloting?: number;
+}
+
 
 type AdvFilterOptions = DropdownFilterOptions | RangeFilterOptions;
 
@@ -235,6 +247,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'era', label: 'Era', type: AdvFilterType.DROPDOWN, external: true },
     { key: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true },
     { key: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'cbt' },
+    { key: 'as.TP', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'as' },
     { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: 'cbt' },
     {
         key: 'techBase', label: 'Tech', type: AdvFilterType.DROPDOWN,
@@ -270,11 +283,11 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
     { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
     { key: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
+    { key: 'umu', label: 'UMU MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
     { key: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
     { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
 
-    /* Alpha Strike specific filters */
-    { key: 'as.TP', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'as' },
+    /* Alpha Strike specific filters (but some are above) */
     { key: 'as.MV', label: 'Move', type: AdvFilterType.DROPDOWN, game: 'as' },
     { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: 'as' },
     { key: 'as.SZ', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
@@ -340,6 +353,7 @@ export class UnitSearchFiltersService {
     optionsService = inject(OptionsService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
+    logger = inject(LoggerService);
     
     ADVANCED_FILTERS = ADVANCED_FILTERS;
     pilotGunnerySkill = signal(4);
@@ -1077,7 +1091,7 @@ export class UnitSearchFiltersService {
                         }
                         this.filterState.set(validFilters);
                     } catch (error) {
-                        console.warn('Failed to parse filters from URL:', error);
+                        this.logger.warn('Failed to parse filters from URL: ' + error);
                     }
                 }
 
@@ -1310,7 +1324,7 @@ export class UnitSearchFiltersService {
                 }
             }
         } catch (error) {
-            console.warn('Failed to parse compact filters from URL:', error);
+            this.logger.warn('Failed to parse compact filters from URL: ' + error);
         }
         
         return filterState;
@@ -1410,5 +1424,63 @@ export class UnitSearchFiltersService {
         }
         
         return BVCalculatorUtil.calculateAdjustedBV(unit.bv, gunnery, piloting);
+    }
+
+    
+    public serializeCurrentSearchFilter(name: string): SerializedSearchFilter {
+        const filter: SerializedSearchFilter = { name };
+
+        const q = this.searchText();
+        if (q && q.trim().length > 0) filter.q = q.trim();
+
+        const sort = this.selectedSort();
+        if (sort && sort !== 'name') filter.sort = sort;
+
+        const sortDir = this.selectedSortDirection();
+        if (sortDir && sortDir !== 'asc') filter.sortDir = sortDir;
+
+        const g = this.pilotGunnerySkill();
+        if (typeof g === 'number' && g !== 4) filter.gunnery = g;
+
+        const p = this.pilotPilotingSkill();
+        if (typeof p === 'number' && p !== 5) filter.piloting = p;
+
+        // Save only interacted filters
+        const state = this.filterState();
+        const savedFilters: Record<string, any> = {};
+        for (const [key, val] of Object.entries(state)) {
+            if (val.interactedWith) {
+                savedFilters[key] = val.value;
+            }
+        }
+        if (Object.keys(savedFilters).length > 0) {
+            filter.filters = savedFilters;
+        }
+        return filter;
+    }
+
+    public applySerializedSearchFilter(filter: SerializedSearchFilter): void {
+        // Reset all filters first
+        this.clearFilters();
+        // Apply search text
+        if (filter.q) {
+            this.searchText.set(filter.q);
+        }
+        // Apply filters
+        if (filter.filters) {
+            for (const [key, value] of Object.entries(filter.filters)) {
+                this.setFilter(key, value);
+            }
+        }
+        // Apply sort
+        if (filter.sort) this.setSortOrder(filter.sort);
+        if (filter.sortDir) this.setSortDirection(filter.sortDir);
+
+        // Apply pilot skills if provided
+        if (typeof filter.gunnery === 'number' || typeof filter.piloting === 'number') {
+            const g = typeof filter.gunnery === 'number' ? filter.gunnery : this.pilotGunnerySkill();
+            const p = typeof filter.piloting === 'number' ? filter.piloting : this.pilotPilotingSkill();
+            this.setPilotSkills(g, p);
+        }
     }
 }

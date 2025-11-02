@@ -45,7 +45,7 @@ import { LayoutModule } from '@angular/cdk/layout';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
 import { OptionsService } from './services/options.service';
 import { OptionsDialogComponent } from './components/options-dialog/options-dialog.component';
-import { PrintUtil } from './utils/print.util';
+import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { LicenseDialogComponent } from './components/license-dialog/license-dialog.component';
 import { ToastsComponent } from './components/toasts/toasts.component';
 import { WsService } from './services/ws.service';
@@ -60,6 +60,7 @@ import { OverlayModule } from '@angular/cdk/overlay';
 import { APP_VERSION_STRING } from './build-meta';
 import { copyTextToClipboard } from './utils/clipboard.util';
 import { LoadForceEntry } from './models/load-force-entry.model';
+import { LoggerService } from './services/logger.service';
 
 
 /*
@@ -73,9 +74,9 @@ import { LoadForceEntry } from './models/load-force-entry.model';
         CommonModule,
         ToastsComponent,
         SvgViewerComponent,
-        ForceBuilderViewerComponent,
         LayoutModule,
         UpdateButtonComponent,
+        SidebarComponent,
         UnitSearchComponent,
         OverlayModule,
         PortalModule
@@ -84,6 +85,7 @@ import { LoadForceEntry } from './models/load-force-entry.model';
     styleUrl: './app.scss'
 })
 export class App {
+    logger = inject(LoggerService);
     private swUpdate = inject(SwUpdate);
     protected dataService = inject(DataService);
     private forceBuilderService = inject(ForceBuilderService);
@@ -108,10 +110,6 @@ export class App {
     protected unitSearchPortalMain!: DomPortal<any>;
     protected unitSearchPortalExtended!: DomPortal<any>;
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
-
-    isOverlayVisible = computed(() => {
-        return this.layoutService.isMobile() && (this.layoutService.isMenuOpen() || this.layoutService.isMenuDragging());
-    });
 
     constructor() {
         this.dataService.initialize();
@@ -176,7 +174,7 @@ export class App {
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
     @HostListener('window:online')
     onOnline() {
-        console.log('Back online!');
+        this.logger.info('Back online!');
         this.checkForUpdate();
     }
 
@@ -191,7 +189,7 @@ export class App {
         if (now - this.lastUpdateCheck < (this.updateCheckInterval / 4)) {
             return;
         }
-        console.log('Checking for updates...');
+        this.logger.info('Checking for updates...');
         this.lastUpdateCheck = now;
 
         if (this.swUpdate.isEnabled) {
@@ -201,7 +199,7 @@ export class App {
                     this.updateAvailable.set(true);
                 }
             } catch (err) {
-                console.error('Error checking for updates:', err);
+                this.logger.error('Error checking for updates:' + err);
             }
         }
     }

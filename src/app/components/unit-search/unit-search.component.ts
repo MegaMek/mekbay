@@ -36,7 +36,7 @@ import { Component, signal, ElementRef, OnDestroy, computed, HostListener, effec
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
-import { UnitSearchFiltersService, ADVANCED_FILTERS, SORT_OPTIONS, AdvFilterType, SortOption } from '../../services/unit-search-filters.service';
+import { UnitSearchFiltersService, ADVANCED_FILTERS, SORT_OPTIONS, AdvFilterType, SortOption, SerializedSearchFilter } from '../../services/unit-search-filters.service';
 import { Unit, UnitComponent } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Dialog } from '@angular/cdk/dialog';
@@ -58,6 +58,10 @@ import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { OptionsService } from '../../services/options.service';
 import { LongPressDirective } from '../../directives/long-press.directive';
+import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
+import { OverlayManagerService } from '../../services/overlay-manager.service';
+
+
 
 @Pipe({
     name: 'expandedComponents',
@@ -98,6 +102,8 @@ export class UnitSearchComponent implements OnDestroy {
     dataService = inject(DataService);
     forceBuilderService = inject(ForceBuilderService);
     optionsService = inject(OptionsService);
+    overlayManager = inject(OverlayManagerService);
+
     private injector = inject(Injector);
     private dialog = inject(Dialog);
     private dialogsService = inject(DialogsService);
@@ -111,11 +117,13 @@ export class UnitSearchComponent implements OnDestroy {
     viewport = viewChild(CdkVirtualScrollViewport);
     searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
+    favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
     resultsDropdown = viewChild<ElementRef<HTMLElement>>('resultsDropdown');
 
     gameSystem = computed(() => this.optionsService.options().gameSystem);
     autoFocus = input(false);
+    buttonOnly = signal(false);
     expandedView = this.filtersService.expandedView;
     advOpen = this.filtersService.advOpen;
     advPanelDocked = computed(() => this.expandedView() && this.advOpen() && this.layoutService.windowWidth() >= 900);
@@ -141,7 +149,7 @@ export class UnitSearchComponent implements OnDestroy {
         return this.advOpen() || this.resultsVisible();
     });
 
-    resultsVisible = computed(() => {
+    public readonly resultsVisible = computed(() => {
         if (this.expandedView()) {
             return true;
         }
@@ -152,7 +160,6 @@ export class UnitSearchComponent implements OnDestroy {
     itemSize = signal(75);
 
     private resizeObserver?: ResizeObserver;
-    private tagSelectorOverlayRef?: OverlayRef;
     private advPanelDragStartX = 0;
     private advPanelDragStartWidth = 0;
 
@@ -176,8 +183,8 @@ export class UnitSearchComponent implements OnDestroy {
             if (this.autoFocus() &&
                 this.filtersService.isDataReady() &&
                 this.searchInput().nativeElement) {
-                    afterNextRender(() => {
-                        this.searchInput().nativeElement.focus();
+                afterNextRender(() => {
+                    this.searchInput().nativeElement.focus();
                 }, { injector: this.injector });
             }
         });
@@ -202,7 +209,7 @@ export class UnitSearchComponent implements OnDestroy {
 
     ngOnDestroy() {
         this.resizeObserver?.disconnect();
-        this.tagSelectorOverlayRef?.dispose();
+        this.overlayManager.closeAllManagedOverlays();
     }
 
     private setupItemHeightTracking() {
@@ -246,7 +253,7 @@ export class UnitSearchComponent implements OnDestroy {
         });
     }
 
-    closeAllPanels() {
+    public closeAllPanels() {
         this.focused.set(false);
         this.advOpen.set(false);
         this.activeIndex.set(null);
@@ -263,7 +270,7 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     focusInput() {
-        this.searchInput().nativeElement.focus();
+        try { this.searchInput()?.nativeElement.focus(); } catch { /* ignore */ }
     }
 
     setSearch(val: string) {
@@ -587,13 +594,13 @@ export class UnitSearchComponent implements OnDestroy {
         setTimeout(() => {
             try { if ('disableClose' in ref) (ref as any).disableClose = false; } catch (e) { /* ignore */ }
         }, 500);
-        
+
         ref.closed.subscribe(() => {
             this.unitDetailsDialogOpen.set(false);
         });
 
         ref.componentInstance?.add.subscribe(newUnit => {
-            if (!this.forceBuilderService.hasUnits()) {
+            if (this.forceBuilderService.forceUnits().length === 1) {
                 // If this is the first unit being added, close the search panel
                 this.closeAllPanels();
             }
@@ -678,34 +685,12 @@ export class UnitSearchComponent implements OnDestroy {
 
         // Create overlay positioned near the click
         const target = event.target as HTMLElement;
-        const positionStrategy = this.overlay.position()
-            .flexibleConnectedTo(target)
-            .withPositions([
-                {
-                    originX: 'start',
-                    originY: 'bottom',
-                    overlayX: 'start',
-                    overlayY: 'top',
-                    offsetY: 4
-                },
-                {
-                    originX: 'start',
-                    originY: 'top',
-                    overlayX: 'start',
-                    overlayY: 'bottom',
-                    offsetY: -4
-                }
-            ]);
-
-        this.tagSelectorOverlayRef = this.overlay.create({
-            positionStrategy,
-            scrollStrategy: this.overlay.scrollStrategies.reposition(),
-            hasBackdrop: true,
-            backdropClass: 'cdk-overlay-transparent-backdrop'
-        });
-
         const portal = new ComponentPortal(TagSelectorComponent, null, this.injector);
-        const componentRef = this.tagSelectorOverlayRef.attach(portal);
+        const componentRef = this.overlayManager.createManagedOverlay('tagSelector', target, portal, {
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            hasBackdrop: false,
+            panelClass: 'tag-selector-overlay'
+        });
 
         // Pass data to the component
         componentRef.instance.tags = tagOptions;
@@ -715,12 +700,6 @@ export class UnitSearchComponent implements OnDestroy {
             .map(u => u._tags || [])
             .reduce((a, b) => a.filter(tag => b.includes(tag)), unitsToTag[0]._tags || []);
         componentRef.instance.assignedTags = commonTags;
-
-        // Handle backdrop click to close
-        this.tagSelectorOverlayRef.backdropClick().subscribe(() => {
-            this.tagSelectorOverlayRef?.dispose();
-            this.tagSelectorOverlayRef = undefined;
-        });
 
         // Handle tag removal for all selected units
         componentRef.instance.tagRemoved.subscribe(async (tagToRemove: string) => {
@@ -745,8 +724,7 @@ export class UnitSearchComponent implements OnDestroy {
 
         // Handle tag selection for all selected units
         componentRef.instance.tagSelected.subscribe(async (selectedTag: string) => {
-            this.tagSelectorOverlayRef?.dispose();
-            this.tagSelectorOverlayRef = undefined;
+             this.overlayManager.closeManagedOverlay('tagSelector');
 
             // If "Add new tag..." was selected, show text input dialog
             if (selectedTag === '__new__') {
@@ -816,7 +794,7 @@ export class UnitSearchComponent implements OnDestroy {
         window.addEventListener('pointercancel', this.onAdvPanelDragEnd);
         try {
             (event.target as HTMLElement).setPointerCapture(event.pointerId);
-        } catch(e) { /* ignore */ }
+        } catch (e) { /* ignore */ }
     }
 
     onAdvPanelDragMove = (event: PointerEvent) => {
@@ -833,7 +811,7 @@ export class UnitSearchComponent implements OnDestroy {
     onAdvPanelDragEnd = (event: PointerEvent) => {
         try {
             (event.target as HTMLElement).releasePointerCapture(event.pointerId);
-        } catch(e) { /* ignore */ }
+        } catch (e) { /* ignore */ }
         window.removeEventListener('pointermove', this.onAdvPanelDragMove);
         window.removeEventListener('pointerup', this.onAdvPanelDragEnd);
         window.removeEventListener('pointercancel', this.onAdvPanelDragEnd);
@@ -867,11 +845,11 @@ export class UnitSearchComponent implements OnDestroy {
         // Single click: open details and clear selection
         this.showUnitDetails(unit);
     }
-    
+
     isUnitSelected(unit: Unit): boolean {
         return this.selectedUnits().has(unit.name);
     }
-    
+
     clearSelection() {
         if (this.selectedUnits().size > 0) {
             this.selectedUnits.set(new Set());
@@ -898,5 +876,73 @@ export class UnitSearchComponent implements OnDestroy {
         };
         this.clearSelection();
         this.closeAllPanels();
+    }
+
+    toggleExpandedView() {
+        const isExpanded = this.expandedView();
+        if (isExpanded && this.buttonOnly()) {
+            this.closeAllPanels();
+        }
+        this.expandedView.set(!isExpanded);
+    }
+
+    clearSearch() {
+        this.filtersService.searchText.set('');
+        this.activeIndex.set(null);
+        this.focusInput();
+    }
+
+    /* ------------------------------------------
+     * Favorites overlay/menu
+     */
+
+    openFavorites(event: MouseEvent) {
+        event.stopPropagation();
+
+        // If already open, close it
+        if (this.overlayManager.has('favorites')) {
+            this.overlayManager.closeManagedOverlay('favorites');
+            return;
+        }
+        const target = this.favBtn()?.nativeElement || (event.target as HTMLElement);
+        const portal = new ComponentPortal(SearchFavoritesMenuComponent, null, this.injector);
+        const compRef = this.overlayManager.createManagedOverlay('favorites', target, portal, {
+            hasBackdrop: false,
+            panelClass: 'favorites-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.close()
+        });
+
+        const favorites: SerializedSearchFilter[] = [];
+        compRef.setInput('favorites', favorites);
+        compRef.instance.select.subscribe((favorite: SerializedSearchFilter) => {
+            if (favorite) this.applyFavorite(favorite);
+            this.overlayManager.closeManagedOverlay('favorites');
+        });
+        compRef.instance.saveRequest.subscribe(() => {
+            this.saveCurrentSearch();
+        });
+    }
+
+    closeFavorites() {
+        this.overlayManager.closeManagedOverlay('favorites');
+    }
+
+    private async saveCurrentSearch() {
+        const name = await this.dialogsService.prompt('Enter a name for this Tactical Bookmark (e.g. "Clan Raid - 3058")', 'Save Tactical Bookmark', '');
+        if (name === null) return; // cancelled
+        const trimmed = (name || '').trim();
+        if (!trimmed) return;
+
+        const fav = this.filtersService.serializeCurrentSearchFilter(trimmed);
+        // DO THE SAVING!
+    }
+
+    private applyFavorite(fav: SerializedSearchFilter) {
+        this.filtersService.applySerializedSearchFilter(fav);
+        // Focus search input after applying
+        afterNextRender(() => {
+            this.focusInput();
+        }, { injector: this.injector });
     }
 }

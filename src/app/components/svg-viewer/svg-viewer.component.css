@@ -47,19 +47,12 @@ svg {
     color: #666;
     font-size: 1.6em;
     text-align: center;
+    background-color: #fff;
 }
 
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
-}
-
-.fade-in {
-    animation: fadeIn .3s linear;
+:host-context(.night-mode) .slide-placeholder {
+    background-color: var(--background-color);
+    color: #aaa;
 }
 
 /* Styles for the heat difference marker (touch input) */

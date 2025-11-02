@@ -76,7 +76,7 @@ export class PrintUtil {
             await this.nextAnimationFrames(2);
 
             // Turn on/off fluff image
-            const injectedEl = svg.getElementById('fluff-image-injected') as HTMLElement | null;
+            const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
             if (injectedEl) {
                 const fluffImageInSheet = optionsService.options().fluffImageInSheet;
                 const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');

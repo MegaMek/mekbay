@@ -96,7 +96,8 @@ export class SvgZoomPanService {
         '.overflowButton',
         '.structure',
         '.crewHit',
-        '.inventoryEntry'
+        '.inventoryEntry',
+        '.preventZoomReset'
     ];
 
     private state: ZoomPanState = {
@@ -126,6 +127,7 @@ export class SvgZoomPanService {
     private interactionService!: SvgInteractionService;
     private swipeCallbacks?: SwipeCallbacks;
     private swipeTotalDx = 0;
+    private capturePointerId: number | null = null;
 
     // Track active pointers
     private pointers = new Map<number, { x: number; y: number; pointerType?: string }>();
@@ -280,6 +282,12 @@ export class SvgZoomPanService {
     }
 
     private cleanup() {
+        if (this.capturePointerId) {
+            try {
+                this.containerRef.nativeElement.releasePointerCapture(this.capturePointerId);
+            } catch (e) { /* ignore */ }
+            this.capturePointerId = null;
+        }
         this.cleanupEventListeners();
         this.pointers.clear();
         if (this.state.isSwiping) {
@@ -292,7 +300,6 @@ export class SvgZoomPanService {
         this.state.pointerMoved = false;
         this.state.waitingForFirstEvent = true;
         this.state.touchStartDistance = 0;
-
     }
 
     private onPointerDown(event: PointerEvent) {
@@ -366,6 +373,7 @@ export class SvgZoomPanService {
             this.state.waitingForFirstEvent = false;
             try {
                 this.containerRef.nativeElement.setPointerCapture(event.pointerId);
+                this.capturePointerId = event.pointerId;
             } catch (e) { /* ignore */ }
 
             // If two active pointers: start pinch
@@ -508,13 +516,6 @@ export class SvgZoomPanService {
         // Remove pointer from tracking
         const hadPointer = this.pointers.delete(event.pointerId);
 
-        if (this.pointers.size === 0) {
-            this.cleanupEventListeners();
-        }
-        try {
-            this.containerRef.nativeElement.releasePointerCapture(event.pointerId);
-        } catch (e) { /* ignore */ }
-
         // If we had two pointers and now one remains: transition from pinch to single-pointer pan/swipe
         if (hadPointer && this.pointers.size === 1) {
             const remaining = Array.from(this.pointers.values())[0];
@@ -525,10 +526,6 @@ export class SvgZoomPanService {
             this.state.last = { x: remaining.x, y: remaining.y };
             this.state.pointerStart = { x: remaining.x, y: remaining.y };
             this.state.touchStartDistance = 0;
-
-            if (this.state.isSwiping) {
-                this.swipeCallbacks?.onSwipeStart();
-            }
             return;
         }
 

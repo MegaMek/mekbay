@@ -89,6 +89,7 @@ export class RsPolyfillUtil {
         this.adjustArmorPips(unit, svg);
         this.addHitMod(svg);
         this.injectFluffImage(unit, svg);
+        this.addTurnStateClasses(unit, svg);
     }
 
     public static fixSvg(svg: SVGSVGElement): void {
@@ -619,15 +620,97 @@ export class RsPolyfillUtil {
 
         const localWidth = localBR.x - localTL.x;
         const localHeight = localBR.y - localTL.y;
-        // We create an image element
-        const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-        img.setAttribute('id', 'fluff-image-injected');
-        img.setAttribute('href', fluffImageUrl);
-        img.setAttribute('x', localTL.x.toString());
-        img.setAttribute('y', localTL.y.toString());
-        img.setAttribute('width', Math.max(0, localWidth).toString());
-        img.setAttribute('height', Math.max(0, localHeight).toString());
-        img.style.display = 'none';
-        injectParent.appendChild(img);
+        const rootX = minX;
+        const rootY = minY;
+        const rootW = Math.max(0, localWidth);
+        const rootH = Math.max(0, localHeight);
+
+        const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+        fo.setAttribute('id', 'fluff-image-fo');
+        fo.setAttribute('x', rootX.toString());
+        fo.setAttribute('y', rootY.toString());
+        fo.setAttribute('width', rootW.toString());
+        fo.setAttribute('height', rootH.toString());
+        fo.setAttribute('style', 'display: none;');
+
+        const htmlImg = document.createElementNS('http://www.w3.org/1999/xhtml', 'img');
+        htmlImg.setAttribute('id', 'fluff-image-injected');
+        htmlImg.setAttribute('src', fluffImageUrl);
+        htmlImg.setAttribute('alt', '');
+        htmlImg.style.width = '100%';
+        htmlImg.style.height = '100%';
+        htmlImg.style.objectFit = 'contain';
+
+        fo.appendChild(htmlImg);
+        svg.appendChild(fo); // we append directly to root svg to avoid coordinate issues
     }
-}
+
+    private static addTurnStateClasses(unit: Unit, svg: SVGSVGElement): void {
+        const mpWalkEl = svg.getElementById('mpWalk') as SVGElement | null;
+        const mpRunEl = svg.getElementById('mpRun') as SVGElement | null;
+        const mpJumpEl = svg.getElementById('mpJump') as SVGElement | null;
+        for (const moveEl of [mpWalkEl, mpRunEl, mpJumpEl]) {
+            if (!moveEl) continue;
+            moveEl.classList.add('movementType');
+            const labelEl = moveEl.previousElementSibling as SVGElement | null;
+            if (labelEl) {
+                labelEl.classList.add('movementType');
+            }
+            
+            // Add a black rectangle aligned using the same X alignment used in addHitMod
+            const rectId = `${moveEl.id}-turnState-move-rect`;
+            if (svg.getElementById(rectId)) continue; // avoid duplicates
+
+            // Try to get bounding box for vertical positioning/height
+            let bbox: DOMRect | null = null;
+            try {
+                bbox = (moveEl as SVGGraphicsElement).getBBox();
+            } catch {
+                bbox = null;
+            }
+            if (!bbox) continue;
+
+            const rectWidth = 10;
+            let rectHeight = bbox.height;
+            // Same X alignment as addHitMod: centered at x = 0
+            const rectX = 0 - (rectWidth / 2);
+            let rectY = bbox.y;
+
+            // Try to infer font size to adjust height (similar to addHitMod)
+            let fontSize = 7.5;
+            rectHeight += 1;
+            rectY -= 0.5;
+
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('id', rectId);
+            rect.setAttribute('x', rectX.toString());
+            rect.setAttribute('y', rectY.toString());
+            rect.setAttribute('width', rectWidth.toString());
+            rect.setAttribute('height', rectHeight.toString());
+            rect.setAttribute('fill', '#000');
+            rect.setAttribute('class', moveEl.id + '-rect noprint');
+            rect.setAttribute('display', 'none');
+
+            
+
+            // // Create text
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', (rectX + rectWidth / 2).toString());
+            text.setAttribute('y', (rectY + rectHeight / 2 + fontSize / 3).toString());
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('font-family', 'monospace');
+            text.setAttribute('font-size', fontSize.toString());
+            text.setAttribute('font-weight', 'bold');
+            text.setAttribute('fill', '#fff');
+            text.setAttribute('class', moveEl.id + '-rect noprint');
+            rect.setAttribute('display', 'none');
+            if (moveEl == mpWalkEl) text.textContent = '+1';
+            else if (moveEl == mpRunEl) text.textContent = '+2';
+            else if (moveEl == mpJumpEl) text.textContent = '+3';
+
+            moveEl.parentElement?.appendChild(rect);
+            moveEl.parentElement?.appendChild(text);
+        }
+    }
+
+    }

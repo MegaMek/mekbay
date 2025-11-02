@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Unit } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { OptionsService } from '../../services/options.service';
+import { LoggerService } from '../../services/logger.service';
 
 @Component({
     selector: 'svg-viewer-lite',
@@ -13,6 +14,7 @@ import { OptionsService } from '../../services/options.service';
     styleUrls: ['./svg-viewer-lite.component.css']
 })
 export class SvgViewerLiteComponent {
+    logger = inject(LoggerService);
     private dataService = inject(DataService);
     private optionsService = inject(OptionsService);
 
@@ -45,7 +47,7 @@ export class SvgViewerLiteComponent {
                     this.cleanContainer();
                     this.attachSvgs();
                 } catch (err) {
-                    console.error('svg-viewer-lite: failed to load sheet', err);
+                    this.logger.error('svg-viewer-lite: failed to load sheet: ' + JSON.stringify(err));
                     this.svgs.set([]);
                 }
             })();

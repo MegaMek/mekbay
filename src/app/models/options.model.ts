@@ -41,7 +41,13 @@ export interface Options {
     quickActions: 'enabled' | 'disabled';
     canvasInput: 'all' | 'touch' | 'pen';
     swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
+    syncZoomBetweenSheets: boolean;
     unitDisplayName: 'chassisModel' | 'alias' | 'both';
     gameSystem: 'cbt' | 'as';
     fluffImageInSheet: boolean;
+    lastCanvasState?: {
+        brushSize: number;
+        eraserSize: number;
+    },
+    sidebarLipPosition?: string;
 }

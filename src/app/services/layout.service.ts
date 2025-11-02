@@ -31,7 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, signal, effect, PLATFORM_ID, inject, computed } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
+import { Injectable, signal, effect, PLATFORM_ID, inject, computed, untracked } from '@angular/core';
 
 /*
  * Author: Drake
@@ -41,9 +42,21 @@ import { Injectable, signal, effect, PLATFORM_ID, inject, computed } from '@angu
 })
 export class LayoutService {
     /** A signal that is true if the viewport matches mobile breakpoints. */
-    private mobileQueryMatches = signal(false);
+    private readonly PHONE_BREAKPOINT = 600;
+    private readonly TABLET_BREAKPOINT = 900
+
     public isMobile = computed(() => {
-        return  this.mobileQueryMatches() || this.isPortraitOrientation();
+        return  this.windowWidth() < this.PHONE_BREAKPOINT || this.isPortraitOrientation();
+    });
+    public isPhone = computed(() => {
+        return this.windowWidth() < this.PHONE_BREAKPOINT;
+    });
+    public isTablet = computed(() => {
+        const width = this.windowWidth();
+        return width >= this.PHONE_BREAKPOINT && width < this.TABLET_BREAKPOINT;
+    });
+    public isDesktop = computed(() => {
+        return this.windowWidth() >= this.TABLET_BREAKPOINT;
     });
     /** A signal representing the open state of the mobile menu. */
     public isMenuOpen = signal(false);
@@ -57,17 +70,16 @@ export class LayoutService {
     private readonly platformId: object = inject(PLATFORM_ID);
 
     constructor() {
+        effect(() => {
+            untracked(() => {
+                if (this.isDesktop()) {
+                    this.isMenuOpen.set(true);
+                }
+            });
+        });
         effect((onCleanup) => {
+            if (!isPlatformBrowser(this.platformId)) return;
             this.isTouchInput.set(('ontouchstart' in window) || navigator.maxTouchPoints > 0);
-            const mediaQuery = window.matchMedia('(max-width: 899.98px)');
-
-            // Initialize current state
-            this.mobileQueryMatches.set(mediaQuery.matches);
-            
-            // Listen for media query changes
-            const mediaQueryHandler = (event: MediaQueryListEvent) => {
-                this.mobileQueryMatches.set(event.matches);
-            };
             
             // Listen for orientation changes
             const resizeHandler = () => {
@@ -83,14 +95,12 @@ export class LayoutService {
             window.addEventListener('pointerdown', this.onPointerDown, { passive: true, capture: true });
             window.addEventListener('orientationchange', resizeHandler, { passive: true, capture: true });
             window.addEventListener('resize', resizeHandler, { passive: true, capture: true });
-            mediaQuery.addEventListener('change', mediaQueryHandler);
             resizeHandler();
 
             onCleanup(() => {
                 window.removeEventListener('pointerdown', this.onPointerDown, { capture: true });
                 window.removeEventListener('orientationchange', resizeHandler, { capture: true });
                 window.removeEventListener('resize', resizeHandler, { capture: true });
-                mediaQuery.removeEventListener('change', mediaQueryHandler);
             });
         });
 

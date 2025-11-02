@@ -21,6 +21,8 @@
     z-index: 1;
 }
 
+
+
 .slider-track.active {
     background-color: var(--bt-yellow-background-bright);
 }
@@ -30,7 +32,7 @@
     top: 50%;
     width: 18px;
     height: 18px;
-    cursor: pointer;
+    cursor: grab;
     border-radius: 2px;
     z-index: 3;
     transition: background 0.2s;
@@ -57,6 +59,13 @@
 
 .thumb-right {
     transform: translateY(-50%);
+}
+
+.slider-container.dragging,
+.slider-container.dragging .thumb,
+.slider-container.dragging .thumb.dragging {
+    cursor: grabbing;
+    cursor: -webkit-grabbing;
 }
 
 .thumb.active {
@@ -89,3 +98,4 @@
     white-space: nowrap;
     z-index: 1002;
 }
+

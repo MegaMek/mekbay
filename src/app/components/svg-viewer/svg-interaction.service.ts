@@ -215,7 +215,6 @@ export class SvgInteractionService {
             this.zoomPanService.pointerMoved = false;
             clearLongTouch();
             longTouchTimer = setTimeout(() => {
-                console.log('long touch detected');
                 upHandlerSecondary(evt);
             }, 300);
             pointerId = evt.pointerId;
@@ -717,7 +716,7 @@ export class SvgInteractionService {
     }
 
     // private setupFluffImageInteraction(svg: SVGSVGElement, signal: AbortSignal) {
-    //     const fluffImageEl = svg.getElementById('fluff-image-injected') as HTMLElement | null;
+    //     const fluffImageEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
     //     if (!fluffImageEl) return;
     //         const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
     //     if (referenceTables.length === 0) return;

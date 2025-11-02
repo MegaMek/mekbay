@@ -2,23 +2,15 @@
     <div dialog-header>
         <div class="title">Options</div>
     </div>
-    <div dialog-body>
+    <div dialog-body class="dialog-body">
         @if (activeTab() === 'General') {
             <div class="tab-content">
                 <div class="option-row">
-                    <label for="sheetsColor">Sheets color:</label>
+                    <label for="sheetsColor">Theme:</label>
                     <select id="sheetsColor" class="bt-select" [value]="optionsService.options().sheetsColor"
                         (change)="onSheetsColorChange($event)">
                         <option value="normal">Normal (default)</option>
                         <option value="night">Night mode</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="fluffImageInSheet">Intel Image in Sheet:</label>
-                    <select id="fluffImageInSheet" class="bt-select" [value]="optionsService.options().fluffImageInSheet"
-                        (change)="onFluffImageInSheetChange($event)">
-                        <option value="true">Enabled</option>
-                        <option value="false">Disabled</option>
                     </select>
                 </div>
                 <div class="option-row">
@@ -46,7 +38,7 @@
                             slots applies a critical hit.</p>
                     </div>
                 </div>
-                <hr>
+                <hr />
                 <div class="option-col">
                     <label for="userUuid">User Identifier:</label>
                     <div class="option-row">
@@ -64,16 +56,22 @@
                 </div>
             </div>
         }
-        <!-- Advanced options -->
-        @if (activeTab() === 'Advanced') {
+        @if (activeTab() === 'Sheets') {
             <div class="tab-content">
                 <div class="option-row">
-                    <label for="pickerStyle">Picker style:</label>
-                    <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"
-                        (change)="onPickerStyleChange($event)">
-                        <option value="default">Automatic (default)</option>
-                        <option value="radial">Always Dial</option>
-                        <option value="linear">Always Linear</option>
+                    <label for="fluffImageInSheet">Center Panel:</label>
+                    <select id="fluffImageInSheet" class="bt-select" [value]="optionsService.options().fluffImageInSheet"
+                        (change)="onFluffImageInSheetChange($event)">
+                        <option value="true">Artwork (default)</option>
+                        <option value="false">Hit Location and Cluster Table</option>
+                    </select>
+                </div>
+                <div class="option-row">
+                    <label for="syncZoomBetweenSheets">Sync zoom/pan:</label>
+                    <select id="syncZoomBetweenSheets" class="bt-select" [value]="optionsService.options().syncZoomBetweenSheets"
+                        (change)="onSyncZoomBetweenSheetsChange($event)">
+                        <option value="true">Enabled (default)</option>
+                        <option value="false">Disabled</option>
                     </select>
                 </div>
                 <div class="option-row">
@@ -83,6 +81,15 @@
                         <!-- <option value="vertical">Vertical</option> -->
                         <option value="horizontal">Horizontal</option>
                         <option value="disabled">Disabled</option>
+                    </select>
+                </div>
+                <div class="option-row">
+                    <label for="pickerStyle">Picker style:</label>
+                    <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"
+                        (change)="onPickerStyleChange($event)">
+                        <option value="default">Automatic (default)</option>
+                        <option value="radial">Always Dial</option>
+                        <option value="linear">Always Linear</option>
                     </select>
                 </div>
                 <div class="option-col">
@@ -101,6 +108,11 @@
                     </div>
                     }
                 </div>
+            </div>
+        }
+        <!-- Advanced options -->
+        @if (activeTab() === 'Advanced') {
+            <div class="tab-content">
                 <div class="option-row">
                     <span>Drawings stored: <strong>{{ formatBytes(canvasMemorySize()) }}</strong></span>
                     <button class="bt-button" (click)="onPurgeCanvas()">PURGE</button>
@@ -117,8 +129,8 @@
                 </div>
             </div>
         }
-        <!-- Debug options -->
-        @if (activeTab() === 'Debug') {
+        <!-- Experimental options -->
+        @if (activeTab() === 'Experimental') {
             <div class="tab-content">
                 <div class="option-row">
                     <label for="gameSystem">Game System:</label>
@@ -127,6 +139,22 @@
                         <option value="cbt">BattleTech Classic (default)</option>
                         <option value="as">Alpha Strike</option>
                     </select>
+                </div>
+            </div>
+        }
+        @if (activeTab() === 'Debug') {
+            <div class="tab-content debug">
+                <div class="logs-list allow-select">
+                    @for (log of logger.logs().slice().reverse(); let i = $index; track i) {
+                        <div class="log-row log-{{ log.type.toLowerCase() }}">
+                            <span class="log-timestamp">{{ log.timestamp | date:'short' }}</span>
+                            <span class="log-message">{{ log.message }}</span>
+                        </div>
+                    }
+                </div>
+                <div class="spanner"></div>
+                <div class="option-row debug-controls">
+                    <button class="bt-button" (click)="logger.clear()">CLEAR</button>
                 </div>
             </div>
         }

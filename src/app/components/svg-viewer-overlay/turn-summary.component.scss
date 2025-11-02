@@ -1,0 +1,187 @@
+.summary {
+    pointer-events: auto;
+    min-width: 280px;
+    max-width: 280px;
+    max-height: 70dvh;
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    gap: 12px;
+    font-size: 0.95em;
+    transition: opacity 0.2s;
+    overflow-x: hidden;
+    overflow-y: auto;
+
+    .header {
+        font-weight: bold;
+        text-align: center;
+    }
+
+    .phaseTitle {
+        text-align: center;
+    }
+
+    .group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+}
+
+@media print {
+    :host {
+        display: none !important;
+    }
+}
+
+.summary-entry {
+    text-wrap: nowrap;
+    font-size: 0.9em;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    .row {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        gap: 4px;
+        &.wrap {
+            flex-wrap: wrap;
+            
+            .bt-button {
+                flex: 1 1 auto;
+            };
+        }
+        &.grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+            gap: 4px;
+            align-items: center;
+
+            .bt-button {
+                width: 100%;
+                min-width: 0;
+                box-sizing: border-box;
+            };
+        }
+    }
+
+    &.bt-button {
+        pointer-events: auto;
+        cursor: pointer;
+        outline: none;
+        padding: 4px 8px;
+        box-sizing: border-box;
+
+        &:hover {
+            opacity: 1.0;
+        }
+
+        :host-context(.night-mode) {
+            &.bt-button {
+                color: #fff;
+            }
+        }
+
+        &.warning {
+            background-color: #ffcc00;
+            color: #222;
+
+            &:hover {
+                background-color: #ffdd33;
+            }
+        }
+    }
+
+    .move-button {
+        padding: 6px 10px;
+        text-align: center;
+    }
+
+    .move-button.selected {
+        background-color: var(--bt-yellow);
+        color: #000;
+    }
+
+
+    .move-slider-container {
+        position: relative;
+        width: calc(100% - 40px);
+        margin-left: 20px;
+        padding: 8px 6px;
+        box-sizing: border-box;
+        height: 48px;
+
+        .range {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            opacity: 0.1;
+            outline: none;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            margin: 0;
+            padding: 0;
+            z-index: 1;
+        }
+
+        .range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: transparent;
+            border: none;
+        }
+
+        .range::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: transparent;
+            border: none;
+        }
+
+        .thumb-marker {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            z-index: 2;
+        }
+
+        .hex {
+            pointer-events: auto;
+            cursor: grab;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #222;
+            font-weight: 700;
+            background: silver;
+            clip-path: polygon(25% 6.7%, 75% 6.7%, 100% 50%, 75% 93.3%, 25% 93.3%, 0% 50%);
+            user-select: none;
+            touch-action: none;
+
+            &.valueAssigned {
+                background: var(--bt-yellow);
+            color: #000;
+            }
+        }
+
+        .hex:active {
+            cursor: grabbing;
+            cursor: -webkit-grabbing;
+        }
+    }
+}

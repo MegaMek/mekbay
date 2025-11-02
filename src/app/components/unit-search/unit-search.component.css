@@ -1,3 +1,7 @@
+:host {
+    display: block;
+}
+
 .searchbar-container {
     position: relative;
     width: 100%;
@@ -6,7 +10,6 @@
     flex-direction: row;
     z-index: 4;
     gap: 4px;
-    height: 40px;
 }
 
 .searchbar-container.expanded {
@@ -81,6 +84,11 @@
     padding: 10px;
     overflow-y: auto;
     min-width: 300px;
+    scrollbar-width: thin;
+}
+
+.adv-panel.docked {
+    box-shadow: none;
 }
 
 .adv-panel-drag-handle {
@@ -149,7 +157,7 @@
     z-index: 3;
     background-color: #222;
     container-type: inline-size;
-    padding: 1px;
+    padding: 2px;
 }
 
 .results-dropdown.expanded {
@@ -179,6 +187,7 @@
     flex: 1;
     min-height: 0;
     touch-action: pan-y;
+    scrollbar-width: thin;
 }
 
 .results-dropdown-item {

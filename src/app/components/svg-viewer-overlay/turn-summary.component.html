@@ -1,0 +1,101 @@
+<div class="summary glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
+    <div class="header">Turn Tracker</div>
+    <div class="group">
+        <div class="phaseTitle">Movement</div>
+        <div class="summary-entry">
+            @if (canSwitchAirborneMode()) {
+            <div class="row grid">
+                <button type="button" class="bt-button move-button" [class.selected]="airborne() === true"
+                    aria-pressed="{{ airborne() === true }}" (click)="setAirborne(true)">
+                    Airborne
+                </button>
+                <button type="button" class="bt-button move-button" [class.selected]="airborne() === false"
+                    aria-pressed="{{ airborne() === false }}" (click)="setAirborne(false)">
+                    Grounded
+                </button>
+            </div>
+            }
+            @if (canSwitchAirborneMode() === false || airborne() !== null) {
+            <div class="row grid">
+                @for (moveMode of moveModes(); track moveMode.mode) {
+                @let mode = moveMode.mode;
+                <button type="button" class="bt-button move-button" [class.selected]="currentMoveMode() === mode"
+                    aria-pressed="{{ currentMoveMode() === mode }}" (click)="selectMove(mode)">
+                    @if (mode === 'stationary') {
+                    <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"
+                        preserveAspectRatio="xMidYMid meet">
+                        <path
+                            d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z"
+                            fill="currentColor"></path>
+                    </svg>
+                    } @else {
+                    {{ moveMode.label }}
+                    }
+                </button>
+                }
+            </div>
+            @if (currentMoveMode() !== 'stationary' && currentMoveMode() !== null) {
+            <div class="row">
+                <div class="move-slider-container" #sliderContainer tabindex="0" (keydown)="onKeyDown($event)">
+                    <input class="range" type="range" [attr.min]="MOVE_MIN" [attr.max]="MOVE_MAX"
+                        [value]="moveDistance()" (input)="onMoveDistanceInput($event)" aria-label="Move distance" />
+                    <div class="thumb-marker" [style.left.%]="moveDistancePercent()" (pointerdown)="startDrag($event)">
+                        <div class="hex" [class.valueAssigned]="hasMoveDistance()">{{ moveDistanceLabel() }}</div>
+                    </div>
+                </div>
+            </div>
+            }
+            }
+        </div>
+    </div>
+    <div class="phaseTitle">As Attacker</div>
+    <div class="summary-entry">
+        <div class="row">
+            @let modifierAtk = getTargetModifierAsAttacker();
+            <span>Attack Modifier:</span><span>{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>
+        </div>
+        <div class="row">
+            <dice-roller #diceComp [diceCount]="2" [modifier]="modifierAtk"></dice-roller>
+        </div>
+    </div>
+    <div class="group">
+        <div class="phaseTitle">As Defender</div>
+        <div class="summary-entry">
+            <div class="row">
+                <span>Target Modifier:</span><span>{{ getTargetModifierAsDefender() }}</span>
+            </div>
+        </div>
+        <div class="summary-entry">
+            <div class="row">
+                <span>Damage received:</span><span>{{ damageReceived() }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="group">
+        <div class="phaseTitle">Heat</div>
+        <div class="summary-entry">
+            <div class="row"><span>Heat generated:</span><span>{{ heatGenerated() }}</span></div>
+            <div class="row"><span>Heat dissipated:</span><span>{{ heatDissipated() }}</span></div>
+            <div class="row"><span>Total Heat:</span><span>{{ totalHeatDelta() }}</span></div>
+        </div>
+    </div>
+    <button role="button" class="summary-entry bt-button" tabindex="0">
+        Apply Heat
+    </button>
+    @if (hasPSRChecks()) {
+    <button role="button" class="summary-entry bt-button warning" (click)="openPsrWarning($event)" tabindex="0">
+        ⚠ PSR Check! ({{ PSRChecksCount() }})
+    </button>
+    }
+    <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurn()">
+        End Turn
+    </button>
+
+    <div class="group">
+        <div class="summary-entry">
+            <div class="row">
+                <dice-roller #diceComp [diceCount]="2"></dice-roller>
+            </div>
+        </div>
+    </div>
+</div>

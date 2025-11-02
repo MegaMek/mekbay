@@ -1,0 +1,77 @@
+:host {
+    position: absolute;
+    top: var(--safe-area-inset-top);
+    left: 0;
+    right: var(--safe-area-inset-right);
+    bottom: var(--safe-area-inset-bottom);
+    pointer-events: none;
+    z-index: 2;
+    box-sizing: border-box;
+}
+
+.container {
+    width: 100%;
+    height: 100%;
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.mainButton {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    opacity: 0.8;
+    outline: none;
+    transition: opacity 0.2s;
+    color: #000;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    pointer-events: auto;
+
+    .fixed & {
+        position: fixed;
+        top: max(8px, var(--safe-area-inset-top));
+        right: max(8px, var(--safe-area-inset-right));
+    }
+
+    &:hover {
+        opacity: 1.0;
+    }
+
+    svg {
+        width: 100%;
+        height: 100%;
+        text {
+            pointer-events: none;
+            font-weight: bold;
+            fill: #fff;
+        }
+
+        &.warning {
+            color: var(--bt-yellow);
+            text {
+                fill: #000;
+            }
+        }
+    }
+
+    :host-context(.night-mode) & {
+        color: #fff;
+        svg text {
+            fill: #000;
+        }
+    }
+
+}
+
+@media print {
+    :host {
+        display: none !important;
+    }
+}

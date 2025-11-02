@@ -38,6 +38,7 @@ import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceUnit } from '../../models/force-unit.model';
+import { LoggerService } from '../../services/logger.service';
 
 /*
  * Author: Drake
@@ -307,12 +308,13 @@ export class SvgCanvasOverlayComponent {
     private readonly MULTITOUCH = false;
     private readonly INTERNAL_SCALE = 2;
     private readonly MOVE_THRESHOLD = 4; // in pixels
-    private readonly INITIAL_BRUSH_SIZE = 3;
-    private readonly INITIAL_ERASER_SIZE = 6;
-    private readonly BRUSH_MULTIPLIER = 1.0 * this.INTERNAL_SCALE;
-    private readonly ERASER_MULTIPLIER = 2.0 * this.INTERNAL_SCALE;
+    private readonly INITIAL_BRUSH_SIZE = 4;
+    private readonly INITIAL_ERASER_SIZE = 4;
+    private readonly BRUSH_MULTIPLIER = 1.0;// * this.INTERNAL_SCALE;
+    private readonly ERASER_MULTIPLIER = 2.0;// * this.INTERNAL_SCALE;
     MIN_STROKE_SIZE = 1;
-    MAX_STROKE_SIZE = 16;
+    MAX_STROKE_SIZE = 10;
+    logger = inject(LoggerService);
     private destroyRef = inject(DestroyRef);
     private zoomPanService = inject(SvgZoomPanService);
     private injector = inject(Injector);
@@ -333,8 +335,8 @@ export class SvgCanvasOverlayComponent {
     mode = signal<'brush' | 'eraser' | 'none'>('none');
     brushColor = signal<string>('#f00');
     colorOptions = ['#f00', '#00f', '#0f0', '#f0f', '#0ff', '#ff0'];
-    brushSize = signal<number>(this.INITIAL_BRUSH_SIZE);
-    eraserSize = signal<number>(this.INITIAL_ERASER_SIZE);
+    brushSize = signal<number>(this.optionsService.options().lastCanvasState?.brushSize ?? this.INITIAL_BRUSH_SIZE);
+    eraserSize = signal<number>(this.optionsService.options().lastCanvasState?.eraserSize ?? this.INITIAL_ERASER_SIZE);
     strokeSize = computed(() => {
         return this.mode() === 'brush' ? this.brushSize() : this.eraserSize();
     });
@@ -344,6 +346,7 @@ export class SvgCanvasOverlayComponent {
         return this.height() * this.INTERNAL_SCALE;
     });
     canvasWidth = computed(() => {
+        this.unit();
         return this.width() * this.INTERNAL_SCALE;
     });
 
@@ -426,11 +429,18 @@ export class SvgCanvasOverlayComponent {
 
     onStrokeSizeChange(event: Event) {
         const value = +(event.target as HTMLInputElement).value;
+        const canvasState = this.optionsService.options().lastCanvasState ?? {
+            brushSize: this.INITIAL_BRUSH_SIZE,
+            eraserSize: this.INITIAL_ERASER_SIZE
+        };
         if (this.mode() === 'brush') {
             this.brushSize.set(value);
+            canvasState.brushSize = value;
         } else {
             this.eraserSize.set(value);
+            canvasState.eraserSize = value;
         }
+        this.optionsService.setOption('lastCanvasState', { ...canvasState });
     }
 
     toggleDrawMode() {
@@ -540,6 +550,7 @@ export class SvgCanvasOverlayComponent {
         const inputFilter = this.optionsService.options().canvasInput;
         if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
         if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
+
         // single pointer mode handling: if there's already a primary pointer that hasn't moved
         // and the incoming pointer has the same pointerType, propagate the saved primary
         // pointerdown event (which was previously prevented/stopped) and then ignore this new pointer.
@@ -572,7 +583,7 @@ export class SvgCanvasOverlayComponent {
                     target.dispatchEvent(cloned);
                 } catch (err) {
                     // fall through silently if re-dispatch fails
-                    console.error('Failed to re-dispatch primary pointer event', err);
+                    this.logger.error('Failed to re-dispatch primary pointer event: ' + err);
                 }
                 this.activePointers.clear();
                 this.primaryPointerId = null;
@@ -682,7 +693,7 @@ export class SvgCanvasOverlayComponent {
                 ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
             };
             img.onerror = (err) => {
-                console.error('Failed to load image for canvas import', err);
+                this.logger.error('Failed to load image for canvas import: ' + err);
             };
             img.src = URL.createObjectURL(blob);
     }

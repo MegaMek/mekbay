@@ -37,6 +37,7 @@ import { DataService } from './data.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { heatLevels, linkedLocs, uidTranslations } from '../components/svg-viewer/common';
+import { LoggerService } from './logger.service';
 
 /*
  * Author: Drake
@@ -47,6 +48,8 @@ import { heatLevels, linkedLocs, uidTranslations } from '../components/svg-viewe
  */
 @Injectable()
 export class UnitSvgService implements OnDestroy {
+    protected logger: LoggerService;
+
     private dataEffectRef: EffectRef | null = null;
     private armorEffectRef: EffectRef | null = null;
     private destroyEffectRef: EffectRef | null = null;
@@ -57,7 +60,9 @@ export class UnitSvgService implements OnDestroy {
         protected dataService: DataService,
         protected unitInitializer: UnitInitializerService,
         protected injector: Injector
-    ) { }
+    ) {
+        this.logger = this.injector.get(LoggerService);
+    }
 
     public async loadAndInitialize(): Promise<void> {
         if (this.unit.svg()) {
@@ -103,7 +108,7 @@ export class UnitSvgService implements OnDestroy {
             // Set up the effect to keep the SVG updated
             this.setupDataEffect();
         } catch (error) {
-            console.error(`Failed to load or initialize SVG for ${this.unit.getUnit().name}`, error);
+            this.logger.error(`Failed to load or initialize SVG for ${this.unit.getUnit().name}: ${error}`);
             this.unit.svg.set(null);
         }
     }
@@ -133,7 +138,7 @@ export class UnitSvgService implements OnDestroy {
                         requestAnimationFrame(check);
                     } else {
                         // Timed out. Log a warning but don't block the app.
-                        console.warn('SVG layout check timed out. Proceeding anyway.');
+                        this.logger.warn('SVG layout check timed out. Proceeding anyway.');
                         resolve();
                     }
                 } catch (e) {
@@ -142,7 +147,7 @@ export class UnitSvgService implements OnDestroy {
                         retries++;
                         requestAnimationFrame(check);
                     } else {
-                        console.error('Failed to get SVG BBox after multiple retries.', e);
+                        this.logger.error('Failed to get SVG BBox after multiple retries: ' + e);
                         reject(new Error('SVG layout failed to initialize.'));
                     }
                 }
@@ -178,7 +183,7 @@ export class UnitSvgService implements OnDestroy {
         const critSlots = this.unit.getCritSlots();
         const locations = this.unit.getLocations();
         const inventory = this.unit.getInventory();
-        
+
         // Update all displays
         this.updateBVDisplay();
         this.updateCrewDisplay(crew);
@@ -187,8 +192,9 @@ export class UnitSvgService implements OnDestroy {
         this.updateHeatSinkPips();
         this.updateInventory();
         this.updateHitMod();
+        this.updateTurnState();
     }
-    
+
     private setupDataEffect(): void {
         // Armor effect
         this.armorEffectRef = effect(() => {
@@ -225,7 +231,6 @@ export class UnitSvgService implements OnDestroy {
             this.destroyEffectRef = null;
         }
         this.unit.svg.set(null); // Clear SVG on destruction
-        console.log(`UnitSvgService for ${this.unit.getUnit().name} destroyed.`);
     }
 
     protected evaluateDestroyed() {
@@ -299,6 +304,7 @@ export class UnitSvgService implements OnDestroy {
     protected updateCrewDisplay(crew: CrewMember[]) {
         const svg = this.unit.svg();
         if (!svg) return;
+        const PSRMod = this.unit.PSRModifiers();
 
         crew.forEach(member => {
             const crewId = member.getId();
@@ -325,7 +331,12 @@ export class UnitSvgService implements OnDestroy {
                 const selector = skill.asf ? `#${skill.elementName}` : `#${skill.elementName}${crewId}`;
                 const svgElement = svg.querySelector(selector) as SVGElement | null;
                 if (svgElement) {
-                    svgElement.textContent = member.getSkill(skill.name, skill.asf).toString();
+                    const skillValue = member.getSkill(skill.name, skill.asf).toString();
+                    if (PSRMod && skill.name === 'piloting') {
+                        svgElement.textContent = `${skillValue}+${PSRMod}`;
+                    } else {
+                        svgElement.textContent = skillValue;
+                    }
                 }
             });
 
@@ -555,8 +566,8 @@ export class UnitSvgService implements OnDestroy {
                         pip.classList.add('fresh');
                     }
                 } else if (pip.classList.contains('fresh')) {
-                        pip.classList.remove('fresh');
-                    }
+                    pip.classList.remove('fresh');
+                }
             }
         });
 
@@ -690,7 +701,7 @@ export class UnitSvgService implements OnDestroy {
             totalHeatsinkPips = allHsPips.length;
             let idx = 0;
             allHsPips.forEach(pip => {
-                if (idx < (damagedHeatSinkCount+destroyedSuperCooledMyomer)) {
+                if (idx < (damagedHeatSinkCount + destroyedSuperCooledMyomer)) {
                     if (!pip.classList.contains('damaged')) {
                         pip.classList.add('fresh');
                         pip.classList.add('damaged');
@@ -705,9 +716,9 @@ export class UnitSvgService implements OnDestroy {
                         pip.classList.remove('fresh');
                     }
                 }
-                idx++;  
-            });            
-            
+                idx++;
+            });
+
             idx = 0;
             allHsPips.reverse().forEach(pip => {
                 if (idx < turnedOffHeatSinkCount) {
@@ -822,7 +833,7 @@ export class UnitSvgService implements OnDestroy {
             }
         });
     }
-    
+
     protected calculateHitModifiers(unit: ForceUnit, entry: MountedEquipment, additionalModifiers: number): number | null {
         if (entry.equipment) {
             if (entry.equipment.flags.has('F_WEAPON_ENHANCEMENT')) {
@@ -853,8 +864,82 @@ export class UnitSvgService implements OnDestroy {
                 entry.el.classList.add('damagedInventory');
                 entry.el.classList.remove('selected');
             } else {
-                entry.el.classList.remove('damagedInventory');   
+                entry.el.classList.remove('damagedInventory');
             }
         });
+    }
+
+    protected updateTurnState() {
+        const svg = this.unit.svg();
+        if (!svg) return;
+        const unit = this.unit;
+        const turnState = unit.turnState();
+        // Update move mode display
+        const moveMode = turnState.moveMode();
+        let el: SVGElement | null = null;
+        const mpWalkEl = svg.getElementById('mpWalk') as SVGElement | null;
+        const mpRunEl = svg.getElementById('mpRun') as SVGElement | null;
+        const mpJumpEl = svg.getElementById('mpJump') as SVGElement | null;
+        const mpAltMode = svg.querySelector('#mp_2') as SVGElement | null;
+
+        if (moveMode === 'walk' || moveMode === 'stationary') {
+            el = mpWalkEl;
+        } else if (moveMode === 'run') {
+            el = mpRunEl;
+        } else if (moveMode === 'jump' || moveMode === 'UMU') {
+            el = mpJumpEl ?? mpAltMode;
+        }
+        // cleanup
+        for (const otherEl of [mpWalkEl, mpRunEl, mpJumpEl, mpAltMode]) {
+            if (!otherEl) continue;
+            if (!el) {
+                otherEl?.classList.remove('unusedMoveMode');
+                otherEl?.classList.remove('currentMoveMode');
+                const sibling = otherEl.previousElementSibling as SVGElement | null;
+                sibling?.classList.remove('unusedMoveMode');
+                sibling?.classList.remove('currentMoveMode');
+                // Use an ID selector and the generic overload so TypeScript treats results as SVGElement
+                svg.querySelectorAll<SVGElement>(`.${CSS.escape(otherEl.id)}-rect`).forEach((rectEl: SVGElement) => {
+                    rectEl.style.display = 'none';
+                });
+            } else
+            if (otherEl !== el || (moveMode === 'stationary')) {
+                otherEl?.classList.add('unusedMoveMode');
+                otherEl?.classList.remove('currentMoveMode');
+                const sibling = otherEl.previousElementSibling as SVGElement | null;
+                sibling?.classList.add('unusedMoveMode');
+                sibling?.classList.remove('currentMoveMode');
+                // Use an ID selector and the generic overload so TypeScript treats results as SVGElement
+                svg.querySelectorAll<SVGElement>(`.${CSS.escape(otherEl.id)}-rect`).forEach((rectEl: SVGElement) => {
+                    rectEl.style.display = 'none';
+                });
+            }
+        }
+        if (el) {
+            if (moveMode === 'stationary') {
+                svg.querySelectorAll<SVGElement>(`.${CSS.escape(el.id)}-rect`).forEach((rectEl: SVGElement) => {
+                    rectEl.style.display = 'block';
+                });
+                const textEl = svg.querySelector<SVGElement>(`text.${CSS.escape(el.id)}-rect`);
+                if (textEl) {
+                    textEl.textContent = '+0';
+                }
+            } else {
+                el.classList.add('currentMoveMode');
+                el.classList.remove('unusedMoveMode');
+                const sibling = el.previousElementSibling as SVGElement | null;
+                sibling?.classList.add('currentMoveMode');
+                sibling?.classList.remove('unusedMoveMode');
+                svg.querySelectorAll<SVGElement>(`.${CSS.escape(el.id)}-rect`).forEach((rectEl: SVGElement) => {
+                    rectEl.style.display = 'block';
+                });
+                if (el === mpWalkEl) {
+                    const textEl = svg.querySelector<SVGElement>(`text.${CSS.escape(el.id)}-rect`);
+                    if (textEl) {
+                        textEl.textContent = '+1'; // Needed to counter the Stationary +0
+                    }
+                }
+            }
+        }
     }
 }

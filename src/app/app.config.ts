@@ -31,24 +31,29 @@
  * affiliated with Microsoft.
  */
 
-import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection, isDevMode } from '@angular/core';
+import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection, isDevMode, ErrorHandler } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideServiceWorker } from '@angular/service-worker';
 import { routes } from './app.routes';
+import { LoggerService } from './services/logger.service';
 
 /*
  * Author: Drake
  */
 export const appConfig: ApplicationConfig = {
-  providers: [
-    provideBrowserGlobalErrorListeners(),
-    provideZonelessChangeDetection(),
-    provideRouter(routes),
-    provideHttpClient(),
-    provideServiceWorker('ngsw-worker.js', {
-      enabled: !isDevMode(),
-      registrationStrategy: 'registerWhenStable:30000'
-    })
-  ]
+    providers: [
+        provideZonelessChangeDetection(),
+        {
+            provide: ErrorHandler,
+            useExisting: LoggerService,
+        },
+        provideBrowserGlobalErrorListeners(),
+        provideRouter(routes),
+        provideHttpClient(),
+        provideServiceWorker('ngsw-worker.js', {
+            enabled: !isDevMode(),
+            registrationStrategy: 'registerWhenStable:30000'
+        })
+    ]
 };

@@ -60,6 +60,7 @@ export class UnitSvgMekService extends UnitSvgService {
         this.updateHeatSinkPips();
         this.updateInventory();
         this.updateHitMod();
+        this.updateTurnState();
     }
 
     private updateCritSlotDisplay(criticalSlots: CriticalSlot[]) {
@@ -72,7 +73,6 @@ export class UnitSvgMekService extends UnitSvgService {
 
             const uid = el.getAttribute('uid');
             const systemSlot = el.getAttribute('type') === 'sys';
-            const armored = el.getAttribute('armored') === '1';
             const modularArmor = el.getAttribute('modularArmor') === '1';
             const isAmmo = el.classList.contains('ammoSlot');
 
@@ -101,7 +101,7 @@ export class UnitSvgMekService extends UnitSvgService {
 
             el.classList.toggle('damaged', !!criticalSlot.destroyed);
 
-            if (armored && !criticalSlot.destroyed) {
+            if (criticalSlot.armored && !criticalSlot.destroyed) {
                 const armorPip = el.querySelector('.armoredLocPip');
                 if (armorPip) {
                     const isHit = (criticalSlot.hits ?? 0) > 0;
@@ -158,6 +158,8 @@ export class UnitSvgMekService extends UnitSvgService {
         const destroyedSupercharger = critSlots.some(slot => slot.name && slot.name.includes('Supercharger') && slot.destroyed);
         const jumpJetsCount = critSlots.filter(slot => slot.name && (slot.name.includes('Jump Jet') || slot.name.includes('JumpJet'))).length;
         const destroyedJumpJetsCount = critSlots.filter(slot => slot.name && (slot.name.includes('Jump Jet') || slot.name.includes('JumpJet')) && slot.destroyed).length;
+        const UMUCount = critSlots.filter(slot => slot.name && (slot.name.includes('UMU'))).length;
+        const destroyedUMUCount = critSlots.filter(slot => slot.name && (slot.name.includes('UMU')) && slot.destroyed).length;
         const hasPartialWings = critSlots.some(slot => slot.name && slot.name.includes('PartialWing'));
         const destroyedPartialWings = hasPartialWings ? critSlots.filter(slot => slot.name && slot.name.includes('PartialWing') && slot.destroyed).length : 0;
         const hasTripleStrengthMyomer = critSlots.some(slot => slot.name && slot.name.includes('Triple Strength Myomer'));
@@ -241,6 +243,8 @@ export class UnitSvgMekService extends UnitSvgService {
             destroyedSupercharger,
             jumpJetsCount,
             destroyedJumpJetsCount,
+            UMUCount,
+            destroyedUMUCount,
             hasPartialWings,
             destroyedPartialWings,
             internalLocations,
@@ -267,6 +271,7 @@ export class UnitSvgMekService extends UnitSvgService {
         if (!unit) return;
         let walkValue = unit.walk;
         let jumpValue = unit.jump;
+        let UMUValue = unit.umu;
         let heatMoveModifier = 0;
         let heatFireModifier = 0;
         let moveImpaired = false;
@@ -375,6 +380,12 @@ export class UnitSvgMekService extends UnitSvgService {
             }
         }
 
+        if (systemsStatus.destroyedUMUCount === systemsStatus.UMUCount) {
+            UMUValue = 0;
+        } else {
+            UMUValue = Math.max(0, UMUValue - systemsStatus.destroyedUMUCount);
+        }
+
         const destroyedLA = this.unit.isInternalLocDestroyed('LA');
         const destroyedRA = this.unit.isInternalLocDestroyed('RA');
 
@@ -405,6 +416,8 @@ export class UnitSvgMekService extends UnitSvgService {
             maxRun: maxRunValue,
             jumpImpaired: (jumpValue < unit.jump),
             jump: jumpValue,
+            UMUImpaired: (UMUValue < unit.umu),
+            UMU: UMUValue,
             canKick: systemsStatus.destroyedLegsCount === 0 && systemsStatus.destroyedHipsCount === 0,
             kickMod: (systemsStatus.destroyedLegActuatorsCount * 2) + (systemsStatus.destroyedFeetCount) + (systemsStatus.destroyedLegAES ? 1 : 0),
             canPunch: {
@@ -451,6 +464,7 @@ export class UnitSvgMekService extends UnitSvgService {
         if (mpWalkEl) {
             const mpRunEl = svg.querySelector('#mpRun');
             const mpJumpEl = svg.querySelector('#mpJump');
+            const mpAltMode = svg.querySelector('#mp_2');
             mpWalkEl.classList.toggle('damaged', unitState.moveImpaired);
             if (unitState.walk != unitState.maxWalk) {
                 mpWalkEl.textContent = `${unitState.walk.toString()} [${unitState.maxWalk.toString()}]`;
@@ -465,9 +479,14 @@ export class UnitSvgMekService extends UnitSvgService {
                 }
                 mpRunEl.classList.toggle('damaged', unitState.moveImpaired);
             }
-            if (mpJumpEl) {
-                mpJumpEl.textContent = unitState.jump.toString();
-                mpJumpEl.classList.toggle('damaged', unitState.jumpImpaired);
+            const elForAltMode = mpJumpEl || mpAltMode;
+            if (elForAltMode) {
+                if (unitState.UMU > 0) {
+                    elForAltMode.textContent = unitState.UMU.toString();
+                } else {
+                    elForAltMode.textContent = unitState.jump.toString();
+                }
+                elForAltMode.classList.toggle('damaged', unitState.jumpImpaired || unitState.UMUImpaired);
             }
         }
         this.unit.getInventory().forEach(entry => {
@@ -708,13 +727,9 @@ export class UnitSvgMekService extends UnitSvgService {
             if (critSlotsInLoc.length === 0) continue;
             for (const critSlot of critSlotsInLoc) {
                 if (!critSlot) continue;
-                let armored = false;
-                if (critSlot.el) {
-                    armored = critSlot.el.getAttribute('armored') == '1';
-                }
-                const maxHits = armored ? 2 : 1;
+                const maxHits = critSlot.armored ? 2 : 1;
                 const destroyed = (locDestroyed || (critSlot.hits ?? 0) >= maxHits);
-                if (!destroyed != !critSlot.destroyed) {
+                if (!!destroyed !== !!critSlot.destroyed) {
                     critSlot.destroyed = destroyed;
                     this.unit.setCritSlot(critSlot);
                 }

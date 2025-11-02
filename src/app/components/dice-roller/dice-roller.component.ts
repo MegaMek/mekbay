@@ -31,163 +31,146 @@
  * affiliated with Microsoft.
  */
 
-import { afterNextRender, ChangeDetectionStrategy, Component, inject, Inject, Injector, OnInit, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { DialogModule, DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { CdkDrag, CdkDragEnd, CdkDragStart } from '@angular/cdk/drag-drop';
+import { Component, computed, effect, input, output, signal } from '@angular/core';
 
 /*
  * Author: Drake
  */
-export interface DiceRollResult {
-    die1: number;
-    die2: number;
-    modifier: number;
-    total: number;
-}
-
-export interface DiceRollerData {
-    caption: string;
-    modifier: number;
-}
-
 @Component({
-    selector: 'app-dice-roller',
-    standalone: true,
-    changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DialogModule, CdkDrag],
-    template: `<div class="dice-roller-content" 
-     cdkDrag
-     cdkDragRootElement=".cdk-overlay-pane"
-     [cdkDragBoundary]="'.cdk-overlay-container'"
-     (cdkDragStarted)="onDragStart($event)"
-     (cdkDragEnded)="onDragEnd($event)"
-     (click)="close()">
-    <div class="caption">{{ data.caption }}</div>
-    <div class="dice-body">
-        <div class="dice-faces">
-            <div class="die">{{ rollResult()?.die1 }}</div>
-            <div class="die">{{ rollResult()?.die2 }}</div>
-            @if (rollResult()?.modifier; as mod) {
-                <div class="die">
-                    <span *ngIf="mod > 0"> + {{ mod }}</span>
-                    <span *ngIf="mod < 0"> - {{ -mod }}</span>
-                </div>
-            }
-        </div>
-        <div class="dice-result">
-            <span class="result-total">= {{ rollResult()?.total }}</span>
-        </div>
-    </div>
-</div>`,
-styles: [
-    `
-        :host {
-            display: block;
-            background: #000;
-            border-radius: 8px;
-            padding: 8px 16px;
-        }
-
-        .caption {
-            text-align: center;
-            margin-bottom: 8px;
-            font-size: 1.2em;
-            color: #ccc;
-            font-weight: bold;
-        }
-
-        .dice-roller-content {
-            font-family: 'Roboto', sans-serif;
-            color: #fff;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .dice-body {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .dice-faces {
-            display: flex;
-            gap: 6px;
-        }
-
-        .die {
-            width: 32px;
-            height: 32px;
-            border: 1px solid #888;
-            border-radius: 4px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 20px;
-            font-weight: bold;
-            background-color: #eee;
-            color: #000;
-        }
-
-        .dice-result {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-        }
-
-        .result-total {
-            font-size: 24px;
-            font-weight: bold;
-        }
-        
-        .cdk-drag-dragging {
-            cursor: move;
-        }
-
-        .result-total {
-            font-size: 24px;
-            font-weight: bold;
-        }`]
+    selector: 'dice-roller',
+    templateUrl: './dice-roller.component.html',
+    styleUrls: ['./dice-roller.component.css']
 })
-export class DiceRollerComponent implements OnInit {
-    rollResult = signal<DiceRollResult | null>(null);
-    instance: any;
-    protected isDragging = false;
-    public dialogRef: DialogRef<void> = inject(DialogRef);
-    readonly data: DiceRollerData = inject(DIALOG_DATA);
-    private injector = inject(Injector);
+export class DiceRollerComponent {
+    diceCount = input<number>(2);
+    modifier = input<number>(0);
+    rollDurationMs = input<number>(500);
+    animationIntervalMs = input<number>(50);
+    freezeOnRollEnd = input<number>(0);
+    rolled = signal<boolean>(false);
+    diceSum = signal<number>(0);
 
-    constructor() {}
+    // outputs
+    finished = output<{ results: number[]; sum: number }>();
 
-    ngOnInit(): void {
+    // runtime state
+    diceResults = signal<(number | null)[]>([]);
+    isRolling = signal(false);
+    overlayVisible = signal(false);
+
+    private _animationTimer: any = null;
+    private _postEndTimer: any = null;
+    private _canCloseOverlay = false;
+
+    constructor() {
+        let lastDiceCount = 0;
+        effect((cleanup) => {
+            if (this.diceCount() === lastDiceCount) {
+                return;
+            }
+            lastDiceCount = this.diceCount();
+            this._resetArrays();
+            this._clearTimers();
+            cleanup(() => {
+                this._clearTimers();
+            });
+        });
+    }
+
+    public roll() {
+        if (this.isRolling()) {
+            return;
+        }
+
+        this.rolled.set(false);
+        this.isRolling.set(true);
+        this.overlayVisible.set(true);
+        this._canCloseOverlay = false;
+        this._clearTimers();
+
+
+        const diceCount = this.diceCount();
+
+        // start fast-changing overlay values
+        this._animationTimer = setInterval(() => {
+            for (let i = 0; i < diceCount; i++) {
+                const faces = this.diceResults();
+                faces[i] = this._randomFace();
+                this.diceResults.set([...faces]);
+            }
+        }, this.animationIntervalMs());
+
+        // stop after configured duration
+        setTimeout(() => {
+            if (this._animationTimer) {
+                clearInterval(this._animationTimer);
+                this._animationTimer = null;
+            }
+
+            this.isRolling.set(false);
+
+            const freezeOnRollEnd = this.freezeOnRollEnd();
+            this._canCloseOverlay = freezeOnRollEnd <= 0;
+            if (freezeOnRollEnd > 0) {
+                this._postEndTimer = setTimeout(() => {
+                    this._canCloseOverlay = true;
+                }, freezeOnRollEnd);
+            }
+
+            // emit finished event
+            const results = this.diceResults();
+            this.sumDie();
+            this.rolled.set(true);
+            this.finished.emit({ results: results.map(v => v ?? 0), sum: this.diceSum() });
+        }, this.rollDurationMs());
+    }
+
+    onDieClick() {
         this.roll();
     }
 
-    roll(): void {
-        const die1 = Math.floor(Math.random() * 6) + 1;
-        const die2 = Math.floor(Math.random() * 6) + 1;
-        const total = die1 + die2 + this.data.modifier;
-        this.rollResult.set({ die1, die2, modifier: this.data.modifier, total });
+    onOverlayBackgroundClick() {
+        if (this.isRolling()) {
+            return;
+        }
+        if (!this._canCloseOverlay) {
+            return;
+        }
+        this.overlayVisible.set(false);
     }
 
-    reroll(): void {
-        this.roll();
+    rollFinished() {
+        return !this.isRolling() && this.rolled();
     }
 
-    close(): void {
-        this.dialogRef.close();
+    sumDie() {
+        const results = this.diceResults();
+        let sum = 0;
+        for (const v of results) {
+            if (v !== null) {
+                sum += v;
+            }
+        }
+        sum += this.modifier();
+        this.diceSum.set(sum);
     }
 
-    onDragStart(event: CdkDragStart): void {
-        this.isDragging = true;
-        event.event.stopPropagation();
+    private _resetArrays() {
+        this.diceResults.set(Array(this.diceCount()).fill(null));
     }
 
-    onDragEnd(event: CdkDragEnd): void {
-        event.event.stopPropagation();
-        afterNextRender(() => {
-            this.isDragging = false;
-        }, { injector: this.injector });
+    private _randomFace() {
+        return Math.floor(Math.random() * 6) + 1;
+    }
+
+    private _clearTimers() {
+        if (this._animationTimer) {
+            clearInterval(this._animationTimer);
+            this._animationTimer = null;
+        }
+        if (this._postEndTimer) {
+            clearTimeout(this._postEndTimer);
+            this._postEndTimer = null;
+        }
     }
 }

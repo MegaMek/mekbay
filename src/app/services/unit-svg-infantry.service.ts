@@ -51,6 +51,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
         this.updateTroopsDisplay();
         this.updateInventory();
         this.updateHitMod();
+        this.updateTurnState();
     }
 
     protected override evaluateDestroyed(): void {

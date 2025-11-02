@@ -33,11 +33,12 @@
 
 import { Component, input, ElementRef, AfterViewInit, OnDestroy, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, viewChild, ComponentRef, ViewContainerRef, TemplateRef, afterNextRender, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ForceUnit } from '../../models/force-unit.model';
+import { ForceUnit, IViewState } from '../../models/force-unit.model';
 import { SvgZoomPanService, SwipeCallbacks } from './svg-zoom-pan.service';
 import { SvgInteractionService } from './svg-interaction.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { SvgCanvasOverlayComponent } from './svg-canvas-overlay.component';
+import { SvgInteractionOverlayComponent } from '../svg-viewer-overlay/svg-viewer-overlay.component';
 import { OptionsService } from '../../services/options.service';
 import { Unit } from '../../models/units.model';
 
@@ -48,7 +49,7 @@ import { Unit } from '../../models/units.model';
     selector: 'svg-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, SvgCanvasOverlayComponent],
+    imports: [CommonModule, SvgCanvasOverlayComponent /*, SvgInteractionOverlayComponent */],
     providers: [SvgZoomPanService, SvgInteractionService],
     templateUrl: './svg-viewer.component.html',
     styleUrls: ['./svg-viewer.component.css']
@@ -78,6 +79,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     private unitChangeEffectRef: EffectRef | null = null;
     private fluffImageInjectEffectRef: EffectRef | null = null;
     currentSvg = signal<SVGSVGElement | null>(null);
+    private lastViewState: IViewState | null = null;
 
     // Slides/swipe state
     private currentSlideEl: HTMLDivElement | null = null;
@@ -86,6 +88,10 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     private swipeStarted = false;
     private swipeActive = false;
     private swipeOffsetX = 0;
+    // swipe physics
+    private swipeLastTimestamp = 0;
+    private swipeLastDx = 0;
+    private swipeVelocity = 0; // px / s
 
     private prevUnit: ForceUnit | null = null;
     private nextUnit: ForceUnit | null = null;
@@ -182,6 +188,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     // Lifecycle hooks implementation for base class
     protected saveViewState(unit: ForceUnit): void {
         const viewState = this.zoomPanService.getViewState();
+        this.lastViewState = viewState;
         unit.viewState = {
             scale: viewState.scale,
             translateX: viewState.translateX,
@@ -199,6 +206,10 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     }
 
     protected restoreViewState(): void {
+        if (this.optionsService.options().syncZoomBetweenSheets && this.lastViewState) {
+            this.zoomPanService.restoreViewState(this.lastViewState);
+            return;
+        }
         const viewState = this.unit()?.viewState || null;
         this.zoomPanService.restoreViewState(viewState);
     }
@@ -273,7 +284,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     private setFluffImageVisibility() {
         const svg = this.currentSvg();
         if (!svg) return;
-        const injectedEl = svg.getElementById('fluff-image-injected') as HTMLElement | null;
+        const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
         if (!injectedEl) return; // we don't have a fluff image to switch to
         const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
         const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
@@ -353,13 +364,14 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
     private slideCanvasX(x: number, animate = false) {
         const el = this.canvasOverlay()?.nativeElement;
-        if (!el) return;
-        if (animate) {
-            el.style.transition = 'transform 250ms ease-out';
-        } else {
-            el.style.transition = 'none';
-        }
-        el.style.transform = `translateX(${x}px)`;
+        if (el) {
+            if (animate) {
+                el.style.transition = 'transform 250ms ease-out';
+            } else {
+                el.style.transition = 'none';
+            }
+            el.style.transform = `translateX(${x}px)`;
+        };
     }
 
     private async preloadNeighbors() {
@@ -469,14 +481,12 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (direction === 'prev' && this.prevSlideEl && this.prevSvg) {
             this.prevSlideEl.innerHTML = '';
             this.prevSlideEl.appendChild(this.prevSvg);
-            this.prevSlideEl.classList.add('fade-in');
             svgElement = this.prevSvg;
         } else
         if (direction === 'next' && this.nextSlideEl && this.nextSvg) {
             this.nextSlideEl.innerHTML = '';
             const svgToAppend = (this.nextUnit === this.prevUnit) ? this.nextSvg.cloneNode(true) as SVGSVGElement : this.nextSvg;
             this.nextSlideEl.appendChild(svgToAppend);
-            this.nextSlideEl.classList.add('fade-in');
             svgElement = this.nextSvg;
         }
         if (!svgElement) return;
@@ -506,6 +516,11 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         this.swipeActive = true;
         this.swipeOffsetX = 0;
 
+        // reset physics trackers
+        this.swipeLastTimestamp = performance.now();
+        this.swipeLastDx = 0;
+        this.swipeVelocity = 0;
+
         // Disable transitions while dragging
         this.setSlideX(this.currentSlideEl, 0, false);
         if (this.canvasOverlay()) {
@@ -517,6 +532,18 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
     private onSwipeMove(totalDx: number) {
         if (!this.swipeActive || !this.currentSlideEl) return;
+
+        const now = performance.now();
+        const dtMs = Math.max(1, now - this.swipeLastTimestamp);
+        const dt = dtMs / 1000; // seconds
+
+        // compute velocity and acceleration
+        const dx = totalDx - this.swipeLastDx;
+        const curVel = dx / dt; // px / s (instantaneous)
+
+        this.swipeVelocity = curVel;
+        this.swipeLastDx = totalDx;
+        this.swipeLastTimestamp = now;
 
         this.swipeOffsetX = totalDx;
 
@@ -545,9 +572,17 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (!this.swipeActive || !this.currentSlideEl) return;
 
         const width = this.containerWidth || 1;
-        const threshold = width * 0.5;
-        const commitPrev = totalDx > threshold && !!this.prevSlideEl && !!this.prevUnit;
-        const commitNext = totalDx < -threshold && !!this.nextSlideEl && !!this.nextUnit;
+        const referenceWidth = Math.min(this.svgWidth, this.containerWidth);
+        const threshold = referenceWidth * 0.5;
+        const minimumThreshold = referenceWidth * 0.05;
+        // physics-based thresholds
+        const velocityThreshold = referenceWidth * 2; // px/s
+        // consider commit if distance OR a sufficiently strong flick (velocity/accel)
+        const flickPrev = (this.swipeVelocity > velocityThreshold);
+        const flickNext = (this.swipeVelocity < -velocityThreshold);
+
+        const commitPrev = (totalDx > threshold && !!this.prevSlideEl && !!this.prevUnit) || ((totalDx > minimumThreshold) && flickPrev && !!this.prevSlideEl && !!this.prevUnit);
+        const commitNext = (totalDx < -threshold && !!this.nextSlideEl && !!this.nextUnit) || ((totalDx < -minimumThreshold) && flickNext && !!this.nextSlideEl && !!this.nextUnit);
 
         if (commitPrev) {
             const currentViewState = this.zoomPanService.getViewState();

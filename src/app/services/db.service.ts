@@ -44,6 +44,7 @@ import { UnitInitializerService } from '../components/svg-viewer/unit-initialize
 import { Injector } from '@angular/core';
 import { DialogsService } from './dialogs.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
+import { LoggerService } from './logger.service';
 
 
 /*
@@ -88,6 +89,7 @@ export interface UserData {
 })
 export class DbService {
     private dbPromise: Promise<IDBDatabase>;
+    private logger = inject(LoggerService);
     private dialogsService = inject(DialogsService);
 
     constructor() {
@@ -145,7 +147,7 @@ export class DbService {
             };
 
             request.onerror = () => {
-                console.error(`Error getting ${key} from IndexedDB:`, request.error);
+                this.logger.error(`Error getting ${key} from IndexedDB: ${request.error}`);
                 reject(request.error);
             };
         });
@@ -163,7 +165,7 @@ export class DbService {
             };
 
             request.onerror = () => {
-                console.error(`Error saving ${key} to IndexedDB:`, request.error);
+                this.logger.error(`Error saving ${key} to IndexedDB: ${request.error}`);
                 reject(request.error);
             };
         });
@@ -181,7 +183,7 @@ export class DbService {
             };
 
             request.onerror = () => {
-                console.error(`Error getting ${key} from IndexedDB ${storeName}:`, request.error);
+                this.logger.error(`Error getting ${key} from IndexedDB ${storeName}: ${request.error}`);
                 reject(request.error);
             };
         });
@@ -199,7 +201,7 @@ export class DbService {
             };
 
             request.onerror = () => {
-                console.error(`Error saving ${key} to IndexedDB ${storeName}:`, request.error);
+                this.logger.error(`Error saving ${key} to IndexedDB ${storeName}: ${request.error}`);
                 reject(request.error);
             };
         });
@@ -435,7 +437,7 @@ export class DbService {
                 const svg: SVGSVGElement | null = content.documentElement as unknown as SVGSVGElement;
                 return svg;
             } catch (error) {
-                console.error(`Error retrieving sheet ${key}:`, error);
+                this.logger.error(`Error retrieving sheet ${key}: ${error}`);
                 return null;
             }
         }
