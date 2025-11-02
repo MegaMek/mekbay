@@ -1,21 +1,27 @@
 import { Unit } from "./units.model";
 
-export type MotiveModes = 'stationary' | 'walk' | 'run' | 'jump' | 'UMU';
+export type MotiveState = ''
+
+export type MotiveModes = 'stationary' | 'walk' | 'run' | 'jump' | 'UMU' | 'VTOL';
 
 export interface MotiveModeOption {
     mode: MotiveModes;
     label: string;
 }
 
-export function getMotiveModeLabel(mode: MotiveModes, unit: Unit): string {
+export function canChangeAirborneGround(unit: Unit): boolean {
+    return unit.moveType === 'VTOL' || unit.moveType === 'WiGE' || unit.subtype === 'Land-Air BattleMek';
+}
+
+export function getMotiveModeLabel(mode: MotiveModes, unit: Unit, airborne: boolean = false): string {
     let isVehicle = unit.type === 'VTOL' || unit.type === 'Naval' || unit.type === 'Tank';
     switch (mode) {
         case 'stationary':
             return 'Stationary';
         case 'walk':
-            return isVehicle ? 'Cruise' : 'Walk';
+            return (isVehicle || airborne) ? 'Cruise' : 'Walk';
         case 'run':
-            return isVehicle ? 'Flank' : 'Run';
+            return (isVehicle || airborne) ? 'Flank' : 'Run';
         case 'jump':
             return 'Jump';
         case 'UMU':
@@ -25,7 +31,7 @@ export function getMotiveModeLabel(mode: MotiveModes, unit: Unit): string {
     }
 }
 
-export function getMotiveModesByUnit(unit: Unit): MotiveModes[] {
+export function getMotiveModesByUnit(unit: Unit, airborne: boolean = false): MotiveModes[] {
     if ((unit.type === 'Handheld Weapon')) return [];
     const modes: MotiveModes[] = [];
     modes.push('stationary');
@@ -33,7 +39,7 @@ export function getMotiveModesByUnit(unit: Unit): MotiveModes[] {
     if (unit.type !== 'Infantry') {
         modes.push('run');
     }
-    if (unit.jump > 0) {
+    if (unit.jump > 0 && !airborne) {
         modes.push('jump');
     }
     if (unit.umu > 0) {
@@ -42,10 +48,10 @@ export function getMotiveModesByUnit(unit: Unit): MotiveModes[] {
     return modes;
 }
 
-export function getMotiveModesOptionsByUnit(unit: Unit): MotiveModeOption[] {
-    const modes = getMotiveModesByUnit(unit);
+export function getMotiveModesOptionsByUnit(unit: Unit, airborne: boolean = false): MotiveModeOption[] {
+    const modes = getMotiveModesByUnit(unit, airborne ?? false);
     return modes.map(mode => ({
         mode,
-        label: getMotiveModeLabel(mode, unit)
+        label: getMotiveModeLabel(mode, unit, airborne)
     }));
 }

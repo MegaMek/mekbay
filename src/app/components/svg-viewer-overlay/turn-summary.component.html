@@ -3,6 +3,18 @@
     <div class="group">
         <div class="phaseTitle">Movement</div>
         <div class="summary-entry">
+        @if (canSwitchAirborneMode()) {        
+            <div class="row grid">
+                <button type="button" class="bt-button move-button" [class.selected]="airborne()"
+                    aria-pressed="{{ airborne() }}" (click)="setAirborne(true)">
+                    Airborne
+                </button>
+                <button type="button" class="bt-button move-button" [class.selected]="!airborne()"
+                    aria-pressed="{{ !airborne() }}" (click)="setAirborne(false)">
+                    Grounded
+                </button>
+            </div>
+        }
             <div class="row grid">
                 @for (moveMode of moveModes(); track moveMode.mode) {
                 @let mode = moveMode.mode;

@@ -640,7 +640,11 @@ export class ForceUnit {
         }
         locations[locKey].armor += hits;
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
-        this.state.turnState().addDmgReceived(hits);
+        let hitsForPsr = hits;
+        if (this.getUnit().armorType === 'Hardened') {
+            hitsForPsr = Math.ceil(hitsForPsr / 2);
+        }
+        this.state.turnState().addDmgReceived(hitsForPsr);
         this.setModified();
     }
 
@@ -806,7 +810,7 @@ export class ForceUnit {
     }
 
     public getAvailableMotiveModes(): MotiveModeOption[] {
-        return getMotiveModesOptionsByUnit(this.getUnit());
+        return getMotiveModesOptionsByUnit(this.getUnit(), this.turnState().airborne());
     }
 
     // TODO: must be reworded, create an history list of modifiers applied so that we can apply the proper sequence for Hip/Foot/Leg
@@ -1038,15 +1042,16 @@ export class TurnState {
     heatGenerated = computed(() => {
         let heat = 0;
         const moveMode = this.moveMode();
+        const critSlots = this.unitState.unit.getCritSlots();
         if (moveMode === 'walk') {
             heat += 1;
         } else if (moveMode === 'run') {
             heat += 2;
         } else if (moveMode === 'jump') {
             const distance = this.moveDistance() || 0;
-            heat += Math.max(3, distance);
+            const hasImprovedJumpJet = critSlots.some(slot => slot.name && slot.name.includes('Improved Jump Jet') && slot.destroyed);
+            heat += Math.max(3, hasImprovedJumpJet ? Math.ceil(distance / 2) : distance);
         }
-        const critSlots = this.unitState.unit.getCritSlots();
         const engineHits = critSlots.filter(slot => slot.name && slot.name.includes('Engine') && slot.destroyed).length;
         heat += engineHits * 5;
         return heat;

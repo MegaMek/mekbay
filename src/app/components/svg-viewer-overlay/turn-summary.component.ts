@@ -44,7 +44,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { SvgInteractionOverlayComponent } from './svg-viewer-overlay.component';
-import { MotiveModeOption, MotiveModes } from '../../models/motiveModes.model';
+import { canChangeAirborneGround, MotiveModeOption, MotiveModes } from '../../models/motiveModes.model';
 
 /*
  * Author: Drake
@@ -68,6 +68,18 @@ export class TurnSummaryPanelComponent {
     unit = inject(SvgInteractionOverlayComponent).unit;
     sliderContainer = viewChild.required<ElementRef<HTMLDivElement>>('sliderContainer');
     private activePointerId: number | null = null;
+
+    airborne = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return unit.turnState().airborne();
+    });
+
+    canSwitchAirborneMode = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return canChangeAirborneGround(unit.getUnit());
+    });
 
     damageReceived = computed(() => {
         const unit = this.unit();
@@ -161,6 +173,17 @@ export class TurnSummaryPanelComponent {
         if (!u) return [];
         return u.getAvailableMotiveModes();
     });
+    
+    setAirborne(airborne: boolean) {
+        const u = this.unit();
+        if (!u) return;
+        const turnState = u.turnState();
+        const currentAirborne = turnState.airborne();
+        if (currentAirborne === airborne) return;
+        turnState.airborne.set(airborne);
+        turnState.moveMode.set(null);
+        turnState.moveDistance.set(null);
+    }
 
     selectMove(mode: MotiveModes) {
         const u = this.unit();
