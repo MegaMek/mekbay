@@ -874,18 +874,19 @@ export class UnitSvgService implements OnDestroy {
         const mpWalkEl = svg.getElementById('mpWalk') as SVGElement | null;
         const mpRunEl = svg.getElementById('mpRun') as SVGElement | null;
         const mpJumpEl = svg.getElementById('mpJump') as SVGElement | null;
+        const mpAltMode = svg.querySelector('#mp_2') as SVGElement | null;
 
         if (moveMode === 'walk' || moveMode === 'stationary') {
             el = mpWalkEl;
         } else if (moveMode === 'run') {
             el = mpRunEl;
-        } else if (moveMode === 'jump') {
-            el = mpJumpEl;
+        } else if (moveMode === 'jump' || moveMode === 'UMU') {
+            el = mpJumpEl ?? mpAltMode;
         }
         // cleanup
-        for (const otherEl of [mpWalkEl, mpRunEl, mpJumpEl]) {
+        for (const otherEl of [mpWalkEl, mpRunEl, mpJumpEl, mpAltMode]) {
             if (!otherEl) continue;
-            if (otherEl !== el) {
+            if (otherEl !== el || (moveMode === 'stationary')) {
                 otherEl?.classList.add('unusedMoveMode');
                 const sibling = otherEl.previousElementSibling as SVGElement | null;
                 sibling?.classList.add('unusedMoveMode');
@@ -895,25 +896,28 @@ export class UnitSvgService implements OnDestroy {
                 });
             }
         }
-        svg.querySelectorAll('.movementType').forEach(modeEl => {
-            modeEl.classList.remove('currentMoveMode');
-            modeEl.classList.remove('unusedMoveMode');
-        });
         if (el) {
-            el.classList.add('currentMoveMode');
-            const sibling = el.previousElementSibling as SVGElement | null;
-            sibling?.classList.add('currentMoveMode');
-            svg.querySelectorAll<SVGElement>(`.${CSS.escape(el.id)}-rect`).forEach((rectEl: SVGElement) => {
-                rectEl.style.display = 'block';
-            });
-            if (el === mpWalkEl) {
-               const textEl = svg.querySelector<SVGElement>(`text.${CSS.escape(el.id)}-rect`);
+            if (moveMode === 'stationary') {
+                svg.querySelectorAll<SVGElement>(`.${CSS.escape(el.id)}-rect`).forEach((rectEl: SVGElement) => {
+                    rectEl.style.display = 'block';
+                });
+                const textEl = svg.querySelector<SVGElement>(`text.${CSS.escape(el.id)}-rect`);
                 if (textEl) {
-                    const distance = turnState?.moveDistance() || 0;
-                    if (moveMode === 'stationary') {
-                        textEl.textContent = '+0';
-                    } else {
-                        textEl.textContent = '+1';
+                    textEl.textContent = '+0';
+                }
+            } else {
+                el.classList.add('currentMoveMode');
+                el.classList.remove('unusedMoveMode');
+                const sibling = el.previousElementSibling as SVGElement | null;
+                sibling?.classList.add('currentMoveMode');
+                sibling?.classList.remove('unusedMoveMode');
+                svg.querySelectorAll<SVGElement>(`.${CSS.escape(el.id)}-rect`).forEach((rectEl: SVGElement) => {
+                    rectEl.style.display = 'block';
+                });
+                if (el === mpWalkEl) {
+                    const textEl = svg.querySelector<SVGElement>(`text.${CSS.escape(el.id)}-rect`);
+                    if (textEl) {
+                        textEl.textContent = '+1'; // Needed to counter the Stationary +0
                     }
                 }
             }
