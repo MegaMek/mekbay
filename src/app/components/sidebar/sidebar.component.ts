@@ -86,6 +86,7 @@ export class SidebarComponent {
     });
 
     public tinyMode = computed(() => {
+        console.log('isPhone:', this.isPhone(), 'drawerOpenState:', this.drawerOpenState());
         return !this.isPhone() && !this.drawerOpenState();
     });
 

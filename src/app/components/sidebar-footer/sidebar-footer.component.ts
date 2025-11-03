@@ -1,8 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2, untracked, afterNextRender, Injector, WritableSignal, viewChildren, QueryList, ViewChildren } from '@angular/core';
-import { Portal, PortalModule } from '@angular/cdk/portal';
+import { ChangeDetectionStrategy, Component, inject, computed, input, ElementRef, Renderer2, Injector, viewChildren } from '@angular/core';
+import { PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
-import { UnitSearchComponent } from '../unit-search/unit-search.component';
 import { OptionsService } from '../../services/options.service';
 import { ForceUnit } from '../../models/force-unit.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
