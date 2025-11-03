@@ -576,6 +576,11 @@ export class ForceUnit {
         this.setCritSlots(crits);
         this.turnState().evaluateCritSlot(slot);
     }
+    applyHitToCritSlot(slot: CriticalSlot, damage: number = 1) {
+        slot.hits = Math.max(0, (slot.hits ?? 0) + damage);
+        slot.destroyed = slot.armored ? slot.hits >= 2 : slot.hits >= 1;
+        this.setCritSlot(slot);
+    }
     getCritLoc(name: string): CriticalSlot | null {
         return this.state.crits().find(c => c.name === name) || null;
     }

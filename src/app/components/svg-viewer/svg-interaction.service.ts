@@ -653,16 +653,12 @@ export class SvgInteractionService {
                             pickerInstance.component.values.set(calculateValues());
                         }
                         if (val == 'Hit') {
-                            critSlot.hits = (critSlot.hits ?? 0) + 1;
-                            critSlot.destroyed = critSlot.armored ? critSlot.hits >= 2 : critSlot.hits >= 1;
-                            unit.setCritSlot(critSlot);
+                            unit.applyHitToCritSlot(critSlot, 1);
                             this.toastService.show(`Critical Hit on ${labelText}`, 'info');
                             pickerInstance.component.values.set(calculateValues());
                         }
                         if (val == 'Repair') {
-                            critSlot.hits = Math.max(0, (critSlot.hits ?? 0) - 1);
-                            critSlot.destroyed = critSlot.armored ? critSlot.hits >= 2 : critSlot.hits >= 1;
-                            unit.setCritSlot(critSlot);
+                            unit.applyHitToCritSlot(critSlot, -1);
                             this.toastService.show(`Repaired ${labelText}`, 'info');
                             pickerInstance.component.values.set(calculateValues());
                         }
@@ -690,9 +686,7 @@ export class SvgInteractionService {
                     } else {
                         // default is damage
                         if (!critSlot.destroyed) {
-                            critSlot.hits = (critSlot.hits ?? 0) + 1;
-                            critSlot.destroyed = critSlot.armored ? critSlot.hits >= 2 : critSlot.hits >= 1;
-                            unit.setCritSlot(critSlot);
+                            unit.applyHitToCritSlot(critSlot, 1);
                             this.toastService.show(`Critical Hit on ${labelText}`, 'info');
                             return;
                         }
