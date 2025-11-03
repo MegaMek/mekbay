@@ -24,11 +24,11 @@
     padding-bottom: max(4px, var(--safe-area-inset-bottom));
     box-sizing: border-box;
     gap: 8px;
-    width: calc(var(--sidebar-expanded-width) + var(--safe-area-inset-left));
+    width: calc(var(--sidebar-width) + var(--safe-area-inset-left));
 
 
     &.tiny {
-        width: calc(var(--sidebar-collapsed-width) + var(--safe-area-inset-left));
+        width: calc(var(--sidebar-width) + var(--safe-area-inset-left));
     }
 
     .header,

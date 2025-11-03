@@ -50,8 +50,8 @@ export class SidebarComponent {
     // computed phone drawer width in px
     public phoneWidthPx = computed(() => {
         if (typeof window === 'undefined') { return this.EXPANDED_WIDTH; }
-        const w = Math.min(window.innerWidth * 0.9, this.EXPANDED_WIDTH);
-        return Math.max(280, Math.round(w));
+        const w = Math.min(window.innerWidth, this.EXPANDED_WIDTH);
+        return Math.max(320, Math.round(w));
     });
 
     // backdrop opacity for phone: tied to menuOpenRatio
