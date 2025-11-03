@@ -1,7 +1,7 @@
 .footer {
     width: 100%;
     display: flex;
-    justify-content: space-around;
+    justify-content: space-between;
     flex-direction: row;
     gap: 8px;
 }
@@ -393,7 +393,6 @@
 }
 
 .nav-arrow {
-    position: absolute;
     background-color: transparent;
     color: gray;
     bottom: 0px;
@@ -402,19 +401,11 @@
     cursor: pointer;
     transition: color 0.2s;
     outline: none;
-    padding: 6px 1px;
+    padding: 0px 6px;
     pointer-events: auto;
     display: flex;
     align-items: center;
     justify-content: center;
-}
-
-.nav-arrow-left {
-    left: 4px;
-}
-
-.nav-arrow-right {
-    right: 4px;
 }
 
 .nav-arrow:hover {
