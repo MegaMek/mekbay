@@ -1,10 +1,10 @@
 <!-- Single canonical content template, reused in different wrappers -->
 <ng-template #sidebarContent>
-    <div class="sidebar-inner glass"
-        [class.tiny]="!layout.isMenuOpen() && !isPhone()">
+    <div class="sidebar-inner"
+        [class.tiny]="tinyMode()">
         <div class="header">
-            <div class="brand" (click)="!isPhone() && toggleMenuOpenClose()" aria-label="Mekbay">
-            @if (!isPhone() && !layout.isMenuOpen()) {
+            <div class="brand" (click)="toggleMenuOpenClose()" aria-label="Mekbay">
+            @if (tinyMode()) {
                 <img class="logo" src="/icons/icon-192x192.png" alt="Mekbay">
             } @else {
                 <img class="logo" src="/images/logo.png" alt="Mekbay">
@@ -13,10 +13,10 @@
             <div class="searchPortal" [cdkPortalOutlet]="unitSearchPortal()"></div>
         </div>
 
-        <force-builder-viewer #forceBuilderViewer [miniMode]="!this.isPhone() && !this.layout.isMenuOpen()"></force-builder-viewer>
+        <force-builder-viewer #forceBuilderViewer [miniMode]="tinyMode()"></force-builder-viewer>
 
         <div class="footer">
-            <sidebar-footer #footer [singleButton]="!this.isPhone() && !this.layout.isMenuOpen()"></sidebar-footer>
+            <sidebar-footer #footer [singleButton]="tinyMode()"></sidebar-footer>
         </div>
         <button #burgerLipBtn class="burger-lip-btn" (click)="onLipButtonClick()" 
             (pointerdown)="onLipPointerDown($event)" aria-label="Toggle sidebar">
@@ -38,32 +38,29 @@
     <!-- edge area to start drag (10% width) -->
     <div class="touch-edge" (pointerdown)="onPhoneEdgePointerDown($event)" [attr.aria-hidden]="true"></div>
     <!-- off-canvas container -->
-    <div class="phone-drawer" role="navigation" (pointerdown)="onPhoneDrawerPointerDown($event)"
+    <div class="phone-drawer glass" role="navigation" (pointerdown)="onPhoneDrawerPointerDown($event)"
         [style.width.px]="phoneWidthPx()" [style.transform]="phoneTransform()"
         [class.open]="drawerOpenState()" [class.dragging]="layout.isMenuDragging()">
         <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
     </div>
-
 }
 
-<!-- TABLET: docked collapsed + optional overlay expansion -->
+<!-- TABLET: docked collapsed + draggable overlay -->
 @if (isTablet()) {
-    @if (!layout.isMenuOpen()) {
-        <!-- tablet docked collapsed -->
-        <aside class="docked docked-collapsed" role="navigation">
-            <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
-        </aside>
-    } @else {
-        <!-- tablet overlay when expanded -->
-        <div class="tablet-overlay-panel" (pointerdown)="$event.stopPropagation()">
-            <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
-        </div>
-    }
+    <!-- thin edge to start opening swipe without covering the dock -->
+    <div class="tablet-touch-edge" (pointerdown)="onTabletEdgePointerDown($event)" [attr.aria-hidden]="true"></div>
+
+    <!-- dockable overlay drawer -->
+    <div #tabletOffcanvas class="tablet-drawer glass" role="navigation" (pointerdown)="onTabletDrawerPointerDown($event)"
+        [style.transform]="tabletTransform()"
+        [class.open]="drawerOpenState()" [class.dragging]="layout.isMenuDragging()">
+        <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
+    </div>
 }
 
 <!-- DESKTOP: docked (pushes content). Single dock element that changes width -->
 @if (isDesktop()) {
-    <aside class="docked" role="navigation">
+    <aside class="docked desktop-drawer" role="navigation">
         <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
     </aside>
 }

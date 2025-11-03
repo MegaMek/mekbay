@@ -146,14 +146,6 @@
     touch-action: none;
 }
 
-.phone-drawer.open {
-    transition: transform 200ms cubic-bezier(.2, .9, .2, 1);
-}
-
-.phone-drawer.dragging {
-    transition: none;
-}
-
 /* TABLET and DESKTOP docked */
 .docked {
     position: fixed;
@@ -165,12 +157,45 @@
     width: calc(var(--sidebar-width) + var(--safe-area-inset-left));
 }
 
-.tablet-overlay-panel {
+/* Tablet-specific swipe */
+.tablet-touch-edge {
     position: fixed;
-    inset: 0;
-    background: transparent;
-    align-self: stretch;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    left: 0;
+    top: 0;
+    height: 100vh;
+    width: 24px;
+    z-index: 50;
+    touch-action: none;
+}
+
+.tablet-drawer {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
     z-index: 70;
-    width: calc(var(--sidebar-width) + var(--safe-area-inset-left));
+    width: calc(var(--sidebar-expanded-width) + var(--safe-area-inset-left));
+    transition: transform 180ms ease;
+    // transition: transform 200ms cubic-bezier(.2, .9, .2, 1);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    will-change: transform;
+    touch-action: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.phone-drawer.open,
+.tablet-drawer.open {
+    transition: transform 200ms cubic-bezier(.2, .9, .2, 1);
+    align-items: unset;
+}
+
+.phone-drawer.dragging,
+.tablet-drawer.dragging {
+    transition: none;
+}
+
+.desktop-drawer {
+    background-color: rgba(45, 45, 45, 0.8);
 }
