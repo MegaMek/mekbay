@@ -48,11 +48,8 @@ export class UnitComponentItemComponent {
         this.floatingOverlayService.show(this.unit(), this.comp(), el);
     }
 
-    onPointerLeave() {
-        this.floatingOverlayService.hideWithDelay();
-    }
-
-    onFloatingPointerLeave() {
+    onPointerLeave(event: PointerEvent) {
+        if (event.pointerType !== 'mouse') return; // only care about mouse pointers
         this.floatingOverlayService.hideWithDelay();
     }
 }

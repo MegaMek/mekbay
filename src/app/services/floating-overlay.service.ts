@@ -62,19 +62,16 @@ export class FloatingOverlayService {
         });
     }
 
-    private onPointerDown = (ev: Event) => {
+    private onPointerDown = (ev: PointerEvent) => {
         if (!this.overlayRef) return;
         const target = ev.target as Node | null;
         if (!target) return;
 
         try {
-            const pane = this.overlayRef.overlayElement;
-            if (pane && pane.contains(target)) return;
-
-            const components = document.querySelectorAll('unit-component-item');
-            for (const el of Array.from(components)) {
-                if (el.contains(target)) return;
-            }
+            const target = document.elementFromPoint(ev.clientX, ev.clientY) as Element;
+            if (!target) return;
+            if (target.closest('floating-comp-info')) return;
+            if (target.closest('unit-component-item')) return;
         } catch (e) {
             // ignore any DOM errors and fall through to destroy
         }
@@ -148,7 +145,8 @@ export class FloatingOverlayService {
                     this.hideTimeout = null;
                 }
             });
-            pane.addEventListener('pointerleave', () => {
+            pane.addEventListener('pointerleave', (event: PointerEvent) => {
+                if (event.pointerType !== 'mouse') return; // only care about mouse pointers
                 this.isPointerOver = false;
                 this.hideWithDelay();
             });

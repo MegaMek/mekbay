@@ -352,7 +352,7 @@
 }
 
 .comp-loc {
-    background: #202020B0;
+    background: #202020A0;
     width: 60px;
     max-width: 60px;
     min-width: 60px;
@@ -364,6 +364,7 @@
     text-align: center;
     overflow: hidden;
     text-overflow: clip;
+    z-index: 1;
 }
 
 .basic-info-block a {
