@@ -311,17 +311,17 @@ export class SvgZoomPanService {
                 this.state.prevTouchCenter = { ...this.state.touchCenter };
             }
         } else
-        if (this.pointers.size === 1) {
-            const container = this.containerRef.nativeElement;
-            container.addEventListener('pointermove', this.onPointerMove.bind(this));
-            container.addEventListener('pointerup', this.onPointerUp.bind(this));
-            container.addEventListener('pointerleave', this.onPointerUp.bind(this));
-            container.addEventListener('pointercancel', this.onPointerUp.bind(this));
-            this.state.pointerStart = { x: event.clientX, y: event.clientY };
-            this.state.last = { x: event.clientX, y: event.clientY };
-            this.state.pointerMoved = false;
-            this.state.waitingForFirstEvent = true;
-        }
+            if (this.pointers.size === 1) {
+                const container = this.containerRef.nativeElement;
+                container.addEventListener('pointermove', this.onPointerMove.bind(this));
+                container.addEventListener('pointerup', this.onPointerUp.bind(this));
+                container.addEventListener('pointerleave', this.onPointerUp.bind(this));
+                container.addEventListener('pointercancel', this.onPointerUp.bind(this));
+                this.state.pointerStart = { x: event.clientX, y: event.clientY };
+                this.state.last = { x: event.clientX, y: event.clientY };
+                this.state.pointerMoved = false;
+                this.state.waitingForFirstEvent = true;
+            }
     }
 
     private onPointerMove(event: PointerEvent) {
@@ -492,11 +492,11 @@ export class SvgZoomPanService {
         }
     }
 
-    
+
     // Double-tap/click to zoom
     private lastTapTime = 0;
     private lastTapPoint: { x: number; y: number } | null = null;
-        
+
     private evaluatePossibleZoomReset = ((event: PointerEvent) => {
         if (this.pointerMoved || this.pointers.size > 0) {
             this.lastTapPoint = null;
@@ -511,7 +511,7 @@ export class SvgZoomPanService {
         const isInteractiveElement = SvgZoomPanService.NON_INTERACTIVE_SELECTORS.some(selector =>
             target.closest(selector)
         );
-        
+
         if (isInteractiveElement) {
             this.lastTapPoint = null;
             return
@@ -522,31 +522,27 @@ export class SvgZoomPanService {
         const distanceFromLastTap = this.lastTapPoint
             ? Math.hypot(event.clientX - this.lastTapPoint.x, event.clientY - this.lastTapPoint.y)
             : Infinity;
-        
+
         // Double-tap/click detected (within 300ms and same target)
         if (timeSinceLastTap < 300 && distanceFromLastTap < 30) {
             event.preventDefault();
             event.stopPropagation();
-            
+
             const isZoomedOut = this.state.scale() <= this.state.minScale * 1.01;
-            
+
             if (isZoomedOut) {
                 // Zoom in centered on the tap/click point
                 const rect = this.containerRef.nativeElement.getBoundingClientRect();
                 const clickX = event.clientX - rect.left;
                 const clickY = event.clientY - rect.top;
-                
+
                 const newScale = Math.min(this.state.maxScale, this.state.minScale * 2);
                 const translate = this.state.translate();
-                
-                // Calculate the point in SVG coordinates
-                const svgX = (clickX - translate.x) / this.state.scale();
-                const svgY = (clickY - translate.y) / this.state.scale();
-                
-                // Center the clicked SVG point in the viewport
-                const newX = (this.containerDimensions.width / 2) - (svgX * newScale);
-                const newY = (this.containerDimensions.height / 2) - (svgY * newScale);
-                
+
+                // Calculate new translation to keep the clicked point stationary
+                const newX = clickX - ((clickX - translate.x) * (newScale / this.state.scale()));
+                const newY = clickY - ((clickY - translate.y) * (newScale / this.state.scale()));
+
                 this.state.translate.set({ x: newX, y: newY });
                 this.state.scale.set(newScale);
                 this.clampPan();
