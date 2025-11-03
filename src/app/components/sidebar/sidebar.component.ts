@@ -31,7 +31,6 @@ export class SidebarComponent {
     unitSearchPortal = input<Portal<any>>();
     unitSearchComponent = input<UnitSearchComponent>();
 
-    private tabletOffcanvas = viewChild<ElementRef<HTMLDivElement>>('tabletOffcanvas');
     private burgerLipBtn = viewChild<ElementRef<HTMLButtonElement>>('burgerLipBtn');
     private forceBuilderViewer = viewChild<ForceBuilderViewerComponent>('forceBuilderViewer');
     private footer = viewChild<SidebarFooterComponent>('footer');

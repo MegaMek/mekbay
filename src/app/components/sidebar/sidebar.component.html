@@ -51,7 +51,7 @@
     <div class="tablet-touch-edge" (pointerdown)="onTabletEdgePointerDown($event)" [attr.aria-hidden]="true"></div>
 
     <!-- dockable overlay drawer -->
-    <div #tabletOffcanvas class="tablet-drawer glass" role="navigation" (pointerdown)="onTabletDrawerPointerDown($event)"
+    <div class="tablet-drawer glass" role="navigation" (pointerdown)="onTabletDrawerPointerDown($event)"
         [style.transform]="tabletTransform()"
         [class.open]="drawerOpenState()" [class.dragging]="layout.isMenuDragging()">
         <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
