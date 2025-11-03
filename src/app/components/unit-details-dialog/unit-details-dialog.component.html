@@ -312,12 +312,12 @@
         }
     </div>
     <div class="footer" dialog-footer>
-        <button *ngIf="hasPrev" class="nav-arrow nav-arrow-left" (click)="onPrev()" aria-label="Previous Unit">
+        <button [class.hidden]="!hasPrev" class="nav-arrow nav-arrow-left" (click)="onPrev()" aria-label="Previous Unit">
             &#10094;
         </button>
         <button [disabled]="this.forceBuilderService.readOnlyForce()" class="modal-btn bt-button" (click)="onAdd()">ADD</button>
         <button class="modal-btn bt-button" (click)="onClose()">CLOSE</button>
-        <button *ngIf="hasNext" class="nav-arrow nav-arrow-right" (click)="onNext()" aria-label="Next Unit">
+        <button [class.hidden]="!hasNext" class="nav-arrow nav-arrow-right" (click)="onNext()" aria-label="Next Unit">
             &#10095;
         </button>
     </div>

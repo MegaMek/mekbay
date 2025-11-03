@@ -403,13 +403,14 @@
     outline: none;
     padding: 0px 6px;
     pointer-events: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
 .nav-arrow:hover {
     color: var(--text-color);
+}
+
+.nav-arrow.hidden {
+    visibility: hidden;
 }
 
 /* Matrix layout (3 columns, 3 rows) */
