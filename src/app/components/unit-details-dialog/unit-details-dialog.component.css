@@ -645,7 +645,7 @@
     height: auto;
     object-fit: cover;
     object-position: right center;
-    filter: invert(1) saturate(0) opacity(0.1) brightness(1) contrast(1) blur(0.5px);
+    filter: invert(1) saturate(0) opacity(0.08) brightness(1) contrast(1) blur(0.5px);
     mix-blend-mode: lighten;
     pointer-events: none;
     z-index: 0;
