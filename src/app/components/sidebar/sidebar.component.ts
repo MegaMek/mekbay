@@ -220,6 +220,7 @@ export class SidebarComponent {
 
     // start drag common
     private startDrag(startEvent: PointerEvent, getDragWidth: () => number) {
+        if (this.activePointerId !== null) { return; } // already dragging
         this.activePointerId = startEvent.pointerId;
         this.dragging.set(true);
         this.layout.isMenuDragging.set(true);
@@ -230,9 +231,6 @@ export class SidebarComponent {
         let gestureDecided = false;
         let gestureDecisionCompleted = false;
         let gestureIsHorizontal = false;
-        this.footer()?.closeAllMenus();
-
-        try { this.elRef.nativeElement.setPointerCapture(startEvent.pointerId); } catch { /* ignore */ }
 
         const move = (ev: PointerEvent) => {
             if (ev.pointerId !== this.activePointerId) { return; }
@@ -257,7 +255,9 @@ export class SidebarComponent {
                 }
                 if (!gestureDecisionCompleted) {
                     gestureDecisionCompleted = true;
+                    try { this.elRef.nativeElement.setPointerCapture(this.activePointerId); } catch { /* ignore */ }
                     try { // We try!
+                        this.footer()?.closeAllMenus();
                         this.unitSearchComponent()?.closeAllPanels();
                     } catch { /* ignore */ }
                 }
@@ -288,10 +288,12 @@ export class SidebarComponent {
         };
 
         const cleanup = (shouldOpen: boolean) => {
-            try {
-                this.elRef.nativeElement.releasePointerCapture?.(this.activePointerId!);
-            } catch {
-                // ignore
+            if (gestureDecisionCompleted) {
+                try {
+                    this.elRef.nativeElement.releasePointerCapture?.(this.activePointerId!);
+                } catch {
+                    // ignore
+                }
             }
             window.removeEventListener('pointermove', move, { capture: true });
             window.removeEventListener('pointerup', up, { capture: true });
@@ -379,8 +381,6 @@ export class SidebarComponent {
         // use 'window' target for global pointer move/up handling
         this.lipUnlistenMove = this.renderer.listen('window', 'pointermove', move);
         this.lipUnlistenUp = this.renderer.listen('window', 'pointerup', up);
-        event.preventDefault();
-        event.stopPropagation();
     }
 
     private cleanupLipListeners() {

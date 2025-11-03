@@ -110,13 +110,6 @@ export class LayoutService {
                 this.menuOpenRatio.set(this.isMenuOpen() ? 1 : 0);
             }
         });
-
-        effect(() => {
-            document.documentElement.classList.toggle('touch-mode', this.isTouchInput());
-        });
-        effect(() => {
-            document.documentElement.classList.toggle('mobile-mode', this.isMobile());
-        });
     }
 
     /** Toggles the mobile menu's open/closed state. */
