@@ -566,10 +566,6 @@ export class ForceUnit {
         return this.state.crits().find(c => c.loc === loc && c.slot === slot) || null;
     }
     setCritSlot(slot: CriticalSlot) {
-        const destroyed = (slot.hits || 0) > (slot.armored ? 1 : 0);
-        if (slot.destroyed != destroyed) {
-            slot.destroyed = destroyed;
-        }
         const crits = [...this.state.crits()];
         const existingIndex = crits.findIndex(c => c.loc === slot.loc && c.slot === slot.slot);
         if (existingIndex !== -1) {
@@ -719,7 +715,7 @@ export class ForceUnit {
         if (crew.length === 0) return 'N/A';
         const pilot = crew[0];
         if (!pilot) return 'N/A';
-        return `${pilot.getSkill('gunnery')} / ${pilot.getSkill('piloting')}`;
+        return `${pilot.getSkill('gunnery')}/${pilot.getSkill('piloting')}`;
     });
 
     getCrewMember(crewId: number): CrewMember {

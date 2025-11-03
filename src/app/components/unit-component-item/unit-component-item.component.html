@@ -4,13 +4,13 @@
         class="component {{ displayStyle() }}-data"
         (pointerenter)="onPointerEnter($event)" 
         (click)="onCompClick($event)" 
-        (pointerleave)="onPointerLeave()">{{ comp()?.q }}×{{ comp()?.n }} @if (comp()?.q2) {<span class="ammo-count"> ({{ comp()?.q2 }})</span>}</span>
+        (pointerleave)="onPointerLeave($event)">{{ comp()?.q }}×{{ comp()?.n }} @if (comp()?.q2) {<span class="ammo-count"> ({{ comp()?.q2 }})</span>}</span>
 } @else {
 <div #component
     class="component {{ displayStyle() }}-data {{ typeClass() }}"
     (pointerenter)="onPointerEnter($event)"
     (click)="onCompClick($event)"
-    (pointerleave)="onPointerLeave()">
+    (pointerleave)="onPointerLeave($event)">
         <div class="comp-title">
             <span class="comp-qty">{{ comp()?.q }}×</span>
             <span class="comp-name">{{ comp()?.n }} @if (comp()?.q2) {<span class="ammo-count"> ({{ comp()?.q2 }})</span>}</span>

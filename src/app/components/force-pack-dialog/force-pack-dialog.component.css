@@ -107,10 +107,10 @@
 
 /* Unit block styles */
 .unit-square.compact-mode {
-    width: 72px;
+    width: 86px;
     height: 80px;
     max-height: 105px;
-    min-width: 72px;
+    min-width: 86px;
     background: #0003;
     padding: 2px;
     display: flex;

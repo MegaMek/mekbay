@@ -1,7 +1,7 @@
 .footer {
     width: 100%;
     display: flex;
-    justify-content: space-around;
+    justify-content: space-between;
     flex-direction: row;
     gap: 8px;
 }
@@ -352,7 +352,7 @@
 }
 
 .comp-loc {
-    background: #202020B0;
+    background: #202020A0;
     width: 60px;
     max-width: 60px;
     min-width: 60px;
@@ -364,6 +364,7 @@
     text-align: center;
     overflow: hidden;
     text-overflow: clip;
+    z-index: 1;
 }
 
 .basic-info-block a {
@@ -393,7 +394,6 @@
 }
 
 .nav-arrow {
-    position: absolute;
     background-color: transparent;
     color: gray;
     bottom: 0px;
@@ -402,23 +402,16 @@
     cursor: pointer;
     transition: color 0.2s;
     outline: none;
-    padding: 6px 1px;
+    padding: 0px 6px;
     pointer-events: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.nav-arrow-left {
-    left: 4px;
-}
-
-.nav-arrow-right {
-    right: 4px;
 }
 
 .nav-arrow:hover {
     color: var(--text-color);
+}
+
+.nav-arrow.hidden {
+    visibility: hidden;
 }
 
 /* Matrix layout (3 columns, 3 rows) */
@@ -653,7 +646,7 @@
     height: auto;
     object-fit: cover;
     object-position: right center;
-    filter: invert(1) saturate(0) opacity(0.1) brightness(1) contrast(1) blur(0.5px);
+    filter: saturate(0) invert(1) blur(0.5px) opacity(0.08);
     mix-blend-mode: lighten;
     pointer-events: none;
     z-index: 0;
@@ -668,6 +661,7 @@
     position: relative;
 }
 
+.grav-list,
 .ammo-list {
     margin-bottom: 8px;
 }

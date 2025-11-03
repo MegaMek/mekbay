@@ -123,6 +123,14 @@ export interface Unit {
         capacity: string; // capacity of the cargo bay
         doors: number; // number of doors
     }[];
+    capital?: {
+        dropshipCapacity: number;
+        escapePods: number;
+        lifeBoats: number;
+        gravDecks: number[];
+        sailIntegrity: number;
+        kfIntegrity: number;
+    },
     sheets: string[];
     as: AlphaStrikeUnitStats;
     _chassis?: string; // For pre-compiled search

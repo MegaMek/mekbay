@@ -49,6 +49,7 @@ import { SvgViewerLiteComponent } from '../svg-viewer-lite/svg-viewer-lite.compo
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { TooltipDirective } from '../../directives/tooltip.directive';
+import { FloatingOverlayService } from '../../services/floating-overlay.service';
 
 /*
  * Author: Drake
@@ -119,6 +120,7 @@ export class UnitDetailsDialogComponent {
     data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     toastService = inject(ToastService);
     router = inject(Router);
+    floatingOverlayService = inject(FloatingOverlayService);
     injector = inject(Injector);
     add = output<Unit>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
@@ -148,12 +150,6 @@ export class UnitDetailsDialogComponent {
     componentsForMatrix: UnitComponent[] = [];
     factionAvailability: { eraName: string, eraImg?: string, factions: { name: string, img: string }[] }[] = [];
     fluffImageUrl = signal<string | null>(null);
-
-    // For hover info
-    hoveredComp = signal<UnitComponent | null>(null);
-    hoverRect = signal<DOMRect | null>(null);
-    private isCompHovered = false;
-    private isFloatingHovered = false;
 
     get unit(): Unit {
         const currentUnit = this.unitList[this.unitIndex()]
@@ -785,14 +781,14 @@ export class UnitDetailsDialogComponent {
 
     onPrev() {
         if (this.hasPrev) {
-            this.onFloatingPointerLeave();
+            this.floatingOverlayService.hide();
             this.unitIndex.set(this.unitIndex() - 1);
         }
     }
 
     onNext() {
         if (this.hasNext) {
-            this.onFloatingPointerLeave();
+            this.floatingOverlayService.hide();
             this.unitIndex.set(this.unitIndex() + 1);
         }
     }
@@ -940,21 +936,6 @@ export class UnitDetailsDialogComponent {
     formatThousands(value: number): string {
         if (value === undefined || value === null) return '';
         return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    }
-
-    onFloatingPointerLeave() {
-        this.isFloatingHovered = false;
-        // Defer to next tick to allow comp pointer events to fire first if moving to it
-        afterNextRender(() => {
-            this.updateFloatingVisibility()
-        }, { injector: this.injector });
-    }
-
-    private updateFloatingVisibility() {
-        if (!this.isCompHovered && !this.isFloatingHovered) {
-            this.hoveredComp.set(null);
-            this.hoverRect.set(null);
-        }
     }
 
     onShare() {

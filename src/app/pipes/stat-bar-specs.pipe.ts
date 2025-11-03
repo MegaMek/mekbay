@@ -76,9 +76,23 @@ export class StatBarSpecsPipe implements PipeTransform {
         if (unit.moveType === 'VTOL') {
             jumpLabel = 'VTOL';
         }
-        const statDefs = [
+        const statDefs = [];
+        statDefs.push(
             { key: 'armor', label: armorLabel, value: unit.armor, valueText: armorValue, max: maxStats.armor[1] },
             { key: 'internal', label: structureLabel, value: unit.internal, max: maxStats.internal[1] },
+        );
+
+        if (unit.capital) {
+            statDefs.push(
+                { key: 'sailIntegrity', label: 'Sail Integrity', value: unit.capital.sailIntegrity, max: maxStats.sailIntegrity[1] },
+                { key: 'kfIntegrity', label: 'KF Integrity', value: unit.capital.kfIntegrity, max: maxStats.kfIntegrity[1] },
+                { key: 'dropshipCapacity', label: 'Docking Collars', value: unit.capital.dropshipCapacity, max: maxStats.dropshipCapacity[1] },
+                { key: 'lifeBoats', label: 'Life Boats', value: unit.capital.lifeBoats, max: maxStats.lifeBoats[1] },
+                { key: 'escapePods', label: 'Escape Pods', value: unit.capital.escapePods, max: maxStats.escapePods[1] },
+            );
+        }
+
+        statDefs.push(
             { key: 'alphaNoPhysical', label: 'Firepower', value: unit._mdSumNoPhysical, max: maxStats.alphaNoPhysicalNoOneshots[1] },
             { key: 'dpt', label: 'Damage/Turn', value: unit.dpt, max: maxStats.dpt[1] },
             { key: 'maxRange', label: 'Range', value: unit._maxRange, max: maxStats.maxRange[1] },
@@ -86,14 +100,13 @@ export class StatBarSpecsPipe implements PipeTransform {
             { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, max: maxStats.dissipation[1] },
             { key: 'runMP', label: 'Top Speed', value: unit.run2, max: maxStats.run2MP[1] },
             { key: 'jumpMP', label: jumpLabel, value: jumpValue, max: maxStats.jumpMP[1] },
-        ];
+        );
 
         if (unit.umu > 0) {
             statDefs.push({ key: 'umuMP', label: 'UMU', value: unit.umu, max: maxStats.umuMP[1] });
         }
-
         const filteredStats: statBarSpec[] = statDefs.filter(def => {
-            const statMaxArr = maxStats[def.key as keyof typeof maxStats] as [number, number];
+            const statMaxArr = maxStats[def.key as keyof typeof maxStats];
             if (def.value === undefined || def.value === null || def.value === -1) return false;
             if (!statMaxArr) return false;
             if (statMaxArr[0] === statMaxArr[1]) return false;

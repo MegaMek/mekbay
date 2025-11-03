@@ -654,12 +654,14 @@ export class SvgInteractionService {
                         }
                         if (val == 'Hit') {
                             critSlot.hits = (critSlot.hits ?? 0) + 1;
+                            critSlot.destroyed = critSlot.armored ? critSlot.hits >= 2 : critSlot.hits >= 1;
                             unit.setCritSlot(critSlot);
                             this.toastService.show(`Critical Hit on ${labelText}`, 'info');
                             pickerInstance.component.values.set(calculateValues());
                         }
                         if (val == 'Repair') {
                             critSlot.hits = Math.max(0, (critSlot.hits ?? 0) - 1);
+                            critSlot.destroyed = critSlot.armored ? critSlot.hits >= 2 : critSlot.hits >= 1;
                             unit.setCritSlot(critSlot);
                             this.toastService.show(`Repaired ${labelText}`, 'info');
                             pickerInstance.component.values.set(calculateValues());
@@ -689,6 +691,7 @@ export class SvgInteractionService {
                         // default is damage
                         if (!critSlot.destroyed) {
                             critSlot.hits = (critSlot.hits ?? 0) + 1;
+                            critSlot.destroyed = critSlot.armored ? critSlot.hits >= 2 : critSlot.hits >= 1;
                             unit.setCritSlot(critSlot);
                             this.toastService.show(`Critical Hit on ${labelText}`, 'info');
                             return;
@@ -957,7 +960,7 @@ export class SvgInteractionService {
                 const heatValue = Math.max(0, Number(newHeatValue));
                 unit.setHeat(heatValue);
             };
-
+            overflowButton.classList.add('interactive');
             overflowButton.addEventListener('click', promptHeatOverflow, { passive: false, signal });
         }
 

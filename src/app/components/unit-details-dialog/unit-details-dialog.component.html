@@ -65,8 +65,8 @@
                 <div *ngIf="unit.walk || unit.run || unit.jump || unit.umu"><span class="muted">Movement: </span>
                     <strong>{{ unit.walk }} / {{ unit.run
                         }}<span *ngIf="unit.run2 != unit.run"> [{{ unit.run2 }}]</span>
+                        @if (unit.jump) { / {{ unit.jump }}}
                         @if (unit.umu) { / {{ unit.umu }}} 
-                        @else if (unit.jump) { / {{ unit.jump }}}
                     </strong></div>
                 <div *ngIf="unit.c3 && unit.c3 != 'None'"><span class="muted">Network: </span><strong>{{ unit.c3
                         }}</strong></div>
@@ -179,6 +179,15 @@
                         </div>
                     }
                 }
+            }
+
+            @if (unit.capital && unit.capital.gravDecks && unit.capital.gravDecks.length > 0) {
+                <div class="grav-list allow-select">
+                    <span class="muted">Grav Decks: </span>
+                        @for (deck of unit.capital.gravDecks; let last = $last; let i = $index; track i) {
+                            <span class="deck-entry">Deck #{{ i + 1 }} ({{ deck }}-meters)</span>@if (!last) {, }
+                        }
+                </div>
             }
 
             @if (unit.cargo && unit.cargo.length > 0) {
@@ -303,12 +312,12 @@
         }
     </div>
     <div class="footer" dialog-footer>
-        <button *ngIf="hasPrev" class="nav-arrow nav-arrow-left" (click)="onPrev()" aria-label="Previous Unit">
+        <button [class.hidden]="!hasPrev" class="nav-arrow nav-arrow-left" (click)="onPrev()" aria-label="Previous Unit">
             &#10094;
         </button>
         <button [disabled]="this.forceBuilderService.readOnlyForce()" class="modal-btn bt-button" (click)="onAdd()">ADD</button>
         <button class="modal-btn bt-button" (click)="onClose()">CLOSE</button>
-        <button *ngIf="hasNext" class="nav-arrow nav-arrow-right" (click)="onNext()" aria-label="Next Unit">
+        <button [class.hidden]="!hasNext" class="nav-arrow nav-arrow-right" (click)="onNext()" aria-label="Next Unit">
             &#10095;
         </button>
     </div>
