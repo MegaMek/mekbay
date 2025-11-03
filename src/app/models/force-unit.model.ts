@@ -719,7 +719,7 @@ export class ForceUnit {
         if (crew.length === 0) return 'N/A';
         const pilot = crew[0];
         if (!pilot) return 'N/A';
-        return `${pilot.getSkill('gunnery')} / ${pilot.getSkill('piloting')}`;
+        return `${pilot.getSkill('gunnery')}/${pilot.getSkill('piloting')}`;
     });
 
     getCrewMember(crewId: number): CrewMember {

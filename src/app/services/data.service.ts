@@ -53,8 +53,8 @@ import { firstValueFrom } from 'rxjs';
  * Author: Drake
  */
 export const DOES_NOT_TRACK = 999;
-export interface UnitTypeMaxStats {
-    [unitType: string]: {
+
+export interface MinMaxStatsRange {
         armor: [number, number],
         internal: [number, number],
         heat: [number, number],
@@ -68,7 +68,16 @@ export interface UnitTypeMaxStats {
         alphaNoPhysicalNoOneshots: [number, number],
         maxRange: [number, number],
         dpt: [number, number],
-    }
+
+        // Capital ships
+        dropshipCapacity: [number, number],
+        escapePods: [number, number],
+        lifeBoats: [number, number],
+        sailIntegrity: [number, number],
+        kfIntegrity: [number, number],
+}
+export interface UnitTypeMaxStats {
+    [unitType: string]: MinMaxStatsRange
 }
 
 interface RemoteStore<T> {
@@ -395,7 +404,7 @@ export class DataService {
             this.filterIndexes[filter.key] = index;
         }
 
-        const statsByType: {
+        const statsByType:  {
             [type: string]: {
                 armor: number[],
                 internal: number[],
@@ -410,6 +419,12 @@ export class DataService {
                 alphaNoPhysicalNoOneshots: number[],
                 maxRange: number[],
                 dpt: number[],
+                // Capital ships
+                dropshipCapacity: number[],
+                escapePods: number[],
+                lifeBoats: number[],
+                sailIntegrity: number[],
+                kfIntegrity: number[],
             }
         } = {};
 
@@ -472,6 +487,12 @@ export class DataService {
                     alphaNoPhysicalNoOneshots: [],
                     maxRange: [],
                     dpt: [],
+                    // Capital ships
+                    dropshipCapacity: [],
+                    escapePods: [],
+                    lifeBoats: [],
+                    sailIntegrity: [],
+                    kfIntegrity: [],
                 };
             }
             statsByType[t].armor.push(unit.armor || 0);
@@ -487,6 +508,14 @@ export class DataService {
             statsByType[t].alphaNoPhysicalNoOneshots.push(unit._mdSumNoPhysicalNoOneshots || 0);
             statsByType[t].maxRange.push(unit._maxRange || 0);
             statsByType[t].dpt.push(unit.dpt || 0);
+            // Capital ships
+            if (unit.capital) {
+                statsByType[t].dropshipCapacity.push(unit.capital.dropshipCapacity || 0);
+                statsByType[t].escapePods.push(unit.capital.escapePods || 0);
+                statsByType[t].lifeBoats.push(unit.capital.lifeBoats || 0);
+                statsByType[t].sailIntegrity.push(unit.capital.sailIntegrity || 0);
+                statsByType[t].kfIntegrity.push(unit.capital.kfIntegrity || 0);
+            }
         }
 
         // Compute max for each stat per unit type
@@ -521,27 +550,58 @@ export class DataService {
                     Math.max(...stats.umuMP, 0)],
                 alphaNoPhysical: [
                     Math.min(...stats.alphaNoPhysical, 0),
-                    Math.max(...stats.alphaNoPhysical, 0)
-                ],
+                    Math.max(...stats.alphaNoPhysical, 0)],
                 alphaNoPhysicalNoOneshots: [
                     Math.min(...stats.alphaNoPhysicalNoOneshots, 0),
-                    Math.max(...stats.alphaNoPhysicalNoOneshots, 0)
-                ],
+                    Math.max(...stats.alphaNoPhysicalNoOneshots, 0)],
                 maxRange: [
                     Math.min(...stats.maxRange, 0),
-                    Math.max(...stats.maxRange, 0)
-                ],
+                    Math.max(...stats.maxRange, 0)],
                 dpt: [
                     Math.min(...stats.dpt, 0),
-                    Math.max(...stats.dpt, 0)
-                ],
+                    Math.max(...stats.dpt, 0)],
+                // Capital ships
+                dropshipCapacity: [
+                    Math.min(...stats.dropshipCapacity, 0),
+                    Math.max(...stats.dropshipCapacity, 0)],
+                escapePods: [
+                    Math.min(...stats.escapePods, 0),
+                    Math.max(...stats.escapePods, 0)],
+                lifeBoats: [
+                    Math.min(...stats.lifeBoats, 0),
+                    Math.max(...stats.lifeBoats, 0)],
+                sailIntegrity: [
+                    Math.min(...stats.sailIntegrity, 0),
+                    Math.max(...stats.sailIntegrity, 0)],
+                kfIntegrity: [
+                    Math.min(...stats.kfIntegrity, 0),
+                    Math.max(...stats.kfIntegrity, 0)],
             };
         }
     }
 
-    public getUnitTypeMaxStats(type: string) {
+    public getUnitTypeMaxStats(type: string): MinMaxStatsRange {
         return this.unitTypeMaxStats[type] || {
-            armor: 0, internal: 0, heat: 0, dissipation: 0, dissipationEfficiency: 0, runMP: 0, run2MP: 0, jumpMP: 0, umuMP: 0, alphaNoPhysical: 0, alphaNoPhysicalNoOneshots: 0
+            armor: [0, 0],
+            internal: [0, 0],
+            heat: [0, 0],
+            dissipation: [0, 0],
+            dissipationEfficiency: [0, 0],
+            runMP: [0, 0],
+            run2MP: [0, 0],
+            umuMP: [0, 0],
+            jumpMP: [0, 0],
+            alphaNoPhysical: [0, 0],
+            alphaNoPhysicalNoOneshots: [0, 0],
+            maxRange: [0, 0],
+            dpt: [0, 0],
+            // Capital ships
+            dropshipCapacity: [0, 0],
+            escapePods: [0, 0],
+            lifeBoats: [0, 0],
+            sailIntegrity: [0, 0],
+            kfIntegrity: [0, 0],
+            gravDecks: [0, 0],
         };
     }
 

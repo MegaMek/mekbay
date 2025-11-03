@@ -3,10 +3,11 @@
 }
 
 .unit-square.compact-mode {
+    position: relative;
     pointer-events: none;
-    width: 72px;
+    width: 86px;
     max-height: 105px;
-    min-width: 72px;
+    min-width: 86px;
     background: #0003;
     display: flex;
     flex-direction: column;
@@ -79,11 +80,30 @@
         font-weight: bold;
     }
     
+    .info-slot {
+        background-color: rgba(0, 0, 0, 0.2);
+        padding: 0px 2px;
+        display: flex;
+        align-items: center;
+        gap: 1px;
+        justify-content: start;
+        font-size: 0.7em;
+        position: absolute;
+
+        &.numeric {
+            justify-content: end;
+        }
+    }
+    
+    .pilot-info {
+        top: 3px;
+        right: 3px;
+    }
 }
 
 :host(.miniMode) .unit-square.compact-mode {
-    width: 56px;
-    min-width: 56px;
+    width: 64px;
+    min-width: 64px;
     overflow: hidden;
 
     .unit-icon {
@@ -106,6 +126,11 @@
         white-space: normal;
         overflow-wrap: anywhere;
         word-break: break-all;
+    }
+
+    // We hide extra infos because we don't have space
+    .pilot-info {
+        display: none;
     }
 } 
 

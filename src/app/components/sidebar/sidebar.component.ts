@@ -21,7 +21,7 @@ import { ForceBuilderViewerComponent } from '../force-builder-viewer/force-build
     styleUrls: ['./sidebar.component.scss'],
 })
 export class SidebarComponent {
-    readonly COLLAPSED_WIDTH = 64;
+    readonly COLLAPSED_WIDTH = 72;
     readonly EXPANDED_WIDTH = 360;
     injector = inject(Injector);
     elRef = inject(ElementRef<HTMLElement>);
@@ -80,14 +80,19 @@ export class SidebarComponent {
     constructor() {
         effect((cleanup) => {
             let offset = 0;
+            let width = 0;
             if (this.isPhone()) {
                 offset = 0;
+                width = this.phoneWidthPx();
             } else if (this.isTablet()) {
                 offset = this.COLLAPSED_WIDTH;
+                width = this.layout.isMenuOpen() ? this.EXPANDED_WIDTH : this.COLLAPSED_WIDTH;
             } else {
                 // desktop: use computed dock width (150 collapsed / 300 expanded)
                 offset = this.desktopDockWidth();
+                width = offset;
             }
+            document.documentElement.style.setProperty('--sidebar-width', `${width}px`);
             document.documentElement.style.setProperty('--sidebar-offset', `${offset}px`);
             document.documentElement.classList.toggle('sidebar-docked', offset > 0);
 

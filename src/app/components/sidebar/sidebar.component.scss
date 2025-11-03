@@ -18,7 +18,7 @@
     min-height: 0;
     color: #e6eef8;
     box-sizing: border-box;
-    padding-left: 4px;
+    padding-left: max(4px, var(--safe-area-inset-left));
     padding-right: 4px;
     padding-top: max(4px, var(--safe-area-inset-top));
     padding-bottom: max(4px, var(--safe-area-inset-bottom));
@@ -51,6 +51,12 @@
         .logo {
             height: 50px;
             width: 50px;
+        }
+    }
+
+    @media (max-height: 600px) {
+        .brand {
+            display: none;
         }
     }
 
@@ -156,6 +162,7 @@
     bottom: 0;
     z-index: 40;
     box-shadow: 2px 0 12px rgba(0, 0, 0, 0.06);
+    width: calc(var(--sidebar-width) + var(--safe-area-inset-left));
 }
 
 .tablet-overlay-panel {
@@ -165,4 +172,5 @@
     align-self: stretch;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
     z-index: 70;
+    width: calc(var(--sidebar-width) + var(--safe-area-inset-left));
 }

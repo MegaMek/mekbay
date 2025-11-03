@@ -15,8 +15,6 @@
 
         <force-builder-viewer #forceBuilderViewer [miniMode]="!this.isPhone() && !this.layout.isMenuOpen()"></force-builder-viewer>
 
-        <div class="spanner"></div>
-
         <div class="footer">
             <sidebar-footer #footer [singleButton]="!this.isPhone() && !this.layout.isMenuOpen()"></sidebar-footer>
         </div>
@@ -52,13 +50,12 @@
 @if (isTablet()) {
     @if (!layout.isMenuOpen()) {
         <!-- tablet docked collapsed -->
-        <aside class="docked docked-collapsed" role="navigation" [style.width.px]="this.COLLAPSED_WIDTH">
+        <aside class="docked docked-collapsed" role="navigation">
             <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
         </aside>
     } @else {
         <!-- tablet overlay when expanded -->
-        <div class="tablet-overlay-panel" (pointerdown)="$event.stopPropagation()"
-            [style.width.px]="desktopDockWidth()">
+        <div class="tablet-overlay-panel" (pointerdown)="$event.stopPropagation()">
             <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
         </div>
     }
@@ -66,7 +63,7 @@
 
 <!-- DESKTOP: docked (pushes content). Single dock element that changes width -->
 @if (isDesktop()) {
-    <aside class="docked" role="navigation" [style.width.px]="desktopDockWidth()">
+    <aside class="docked" role="navigation">
         <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
     </aside>
 }

@@ -181,6 +181,15 @@
                 }
             }
 
+            @if (unit.capital && unit.capital.gravDecks && unit.capital.gravDecks.length > 0) {
+                <div class="grav-list allow-select">
+                    <span class="muted">Grav Decks: </span>
+                        @for (deck of unit.capital.gravDecks; let last = $last; let i = $index; track i) {
+                            <span class="deck-entry">Deck #{{ i + 1 }} ({{ deck }}-meters)</span>@if (!last) {, }
+                        }
+                </div>
+            }
+
             @if (unit.cargo && unit.cargo.length > 0) {
                 <div class="cargo-container allow-select">
                     <span class="info-label muted">Cargo: </span>
