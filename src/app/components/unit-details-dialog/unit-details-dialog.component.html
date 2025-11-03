@@ -65,8 +65,8 @@
                 <div *ngIf="unit.walk || unit.run || unit.jump || unit.umu"><span class="muted">Movement: </span>
                     <strong>{{ unit.walk }} / {{ unit.run
                         }}<span *ngIf="unit.run2 != unit.run"> [{{ unit.run2 }}]</span>
+                        @if (unit.jump) { / {{ unit.jump }}}
                         @if (unit.umu) { / {{ unit.umu }}} 
-                        @else if (unit.jump) { / {{ unit.jump }}}
                     </strong></div>
                 <div *ngIf="unit.c3 && unit.c3 != 'None'"><span class="muted">Network: </span><strong>{{ unit.c3
                         }}</strong></div>
