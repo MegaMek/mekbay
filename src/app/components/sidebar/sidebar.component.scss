@@ -176,7 +176,6 @@
     z-index: 70;
     width: calc(var(--sidebar-expanded-width) + var(--safe-area-inset-left));
     transition: transform 180ms ease;
-    // transition: transform 200ms cubic-bezier(.2, .9, .2, 1);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
     will-change: transform;
     touch-action: none;
