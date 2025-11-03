@@ -957,7 +957,7 @@ export class SvgInteractionService {
                 const heatValue = Math.max(0, Number(newHeatValue));
                 unit.setHeat(heatValue);
             };
-
+            overflowButton.classList.add('interactive');
             overflowButton.addEventListener('click', promptHeatOverflow, { passive: false, signal });
         }
 
