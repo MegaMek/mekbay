@@ -496,18 +496,26 @@ export class SvgZoomPanService {
     // Double-tap/click to zoom
     private lastTapTime = 0;
     private lastTapPoint: { x: number; y: number } | null = null;
-    private lastTapTarget: EventTarget | null = null;
         
     private evaluatePossibleZoomReset = ((event: PointerEvent) => {
-        if (this.pointerMoved) return;
-        
+        if (this.pointerMoved || this.pointers.size > 0) {
+            this.lastTapPoint = null;
+            return;
+        };
+
         const target = document.elementFromPoint(event.clientX, event.clientY) as Element;
-        if (!target) return;
+        if (!target) {
+            this.lastTapPoint = null;
+            return;
+        };
         const isInteractiveElement = SvgZoomPanService.NON_INTERACTIVE_SELECTORS.some(selector =>
             target.closest(selector)
         );
         
-        if (isInteractiveElement) return;
+        if (isInteractiveElement) {
+            this.lastTapPoint = null;
+            return
+        };
 
         const now = Date.now();
         const timeSinceLastTap = now - this.lastTapTime;
@@ -516,7 +524,7 @@ export class SvgZoomPanService {
             : Infinity;
         
         // Double-tap/click detected (within 300ms and same target)
-        if (timeSinceLastTap < 300 && this.lastTapTarget === event.target && distanceFromLastTap < 30) {
+        if (timeSinceLastTap < 300 && distanceFromLastTap < 30) {
             event.preventDefault();
             event.stopPropagation();
             
@@ -548,11 +556,9 @@ export class SvgZoomPanService {
             }
 
             this.lastTapTime = 0;
-            this.lastTapTarget = null;
             this.lastTapPoint = null;
         } else {
             this.lastTapTime = now;
-            this.lastTapTarget = event.target;
             this.lastTapPoint = { x: event.clientX, y: event.clientY };
         }
     });
@@ -562,7 +568,8 @@ export class SvgZoomPanService {
         // Remove pointer from tracking
         const hadPointer = this.pointers.delete(event.pointerId);
 
-            
+        this.evaluatePossibleZoomReset(event);
+
         // If we had two pointers and now one remains: transition from pinch to single-pointer pan/swipe
         if (hadPointer && this.pointers.size === 1) {
             const remaining = Array.from(this.pointers.values())[0];
@@ -578,7 +585,6 @@ export class SvgZoomPanService {
 
         // If no pointers remain: finalize
         if (this.pointers.size === 0) {
-            this.evaluatePossibleZoomReset(event);
             this.cleanup();
         }
     }
