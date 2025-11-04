@@ -7,6 +7,7 @@ import { OptionsService } from '../../services/options.service';
 import { SidebarFooterComponent } from '../sidebar-footer/sidebar-footer.component';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { ForceBuilderViewerComponent } from '../force-builder-viewer/force-builder-viewer.component';
+import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '../../directives/swipe.directive';
 
 /*
  * Main Sidebar component
@@ -16,7 +17,7 @@ import { ForceBuilderViewerComponent } from '../force-builder-viewer/force-build
     selector: 'sidebar',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, PortalModule, CdkMenuModule, SidebarFooterComponent, ForceBuilderViewerComponent],
+    imports: [CommonModule, PortalModule, CdkMenuModule, SidebarFooterComponent, ForceBuilderViewerComponent, SwipeDirective],
     templateUrl: './sidebar.component.html',
     styleUrls: ['./sidebar.component.scss'],
 })
@@ -34,13 +35,9 @@ export class SidebarComponent {
     private burgerLipBtn = viewChild<ElementRef<HTMLButtonElement>>('burgerLipBtn');
     private forceBuilderViewer = viewChild<ForceBuilderViewerComponent>('forceBuilderViewer');
     private footer = viewChild<SidebarFooterComponent>('footer');
+    private swipeDirective = viewChild<SwipeDirective>(SwipeDirective);
 
-    // drag state for phone
-    private dragging = signal(false);
-    private startX = 0;
-    private startY = 0;
     private startRatio = 0;
-    private activePointerId: number | null = null;
 
     // derived signals
     public isPhone = this.layout.isPhone;
@@ -55,6 +52,8 @@ export class SidebarComponent {
     public getDragWidth() {
         return this.isPhone() ? this.sidebarExpandedWidth() : this.EXPANDED_WIDTH - this.COLLAPSED_WIDTH;
     }
+    public getDragDimension = () => this.getDragWidth(); // Bonded version for swipe directive
+
 
     public sidebarExpandedWidth = computed(() => {
         const width = this.layout.windowWidth();
@@ -161,121 +160,12 @@ export class SidebarComponent {
         if (ev.clientX > 32) { return; }
 
         ev.preventDefault();
-        this.startDrag(ev, () => this.EXPANDED_WIDTH);
-    }
-
-    public onDrawerPointerDown(ev: PointerEvent) {
-        if (this.isDesktop()) { return; }
-        if (ev.isPrimary === false) { return; }
-
-        if (this.unitSearchComponent() && this.unitSearchComponent()?.resultsVisible()) {
-            return;
+        
+        const directive = this.swipeDirective();
+        if (directive) {
+            directive.startSwipe(ev);
         }
-        if (this.forceBuilderViewer() && this.forceBuilderViewer()?.isUnitDragging()) {
-            return;
-        }
-
-        this.startDrag(ev, () => ( this.getDragWidth() ));
     }
-
-    // start drag common
-    private startDrag(startEvent: PointerEvent, getDragWidth: () => number) {
-        if (this.activePointerId !== null) { return; } // already dragging
-        this.activePointerId = startEvent.pointerId;
-        this.dragging.set(true);
-        this.layout.isMenuDragging.set(true);
-        this.startX = startEvent.clientX;
-        this.startY = startEvent.clientY;
-        this.startRatio = this.layout.menuOpenRatio();
-
-        let gestureDecided = false;
-        let gestureDecisionCompleted = false;
-        let gestureIsHorizontal = false;
-
-        const move = (event: PointerEvent) => {
-            if (event.pointerId !== this.activePointerId) { return; }
-            const dx = event.clientX - this.startX;
-            const dy = event.clientY - this.startY;
-
-            if (this.forceBuilderViewer()?.isUnitDragging()) {
-                cancel(event);
-                return;
-            }
-
-            if (!gestureDecided) {
-                const threshold = 6;
-                if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) {
-                    return;
-                }
-                gestureDecided = true;
-                gestureIsHorizontal = Math.abs(dx) > Math.abs(dy);
-                if (!gestureIsHorizontal) {
-                    cancel(event);
-                    return;
-                }
-                if (!gestureDecisionCompleted) {
-                    gestureDecisionCompleted = true;
-                    try { this.elRef.nativeElement.setPointerCapture(this.activePointerId); } catch { /* ignore */ }
-                    try { // We try!
-                        this.footer()?.closeAllMenus();
-                        this.unitSearchComponent()?.closeAllPanels();
-                    } catch { /* ignore */ }
-                }
-            }
-
-            const w = getDragWidth();
-            let newRatio = this.startRatio + dx / w;
-            newRatio = Math.max(0, Math.min(1, newRatio));
-            this.layout.menuOpenRatio.set(newRatio);
-
-            if (newRatio > 0.02) {
-                this.layout.isMenuOpen.set(true);
-            }
-        };
-
-        const up = (event: PointerEvent) => {
-            if (event.pointerId !== this.activePointerId) { return; }
-            // finalize
-            const finalRatio = this.layout.menuOpenRatio();
-            const shouldOpen = finalRatio >= 0.5;
-            cleanup(shouldOpen);
-        };
-
-        const cancel = (event: PointerEvent) => {
-            // revert to prior state
-            const shouldOpen = this.startRatio >= 0.5;
-            cleanup(shouldOpen);
-        };
-
-        const cleanup = (shouldOpen: boolean) => {
-            if (gestureDecisionCompleted) {
-                try {
-                    this.elRef.nativeElement.releasePointerCapture?.(this.activePointerId!);
-                } catch {
-                    // ignore
-                }
-            }
-            window.removeEventListener('pointermove', move, { capture: true });
-            window.removeEventListener('pointerup', up, { capture: true });
-            window.removeEventListener('pointercancel', cancel, { capture: true });
-            this.activePointerId = null;
-            this.dragging.set(false);
-            this.layout.isMenuDragging.set(false);
-            this.layout.menuOpenRatio.set(shouldOpen ? 1 : 0);
-            this.layout.isMenuOpen.set(shouldOpen);
-        };
-
-        window.addEventListener('pointermove', move, { passive: true, capture: true });
-        window.addEventListener('pointerup', up, { passive: true, capture: true });
-        window.addEventListener('pointercancel', cancel, { passive: true, capture: true });
-    }
-
-    // backdrop click to close overlay
-    public onBackdropPointerDown() {
-        this.layout.isMenuOpen.set(false);
-        this.layout.menuOpenRatio.set(0);
-    }
-
 
     /* --------------------------------------------------------
      * Lip button
@@ -354,5 +244,79 @@ export class SidebarComponent {
             return;
         }
         this.toggleMenuOpenClose();
+    }
+
+    public shouldBlockSwipe = () => {
+        if (this.unitSearchComponent()?.resultsVisible()) {
+            return true;
+        }
+        if (this.forceBuilderViewer()?.isUnitDragging()) {
+            return true;
+        }
+        return false;
+    };
+
+    public onSwipeStart(event: SwipeStartEvent) {
+        if (this.isDesktop()) return;
+        
+        this.layout.isMenuDragging.set(true);
+        this.startRatio = this.layout.menuOpenRatio();
+
+        // Close menus/panels at start
+        try {
+            this.footer()?.closeAllMenus();
+            this.unitSearchComponent()?.closeAllPanels();
+        } catch { /* ignore */ }
+    }
+
+    public onSwipeRatio(ratio: number) {
+        if (this.isDesktop()) return;
+
+        let newRatio = this.startRatio + ratio;
+        
+        // Clamp between 0 and 1 for the menu state
+        newRatio = Math.max(0, Math.min(1, newRatio));
+        
+        this.layout.menuOpenRatio.set(newRatio);
+
+        if (newRatio > 0.02) {
+            this.layout.isMenuOpen.set(true);
+        }
+    }
+
+    public onSwipeEnd(event: SwipeEndEvent) {
+        if (this.isDesktop()) return;
+
+        this.layout.isMenuDragging.set(false);
+        
+        const shouldOpen = event.success 
+          ? event.direction === 'right' 
+          : this.layout.menuOpenRatio() >= 0.5;
+
+        this.layout.menuOpenRatio.set(shouldOpen ? 1 : 0);
+        this.layout.isMenuOpen.set(shouldOpen);
+    }
+
+    public onSwipeCancel() {
+        this.layout.isMenuDragging.set(false);
+        this.layout.menuOpenRatio.set(this.startRatio);
+    }
+
+    // backdrop click to close overlay
+    public onBackdropPointerDown() {
+        const directive = this.swipeDirective();
+        if (directive?.swiping()) return; // ignore if swiping
+
+        this.layout.isMenuOpen.set(false);
+        this.layout.menuOpenRatio.set(0);
+    }
+
+    public onEdgeTouchStart(ev: TouchEvent) {
+        console.log('onEdgeTouchStart', ev);
+        if (this.isDesktop()) { return; }
+        if (ev.touches.length !== 1) { return; }
+        if (ev.touches[0].clientX > 32) { return; }
+
+        ev.preventDefault();
     }
 }

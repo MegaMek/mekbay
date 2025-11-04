@@ -34,12 +34,21 @@
     <div class="touch-edge" (pointerdown)="onEdgePointerDown($event)" [attr.aria-hidden]="true"></div>
 }
 
-<div class="drawer glass" role="navigation" (pointerdown)="onDrawerPointerDown($event)"
+<div class="drawer glass" role="navigation"
     [class.desktop]="isDesktop()"
     [class.phone]="isPhone()"
     [class.tablet]="isTablet()"
     [class.glass]="!isDesktop()"
     [style.transform]="drawerTransform()"
-    [class.open]="drawerOpenState()" [class.dragging]="layout.isMenuDragging()">
+    [class.open]="drawerOpenState()"
+    swipe
+    [direction]="'horizontal'"
+    [shouldBlockSwipe]="shouldBlockSwipe"
+    [dragDimensions]="getDragDimension"
+    (swipestart)="onSwipeStart($event)"
+    (swiperatio)="onSwipeRatio($event)"
+    (swipeend)="onSwipeEnd($event)"
+    (swipecancel)="onSwipeCancel()"
+    >
     <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
 </div>

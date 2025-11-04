@@ -28,7 +28,13 @@
             </svg>
         </button>
     </div>
-    <div dialog-body class="dialog-body">
+    <div dialog-body class="dialog-body"
+        swipe
+        [direction]="'horizontal'"
+        [threshold]="20"
+        [shouldBlockSwipe]="shouldBlockSwipe"
+        (swipestart)="onSwipeStart($event)"
+        (swipeend)="onSwipeEnd($event)">
         <img *ngIf="fluffImageUrl()" [src]="fluffImageUrl()" class="fluff-bg-image" alt="">
         <div class="tab-content tab-general" *ngIf="activeTab() === 'General'">
             <!-- Basic Info -->
