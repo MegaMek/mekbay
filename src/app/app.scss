@@ -17,7 +17,7 @@
 }
 
 :host-context(.sidebar-docked) .main-content {
-    margin-left: calc(var(--sidebar-width) + var(--safe-area-inset-left));
+    margin-left: calc(var(--sidebar-offset) + var(--safe-area-inset-left));
 }
 
 .content-area {
