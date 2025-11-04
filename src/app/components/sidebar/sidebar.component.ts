@@ -299,7 +299,7 @@ export class SidebarComponent {
 
     public onSwipeCancel() {
         this.layout.isMenuDragging.set(false);
-        this.layout.menuOpenRatio.set(this.startRatio);
+        this.layout.menuOpenRatio.set(this.layout.menuOpenRatio() >= 0.5 ? 1 : 0);
     }
 
     // backdrop click to close overlay
@@ -312,7 +312,6 @@ export class SidebarComponent {
     }
 
     public onEdgeTouchStart(ev: TouchEvent) {
-        console.log('onEdgeTouchStart', ev);
         if (this.isDesktop()) { return; }
         if (ev.touches.length !== 1) { return; }
         if (ev.touches[0].clientX > 32) { return; }

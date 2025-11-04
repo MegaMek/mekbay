@@ -268,7 +268,6 @@ export class SwipeDirective implements OnDestroy {
 
             // Determine success
             const success = this.isSwipeSuccessful(deltaX, deltaY, velocity);
-
             this.swipeend.emit({
                 originalEvent: event,
                 deltaX,
@@ -296,7 +295,6 @@ export class SwipeDirective implements OnDestroy {
             const direction = this.getSwipeDirection(deltaX, deltaY);
             const duration = Date.now() - this.startTime;
             const velocity = duration > 0 ? distance / duration : 0;
-
             this.swipeend.emit({
                 originalEvent: event,
                 deltaX,
