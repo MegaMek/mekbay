@@ -48,9 +48,9 @@ export class SwipeDirective implements OnDestroy {
     readonly direction = input<SwipeDirection>('both');
     readonly threshold = input<number>(15); // pixels
     readonly successRatio = input<number>(0.5); // 50% of container dimension
-    readonly velocityMultiplier = input<number>(2.5); // velocity multiplier for success calculation ( 0 = disabled )
+    readonly velocityMultiplier = input<number>(2.4); // velocity multiplier for success calculation ( 0 = disabled )
     readonly shouldBlockSwipe = input<(() => boolean) | undefined>(undefined);
-    readonly minimumVelocity = input<number>(0.3); // pixels per ms
+    readonly minimumVelocity = input<number>(0.4); // pixels per ms
     readonly dragDimensions = input<(() => number) | undefined>(undefined);
 
     // Outputs
