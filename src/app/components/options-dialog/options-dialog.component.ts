@@ -114,9 +114,9 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('sheetsColor', value);
     }
 
-    onFluffImageInSheetChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('fluffImageInSheet', value);
+    onRecordSheetCenterPanelContentChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as 'fluffImage' | 'clusterTable';
+        this.optionsService.setOption('recordSheetCenterPanelContent', value);
     }
 
     onSyncZoomBetweenSheetsChange(event: Event) {

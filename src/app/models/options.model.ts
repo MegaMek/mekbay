@@ -44,7 +44,7 @@ export interface Options {
     syncZoomBetweenSheets: boolean;
     unitDisplayName: 'chassisModel' | 'alias' | 'both';
     gameSystem: 'cbt' | 'as';
-    fluffImageInSheet: boolean;
+    recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
     lastCanvasState?: {
         brushSize: number;
         eraserSize: number;

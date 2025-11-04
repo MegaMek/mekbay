@@ -47,7 +47,7 @@ const DEFAULT_OPTIONS: Options = {
     swipeToNextSheet: 'horizontal',
     unitDisplayName: 'chassisModel',
     gameSystem: 'cbt',
-    fluffImageInSheet: true,
+    recordSheetCenterPanelContent: 'clusterTable',
     syncZoomBetweenSheets: true,
 };
 
@@ -64,7 +64,7 @@ export class OptionsService {
         syncZoomBetweenSheets: DEFAULT_OPTIONS.syncZoomBetweenSheets,
         unitDisplayName: DEFAULT_OPTIONS.unitDisplayName,
         gameSystem: DEFAULT_OPTIONS.gameSystem,
-        fluffImageInSheet: DEFAULT_OPTIONS.fluffImageInSheet,
+        recordSheetCenterPanelContent: DEFAULT_OPTIONS.recordSheetCenterPanelContent,
     });
 
     constructor() {
@@ -82,7 +82,7 @@ export class OptionsService {
             syncZoomBetweenSheets: saved?.syncZoomBetweenSheets ?? DEFAULT_OPTIONS.syncZoomBetweenSheets,
             unitDisplayName: saved?.unitDisplayName ?? DEFAULT_OPTIONS.unitDisplayName,
             gameSystem: saved?.gameSystem ?? DEFAULT_OPTIONS.gameSystem,
-            fluffImageInSheet: saved?.fluffImageInSheet ?? DEFAULT_OPTIONS.fluffImageInSheet,
+            recordSheetCenterPanelContent: saved?.recordSheetCenterPanelContent ?? DEFAULT_OPTIONS.recordSheetCenterPanelContent,
             lastCanvasState: saved?.lastCanvasState,
             sidebarLipPosition: saved?.sidebarLipPosition,
         });

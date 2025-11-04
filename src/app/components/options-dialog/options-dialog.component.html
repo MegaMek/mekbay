@@ -59,11 +59,11 @@
         @if (activeTab() === 'Sheets') {
             <div class="tab-content">
                 <div class="option-row">
-                    <label for="fluffImageInSheet">Center Panel:</label>
-                    <select id="fluffImageInSheet" class="bt-select" [value]="optionsService.options().fluffImageInSheet"
-                        (change)="onFluffImageInSheetChange($event)">
-                        <option value="true">Artwork (default)</option>
-                        <option value="false">Hit Location and Cluster Table</option>
+                    <label for="recordSheetCenterPanelContent">Center Panel:</label>
+                    <select id="recordSheetCenterPanelContent" class="bt-select" [value]="optionsService.options().recordSheetCenterPanelContent"
+                        (change)="onRecordSheetCenterPanelContentChange($event)">
+                        <option value="clusterTable">Hit Location and Cluster Table (default)</option>
+                        <option value="fluffImage">Artwork</option>
                     </select>
                 </div>
                 <div class="option-row">
