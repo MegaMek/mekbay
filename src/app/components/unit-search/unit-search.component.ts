@@ -257,7 +257,7 @@ export class UnitSearchComponent implements OnDestroy {
         this.focused.set(false);
         this.advOpen.set(false);
         this.activeIndex.set(null);
-        this.searchInput().nativeElement.blur();
+        this.blurInput();
     }
 
     onOverlayClick() {
@@ -271,6 +271,10 @@ export class UnitSearchComponent implements OnDestroy {
 
     focusInput() {
         try { this.searchInput()?.nativeElement.focus(); } catch { /* ignore */ }
+    }
+    
+    blurInput() {
+        try { this.searchInput()?.nativeElement.blur(); } catch { /* ignore */ }
     }
 
     setSearch(val: string) {
@@ -439,7 +443,7 @@ export class UnitSearchComponent implements OnDestroy {
                     return;
                 }
                 this.focused.set(false);
-                searchInput.nativeElement.blur();
+                this.blurInput();
             }
             return;
         }
@@ -604,7 +608,7 @@ export class UnitSearchComponent implements OnDestroy {
                 // If this is the first unit being added, close the search panel
                 this.closeAllPanels();
             }
-            this.searchInput().nativeElement.blur();
+            this.blurInput();
             this.unitDetailsDialogOpen.set(false);
         });
 
@@ -612,7 +616,9 @@ export class UnitSearchComponent implements OnDestroy {
             this.advOpen.set(false);
         }
         this.activeIndex.set(null);
-        (document.activeElement as HTMLElement)?.blur();
+        try { 
+            (document.activeElement as HTMLElement)?.blur();
+        } catch { /* ignore */ }
     }
 
     private getDisplaySortKey(): string {

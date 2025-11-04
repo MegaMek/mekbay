@@ -46,17 +46,18 @@ export class LayoutService {
     private readonly TABLET_BREAKPOINT = 900
 
     public isMobile = computed(() => {
-        return  this.windowWidth() < this.PHONE_BREAKPOINT || this.isPortraitOrientation();
+        return this.isPhone() || this.isTablet();
     });
     public isPhone = computed(() => {
         return this.windowWidth() < this.PHONE_BREAKPOINT;
     });
     public isTablet = computed(() => {
+        if (this.isPhone()) { return false; }
         const width = this.windowWidth();
-        return width >= this.PHONE_BREAKPOINT && width < this.TABLET_BREAKPOINT;
+        return width < this.TABLET_BREAKPOINT || this.isPortraitOrientation();
     });
     public isDesktop = computed(() => {
-        return this.windowWidth() >= this.TABLET_BREAKPOINT;
+        return !this.isPhone() && !this.isTablet();
     });
     /** A signal representing the open state of the mobile menu. */
     public isMenuOpen = signal(false);
@@ -109,13 +110,6 @@ export class LayoutService {
             if (!this.isMenuDragging()) {
                 this.menuOpenRatio.set(this.isMenuOpen() ? 1 : 0);
             }
-        });
-
-        effect(() => {
-            document.documentElement.classList.toggle('touch-mode', this.isTouchInput());
-        });
-        effect(() => {
-            document.documentElement.classList.toggle('mobile-mode', this.isMobile());
         });
     }
 

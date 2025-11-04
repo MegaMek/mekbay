@@ -36,7 +36,6 @@ import { CommonModule } from '@angular/common';
 import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { SvgViewerComponent } from './components/svg-viewer/svg-viewer.component';
-import { ForceBuilderViewerComponent } from './components/force-builder-viewer/force-builder-viewer.component';
 import { DataService } from './services/data.service';
 import { ForceBuilderService } from './services/force-builder.service';
 import { Unit } from './models/units.model';
@@ -106,6 +105,7 @@ export class App {
 
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
     public readonly unitSearchComponentRef = viewChild(UnitSearchComponent);
+    public readonly sidebar = viewChild(SidebarComponent);
     protected unitSearchPortal!: DomPortal<ElementRef>;
     protected unitSearchPortalMain!: DomPortal<any>;
     protected unitSearchPortalExtended!: DomPortal<any>;
@@ -136,7 +136,7 @@ export class App {
                 if (this.unitSearchFilter.expandedView()) {
                     this.unitSearchPortalExtended = this.unitSearchPortal;
                 } else {
-                    if (this.hasUnits()) {
+                    if (this.sidebar()) {
                         this.unitSearchPortalForceBuilder.set(this.unitSearchPortal);
                     } else {
                         this.unitSearchPortalMain = this.unitSearchPortal;

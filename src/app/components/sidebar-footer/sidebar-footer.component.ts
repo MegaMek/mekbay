@@ -53,12 +53,6 @@ export class SidebarFooterComponent {
         this.compactModeService.toggle();
     }
 
-    showOptionsMenu(event: MouseEvent, unit: ForceUnit) {
-        event.stopPropagation();
-        this.forceBuilderService.selectUnit(unit);
-    }
-
-    
     showOptionsDialog(): void {
         this.dialog.open(OptionsDialogComponent);
     }

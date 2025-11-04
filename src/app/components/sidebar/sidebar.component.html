@@ -1,4 +1,3 @@
-<!-- Single canonical content template, reused in different wrappers -->
 <ng-template #sidebarContent>
     <div class="sidebar-inner"
         [class.tiny]="tinyMode()">
@@ -25,42 +24,22 @@
     </div>
 </ng-template>
 
-
-<!-- overlay backdrop -->
 @if (!isDesktop()) {
+    <!-- overlay backdrop -->
     <div class="backdrop"
         (pointerdown)="onBackdropPointerDown()" [style.opacity]="backdropOpacity()"
         [class.visible]="(layout.isMenuOpen() || layout.isMenuDragging() || layout.menuOpenRatio() > 0)">
     </div>
-}
-<!-- PHONE: off-canvas overlay (draggable) -->
-@if (isPhone()) {
-    <!-- edge area to start drag (10% width) -->
-    <div class="touch-edge" (pointerdown)="onPhoneEdgePointerDown($event)" [attr.aria-hidden]="true"></div>
-    <!-- off-canvas container -->
-    <div class="phone-drawer glass" role="navigation" (pointerdown)="onPhoneDrawerPointerDown($event)"
-        [style.width.px]="phoneWidthPx()" [style.transform]="phoneTransform()"
-        [class.open]="drawerOpenState()" [class.dragging]="layout.isMenuDragging()">
-        <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
-    </div>
+    <!-- touch edge to open drawer -->
+    <div class="touch-edge" (pointerdown)="onEdgePointerDown($event)" [attr.aria-hidden]="true"></div>
 }
 
-<!-- TABLET: docked collapsed + draggable overlay -->
-@if (isTablet()) {
-    <!-- thin edge to start opening swipe without covering the dock -->
-    <div class="tablet-touch-edge" (pointerdown)="onTabletEdgePointerDown($event)" [attr.aria-hidden]="true"></div>
-
-    <!-- dockable overlay drawer -->
-    <div class="tablet-drawer glass" role="navigation" (pointerdown)="onTabletDrawerPointerDown($event)"
-        [style.transform]="tabletTransform()"
-        [class.open]="drawerOpenState()" [class.dragging]="layout.isMenuDragging()">
-        <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
-    </div>
-}
-
-<!-- DESKTOP: docked (pushes content). Single dock element that changes width -->
-@if (isDesktop()) {
-    <aside class="docked desktop-drawer" role="navigation">
-        <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
-    </aside>
-}
+<div class="drawer glass" role="navigation" (pointerdown)="onDrawerPointerDown($event)"
+    [class.desktop]="isDesktop()"
+    [class.phone]="isPhone()"
+    [class.tablet]="isTablet()"
+    [class.glass]="!isDesktop()"
+    [style.transform]="drawerTransform()"
+    [class.open]="drawerOpenState()" [class.dragging]="layout.isMenuDragging()">
+    <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
+</div>
