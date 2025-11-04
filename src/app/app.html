@@ -1,10 +1,7 @@
 <main>
     <div class="app-container" [class.menu-open]="this.layoutService.isMenuOpen()">
         @if (this.hasUnits()) {
-            <!-- <force-builder-viewer [unitSearchPortal]="unitSearchPortalForceBuilder()"
-                [unitSearchComponent]="unitSearchComponentRef()">
-            </force-builder-viewer> -->
-            <sidebar [unitSearchPortal]="unitSearchPortalForceBuilder()" [unitSearchComponent]="unitSearchComponentRef()"></sidebar>
+            <sidebar #sidebar [unitSearchPortal]="unitSearchPortalForceBuilder()" [unitSearchComponent]="unitSearchComponentRef()"></sidebar>
         }
         <div class="extended-search-container">
             <div [cdkPortalOutlet]="unitSearchPortalExtended"></div>

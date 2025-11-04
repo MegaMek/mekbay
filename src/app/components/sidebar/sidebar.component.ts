@@ -47,29 +47,13 @@ export class SidebarComponent {
     public isTablet = this.layout.isTablet;
     public isDesktop = this.layout.isDesktop;
 
-    // computed phone drawer width in px
-    public phoneWidthPx = computed(() => {
-        if (typeof window === 'undefined') { return this.EXPANDED_WIDTH; }
-        const w = Math.min(window.innerWidth, this.EXPANDED_WIDTH);
-        return Math.max(320, Math.round(w));
-    });
-
     // backdrop opacity for phone: tied to menuOpenRatio
     public backdropOpacity = computed(() => {
         return Math.min(0.75, 0.6 * this.layout.menuOpenRatio());
     });
 
-    // returns string transform for phone drawer based on layout.menuOpenRatio
-    public phoneTransform = computed(() => {
-        const w = this.phoneWidthPx();
-        const ratio = this.layout.menuOpenRatio();
-        const tx = (ratio - 1) * w; // when ratio==1 -> 0, ratio==0 -> -w
-        return `translateX(${tx}px)`;
-    });
-
-    // Tablet: transform for overlay sliding distance (expanded - collapsed)
-    public tabletTransform = computed(() => {
-        const slide = this.EXPANDED_WIDTH - this.COLLAPSED_WIDTH;
+    public drawerTransform = computed(() => {
+        const slide = this.isPhone() ? this.EXPANDED_WIDTH : this.EXPANDED_WIDTH - this.COLLAPSED_WIDTH;
         const ratio = this.layout.menuOpenRatio();
         const tx = (ratio - 1) * slide; // 0 -> fully closed (offset left), 1 -> aligned
         return `translateX(${Math.round(tx)}px)`;
@@ -95,7 +79,7 @@ export class SidebarComponent {
             let width = 0;
             if (this.isPhone()) {
                 offset = 0;
-                width = this.phoneWidthPx();
+                width = this.EXPANDED_WIDTH;
             } else if (this.isTablet()) {
                 // Tablet: content is always pushed by the collapsed dock only
                 offset = this.COLLAPSED_WIDTH;
@@ -162,50 +146,17 @@ export class SidebarComponent {
         this.layout.isMenuOpen.update(v => !v);
     }
 
-    // PHONE: handle pointer down on left edge to start drag
-    public onPhoneEdgePointerDown(ev: PointerEvent) {
-        if (!this.isPhone()) { return; }
+    public onEdgePointerDown(ev: PointerEvent) {
+        if (!this.isDesktop()) { return; }
         if (ev.isPrimary === false) { return; }
-
-        const maxStartX = (typeof window !== 'undefined') ? Math.max(32, window.innerWidth * 0.10) : 80;
-        if (ev.clientX > maxStartX) { return; }
-
-        ev.preventDefault();
-        this.startDrag(ev, () => this.phoneWidthPx());
-    }
-
-    // PHONE: allow starting a drag from the open drawer to swipe it closed
-    public onPhoneDrawerPointerDown(ev: PointerEvent) {
-        if (!this.isPhone()) { return; }
-        if (ev.isPrimary === false) { return; }
-
-        if (this.unitSearchComponent() && this.unitSearchComponent()?.resultsVisible()) {
-            return;
-        }
-        if (this.forceBuilderViewer() && this.forceBuilderViewer()?.isUnitDragging()) {
-            return;
-        }
-
-        const currentRatio = this.layout.menuOpenRatio();
-        if (currentRatio <= 0.01 && !this.layout.isMenuOpen()) { return; }
-
-        this.startDrag(ev, () => this.phoneWidthPx());
-    }
-
-    // TABLET: small left edge to start opening swipe
-    public onTabletEdgePointerDown(ev: PointerEvent) {
-        if (!this.isTablet()) { return; }
-        if (ev.isPrimary === false) { return; }
-        // thin activation zone already constrained by element width; double-check a small threshold
         if (ev.clientX > 32) { return; }
-        ev.preventDefault();
 
-        this.startDrag(ev, () => (this.EXPANDED_WIDTH - this.COLLAPSED_WIDTH));
+        ev.preventDefault();
+        this.startDrag(ev, () => this.EXPANDED_WIDTH);
     }
 
-    // TABLET: allow swipe
-    public onTabletDrawerPointerDown(ev: PointerEvent) {
-        if (!this.isTablet()) { return; }
+    public onDrawerPointerDown(ev: PointerEvent) {
+        if (this.isDesktop()) { return; }
         if (ev.isPrimary === false) { return; }
 
         if (this.unitSearchComponent() && this.unitSearchComponent()?.resultsVisible()) {
