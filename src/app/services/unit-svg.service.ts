@@ -346,6 +346,17 @@ export class UnitSvgService implements OnDestroy {
                 const hitValue = parseInt(el.getAttribute('hit') || '0');
                 el.classList.toggle('damaged', hits >= hitValue);
             });
+
+            const state = member.getState();
+            const unconsciousGroup = svg.querySelector(`g#crew_status_checkbox_${crewId}[state=unconscious]`) as SVGGElement | null;
+            const deadGroup = svg.querySelector(`g#crew_status_checkbox_${crewId}[state=dead]`) as SVGGElement | null;
+            if (unconsciousGroup) {
+                unconsciousGroup.classList.toggle('wounded', state === 'unconscious');
+            }
+            if (deadGroup) {
+                deadGroup.classList.toggle('wounded', state === 'dead');
+            }
+
         });
     }
 

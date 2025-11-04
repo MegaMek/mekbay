@@ -84,7 +84,7 @@ export class RsPolyfillUtil {
         this.addHeatLevels(svg);
         this.addCrewSkillsButtons(svg);
         this.addCrewNamesButtons(svg);
-        this.addCrewDamageClasses(svg);
+        this.addCrewDamageClasses(unit, svg);
         this.addInventoryLines(svg);
         this.adjustArmorPips(unit, svg);
         this.addHitMod(svg);
@@ -136,14 +136,14 @@ export class RsPolyfillUtil {
      */
     private static addCriticalLocs(svg: SVGSVGElement): void {
         this.CRITICAL_LOCATION_IDS.forEach(baseId => {
-        if (baseId.endsWith('_')) {
-            for (let i = 1; i <= 8; i++) {
-            const fullId = `${baseId}${i}`;
-            this.addCritLocClassToElement(svg, fullId, baseId.substring(0, fullId.length - 1), i);
+            if (baseId.endsWith('_')) {
+                for (let i = 1; i <= 8; i++) {
+                    const fullId = `${baseId}${i}`;
+                    this.addCritLocClassToElement(svg, fullId, baseId.substring(0, fullId.length - 1), i);
+                }
+            } else {
+                this.addCritLocClassToElement(svg, baseId, baseId, 1);
             }
-        } else {
-            this.addCritLocClassToElement(svg, baseId, baseId, 1);
-        }
         });
     }
 
@@ -166,16 +166,16 @@ export class RsPolyfillUtil {
     private static addCrewSkillsButtons(svg: SVGSVGElement): void {
         if (svg.querySelector('.crewSkillButton')) return; // Avoid duplicates
         const skillTargets = [
-            {textElement:'gunnerySkill0', crewId: 0, skill: 'gunnery'},
-            {textElement:'pilotingSkill0', crewId: 0, skill: 'piloting'},
-            {textElement:'asfGunnerySkill', crewId: 0, skill: 'gunnery', asf: true},
-            {textElement:'asfPilotingSkill', crewId: 0, skill: 'piloting', asf: true},
-            {textElement:'gunnerySkill1', crewId: 1, skill: 'gunnery'},
-            {textElement:'pilotingSkill1', crewId: 1, skill: 'piloting'},
-            {textElement:'gunnerySkill2', crewId: 2, skill: 'gunnery'},
-            {textElement:'pilotingSkill2', crewId: 2, skill: 'piloting'},
-            {textElement:'gunnerySkill3', crewId: 3, skill: 'gunnery'},
-            {textElement:'pilotingSkill3', crewId: 3, skill: 'piloting'},
+            { textElement: 'gunnerySkill0', crewId: 0, skill: 'gunnery' },
+            { textElement: 'pilotingSkill0', crewId: 0, skill: 'piloting' },
+            { textElement: 'asfGunnerySkill', crewId: 0, skill: 'gunnery', asf: true },
+            { textElement: 'asfPilotingSkill', crewId: 0, skill: 'piloting', asf: true },
+            { textElement: 'gunnerySkill1', crewId: 1, skill: 'gunnery' },
+            { textElement: 'pilotingSkill1', crewId: 1, skill: 'piloting' },
+            { textElement: 'gunnerySkill2', crewId: 2, skill: 'gunnery' },
+            { textElement: 'pilotingSkill2', crewId: 2, skill: 'piloting' },
+            { textElement: 'gunnerySkill3', crewId: 3, skill: 'gunnery' },
+            { textElement: 'pilotingSkill3', crewId: 3, skill: 'piloting' },
         ];
         skillTargets.forEach((skillTarget) => {
             const textElement = svg.getElementById(skillTarget.textElement);
@@ -193,10 +193,10 @@ export class RsPolyfillUtil {
             textElement.classList.add('skillValue');
             textElement.setAttribute('style', prevStyle.replace(/font-size\s*:\s*[^;]+;?/g, 'font-size:8px;font-weight:bold;'));
             textElement.setAttribute('y', textY.toString());
-            
+
             const rectWidth = 12;
             const rectHeight = 12;
-            
+
             const rectX = (textX - rectWidth / 2);
             const rectY = (textY - rectHeight / 2) - 0.7;
 
@@ -263,19 +263,187 @@ export class RsPolyfillUtil {
      * Adds crew damage hit boxes to the svg.
      * Creates transparent rectangles above crew damage text elements.
      */
-    private static addCrewDamageClasses(svg: SVGSVGElement): void {
+    private static addCrewDamageClasses(unit: Unit, svg: SVGSVGElement): void {
         // First number: crew index (0-4)
         for (let crewId = 0; crewId <= 4; crewId++) {
             // Second number: hit index (1-10)
+            let tracksDamage = false;
             for (let hit = 1; hit <= 10; hit++) {
                 const elementId = `crew_damage_${crewId}_${hit}`;
                 const textElement = svg.getElementById(elementId);
                 if (textElement) {
                     this.addCrewHitRect(svg, textElement, crewId, hit);
+                    tracksDamage = true;
+                }
+            }
+            if (tracksDamage) {
+                const crewDamageContainer = svg.getElementById(`crewDamage${crewId}`) as SVGGraphicsElement;
+                if (crewDamageContainer) {
+                    this.addUnconsciousCheckbox(svg, crewDamageContainer, crewId);
+                    // const frameElement = crewDamageContainer.closest('.frame') as SVGGraphicsElement | null;
+                    // if (frameElement) {
+                    //     this.addUnconsciousIndicator(svg, frameElement, crewId);
+                    // }
                 }
             }
         }
     }
+
+    private static addUnconsciousIndicator(svg: SVGSVGElement, frameElement: SVGGraphicsElement, crewId: number): void {
+        // Check if indicator already exists to avoid duplicates
+        const existingIndicator = svg.getElementById(`unconscious_indicator_${crewId}`);
+        if (existingIndicator) return;
+
+        // Get frame bounding box
+        const bbox = frameElement.getBBox();
+
+        // Position at top-right corner
+        const rectHeight = 12;
+        const rectWidth = bbox.width;
+        const rectX = bbox.x + bbox.width - rectWidth;
+        const rectY = - rectHeight;
+        const fontSize = 12;
+
+        // Create group for indicator
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.setAttribute('id', `unconscious_indicator_${crewId}`);
+        group.setAttribute('class', 'unconscious-indicator noprint');
+        group.setAttribute('crewId', crewId.toString());
+        // group.setAttribute('display', 'none'); // Hidden by default
+
+        const clipPathId = `unconscious_clip_${crewId}`;
+        const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+        clipPath.setAttribute('id', clipPathId);
+        
+        const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        clipRect.setAttribute('id', `unconscious_clip_rect_${crewId}`);
+        clipRect.setAttribute('x', (rectX + rectWidth).toString());
+        clipRect.setAttribute('x', (0).toString());
+        clipRect.setAttribute('y', rectY.toString());
+        clipRect.setAttribute('width', (rectX + rectWidth).toString());
+        clipRect.setAttribute('height', rectHeight.toString());
+        clipRect.style.transition = 'width 0.4s ease-out, x 0.4s ease-out';
+        
+        clipPath.appendChild(clipRect);
+        let defs = svg.querySelector('defs');
+        if (!defs) {
+            defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            svg.insertBefore(defs, svg.firstChild);
+        }
+        defs.appendChild(clipPath);
+
+        // Create rectangle background
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', rectX.toString());
+        rect.setAttribute('y', rectY.toString());
+        rect.setAttribute('width', rectWidth.toString());
+        rect.setAttribute('height', rectHeight.toString());
+        rect.setAttribute('fill', '#ff0000EE');
+        rect.setAttribute('fill', '#ff7300ee');
+        rect.setAttribute('clip-path', `url(#${clipPathId})`);
+
+        // Create text
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', (rectX + rectWidth - 2).toString());
+        text.setAttribute('y', (rectY + rectHeight / 2 + 1).toString());
+        text.setAttribute('text-anchor', 'end');
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('font-family', 'Arial, sans-serif');
+        text.setAttribute('font-size', fontSize.toString());
+        text.setAttribute('font-weight', 'bold');
+        text.setAttribute('fill', '#fff');
+        text.setAttribute('clip-path', `url(#${clipPathId})`);
+        text.textContent = 'UNCONSCIOUS';
+
+        // Assemble the group
+        group.appendChild(rect);
+        group.appendChild(text);
+
+        frameElement.appendChild(group);
+    }
+
+    private static addUnconsciousCheckbox(svg: SVGSVGElement, container: SVGGraphicsElement, crewId: number): void {
+        // Check if checkbox already exists to avoid duplicates
+        const existingCheckbox = svg.getElementById(`unconscious_checkbox_${crewId}`);
+        if (existingCheckbox) return;
+
+        // Get container bounding box to find the bottom
+        const bbox = container.getBBox();
+        const bottomY = bbox.y + bbox.height;
+        const leftX = bbox.x;
+
+        // Checkbox dimensions
+        const checkboxSize = 6;
+        const margin = 3;
+        const fontSize = 6;
+
+        // Position checkbox below container
+        const checkboxY = bottomY + margin;
+        const checkboxX = leftX;
+
+        // Create group for checkbox and label
+        const checkboxes = ['Unconscious', 'Dead'];
+
+        let xOffset = 0;
+        for (const label of checkboxes) {
+            const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            group.setAttribute('id', `crew_status_checkbox_${crewId}`);
+            group.setAttribute('class', ' crew-status-checkbox noprint');
+            group.setAttribute('crewId', crewId.toString());
+            group.setAttribute('state', label.toLowerCase());
+
+
+            // Create checkbox rectangle (border)
+            const checkboxRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            checkboxRect.setAttribute('x', (checkboxX + xOffset).toString());
+            checkboxRect.setAttribute('y', checkboxY.toString());
+            checkboxRect.setAttribute('width', checkboxSize.toString());
+            checkboxRect.setAttribute('height', checkboxSize.toString());
+            checkboxRect.setAttribute('fill', 'transparent');
+            checkboxRect.setAttribute('stroke', '#000');
+            checkboxRect.setAttribute('crewId', crewId.toString());
+            checkboxRect.setAttribute('stroke-width', '1');
+            checkboxRect.setAttribute('class', 'checkbox-rect');
+    
+            // Create label text
+            const labelText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            labelText.setAttribute('x', (checkboxX + xOffset + checkboxSize + 3).toString());
+            labelText.setAttribute('y', (checkboxY + checkboxSize / 2 + 1).toString());
+            labelText.setAttribute('dominant-baseline', 'middle');
+            labelText.setAttribute('font-family', 'Arial, sans-serif');
+            labelText.setAttribute('font-size', fontSize.toString());
+            labelText.setAttribute('fill', '#000');
+            labelText.setAttribute('class', 'checkbox-label');
+            labelText.textContent = label;
+    
+            // Create clickable area (slightly larger for easier clicking)
+            const areaWidth = (checkboxSize + 3 + (label.length * (fontSize * 0.6)))
+            const clickArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            clickArea.setAttribute('x', (checkboxX + xOffset).toString());
+            clickArea.setAttribute('y', checkboxY.toString());
+            clickArea.setAttribute('width', areaWidth.toString());
+            clickArea.setAttribute('height', checkboxSize.toString());
+            clickArea.setAttribute('fill', 'transparent');
+            clickArea.setAttribute('crewId', crewId.toString());
+            clickArea.setAttribute('class', 'crew-status-area');
+            clickArea.setAttribute('cursor', 'pointer');
+    
+            // Assemble the group
+            group.appendChild(checkboxRect);
+            group.appendChild(labelText);
+            group.appendChild(clickArea);
+
+            xOffset += areaWidth + 5; // Update xOffset for next checkbox
+
+            // Insert the group after the container
+            if (container.nextSibling) {
+                container.parentNode?.insertBefore(group, container.nextSibling);
+            } else {
+                container.parentNode?.appendChild(group);
+            }
+        }
+    }
+
     private static addCrewHitRect(svg: SVGSVGElement, textElement: Element, crewId: number, hit: number): void {
         // Get text element position and dimension
         const yAttr = (textElement as SVGTextElement).getAttribute('y');
@@ -298,12 +466,12 @@ export class RsPolyfillUtil {
         const rectHeight2 = 8;
         const rectX2 = (textX - rectWidth2 / 2);
         const rectY2 = (textY - rectHeight2 / 2) - 0.5;
-        
+
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         group.setAttribute('class', 'crewHit');
         group.setAttribute('crewId', crewId.toString());
         group.setAttribute('hit', hit.toString());
-        
+
         // Create the X (two lines forming a cross)
         const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         line1.setAttribute('x1', rectX2.toString());
@@ -314,7 +482,7 @@ export class RsPolyfillUtil {
         line1.setAttribute('stroke-width', '1.5');
         line1.setAttribute('class', 'crew-x');
         line1.setAttribute('opacity', '0');
-        
+
         const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         line2.setAttribute('x1', (rectX2 + rectWidth2).toString());
         line2.setAttribute('y1', rectY2.toString());
@@ -324,7 +492,7 @@ export class RsPolyfillUtil {
         line2.setAttribute('stroke-width', '1.5');
         line2.setAttribute('class', 'crew-x');
         line2.setAttribute('opacity', '0');
-        
+
         // Create transparent rectangle
         const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         rect.setAttribute('x', rectX.toString());
@@ -332,7 +500,7 @@ export class RsPolyfillUtil {
         rect.setAttribute('width', rectWidth.toString());
         rect.setAttribute('height', rectHeight.toString());
         rect.setAttribute('fill', 'transparent');
-        
+
         group.appendChild(line1);
         group.appendChild(line2);
         group.appendChild(rect);
@@ -434,16 +602,16 @@ export class RsPolyfillUtil {
         });
     }
 
-    
+
     public static addInventoryLines(svg: SVGSVGElement): void {
 
         const inventoryEntries = svg.querySelectorAll('.inventoryEntry');
         if (!inventoryEntries.length) return;
-        
+
         let rectX = 2;
         let rectWidth = 0;
         const unitDataPanel = svg.querySelector('#unitDataPanel') as SVGSVGElement;
-        if (unitDataPanel) {            
+        if (unitDataPanel) {
             let frame = unitDataPanel.querySelector('.frame') as SVGGraphicsElement;
             if (!frame) {
                 const paths = unitDataPanel.querySelectorAll('path');
@@ -472,7 +640,7 @@ export class RsPolyfillUtil {
             }
             let rectHeight = bbox.height;
             let rectY = bbox.y;
-            
+
             // check for sub-text for the line alignment
             if (nameEl.querySelector('text')) {
                 bbox = (nameEl.querySelector(':scope > text') as SVGGraphicsElement).getBBox();
@@ -656,7 +824,7 @@ export class RsPolyfillUtil {
             if (labelEl) {
                 labelEl.classList.add('movementType');
             }
-            
+
             // Add a black rectangle aligned using the same X alignment used in addHitMod
             const rectId = `${moveEl.id}-turnState-move-rect`;
             if (svg.getElementById(rectId)) continue; // avoid duplicates
@@ -691,7 +859,7 @@ export class RsPolyfillUtil {
             rect.setAttribute('class', moveEl.id + '-rect noprint');
             rect.setAttribute('display', 'none');
 
-            
+
 
             // // Create text
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -713,4 +881,4 @@ export class RsPolyfillUtil {
         }
     }
 
-    }
+}
