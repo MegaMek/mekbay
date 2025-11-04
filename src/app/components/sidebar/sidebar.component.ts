@@ -187,13 +187,13 @@ export class SidebarComponent {
         let gestureDecisionCompleted = false;
         let gestureIsHorizontal = false;
 
-        const move = (ev: PointerEvent) => {
-            if (ev.pointerId !== this.activePointerId) { return; }
-            const dx = ev.clientX - this.startX;
-            const dy = ev.clientY - this.startY;
+        const move = (event: PointerEvent) => {
+            if (event.pointerId !== this.activePointerId) { return; }
+            const dx = event.clientX - this.startX;
+            const dy = event.clientY - this.startY;
 
             if (this.forceBuilderViewer()?.isUnitDragging()) {
-                cancel(ev);
+                cancel(event);
                 return;
             }
 
@@ -205,7 +205,7 @@ export class SidebarComponent {
                 gestureDecided = true;
                 gestureIsHorizontal = Math.abs(dx) > Math.abs(dy);
                 if (!gestureIsHorizontal) {
-                    cancel(ev);
+                    cancel(event);
                     return;
                 }
                 if (!gestureDecisionCompleted) {
@@ -228,15 +228,15 @@ export class SidebarComponent {
             }
         };
 
-        const up = (ev: PointerEvent) => {
-            if (ev.pointerId !== this.activePointerId) { return; }
+        const up = (event: PointerEvent) => {
+            if (event.pointerId !== this.activePointerId) { return; }
             // finalize
             const finalRatio = this.layout.menuOpenRatio();
             const shouldOpen = finalRatio >= 0.5;
             cleanup(shouldOpen);
         };
 
-        const cancel = (_: PointerEvent | PointerEvent) => {
+        const cancel = (event: PointerEvent) => {
             // revert to prior state
             const shouldOpen = this.startRatio >= 0.5;
             cleanup(shouldOpen);
