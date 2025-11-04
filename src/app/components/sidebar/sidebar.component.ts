@@ -53,8 +53,13 @@ export class SidebarComponent {
     });
 
     public getDragWidth() {
-        return this.isPhone() ? this.EXPANDED_WIDTH : this.EXPANDED_WIDTH - this.COLLAPSED_WIDTH;
+        return this.isPhone() ? this.sidebarExpandedWidth() : this.EXPANDED_WIDTH - this.COLLAPSED_WIDTH;
     }
+
+    public sidebarExpandedWidth = computed(() => {
+        const width = this.layout.windowWidth();
+        return Math.max(320, Math.min(this.EXPANDED_WIDTH, width));
+    });
 
     public drawerTransform = computed(() => {
         const slide = this.getDragWidth();
@@ -83,7 +88,7 @@ export class SidebarComponent {
             let width = 0;
             if (this.isPhone()) {
                 offset = 0;
-                width = this.EXPANDED_WIDTH;
+                width = this.sidebarExpandedWidth();
             } else if (this.isTablet()) {
                 // Tablet: content is always pushed by the collapsed dock only
                 offset = this.COLLAPSED_WIDTH;
@@ -94,8 +99,7 @@ export class SidebarComponent {
                 width = offset;
             }
             const docStyle = document.documentElement.style;
-            docStyle.setProperty('--sidebar-expanded-width', `${this.EXPANDED_WIDTH}px`);
-            docStyle.setProperty('--sidebar-collapsed-width', `${this.COLLAPSED_WIDTH}px`);
+            docStyle.setProperty('--sidebar-expanded-width', `${this.sidebarExpandedWidth()}px`);
             docStyle.setProperty('--sidebar-width', `${width}px`);
             docStyle.setProperty('--sidebar-offset', `${offset}px`);
             document.documentElement.classList.toggle('sidebar-docked', offset > 0);
