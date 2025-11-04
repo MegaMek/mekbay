@@ -1149,6 +1149,7 @@ export class CrewMember {
     private asfGunnerySkill?: number; // Optional ASF gunnery skill for ASF
     private asfPilotingSkill?: number; // Optional ASF piloting skill for ASF units
     private hits: number;
+    private state: 'healthy' | 'unconscious' | 'dead' = 'healthy';
 
     constructor(id: number, unit: ForceUnit) {
         this.unit = unit;
@@ -1161,6 +1162,33 @@ export class CrewMember {
 
     getId(): number {
         return this.id;
+    }
+
+    toggleUnconscious() {
+        const newState = this.state === 'unconscious' ? 'healthy' : 'unconscious';
+        if (this.state === newState) return;
+        this.state = newState;
+        this.unit.setCrewMember(this.id, this);
+        this.unit.setModified();
+    }
+
+    toggleDead() {
+        const newState = this.state === 'dead' ? 'healthy' : 'dead';
+        if (this.state === newState) return;
+        this.state = newState;
+        this.unit.setCrewMember(this.id, this);
+        this.unit.setModified();
+    }
+
+    getState(): 'healthy' | 'unconscious' | 'dead' {
+        return this.state;
+    }
+
+    setState(state: 'healthy' | 'unconscious' | 'dead') {
+        if (this.state === state) return;
+        this.state = state;
+        this.unit.setCrewMember(this.id, this);
+        this.unit.setModified();
     }
 
     setSkill(skillType: SkillType, skillValue: number, asf: boolean = false) {
@@ -1227,7 +1255,8 @@ export class CrewMember {
             pilotingSkill: this.getSkill('piloting'),
             asfGunnerySkill: this.getSkill('gunnery', true),
             asfPilotingSkill: this.getSkill('piloting', true),
-            hits: this.getHits()
+            hits: this.getHits(),
+            state: this.getState() === 'unconscious' ? 1 : this.getState() === 'dead' ? 2 : 0
         };
     }
 
@@ -1242,6 +1271,7 @@ export class CrewMember {
         if (data.asfPilotingSkill !== undefined)
             crew.setSkill('piloting', data.asfPilotingSkill, true);
         crew.setHits(data.hits);
+        crew.setState(data.state === 1 ? 'unconscious' : data.state === 2 ? 'dead' : 'healthy');
         return crew;
     }
 }

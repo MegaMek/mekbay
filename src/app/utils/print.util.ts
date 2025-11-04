@@ -78,9 +78,9 @@ export class PrintUtil {
             // Turn on/off fluff image
             const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
             if (injectedEl) {
-                const fluffImageInSheet = optionsService.options().fluffImageInSheet;
+                const centerContent = optionsService.options().recordSheetCenterPanelContent;
                 const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
-                if (fluffImageInSheet) {
+                if (centerContent === 'fluffImage') {
                     injectedEl.style.setProperty('display', 'block');
                     referenceTables.forEach((rt) => {
                         rt.style.display = 'none';

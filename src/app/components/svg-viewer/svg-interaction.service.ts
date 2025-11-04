@@ -86,9 +86,9 @@ export class SvgInteractionService {
 
     private pickerRef: PickerInstance | null = null;
     private heatMarkerEffectRef: EffectRef | null = null;
-    private diffHeatMarkerRef!: ElementRef<HTMLDivElement>;
-    private diffHeatArrowRef!: ElementRef<HTMLDivElement>;
-    private diffHeatTextRef!: ElementRef<HTMLDivElement>;
+    private diffHeatMarkerRef?: ElementRef<HTMLDivElement>;
+    private diffHeatArrowRef?: ElementRef<HTMLDivElement>;
+    private diffHeatTextRef?: ElementRef<HTMLDivElement>;
     private interactionAbortController: AbortController | null = null;
 
     private currentHighlightedElement: SVGElement | null = null;
@@ -98,9 +98,9 @@ export class SvgInteractionService {
     initialize(
         containerRef: ElementRef<HTMLDivElement>,
         injector: Injector,
-        diffHeatMarkerRef: ElementRef<HTMLDivElement>,
-        diffHeatArrowRef: ElementRef<HTMLDivElement>,
-        diffHeatTextRef: ElementRef<HTMLDivElement>
+        diffHeatMarkerRef?: ElementRef<HTMLDivElement>,
+        diffHeatArrowRef?: ElementRef<HTMLDivElement>,
+        diffHeatTextRef?: ElementRef<HTMLDivElement>
     ) {
         this.containerRef = containerRef;
         this.injector = injector;
@@ -115,6 +115,7 @@ export class SvgInteractionService {
         this.heatMarkerEffectRef = effect(() => {
             const currentUnit = this.unit();
             if (!currentUnit) return;
+            if (!this.diffHeatMarkerRef || !this.diffHeatArrowRef || !this.diffHeatTextRef) return;
 
             const data = this.state.heatMarkerData();
             const isVisible = !!data;
@@ -242,7 +243,6 @@ export class SvgInteractionService {
         const upHandler = (evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
             clearLongTouch();
-            evt.stopPropagation();
             evt.preventDefault();
             if (this.state.clickTarget && !this.zoomPanService.pointerMoved) {
                 let isLeftClick = true;
@@ -255,7 +255,6 @@ export class SvgInteractionService {
         const cancelHandler = (evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
             clearLongTouch();
-            evt.stopPropagation();
             evt.preventDefault();
             this.state.clickTarget = null;
         };
@@ -273,6 +272,26 @@ export class SvgInteractionService {
                 (el as SVGElement).style.pointerEvents = 'none';
             });
         }
+        svg.querySelectorAll<SVGElement>('.crew-status-checkbox').forEach(el => {
+            el.classList.add('interactive');
+            this.addSvgTapHandler(el, (evt: Event, primaryAction: boolean) => {
+                // Handle the tap event for crew status checkboxes
+                if (this.state.clickTarget !== el) return;
+                const crewId = el.getAttribute('crewId') as number | null;
+                const state = el.getAttribute('state');
+                if (crewId === null || !state) return;
+                const unit = this.unit();
+                if (!unit) return;
+                const crewMember = unit.getCrewMember(crewId);
+                if (!crewMember) return;
+                if (state === 'dead') {
+                    crewMember.toggleDead();
+                } else if (state === 'unconscious')  {
+                    crewMember.toggleUnconscious();
+                }
+            }, signal);
+        });
+
     }
 
     private setupSoldierPipInteractions(svg: SVGSVGElement, signal: AbortSignal) {

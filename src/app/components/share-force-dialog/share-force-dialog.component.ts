@@ -134,7 +134,6 @@ import { copyTextToClipboard } from '../../utils/clipboard.util';
 })
 
 export class ShareForceDialogComponent {
-    inputRef = viewChild.required<ElementRef<HTMLInputElement>>('inputRef');
     public dialogRef: DialogRef<string | number | null, ShareForceDialogComponent> = inject(DialogRef);
     forceBuilderService = inject(ForceBuilderService);
     toastService = inject(ToastService);

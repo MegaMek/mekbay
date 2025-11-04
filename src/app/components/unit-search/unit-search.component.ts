@@ -270,7 +270,9 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     focusInput() {
-        try { this.searchInput()?.nativeElement.focus(); } catch { /* ignore */ }
+        afterNextRender(() => {
+            try { this.searchInput()?.nativeElement.focus(); } catch { /* ignore */ }
+        }, { injector: this.injector });
     }
     
     blurInput() {
@@ -886,8 +888,11 @@ export class UnitSearchComponent implements OnDestroy {
 
     toggleExpandedView() {
         const isExpanded = this.expandedView();
-        if (isExpanded && this.buttonOnly()) {
+        if (isExpanded) {
             this.closeAllPanels();
+            this.blurInput();
+        } else {
+            this.focusInput();
         }
         this.expandedView.set(!isExpanded);
     }

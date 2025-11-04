@@ -21,7 +21,7 @@ export class UnitComponentItemComponent {
     damaged = input<boolean>(false);
     comp = input<UnitComponent | null>(null);
     displayStyle = input<ComponentDisplayStyle>('normal');
-    componentEl = viewChild.required<ElementRef<HTMLDivElement>>('component');
+    componentEl = viewChild<ElementRef<HTMLDivElement>>('component');
 
     typeClass = computed(() => {
         return getWeaponTypeCSSClass(this.comp()?.t ?? '');
@@ -44,7 +44,8 @@ export class UnitComponentItemComponent {
     }
 
     showFloatingOverlay() {
-        const el = this.componentEl().nativeElement;
+        const el = this.componentEl()?.nativeElement;
+        if (!el) return;
         this.floatingOverlayService.show(this.unit(), this.comp(), el);
     }
 

@@ -50,6 +50,7 @@ import { UnitComponentItemComponent } from '../unit-component-item/unit-componen
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
+import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '../../directives/swipe.directive';
 
 /*
  * Author: Drake
@@ -109,7 +110,7 @@ interface ManufacturerInfo {
     selector: 'unit-details-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, UnitComponentItemComponent, StatBarSpecsPipe, FilterAmmoPipe, SvgViewerLiteComponent, TooltipDirective],
+    imports: [CommonModule, BaseDialogComponent, UnitComponentItemComponent, StatBarSpecsPipe, FilterAmmoPipe, SvgViewerLiteComponent, TooltipDirective, SwipeDirective],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css']
 })
@@ -124,6 +125,7 @@ export class UnitDetailsDialogComponent {
     injector = inject(Injector);
     add = output<Unit>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
+    private swipeDirective = viewChild<SwipeDirective>(SwipeDirective);
 
     tabs = ['General', 'Intel', 'Factions', 'Sheet'];
     activeTab = signal(this.tabs[0]);
@@ -150,7 +152,7 @@ export class UnitDetailsDialogComponent {
     componentsForMatrix: UnitComponent[] = [];
     factionAvailability: { eraName: string, eraImg?: string, factions: { name: string, img: string }[] }[] = [];
     fluffImageUrl = signal<string | null>(null);
-
+    
     get unit(): Unit {
         const currentUnit = this.unitList[this.unitIndex()]
         if (currentUnit instanceof ForceUnit) {
@@ -207,7 +209,8 @@ export class UnitDetailsDialogComponent {
                     shareUnit: this.unit.name,
                     tab: this.activeTab(),
                 },
-                queryParamsHandling: 'merge'
+                queryParamsHandling: 'merge',
+                replaceUrl: true
             });
         });
         this.dialogRef.closed.subscribe(() => {
@@ -216,7 +219,8 @@ export class UnitDetailsDialogComponent {
                     shareUnit: null,
                     tab: null,
                 },
-                queryParamsHandling: 'merge'
+                queryParamsHandling: 'merge',
+                replaceUrl: true
             });
         });
     }
@@ -970,49 +974,6 @@ export class UnitDetailsDialogComponent {
         return q?.description || '';
     }
 
-    // Swipe handling for mobile (prev/next)
-
-    private touch: { startX: number; startY: number; endX: number; endY: number } = {
-        startX: 0,
-        startY: 0,
-        endX: 0,
-        endY: 0
-    };
-    private swipeThreshold: number = 60;
-
-    @HostListener('touchstart', ['$event'])
-    onTouchStart(event: TouchEvent) {
-        if (event.touches.length === 1) {
-            this.touch.startX = event.touches[0].clientX;
-            this.touch.startY = event.touches[0].clientY;
-            this.touch.endX = event.touches[0].clientX;
-            this.touch.endY = event.touches[0].clientY;
-        }
-    }
-
-    @HostListener('touchmove', ['$event'])
-    onTouchMove(event: TouchEvent) {
-        if (event.touches.length === 1) {
-            this.touch.endX = event.touches[0].clientX;
-            this.touch.endY = event.touches[0].clientY;
-        }
-    }
-
-    @HostListener('touchend', ['$event'])
-    onTouchEnd(event: TouchEvent) {
-        const deltaX = this.touch.endX - this.touch.startX;
-        const deltaY = this.touch.endY - this.touch.startY;
-        // Only trigger swipe if X movement is at least minAxisRatio times Y movement
-        if (Math.abs(deltaX) > this.swipeThreshold && Math.abs(deltaX) > Math.abs(deltaY) * 2) {
-            if (deltaX < 0 && this.hasNext) {
-                this.onNext();
-            } else if (deltaX > 0 && this.hasPrev) {
-                this.onPrev();
-            }
-        }
-        this.touch = { startX: 0, startY: 0, endX: 0, endY: 0 };
-    }
-
     getManufacturerFactoryPairs(): ManufacturerInfo[] {
         if (!this.unit.fluff) return [];
 
@@ -1081,4 +1042,26 @@ export class UnitDetailsDialogComponent {
 
         return sanitized;
     }
+
+    public shouldBlockSwipe = (): boolean => {
+        const index = this.unitIndex();
+        return (index === 0 && !this.hasNext) || (index === this.unitList.length - 1 && !this.hasPrev);
+    };
+
+    public onSwipeStart(event: SwipeStartEvent): void {
+        this.floatingOverlayService.hide();
+    }
+
+    public onSwipeEnd(event: SwipeEndEvent): void {
+        if (!event.success) {
+            return;
+        }
+        const direction = event.direction;
+        if (direction === 'right' && this.hasPrev) {
+            this.onPrev();
+        } else if (direction === 'left' && this.hasNext) {
+            this.onNext();
+        }
+    }
+
 }

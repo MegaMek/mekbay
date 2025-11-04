@@ -42,8 +42,8 @@ import { Injectable, signal, effect, PLATFORM_ID, inject, computed, untracked } 
 })
 export class LayoutService {
     /** A signal that is true if the viewport matches mobile breakpoints. */
-    private readonly PHONE_BREAKPOINT = 600;
-    private readonly TABLET_BREAKPOINT = 900
+    private readonly PHONE_BREAKPOINT = 500;
+    private readonly TABLET_BREAKPOINT = 900;
 
     public isMobile = computed(() => {
         return this.isPhone() || this.isTablet();

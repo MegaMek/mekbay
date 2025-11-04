@@ -780,6 +780,10 @@ hr {
         }
     }
 
+    .wounded .checkbox-rect {
+        fill: var(--damage-color) !important;
+    }
+
     .detached,
     .detached > path {
         fill: gray !important;

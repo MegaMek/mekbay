@@ -65,7 +65,7 @@ export class OptionsDialogComponent {
     tabs = ['General', 'Sheets', 'Advanced', 'Experimental', 'Debug'];
     activeTab = signal(this.tabs[0]);
 
-    uuidInput = viewChild.required<ElementRef<HTMLInputElement>>('uuidInput');
+    uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
     userUuid = computed(() => this.userStateService.uuid() || '');
     userUuidError = '';
     sheetCacheSize = signal(0);
@@ -114,9 +114,9 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('sheetsColor', value);
     }
 
-    onFluffImageInSheetChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('fluffImageInSheet', value);
+    onRecordSheetCenterPanelContentChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as 'fluffImage' | 'clusterTable';
+        this.optionsService.setOption('recordSheetCenterPanelContent', value);
     }
 
     onSyncZoomBetweenSheetsChange(event: Event) {
@@ -195,8 +195,10 @@ export class OptionsDialogComponent {
     }
 
     private resetUserUuidInput() {
+        const uuidInput = this.uuidInput();
+        if (!uuidInput) return;
         this.userUuidError = '';
-        const el = this.uuidInput().nativeElement;
+        const el = uuidInput.nativeElement;
         el.value = this.userUuid();
         el.blur();
     }

@@ -65,9 +65,9 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     slidesRef = viewChild.required<ElementRef<HTMLDivElement>>('slides');
-    diffHeatMarkerRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatMarker');
-    diffHeatArrowRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatArrow');
-    diffHeatTextRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatText');
+    diffHeatMarkerRef = viewChild<ElementRef<HTMLDivElement>>('diffHeatMarker');
+    diffHeatArrowRef = viewChild<ElementRef<HTMLDivElement>>('diffHeatArrow');
+    diffHeatTextRef = viewChild<ElementRef<HTMLDivElement>>('diffHeatText');
     canvasOverlay = viewChild<SvgCanvasOverlayComponent>('canvasOverlay');
 
     loadError = signal<string | null>(null);
@@ -137,7 +137,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         this.fluffImageInjectEffectRef = effect(() => {
             const svg = this.currentSvg();
             if (!svg) return;
-            this.optionsService.options().fluffImageInSheet;
+            this.optionsService.options().recordSheetCenterPanelContent;
             this.setFluffImageVisibility();
         });
     }
@@ -286,10 +286,10 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         if (!svg) return;
         const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
         if (!injectedEl) return; // we don't have a fluff image to switch to
-        const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
+        const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
         const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
         if (referenceTables.length === 0) return; // no reference tables to hide/show
-        if (fluffImageInSheet) {
+        if (centerContent === 'fluffImage') {
             injectedEl.style.setProperty('display', 'block');
             referenceTables.forEach((rt) => {
                 rt.style.display = 'none';

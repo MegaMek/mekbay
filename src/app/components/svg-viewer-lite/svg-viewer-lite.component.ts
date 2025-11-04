@@ -54,14 +54,14 @@ export class SvgViewerLiteComponent {
         });
         effect(() => {
             if (!this.svgsAttached()) return;
-            const fluffImageInSheet = this.optionsService.options().fluffImageInSheet;
+            const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
             const fluffImage = this.unit()?.fluff?.img;
             if (!fluffImage) return; // no fluff image to inject
             if (fluffImage.endsWith('hud.png')) return;
             for (const svg of this.svgs()) {
                 if (svg.getElementById('fluff-image')) continue; // already present from the original sheet, we skip
                 if (svg.getElementById('fluffImage')) continue; // already present from the original sheet, we skip
-                if (fluffImageInSheet) {
+                if (centerContent === 'fluffImage') {
                     if (svg.getElementById('fluff-image-injected')) return; // already injected, we skip
                     const fluffImageUrl = `https://db.mekbay.com/images/fluff/${fluffImage}`;
                     this.injectFluffToSvg(svg, fluffImageUrl);
