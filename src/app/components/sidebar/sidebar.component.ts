@@ -52,8 +52,12 @@ export class SidebarComponent {
         return Math.min(0.75, 0.6 * this.layout.menuOpenRatio());
     });
 
+    public getDragWidth() {
+        return this.isPhone() ? this.EXPANDED_WIDTH : this.EXPANDED_WIDTH - this.COLLAPSED_WIDTH;
+    }
+
     public drawerTransform = computed(() => {
-        const slide = this.isPhone() ? this.EXPANDED_WIDTH : this.EXPANDED_WIDTH - this.COLLAPSED_WIDTH;
+        const slide = this.getDragWidth();
         const ratio = this.layout.menuOpenRatio();
         const tx = (ratio - 1) * slide; // 0 -> fully closed (offset left), 1 -> aligned
         return `translateX(${Math.round(tx)}px)`;
@@ -166,7 +170,7 @@ export class SidebarComponent {
             return;
         }
 
-        this.startDrag(ev, () => ( this.isPhone() ? this.EXPANDED_WIDTH : this.EXPANDED_WIDTH - this.COLLAPSED_WIDTH));
+        this.startDrag(ev, () => ( this.getDragWidth() ));
     }
 
     // start drag common
