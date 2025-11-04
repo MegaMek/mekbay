@@ -207,7 +207,8 @@ export class UnitDetailsDialogComponent {
                     shareUnit: this.unit.name,
                     tab: this.activeTab(),
                 },
-                queryParamsHandling: 'merge'
+                queryParamsHandling: 'merge',
+                replaceUrl: true
             });
         });
         this.dialogRef.closed.subscribe(() => {
@@ -216,7 +217,8 @@ export class UnitDetailsDialogComponent {
                     shareUnit: null,
                     tab: null,
                 },
-                queryParamsHandling: 'merge'
+                queryParamsHandling: 'merge',
+                replaceUrl: true
             });
         });
     }
