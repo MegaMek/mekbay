@@ -147,7 +147,7 @@ export class SidebarComponent {
     }
 
     public onEdgePointerDown(ev: PointerEvent) {
-        if (!this.isDesktop()) { return; }
+        if (this.isDesktop()) { return; }
         if (ev.isPrimary === false) { return; }
         if (ev.clientX > 32) { return; }
 
@@ -166,7 +166,7 @@ export class SidebarComponent {
             return;
         }
 
-        this.startDrag(ev, () => (this.EXPANDED_WIDTH - this.COLLAPSED_WIDTH));
+        this.startDrag(ev, () => ( this.isPhone() ? this.EXPANDED_WIDTH : this.EXPANDED_WIDTH - this.COLLAPSED_WIDTH));
     }
 
     // start drag common
