@@ -67,7 +67,7 @@ export class TurnSummaryPanelComponent {
     private injector = inject(Injector);
     private overlay = inject(Overlay);
     unit = inject(SvgInteractionOverlayComponent).unit;
-    sliderContainer = viewChild.required<ElementRef<HTMLDivElement>>('sliderContainer');
+    sliderContainer = viewChild<ElementRef<HTMLDivElement>>('sliderContainer');
     private activePointerId: number | null = null;
 
     damageReceived = computed(() => {

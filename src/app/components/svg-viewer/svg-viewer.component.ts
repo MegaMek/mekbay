@@ -65,9 +65,9 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     slidesRef = viewChild.required<ElementRef<HTMLDivElement>>('slides');
-    diffHeatMarkerRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatMarker');
-    diffHeatArrowRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatArrow');
-    diffHeatTextRef = viewChild.required<ElementRef<HTMLDivElement>>('diffHeatText');
+    diffHeatMarkerRef = viewChild<ElementRef<HTMLDivElement>>('diffHeatMarker');
+    diffHeatArrowRef = viewChild<ElementRef<HTMLDivElement>>('diffHeatArrow');
+    diffHeatTextRef = viewChild<ElementRef<HTMLDivElement>>('diffHeatText');
     canvasOverlay = viewChild<SvgCanvasOverlayComponent>('canvasOverlay');
 
     loadError = signal<string | null>(null);

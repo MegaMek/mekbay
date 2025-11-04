@@ -86,9 +86,9 @@ export class SvgInteractionService {
 
     private pickerRef: PickerInstance | null = null;
     private heatMarkerEffectRef: EffectRef | null = null;
-    private diffHeatMarkerRef!: ElementRef<HTMLDivElement>;
-    private diffHeatArrowRef!: ElementRef<HTMLDivElement>;
-    private diffHeatTextRef!: ElementRef<HTMLDivElement>;
+    private diffHeatMarkerRef?: ElementRef<HTMLDivElement>;
+    private diffHeatArrowRef?: ElementRef<HTMLDivElement>;
+    private diffHeatTextRef?: ElementRef<HTMLDivElement>;
     private interactionAbortController: AbortController | null = null;
 
     private currentHighlightedElement: SVGElement | null = null;
@@ -98,9 +98,9 @@ export class SvgInteractionService {
     initialize(
         containerRef: ElementRef<HTMLDivElement>,
         injector: Injector,
-        diffHeatMarkerRef: ElementRef<HTMLDivElement>,
-        diffHeatArrowRef: ElementRef<HTMLDivElement>,
-        diffHeatTextRef: ElementRef<HTMLDivElement>
+        diffHeatMarkerRef?: ElementRef<HTMLDivElement>,
+        diffHeatArrowRef?: ElementRef<HTMLDivElement>,
+        diffHeatTextRef?: ElementRef<HTMLDivElement>
     ) {
         this.containerRef = containerRef;
         this.injector = injector;
@@ -115,6 +115,7 @@ export class SvgInteractionService {
         this.heatMarkerEffectRef = effect(() => {
             const currentUnit = this.unit();
             if (!currentUnit) return;
+            if (!this.diffHeatMarkerRef || !this.diffHeatArrowRef || !this.diffHeatTextRef) return;
 
             const data = this.state.heatMarkerData();
             const isVisible = !!data;
