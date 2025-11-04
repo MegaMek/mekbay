@@ -54,6 +54,10 @@
         pointer-events: none;
     }
 
+    .brand {
+        cursor: pointer;
+    }
+
     &.tiny {
         .logo {
             height: 50px;
