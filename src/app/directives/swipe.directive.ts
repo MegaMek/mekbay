@@ -71,9 +71,8 @@ export class SwipeDirective implements OnDestroy {
     private startTime = 0;
     private currentX = 0;
     private currentY = 0;
-    private gestureDecided = false;
-    private gestureIsValid = false;
     private pointerCaptured = false;
+    private swipeAxis: 'horizontal' | 'vertical' | null = null;
     readonly swipeRatio = signal(0);
 
     // Cleanup functions
@@ -129,9 +128,8 @@ export class SwipeDirective implements OnDestroy {
         this.currentX = event.clientX;
         this.currentY = event.clientY;
         this.startTime = Date.now();
-        this.gestureDecided = false;
-        this.gestureIsValid = false;
         this.pointerCaptured = false;
+        this.swipeAxis = null;
 
         // Set up global listeners for move/up/cancel
         this.unlistenMove = this.renderer.listen('window', 'pointermove', (e: PointerEvent) =>
@@ -167,16 +165,14 @@ export class SwipeDirective implements OnDestroy {
 
         const deltaX = this.currentX - this.startX;
         const deltaY = this.currentY - this.startY;
-
         // Check if threshold reached and decide gesture direction
-        if (!this.gestureDecided) {
+        if (!this.swipeAxis) {
             const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
             if (distance < this.threshold()) {
                 return;
             }
 
-            this.gestureDecided = true;
 
             const isHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
             const directionSetting = this.direction();
@@ -190,8 +186,7 @@ export class SwipeDirective implements OnDestroy {
                 this.cancelGesture();
                 return;
             }
-
-            this.gestureIsValid = true;
+            this.swipeAxis = isHorizontal ? 'horizontal' : 'vertical';
 
             try {
                 this.elRef.nativeElement.setPointerCapture(this.activePointerId);
@@ -208,14 +203,15 @@ export class SwipeDirective implements OnDestroy {
         }
 
         // Emit move events for valid gestures
-        if (this.gestureIsValid) {
+        if (this.swipeAxis) {
             this.renderer.addClass(this.elRef.nativeElement, 'swiping');
-
-            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            const direction = this.getSwipeDirection(deltaX, deltaY);
+            const isHorizontal = this.swipeAxis === 'horizontal';
+            const delta = isHorizontal ? deltaX : deltaY;
+            const distance = Math.abs(delta);
+            const direction = this.getSwipeDirection(delta, isHorizontal);
+            const ratio = this.calculateSwipeRatio(delta, isHorizontal);
 
             // Calculate and emit ratio
-            const ratio = this.calculateSwipeRatio(deltaX, deltaY);
             this.swipeRatio.set(ratio);
             this.swiperatio.emit(ratio);
 
@@ -229,11 +225,7 @@ export class SwipeDirective implements OnDestroy {
         }
     }
 
-    private calculateSwipeRatio(deltaX: number, deltaY: number): number {
-        const isHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
-        const swipedDistance = isHorizontal ? deltaX : deltaY;
-
-        // Use custom dimension function if provided, otherwise use element dimensions
+    private calculateSwipeRatio(delta: number, isHorizontal: boolean): number {
         const getDimFn = this.dragDimensions();
         let containerDimension: number;
 
@@ -245,7 +237,7 @@ export class SwipeDirective implements OnDestroy {
         }
 
         // Return signed ratio (can be negative for backwards swipe, or > 1 for over-swipe)
-        const ratio = swipedDistance / containerDimension;
+        const ratio = delta / containerDimension;
 
         // Clamp between -1 and 2 to allow some over-swipe but prevent extreme values
         return Math.max(-1, Math.min(2, ratio));
@@ -256,18 +248,21 @@ export class SwipeDirective implements OnDestroy {
             return;
         }
 
-        if (this.gestureIsValid) {
+        if (this.swipeAxis) {
             const deltaX = this.currentX - this.startX;
             const deltaY = this.currentY - this.startY;
-            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            const direction = this.getSwipeDirection(deltaX, deltaY);
-
+            
+            const isHorizontal = this.swipeAxis === 'horizontal';
+            const delta = isHorizontal ? deltaX : deltaY;
+            const distance = Math.abs(delta);
+            const direction = this.getSwipeDirection(delta, isHorizontal);
+            
             // Calculate velocity (pixels per millisecond)
             const duration = Date.now() - this.startTime;
             const velocity = duration > 0 ? distance / duration : 0;
 
             // Determine success
-            const success = this.isSwipeSuccessful(deltaX, deltaY, velocity);
+            const success = this.isSwipeSuccessful(deltaX, isHorizontal, velocity);
             this.swipeend.emit({
                 originalEvent: event,
                 deltaX,
@@ -287,12 +282,14 @@ export class SwipeDirective implements OnDestroy {
             return;
         }
 
-        if (this.gestureIsValid) {
+        if (this.swipeAxis) {
             // Emit end event with success: false on cancel
             const deltaX = this.currentX - this.startX;
             const deltaY = this.currentY - this.startY;
-            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            const direction = this.getSwipeDirection(deltaX, deltaY);
+            const isHorizontal = this.swipeAxis === 'horizontal';
+            const delta = isHorizontal ? deltaX : deltaY;
+            const distance = Math.abs(delta);
+            const direction = this.getSwipeDirection(delta, isHorizontal);
             const duration = Date.now() - this.startTime;
             const velocity = duration > 0 ? distance / duration : 0;
             this.swipeend.emit({
@@ -338,46 +335,30 @@ export class SwipeDirective implements OnDestroy {
         this.activePointerId = null;
         this.pointerCaptured = false;
         this.swipeRatio.set(0);
-        this.gestureDecided = false;
-        this.gestureIsValid = false;
+        this.swipeAxis = null;
     }
 
-    private getSwipeDirection(deltaX: number, deltaY: number): 'left' | 'right' | 'up' | 'down' {
-        if (Math.abs(deltaX) > Math.abs(deltaY)) {
-            return deltaX > 0 ? 'right' : 'left';
+    private getSwipeDirection(delta: number, isHorizontal: boolean): 'left' | 'right' | 'up' | 'down' {
+        if (isHorizontal) {
+            return delta > 0 ? 'right' : 'left';
         } else {
-            return deltaY > 0 ? 'down' : 'up';
+            return delta > 0 ? 'down' : 'up';
         }
     }
 
-    private isSwipeSuccessful(deltaX: number, deltaY: number, velocity: number): boolean {
+    private isSwipeSuccessful(delta: number, isHorizontal: boolean, velocity: number): boolean {
         // Require minimum velocity for very fast swipes
-        if (velocity < this.minimumVelocity()) {
-            // Fall back to distance-only check for slow swipes
-            const element = this.elRef.nativeElement;
-            const rect = element.getBoundingClientRect();
-            const isHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
-            const swipedDistance = Math.abs(isHorizontal ? deltaX : deltaY);
-            const containerDimension = isHorizontal ? rect.width : rect.height;
-            const requiredDistance = containerDimension * this.successRatio();
-            return swipedDistance >= requiredDistance;
-        }
-
         const element = this.elRef.nativeElement;
         const rect = element.getBoundingClientRect();
-
-        // Determine which dimension to use based on swipe direction
-        const isHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
-        const swipedDistance = Math.abs(isHorizontal ? deltaX : deltaY);
+        let swipedDistance = Math.abs(delta);
         const containerDimension = isHorizontal ? rect.width : rect.height;
-
-        // Calculate effective distance with velocity multiplier
-        const velocityBoost = velocity * (this.velocityMultiplier());
-        const effectiveDistance = swipedDistance + (velocityBoost * swipedDistance);
-
-        // Check if effective distance exceeds threshold percentage
+        if (velocity >= this.minimumVelocity()) {
+            // Calculate effective distance with velocity multiplier
+            const velocityBoost = velocity * (this.velocityMultiplier());
+            swipedDistance = swipedDistance + (velocityBoost * swipedDistance);
+        }
+        // Check if distance exceeds threshold percentage
         const requiredDistance = containerDimension * this.successRatio();
-
-        return effectiveDistance >= requiredDistance;
+        return swipedDistance >= requiredDistance;
     }
 }
