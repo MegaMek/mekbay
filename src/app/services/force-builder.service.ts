@@ -95,6 +95,9 @@ export class ForceBuilderService {
         // Clean up old units before setting the new force
         this.currentForce().units().forEach(unit => unit.destroy());
 
+        for (const unit of newForce.units()) {
+            this.assignEquipmentsToUnit(unit.getUnit());
+        }
         this.currentForce.set(newForce);
 
         const instanceId = this.force.instanceId();
@@ -193,6 +196,9 @@ export class ForceBuilderService {
         }
         
         this.urlStateInitialized = false; // Reset URL state initialization
+        for (const unit of force.units()) {
+            this.assignEquipmentsToUnit(unit.getUnit());
+        }
         this.setForce(force);
         this.selectUnit(force.units()[0] || null);
         this.urlStateInitialized = true; // Re-enable URL state initialization
@@ -357,6 +363,7 @@ export class ForceBuilderService {
                 continue;
             }
 
+            this.assignEquipmentsToUnit(unit);
             const forceUnit = this.force.addUnit(unit);
             
             // Parse crew skills if present
@@ -400,6 +407,7 @@ export class ForceBuilderService {
     addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number, group?: UnitGroup): ForceUnit | null {
         let newForceUnit;
         try {
+            this.assignEquipmentsToUnit(unit);
             newForceUnit = this.force.addUnit(unit);
         } catch (error) {
             this.toastService.show(error instanceof Error ? error.message : (error as string), 'error');
@@ -648,5 +656,19 @@ export class ForceBuilderService {
         // this.setForce(force);
         // this.selectUnit(force.units()[0] || null);
         // this.force.emitChanged();
+    }
+
+    assignEquipmentsToUnit(unit: Unit) {
+        if (!unit.comp.some(c => !c.eq)) {
+            return; // All equipment already assigned
+        }
+        const allEquipment = this.dataService.getEquipment(unit.type);
+        unit.comp.forEach(comp => {
+            if (!comp.eq && comp.id) {
+                if (allEquipment) {
+                    comp.eq = allEquipment[comp.id] ?? null;
+                }
+            }
+        });
     }
 }

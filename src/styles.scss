@@ -544,6 +544,10 @@ hr {
             justify-content: end;
         }
 
+        &.slim {
+            min-width: auto;
+        }
+
         .icon {
             width: 12px;
             height: 12px;

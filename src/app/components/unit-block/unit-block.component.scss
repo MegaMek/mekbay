@@ -181,6 +181,10 @@
     .info-slot.c3link.enabled {
         color: rgb(27, 136, 199);
     }
+
+    .info-slot.ecm {
+        background-color: rgb(0, 130, 9);
+    }
     
     &.destroyed {
         background-image: repeating-linear-gradient(140deg,

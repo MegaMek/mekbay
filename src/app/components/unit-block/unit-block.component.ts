@@ -21,10 +21,17 @@ export class UnitBlockComponent {
     onInfo = output<MouseEvent>();
     onRemoveUnit = output<MouseEvent>();
     onToggleC3 = output<MouseEvent>();
+    onToggleECM = output<MouseEvent>();
     onRepairUnit = output<MouseEvent>();
 
     unit = computed<Unit | undefined>(() => {
         return this.forceUnit()?.getUnit();
+    });
+
+    hasECM = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return unit.comp.some(eq => eq.eq?.flags.has('F_ECM'));
     });
 
     imgSrc = computed(() => {
@@ -57,5 +64,10 @@ export class UnitBlockComponent {
     toggleC3Link(event: MouseEvent): void {
         event.stopPropagation();
         this.onToggleC3.emit(event);
+    }
+
+    toggleECMMode(event: MouseEvent): void {
+        event.stopPropagation();
+        this.onToggleECM.emit(event);
     }
 }
