@@ -175,15 +175,15 @@
     }
 
     .info-slot.c3link {
-        background-color: rgb(185, 16, 16);
+        background-color: rgba(185, 16, 16, 0.5);
     }
 
     .info-slot.c3link.enabled {
-        background-color: rgb(27, 136, 199);
+        background-color: rgba(27, 136, 199, 0.5);
     }
 
     .info-slot.ecm {
-        background-color: rgb(0, 130, 9);
+        background-color: rgba(0, 130, 9, 0.5);
     }
     
     &.destroyed {
