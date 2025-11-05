@@ -126,7 +126,7 @@ export class DialogsService {
             try {
                 const panel = overlayRef.overlayElement as HTMLElement;
                 const focusable = panel.querySelector<HTMLElement>(
-                    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                    'input, select, textarea, [contenteditable="true"], button, [href], [tabindex]:not([tabindex="-1"])'
                 );
                 if (focusable) {
                     focusable.focus();
