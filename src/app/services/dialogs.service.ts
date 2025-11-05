@@ -89,12 +89,15 @@ export class DialogsService {
         const closed = new Subject<R | undefined>();
         const close = (result?: R) => {
             try {
+                if (!closed.closed) {
+                    closed.next(result);
+                    closed.complete();
+                }
+            } finally {
+                // Dispose after notifying listeners
                 if (overlayRef?.hasAttached()) {
                     overlayRef.dispose();
                 }
-            } finally {
-                closed.next(result);
-                closed.complete();
             }
         };
 
