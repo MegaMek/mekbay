@@ -148,7 +148,7 @@
         font-weight: bold;
     }
 
-    .unit-type {
+    .unit-role {
         width: 15px;
         -webkit-writing-mode: vertical-lr;
         writing-mode: vertical-rl;
@@ -166,7 +166,11 @@
         text-align: center;
         white-space: nowrap;
         overflow: hidden;
-        text-overflow: ellipsis;
+
+        &.tight {
+            letter-spacing: -0.06em; // tighten vertical spacing between characters
+            font-weight: 500;
+        }
     }
 
     .unit-alias.thin {

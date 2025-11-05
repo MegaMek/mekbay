@@ -19,7 +19,8 @@
 } @else {
 <div class="unit-card" [class.destroyed]="forceUnit()?.destroyed">
     @let role = unit()?.role;
-    <div class="unit-type">{{ role && role !== 'None' ? role : '' }}</div>
+    <div class="unit-role" 
+    [class.tight]="(role?.length || 0) > 12">{{ role && role !== 'None' ? role : '' }}</div>
     <div class="unit-image-container">
         <img class="icon unit-icon" [src]="imgSrc()" (error)="$event.target.src = '/images/unknown.png'"
             alt="{{ unit()?.chassis }} {{ unit()?.model }}" />
