@@ -31,11 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, Input, inject } from '@angular/core';
+import { Injectable, inject, Injector } from '@angular/core';
 import { firstValueFrom, Subject } from 'rxjs';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
-import { Dialog } from '@angular/cdk/dialog';
 import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
+import { Overlay, OverlayRef } from '@angular/cdk/overlay';
+import { ComponentPortal } from '@angular/cdk/portal';
+import { DIALOG_DATA, DialogRef as CdkDialogRef } from '@angular/cdk/dialog';
+import { ComponentType } from '@angular/cdk/portal';
 
 /*
  * Author: Drake
@@ -48,26 +51,115 @@ export interface DialogRef<T = any, R = any> {
 
 @Injectable({ providedIn: 'root' })
 export class DialogsService {
-    private dialog: Dialog = inject(Dialog);
-    
+    private overlay = inject(Overlay);
+    private injector = inject(Injector);
+
+    // Generic dialog creator using CDK Overlay, compatible with components expecting CDK Dialog
+    public createDialog<R = any, T = any, D = unknown>(
+        component: ComponentType<T>,
+        opts?: {
+            data?: D;
+            panelClass?: string | string[];
+            backdropClass?: string | string[];
+            disableClose?: boolean;
+            hasBackdrop?: boolean;
+            width?: string;
+            height?: string;
+            maxWidth?: string;
+            maxHeight?: string;
+            autoFocus?: boolean;
+        }
+    ): DialogRef<T, R> {
+        const positionStrategy = this.overlay.position().global()
+            .centerHorizontally()
+            .centerVertically();
+
+        const overlayRef = this.overlay.create({
+            positionStrategy,
+            hasBackdrop: opts?.hasBackdrop ?? true,
+            backdropClass: opts?.backdropClass ?? 'cdk-overlay-dark-backdrop',
+            panelClass: opts?.panelClass,
+            scrollStrategy: this.overlay.scrollStrategies.block(),
+            width: opts?.width,
+            height: opts?.height,
+            maxWidth: opts?.maxWidth ?? '100dvw',
+            maxHeight: opts?.maxHeight ?? '100dvh'
+        });
+
+        const closed = new Subject<R | undefined>();
+        const close = (result?: R) => {
+            try {
+                if (overlayRef?.hasAttached()) {
+                    overlayRef.dispose();
+                }
+            } finally {
+                closed.next(result);
+                closed.complete();
+            }
+        };
+
+        const injector = Injector.create({
+            parent: this.injector,
+            providers: [
+                { provide: CdkDialogRef, useValue: { close, closed } as Partial<CdkDialogRef<R>> },
+                { provide: DIALOG_DATA, useValue: opts?.data }
+            ]
+        });
+
+        const portal = new ComponentPortal<T>(component, null, injector);
+        const compRef = overlayRef.attach(portal);
+
+        if (opts?.hasBackdrop ?? true) {
+            overlayRef.backdropClick().subscribe(() => {
+                if (!opts?.disableClose) close(undefined);
+            });
+        }
+        overlayRef.keydownEvents().subscribe(ev => {
+            if (!opts?.disableClose && (ev.key === 'Escape' || ev.key === 'Esc')) {
+                ev.preventDefault();
+                close(undefined);
+            }
+        });
+        if (opts?.autoFocus) {
+            queueMicrotask(() => {
+                try {
+                    const panel = overlayRef.overlayElement as HTMLElement;
+                    const focusable = panel.querySelector<HTMLElement>(
+                        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                    );
+                    focusable?.focus();
+                } catch { /* ignore */ }
+            });
+        }
+        overlayRef.detachments().subscribe(() => {
+            if (!closed.closed) {
+                closed.next(undefined);
+                closed.complete();
+            }
+        });
+
+        return {
+            componentInstance: compRef.instance as T,
+            closed,
+            close
+        };
+    }
+
     async showNotice(message: string, title = 'Notice'): Promise<void> {
-        const dialogRef = this.dialog.open(ConfirmDialogComponent, {
-            disableClose: true, // Prevents closing by clicking outside or pressing Escape
+        const ref = this.createDialog(ConfirmDialogComponent, {
+            disableClose: true,
             data: <ConfirmDialogData<string>>{
                 title,
                 message,
-                buttons: [
-                    { label: 'DISMISS', value: 'nop' }
-                ]
+                buttons: [{ label: 'DISMISS', value: 'nop' }]
             }
         });
-        // Wait for dialog to close, we don't really care about the result
-        await firstValueFrom(dialogRef.closed); 
+        await firstValueFrom(ref.closed);
     }
 
     async showQuestion(message: string, title: string, type: 'info' | 'danger'): Promise<string | null> {
-        const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
-            disableClose: true, // Prevents closing by clicking outside or pressing Escape
+        const ref = this.createDialog<string>(ConfirmDialogComponent, {
+            disableClose: true,
             panelClass: type,
             data: <ConfirmDialogData<string>>{
                 title,
@@ -78,33 +170,26 @@ export class DialogsService {
                 ]
             }
         });
-        const answer = await firstValueFrom(dialogRef.closed);
-        
-        if (answer && answer !== null) {
-            return answer;
-        }
-        return null;
+        const answer = await firstValueFrom(ref.closed);
+        return answer ?? null;
     }
 
     async showError(message: string, title = 'Error'): Promise<void> {
-        const dialogRef = this.dialog.open(ConfirmDialogComponent, {
-            disableClose: true, // Prevents closing by clicking outside or pressing Escape
+        const ref = this.createDialog(ConfirmDialogComponent, {
+            disableClose: true,
             panelClass: 'danger',
             data: <ConfirmDialogData<string>>{
-            title,
+                title,
                 message,
-                buttons: [
-                    { label: 'DISMISS', value: 'nop', class: 'danger' }
-                ]
+                buttons: [{ label: 'DISMISS', value: 'nop', class: 'danger' }]
             }
         });
-        // Wait for dialog to close, we don't really care about the result
-        await firstValueFrom(dialogRef.closed); 
+        await firstValueFrom(ref.closed);
     }
 
     async prompt(message: string, title: string, defaultValue = ''): Promise<string | null> {
-        const dialogRef = this.dialog.open<string>(InputDialogComponent, {
-            disableClose: true, // Prevents closing by clicking outside or pressing Escape
+        const ref = this.createDialog<string | null>(InputDialogComponent, {
+            disableClose: true,
             data: <InputDialogData>{
                 title,
                 message,
@@ -112,8 +197,7 @@ export class DialogsService {
                 defaultValue
             }
         });
-        const result = await firstValueFrom(dialogRef.closed);
+        const result = await firstValueFrom(ref.closed);
         return result ?? null;
     }
-
 }

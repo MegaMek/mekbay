@@ -32,7 +32,7 @@
  */
 
 import { Injectable, ElementRef, signal, WritableSignal, Injector, effect, EffectRef, ApplicationRef, EnvironmentInjector, createComponent, inject } from '@angular/core';
-import { Dialog } from '@angular/cdk/dialog';
+import { DialogsService } from '../../services/dialogs.service';
 import { firstValueFrom } from 'rxjs';
 import { ForceUnit, SkillType, CriticalSlot } from '../../models/force-unit.model';
 import { OptionsService } from '../../services/options.service';
@@ -66,7 +66,7 @@ export interface InteractionState {
 export class SvgInteractionService {
     private dataService = inject(DataService);
     private optionsService = inject(OptionsService);
-    private dialog = inject(Dialog);
+    private dialogsService = inject(DialogsService);
     private zoomPanService = inject(SvgZoomPanService);
     private toastService = inject(ToastService);
     private layoutService = inject(LayoutService);
@@ -637,7 +637,7 @@ export class SvgInteractionService {
                                     });
                                 ammoOptions.push(...compatibleAmmo);
                             }
-                            const ref = this.dialog.open<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
+                            const ref = this.dialogsService.createDialog<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
                                 data: {
                                     currentAmmo: ammoItem,
                                     originalAmmo: originalAmmo,
@@ -960,7 +960,7 @@ export class SvgInteractionService {
         const overflowButton = svg.querySelector('#heatScale .overflowButton');
         if (overflowFrame && overflowButton) {
             const promptHeatOverflow = async (evt: Event) => {
-                const ref = this.dialog.open<number | null>(InputDialogComponent, {
+                const ref = this.dialogsService.createDialog<number | null>(InputDialogComponent, {
                     data: {
                         message: 'Heat',
                         inputType: 'number',
@@ -1119,11 +1119,10 @@ export class SvgInteractionService {
     private setupCrewNameInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         svg.querySelectorAll('.crewNameButton').forEach(el => {
             const svgEl = el as SVGElement;
-            this.addSvgTapHandler(svgEl, (evt: Event, primaryAction: boolean) => {
-                if (this.state.clickTarget !== svgEl) return;
+            svgEl.addEventListener('click', (evt: Event) => {
                 const crewId = Number(svgEl.getAttribute('crew') || 0);
                 this.editCrewName(crewId);
-            }, signal);
+            }, { passive: false, signal });
         });
     }
 
@@ -1385,7 +1384,7 @@ export class SvgInteractionService {
         if (!this.unit()) return;
 
         const crewMember = this.unit()!.getCrewMember(crewId);
-        const ref = this.dialog.open<string | null>(InputDialogComponent, {
+        const ref = this.dialogsService.createDialog<string | null>(InputDialogComponent, {
             data: {
                 message: 'Crew Member Name',
                 inputType: 'text',

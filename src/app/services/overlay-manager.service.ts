@@ -50,6 +50,7 @@ type ManagedEntry = {
     pointerUpListener?: (ev: PointerEvent) => void;
     pointerStart?: { id: number | null; x: number; y: number } | null;
     closeAreaElement?: HTMLElement | null;
+    closeBlockUntil?: number;
 };
 // Movement threshold (px) to consider a pointer interaction a "click"
 const CLICK_MOVE_THRESHOLD = 10;
@@ -65,6 +66,13 @@ export class OverlayManagerService {
     private rafId: number | null = null;
     // bound listener so it can be removed
     private onGlobalChange = () => this.schedulePositionUpdate();
+
+    private isCloseBlocked(entry?: ManagedEntry): boolean {
+        if (!entry || entry.closeBlockUntil == null) return false;
+        const blocked = performance.now() < entry.closeBlockUntil;
+        if (!blocked) entry.closeBlockUntil = undefined; // clear once elapsed
+        return blocked;
+    }
 
     /** Public: request a reposition for all managed overlays (safe, throttled). */
     repositionAll() {
@@ -84,7 +92,8 @@ export class OverlayManagerService {
             closeOnOutsidePointerDown?: boolean,
             closeOnOutsideClick?: boolean,
             closeOnOutsideClickOnly?: boolean,
-            sensitiveAreaReferenceElement?: HTMLElement
+            sensitiveAreaReferenceElement?: HTMLElement,
+            disableCloseForMs?: number
         }
     ) {
         // close existing with same key first
@@ -124,13 +133,21 @@ export class OverlayManagerService {
         };
 
         entry.closeAreaElement = resolveEl(opts?.sensitiveAreaReferenceElement);
+        const blockMs = opts?.disableCloseForMs ?? 100;
+        if (blockMs > 0) {
+            entry.closeBlockUntil = performance.now() + blockMs;
+        }
 
         if (opts?.hasBackdrop) {
-            overlayRef.backdropClick().subscribe(() => this.closeManagedOverlay(key));
+            overlayRef.backdropClick().subscribe(() => {
+                if (this.isCloseBlocked(entry)) return;
+                this.closeManagedOverlay(key);
+            });
         } else if (opts?.closeOnOutsidePointerDown ?? false) {
             const triggerEl = el as HTMLElement;
             const onPointerDown = (ev: PointerEvent) => {
                 try {
+                    if (this.isCloseBlocked(entry)) return;
                     const overlayEl = overlayRef.overlayElement;
                     const targetNode = ev.target as Node;
                     if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
@@ -156,6 +173,7 @@ export class OverlayManagerService {
             // Fallback for environments without pointer events: keep the old click behavior
             // We unregister this if a pointerdown listener triggers
             const clickFallback = (ev: MouseEvent) => {
+                if (this.isCloseBlocked(entry)) return;
                 const overlayEl = overlayRef.overlayElement;
                 const clicked = ev.target as Node;
                 if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
@@ -169,6 +187,7 @@ export class OverlayManagerService {
 
             const onPointerDown = (ev: PointerEvent) => {
                 try {
+                    if (this.isCloseBlocked(entry)) return;
                     if (entry.clickListener) {
                         // remove fallback listener once pointer interaction starts
                         this.document.removeEventListener('click', entry.clickListener, true);
@@ -190,6 +209,7 @@ export class OverlayManagerService {
             const onPointerUp = (ev: PointerEvent) => {
                 try {
                     if (!entry.pointerStart) return;
+                    if (this.isCloseBlocked(entry)) { entry.pointerStart = null; return; }
                     // ensure matching pointer id (or allow - for some devices pointerId may differ; be lenient)
                     // compute movement distance
                     if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
@@ -222,6 +242,7 @@ export class OverlayManagerService {
         } else if (opts?.closeOnOutsideClick ?? ( opts?.closeOnOutsideClickOnly ? false : true )) {
             const triggerEl = el as HTMLElement;
             const listener = (ev: MouseEvent) => {
+                if (this.isCloseBlocked(entry)) return;
                 const overlayEl = overlayRef.overlayElement;
                 if (!overlayEl) return;
                 if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {

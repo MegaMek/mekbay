@@ -38,7 +38,6 @@ import { Force, ForceUnit, UnitGroup } from '../models/force-unit.model';
 import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
-import { Dialog } from '@angular/cdk/dialog';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { firstValueFrom } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData } from '../components/rename-force-dialog/rename-force-dialog.component';
@@ -62,7 +61,6 @@ export class ForceBuilderService {
     toastService = inject(ToastService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
-    private dialog = inject(Dialog);
     private dialogsService = inject(DialogsService);
     private unitInitializer = inject(UnitInitializerService);
     private injector = inject(Injector);
@@ -121,13 +119,13 @@ export class ForceBuilderService {
     }
 
     async promptChangeForceName() {
-            const targetForce = this.force;
-        const ref = this.dialog.open<string | null>(RenameForceDialogComponent, {
+        const targetForce = this.force;
+        const dialogRef = this.dialogsService.createDialog<string | null>(RenameForceDialogComponent, {
             data: {
                 force: targetForce
             } as RenameForceDialogData
         });
-        const newName = await firstValueFrom(ref.closed);
+        const newName = await firstValueFrom(dialogRef.closed);
         if (newName !== null && newName !== undefined) {
             if (newName === '') {
                 targetForce.nameLock = false; // Unlock name if empty
@@ -140,12 +138,12 @@ export class ForceBuilderService {
     }
 
     async promptChangeGroupName(group: UnitGroup) {
-        const ref = this.dialog.open<string | null>(RenameGroupDialogComponent, {
+        const dialogRef = this.dialogsService.createDialog<string | null>(RenameGroupDialogComponent, {
             data: {
                 group: group
             } as RenameGroupDialogData
         });
-        const newName = await firstValueFrom(ref.closed);
+        const newName = await firstValueFrom(dialogRef.closed);
         
         if (newName !== null && newName !== undefined) {
             if (newName === '') {
@@ -163,7 +161,7 @@ export class ForceBuilderService {
             return true;
         }
         // We have a force without an instanceId, so we ask the user if they want to save it
-        const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
+        const dialogRef = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
             data: <ConfirmDialogData<string>>{
                 title: 'Unsaved Force',
                 message: 'You have an unsaved force. Do you want to save it before proceeding?',
@@ -498,7 +496,7 @@ export class ForceBuilderService {
     async removeUnit(unitToRemove: ForceUnit) {
         if (unitToRemove.modified) {
             const unitName = (unitToRemove.getUnit().chassis + ' ' + unitToRemove.getUnit().model).trim();
-            const dialogRef = this.dialog.open<string>(ConfirmDialogComponent, {
+            const dialogRef = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
                 panelClass: 'danger',
                 data: <ConfirmDialogData<string>>{
                     title: `Delete Unit`,

@@ -49,7 +49,7 @@ import { LicenseDialogComponent } from './components/license-dialog/license-dial
 import { ToastsComponent } from './components/toasts/toasts.component';
 import { WsService } from './services/ws.service';
 import { ToastService } from './services/toast.service';
-import { Dialog } from '@angular/cdk/dialog';
+import { DialogsService } from './services/dialogs.service';
 import { BetaDialogComponent } from './components/beta-dialog/beta-dialog.component';
 import { ForceLoadDialogComponent } from './components/force-load-dialog/force-load-dialog.component';
 import { UpdateButtonComponent } from './components/update-button/update-button.component';
@@ -90,7 +90,7 @@ export class App {
     private forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
     private wsService = inject(WsService);
-    private dialog = inject(Dialog);
+    private dialogService = inject(DialogsService);
     private toastService = inject(ToastService);
     private optionsService = inject(OptionsService);
     public unitSearchFilter = inject(UnitSearchFiltersService);
@@ -239,19 +239,19 @@ export class App {
     }
 
     showLicenseDialog(): void {
-        this.dialog.open(LicenseDialogComponent);
+        this.dialogService.createDialog(LicenseDialogComponent);
     }
 
     showOptionsDialog(): void {
-        this.dialog.open(OptionsDialogComponent);
+        this.dialogService.createDialog(OptionsDialogComponent);
     }
 
     showBetaDialog(): void {
-        this.dialog.open(BetaDialogComponent);
+        this.dialogService.createDialog(BetaDialogComponent);
     }
 
     showLoadForceDialog(): void {
-        const ref = this.dialog.open(ForceLoadDialogComponent);
+        const ref = this.dialogService.createDialog(ForceLoadDialogComponent);
         ref.componentInstance?.load.subscribe(async (force) => {
             if (force instanceof LoadForceEntry) {
                 const requestedForce = await this.dataService.getForce(force.instanceId);
@@ -275,7 +275,7 @@ export class App {
     }
 
     showSingleUnitDetails(unit: Unit, tab?: string) {
-        const ref = this.dialog.open(UnitDetailsDialogComponent, {
+        const ref = this.dialogService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: [unit],
                 unitIndex: 0

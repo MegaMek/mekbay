@@ -39,7 +39,6 @@ import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-sel
 import { UnitSearchFiltersService, ADVANCED_FILTERS, SORT_OPTIONS, AdvFilterType, SortOption, SerializedSearchFilter } from '../../services/unit-search-filters.service';
 import { Unit, UnitComponent } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { Dialog } from '@angular/cdk/dialog';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
@@ -105,7 +104,6 @@ export class UnitSearchComponent implements OnDestroy {
     overlayManager = inject(OverlayManagerService);
 
     private injector = inject(Injector);
-    private dialog = inject(Dialog);
     private dialogsService = inject(DialogsService);
     private overlay = inject(Overlay);
     private cdr = inject(ChangeDetectorRef);
@@ -533,7 +531,7 @@ export class UnitSearchComponent implements OnDestroy {
         const filterName = currentFilter?.label || filterKey;
         const message = `Enter the ${isMin ? 'minimum' : 'maximum'} ${filterName} value (${totalRange[0]} - ${totalRange[1]}):`;
 
-        const ref = this.dialog.open<number | null>(InputDialogComponent, {
+        const ref = this.dialogsService.createDialog<number | null>(InputDialogComponent, {
             data: {
                 title: filterName,
                 message: message,
@@ -586,7 +584,7 @@ export class UnitSearchComponent implements OnDestroy {
     showUnitDetails(unit: Unit) {
         const filteredUnits = this.filtersService.filteredUnits();
         const filteredUnitIndex = filteredUnits.findIndex(u => u.name === unit.name);
-        const ref = this.dialog.open(UnitDetailsDialogComponent, {
+        const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             disableClose: true,
             data: <UnitDetailsDialogData>{
                 unitList: filteredUnits,
@@ -736,7 +734,7 @@ export class UnitSearchComponent implements OnDestroy {
 
             // If "Add new tag..." was selected, show text input dialog
             if (selectedTag === '__new__') {
-                const newTagRef = this.dialog.open<string | null>(InputDialogComponent, {
+                const newTagRef = this.dialogsService.createDialog<string | null>(InputDialogComponent, {
                     data: {
                         title: 'Add New Tag',
                         inputType: 'text',
