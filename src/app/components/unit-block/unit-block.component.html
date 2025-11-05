@@ -35,6 +35,15 @@
                 </svg>
             </button>
             @if (!forceUnit()?.readOnly()) {
+            <button class="info-btn">
+                <svg fill="currentColor" height="20px" width="20px" version="1.1"
+                    xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"
+                    xml:space="preserve">
+                    <path d="M48,244.8l126-126c0.7-0.7,1.4-1.5,2.1-2.3c20.3,6.8,43.6,2.1,59.8-14.1c17.5-17.5,21.6-43.3,12.2-64.7l-38.5,38.5
+	l-30.2-30.2l38.5-38.5c-21.4-9.3-47.2-5.2-64.7,12.2c-16.2,16.2-20.9,39.5-14.1,59.8c-0.8,0.6-1.6,1.3-2.3,2.1l-126,126
+	c-10.2,10.2-10.2,27,0,37.2l0,0C21,255,37.7,255,48,244.8z" />
+                </svg>
+            </button>
             <button class="remove-btn" (click)="clickRemove($event)" title="Remove unit">
                 <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
                     xmlns="http://www.w3.org/2000/svg">
@@ -62,9 +71,9 @@
             || unitDisplayName === 'both'
             || !alias) {
             <span class="chassis">{{ chassis }}</span>
-                @if (unitDisplayName === 'both' && alias) {
-                    <span class="unit-alias thin"> ({{ alias }})</span>
-                }
+            @if (unitDisplayName === 'both' && alias) {
+            <span class="unit-alias thin"> ({{ alias }})</span>
+            }
             }
             @if (unitDisplayName === 'alias') {
             <div class="unit-alias">{{ alias }}</div>
