@@ -54,6 +54,9 @@ export interface SetAmmoDialogData {
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule],
+    host: {
+        class: 'fullscreen-dialog-host glass'
+    },
     template: `
     <div class="content">
         <div dialog-content>
@@ -101,21 +104,6 @@ export interface SetAmmoDialogData {
     </div>
     `,
     styles: [`
-        :host {
-            display: flex;
-            justify-content: center;
-            box-sizing: border-box;
-            background-color: rgba(45, 45, 45, 0.8);
-            backdrop-filter: blur(5px);
-            width: 100vw;
-            pointer-events: auto;
-            padding: 16px;
-        }
-
-        :host-context(.cdk-overlay-pane) {
-            transform: translateY(-10vh);
-        }
-
         .content {
             display: block;
             max-width: 1000px;

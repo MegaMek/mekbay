@@ -67,7 +67,6 @@ export class DialogsService {
             height?: string;
             maxWidth?: string;
             maxHeight?: string;
-            autoFocus?: boolean;
         }
     ): DialogRef<T, R> {
         const positionStrategy = this.overlay.position().global()
@@ -123,17 +122,21 @@ export class DialogsService {
                 close(undefined);
             }
         });
-        if (opts?.autoFocus) {
-            queueMicrotask(() => {
-                try {
-                    const panel = overlayRef.overlayElement as HTMLElement;
-                    const focusable = panel.querySelector<HTMLElement>(
-                        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-                    );
-                    focusable?.focus();
-                } catch { /* ignore */ }
-            });
-        }
+        queueMicrotask(() => {
+            try {
+                const panel = overlayRef.overlayElement as HTMLElement;
+                const focusable = panel.querySelector<HTMLElement>(
+                    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                );
+                if (focusable) {
+                    focusable.focus();
+                } else {
+                    // If no focusable element found, focus the panel itself
+                    panel.setAttribute('tabindex', '-1');
+                    panel.focus();
+                }
+            } catch { /* ignore */ }
+        });
         overlayRef.detachments().subscribe(() => {
             if (!closed.closed) {
                 closed.next(undefined);

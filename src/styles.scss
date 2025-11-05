@@ -36,7 +36,8 @@
     --damaged-highlight-color: rgb(255, 105, 105);
 }
 
-html, body {
+html,
+body {
     margin: 0;
     padding: 0;
     width: 100vw;
@@ -112,6 +113,19 @@ hr {
 .cdk-overlay-dark-backdrop {
     background-color: rgba(0, 0, 0, 0.5);
     transition: opacity 400ms cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.fullscreen-dialog-host {
+    display: flex;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100vw;
+    pointer-events: auto;
+    padding: 16px;
+}
+
+.cdk-overlay-pane .fullscreen-dialog-host {
+    transform: translateY(-10vh);
 }
 
 .cdk-overlay-pane {
@@ -366,7 +380,7 @@ hr {
                 linear-gradient(red, red), linear-gradient(red, red);
         }
     }
-        
+
     &.primary {
         color: rgb(154, 154, 255);
         background-image:
@@ -424,7 +438,7 @@ hr {
     min-width: 160px;
     box-shadow: 0 2px 8px #000a;
     overflow-x: auto;
-    
+
     .menu-item {
         background: none;
         border: none;
@@ -456,7 +470,7 @@ hr {
             width: 16px;
             height: 16px;
             margin-right: 8px;
-        
+
             svg {
                 width: 100%;
                 height: 100%;
@@ -730,7 +744,7 @@ hr {
         stroke: var(--damage-color);
     }
 
-    .inventoryEntry > *:not(.inventoryEntryButton):not(.inventoryEntry) {
+    .inventoryEntry>*:not(.inventoryEntryButton):not(.inventoryEntry) {
         pointer-events: none;
     }
 
@@ -743,6 +757,7 @@ hr {
     }
 
     .inventoryEntry.disabledInventory {
+
         .hitMod-rect,
         .hitMod-text {
             display: none;
@@ -750,6 +765,7 @@ hr {
     }
 
     .inventoryEntry.damagedInventory {
+
         .hitMod-rect,
         .hitMod-text {
             display: none;
@@ -789,7 +805,7 @@ hr {
     }
 
     .detached,
-    .detached > path {
+    .detached>path {
         fill: gray !important;
         pointer-events: none;
     }
@@ -881,11 +897,11 @@ hr {
             stroke: #aaa;
         }
 
-        .inventoryEntry.weakenedHitMod > .hitMod-rect {
+        .inventoryEntry.weakenedHitMod>.hitMod-rect {
             fill: var(--damage-color) !important;
         }
 
-        .inventoryEntry.weakenedHitMod > .hitMod-text {
+        .inventoryEntry.weakenedHitMod>.hitMod-text {
             fill: #fff !important;
         }
 
@@ -900,19 +916,19 @@ hr {
 
         /* Armor and structure highlight */
         .selectable,
-        .selectable > path {
+        .selectable>path {
             cursor: pointer;
             touch-action: manipulation;
             transition: fill ease-out 0.2s;
         }
 
         .selectable:hover,
-        .selectable:hover > path {
+        .selectable:hover>path {
             fill: var(--undamaged-highlight-color) !important;
         }
 
         .selectable.damaged:hover,
-        .selectable.damaged:hover > path {
+        .selectable.damaged:hover>path {
             fill: var(--damaged-highlight-color) !important;
         }
 
@@ -960,72 +976,165 @@ hr {
         }
 
         .inventoryEntry {
-            &:hover > .inventoryEntryButton {
+            &:hover>.inventoryEntryButton {
                 fill: var(--highlight-color);
             }
 
-            &:active > .inventoryEntryButton {
+            &:active>.inventoryEntryButton {
                 filter: brightness(1.03);
             }
 
-            &.selected > .inventoryEntryButton {
+            &.selected>.inventoryEntryButton {
                 fill: var(--bt-yellow);
             }
         }
 
         .hot {
-            &.heat0 { fill: #FFFFFF !important; }
-            &.heat1 { fill: #FFFFEE !important; }
-            &.heat2 { fill: #FFFFDD !important; }
-            &.heat3 { fill: #FFFFCC !important; }
-            &.heat4 { fill: #FFFFBB !important; }
-            &.heat5 { fill: #FFFFAA !important; }
-            &.heat6 { fill: #FFFF99 !important; }
-            &.heat7 { fill: #FFFF88 !important; }
-            &.heat8 { fill: #FFFF77 !important; }
-            &.heat9 { fill: #FFFF66 !important; }
-            &.heat10 { fill: #FFFF55 !important; }
-            &.heat11 { fill: #FFFF44 !important; }
-            &.heat12 { fill: #FFFF33 !important; }
-            &.heat13 { fill: #FFFF22 !important; }
-            &.heat14 { fill: #FFFF11 !important; }
-            &.heat15 { fill: #FFFF00 !important; }
-            &.heat16 { fill: #FFEE00 !important; }
-            &.heat17 { fill: #FFDD00 !important; }
-            &.heat18 { fill: #FFCC00 !important; }
-            &.heat19 { fill: #FFBB00 !important; }
-            &.heat20 { fill: #FFAA00 !important; }
-            &.heat21 { fill: #FF9900 !important; }
-            &.heat22 { fill: #FF8800 !important; }
-            &.heat23 { fill: #FF7700 !important; }
-            &.heat24 { fill: #FF6600 !important; }
-            &.heat25 { fill: #FF5500 !important; }
-            &.heat26 { fill: #FF4400 !important; }
-            &.heat27 { fill: #FF3300 !important; }
-            &.heat28 { fill: #FF2200 !important; }
-            &.heat29 { fill: #FF1100 !important; }
-            &.heat30 { fill: #FF0000 !important; }
+            &.heat0 {
+                fill: #FFFFFF !important;
+            }
+
+            &.heat1 {
+                fill: #FFFFEE !important;
+            }
+
+            &.heat2 {
+                fill: #FFFFDD !important;
+            }
+
+            &.heat3 {
+                fill: #FFFFCC !important;
+            }
+
+            &.heat4 {
+                fill: #FFFFBB !important;
+            }
+
+            &.heat5 {
+                fill: #FFFFAA !important;
+            }
+
+            &.heat6 {
+                fill: #FFFF99 !important;
+            }
+
+            &.heat7 {
+                fill: #FFFF88 !important;
+            }
+
+            &.heat8 {
+                fill: #FFFF77 !important;
+            }
+
+            &.heat9 {
+                fill: #FFFF66 !important;
+            }
+
+            &.heat10 {
+                fill: #FFFF55 !important;
+            }
+
+            &.heat11 {
+                fill: #FFFF44 !important;
+            }
+
+            &.heat12 {
+                fill: #FFFF33 !important;
+            }
+
+            &.heat13 {
+                fill: #FFFF22 !important;
+            }
+
+            &.heat14 {
+                fill: #FFFF11 !important;
+            }
+
+            &.heat15 {
+                fill: #FFFF00 !important;
+            }
+
+            &.heat16 {
+                fill: #FFEE00 !important;
+            }
+
+            &.heat17 {
+                fill: #FFDD00 !important;
+            }
+
+            &.heat18 {
+                fill: #FFCC00 !important;
+            }
+
+            &.heat19 {
+                fill: #FFBB00 !important;
+            }
+
+            &.heat20 {
+                fill: #FFAA00 !important;
+            }
+
+            &.heat21 {
+                fill: #FF9900 !important;
+            }
+
+            &.heat22 {
+                fill: #FF8800 !important;
+            }
+
+            &.heat23 {
+                fill: #FF7700 !important;
+            }
+
+            &.heat24 {
+                fill: #FF6600 !important;
+            }
+
+            &.heat25 {
+                fill: #FF5500 !important;
+            }
+
+            &.heat26 {
+                fill: #FF4400 !important;
+            }
+
+            &.heat27 {
+                fill: #FF3300 !important;
+            }
+
+            &.heat28 {
+                fill: #FF2200 !important;
+            }
+
+            &.heat29 {
+                fill: #FF1100 !important;
+            }
+
+            &.heat30 {
+                fill: #FF0000 !important;
+            }
         }
 
         /* workaround to prevent Battle Armor text and images to steal the click event for the armor picker */
-        #suit0 > text,
-        #suit0 > image,
-        #suit1 > text,
-        #suit1 > image,
-        #suit2 > text,
-        #suit2 > image,
-        #suit3 > text,
-        #suit3 > image,
-        #suit4 > text,
-        #suit4 > image,
-        #suit5 > text,
-        #suit5 > image {
+        #suit0>text,
+        #suit0>image,
+        #suit1>text,
+        #suit1>image,
+        #suit2>text,
+        #suit2>image,
+        #suit3>text,
+        #suit3>image,
+        #suit4>text,
+        #suit4>image,
+        #suit5>text,
+        #suit5>image {
             pointer-events: none;
         }
 
         .currentMoveMode {
             font-weight: bold;
         }
+
         .unusedMoveMode {
             opacity: 0.5;
         }
@@ -1159,7 +1268,7 @@ hr {
         }
 
         .detached,
-        .detached > path {
+        .detached>path {
             fill: gray !important;
             pointer-events: none;
         }
@@ -1210,57 +1319,149 @@ hr {
             fill: #bbf;
         }
 
-        .inventoryEntry:hover > .inventoryEntryButton {
+        .inventoryEntry:hover>.inventoryEntryButton {
             fill: var(--night-highlight-color);
         }
 
-        .inventoryEntry.selected > .inventoryEntryButton {
+        .inventoryEntry.selected>.inventoryEntryButton {
             fill: var(--bt-yellow);
         }
 
         .selectable:hover,
-        .selectable:hover > path {
+        .selectable:hover>path {
             fill: var(--undamaged-night-highlight-color) !important;
         }
 
         .selectable.damaged:hover,
-        .selectable.damaged:hover > path {
+        .selectable.damaged:hover>path {
             fill: var(--damaged-highlight-color) !important;
         }
 
 
         .hot {
-            &.heat0 { fill: #000000 !important; }
-            &.heat1 { fill: #090900 !important; }
-            &.heat2 { fill: #121200 !important; }
-            &.heat3 { fill: #1B1B00 !important; }
-            &.heat4 { fill: #242400 !important; }
-            &.heat5 { fill: #2D2D00 !important; }
-            &.heat6 { fill: #363600 !important; }
-            &.heat7 { fill: #3F3F00 !important; }
-            &.heat8 { fill: #484800 !important; }
-            &.heat9 { fill: #515100 !important; }
-            &.heat10 { fill: #5A5A00 !important; }
-            &.heat11 { fill: #636300 !important; }
-            &.heat12 { fill: #6C6C00 !important; }
-            &.heat13 { fill: #757500 !important; }
-            &.heat14 { fill: #7F7F00 !important; }
-            &.heat15 { fill: #888800 !important; }
-            &.heat16 { fill: #907F00 !important; }
-            &.heat17 { fill: #987600 !important; }
-            &.heat18 { fill: #A06D00 !important; }
-            &.heat19 { fill: #A86400 !important; }
-            &.heat20 { fill: #B05B00 !important; }
-            &.heat21 { fill: #B85200 !important; }
-            &.heat22 { fill: #C04900 !important; }
-            &.heat23 { fill: #C84000 !important; }
-            &.heat24 { fill: #D03700 !important; }
-            &.heat25 { fill: #D82E00 !important; }
-            &.heat26 { fill: #E02500 !important; }
-            &.heat27 { fill: #E81C00 !important; }
-            &.heat28 { fill: #F01300 !important; }
-            &.heat29 { fill: #F80A00 !important; }
-            &.heat30 { fill: #FF0000 !important; }
+            &.heat0 {
+                fill: #000000 !important;
+            }
+
+            &.heat1 {
+                fill: #090900 !important;
+            }
+
+            &.heat2 {
+                fill: #121200 !important;
+            }
+
+            &.heat3 {
+                fill: #1B1B00 !important;
+            }
+
+            &.heat4 {
+                fill: #242400 !important;
+            }
+
+            &.heat5 {
+                fill: #2D2D00 !important;
+            }
+
+            &.heat6 {
+                fill: #363600 !important;
+            }
+
+            &.heat7 {
+                fill: #3F3F00 !important;
+            }
+
+            &.heat8 {
+                fill: #484800 !important;
+            }
+
+            &.heat9 {
+                fill: #515100 !important;
+            }
+
+            &.heat10 {
+                fill: #5A5A00 !important;
+            }
+
+            &.heat11 {
+                fill: #636300 !important;
+            }
+
+            &.heat12 {
+                fill: #6C6C00 !important;
+            }
+
+            &.heat13 {
+                fill: #757500 !important;
+            }
+
+            &.heat14 {
+                fill: #7F7F00 !important;
+            }
+
+            &.heat15 {
+                fill: #888800 !important;
+            }
+
+            &.heat16 {
+                fill: #907F00 !important;
+            }
+
+            &.heat17 {
+                fill: #987600 !important;
+            }
+
+            &.heat18 {
+                fill: #A06D00 !important;
+            }
+
+            &.heat19 {
+                fill: #A86400 !important;
+            }
+
+            &.heat20 {
+                fill: #B05B00 !important;
+            }
+
+            &.heat21 {
+                fill: #B85200 !important;
+            }
+
+            &.heat22 {
+                fill: #C04900 !important;
+            }
+
+            &.heat23 {
+                fill: #C84000 !important;
+            }
+
+            &.heat24 {
+                fill: #D03700 !important;
+            }
+
+            &.heat25 {
+                fill: #D82E00 !important;
+            }
+
+            &.heat26 {
+                fill: #E02500 !important;
+            }
+
+            &.heat27 {
+                fill: #E81C00 !important;
+            }
+
+            &.heat28 {
+                fill: #F01300 !important;
+            }
+
+            &.heat29 {
+                fill: #F80A00 !important;
+            }
+
+            &.heat30 {
+                fill: #FF0000 !important;
+            }
         }
     }
 }
@@ -1306,6 +1507,7 @@ hr {
 
 
     body:not(.multipage-container-active) {
+
         main,
         .app-container,
         .main-content,
@@ -1339,7 +1541,7 @@ hr {
             background: white !important;
             transform: none !important;
 
-            > svg {
+            >svg {
                 display: block;
                 box-sizing: border-box;
                 padding: 0;
