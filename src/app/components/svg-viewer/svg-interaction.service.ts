@@ -1119,6 +1119,7 @@ export class SvgInteractionService {
     private setupCrewNameInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         svg.querySelectorAll('.crewNameButton').forEach(el => {
             const svgEl = el as SVGElement;
+            svgEl.style.cursor = 'pointer';
             svgEl.addEventListener('click', (evt: Event) => {
                 const crewId = Number(svgEl.getAttribute('crew') || 0);
                 this.editCrewName(crewId);

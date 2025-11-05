@@ -18,32 +18,56 @@
 </div>
 } @else {
 <div class="unit-card" [class.destroyed]="forceUnit()?.destroyed">
+    @let role = unit()?.role;
+    <div class="unit-type">{{ role && role !== 'None' ? role : '' }}</div>
     <div class="unit-image-container">
         <img class="icon unit-icon" [src]="imgSrc()" (error)="$event.target.src = '/images/unknown.png'"
             alt="{{ unit()?.chassis }} {{ unit()?.model }}" />
     </div>
     <div class="unit-data-container">
+        <div class="unit-actions">
+            <button class="info-btn" (click)="clickInfo($event)" title="Unit info">
+                <svg stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24" fill="none"
+                    xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+            @if (!forceUnit()?.readOnly()) {
+            <button class="remove-btn" (click)="clickRemove($event)" title="Remove unit">
+                <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
+                    xmlns="http://www.w3.org/2000/svg">
+                    <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                        L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                </svg>
+            </button>
+            }
+        </div>
         <div class="secondary-info">
+            @let alias = forceUnit()?.alias();
+            @let model = unit()?.model;
+            @let chassis = unit()?.chassis;
             @if (unitDisplayName === 'chassisModel'
             || unitDisplayName === 'both'
-            || !forceUnit()?.alias()) {
-            <span class="model">{{ unit()?.model }}</span>
+            || !alias) {
+            <span class="model">{{ model }}</span>
             } @else {
-            <span class="model">{{ unit()?.chassis }}</span>
+            <span class="model">{{ chassis }}</span>
             }
             <div class="spanner"></div>
-            <div class="role" *ngIf="unit()?.role && (unit()?.role !== 'None')">{{
-                unit()?.role }}
-            </div>
         </div>
         <div class="primary-info">
             @if (unitDisplayName === 'chassisModel'
             || unitDisplayName === 'both'
-            || !forceUnit()?.alias()) {
-            <span class="chassis">{{ unit()?.chassis }}</span>
+            || !alias) {
+            <span class="chassis">{{ chassis }}</span>
+                @if (unitDisplayName === 'both' && alias) {
+                    <span class="unit-alias thin"> ({{ alias }})</span>
+                }
             }
-            @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
-            <div class="unit-alias" [class.thin]="unitDisplayName === 'both'">{{ forceUnit()?.alias() }}</div>
+            @if (unitDisplayName === 'alias') {
+            <div class="unit-alias">{{ alias }}</div>
             }
         </div>
         <div class="third-info">
@@ -71,26 +95,6 @@
                 </div>
             </div>
         </div>
-    </div>
-    <div class="unit-actions">
-        @if (!forceUnit()?.readOnly()) {
-        <button class="remove-btn" (click)="clickRemove($event)" title="Remove unit">
-            <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
-                xmlns="http://www.w3.org/2000/svg">
-                <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
-                    L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
-            </svg>
-        </button>
-        }
-        <div class="spanner"></div>
-        <button class="info-btn" (click)="clickInfo($event)" title="Unit info">
-            <svg stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24" fill="none"
-                xmlns="http://www.w3.org/2000/svg">
-                <path
-                    d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z"
-                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-        </button>
     </div>
 </div>
 }
