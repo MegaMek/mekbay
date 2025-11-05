@@ -9,7 +9,7 @@ import { ForceLoadDialogComponent } from '../force-load-dialog/force-load-dialog
 import { OptionsDialogComponent } from '../options-dialog/options-dialog.component';
 import { ToastService } from '../../services/toast.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { Dialog } from '@angular/cdk/dialog';
+import { DialogsService } from '../../services/dialogs.service';
 import { DataService } from '../../services/data.service';
 import { ForcePackDialogComponent } from '../force-pack-dialog/force-pack-dialog.component';
 import { PrintUtil } from '../../utils/print.util';
@@ -36,7 +36,7 @@ export class SidebarFooterComponent {
     optionsService = inject(OptionsService);
     toastService = inject(ToastService);
     forceBuilderService = inject(ForceBuilderService);
-    dialog = inject(Dialog);
+    dialogsService = inject(DialogsService);
     dataService = inject(DataService);
     renderer = inject(Renderer2);
     compactModeService = inject(CompactModeService);
@@ -54,11 +54,11 @@ export class SidebarFooterComponent {
     }
 
     showOptionsDialog(): void {
-        this.dialog.open(OptionsDialogComponent);
+        this.dialogsService.createDialog(OptionsDialogComponent);
     }
 
     showLoadForceDialog(): void {
-        const ref = this.dialog.open(ForceLoadDialogComponent);
+        const ref = this.dialogsService.createDialog(ForceLoadDialogComponent);
         ref.componentInstance?.load.subscribe(async (force) => {
             if (force instanceof LoadForceEntry) {
                 const requestedForce = await this.dataService.getForce(force.instanceId);
@@ -82,7 +82,7 @@ export class SidebarFooterComponent {
     }
 
     showForcePackDialog(): void {
-        const ref = this.dialog.open(ForcePackDialogComponent);
+        const ref = this.dialogsService.createDialog(ForcePackDialogComponent);
         ref.componentInstance?.add.subscribe(async (pack) => {
             if (pack) {
                 const group = this.forceBuilderService.addGroup();
@@ -112,7 +112,7 @@ export class SidebarFooterComponent {
     }
 
     shareForce() {
-        this.dialog.open(ShareForceDialogComponent);
+        this.dialogsService.createDialog(ShareForceDialogComponent);
     }
 
     printAll(): void {

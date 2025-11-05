@@ -37,7 +37,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { ForceUnit, UnitGroup } from '../../models/force-unit.model';
 import { DragDropModule, CdkDragDrop, moveItemInArray, CdkDragMove } from '@angular/cdk/drag-drop'
-import { Dialog } from '@angular/cdk/dialog';
+import { DialogsService } from '../../services/dialogs.service';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
@@ -58,7 +58,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     protected forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
     compactModeService = inject(CompactModeService);
-    private dialog = inject(Dialog);
+    private dialogService = inject(DialogsService);
     private injector = inject(Injector);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
     private newGroupDropzone = viewChild<ElementRef<HTMLElement>>('newGroupDropzone');
@@ -143,7 +143,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         event.stopPropagation();
         const unitList = this.forceBuilderService.forceUnits();
         const unitIndex = unitList.findIndex(u => u.id === unit.id);
-        const ref = this.dialog.open(UnitDetailsDialogComponent, {
+        const ref = this.dialogService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: unitList,
                 unitIndex: unitIndex
@@ -368,7 +368,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     }
 
     shareForce() {
-        this.dialog.open(ShareForceDialogComponent);
+        this.dialogService.createDialog(ShareForceDialogComponent);
     }
 
     onEmptyGroupClick(group: UnitGroup) {
