@@ -58,7 +58,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     protected forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
     compactModeService = inject(CompactModeService);
-    private dialogService = inject(DialogsService);
+    private dialogsService = inject(DialogsService);
     private injector = inject(Injector);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
     private newGroupDropzone = viewChild<ElementRef<HTMLElement>>('newGroupDropzone');
@@ -139,11 +139,24 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         }
     }
 
+    async repairUnit(event: MouseEvent, unit: ForceUnit) {
+        event.stopPropagation();
+        const confirmed = await this.dialogsService.showQuestion(
+            `Are you sure you want to repair the unit "${unit.getUnit()?.chassis} ${unit.getUnit()?.model}"? This will reset all damage and status effects.`,
+            `Repair ${unit.getUnit()?.chassis}`,
+            'info');
+        if (confirmed === 'yes') {
+            unit.repairAll();
+            return true;
+        };
+        return false;
+    }
+
     showUnitInfo(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
         const unitList = this.forceBuilderService.forceUnits();
         const unitIndex = unitList.findIndex(u => u.id === unit.id);
-        const ref = this.dialogService.createDialog(UnitDetailsDialogComponent, {
+        const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: unitList,
                 unitIndex: unitIndex
@@ -368,7 +381,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     }
 
     shareForce() {
-        this.dialogService.createDialog(ShareForceDialogComponent);
+        this.dialogsService.createDialog(ShareForceDialogComponent);
     }
 
     onEmptyGroupClick(group: UnitGroup) {

@@ -21,6 +21,7 @@ export class UnitBlockComponent {
     onInfo = output<MouseEvent>();
     onRemoveUnit = output<MouseEvent>();
     onToggleC3 = output<MouseEvent>();
+    onRepairUnit = output<MouseEvent>();
 
     unit = computed<Unit | undefined>(() => {
         return this.forceUnit()?.getUnit();
@@ -42,6 +43,10 @@ export class UnitBlockComponent {
 
     clickInfo(event: MouseEvent) {
         this.onInfo.emit(event);
+    }
+
+    repairUnit(event: MouseEvent) {
+        this.onRepairUnit.emit(event);
     }
 
     clickRemove(event: MouseEvent) {
