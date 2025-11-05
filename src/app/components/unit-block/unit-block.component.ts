@@ -28,6 +28,12 @@ export class UnitBlockComponent {
         return this.forceUnit()?.getUnit();
     });
 
+    getECMStatus = computed(() => {
+        const unit = this.forceUnit();
+        if (!unit) return true;
+        return false;
+    });
+
     hasECM = computed(() => {
         const unit = this.unit();
         if (!unit) return false;

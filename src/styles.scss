@@ -546,6 +546,7 @@ hr {
     }
 
     .info-slot {
+        position: relative;
         background-color: rgba(0, 0, 0, 0.2);
         padding: 2px 4px;
         display: flex;
@@ -718,6 +719,37 @@ hr {
 .add-tag-btn svg {
     width: 100%;
 }
+
+.component-damaged {
+    &::before {
+        content: '';
+        position: absolute;
+        top: 1px;
+        left: 0px;
+        width: 100%;
+        height: 4px;
+        background-image: repeating-linear-gradient(140deg,
+                #F008 0px,
+                #F008 4px,
+                transparent 5px,
+                transparent 10px);
+    }
+    
+    &::after {
+        content: '';
+        position: absolute;
+        bottom: 1px;
+        left: 0px;
+        width: 100%;
+        height: 4px;
+        background-image: repeating-linear-gradient(140deg,
+                #F008 0px,
+                #F008 4px,
+                transparent 5px,
+                transparent 10px);
+    }
+}
+
 
 /* MekBay SVG Sheet Styles */
 

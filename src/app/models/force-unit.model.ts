@@ -35,7 +35,7 @@ import { signal, computed, WritableSignal, EventEmitter, Injector } from '@angul
 import { BVCalculatorUtil } from "../utils/bv-calculator.util";
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
-import { Equipment } from './equipment.model';
+import { Equipment, EquipmentData, EquipmentUnitType } from './equipment.model';
 import { UnitSvgService } from '../services/unit-svg.service';
 import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
@@ -43,71 +43,20 @@ import { UnitInitializerService } from '../components/svg-viewer/unit-initialize
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { generateUUID } from '../services/ws.service';
 import { LoggerService } from '../services/logger.service';
+import { Sanitizer } from '../utils/sanitizer.util';
 import { getMotiveModesByUnit, getMotiveModesOptionsByUnit, MotiveModeOption, MotiveModes } from './motiveModes.model';
+import {
+    LocationData, HeatProfile, SerializedForce, SerializedGroup,
+    SerializedUnit, SerializedState, SerializedInventory, CriticalSlot, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA
+} from './force-serialization';
+
 /*
  * Author: Drake
  */
-
 const DEFAULT_GROUP_NAME = 'Main';
 const MAX_GROUPS = 12;
 const MAX_UNITS = 50;
 
-export interface SerializedForce {
-    version: number;
-    timestamp: string;
-    instanceId: string;
-    type?: 'cbt' | 'as';
-    name: string;
-    nameLock?: boolean;
-    bv: number;
-    owned?: boolean;
-    groups?: SerializedGroup[];
-    units?: SerializedUnit[]; // Deprecated, use groups instead
-}
-
-export interface SerializedGroup {
-    id: string;
-    name: string;
-    nameLock?: boolean;
-    color?: string;
-    units: SerializedUnit[];
-}
-
-export interface SerializedUnit {
-    id: string;
-    unit: string; // Unit name
-    model?: string;
-    chassis?: string;
-    alias?: string;
-    state: SerializedState; // Serialized ForceUnitState object
-}
-
-export interface SerializedState {
-    modified: boolean;
-    destroyed: boolean;
-    shutdown: boolean;
-    c3Linked: boolean;
-    crew: any[]; // Serialized CrewMember objects
-    crits: CriticalSlot[];
-    locations: Record<string, LocationData>;
-    heat: { current: number, previous: number, heatsinksOff?: number };
-    inventory?: MountedEquipment[];
-}
-
-export interface CriticalSlot {
-    uid?: string; // Unique identifier for the critical slot on the sheet (this value changes at each SVG update)
-    name?: string; // Name, if loc/slot are null, this is the name of the critical point (example: engine)
-    loc?: string; // Location of the critical slot (HD, LT, RT, ...)
-    slot?: number; // Slot number of the critical slot
-    hits?: number; // How many hits did this location receive. If is an armored location, this is the number of hits it has taken
-    totalAmmo?: number; // If is an ammo slot: how much total ammo is in this slot.
-    consumed?: number; // If is an ammo slot: how much ammo have been consumed. If is a F_MODULAR_ARMOR, is the armor points used
-    destroyed?: boolean; // If this location is destroyed (can be from 0 hits if the structure is completely destroyed)
-    originalName?: string; // saved original name in case we override the current name
-    armored?: boolean; // If this critical slot is armored (for locations that can be armored)
-    el?: SVGElement;
-    eq?: Equipment;
-}
 export class UnitGroup {
     force: Force;
     id: string = generateUUID();
@@ -385,17 +334,19 @@ export interface MountedEquipment {
     owner: ForceUnit;
     id: string;
     name: string;
-    locations: Set<string>;
-    equipment: null | Equipment;
-    baseHitMod: string;
+    locations?: Set<string>;
+    equipment?: null | Equipment;
+    baseHitMod?: string;
     hitModVariation?: null | number; // Temporary variable to calculate delta hit modifier
-    physical: boolean;
-    linkedWith: null | MountedEquipment[];
-    parent: null | MountedEquipment;
-    destroyed: boolean;
-    critSlots: CriticalSlot[];
-    el: SVGElement;
-    // only for Bays
+    physical?: boolean;
+    linkedWith?: null | MountedEquipment[];
+    parent?: null | MountedEquipment;
+    destroyed?: boolean;
+    critSlots?: CriticalSlot[];
+    state?: string;
+    el?: SVGElement;
+    // Used for entries that doesn't have critical slots
+    ammo?: string;
     totalAmmo?: number;
     consumed?: number;
 }
@@ -419,7 +370,7 @@ export class ForceUnit {
         armor: Map<string, { loc: string; rear: boolean; points?: number }>;
         internal: Map<string, { loc: string; points?: number }>;
     };
-    private state: ForceUnitState = new ForceUnitState( this );
+    private state: ForceUnitState = new ForceUnitState(this);
 
     // Dependencies for deferred loading
     private dataService: DataService;
@@ -458,7 +409,22 @@ export class ForceUnit {
             crew[i] = new CrewMember(i, this);
         }
         this.state.crew.set(crew);
+        this.linkEquipmentLookups();
     }
+
+    // this links the equipment definitions (required for unit.comp.*.eq queries)
+    private linkEquipmentLookups() {
+        const unit = this.unit;
+        const allEquipment = this.dataService.getEquipment(unit.type);
+        unit.comp.forEach(comp => {
+            if (!comp.eq && comp.id) {
+                if (allEquipment) {
+                    comp.eq = allEquipment[comp.id] ?? null;
+                }
+            }
+        });
+    }
+
     public async load() {
         if (this.isLoaded) return;
         if (this.loadingPromise) {
@@ -473,6 +439,7 @@ export class ForceUnit {
             this.loadingPromise = null;
         }
     }
+
     private async performLoad() {
         switch (this.unit.type) {
             case 'Mek':
@@ -486,6 +453,7 @@ export class ForceUnit {
         }
         await this.svgService.loadAndInitialize();
     }
+
     destroy() {
         if (this.svgService) {
             this.svgService.ngOnDestroy();
@@ -494,39 +462,51 @@ export class ForceUnit {
         this.svg.set(null);
         this.loadingPromise = null;
     }
+
     get modified(): boolean {
         return this.state.modified();
     }
+
     setModified() {
         if (this.disabledSaving) return;
         this.state.modified.set(true);
         this.force.emitChanged();
     }
+
     get destroyed(): boolean {
         return this.state.destroyed();
     }
+
     setDestroyed(destroyed: boolean) {
         this.state.destroyed.set(destroyed);
     }
+
     get shutdown(): boolean {
         return this.state.shutdown();
     }
+
     setShutdown(shutdown: boolean) {
         this.state.shutdown.set(shutdown);
     }
+
     get c3Linked(): boolean {
         return this.state.c3Linked();
     }
+
     setC3Linked(linked: boolean) {
         this.state.c3Linked.set(linked);
         this.setModified();
         this.force.refreshUnits();
     }
+
     getUnit(): Unit {
         return this.unit;
     }
+
     turnState: WritableSignal<TurnState> = this.state.turnState;
+
     getHeat = this.state.heat;
+
     setHeat(heat: number) {
         const storedHeat = this.state.heat();
         if (heat === storedHeat.current) return; // No change
@@ -537,6 +517,7 @@ export class ForceUnit {
         this.state.heat.set(newHeatData);
         this.setModified();
     }
+
     setHeatsinksOff(heatsinksOff: number) {
         const storedHeat = this.state.heat();
         if (heatsinksOff === storedHeat.heatsinksOff) return; // No change
@@ -544,13 +525,16 @@ export class ForceUnit {
         this.state.heat.set(newHeatData);
         this.setModified();
     }
+
     getCritSlots = this.state.crits;
+
     setCritSlots(critSlots: CriticalSlot[], initialization: boolean = false) {
         this.state.crits.set(critSlots);
         if (!initialization) {
             this.setModified();
         }
     }
+
     getCritSlotsAsMatrix(): Record<string, CriticalSlot[]> {
         const critSlotMatrix: Record<string, CriticalSlot[]> = {};
         this.getCritSlots().forEach(value => {
@@ -562,9 +546,11 @@ export class ForceUnit {
         });
         return critSlotMatrix;
     }
+
     getCritSlot(loc: string, slot: number): CriticalSlot | null {
         return this.state.crits().find(c => c.loc === loc && c.slot === slot) || null;
     }
+
     setCritSlot(slot: CriticalSlot) {
         const crits = [...this.state.crits()];
         const existingIndex = crits.findIndex(c => c.loc === slot.loc && c.slot === slot.slot);
@@ -576,17 +562,20 @@ export class ForceUnit {
         this.setCritSlots(crits);
         this.turnState().evaluateCritSlot(slot);
     }
+
     applyHitToCritSlot(slot: CriticalSlot, damage: number = 1) {
         slot.hits = Math.max(0, (slot.hits ?? 0) + damage);
         slot.destroyed = slot.armored ? slot.hits >= 2 : slot.hits >= 1;
         this.setCritSlot(slot);
     }
-    getCritLoc(name: string): CriticalSlot | null {
-        return this.state.crits().find(c => c.name === name) || null;
+
+    getCritLoc(id: string): CriticalSlot | null {
+        return this.state.crits().find(c => c.id === id || c.name === id) || null;
     }
+
     setCritLoc(loc: CriticalSlot) {
         const crits = [...this.state.crits()];
-        const existingIndex = crits.findIndex(c => c.name === loc.name);
+        const existingIndex = crits.findIndex(c => c.id === loc.id);
         if (existingIndex !== -1) {
             crits[existingIndex] = loc; // Update existing crit
         } else {
@@ -594,13 +583,16 @@ export class ForceUnit {
         }
         this.setCritSlots(crits);
     }
+
     getInventory = this.state.inventory;
+
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
         this.state.inventory.set(inventory);
         if (!initialization) {
             this.setModified();
         }
     }
+
     setInventoryEntry(inventoryEntry: MountedEquipment) {
         const inventory = [...this.state.inventory()];
         const existingIndex = inventory.findIndex(item => item.id === inventoryEntry.id);
@@ -611,7 +603,9 @@ export class ForceUnit {
         }
         this.setInventory(inventory);
     }
+
     getLocations = this.state.locations;
+
     setLocations(locations: Record<string, LocationData>, initialization: boolean = false) {
         this.state.locations.set(locations);
         if (!initialization) {
@@ -826,8 +820,8 @@ export class ForceUnit {
                 hipLocations.add(hip.loc);
             }
         }
-        const destroyedFeetCount = critSlots.filter(slot => slot.loc && slot.name  && !hipLocations.has(slot.loc) && slot.name.includes('Foot') && slot.destroyed).length;
-        const destroyedLegsActuatorsCount = critSlots.filter(slot => slot.loc && slot.name  && !hipLocations.has(slot.loc) && slot.name.includes('Leg') && slot.destroyed).length;
+        const destroyedFeetCount = critSlots.filter(slot => slot.loc && slot.name && !hipLocations.has(slot.loc) && slot.name.includes('Foot') && slot.destroyed).length;
+        const destroyedLegsActuatorsCount = critSlots.filter(slot => slot.loc && slot.name && !hipLocations.has(slot.loc) && slot.name.includes('Leg') && slot.destroyed).length;
         const destroyedGyroCount = critSlots.filter(slot => slot.name && slot.name.includes('Gyro') && slot.destroyed).length;
 
         return modifier + destroyedFeetCount + destroyedLegsActuatorsCount + (destroyedGyroCount * 2);
@@ -844,13 +838,14 @@ export class ForceUnit {
     public serialize(): SerializedUnit {
         const stateObj: SerializedState = {
             crew: this.state.crew().map(crew => crew.serialize()),
-            crits: this.state.crits().map(({ uid, el, eq, ...rest }) => rest), // We remove UID and the SVGElement as they are linked at load time
+            crits: this.state.crits().map(({ el, eq, ...rest }) => rest), // We remove UID, SVGElement and eq as they are linked at load time
             heat: this.state.heat(),
             locations: this.state.locations(),
             modified: this.state.modified(),
             destroyed: this.state.destroyed(),
             shutdown: this.state.shutdown(),
             c3Linked: this.state.c3Linked(),
+            inventory: this.state.inventoryForSerialization()
         };
         if (this.hasDirectInventory()) {
             // stateObj.inventory = [];
@@ -878,38 +873,29 @@ export class ForceUnit {
         }
         const fu = new ForceUnit(unit, force, dataService, unitInitializer, injector);
         fu.deserializeState(data);
+        fu.linkEquipmentLookups(); // this links the equipment definitions (required for unit.comp.*.eq queries or inventory equipment lookups)
         return fu;
     }
 
     private deserializeState(data: SerializedUnit) {
         this.id = data.id;
         if (data.state) {
-            this.state.crits.set(data.state.crits);
-            this.state.locations.set(data.state.locations || {});
-            this.state.heat.set(data.state.heat);
-            this.state.modified.set(data.state.modified ?? false);
-            this.state.destroyed.set(data.state.destroyed ?? false);
-            this.state.shutdown.set(data.state.shutdown ?? false);
-            this.state.c3Linked.set(data.state.c3Linked ?? false);
+            this.state.crits.set(Sanitizer.sanitizeArray(data.state.crits, CRIT_SLOT_SCHEMA));
+            this.state.locations.set(Sanitizer.sanitizeRecord(data.state.locations, LOCATION_SCHEMA));
+            this.state.heat.set(Sanitizer.sanitize(data.state.heat, HEAT_SCHEMA));
+            this.state.modified.set(typeof data.state.modified === 'boolean' ? data.state.modified : false);
+            this.state.destroyed.set(typeof data.state.destroyed === 'boolean' ? data.state.destroyed : false);
+            this.state.shutdown.set(typeof data.state.shutdown === 'boolean' ? data.state.shutdown : false);
+            this.state.c3Linked.set(typeof data.state.c3Linked === 'boolean' ? data.state.c3Linked : false);
             if (data.state.inventory) {
-                this.state.inventory.set(data.state.inventory);
+                const inventoryData = Sanitizer.sanitizeArray(data.state.inventory, INVENTORY_SCHEMA);
+                this.state.deserializeInventory(inventoryData, this.dataService.getEquipment(this.unit.type));
             }
             const crewArr = data.state.crew.map((crewData: any) => CrewMember.deserialize(crewData, this));
             this.state.crew.set(crewArr);
             this.recalculateBv();
         }
     }
-}
-
-export interface LocationData {
-    armor?: number;
-    internal?: number;
-}
-
-export interface HeatProfile {
-    current: number;
-    previous: number;
-    heatsinksOff?: number;
 }
 
 export interface PSRCheck {
@@ -935,8 +921,8 @@ export class TurnState {
     psrChecks = signal<PSRChecks>({});
 
     autoFall = computed<boolean>(() => {
-        return (this.psrChecks().legsDestroyed || 0) > 0 
-        || this.psrChecks().gyrosDestroyed === true;
+        return (this.psrChecks().legsDestroyed || 0) > 0
+            || this.psrChecks().gyrosDestroyed === true;
     });
 
     getPSRChecks = computed<PSRCheck[]>(() => {
@@ -1090,7 +1076,7 @@ export class TurnState {
                 // This is an Hit. Check if gyros are destroyed
                 const critSlots = this.unitState.unit.getCritSlots();
                 const gyroHits = critSlots.filter(slot => slot.name && slot.name.includes('Gyro') && slot.destroyed).length;
-                if (gyroHits === 2 && (gyroHits-delta < 2) && !psr.gyrosDestroyed) { // It's destroyed this turn
+                if (gyroHits === 2 && (gyroHits - delta < 2) && !psr.gyrosDestroyed) { // It's destroyed this turn
                     psr.gyrosDestroyed = true;
                 } else if (gyroHits < 2) {
                     psr.gyrosDestroyed = false;
@@ -1104,11 +1090,11 @@ export class TurnState {
 }
 
 export class ForceUnitState {
-    public unit: ForceUnit ;
+    public unit: ForceUnit;
     public modified = signal(false);
     public immobile = signal(false);
     public prone = signal(false);
-    public skidding  = signal(false);
+    public skidding = signal(false);
     public destroyed = signal(false);
     public shutdown = signal(false);
     public c3Linked = signal(false);
@@ -1129,9 +1115,63 @@ export class ForceUnitState {
     constructor(unit: ForceUnit) {
         this.unit = unit;
     }
-    
+
     resetTurnState() {
         this.turnState.set(new TurnState(this));
+    }
+
+    inventoryForSerialization(): SerializedInventory[] {
+        const inventory = this.inventory();
+        return inventory.map(item => ({
+            id: item.id,
+            ...(item.destroyed !== undefined && { destroyed: item.destroyed }),
+            ...(item.consumed !== undefined && { consumed: item.consumed }),
+            ...(item.state !== undefined && { state: item.state }),
+        }));
+    }
+
+    deserializeInventory(serializedInventory: SerializedInventory[], allEquipment: EquipmentUnitType) {
+        const inventory: MountedEquipment[] = [];
+        const existingInventory = this.inventory();
+        serializedInventory.forEach(entry => {
+            const existingItem = existingInventory.find(item => item.id === entry.id);
+            // Ensure newItem is always initialized to avoid "used before assigned" errors.
+            // If we have an existing item, clone it; otherwise create a minimal placeholder and cast to MountedEquipment.
+            let newItem: MountedEquipment;
+            if (existingItem) {
+                newItem = { ...existingItem } as MountedEquipment;
+            } else {
+                // id comes in the format of name@loc#slot, we grab the name
+                const name = entry.id.split('@')[0];
+                newItem = {
+                    owner: this.unit,
+                    id: entry.id,
+                    name: name
+                }
+            }
+            if (entry.destroyed !== undefined) {
+                newItem.destroyed = entry.destroyed;
+            }
+            if (entry.state !== undefined) {
+                newItem.state = entry.state;
+            }
+            if (entry.ammo !== undefined) {
+                newItem.ammo = entry.ammo;
+            }
+            if (entry.totalAmmo !== undefined) {
+                newItem.totalAmmo = entry.totalAmmo;
+            }
+            if (entry.consumed !== undefined) {
+                newItem.consumed = entry.consumed;
+            }
+            if (allEquipment && newItem.name && !newItem.equipment) {
+                if (allEquipment) {
+                    newItem.equipment = allEquipment[newItem.name] ?? null;
+                }
+            }
+            inventory.push(newItem);
+        });
+        this.inventory.set(inventory);
     }
 }
 

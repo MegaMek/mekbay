@@ -31,13 +31,13 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, WritableSignal, signal } from '@angular/core';
+import { ToggleHandler } from './base/toggle.handler';
 
-@Injectable({ providedIn: 'root' })
-export class CompactModeService {
-    compactMode: WritableSignal<boolean> = signal(false);
-
-    toggle() {
-        this.compactMode.set(!this.compactMode());
-    }
-}
+export class StealthHandler extends ToggleHandler {
+    readonly id = 'stealth-handler';
+    readonly flag = 'F_STEALTH';
+    override readonly priority = 10;
+    
+    protected override readonly enabledLabel = 'Enable Stealth';
+    protected override readonly disabledLabel = 'Disable Stealth';
+};

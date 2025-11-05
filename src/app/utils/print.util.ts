@@ -31,7 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit, HeatProfile } from '../models/force-unit.model';
+import { ForceUnit } from '../models/force-unit.model';
+import { HeatProfile } from '../models/force-serialization';
 import { DataService } from '../services/data.service';
 import { OptionsService } from '../services/options.service';
 

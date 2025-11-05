@@ -33,7 +33,8 @@
 
 import { computed } from "@angular/core";
 import { linkedLocs, uidTranslations } from "../components/svg-viewer/common";
-import { CriticalSlot, ForceUnit, MountedEquipment } from "../models/force-unit.model";
+import { ForceUnit, MountedEquipment } from "../models/force-unit.model";
+import { CriticalSlot } from "../models/force-serialization";
 import { UnitSvgService } from "./unit-svg.service";
 
 /*
@@ -490,6 +491,8 @@ export class UnitSvgMekService extends UnitSvgService {
             }
         }
         this.unit.getInventory().forEach(entry => {
+            if (!entry.el) return;
+            if (!entry.locations) return;
             let isDamaged = false;
             let isDisabled = false;
             let hitMod = 0;
@@ -502,7 +505,7 @@ export class UnitSvgMekService extends UnitSvgService {
                     hitMod += unitState.singleArmMod[singleLoc as ArmLocation];
                 }
             }
-            if (entry.critSlots.filter(slot => slot.destroyed).length > 0) {
+            if (entry.critSlots && entry.critSlots.filter(slot => slot.destroyed).length > 0) {
                 isDamaged = true;
             }
             if (entry.physical) {
@@ -677,6 +680,7 @@ export class UnitSvgMekService extends UnitSvgService {
         const svg = this.unit.svg();
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
+            if (!entry.el) return;
             const hitModifier = this.calculateHitModifiers(this.unit, entry, entry.hitModVariation || 0);
             if (entry.baseHitMod !== 'Vs' && hitModifier !== null) {
                 const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);

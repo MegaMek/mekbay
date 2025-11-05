@@ -95,8 +95,8 @@ export class SidebarComponent {
                 width = this.desktopDockWidth();
             } else {
                 // desktop: use computed dock width
-                offset = this.desktopDockWidth();
-                width = offset;
+                width = this.desktopDockWidth();
+                offset = this.COLLAPSED_WIDTH + ((this.layout.menuOpenRatio() * this.EXPANDED_WIDTH) - this.COLLAPSED_WIDTH);
             }
             const docStyle = document.documentElement.style;
             docStyle.setProperty('--sidebar-expanded-width', `${this.sidebarExpandedWidth()}px`);
@@ -257,8 +257,6 @@ export class SidebarComponent {
     };
 
     public onSwipeStart(event: SwipeStartEvent) {
-        if (this.isDesktop()) return;
-        
         this.layout.isMenuDragging.set(true);
         this.startRatio = this.layout.menuOpenRatio();
 
@@ -270,8 +268,6 @@ export class SidebarComponent {
     }
 
     public onSwipeRatio(ratio: number) {
-        if (this.isDesktop()) return;
-
         let newRatio = this.startRatio + ratio;
         
         // Clamp between 0 and 1 for the menu state
@@ -285,7 +281,6 @@ export class SidebarComponent {
     }
 
     public onSwipeEnd(event: SwipeEndEvent) {
-        if (this.isDesktop()) return;
 
         this.layout.isMenuDragging.set(false);
         

@@ -31,13 +31,22 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, WritableSignal, signal } from '@angular/core';
+import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import { ECMHandler } from './ecm.handler';
+import { BAPHandler } from './bap.handler';
+import { StealthHandler } from './stealth.handler';
+import { MASCHandler } from './masc.handler';
 
-@Injectable({ providedIn: 'root' })
-export class CompactModeService {
-    compactMode: WritableSignal<boolean> = signal(false);
-
-    toggle() {
-        this.compactMode.set(!this.compactMode());
-    }
+/**
+ * Register all equipment handlers.
+ * This is called during app initialization to ensure all handlers are available.
+ */
+export function registerAllHandlers(registryService: EquipmentInteractionRegistryService): void {
+    const registry = registryService.getRegistry();
+    
+    // Register all handlers
+    registry.register(new ECMHandler());
+    registry.register(new BAPHandler());
+    registry.register(new StealthHandler());
+    registry.register(new MASCHandler());
 }

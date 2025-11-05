@@ -48,8 +48,11 @@ export type PickerInteractionType = 'mouse' | 'touch';
 export type PickerValue = string | number;
 export type PickerChoice = {
     label: string;
+    shortLabel?: string;
     value: PickerValue;
     disabled?: boolean;
+    active?: boolean;
+    keepOpen?: boolean;
 };
 
 export interface PickerComponent {

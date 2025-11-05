@@ -31,13 +31,13 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, WritableSignal, signal } from '@angular/core';
+import { ToggleHandler } from './base/toggle.handler';
 
-@Injectable({ providedIn: 'root' })
-export class CompactModeService {
-    compactMode: WritableSignal<boolean> = signal(false);
-
-    toggle() {
-        this.compactMode.set(!this.compactMode());
-    }
-}
+export class MASCHandler extends ToggleHandler {
+    readonly id = 'masc-handler';
+    readonly flag = 'F_MASC';
+    override readonly priority = 10;
+    
+    protected override readonly enabledLabel = 'Enabled';
+    protected override readonly disabledLabel = 'Disabled';
+};
