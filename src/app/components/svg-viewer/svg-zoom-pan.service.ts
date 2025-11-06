@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, ElementRef, signal, WritableSignal, Injector, inject, computed } from '@angular/core';
+import { Injectable, ElementRef, signal, WritableSignal, Injector, inject, computed, DestroyRef } from '@angular/core';
 import { LayoutService } from '../../services/layout.service';
 import { SvgInteractionService } from './svg-interaction.service';
 
@@ -127,18 +127,34 @@ export class SvgZoomPanService {
     // Track active pointers
     private pointers = new Map<number, { x: number; y: number; pointerType?: string }>();
 
-    constructor() { }
+    private boundOnWheel!: (event: WheelEvent) => void;
+    private boundOnPointerDown!: (event: PointerEvent) => void;
+    private boundOnPointerMove!: (event: PointerEvent) => void;
+    private boundOnPointerUp!: (event: PointerEvent) => void;
+
+    constructor() {
+        this.boundOnWheel = this.onWheel.bind(this);
+        this.boundOnPointerDown = this.onPointerDown.bind(this);
+        this.boundOnPointerMove = this.onPointerMove.bind(this);
+        this.boundOnPointerUp = this.onPointerUp.bind(this);
+        inject(DestroyRef).onDestroy(() => {
+            this.cleanup();
+        });
+    }
 
     initialize(
         containerRef: ElementRef<HTMLDivElement>,
         isPickerOpen: WritableSignal<boolean>,
         swipeCallbacks?: SwipeCallbacks
     ) {
+        this.cleanup();
         this.containerRef = containerRef;
         this.isPickerOpen = isPickerOpen;
         this.interactionService = this.injector.get(SvgInteractionService);
         this.swipeCallbacks = swipeCallbacks;
-        this.setupEventListeners();
+        const container = this.containerRef.nativeElement;
+        container.addEventListener('wheel', this.boundOnWheel, { passive: false });
+        container.addEventListener('pointerdown', this.boundOnPointerDown);
     }
 
     updateDimensions(
@@ -176,22 +192,12 @@ export class SvgZoomPanService {
         this.applyTransform();
     }
 
-    setupEventListeners() {
-        const container = this.containerRef.nativeElement;
-
-        // Mouse wheel zoom
-        container.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
-
-        // Pointer events for pan/zoom
-        container.addEventListener('pointerdown', this.onPointerDown.bind(this));
-    }
-
     cleanupEventListeners() {
         const container = this.containerRef.nativeElement;
-        container.removeEventListener('pointermove', this.onPointerMove.bind(this));
-        container.removeEventListener('pointerup', this.onPointerUp.bind(this));
-        container.removeEventListener('pointerleave', this.onPointerUp.bind(this));
-        container.removeEventListener('pointercancel', this.onPointerUp.bind(this));
+        container.removeEventListener('pointermove', this.boundOnPointerMove);
+        container.removeEventListener('pointerup', this.boundOnPointerUp);
+        container.removeEventListener('pointerleave', this.boundOnPointerUp);
+        container.removeEventListener('pointercancel', this.boundOnPointerUp);
     }
 
     private calculateMinScale() {
@@ -270,6 +276,9 @@ export class SvgZoomPanService {
             this.capturePointerId = null;
         }
         this.cleanupEventListeners();
+        const container = this.containerRef.nativeElement;
+        container.removeEventListener('wheel', this.boundOnWheel);
+        container.removeEventListener('pointerdown', this.boundOnPointerDown);
         this.pointers.clear();
         if (this.state.isSwiping) {
             this.swipeCallbacks?.onSwipeEnd(this.swipeTotalDx);
@@ -313,10 +322,10 @@ export class SvgZoomPanService {
         } else
             if (this.pointers.size === 1) {
                 const container = this.containerRef.nativeElement;
-                container.addEventListener('pointermove', this.onPointerMove.bind(this));
-                container.addEventListener('pointerup', this.onPointerUp.bind(this));
-                container.addEventListener('pointerleave', this.onPointerUp.bind(this));
-                container.addEventListener('pointercancel', this.onPointerUp.bind(this));
+                container.addEventListener('pointermove', this.boundOnPointerMove);
+                container.addEventListener('pointerup', this.boundOnPointerUp);
+                container.addEventListener('pointerleave', this.boundOnPointerUp);
+                container.addEventListener('pointercancel', this.boundOnPointerUp);
                 this.state.pointerStart = { x: event.clientX, y: event.clientY };
                 this.state.last = { x: event.clientX, y: event.clientY };
                 this.state.pointerMoved = false;
