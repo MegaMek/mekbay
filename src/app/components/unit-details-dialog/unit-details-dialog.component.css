@@ -121,6 +121,9 @@
     align-items: flex-end;
     gap: 12px;
     text-wrap: nowrap;
+    position: relative;
+    top: -0.2em;
+    margin-top: 0.2em;
 }
 
 .info-slot {
