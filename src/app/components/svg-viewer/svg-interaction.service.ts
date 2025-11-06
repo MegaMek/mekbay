@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, ElementRef, signal, WritableSignal, Injector, effect, EffectRef, ApplicationRef, EnvironmentInjector, createComponent, inject } from '@angular/core';
+import { Injectable, ElementRef, DestroyRef, signal, WritableSignal, Injector, effect, EffectRef, ApplicationRef, EnvironmentInjector, createComponent, inject } from '@angular/core';
 import { DialogsService } from '../../services/dialogs.service';
 import { firstValueFrom } from 'rxjs';
 import { ForceUnit, SkillType, MountedEquipment } from '../../models/force-unit.model';
@@ -97,7 +97,11 @@ export class SvgInteractionService {
 
     private currentHighlightedElement: SVGElement | null = null;
 
-    constructor() {}
+    constructor() {
+        inject(DestroyRef).onDestroy(() => {
+            this.cleanup();
+        });
+    }
 
     initialize(
         containerRef: ElementRef<HTMLDivElement>,
@@ -106,16 +110,14 @@ export class SvgInteractionService {
         diffHeatArrowRef?: ElementRef<HTMLDivElement>,
         diffHeatTextRef?: ElementRef<HTMLDivElement>
     ) {
+        this.cleanup();
+
         this.containerRef = containerRef;
         this.injector = injector;
         this.diffHeatMarkerRef = diffHeatMarkerRef;
         this.diffHeatArrowRef = diffHeatArrowRef;
         this.diffHeatTextRef = diffHeatTextRef;
 
-        // Create the effect here, in a safe, non-reactive context.
-        if (this.heatMarkerEffectRef) {
-            this.heatMarkerEffectRef.destroy();
-        }
         this.heatMarkerEffectRef = effect(() => {
             const currentUnit = this.unit();
             if (!currentUnit) return;
@@ -199,7 +201,6 @@ export class SvgInteractionService {
         this.setupSkillInteractions(svg, signal);
         this.setupCrewNameInteractions(svg, signal);
         this.setupInventoryInteractions(svg, signal);
-        // this.setupFluffImageInteraction(svg, signal);
     }
 
     private addSvgTapHandler(
@@ -266,6 +267,9 @@ export class SvgInteractionService {
         el.addEventListener('pointerleave', cancelHandler, eventOptions);
         el.addEventListener('pointercancel', cancelHandler, eventOptions);
         el.addEventListener('pointerup', upHandler, eventOptions);
+        signal.addEventListener('abort', () => {
+            clearLongTouch();
+        }, { once: true });
     }
 
     private setupPipInteractions(svg: SVGSVGElement, signal: AbortSignal) {
@@ -290,7 +294,7 @@ export class SvgInteractionService {
                 if (!crewMember) return;
                 if (state === 'dead') {
                     crewMember.toggleDead();
-                } else if (state === 'unconscious')  {
+                } else if (state === 'unconscious') {
                     crewMember.toggleUnconscious();
                 }
             }, signal);
@@ -331,8 +335,8 @@ export class SvgInteractionService {
                 const newHealth = totalTroops - (soldierId - 1);
                 const deltaChange = newHealth - getHits();
                 if (deltaChange < 0) {
-                    this.unit()?.setInternalHits('TROOP', newHealth-1);
-                    showToast(deltaChange-1);
+                    this.unit()?.setInternalHits('TROOP', newHealth - 1);
+                    showToast(deltaChange - 1);
                 } else if (deltaChange > 0) {
                     this.unit()?.setInternalHits('TROOP', newHealth);
                     showToast(deltaChange);
@@ -393,7 +397,7 @@ export class SvgInteractionService {
             const createAndShowPicker = (event: PointerEvent) => {
                 const x = event.clientX;
                 const y = event.clientY;
-                
+
                 if (!isStructure && !isShield) {
                     // We recalculate modular armor status, in case we added/removed some crits (destroyed or repaired)
                     consumedModularArmorPoints = 0;
@@ -657,9 +661,9 @@ export class SvgInteractionService {
                                 if (!critSlot.originalName) {
                                     critSlot.originalName = critSlot.name;
                                 } else
-                                if (newAmmoValue.name == critSlot.originalName) {
-                                    delete critSlot.originalName;
-                                }
+                                    if (newAmmoValue.name == critSlot.originalName) {
+                                        delete critSlot.originalName;
+                                    }
                                 critSlot.name = newAmmoValue.name;
                                 totalAmmo = newAmmoValue.totalAmmo;
                                 critSlot.totalAmmo = totalAmmo;
@@ -721,21 +725,6 @@ export class SvgInteractionService {
     }
 
     private setupInventoryInteractions(svg: SVGSVGElement, signal: AbortSignal) {
-        // if (this.unit()?.hasDirectInventory()) {
-            this.setupDirectInventoryInteractions(svg, signal);
-            return;
-        // }
-        // this.unit()?.getInventory().forEach(entry => {
-        //     if (!entry.el) return;
-        //     entry.el.addEventListener('click', (event) => {
-        //         if (this.zoomPanService.pointerMoved) return;
-        //         event.stopPropagation();
-        //         entry.el?.classList.toggle('selected');
-        //     }, { signal });
-        // });
-    }
-
-    private setupDirectInventoryInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         this.unit()?.getInventory().forEach(entry => {
             const el = entry.el;
             if (!el) return;
@@ -766,26 +755,28 @@ export class SvgInteractionService {
                 const context: HandlerContext = {
                     toastService: this.toastService
                 };
-                
+
                 const registry = this.equipmentRegistryService.getRegistry();
-                
+
                 const calculateValues = () => {
                     let values: HandlerChoice[] = [];
-                    
+
                     // Get equipment-specific choices based on flags
                     const equipmentChoices = registry.getChoices(entry, context);
                     if (equipmentChoices.length > 0) {
                         values.push(...equipmentChoices);
                     }
 
-                    
+
                     // Add standard damage/repair options
-                    if (!entry.destroyed) {
-                        values.push({ label: 'Critical Hit', value: 'Hit' });
-                    } else {
-                        values.push({ label: 'Repair', value: 'Repair' });
+                    if (this.unit()?.hasDirectInventory()) {
+                        if (!entry.destroyed) {
+                            values.push({ label: 'Critical Hit', value: 'Hit' });
+                        } else {
+                            values.push({ label: 'Repair', value: 'Repair' });
+                        }
                     }
-                    
+
                     // Add ammo management options if applicable
                     if (!entry.destroyed && (totalAmmo > 0)) {
                         values.unshift({ label: '+1', value: '+1', disabled: ((entry.consumed ?? 0) == 0) });
@@ -794,28 +785,33 @@ export class SvgInteractionService {
                     }
                     return values;
                 };
-                
+
+                const calculatePickerValues = calculateValues();
+                if (calculatePickerValues.length === 0) {
+                    return;
+                }
+
                 const pickerInstance: PickerInstance = this.showPicker({
                     event: event,
                     el: el,
                     title: nameText,
-                    values: calculateValues(),
+                    values: calculatePickerValues,
                     selected: null,
                     suggestedPickerStyle: 'auto',
                     targetType: 'crit',
                     onPick: (val: PickerValue) => {
                         // Try equipment-specific handlers first
-                        const choice = calculateValues().find(c => c.value === val) as HandlerChoice | undefined;
-                        
+                        const choice = calculatePickerValues.find(c => c.value === val) as HandlerChoice | undefined;
+
                         if (choice?._handlerId) {
                             const handled = registry.handleSelection(entry, choice, context);
-                            
-                            if (handled) {
+
+                            if (handled && choice.keepOpen) {
                                 pickerInstance.component.values.set(calculateValues());
                                 return; // Keep picker open for state changes
                             }
                         }
-                        
+
                         // Handle standard options
                         if (val == '+1') {
                             if (entry.consumed === undefined) {
@@ -857,7 +853,9 @@ export class SvgInteractionService {
                             this.toastService.show(`Repaired ${nameText}`, 'info');
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        this.removePicker();
+                        if (!choice || !choice.keepOpen) {
+                            this.removePicker();
+                        }
                     },
                     onCancel: () => {
                         this.removePicker();
@@ -867,6 +865,7 @@ export class SvgInteractionService {
 
             this.addSvgTapHandler(el, (event: Event, primaryAction: boolean) => {
                 if (this.state.clickTarget !== el) return;
+
                 if (primaryAction && !el.classList.contains('damagedInventory') && !el.classList.contains('disabledInventory')) {
                     el.classList.toggle('selected');
                 } else {
@@ -883,8 +882,10 @@ export class SvgInteractionService {
         let heatScale: SVGElement | null = svg.getElementById('heatScale') as SVGGElement | null;
         if (!heatScale) return;
 
-        // Track active pointers locally to detect multi-touch and abort heat drag if needed
-        let activePointer: number | null = null;
+        let dragState: {
+            pointerId: number;
+            startElement: SVGElement;
+        } | null = null;
 
         const findClosestHeat = (clientY: number): SVGElement | null => {
             let closestHeat: SVGElement | null = null;
@@ -901,75 +902,90 @@ export class SvgInteractionService {
             return closestHeat;
         };
 
-        let localAbortSignal: AbortController | null = null;
-
-        const registerEventListenersHeatScale = (el: Element) => {
-            // Unregister any existing handlers first
-            if (localAbortSignal) {
-                localAbortSignal.abort();
+        const updateHeatMarker = (clientY: number) => {
+            const closestHeat = findClosestHeat(clientY);
+            if (closestHeat) {
+                this.state.clickTarget = closestHeat;
+                const heatValue = Number(closestHeat.getAttribute('heat'));
+                this.state.heatMarkerData.set({
+                    el: closestHeat,
+                    heat: heatValue
+                });
             }
-            localAbortSignal = new AbortController();
-
-            // Pointerdown to track active pointers (needed to detect multi-touch)
-            const onPointerDown = (evt: PointerEvent) => {
-                if (activePointer !== evt.pointerId) {
-                    endHeatDrag();
-                    return;
-                }
-                activePointer = evt.pointerId;
-            };
-
-            const onPointerMove = (evt: PointerEvent) => {
-                if (!this.state.isHeatDragging) return;
-
-                // Wrong pointer, we autofail
-                if (activePointer !== evt.pointerId) {
-                    endHeatDrag();
-                    return;
-                }
-
-                evt.stopPropagation();
-                this.zoomPanService.isPanning = false;
-                const clientY = evt.clientY;
-
-                const closestHeat = findClosestHeat(clientY);
-                if (closestHeat) {
-                    this.state.clickTarget = closestHeat;
-                    const heatValue = Number(closestHeat.getAttribute('heat'));
-                    this.state.heatMarkerData.set({
-                        el: this.state.clickTarget,
-                        heat: heatValue
-                    });
-                }
-            };
-
-            const onPointerCancel = (e: Event) => {
-                endHeatDrag();
-            };
-
-            const onPointerUp = (e: Event) => {
-                completeHeatDrag();
-            };
-
-            svg.addEventListener('pointerdown', onPointerDown, { passive: false, signal: localAbortSignal.signal });
-            svg.addEventListener('pointermove', onPointerMove, { passive: false, signal: localAbortSignal.signal });
-            el.addEventListener('pointerup', onPointerUp, { passive: false, signal: localAbortSignal.signal });
-            el.addEventListener('pointercancel', onPointerCancel, { passive: false, signal: localAbortSignal.signal });
         };
-
-        const endHeatDrag = () => {
+        const cancelHeatDrag = () => {
+            if (!dragState) return;
+            svg.removeEventListener('pointerdown', onPointerDown);
+            svg.removeEventListener('pointermove', onPointerMove);
+            dragState.startElement.removeEventListener('pointerup', onPointerUp);
+            dragState.startElement.removeEventListener('pointercancel', onPointerCancel);
             this.state.isHeatDragging = false;
             this.state.heatMarkerData.set(null);
-            activePointer = null;
-            localAbortSignal?.abort();
+            dragState = null;
         };
 
-        const completeHeatDrag = () => {
-            if (!this.state.isHeatDragging) return;
-            unit.setHeat(Number(this.state.clickTarget?.getAttribute('heat') || 0));
-            endHeatDrag();
+        const onPointerMove = (evt: PointerEvent) => {
+            if (!dragState || !this.state.isHeatDragging) return;
+            if (evt.pointerId !== dragState.pointerId) {
+                cancelHeatDrag();
+                return;
+            }
+            evt.preventDefault();
+            evt.stopPropagation();
+            this.zoomPanService.isPanning = false;
+            updateHeatMarker(evt.clientY);
         };
 
+        const onPointerUp = (evt: PointerEvent) => {
+            if (!dragState || evt.pointerId !== dragState.pointerId) return;
+            const heatValue = Number(this.state.clickTarget?.getAttribute('heat') || 0);
+            unit.setHeat(heatValue);
+            cancelHeatDrag();
+        };
+
+        const onPointerCancel = (evt: PointerEvent) => {
+            if (!dragState || evt.pointerId !== dragState.pointerId) return;
+            cancelHeatDrag();
+        };
+
+        const onPointerDown = (evt: PointerEvent) => {
+            if (!dragState || evt.pointerId !== dragState.pointerId) {
+                cancelHeatDrag();
+                return;
+            }
+        };
+
+        svg.querySelectorAll<SVGElement>('#heatScale .heat').forEach(el => {
+            el.classList.add('interactive');
+            el.addEventListener('pointerdown', (evt: PointerEvent) => {
+                evt.preventDefault();
+                if (dragState) return;
+                const interactionType = evt.pointerType === 'mouse' ? 'mouse' : 'touch';
+                this.state.interactionMode.set(interactionType);
+                this.zoomPanService.pointerMoved = false;
+                dragState = {
+                    pointerId: evt.pointerId,
+                    startElement: el
+                };
+                this.state.isHeatDragging = true;
+                this.zoomPanService.isPanning = false;
+                this.state.clickTarget = el as SVGElement;
+                const heatValue = Number(el.getAttribute('heat'));
+                this.state.heatMarkerData.set({
+                    el: this.state.clickTarget,
+                    heat: heatValue
+                });
+                svg.addEventListener('pointerdown', onPointerDown, { passive: false, signal: signal });
+                svg.addEventListener('pointermove', onPointerMove, { passive: false, signal });
+                el.addEventListener('pointerup', onPointerUp, { passive: false, signal });
+                el.addEventListener('pointercancel', onPointerCancel, { passive: false, signal });
+                try {
+                    this.state.clickTarget.setPointerCapture(evt.pointerId);
+                } catch (e) { /* Ignore */ }
+            }, { passive: false, signal });
+        });
+
+        // Setup overflow button to directly set heat value
         const overflowFrame = svg.querySelector('#heatScale .overflowFrame');
         const overflowButton = svg.querySelector('#heatScale .overflowButton');
         if (overflowFrame && overflowButton) {
@@ -991,40 +1007,14 @@ export class SvgInteractionService {
             overflowButton.addEventListener('click', promptHeatOverflow, { passive: false, signal });
         }
 
-        svg.querySelectorAll('#heatScale .heat').forEach(el => {
-            el.classList.add('interactive');
-
-            el.addEventListener('pointerdown', (evt: Event) => {
-                evt.preventDefault();
-                const pEvt = evt as PointerEvent;
-                const interactionType = pEvt.pointerType === 'mouse' ? 'mouse' : 'touch';
-                this.state.interactionMode.set(interactionType);
-                this.zoomPanService.pointerMoved = false;
-                this.state.clickTarget = el as SVGElement;
-                const heatValue = Number(this.state.clickTarget.getAttribute('heat'));
-                this.state.isHeatDragging = true;
-                this.zoomPanService.isPanning = false;
-
-                this.state.heatMarkerData.set({
-                    el: this.state.clickTarget,
-                    heat: heatValue
-                });
-                activePointer = pEvt.pointerId;
-
-                registerEventListenersHeatScale(el);
-                try {
-                    el.setPointerCapture(pEvt.pointerId);
-                } catch (e) { /* Ignore */ }
-            }, { passive: false, signal });
-        });
-
+        // Setup heat data panel interactions
         const heatDataPanel = svg.getElementById('heatDataPanel') as SVGElement | null;
         if (heatDataPanel) {
-            
+
             const totalHeatsinkPips = heatDataPanel.querySelectorAll<SVGElement>('.pip.hsPip').length;
             // Setup interactions for the heat data panel that allows to turn on/off heat sinks and reduce the dissipation power
             const getHeatsinkPickerChoices = (unit: ForceUnit): PickerChoice[] => {
-                
+
                 const choices: PickerChoice[] = [];
                 const turnedOffHeatsinks = (unit.getHeat().heatsinksOff || 0);
                 const totalValidAndActiveHeatsinks = turnedOffHeatsinks - totalHeatsinkPips;
@@ -1056,7 +1046,7 @@ export class SvgInteractionService {
                         this.removePicker();
                     }
                 });
-                
+
             }, signal);
         }
     }
@@ -1299,16 +1289,16 @@ export class SvgInteractionService {
             const pickerY = opts.position?.y ?? rect.top;
             instance.position.set({ x: pickerX, y: pickerY });
         } else
-        if (opts.targetType === 'inventory') {
-            instance.align.set('left');
-            const pickerX = opts.position?.x ?? (rect.left + rect.width + 4);
-            const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-            instance.position.set({ x: pickerX, y: pickerY });
-        } else {
-            const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
-            const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-            instance.position.set({ x: pickerX, y: pickerY });
-        }
+            if (opts.targetType === 'inventory') {
+                instance.align.set('left');
+                const pickerX = opts.position?.x ?? (rect.left + rect.width + 4);
+                const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
+                instance.position.set({ x: pickerX, y: pickerY });
+            } else {
+                const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
+                const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
+                instance.position.set({ x: pickerX, y: pickerY });
+            }
         if (opts.event instanceof PointerEvent) {
             instance.initialEvent.set(opts.event);
         }
@@ -1390,7 +1380,7 @@ export class SvgInteractionService {
             }
         }
     }
-    
+
     isAnyPickerOpen(): boolean {
         return this.state.isPickerOpen() || (this.state.heatMarkerData() !== null);
     }
@@ -1427,5 +1417,8 @@ export class SvgInteractionService {
         if (this.pickerRef) {
             this.removePicker();
         }
+        this.currentHighlightedElement = null;
+        this.state.clickTarget = null;
+        this.state.heatMarkerData.set(null);
     }
 }
