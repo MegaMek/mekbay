@@ -659,7 +659,9 @@ export class ForceBuilderService {
             const isConnected = this.wsService.wsConnected();
             if (isConnected) {
                 // WebSocket just came online
-                await this.checkForCloudConflict();
+                untracked(async () => { // Avoid triggering effect re-entrance
+                    await this.checkForCloudConflict();
+                });
             }
         });
     }
@@ -670,6 +672,7 @@ export class ForceBuilderService {
 
         // Only check if we have a saved force with an instance ID
         if (!instanceId) return;
+        this.logger.info('Checking for cloud conflict for force with instance ID ' + instanceId);
 
         try {
             // Fetch the cloud version
