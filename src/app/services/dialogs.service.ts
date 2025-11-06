@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, inject, Injector } from '@angular/core';
+import { Injectable, inject, Injector, afterNextRender } from '@angular/core';
 import { firstValueFrom, Subject } from 'rxjs';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
@@ -122,7 +122,7 @@ export class DialogsService {
                 close(undefined);
             }
         });
-        queueMicrotask(() => {
+        afterNextRender(() => {
             try {
                 const panel = overlayRef.overlayElement as HTMLElement;
                 const focusable = panel.querySelector<HTMLElement>(
@@ -131,12 +131,15 @@ export class DialogsService {
                 if (focusable) {
                     focusable.focus();
                 } else {
-                    // If no focusable element found, focus the panel itself
-                    panel.setAttribute('tabindex', '-1');
-                    panel.focus();
+                    // If no focusable element found, focus the first child to trap focus
+                    const firstChild = panel.firstElementChild as HTMLElement;
+                    if (firstChild) {
+                        firstChild.setAttribute('tabindex', '-1');
+                        firstChild.focus();
+                    }
                 }
             } catch { /* ignore */ }
-        });
+        }, { injector: this.injector });
         overlayRef.detachments().subscribe(() => {
             if (!closed.closed) {
                 closed.next(undefined);
