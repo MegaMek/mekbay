@@ -33,7 +33,7 @@
 
 import { Injectable } from '@angular/core';
 import { PickerChoice, PickerValue } from '../components/picker/picker.interface';
-import { MountedEquipment } from '../models/force-unit.model';
+import { MountedEquipment } from '../models/force-serialization';
 import { ToastService } from './toast.service';
 
 /**

@@ -32,7 +32,7 @@
  */
 
 import { EquipmentInteractionHandler, HandlerContext } from '../../services/equipment-interaction-registry.service';
-import { MountedEquipment } from '../../models/force-unit.model';
+import { MountedEquipment } from '../../models/force-serialization';
 import { PickerChoice, PickerValue } from '../../components/picker/picker.interface';
 
 /**

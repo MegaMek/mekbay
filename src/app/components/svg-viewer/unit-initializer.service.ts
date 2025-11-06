@@ -32,8 +32,8 @@
  */
 
 import { inject, Injectable, Injector } from '@angular/core';
-import { ForceUnit, MountedEquipment } from '../../models/force-unit.model';
-import { CriticalSlot } from '../../models/force-serialization';
+import { ForceUnit } from '../../models/force-unit.model';
+import { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
 import { DataService } from '../../services/data.service';
 import { Equipment } from '../../models/equipment.model';
 

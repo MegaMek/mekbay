@@ -34,9 +34,9 @@
 import { Injectable, ElementRef, DestroyRef, signal, WritableSignal, Injector, effect, EffectRef, ApplicationRef, EnvironmentInjector, createComponent, inject } from '@angular/core';
 import { DialogsService } from '../../services/dialogs.service';
 import { firstValueFrom } from 'rxjs';
-import { ForceUnit, MountedEquipment } from '../../models/force-unit.model';
+import { ForceUnit } from '../../models/force-unit.model';
 import { SkillType } from '../../models/crew-member.model';
-import { CriticalSlot } from '../../models/force-serialization';
+import { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
 import { OptionsService } from '../../services/options.service';
 import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
 import { SvgZoomPanService } from './svg-zoom-pan.service';

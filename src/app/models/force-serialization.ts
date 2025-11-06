@@ -33,6 +33,7 @@
 
 import { Equipment } from './equipment.model';
 import { Sanitizer } from '../utils/sanitizer.util';
+import { ForceUnit } from './force-unit.model';
 
 export interface LocationData {
     armor?: number;
@@ -142,3 +143,31 @@ export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
     .string('ammo')
     .boolean('destroyed')
     .build();
+
+    
+export interface MountedEquipment {
+    owner: ForceUnit;
+    id: string;
+    name: string;
+    locations?: Set<string>;
+    equipment?: Equipment;
+    baseHitMod?: string;
+    hitModVariation?: null | number; // Temporary variable to calculate delta hit modifier
+    physical?: boolean;
+    linkedWith?: null | MountedEquipment[];
+    parent?: null | MountedEquipment;
+    destroyed?: boolean;
+    critSlots?: CriticalSlot[];
+    state?: string;
+    el?: SVGElement;
+    // Used for entries that doesn't have critical slots
+    ammo?: string;
+    totalAmmo?: number;
+    consumed?: number;
+}
+
+export interface SheetTransformationData {
+    scale: number;
+    translateX: number;
+    translateY: number;
+}

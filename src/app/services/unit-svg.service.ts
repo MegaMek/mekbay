@@ -32,9 +32,9 @@
  */
 
 import { untracked, Injectable, Injector, effect, EffectRef, OnDestroy, inject } from '@angular/core';
-import { ForceUnit, MountedEquipment } from '../models/force-unit.model';
+import { ForceUnit } from '../models/force-unit.model';
 import { CrewMember, SkillType } from '../models/crew-member.model';
-import { CriticalSlot } from '../models/force-serialization';
+import { CriticalSlot, MountedEquipment } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
