@@ -708,6 +708,7 @@ export class ForceBuilderService {
 
         const dialogRef = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
             panelClass: 'info',
+            disableClose: true,
             data: <ConfirmDialogData<string>>{
                 title: 'Sync Conflict Detected',
                 message: `While you were offline, this force was modified on another device. The cloud version is newer than your current version. (${formatDate(cloudTimestamp)} > ${formatDate(localTimestamp)})`,
