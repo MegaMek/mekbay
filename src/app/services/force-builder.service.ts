@@ -715,7 +715,7 @@ export class ForceBuilderService {
                 buttons: [
                     { label: 'LOAD CLOUD', value: 'cloud', class: 'primary' },
                     { label: 'KEEP LOCAL', value: 'local', class: 'secondary' },
-                    { label: 'CANCEL', value: 'cancel' }
+                    { label: 'CLONE LOCAL', value: 'cloneLocal' }
                 ]
             }
         });
@@ -731,6 +731,12 @@ export class ForceBuilderService {
             this.force.timestamp = new Date().toISOString();
             await this.dataService.saveForce(this.force);
             this.toastService.show('Local version kept and synced to cloud', 'success');
+        } else if (result === 'cloneLocal') {
+            // clone local version as a new force
+            this.force.instanceId.set(generateUUID());
+            this.force.timestamp = new Date().toISOString();
+            this.force.setName(this.force.name + ' (Cloned)', false);
+            this.toastService.show('Local version has been cloned', 'success');
         }
         // If 'cancel', do nothing, they will remain on the current version and override if they save later.
     }
