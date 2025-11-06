@@ -831,8 +831,13 @@ export class ForceUnit {
         this.state.resetTurnState();
     }
 
+    private _hasDirectInventory: boolean | null = null;
     public hasDirectInventory(): boolean {
-        return (!this.svg()?.querySelector('.critSlot')) && (this.getUnit().type !== 'Infantry') || false;
+        if (this._hasDirectInventory !== null) {
+            return this._hasDirectInventory;
+        }
+        this._hasDirectInventory = (!this.svg()?.querySelector('.critSlot')) && (this.getUnit().type !== 'Infantry') || false;
+        return this._hasDirectInventory;
     }
 
     public serialize(): SerializedUnit {
@@ -847,9 +852,6 @@ export class ForceUnit {
             c3Linked: this.state.c3Linked(),
             inventory: this.state.inventoryForSerialization()
         };
-        if (this.hasDirectInventory()) {
-            // stateObj.inventory = [];
-        }
         const data = {
             id: this.id,
             state: stateObj,
