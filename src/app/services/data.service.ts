@@ -800,7 +800,7 @@ export class DataService {
         return cloudTs > localTs;
     }
 
-    public async getForce(instanceId: string): Promise<Force | null> {
+    public async getForce(instanceId: string, ownedOnly: boolean = false): Promise<Force | null> {
         const localRaw = await this.dbService.getForce(instanceId);
         let cloudRaw: any | null = null;
         let triedCloud = false;
@@ -809,7 +809,7 @@ export class DataService {
             const ws = await this.canUseCloud();
             if (ws) {
                 try {
-                    cloudRaw = await this.getForceCloud(instanceId);
+                    cloudRaw = await this.getForceCloud(instanceId, ownedOnly);
                     triedCloud = true;
                 } catch {
                     cloudRaw = null;
@@ -1110,7 +1110,7 @@ export class DataService {
         }
     }
 
-    private async getForceCloud(instanceId: string): Promise<any | null> {
+    private async getForceCloud(instanceId: string, ownedOnly: boolean): Promise<any | null> {
         const ws = await this.canUseCloud();
         if (!ws) return null;
         const uuid = this.userStateService.uuid();
@@ -1118,6 +1118,7 @@ export class DataService {
             action: 'getForce',
             uuid,
             instanceId,
+            ownedOnly,
         };
         const response = await this.wsService.sendAndWaitForResponse(payload);
         return response.data || null;

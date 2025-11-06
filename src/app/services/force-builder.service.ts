@@ -48,6 +48,9 @@ import { DialogsService } from './dialogs.service';
 import { generateUUID, WsService } from './ws.service';
 import { ToastService } from './toast.service';
 import { LoggerService } from './logger.service';
+import { LoadForceEntry } from '../models/load-force-entry.model';
+import { ForceLoadDialogComponent } from '../components/force-load-dialog/force-load-dialog.component';
+import { ForcePackDialogComponent } from '../components/force-pack-dialog/force-pack-dialog.component';
 
 /*
  * Author: Drake
@@ -390,6 +393,44 @@ export class ForceBuilderService {
         return forceUnits;
     }
 
+    async showLoadForceDialog(): Promise<void> {
+        const ref = this.dialogsService.createDialog(ForceLoadDialogComponent);
+        ref.componentInstance?.load.subscribe(async (force) => {
+            if (force instanceof LoadForceEntry) {
+                const requestedForce = await this.dataService.getForce(force.instanceId, true);
+                if (!requestedForce) {
+                    this.toastService.show('Failed to load force.', 'error');
+                    return;
+                }
+                this.loadForce(requestedForce);
+            } else {
+                if (force && force.units && force.units.length > 0) {
+                    await this.createNewForce();
+                    const group = this.addGroup();
+                    for (const unit of force.units) {
+                        if (!unit?.unit) continue;
+                        this.addUnit(unit.unit, undefined, undefined, group);
+                    }
+                }
+            }
+            ref.close();
+        });
+    }
+    
+    showForcePackDialog(): void {
+        const ref = this.dialogsService.createDialog(ForcePackDialogComponent);
+        ref.componentInstance?.add.subscribe(async (pack) => {
+            if (pack) {
+                const group = this.addGroup();
+                for (const unit of pack.units) {
+                    if (!unit?.unit) continue;
+                    this.addUnit(unit.unit, undefined, undefined, group);
+                }
+            }
+            ref.close();
+        });
+    }
+
     /**
      * Adds a new unit to the force. The unit is cloned to prevent
      * modifications to the original object, and it's set as the
@@ -675,8 +716,8 @@ export class ForceBuilderService {
         this.logger.info('Checking for cloud conflict for force with instance ID ' + instanceId);
 
         try {
-            // Fetch the cloud version
-            const cloudForce = await this.dataService.getForce(instanceId);
+            // Fetch the cloud version. If the local is owned, we fetch only owned versions too.
+            const cloudForce = await this.dataService.getForce(instanceId, currentForce.owned());
             if (!cloudForce) return; // No cloud version exists
             // Compare timestamps
             const localTimestamp = currentForce.timestamp ? new Date(currentForce.timestamp).getTime() : 0;
@@ -685,7 +726,7 @@ export class ForceBuilderService {
             if (cloudTimestamp > localTimestamp) {
                 this.logger.warn('Conflict detected between local and cloud force versions.');
                 // If the local force is not owned, automatically load the cloud version
-                if (currentForce.owned() === false) {
+                if (!currentForce.owned()) {
                     this.logger.info(`ForceBuilderService: Force with instance ID ${instanceId} downloading cloud version.`);
                     const selectedIndex = currentForce.units().findIndex(u => u.id === this.selectedUnit()?.id);
                     await this.loadForce(cloudForce);
