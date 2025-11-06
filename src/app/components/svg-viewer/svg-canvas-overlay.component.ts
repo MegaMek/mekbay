@@ -329,7 +329,7 @@ export class SvgCanvasOverlayComponent {
 
     activePointers = new Map<number, BrushLocation>();
     primaryPointerId: number | null = null;
-    
+
     lastReducedIndex = 0;
     unit = input<ForceUnit | null>(null);
     mode = signal<'brush' | 'eraser' | 'none'>('none');
@@ -392,7 +392,7 @@ export class SvgCanvasOverlayComponent {
                     if (!data) return;
                     this.importImageData(data);
                 });
-            }, { injector: this.injector});
+            }, { injector: this.injector });
         });
         afterNextRender(() => {
             this.addEventListeners();
@@ -489,7 +489,7 @@ export class SvgCanvasOverlayComponent {
         const scaler = paintMode ? this.BRUSH_MULTIPLIER : this.ERASER_MULTIPLIER;
         return this.strokeSize() * scaler;
     }
-    
+
     private getCanvasContext(): CanvasRenderingContext2D | null {
         return this.canvasRef()?.nativeElement.getContext('2d') ?? null;
     }
@@ -540,7 +540,7 @@ export class SvgCanvasOverlayComponent {
         // draw initial dot
         const ctx = this.getCanvasContext();
         if (ctx) {
-            this.draw(ctx, pos.mode, { x: pos.startX, y: pos.startY }, { x: pos.x+0.01, y: pos.y+0.01 });
+            this.draw(ctx, pos.mode, { x: pos.startX, y: pos.startY }, { x: pos.x + 0.01, y: pos.y + 0.01 });
         }
     }
 
@@ -659,7 +659,7 @@ export class SvgCanvasOverlayComponent {
             const dy = pos.y - fromPos.startY;
             const distSq = dx * dx + dy * dy;
             const threshold = this.MOVE_THRESHOLD * this.INTERNAL_SCALE;
-            if (distSq >= (threshold*threshold)) {
+            if (distSq >= (threshold * threshold)) {
                 fromPos.moved = true;
                 this.startDraw(event.pointerId);
             }
@@ -685,16 +685,17 @@ export class SvgCanvasOverlayComponent {
         const ctx = this.getCanvasContext();
         if (!ctx) return;
         const img = new window.Image();
-            
+
         img.onload = () => {
-                const canvasWidth = this.canvasWidth();
-                const canvasHeight = this.canvasHeight();
-                ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-                ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
-            };
-            img.onerror = (err) => {
-                this.logger.error('Failed to load image for canvas import: ' + err);
-            };
-            img.src = URL.createObjectURL(blob);
+            const canvasWidth = this.canvasWidth();
+            const canvasHeight = this.canvasHeight();
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+            URL.revokeObjectURL(img.src);
+        };
+        img.onerror = (err) => {
+            this.logger.error('Failed to load image for canvas import: ' + err);
+        };
+        img.src = URL.createObjectURL(blob);
     }
 }
