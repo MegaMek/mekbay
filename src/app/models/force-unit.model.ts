@@ -335,7 +335,7 @@ export interface MountedEquipment {
     id: string;
     name: string;
     locations?: Set<string>;
-    equipment?: null | Equipment;
+    equipment?: Equipment;
     baseHitMod?: string;
     hitModVariation?: null | number; // Temporary variable to calculate delta hit modifier
     physical?: boolean;
@@ -419,7 +419,7 @@ export class ForceUnit {
         unit.comp.forEach(comp => {
             if (!comp.eq && comp.id) {
                 if (allEquipment) {
-                    comp.eq = allEquipment[comp.id] ?? null;
+                    comp.eq = allEquipment[comp.id];
                 }
             }
         });
@@ -1168,7 +1168,8 @@ export class ForceUnitState {
             }
             if (allEquipment && newItem.name && !newItem.equipment) {
                 if (allEquipment) {
-                    newItem.equipment = allEquipment[newItem.name] ?? null;
+                    const equipment = allEquipment[newItem.name];
+                    newItem.equipment = equipment;
                 }
             }
             inventory.push(newItem);

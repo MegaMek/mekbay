@@ -36,42 +36,41 @@ import { Unit } from "./units.model";
 /*
  * Author: Drake
  */
-export interface IEquipment {
+
+export type TechBase = 'IS' | 'Clan' | 'All';
+export type EquipmentType = 'weapon' | 'ammo' | 'misc';
+
+export interface TechDates {
+    t: string;  // Prototype
+    p: string;  // Production
+    c: string;  // Common
+    x: string;  // Extinct
+    r: string;  // Reintroduced
+}
+
+export interface EquipmentDates {
+    is: TechDates;
+    clan: TechDates;
+    mixed: TechDates;
+}
+
+export interface EquipmentRating {
+    is: string;
+    clan: string;
+}
+
+
+export class Equipment {
     internalName: string;
     name: string;
     shortName: string;
-    type: string;
+    type: EquipmentType;
     heat: string;
     damage: string;
     cost: string;
     level: string;
-    rating: {
-        is: string;
-        clan: string;
-    };
-    dates: {
-        is: {
-            t: string;
-            p: string;
-            c: string;
-            x: string;
-            r: string;
-        },
-        clan: {
-            t: string;
-            p: string;
-            c: string;
-            x: string;
-            r: string;
-        },
-        mixed: {
-            t: string;
-            p: string;
-            c: string;
-            x: string;
-            r: string;
-        },
-    }
+    rating: EquipmentRating;
+    dates: EquipmentDates;
     range: string;
     weight: string;
     crew: string;
@@ -81,18 +80,73 @@ export interface IEquipment {
     minr: string;
     bv: number;
     crit: number;
-    base: 'IS' | 'Clan' | 'All';
+    base: TechBase;
     hittable: boolean;
     spreadable: boolean;
     flags: Set<string>;
+    
+    constructor(data: Partial<Equipment> & { internalName: string; name: string; type: EquipmentType }) {
+        // Required fields
+        this.internalName = data.internalName;
+        this.name = data.name;
+        this.type = data.type;
+        
+        // Simple fields with defaults
+        this.shortName = data.shortName ?? data.name;
+        this.heat = data.heat ?? '-';
+        this.damage = data.damage ?? '-';
+        this.cost = data.cost ?? '0';
+        this.level = data.level ?? 'Standard';
+        this.range = data.range ?? '-';
+        this.weight = data.weight ?? '0';
+        this.crew = data.crew ?? '';
+        this.special = data.special ?? '';
+        this.reference = data.reference ?? '';
+        this.divisor = data.divisor ?? '-';
+        this.minr = data.minr ?? '-';
+        this.bv = data.bv ?? 0;
+        this.crit = data.crit ?? 0;
+        this.base = data.base ?? 'IS';
+        this.hittable = data.hittable ?? true;
+        this.spreadable = data.spreadable ?? false;
+        
+        // Complex fields
+        this.rating = data.rating ?? { is: '', clan: '' };
+        this.dates = data.dates ?? {
+            is: { t: '', p: '', c: '', x: '', r: '' },
+            clan: { t: '', p: '', c: '', x: '', r: '' },
+            mixed: { t: '', p: '', c: '', x: '', r: '' }
+        };
+        
+        // Convert flags array to Set
+        this.flags = data.flags instanceof Set 
+            ? data.flags 
+            : new Set(Array.isArray(data.flags) ? data.flags : []);
+    }
+
+    hasFlag(flag: string): boolean {
+        return this.flags.has(flag);
+    }
 }
 
-export interface IWeapon extends IEquipment {
+export class MiscEquipment extends Equipment {
+    constructor(data: Partial<MiscEquipment> & { internalName: string; name: string }) {
+        super({ ...data, type: 'misc' });
+    }
+}
+
+export class WeaponEquipment extends Equipment {
     rackSize: number;
     ammoType: string;
+
+    constructor(data: Partial<WeaponEquipment> & { internalName: string; name: string }) {
+        super({ ...data, type: 'weapon' });
+        this.rackSize = data.rackSize ?? 0;
+        this.ammoType = data.ammoType ?? '';
+    }
 }
 
-export interface IAmmo extends IEquipment {
+export class AmmoEquipment extends Equipment {
     ammoType: string;
     category: string;
     rackSize: number;
@@ -104,10 +158,81 @@ export interface IAmmo extends IEquipment {
     ammoRatio: number;
     subMunition: string;
     munitionType: Set<string>;
+
+    constructor(data: Partial<AmmoEquipment> & { internalName: string; name: string }) {
+        super({ ...data, type: 'ammo' });
+        this.ammoType = data.ammoType ?? '';
+        this.category = data.category ?? '';
+        this.rackSize = data.rackSize ?? 0;
+        this.damagePerShot = data.damagePerShot ?? 0;
+        this.shots = typeof data.shots === 'string' ? parseInt(data.shots, 10) || 0 : data.shots ?? 0;
+        this.kgPerShot = data.kgPerShot ?? 0;
+        this.baseAmmo = data.baseAmmo;
+        this.capital = data.capital ?? false;
+        this.ammoRatio = data.ammoRatio ?? 0;
+        this.subMunition = data.subMunition ?? '';
+        
+        // Convert munitionType array to Set
+        this.munitionType = data.munitionType instanceof Set
+            ? data.munitionType
+            : new Set(Array.isArray(data.munitionType) ? data.munitionType : []);
+    }
+
+    equalsAmmoTypeOnly(other: AmmoEquipment): boolean {
+        if (!(other instanceof AmmoEquipment)) return false;
+        
+        if (this.ammoType === 'Multi-Missile Launcher') {
+            if (this.hasFlag('F_MML_LRM') !== other.hasFlag('F_MML_LRM')) {
+                return false;
+            }
+        } else if (this.ammoType === 'AR10') {
+            const ar10Flags = ['F_AR10_BARRACUDA', 'F_AR10_WHITE_SHARK', 'F_AR10_KILLER_WHALE', 'F_NUCLEAR'];
+            if (ar10Flags.some(flag => this.hasFlag(flag) !== other.hasFlag(flag))) {
+                return false;
+            }
+        }
+        
+        return this.ammoType === other.ammoType;
+    }
+
+    compatibleAmmo(other: AmmoEquipment, unit: Unit): boolean {
+        if (this.ammoType !== other.ammoType) return false;
+        
+        // Check base compatibility
+        if (this.base !== other.base) {
+            if (!unit) {
+                if (this.base !== 'All' && other.base !== 'All') return false;
+            } else if (unit.techBase !== 'Mixed') {
+                if (unit.techBase === 'Clan' && this.base === 'IS') return false;
+                if (unit.techBase === 'Inner Sphere' && this.base === 'Clan') return false;
+            }
+        }
+        
+        // Check flag incompatibilities
+        if (this.hasFlag('M_CASELESS') !== other.hasFlag('M_CASELESS')) return false;
+        if (this.hasFlag('F_BATTLEARMOR') !== other.hasFlag('F_BATTLEARMOR')) return false;
+        
+        // Special ammo types
+        if (this.ammoType === 'AR10') return true;
+        
+        // Rack size check
+        if (this.rackSize !== other.rackSize) return false;
+        
+        // Special ammo types that allow mixing
+        if (this.ammoType === 'Multi-Missile Launcher' || this.ammoType === 'LB-X Autocannon') {
+            return true;
+        }
+        
+        return this.equalsAmmoTypeOnly(other);
+    }
+
+    hasMunitionType(type: string): boolean {
+        return this.munitionType.has(type);
+    }
 }
 
 export interface EquipmentUnitType {
-    [internalName: string]: IEquipment | IWeapon | IAmmo;
+    [internalName: string]: Equipment;
 }
 
 export interface EquipmentData {
@@ -116,198 +241,4 @@ export interface EquipmentData {
     equipment: {
         [unitType: string]: EquipmentUnitType;
     };
-}
-
-export class Equipment implements IEquipment {
-    internalName: string;
-    name: string;
-    shortName: string;
-    type: string;
-    heat: string;
-    damage: string;
-    cost: string;
-    level: string;
-    rating: {
-        is: string;
-        clan: string;
-    };
-    dates: {
-        is: {
-            t: string;
-            p: string;
-            c: string;
-            x: string;
-            r: string;
-        },
-        clan: {
-            t: string;
-            p: string;
-            c: string;
-            x: string;
-            r: string;
-        },
-        mixed: {
-            t: string;
-            p: string;
-            c: string;
-            x: string;
-            r: string;
-        },
-    }
-    range: string;
-    weight: string;
-    crew: string;
-    special: string;
-    reference: string;
-    divisor: string;
-    minr: string;
-    bv: number;
-    crit: number;
-    base: 'IS' | 'Clan' | 'All';
-    hittable: boolean;
-    spreadable: boolean;
-    flags: Set<string>;
-    
-    constructor(data: IEquipment) {
-        this.internalName = data.internalName;
-        this.name = data.name;
-        this.shortName = data.shortName;
-        this.type = data.type;
-        this.heat = data.heat;
-        this.damage = data.damage;
-        this.cost = data.cost;
-        this.level = data.level;
-        this.rating = {
-            is: data.rating.is,
-            clan: data.rating.clan
-        };
-        this.dates = {
-            is: { ...data.dates.is },
-            clan: { ...data.dates.clan },
-            mixed: { ...data.dates.mixed }
-        };
-        this.range = data.range;
-        this.weight = data.weight;
-        this.crew = data.crew;
-        this.special = data.special;
-        this.reference = data.reference;
-        this.divisor = data.divisor;
-        this.minr = data.minr;
-        this.bv = data.bv;
-        this.crit = data.crit;
-        this.base = data.base;
-        this.hittable = data.hittable;
-        this.spreadable = data.spreadable;
-        this.flags = new Set(data.flags ? Array.from(data.flags) : []);
-    }
-}
-
-export class MiscEquipment extends Equipment {
-    constructor(data: IEquipment) {
-        super(data);
-    }
-}
-
-export class WeaponEquipment extends Equipment implements IWeapon {
-    rackSize: number;
-    ammoType: string;
-
-    constructor(data: IWeapon) {
-        super(data);
-        this.rackSize = data.rackSize;
-        this.ammoType = data.ammoType;
-    }
-}
-
-export class AmmoEquipment extends Equipment implements IAmmo {
-    ammoType: string;
-    category: string;
-    rackSize: number;
-    damagePerShot: number;
-    shots: number;
-    kgPerShot: number;
-    baseAmmo?: string;
-    capital: boolean;
-    ammoRatio: number;
-    subMunition: string;
-    munitionType: Set<string>;
-
-    constructor(data: IAmmo) {
-        super(data);
-        this.ammoType = data.ammoType;
-        this.category = data.category;
-        this.rackSize = data.rackSize;
-        this.damagePerShot = data.damagePerShot;
-        this.shots = data.shots;
-        this.kgPerShot = data.kgPerShot;
-        this.baseAmmo = data.baseAmmo;
-        this.capital = data.capital;
-        this.ammoRatio = data.ammoRatio;
-        this.subMunition = data.subMunition;
-        this.munitionType = new Set(data.munitionType ? Array.from(data.munitionType) : []);
-    }
-
-    // This is straight from MM, it could probably be optimized further
-    public equalsAmmoTypeOnly(other: AmmoEquipment): boolean {
-        if (!(other instanceof AmmoEquipment)) return false;
-        if (this.ammoType === 'Multi-Missile Launcher') {
-            if (this.flags.has('F_MML_LRM') !== other.flags.has('F_MML_LRM')) {
-                return false;
-            }
-        } else
-        if (this.ammoType === 'AR10') {
-            if (this.flags.has('F_AR10_BARRACUDA') !== other.flags.has('F_AR10_BARRACUDA')) {
-                return false;
-            }
-            if (this.flags.has('F_AR10_WHITE_SHARK') !== other.flags.has('F_AR10_WHITE_SHARK')) {
-                return false;
-            }
-            if (this.flags.has('F_AR10_KILLER_WHALE') !== other.flags.has('F_AR10_KILLER_WHALE')) {
-                return false;
-            }
-            if (this.flags.has('F_NUCLEAR') !== other.flags.has('F_NUCLEAR')) {
-                return false;
-            }
-        } 
-        return (this.ammoType === other.ammoType);
-    }
-
-    public compatibleAmmo(other: AmmoEquipment, unit: Unit): boolean {
-        if (this.ammoType !== other.ammoType) {
-            return false; // different ammo types cannot mix
-        }
-        if (this.base !== other.base) {
-            if (!unit) {
-                if (this.base !== 'All' && other.base !== 'All') {
-                    return false; // different base ammo cannot mix (Clan/IS variants)
-                }
-            } else if (unit.techBase !== 'Mixed') {
-                if (unit.techBase === 'Clan' && this.base === 'IS') {
-                    return false; // IS ammo cannot mix with Clan unit
-                }
-                if (unit.techBase === 'Inner Sphere' && this.base === 'Clan') {
-                    return false; // Clan ammo cannot mix with IS unit
-                }
-            }
-        }
-        if (this.flags.has('M_CASELESS') !== other.flags.has('M_CASELESS')) {
-            return false; // caseless ammo cannot mix with cased ammo
-        }
-        if (this.flags.has('F_BATTLEARMOR') !== other.flags.has('F_BATTLEARMOR')) {
-            return false; // battle armor ammo cannot mix with regular ammo
-        }
-        if (this.ammoType === 'AR10') {
-            return true; // all AR10 ammo is compatible
-        }
-        if (this.rackSize !== other.rackSize) {
-            return false; // different rack sizes cannot mix
-        }
-        if (this.ammoType === 'Multi-Missile Launcher') {
-            return true; // all MML ammo of same rack size is compatible
-        }
-        if (this.ammoType === 'LB-X Autocannon') {
-            return true; // all LB-X ammo of same rack size is compatible
-        }
-        return  this.equalsAmmoTypeOnly(other); // for other types, check the ammo type
-    }
 }

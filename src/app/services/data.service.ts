@@ -39,7 +39,7 @@ import { Era, Eras } from '../models/eras.model';
 import { DbService, StoredTags } from './db.service';
 import { ADVANCED_FILTERS, AdvFilterType, SerializedSearchFilter } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
-import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, IAmmo, IEquipment, IWeapon, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { Quirk, Quirks } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
 import { Force, ForceUnit } from '../models/force-unit.model';
@@ -56,26 +56,26 @@ import { firstValueFrom } from 'rxjs';
 export const DOES_NOT_TRACK = 999;
 
 export interface MinMaxStatsRange {
-        armor: [number, number],
-        internal: [number, number],
-        heat: [number, number],
-        dissipation: [number, number],
-        dissipationEfficiency: [number, number],
-        runMP: [number, number],
-        run2MP: [number, number],
-        umuMP: [number, number],
-        jumpMP: [number, number],
-        alphaNoPhysical: [number, number],
-        alphaNoPhysicalNoOneshots: [number, number],
-        maxRange: [number, number],
-        dpt: [number, number],
+    armor: [number, number],
+    internal: [number, number],
+    heat: [number, number],
+    dissipation: [number, number],
+    dissipationEfficiency: [number, number],
+    runMP: [number, number],
+    run2MP: [number, number],
+    umuMP: [number, number],
+    jumpMP: [number, number],
+    alphaNoPhysical: [number, number],
+    alphaNoPhysicalNoOneshots: [number, number],
+    maxRange: [number, number],
+    dpt: [number, number],
 
-        // Capital ships
-        dropshipCapacity: [number, number],
-        escapePods: [number, number],
-        lifeBoats: [number, number],
-        sailIntegrity: [number, number],
-        kfIntegrity: [number, number],
+    // Capital ships
+    dropshipCapacity: [number, number],
+    escapePods: [number, number],
+    lifeBoats: [number, number],
+    sailIntegrity: [number, number],
+    kfIntegrity: [number, number],
 }
 export interface UnitTypeMaxStats {
     [unitType: string]: MinMaxStatsRange
@@ -168,21 +168,34 @@ export class DataService {
                     etag: data.etag,
                     equipment: {}
                 };
-                for (const unitType of Object.keys(data.equipment)) {
-                    const equipmentForType = data.equipment[unitType];
+                for (const [unitType, equipmentForType] of Object.entries(data.equipment)) {
                     newData.equipment[unitType] = {};
-                    for (const equipmentInternalName of Object.keys(equipmentForType)) {
 
-                        const equipment = equipmentForType[equipmentInternalName];
-                        if (equipment.type === 'weapon') {
-                            newData.equipment[unitType][equipmentInternalName] = new WeaponEquipment(equipment as IWeapon);
-                        } else if (equipment.type === 'ammo') {
-                            newData.equipment[unitType][equipmentInternalName] = new AmmoEquipment(equipment as IAmmo);
-                        } else if (equipment.type === 'misc') {
-                            newData.equipment[unitType][equipmentInternalName] = new MiscEquipment(equipment);
-                        } else {
-                            this.logger.warn(`Unknown equipment type for ${equipmentInternalName}: ${equipment.type}`);
-                            newData.equipment[unitType][equipmentInternalName] = new Equipment(equipment);
+                    for (const [equipmentInternalName, equipmentData] of Object.entries(equipmentForType)) {
+                        try {
+                            const equipment = equipmentData as any;
+
+                            switch (equipment.type) {
+                                case 'weapon':
+                                    newData.equipment[unitType][equipmentInternalName] = new WeaponEquipment(equipment);
+                                    break;
+                                case 'ammo':
+                                    newData.equipment[unitType][equipmentInternalName] = new AmmoEquipment(equipment);
+                                    break;
+                                case 'misc':
+                                    newData.equipment[unitType][equipmentInternalName] = new MiscEquipment(equipment);
+                                    break;
+                                default:
+                                    this.logger.warn(`Unknown equipment type for ${equipmentInternalName}: ${equipment.type}`);
+                                    newData.equipment[unitType][equipmentInternalName] = new Equipment({
+                                        ...equipment,
+                                        internalName: equipmentInternalName,
+                                        name: equipment.name || equipmentInternalName,
+                                        type: equipment.type || 'misc'
+                                    });
+                            }
+                        } catch (error) {
+                            this.logger.error(`Failed to create equipment ${equipmentInternalName}: ${error}`);
                         }
                     }
                 }
@@ -405,7 +418,7 @@ export class DataService {
             this.filterIndexes[filter.key] = index;
         }
 
-        const statsByType:  {
+        const statsByType: {
             [type: string]: {
                 armor: number[],
                 internal: number[],
@@ -607,7 +620,7 @@ export class DataService {
     }
 
     private async getRemoteETag(filename: string): Promise<string> {
-         const src = `https://db.mekbay.com/${filename}`;
+        const src = `https://db.mekbay.com/${filename}`;
         try {
             const resp = await firstValueFrom(
                 this.http.head(src, { observe: 'response' as const })
@@ -953,7 +966,7 @@ export class DataService {
                         name: raw.name,
                         type: raw.type,
                         bv: raw.bv || 0,
-                        timestamp: raw.timestamp, 
+                        timestamp: raw.timestamp,
                         groups: groups
                     });
                     forces.push(entry);
@@ -973,14 +986,14 @@ export class DataService {
         resolvers: Array<{ resolve: () => void, reject: (e: any) => void }>
     }>();
 
-    public hasPendingCloudSaves(): boolean {    
+    public hasPendingCloudSaves(): boolean {
         return this.saveForceCloudDebounce && this.saveForceCloudDebounce.size > 0;
     }
 
     private async saveForceCloud(force: Force): Promise<void> {
         const instanceId = force.instanceId();
         if (!instanceId) return; // Should not happen, nothing to save without an instanceId
-        
+
         return new Promise<void>((resolve, reject) => {
             const existing = this.saveForceCloudDebounce.get(instanceId);
             const schedule = () => {

@@ -34,7 +34,7 @@
 /*
  * Author: Drake
  */
-import { IEquipment } from "./equipment.model";
+import { Equipment } from "./equipment.model";
 import { Era } from "./eras.model";
 
 // Weapon/component info for comp.w
@@ -63,7 +63,7 @@ export interface UnitComponent {
     c?: string;      // slots/criticals
     os?: number;     // oneshot (0 = no, 1 = oneshot, 2 = double oneshot)
     bay?: UnitComponent[];
-    eq?: IEquipment;
+    eq?: Equipment; // linked equipment data
 }
 export interface Unit {
     name: string;

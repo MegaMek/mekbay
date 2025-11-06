@@ -35,6 +35,7 @@ import { inject, Injectable, Injector } from '@angular/core';
 import { ForceUnit, MountedEquipment } from '../../models/force-unit.model';
 import { CriticalSlot } from '../../models/force-serialization';
 import { DataService } from '../../services/data.service';
+import { Equipment } from '../../models/equipment.model';
 
 /*
  * Author: Drake
@@ -262,7 +263,7 @@ export class UnitInitializerService {
             entryEl.classList.add('interactive');
             const critSlots = allCritSlots.filter(slot => slot.id === id);
             let name = '';
-            let eq = null;
+            let eq: Equipment | undefined = undefined;
             
             let locations = new Set<string>();
             if (critSlots.length > 0) {
