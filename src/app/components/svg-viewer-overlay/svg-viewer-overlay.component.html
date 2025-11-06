@@ -1,4 +1,4 @@
-<div class="container" [ngStyle]="containerStyle()" [class.fixed]="fixedPosition()">
+<div class="container" [ngStyle]="containerStyle()">
     <button role="button" class="mainButton preventZoomReset" tabindex="0" (click)="openTurnSummary($event)" >
         @if (hasPSRChecks()) {
         <svg class="warning" fill="currentColor"

@@ -31,11 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, ElementRef, Injector } from '@angular/core';
+import { Injectable, ElementRef, Injector, effect } from '@angular/core';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { DOCUMENT } from '@angular/common';
 import { inject } from '@angular/core';
+import { LayoutService } from './layout.service';
 
 /*
  * Author: Drake
@@ -58,6 +59,7 @@ const CLICK_MOVE_THRESHOLD = 10;
 @Injectable({ providedIn: 'root' })
 export class OverlayManagerService {
     private overlay = inject(Overlay);
+    private layoutService = inject(LayoutService);
     private injector = inject(Injector);
     private document = inject(DOCUMENT) as Document;
     private managed = new Map<string, ManagedEntry>();
@@ -74,6 +76,17 @@ export class OverlayManagerService {
         return blocked;
     }
 
+    constructor() {
+        effect(() => {
+            this.layoutService.windowWidth();
+            this.layoutService.windowHeight();
+            
+            if (this.managed.size > 0) {
+                this.schedulePositionUpdate();
+            }
+        });
+    }
+    
     /** Public: request a reposition for all managed overlays (safe, throttled). */
     repositionAll() {
         this.schedulePositionUpdate();
@@ -298,22 +311,18 @@ export class OverlayManagerService {
             try { entry.overlayRef.updatePosition(); } catch { /* ignore */ }
         }
     }
-    /** Add global listeners (resize/scroll/orientationchange) while overlays exist */
+    /** Add global listeners while overlays exist */
     private addGlobalListeners() {
         // Attach once when the first overlay is added
         if (this.managed.size === 1) {
-            window.addEventListener('resize', this.onGlobalChange, true);
             window.addEventListener('scroll', this.onGlobalChange, true);
-            window.addEventListener('orientationchange', this.onGlobalChange, true);
         }
     }
 
     /** Remove global listeners when no overlays remain */
     private removeGlobalListeners() {
         if (this.managed.size === 0) {
-            window.removeEventListener('resize', this.onGlobalChange, true);
             window.removeEventListener('scroll', this.onGlobalChange, true);
-            window.removeEventListener('orientationchange', this.onGlobalChange, true);
         }
     }
 

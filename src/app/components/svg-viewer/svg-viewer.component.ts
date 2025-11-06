@@ -83,7 +83,9 @@ export class SvgViewerComponent implements AfterViewInit {
     private fluffImageInjectEffectRef: EffectRef | null = null;
     currentSvg = signal<SVGSVGElement | null>(null);
     private lastViewState: ViewportTransform | null = null;
-    private resizeObserver: ResizeObserver = new ResizeObserver(() => {this.handleResize()});
+    private resizeObserver: ResizeObserver = new ResizeObserver(() => {
+        this.handleResize();
+    });
 
     // Slides/swipe state
     private currentSlideEl: HTMLDivElement | null = null;
@@ -144,19 +146,6 @@ export class SvgViewerComponent implements AfterViewInit {
             this.optionsService.options().recordSheetCenterPanelContent;
             this.setFluffImageVisibility();
         });
-
-        effect(() => {
-            this.layoutService.windowWidth();
-            this.layoutService.windowHeight();
-            if (this.resizeTimeout) {
-                clearTimeout(this.resizeTimeout);
-            }
-            this.resizeTimeout = setTimeout(() => {
-                this.handleResize();
-                this.resizeTimeout = null;
-            }, 150); // 150ms debounce
-        });
-        
         inject(DestroyRef).onDestroy(() => {
             this.cleanup();
         });
@@ -167,6 +156,7 @@ export class SvgViewerComponent implements AfterViewInit {
         if ('ResizeObserver' in window) {
             this.resizeObserver.observe(this.containerRef().nativeElement);
         }
+        this.handleResize();
 
         const swipeCallbacks: SwipeCallbacks = {
             onSwipeStart: () => this.onSwipeStart(),

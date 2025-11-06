@@ -96,60 +96,45 @@ export class SvgInteractionOverlayComponent {
         return unit.turnState().currentPhase();
     });
 
-    fixedPosition = computed(() => {
-        const unit = this.unit();
-        const state = this.zoomPanService.getState();
-        const translate = state.translate();
-        const scale = state.scale();
-        const aspectRatio = window.innerHeight / window.innerWidth;
-        if (aspectRatio > this.FIXED_THRESHOLD_ASPECT_RATIO) {
-            return true; // Letter or more vertical gets always fixed
-        }
-        const hostEl = this.host?.nativeElement as HTMLElement | null;
-        const hostRect = hostEl ? hostEl.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
-        const hostWidth = hostRect.width;
-        const hostHeight = hostRect.height;
-        // If the unit sheet, once scaled, would be larger than the viewport,
-        // we then fix the position of the overlay to avoid overflow
-        const shouldFix = (this.width() * scale > hostWidth) && (this.height() * scale > hostHeight);
-        return shouldFix;
-    });
-
     containerStyle = computed(() => {
-        this.overlayManager.repositionAll();
-        if (this.fixedPosition()) {
-            return {};
-        }
-        const unit = this.unit();
         const state = this.zoomPanService.getState();
         const scale = state.scale();
         const translate = state.translate();
-        const hostEl = this.host?.nativeElement as HTMLElement | null;
-        const hostRect = hostEl ? hostEl.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
-        const hostWidth = hostRect.width;
-        const hostHeight = hostRect.height;
-        // We make the container fit to the unit's sheet size.
-        // But if the sheet is too zoomed in, so that it exceeds the viewport size,
-        // we limit it to the viewport size to avoid overflow.
-        const translateX = Math.max(0, translate.x);
-        const translateY = Math.max(0, translate.y);
-        let width = this.width();
-        let height = this.height();
-        if (width * scale > hostWidth) {
-            width = hostWidth / scale;
-        }
-        if (height * scale > hostHeight) {
-            height = hostHeight / scale;
-        }
-        let finalWidth = width * scale;
-        let finalHeight = height * scale;
-        const style = {
-            width: finalWidth + 'px',
-            height: finalHeight + 'px',
-            left: translateX + 'px',
-            top: translateY + 'px',
+
+        const svgWidth = this.width() * scale;
+        const svgHeight = this.height() * scale;
+
+        // Get viewport dimensions
+        const hostEl = this.host.nativeElement;
+        const viewportWidth = hostEl.clientWidth;
+        const viewportHeight = hostEl.clientHeight;
+
+        // Calculate SVG bounds in viewport coordinates
+        const svgLeft = translate.x;
+        const svgTop = translate.y;
+        const svgRight = translate.x + svgWidth;
+        const svgBottom = translate.y + svgHeight;
+
+        // Clamp container to viewport while tracking SVG
+        const containerLeft = Math.max(0, svgLeft);
+        const containerTop = Math.max(0, svgTop);
+        const containerRight = Math.min(viewportWidth, svgRight);
+        const containerBottom = Math.min(viewportHeight, svgBottom);
+
+        const containerWidth = Math.max(0, containerRight - containerLeft);
+        const containerHeight = Math.max(0, containerBottom - containerTop);
+
+        // Trigger overlay manager reposition after DOM update
+        requestAnimationFrame(() => this.overlayManager.repositionAll());
+
+        return {
+            position: 'absolute' as const,
+            left: `${containerLeft}px`,
+            top: `${containerTop}px`,
+            width: `${containerWidth}px`,
+            height: `${containerHeight}px`,
+            willChange: 'transform, left, top'
         };
-        return style;
     });
 
     constructor() { }
