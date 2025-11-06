@@ -41,11 +41,11 @@ export type TechBase = 'IS' | 'Clan' | 'All';
 export type EquipmentType = 'weapon' | 'ammo' | 'misc';
 
 export interface TechDates {
-    t: string;  // Prototype
-    p: string;  // Production
-    c: string;  // Common
-    x: string;  // Extinct
-    r: string;  // Reintroduced
+    t?: string;  // Prototype
+    p?: string;  // Production
+    c?: string;  // Common
+    x?: string;  // Extinct
+    r?: string;  // Reintroduced
 }
 
 export interface EquipmentDates {
@@ -55,8 +55,8 @@ export interface EquipmentDates {
 }
 
 export interface EquipmentRating {
-    is: string;
-    clan: string;
+    is?: string;
+    clan?: string;
 }
 
 
@@ -111,11 +111,11 @@ export class Equipment {
         this.spreadable = data.spreadable ?? false;
         
         // Complex fields
-        this.rating = data.rating ?? { is: '', clan: '' };
+        this.rating = data.rating ?? {};
         this.dates = data.dates ?? {
-            is: { t: '', p: '', c: '', x: '', r: '' },
-            clan: { t: '', p: '', c: '', x: '', r: '' },
-            mixed: { t: '', p: '', c: '', x: '', r: '' }
+            is: {},
+            clan: {},
+            mixed: {}
         };
         
         // Convert flags array to Set
