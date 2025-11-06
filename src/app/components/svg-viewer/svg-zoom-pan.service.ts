@@ -127,18 +127,12 @@ export class SvgZoomPanService {
     // Track active pointers
     private pointers = new Map<number, { x: number; y: number; pointerType?: string }>();
 
-    private boundOnWheel!: (event: WheelEvent) => void;
-    private boundOnPointerDown!: (event: PointerEvent) => void;
-    private boundOnPointerMove!: (event: PointerEvent) => void;
-    private boundOnPointerUp!: (event: PointerEvent) => void;
-
-    constructor() {
-        this.boundOnWheel = this.onWheel.bind(this);
-        this.boundOnPointerDown = this.onPointerDown.bind(this);
-        this.boundOnPointerMove = this.onPointerMove.bind(this);
-        this.boundOnPointerUp = this.onPointerUp.bind(this);
+    constructor() { 
         inject(DestroyRef).onDestroy(() => {
-            this.cleanup();
+            this.cleanupEventListeners();
+            const container = this.containerRef.nativeElement;
+            container.removeEventListener('wheel', this.onWheel);
+            container.removeEventListener('pointerdown', this.onPointerDown);
         });
     }
 
@@ -147,14 +141,11 @@ export class SvgZoomPanService {
         isPickerOpen: WritableSignal<boolean>,
         swipeCallbacks?: SwipeCallbacks
     ) {
-        this.cleanup();
         this.containerRef = containerRef;
         this.isPickerOpen = isPickerOpen;
         this.interactionService = this.injector.get(SvgInteractionService);
         this.swipeCallbacks = swipeCallbacks;
-        const container = this.containerRef.nativeElement;
-        container.addEventListener('wheel', this.boundOnWheel, { passive: false });
-        container.addEventListener('pointerdown', this.boundOnPointerDown);
+        this.setupEventListeners();
     }
 
     updateDimensions(
@@ -192,12 +183,22 @@ export class SvgZoomPanService {
         this.applyTransform();
     }
 
+    setupEventListeners() {
+        const container = this.containerRef.nativeElement;
+
+        // Mouse wheel zoom
+        container.addEventListener('wheel', this.onWheel, { passive: false });
+
+        // Pointer events for pan/zoom
+        container.addEventListener('pointerdown', this.onPointerDown);
+    }
+
     cleanupEventListeners() {
         const container = this.containerRef.nativeElement;
-        container.removeEventListener('pointermove', this.boundOnPointerMove);
-        container.removeEventListener('pointerup', this.boundOnPointerUp);
-        container.removeEventListener('pointerleave', this.boundOnPointerUp);
-        container.removeEventListener('pointercancel', this.boundOnPointerUp);
+        container.removeEventListener('pointermove', this.onPointerMove);
+        container.removeEventListener('pointerup', this.onPointerUp);
+        container.removeEventListener('pointerleave', this.onPointerUp);
+        container.removeEventListener('pointercancel', this.onPointerUp);
     }
 
     private calculateMinScale() {
@@ -235,7 +236,7 @@ export class SvgZoomPanService {
         this.applyTransform();
     }
 
-    private onWheel(event: WheelEvent) {
+    private onWheel = (event: WheelEvent) => {
         event.preventDefault();
         const svg = this.containerRef.nativeElement.querySelector('svg');
         if (!svg) return;
@@ -276,9 +277,6 @@ export class SvgZoomPanService {
             this.capturePointerId = null;
         }
         this.cleanupEventListeners();
-        const container = this.containerRef.nativeElement;
-        container.removeEventListener('wheel', this.boundOnWheel);
-        container.removeEventListener('pointerdown', this.boundOnPointerDown);
         this.pointers.clear();
         if (this.state.isSwiping) {
             this.swipeCallbacks?.onSwipeEnd(this.swipeTotalDx);
@@ -292,7 +290,7 @@ export class SvgZoomPanService {
         this.state.touchStartDistance = 0;
     }
 
-    private onPointerDown(event: PointerEvent) {
+    private onPointerDown = (event: PointerEvent) => {
         if (this.pointers.size >= 2) return; // ignore additional pointers
         // Prevent panning if the sidebar menu is being dragged
         if (this.layoutService.isMenuDragging()) return;
@@ -322,10 +320,10 @@ export class SvgZoomPanService {
         } else
             if (this.pointers.size === 1) {
                 const container = this.containerRef.nativeElement;
-                container.addEventListener('pointermove', this.boundOnPointerMove);
-                container.addEventListener('pointerup', this.boundOnPointerUp);
-                container.addEventListener('pointerleave', this.boundOnPointerUp);
-                container.addEventListener('pointercancel', this.boundOnPointerUp);
+                container.addEventListener('pointermove', this.onPointerMove);
+                container.addEventListener('pointerup', this.onPointerUp);
+                container.addEventListener('pointerleave', this.onPointerUp);
+                container.addEventListener('pointercancel', this.onPointerUp);
                 this.state.pointerStart = { x: event.clientX, y: event.clientY };
                 this.state.last = { x: event.clientX, y: event.clientY };
                 this.state.pointerMoved = false;
@@ -333,7 +331,7 @@ export class SvgZoomPanService {
             }
     }
 
-    private onPointerMove(event: PointerEvent) {
+    private onPointerMove = (event: PointerEvent) => {
         if (!this.pointers.has(event.pointerId)) return;
         // Update stored pointer if tracked
         this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, pointerType: event.pointerType });
@@ -568,7 +566,7 @@ export class SvgZoomPanService {
         }
     });
 
-    private onPointerUp(event: PointerEvent) {
+    private onPointerUp = (event: PointerEvent) => {
         if (!this.pointers.has(event.pointerId)) return;
         // Remove pointer from tracking
         const hadPointer = this.pointers.delete(event.pointerId);
