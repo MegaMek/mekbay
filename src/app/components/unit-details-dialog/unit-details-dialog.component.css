@@ -578,7 +578,7 @@
 }
 
 .fluff-content {
-    display: block;
+    display: flow-root;
     padding: 16px;
     overflow-y: auto;
     flex-grow: 1;
