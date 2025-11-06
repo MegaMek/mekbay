@@ -5,11 +5,12 @@ import { Unit } from '../../models/units.model';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
+import { CdkMenuModule } from '@angular/cdk/menu';
 
 @Component({
     selector: 'unit-block',
     standalone: true,
-    imports: [CommonModule, FormatNumberPipe, FormatTonsPipe],
+    imports: [CommonModule, CdkMenuModule, FormatNumberPipe, FormatTonsPipe],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
     styleUrls: ['./unit-block.component.scss'],
@@ -55,10 +56,12 @@ export class UnitBlockComponent {
     });
 
     clickInfo(event: MouseEvent) {
+        event.stopPropagation();
         this.onInfo.emit(event);
     }
 
     repairUnit(event: MouseEvent) {
+        event.stopPropagation();
         this.onRepairUnit.emit(event);
     }
 
