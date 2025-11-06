@@ -35,7 +35,8 @@ import { Component, computed, Injector, ElementRef, effect, inject, OnDestroy, C
 import { CommonModule } from '@angular/common';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
-import { ForceUnit, UnitGroup } from '../../models/force-unit.model';
+import { Force, UnitGroup } from '../../models/force.model';
+import { ForceUnit } from '../../models/force-unit.model';
 import { DragDropModule, CdkDragDrop, moveItemInArray, CdkDragMove } from '@angular/cdk/drag-drop'
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';

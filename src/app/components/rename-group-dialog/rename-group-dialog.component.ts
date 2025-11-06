@@ -35,8 +35,8 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { UnitGroup } from '../../models/force-unit.model';
-
+import { Force, UnitGroup } from '../../models/force.model';
+import { ForceUnit } from '../../models/force-unit.model';
 /*
  * Author: Drake
  */

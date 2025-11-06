@@ -34,7 +34,8 @@
 import { Injectable, signal, effect, computed, OnDestroy, Injector, inject, untracked } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Unit } from '../models/units.model';
-import { Force, ForceUnit, UnitGroup } from '../models/force-unit.model';
+import { Force, UnitGroup } from '../models/force.model';
+import { ForceUnit } from '../models/force-unit.model';
 import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
