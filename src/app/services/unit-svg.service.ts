@@ -32,7 +32,8 @@
  */
 
 import { untracked, Injectable, Injector, effect, EffectRef, OnDestroy, inject } from '@angular/core';
-import { ForceUnit, CrewMember, SkillType, MountedEquipment } from '../models/force-unit.model';
+import { ForceUnit, MountedEquipment } from '../models/force-unit.model';
+import { CrewMember, SkillType } from '../models/crew-member.model';
 import { CriticalSlot } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
