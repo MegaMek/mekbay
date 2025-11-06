@@ -166,7 +166,7 @@ export interface MountedEquipment {
     consumed?: number;
 }
 
-export interface SheetTransformationData {
+export interface ViewportTransform {
     scale: number;
     translateX: number;
     translateY: number;

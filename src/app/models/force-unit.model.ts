@@ -47,7 +47,7 @@ import { getMotiveModesByUnit, getMotiveModesOptionsByUnit, MotiveModeOption, Mo
 import {
     LocationData, HeatProfile, SerializedForce, SerializedGroup,
     SerializedUnit, SerializedState, SerializedInventory, CriticalSlot, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA,
-    SheetTransformationData,
+    ViewportTransform,
     MountedEquipment
 } from './force-serialization';
 import { Force } from './force.model';
@@ -65,7 +65,7 @@ export class ForceUnit {
     svg: WritableSignal<SVGSVGElement | null> = signal(null); // SVG representation of the unit
     private svgService: UnitSvgService | null = null;
     private loadingPromise: Promise<void> | null = null;
-    viewState: SheetTransformationData;
+    viewState: ViewportTransform;
     initialized = false;
     locations?: {
         armor: Map<string, { loc: string; rear: boolean; points?: number }>;
