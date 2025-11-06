@@ -385,8 +385,8 @@
 
 .expanded-header {
     display: flex;
-    gap: 12px;
-    align-items: flex-start;
+    gap: 0px 12px;
+    align-items: center;
     flex-wrap: wrap;
 }
 
