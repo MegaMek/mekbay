@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, input, ElementRef, AfterViewInit, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, viewChild, ComponentRef, ViewContainerRef, TemplateRef, afterNextRender, computed, DestroyRef } from '@angular/core';
+import { Component, input, ElementRef, AfterViewInit, Renderer2, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, viewChild, ComponentRef, ViewContainerRef, TemplateRef, afterNextRender, computed, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceUnit } from '../../models/force-unit.model';
 import { ViewportTransform } from '../../models/force-serialization';
@@ -42,6 +42,7 @@ import { SvgCanvasOverlayComponent } from './svg-canvas-overlay.component';
 import { SvgInteractionOverlayComponent } from '../svg-viewer-overlay/svg-viewer-overlay.component';
 import { OptionsService } from '../../services/options.service';
 import { Unit } from '../../models/units.model';
+import { LayoutService } from '../../services/layout.service';
 
 /*
  * Author: Drake
@@ -61,6 +62,7 @@ export class SvgViewerComponent implements AfterViewInit {
     private zoomPanService = inject(SvgZoomPanService);
     private interactionService = inject(SvgInteractionService);
     private forceBuilder = inject(ForceBuilderService);
+    private layoutService = inject(LayoutService);
     optionsService = inject(OptionsService);
     unit = input<ForceUnit | null>(null);
 
@@ -142,21 +144,22 @@ export class SvgViewerComponent implements AfterViewInit {
             this.optionsService.options().recordSheetCenterPanelContent;
             this.setFluffImageVisibility();
         });
+
+        effect(() => {
+            this.layoutService.windowWidth();
+            this.layoutService.windowHeight();
+            if (this.resizeTimeout) {
+                clearTimeout(this.resizeTimeout);
+            }
+            this.resizeTimeout = setTimeout(() => {
+                this.handleResize();
+                this.resizeTimeout = null;
+            }, 150); // 150ms debounce
+        });
         
         inject(DestroyRef).onDestroy(() => {
             this.cleanup();
         });
-    }
-
-    @HostListener('window:resize', ['$event'])
-    onWindowResize(event: Event) {
-        if (this.resizeTimeout) {
-            clearTimeout(this.resizeTimeout);
-        }
-        this.resizeTimeout = setTimeout(() => {
-            this.handleResize();
-            this.resizeTimeout = null;
-        }, 150); // 150ms debounce
     }
 
     ngAfterViewInit() {

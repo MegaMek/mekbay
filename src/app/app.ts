@@ -175,7 +175,6 @@ export class App {
     
     @HostListener('window:online')
     onOnline() {
-        this.logger.info('Back online!');
         this.checkForUpdate();
     }
 
