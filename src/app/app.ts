@@ -172,6 +172,7 @@ export class App {
     hasUnits = computed(() => this.forceBuilderService.forceUnits().length > 0);
     selectedUnit = computed(() => this.forceBuilderService.selectedUnit());
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
+    
     @HostListener('window:online')
     onOnline() {
         this.logger.info('Back online!');

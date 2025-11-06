@@ -107,7 +107,7 @@ export class ConfirmDialogComponent<T = any> {
     public dialogRef: DialogRef<T, ConfirmDialogComponent<T>> = inject(DialogRef);
     readonly data: ConfirmDialogData<T> = inject(DIALOG_DATA);
 
-    constructor() {}
+    constructor() { }
 
     close(value: T) {
         this.dialogRef.close(value);

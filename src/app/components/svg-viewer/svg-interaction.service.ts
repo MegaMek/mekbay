@@ -918,8 +918,8 @@ export class SvgInteractionService {
             if (!dragState) return;
             svg.removeEventListener('pointerdown', onPointerDown);
             svg.removeEventListener('pointermove', onPointerMove);
-            dragState.startElement.removeEventListener('pointerup', onPointerUp);
-            dragState.startElement.removeEventListener('pointercancel', onPointerCancel);
+            svg.removeEventListener('pointerup', onPointerUp);
+            svg.removeEventListener('pointercancel', onPointerCancel);
             this.state.isHeatDragging = false;
             this.state.heatMarkerData.set(null);
             dragState = null;
@@ -978,8 +978,8 @@ export class SvgInteractionService {
                 });
                 svg.addEventListener('pointerdown', onPointerDown, { passive: false, signal: signal });
                 svg.addEventListener('pointermove', onPointerMove, { passive: false, signal });
-                el.addEventListener('pointerup', onPointerUp, { passive: false, signal });
-                el.addEventListener('pointercancel', onPointerCancel, { passive: false, signal });
+                svg.addEventListener('pointerup', onPointerUp, { passive: false, signal });
+                svg.addEventListener('pointercancel', onPointerCancel, { passive: false, signal });
                 try {
                     this.state.clickTarget.setPointerCapture(evt.pointerId);
                 } catch (e) { /* Ignore */ }
