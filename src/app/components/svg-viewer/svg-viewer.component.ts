@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, input, ElementRef, AfterViewInit, OnDestroy, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, viewChild, ComponentRef, ViewContainerRef, TemplateRef, afterNextRender, computed } from '@angular/core';
+import { Component, input, ElementRef, AfterViewInit, Renderer2, HostListener, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, viewChild, ComponentRef, ViewContainerRef, TemplateRef, afterNextRender, computed, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceUnit, IViewState } from '../../models/force-unit.model';
 import { SvgZoomPanService, SwipeCallbacks } from './svg-zoom-pan.service';
@@ -49,12 +49,12 @@ import { Unit } from '../../models/units.model';
     selector: 'svg-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, SvgCanvasOverlayComponent /*, SvgInteractionOverlayComponent */],
+    imports: [CommonModule, SvgCanvasOverlayComponent, SvgInteractionOverlayComponent],
     providers: [SvgZoomPanService, SvgInteractionService],
     templateUrl: './svg-viewer.component.html',
     styleUrls: ['./svg-viewer.component.css']
 })
-export class SvgViewerComponent implements AfterViewInit, OnDestroy {
+export class SvgViewerComponent implements AfterViewInit {
     protected injector = inject(Injector);
     private renderer = inject(Renderer2);
     private zoomPanService = inject(SvgZoomPanService);
@@ -80,6 +80,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     private fluffImageInjectEffectRef: EffectRef | null = null;
     currentSvg = signal<SVGSVGElement | null>(null);
     private lastViewState: IViewState | null = null;
+    private resizeObserver: ResizeObserver = new ResizeObserver(() => {this.handleResize()});
 
     // Slides/swipe state
     private currentSlideEl: HTMLDivElement | null = null;
@@ -140,6 +141,10 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
             this.optionsService.options().recordSheetCenterPanelContent;
             this.setFluffImageVisibility();
         });
+        
+        inject(DestroyRef).onDestroy(() => {
+            this.cleanup();
+        });
     }
 
     @HostListener('window:resize', ['$event'])
@@ -156,8 +161,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
     ngAfterViewInit() {
         // Monitor container size changes
         if ('ResizeObserver' in window) {
-            const resizeObserver = new ResizeObserver(() => this.handleResize());
-            resizeObserver.observe(this.containerRef().nativeElement);
+            this.resizeObserver.observe(this.containerRef().nativeElement);
         }
 
         const swipeCallbacks: SwipeCallbacks = {
@@ -220,7 +224,15 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         this.interactionService.setupInteractions(svg);
     }
 
-    ngOnDestroy() {
+    cleanup() {
+        this.resizeObserver.disconnect();
+        if (this.resizeTimeout) {
+            clearTimeout(this.resizeTimeout);
+            this.resizeTimeout = null;
+        }
+        if (this.resizeTimeout) {
+            clearTimeout(this.resizeTimeout);
+        }
         // Cleanup effects
         if (this.unitChangeEffectRef) {
             this.unitChangeEffectRef.destroy();
@@ -507,6 +519,7 @@ export class SvgViewerComponent implements AfterViewInit, OnDestroy {
         this.ensureNeighborSlides('prev', true);
         this.ensureNeighborSlides('next', true);
         this.preloadNeighbors().then(() => {
+            if (!this.swipeStarted) return;
             // Replace placeholders with SVGs when ready
             this.updateNeighborSlideWithSvg('prev');
             this.updateNeighborSlideWithSvg('next');
