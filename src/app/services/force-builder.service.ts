@@ -717,7 +717,7 @@ export class ForceBuilderService {
                 message: `While you were offline, this force was modified on another device. The cloud version is newer than your current version. (${formatDate(cloudTimestamp)} > ${formatDate(localTimestamp)})`,
                 buttons: [
                     { label: 'LOAD CLOUD', value: 'cloud', class: 'primary' },
-                    { label: 'KEEP LOCAL', value: 'local', class: 'secondary' },
+                    { label: 'KEEP LOCAL', value: 'local' },
                     { label: 'CLONE LOCAL', value: 'cloneLocal' }
                 ]
             }

@@ -48,33 +48,25 @@ export interface LoadForceGroup {
     units: LoadForceUnit[];
 }
 
-export interface ILoadForceEntry {
+export class LoadForceEntry {
     instanceId: string;
     timestamp: string;
     type?: 'cbt' | 'as';
     cloud: boolean;
-    name: string;
-    bv: number;
-    groups: LoadForceGroup[];
-}
-
-export class LoadForceEntry implements ILoadForceEntry {
-    instanceId: string;
-    timestamp: string;
-    type?: 'cbt' | 'as';
-    cloud: boolean;
+    local: boolean;
     name: string;
     bv: number;
     groups: LoadForceGroup[];
     _searchText?: string; // for internal searching use only, not persisted
 
-    constructor(data: ILoadForceEntry) {
-        this.instanceId = data.instanceId;
-        this.timestamp = data.timestamp;
+    constructor(data: Partial<LoadForceEntry>) {
+        this.instanceId = data.instanceId ?? '';
+        this.timestamp = data.timestamp ?? '';
         this.type = data.type;
-        this.cloud = data.cloud;
-        this.name = data.name;
-        this.bv = data.bv;
-        this.groups = data.groups;
+        this.cloud = data.cloud ?? false;
+        this.local = data.local ?? false;
+        this.name = data.name ?? '';
+        this.bv = data.bv ?? 0;
+        this.groups = data.groups ?? [];
     }
 }

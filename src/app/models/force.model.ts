@@ -245,7 +245,6 @@ export class Force {
             bv: this.totalBv(),
             nameLock: this.nameLock || false,
             groups: serializedGroups,
-            // units: this.units().map(unit => unit.serialize()) // Deprecated: use groups instead
         } as SerializedForce & { groups?: any[] };
     }
 
@@ -258,7 +257,7 @@ export class Force {
             force.nameLock = data.nameLock || false;
             force.owned.set(data.owned !== false);
             const units: ForceUnit[] = [];
-            // If the serialized payload has groups support, use it (backwards compatibility)
+            // Deserialize groups
             if (data.groups && Array.isArray(data.groups)) {
                 const groupsIn = data.groups;
                 const parsedGroups: UnitGroup[] = [];
@@ -283,7 +282,7 @@ export class Force {
                     parsedGroups.push(group);
                 }
                 force.groups.set(parsedGroups);
-            } else if (data.units) {
+            } else if (data.units) { // DEPRECATED: Backwards compatibility for forces without groups
                 for (const unitData of data.units) {
                     try {
                         units.push(ForceUnit.deserialize(unitData, force, dataService, unitInitializer, injector));

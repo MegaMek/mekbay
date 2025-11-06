@@ -865,6 +865,7 @@ export class DataService {
         for (const force of localForces) {
             if (!force) continue;
             if (!force.instanceId) continue;
+            force.local = true;
             forceMap.set(force.instanceId, force);
         }
         for (const cloudForce of cloudForces) {
@@ -872,6 +873,9 @@ export class DataService {
             if (!cloudForce.instanceId) continue;
             const localForce = forceMap.get(cloudForce.instanceId);
             if (!localForce || getTimestamp(cloudForce) >= getTimestamp(localForce)) {
+                if (localForce) {
+                    cloudForce.local = true; // This force is both local and cloud
+                }
                 forceMap.set(cloudForce.instanceId, cloudForce);
             }
         }
