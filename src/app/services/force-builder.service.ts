@@ -121,6 +121,10 @@ export class ForceBuilderService {
         this.logger.info(`ForceBuilderService: Setting new force with name "${this.force.name}"${instanceId ? ` and instance ID ${instanceId}` : ''}"`);
         if (instanceId) {
             this.wsService.subscribeToForceUpdates(instanceId, (serializedForce: SerializedForce) => {
+                if (serializedForce.instanceId !== this.force.instanceId()) {
+                    this.logger.warn(`Received force update for instance ID ${serializedForce.instanceId}, but current force has instance ID ${this.force.instanceId()}. Ignoring update.`);
+                    return;
+                }
                 this.replaceForceInPlace(serializedForce);
             });
         }
