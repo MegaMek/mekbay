@@ -138,6 +138,7 @@ export class ForceBuilderService {
             const selectedUnitId = this.selectedUnit()?.id;
             const selectedIndex = this.force.units().findIndex(u => u.id === selectedUnitId);
             this.force.update(serializedForce);
+            this.dataService.saveSerializedForceToLocalStorage(serializedForce);
             // Restore selected unit if possible
             const newSelectedUnit = this.force.units().find(u => u.id === selectedUnitId);
             this.selectUnit(newSelectedUnit || this.force.units()[selectedIndex] || this.force.units()[0] || null);

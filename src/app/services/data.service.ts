@@ -840,14 +840,19 @@ export class DataService {
         return cloud || local || null;
     }
 
-    public async saveForce(force: Force): Promise<void> {
+    public async saveForce(force: Force, localOnly: boolean = false): Promise<void> {
         if (!force.instanceId() || !force.owned()) {
             force.instanceId.set(generateUUID());
             force.owned.set(true);
         }
-        const key = force.instanceId();
         await this.dbService.saveForce(force.serialize());
-        this.saveForceCloud(force);
+        if (!localOnly) {
+            this.saveForceCloud(force);
+        }
+    }
+
+    public async saveSerializedForceToLocalStorage(serialized: SerializedForce): Promise<void> {
+        await this.dbService.saveForce(serialized);
     }
 
     public async listForces(): Promise<LoadForceEntry[]> {
