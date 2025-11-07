@@ -171,4 +171,16 @@ export class CrewMember {
         crew.setState(data.state === 1 ? 'unconscious' : data.state === 2 ? 'dead' : 'healthy');
         return crew;
     }
+
+    public update(data: any) {
+        if (data.name !== this.name) this.name = data.name;
+        if (data.gunnerySkill !== this.gunnerySkill) this.gunnerySkill = data.gunnerySkill;
+        if (data.pilotingSkill !== this.pilotingSkill) this.pilotingSkill = data.pilotingSkill;
+        if (data.asfGunnerySkill !== this.asfGunnerySkill) this.asfGunnerySkill = data.asfGunnerySkill;
+        if (data.asfPilotingSkill !== this.asfPilotingSkill) this.asfPilotingSkill = data.asfPilotingSkill;
+        if (data.hits !== this.hits) this.hits = data.hits;
+
+        const newState = data.state === 1 ? 'unconscious' : data.state === 2 ? 'dead' : 'healthy';
+        if (newState !== this.state) this.state = newState;
+    }
 }

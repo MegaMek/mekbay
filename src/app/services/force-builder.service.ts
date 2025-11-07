@@ -120,9 +120,8 @@ export class ForceBuilderService {
         const instanceId = this.force.instanceId();
         this.logger.info(`ForceBuilderService: Setting new force with name "${this.force.name}"${instanceId ? ` and instance ID ${instanceId}` : ''}"`);
         if (instanceId) {
-            this.wsService.subscribeToForceUpdates(instanceId, (data: SerializedForce) => {
-                const updatedForce = Force.deserialize(data, this.dataService, this.unitInitializer, this.injector);
-                this.remoteForceUpdate(updatedForce);
+            this.wsService.subscribeToForceUpdates(instanceId, (serializedForce: SerializedForce) => {
+                this.replaceForceInPlace(serializedForce);
             });
         }
         // Subscribe to new force's changed event
@@ -131,6 +130,20 @@ export class ForceBuilderService {
             const forceInstanceId = this.force.instanceId();
             this.logger.info(`ForceBuilderService: Auto-saved force with instance ID ${forceInstanceId}`);
         });
+    }
+    
+    private async replaceForceInPlace(serializedForce: SerializedForce) {
+        try {
+            this.urlStateInitialized = false; // Reset URL state initialization
+            const selectedUnitId = this.selectedUnit()?.id;
+            const selectedIndex = this.force.units().findIndex(u => u.id === selectedUnitId);
+            this.force.update(serializedForce);
+            // Restore selected unit if possible
+            const newSelectedUnit = this.force.units().find(u => u.id === selectedUnitId);
+            this.selectUnit(newSelectedUnit || this.force.units()[selectedIndex] || this.force.units()[0] || null);
+        } finally {
+            this.urlStateInitialized = true; // Re-enable URL state initialization
+        }
     }
 
     async loadForce(force: Force): Promise<boolean> {
@@ -402,28 +415,6 @@ export class ForceBuilderService {
         this.force.removeGroup(group);
     }
 
-    /**
-     * Handles remote updates to the force from the database.
-     * This method is called when the WebSocket receives a message
-     * indicating that the force has been updated by another client.
-     * @param force The updated force instance.
-     */
-    remoteForceUpdate = (force: Force) => {
-        this.logger.info(`ForceBuilderService: Remote force update received for instance ID ${force.instanceId()}`);
-        this.replaceForceInPlace(force);
-    }
-
-    async replaceForceInPlace(updatedForce: Force) {
-        const id = this.selectedUnit()?.id;
-        const selectedIndex = this.force.units().findIndex(u => u.id === id);
-        await this.loadForce(updatedForce);
-        // Restore selected unit if possible
-        const matchingUnit = this.force.units().find(u => u.id === id);
-        const newSelectedUnit = matchingUnit || this.force.units()[selectedIndex] || this.force.units()[0] || null;
-        this.selectUnit(newSelectedUnit);
-    }
-
-
     /* ----------------------------------------
      * Remote conflict detection and resolution
      */
@@ -462,7 +453,13 @@ export class ForceBuilderService {
                 // If the local force is not owned, automatically load the cloud version
                 if (!currentForce.owned()) {
                     this.logger.info(`ForceBuilderService: Force with instance ID ${instanceId} downloading cloud version.`);
-                    this.replaceForceInPlace(cloudForce);
+                    this.urlStateInitialized = false; // Reset URL state initialization
+                    try {
+                        this.setForce(cloudForce);
+                        this.selectUnit(cloudForce.units()[0] || null);
+                    } finally {
+                        this.urlStateInitialized = true; // Re-enable URL state initialization
+                    }
                     this.toastService.show('Cloud version loaded successfully', 'success');
                     return;
                 }

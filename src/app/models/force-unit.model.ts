@@ -541,6 +541,16 @@ export class ForceUnit {
         return this._hasDirectInventory;
     }
 
+    public update(data: SerializedUnit) {
+        if (data.alias !== this.alias()) {
+            const pilot = this.getCrewMember(0);
+            pilot?.setName(data.alias ?? '');
+        }
+        if (data.state) {
+            this.state.update(data.state, this.dataService.getEquipment(this.unit.type));
+        }
+    }
+
     public serialize(): SerializedUnit {
         const stateObj: SerializedState = {
             crew: this.state.crew().map(crew => crew.serialize()),
