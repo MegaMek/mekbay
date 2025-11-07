@@ -43,7 +43,33 @@ export class ForceUnitState {
         this.shutdown.set(data.shutdown);
         this.c3Linked.set(data.c3Linked);
         this.heat.set(data.heat);
-        this.locations.set(data.locations);
+                
+        // We update it only if changed
+        if (data.locations) {
+            const currentLocations = this.locations();
+            const incomingLocations = data.locations;
+            let locationsChanged = false;
+
+            const currentKeys = Object.keys(currentLocations);
+            const incomingKeys = Object.keys(incomingLocations);
+
+            if (currentKeys.length !== incomingKeys.length) {
+                locationsChanged = true;
+            } else {
+                for (const key of incomingKeys) {
+                    const currentLoc = currentLocations[key];
+                    const incomingLoc = incomingLocations[key];
+                    if (!currentLoc || currentLoc.armor !== incomingLoc.armor || currentLoc.internal !== incomingLoc.internal) {
+                        locationsChanged = true;
+                        break;
+                    }
+                }
+            }
+
+            if (locationsChanged) {
+                this.locations.set(incomingLocations);
+            }
+        }
 
         // In-place update for critical slots to preserve references
         if (data.crits) {
