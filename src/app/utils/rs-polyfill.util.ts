@@ -364,84 +364,67 @@ export class RsPolyfillUtil {
 
     private static addUnconsciousCheckbox(svg: SVGSVGElement, container: SVGGraphicsElement, crewId: number): void {
         // Check if checkbox already exists to avoid duplicates
-        const existingCheckbox = svg.getElementById(`unconscious_checkbox_${crewId}`);
+        const existingCheckbox = svg.getElementById(`crew_status_checkbox_${crewId}`);
         if (existingCheckbox) return;
 
-        // Get container bounding box to find the bottom
-        const bbox = container.getBBox();
-        const bottomY = bbox.y + bbox.height;
-        const leftX = bbox.x;
+        // Find the "Consciousness #" text element within the container
+        const textElements = Array.from(container.querySelectorAll('text'));
+        const consciousnessTextEl = textElements.find(el => el.textContent?.trim().startsWith('Consciousness #'));
+        if (!consciousnessTextEl) return;
+
+        consciousnessTextEl.classList.add('checkbox-label');
+
+        // Get text element's bounding box for positioning
+        const textBBox = (consciousnessTextEl as SVGGraphicsElement).getBBox();
 
         // Checkbox dimensions
-        const checkboxSize = 6;
-        const margin = 3;
-        const fontSize = 6;
+        const checkboxSize = 5;
+        const margin = 2; // Space between checkbox and text
 
-        // Position checkbox below container
-        const checkboxY = bottomY + margin;
-        const checkboxX = leftX;
+        // Position checkbox to the left of the text
+        const checkboxX = textBBox.x - checkboxSize - margin;
+        const checkboxY = textBBox.y + (textBBox.height - checkboxSize) / 2; // Vertically center with text
 
         // Create group for checkbox and label
-        const checkboxes = ['Unconscious', 'Dead'];
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.setAttribute('id', `crew_status_checkbox_${crewId}`);
+        group.setAttribute('class', 'crew-status-checkbox noprint');
+        group.setAttribute('crewId', crewId.toString());
+        group.setAttribute('state', 'unconscious');
 
-        let xOffset = 0;
-        for (const label of checkboxes) {
-            const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            group.setAttribute('id', `crew_status_checkbox_${crewId}`);
-            group.setAttribute('class', ' crew-status-checkbox noprint');
-            group.setAttribute('crewId', crewId.toString());
-            group.setAttribute('state', label.toLowerCase());
+        // Create checkbox rectangle (border)
+        const checkboxRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        checkboxRect.setAttribute('x', checkboxX.toString());
+        checkboxRect.setAttribute('y', checkboxY.toString());
+        checkboxRect.setAttribute('width', checkboxSize.toString());
+        checkboxRect.setAttribute('height', checkboxSize.toString());
+        checkboxRect.setAttribute('fill', 'transparent');
+        checkboxRect.setAttribute('stroke', '#000');
+        checkboxRect.setAttribute('stroke-width', '1');
+        checkboxRect.setAttribute('class', 'checkbox-rect');
 
+        // Create clickable area covering both checkbox and text
+        const clickAreaX = checkboxX;
+        const clickAreaY = Math.min(checkboxY, textBBox.y);
+        const clickAreaWidth = textBBox.x + textBBox.width - clickAreaX;
+        const clickAreaHeight = Math.max(checkboxSize, textBBox.height);
 
-            // Create checkbox rectangle (border)
-            const checkboxRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            checkboxRect.setAttribute('x', (checkboxX + xOffset).toString());
-            checkboxRect.setAttribute('y', checkboxY.toString());
-            checkboxRect.setAttribute('width', checkboxSize.toString());
-            checkboxRect.setAttribute('height', checkboxSize.toString());
-            checkboxRect.setAttribute('fill', 'transparent');
-            checkboxRect.setAttribute('stroke', '#000');
-            checkboxRect.setAttribute('crewId', crewId.toString());
-            checkboxRect.setAttribute('stroke-width', '1');
-            checkboxRect.setAttribute('class', 'checkbox-rect');
-    
-            // Create label text
-            const labelText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            labelText.setAttribute('x', (checkboxX + xOffset + checkboxSize + 3).toString());
-            labelText.setAttribute('y', (checkboxY + checkboxSize / 2 + 1).toString());
-            labelText.setAttribute('dominant-baseline', 'middle');
-            labelText.setAttribute('font-family', 'Arial, sans-serif');
-            labelText.setAttribute('font-size', fontSize.toString());
-            labelText.setAttribute('fill', '#000');
-            labelText.setAttribute('class', 'checkbox-label');
-            labelText.textContent = label;
-    
-            // Create clickable area (slightly larger for easier clicking)
-            const areaWidth = (checkboxSize + 3 + (label.length * (fontSize * 0.6)))
-            const clickArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            clickArea.setAttribute('x', (checkboxX + xOffset).toString());
-            clickArea.setAttribute('y', checkboxY.toString());
-            clickArea.setAttribute('width', areaWidth.toString());
-            clickArea.setAttribute('height', checkboxSize.toString());
-            clickArea.setAttribute('fill', 'transparent');
-            clickArea.setAttribute('crewId', crewId.toString());
-            clickArea.setAttribute('class', 'crew-status-area');
-            clickArea.setAttribute('cursor', 'pointer');
-    
-            // Assemble the group
-            group.appendChild(checkboxRect);
-            group.appendChild(labelText);
-            group.appendChild(clickArea);
+        const clickArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        clickArea.setAttribute('x', clickAreaX.toString());
+        clickArea.setAttribute('y', clickAreaY.toString());
+        clickArea.setAttribute('width', clickAreaWidth.toString());
+        clickArea.setAttribute('height', clickAreaHeight.toString());
+        clickArea.setAttribute('fill', 'transparent');
+        clickArea.setAttribute('crewId', crewId.toString());
+        clickArea.setAttribute('class', 'crew-status-area');
+        clickArea.setAttribute('cursor', 'pointer');
 
-            xOffset += areaWidth + 5; // Update xOffset for next checkbox
+        // Assemble the group
+        group.appendChild(checkboxRect);
+        group.appendChild(clickArea);
 
-            // Insert the group after the container
-            if (container.nextSibling) {
-                container.parentNode?.insertBefore(group, container.nextSibling);
-            } else {
-                container.parentNode?.appendChild(group);
-            }
-        }
+        // Insert the group into the same parent as the text element
+        consciousnessTextEl.parentNode?.appendChild(group);
     }
 
     private static addCrewHitRect(svg: SVGSVGElement, textElement: Element, crewId: number, hit: number): void {
