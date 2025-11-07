@@ -34,6 +34,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
+import { SerializedForce } from '../models/force-serialization';
 
 /*
  * Author: Drake
@@ -43,7 +44,7 @@ export function generateUUID(): string {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
         return crypto.randomUUID();
     }
-    
+
     // Fallback for non-secure contexts
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
         const r = Math.random() * 16 | 0;
@@ -63,14 +64,14 @@ export class WsService {
     private wsReadyResolver: (() => void) | null = null;
     private readonly wsSessionId = generateUUID();
     private subscriptions = new Map<string, (event: MessageEvent) => void>();
-    
+
     // Connection state management
     private reconnectTimeoutId: number | null = null;
     private shouldReconnect = true;
     private isConnecting = false;
     private readonly reconnectDelay = 3000;
     private readonly connectionTimeout = 3000;
-    
+
     public wsConnected = signal<boolean>(false);
     private userStateService = inject(UserStateService);
     private globalErrorHandler: ((message: string) => void) | null = null;
@@ -106,7 +107,8 @@ export class WsService {
     private handleNetworkOnline(): void {
         this.shouldReconnect = true;
         if (!this.wsConnected() && !this.isConnecting) {
-            this.connect();
+            this.clearReconnectTimer();
+            this.scheduleReconnect();
         }
     }
 
@@ -122,7 +124,7 @@ export class WsService {
      * Connect to WebSocket server
      */
     private connect(): void {
-        if (!this.wsUrl || this.isConnecting) {
+        if (!this.wsUrl || this.isConnecting || (this.ws && this.ws.readyState === WebSocket.CONNECTING)) {
             return;
         }
 
@@ -134,9 +136,15 @@ export class WsService {
             this.closeWebSocket(false);
         }
 
-        this.ws = new WebSocket(this.wsUrl);
-        this.setupWebSocketHandlers();
-        this.setupConnectionPromise();
+        try {
+            this.ws = new WebSocket(this.wsUrl);
+            this.setupWebSocketHandlers();
+            this.setupConnectionPromise();
+        } catch (error) {
+            this.logger.error(`Failed to create WebSocket: ${error}`);
+            this.isConnecting = false;
+            this.scheduleReconnect();
+        }
     }
 
     /**
@@ -212,8 +220,11 @@ export class WsService {
      * Register this session with the server
      */
     private registerSession(): void {
-        const uuid = this.userStateService.uuid();
-        this.send({ action: 'register', sessionId: this.wsSessionId, uuid });
+        const uuid = this.userStateService.uuid(); try {
+            this.send({ action: 'register', sessionId: this.wsSessionId, uuid });
+        } catch (error) {
+            this.logger.error(`Failed to register session: ${error}`);
+        }
     }
 
     /**
@@ -241,16 +252,26 @@ export class WsService {
      * Close WebSocket connection
      */
     private closeWebSocket(permanent: boolean): void {
-        if (this.ws) {
-            // Remove event handlers to prevent them from firing
-            this.ws.onopen = null;
-            this.ws.onclose = null;
-            this.ws.onerror = null;
-            this.ws.onmessage = null;
-            
+        if (!this.ws) {
+            if (permanent) {
+                this.shouldReconnect = false;
+                this.clearReconnectTimer();
+            }
+            return;
+        }
+        // Remove event handlers to prevent them from firing
+        this.ws.onopen = null;
+        this.ws.onclose = null;
+        this.ws.onerror = null;
+        this.ws.onmessage = null;
+
+        try {
             if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
                 this.ws.close();
             }
+        } catch (error) {
+            this.logger.error(`Error closing WebSocket: ${error}`);
+        } finally {
             this.ws = null;
         }
 
@@ -339,7 +360,11 @@ export class WsService {
             sessionId: this.wsSessionId,
             requestId: generateUUID()
         };
-        this.ws.send(JSON.stringify(message));
+        try {
+            this.ws.send(JSON.stringify(message));
+        } catch (error) {
+            this.logger.error(`Failed to send message: ${error}`);
+        }
     }
 
     /**
@@ -359,7 +384,6 @@ export class WsService {
         };
 
         const ws = this.ws;
-        ws.send(JSON.stringify(message));
 
         return new Promise<any | null>((resolve) => {
             let timeoutId: number | null = null;
@@ -372,8 +396,7 @@ export class WsService {
                         resolve(msg);
                     }
                 } catch {
-                    cleanup();
-                    resolve(null);
+                    // Ignore parse errors
                 }
             };
 
@@ -385,37 +408,40 @@ export class WsService {
             };
 
             ws.addEventListener('message', handler);
+
             timeoutId = window.setTimeout(() => {
                 cleanup();
                 resolve(null);
             }, timeout);
+
+            try {
+                ws.send(JSON.stringify(message));
+            } catch (error) {
+                this.logger.error(`Failed to send message: ${error}`);
+                cleanup();
+                resolve(null);
+            }
         });
     }
 
     /**
      * Subscribe to instance updates
      */
-    public async subscribe(instanceId: string, onRemoteUpdate: (data: any) => void): Promise<void> {
+    public async subscribeToForceUpdates(instanceId: string, onRemoteUpdate: (data: SerializedForce) => void): Promise<void> {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             console.warn('Cannot subscribe: WebSocket not connected');
             return;
         }
 
         // Unsubscribe from previous subscription if exists
-        await this.unsubscribe(instanceId);
-
-        // Send subscribe message
-        this.send({
-            action: 'subscribe',
-            instanceId
-        });
+        await this.unsubscribeFromForceUpdates(instanceId);
 
         // Setup message handler
         const handler = (event: MessageEvent) => {
             try {
                 const msg = JSON.parse(event.data);
-                if (msg.action === 'update' && msg.data?.instanceId === instanceId) {
-                    onRemoteUpdate(msg.data);
+                if (msg.action === 'updatedForce' && msg.data?.instanceId === instanceId) {
+                    onRemoteUpdate(msg.data as SerializedForce);
                 }
             } catch {
                 // Ignore parse errors
@@ -424,35 +450,47 @@ export class WsService {
 
         this.ws.addEventListener('message', handler);
         this.subscriptions.set(instanceId, handler);
+
+        // Send subscribe message
+        this.send({
+            action: 'subscribeToForceUpdates',
+            instanceId
+        });
+
     }
 
     /**
      * Unsubscribe from instance updates
      */
-    public async unsubscribe(instanceId: string): Promise<void> {
+    public async unsubscribeFromForceUpdates(instanceId: string): Promise<void> {
         const handler = this.subscriptions.get(instanceId);
         if (!handler) return;
 
+        this.subscriptions.delete(instanceId);
+
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.send({
-                action: 'unsubscribe',
-                instanceId
-            });
+            try {
+                this.send({
+                    action: 'unsubscribeFromForceUpdates',
+                    instanceId
+                });
+            } catch (error) {
+                this.logger.error(`Failed to send unsubscribe message: ${error}`);
+            }
         }
 
         if (this.ws) {
             this.ws.removeEventListener('message', handler);
         }
-        this.subscriptions.delete(instanceId);
     }
 
     /**
      * Unsubscribe from all instance updates
      */
-    public unsubscribeAll(): void {
+    public unsubscribeAllForForceUpdates(): void {
         const instanceIds = Array.from(this.subscriptions.keys());
         instanceIds.forEach(instanceId => {
-            this.unsubscribe(instanceId);
+            this.unsubscribeFromForceUpdates(instanceId);
         });
     }
 }
