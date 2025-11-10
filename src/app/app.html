@@ -1,74 +1,73 @@
-<main>
-    <div class="app-container" [class.menu-open]="this.layoutService.isMenuOpen()">
+<main class="app-container" [class.menu-open]="this.layoutService.isMenuOpen()">
+    @if (this.hasUnits()) {
+    <sidebar #sidebar [unitSearchPortal]="unitSearchPortalForceBuilder()"
+        [unitSearchComponent]="unitSearchComponentRef()"></sidebar>
+    }
+    <div class="extended-search-container">
+        <div [cdkPortalOutlet]="unitSearchPortalExtended"></div>
+    </div>
+    <div class="main-content">
+
         @if (this.hasUnits()) {
-            <sidebar #sidebar [unitSearchPortal]="unitSearchPortalForceBuilder()" [unitSearchComponent]="unitSearchComponentRef()"></sidebar>
+        <div class="content-area">
+            <svg-viewer [unit]="selectedUnit()"></svg-viewer>
+        </div>
+        } @else {
+        <!-- Empty state -->
+        <div class="empty-state-container">
+            <div class="header">
+                <div class="home-buttons noprint">
+                    <button class="home-button" (click)="showLoadForceDialog()">
+                        <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="m572.501 747-254.933 815.893-101.867-31.786 278.507-890.774h1105.813v-320H783.808L612.181 107H.021v1546.667c0 88.213 71.787 160 160 160h1388.054c75.946 0 141.973-54.08 156.906-128.64L1892.608 747H572.501Z"
+                                fill-rule="evenodd" />
+                        </svg>
+                    </button>
+                    <button class="home-button" (click)="showOptionsDialog()">
+                        <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M1703.534 960c0-41.788-3.84-84.48-11.633-127.172l210.184-182.174-199.454-340.856-265.186 88.433c-66.974-55.567-143.323-99.389-223.85-128.415L1158.932 0h-397.78L706.49 269.704c-81.43 29.138-156.423 72.282-223.962 128.414l-265.073-88.32L18 650.654l210.184 182.174C220.39 875.52 216.55 918.212 216.55 960s3.84 84.48 11.633 127.172L18 1269.346l199.454 340.856 265.186-88.433c66.974 55.567 143.322 99.389 223.85 128.415L761.152 1920h397.779l54.663-269.704c81.318-29.138 156.424-72.282 223.963-128.414l265.073 88.433 199.454-340.856-210.184-182.174c7.793-42.805 11.633-85.497 11.633-127.285m-743.492 395.294c-217.976 0-395.294-177.318-395.294-395.294 0-217.976 177.318-395.294 395.294-395.294 217.977 0 395.294 177.318 395.294 395.294 0 217.976-177.317 395.294-395.294 395.294"
+                                fill-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="main-search">
+                    <div class="empty-state-logo">
+                        <img src="/images/logo.png" alt="Mekbay Logo">
+                        <div class="beta-notice noprint" (click)="showBetaDialog();">BETA</div>
+                    </div>
+                    <div class="search-container">
+                        <div [cdkPortalOutlet]="unitSearchPortalMain"></div>
+                    </div>
+                    @if (this.dataService.isDownloading() || this.dataService.isCloudForceLoading()) {
+                    <div class="spinner-container">
+                        <div class="spinner">
+                            <div class="ring"></div>
+                        </div>
+                        <div>
+                            Downloading data...
+                        </div>
+                    </div>
+                    }
+                </div>
+            </div>
+
+            <div class="footer">
+                <div class="build-info noprint" (click)="copyBuildInfo();">{{ buildInfo }}</div>
+                <span class="footer-text" style="cursor:pointer" (click)="showLicenseDialog();">Mekbay is an
+                    open-source, fan-made project not affiliated with Catalyst Game Labs or The Topps Company, Inc.
+                    BattleTech and related marks are trademarks of The Topps Company, Inc. All rights
+                    reserved.</span>
+            </div>
+        </div>
         }
-        <div class="extended-search-container">
-            <div [cdkPortalOutlet]="unitSearchPortalExtended"></div>
-        </div>
-        <div class="main-content">
-
-            @if (this.hasUnits()) {
-            <div class="content-area">
-                <svg-viewer [unit]="selectedUnit()"></svg-viewer>
-            </div>
-            } @else {
-            <!-- Empty state -->
-            <div class="empty-state-container">
-                <div class="header">
-                    <div class="home-buttons noprint">
-                        <button class="home-button" (click)="showLoadForceDialog()">
-                            <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="m572.501 747-254.933 815.893-101.867-31.786 278.507-890.774h1105.813v-320H783.808L612.181 107H.021v1546.667c0 88.213 71.787 160 160 160h1388.054c75.946 0 141.973-54.08 156.906-128.64L1892.608 747H572.501Z"
-                                    fill-rule="evenodd" />
-                            </svg>
-                        </button>
-                        <button class="home-button" (click)="showOptionsDialog()">
-                            <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M1703.534 960c0-41.788-3.84-84.48-11.633-127.172l210.184-182.174-199.454-340.856-265.186 88.433c-66.974-55.567-143.323-99.389-223.85-128.415L1158.932 0h-397.78L706.49 269.704c-81.43 29.138-156.423 72.282-223.962 128.414l-265.073-88.32L18 650.654l210.184 182.174C220.39 875.52 216.55 918.212 216.55 960s3.84 84.48 11.633 127.172L18 1269.346l199.454 340.856 265.186-88.433c66.974 55.567 143.322 99.389 223.85 128.415L761.152 1920h397.779l54.663-269.704c81.318-29.138 156.424-72.282 223.963-128.414l265.073 88.433 199.454-340.856-210.184-182.174c7.793-42.805 11.633-85.497 11.633-127.285m-743.492 395.294c-217.976 0-395.294-177.318-395.294-395.294 0-217.976 177.318-395.294 395.294-395.294 217.977 0 395.294 177.318 395.294 395.294 0 217.976-177.317 395.294-395.294 395.294"
-                                    fill-rule="evenodd" />
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="main-search">
-                        <div class="empty-state-logo">
-                            <img src="/images/logo.png" alt="Mekbay Logo">
-                            <div class="beta-notice noprint" (click)="showBetaDialog();">BETA</div>
-                        </div>
-                        <div class="search-container">
-                            <div [cdkPortalOutlet]="unitSearchPortalMain"></div>
-                        </div>
-                        @if (this.dataService.isDownloading() || this.dataService.isCloudForceLoading()) {
-                        <div class="spinner-container">
-                            <div class="spinner">
-                                <div class="ring"></div>
-                            </div>
-                            <div>
-                                Downloading data...
-                            </div>
-                        </div>
-                        }
-                    </div>
-                </div>
-
-                <div class="footer">
-                    <div class="build-info noprint" (click)="copyBuildInfo();">{{ buildInfo }}</div>
-                    <span class="footer-text" style="cursor:pointer" (click)="showLicenseDialog();">Mekbay is an
-                        open-source, fan-made project not affiliated with Catalyst Game Labs or The Topps Company, Inc.
-                        BattleTech and related marks are trademarks of The Topps Company, Inc. All rights
-                        reserved.</span>
-                </div>
-            </div>
-            }
-        </div>
-        <update-button [updateAvailable]="updateAvailable()"></update-button>
-        <app-toasts></app-toasts>
-        <div #unitSearchContainer>
-            <unit-search></unit-search>
-        </div>
+    </div>
+    <update-button [updateAvailable]="updateAvailable()"></update-button>
+    <app-toasts></app-toasts>
+    <div #unitSearchContainer>
+        <unit-search></unit-search>
     </div>
 </main>
