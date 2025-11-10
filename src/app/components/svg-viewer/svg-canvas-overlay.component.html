@@ -1,0 +1,36 @@
+<div #canvasOverlay class="svg-canvas-overlay" [class.active]="mode() !== 'none'">
+    <div #canvasContainer class="drawing-canvas" [ngStyle]="canvasTransformStyle()">
+        <canvas #canvas [width]="canvasWidth()" [height]="canvasHeight()"></canvas>
+    </div>
+</div>
+<div class="fab-container" (pointerdown)="$event.stopPropagation()" (pointerup)="$event.stopPropagation()"
+    (pointermove)="$event.stopPropagation()" (click)="$event.stopPropagation()" (dblclick)="$event.stopPropagation()">
+    <button class="fab main-fab" [ngStyle]="mainFabStyle()" [class.active]="mode() !== 'none'"
+        (click)="toggleDrawMode()" aria-label="Toggle Draw Mode"><img src="/images/draw.svg" alt="Draw"></button>
+    @if (mode() !== 'none') {
+    <div class="controls-fab-column">
+        <button class="fab cornered-fab print-fab" (click)="print()" aria-label="Print Canvas"><img
+                src="/images/print.svg" alt="Print"></button>
+        <button class="fab cornered-fab clear-fab" (click)="requestClearCanvas()"
+            aria-label="Clear Canvas"><img src="/images/delete.svg" alt="Delete"></button>
+        <button class="fab cornered-fab eraser-fab" [class.active]="mode() === 'eraser'"
+            (click)="toggleEraser()" aria-label="Eraser"><img src="/images/eraser.svg" alt="Eraser"></button>
+    </div>
+    <div class="color-fab-row">
+        @for (color of colorOptions; let i = $index; track i) {
+        <button class="fab cornered-fab color-fab" [ngStyle]="{'backgroundColor': color}"
+            [class.selected]="brushColor() === color && mode() === 'brush'" (click)="setBrushColor(color)"
+            [attr.aria-label]="'Set color ' + color">
+        </button>
+        }
+    </div>
+    <div class="line-width-slider-row">
+        <input type="range" min="{{ this.MIN_STROKE_SIZE }}" max="{{ this.MAX_STROKE_SIZE }}" [value]="strokeSize()"
+            (input)="onStrokeSizeChange($event)" aria-label="Brush Size" (pointerdown)="$event.stopPropagation()"
+            (pointerup)="$event.stopPropagation()" (pointermove)="$event.stopPropagation()"
+            (click)="$event.stopPropagation()" (dblclick)="$event.stopPropagation()"
+            (contextmenu)="$event.stopPropagation()" />
+        <span class="line-width-value">{{ strokeSize() }}</span>
+    </div>
+    }
+</div>
