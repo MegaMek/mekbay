@@ -38,7 +38,7 @@ import { SvgInteractionService } from './svg-interaction.service';
 /*
  * Author: Drake
  */
-const MIN_SCALE_LIMIT = 0.5;
+const MIN_SCALE_LIMIT = 0.2;
 const MARGIN_TOP = 0;
 const MARGIN_LEFT = 0;
 const MARGIN_BOTTOM = 0;
@@ -204,7 +204,14 @@ export class SvgZoomPanService {
     private calculateMinScale() {
         const scaleToFitWidth = this.containerDimensions.width / (this.svgDimensions.width + MARGIN_H);
         const scaleToFitHeight = this.containerDimensions.height / (this.svgDimensions.height + MARGIN_V);
-        this.state.minScale = Math.max(MIN_SCALE_LIMIT, Math.min(scaleToFitWidth, scaleToFitHeight));
+        const scale = Math.min(scaleToFitWidth, scaleToFitHeight);
+        this.state.minScale = Math.max(MIN_SCALE_LIMIT, scale);
+    }
+
+    private fullyVisible(): boolean {
+        const scaleToFitWidth = this.containerDimensions.width / (this.svgDimensions.width + MARGIN_H);
+        const scaleToFitHeight = this.containerDimensions.height / (this.svgDimensions.height + MARGIN_V);
+        return this.state.scale() <= Math.min(scaleToFitWidth, scaleToFitHeight);
     }
 
     private centerSvg() {
@@ -391,10 +398,8 @@ export class SvgZoomPanService {
             }
 
             // Single pointer behavior (mouse or single touch)
-            const isZoomedOut = this.state.scale() <= this.state.minScale * 1.01;
-            const canSwipe = isZoomedOut; // && (event.pointerType !== 'pen');
-            this.state.isSwiping = canSwipe;
-            this.state.isPanning = !canSwipe;
+            this.state.isSwiping = this.state.scale() <= this.state.minScale * 1.01;
+            this.state.isPanning = !this.fullyVisible();
 
             this.state.last = { x: event.clientX, y: event.clientY };
             this.state.pointerStart = { x: event.clientX, y: event.clientY };
@@ -456,44 +461,49 @@ export class SvgZoomPanService {
 
             if (this.state.isSwiping) {
                 if (!this.state.swipeStarted) {
-                    if (Math.abs(p.x - this.state.pointerStart.x) < this.SWIPE_THRESHOLD) {
-                        return; // don't start swipe until threshold passed
+                    // don't start swipe until threshold passed
+                    if (Math.abs(p.x - this.state.pointerStart.x) >= this.SWIPE_THRESHOLD) {
+                        this.state.swipeStarted = true;
+                        this.swipeCallbacks?.onSwipeStart();
+                        return; 
                     }
-                    this.state.swipeStarted = true;
-                    this.swipeCallbacks?.onSwipeStart();
                 }
-                // Single pointer swipe
-                this.swipeTotalDx = p.x - this.state.pointerStart.x;
-                this.state.last = { x: p.x, y: p.y };
+                if (this.state.swipeStarted) {
+                    // Single pointer swipe
+                    this.swipeTotalDx = p.x - this.state.pointerStart.x;
+                    this.state.last = { x: p.x, y: p.y };
+    
+                    if (!this.state.pointerMoved) {
+                        const totalDx = this.swipeTotalDx;
+                        const totalDy = p.y - this.state.pointerStart.y;
+                        if (Math.abs(totalDx) > POINTER_MOVE_SENSIBILITY || Math.abs(totalDy) > POINTER_MOVE_SENSIBILITY) {
+                            this.state.pointerMoved = true;
+                        }
+                    }
+    
+                    this.swipeCallbacks?.onSwipeMove(this.swipeTotalDx);
+                    return;
+                }
+            }
 
+            // Panning path
+            if (this.state.isPanning) {
+                const dx = p.x - this.state.last.x;
+                const dy = p.y - this.state.last.y;
+                this.state.last = { x: p.x, y: p.y };
+    
+                const translate = this.state.translate();
+                this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
+    
+                this.clampPan();
+                this.applyTransform();
+    
                 if (!this.state.pointerMoved) {
-                    const totalDx = this.swipeTotalDx;
+                    const totalDx = p.x - this.state.pointerStart.x;
                     const totalDy = p.y - this.state.pointerStart.y;
                     if (Math.abs(totalDx) > POINTER_MOVE_SENSIBILITY || Math.abs(totalDy) > POINTER_MOVE_SENSIBILITY) {
                         this.state.pointerMoved = true;
                     }
-                }
-
-                this.swipeCallbacks?.onSwipeMove(this.swipeTotalDx);
-                return;
-            }
-
-            // Panning path
-            const dx = p.x - this.state.last.x;
-            const dy = p.y - this.state.last.y;
-            this.state.last = { x: p.x, y: p.y };
-
-            const translate = this.state.translate();
-            this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
-
-            this.clampPan();
-            this.applyTransform();
-
-            if (!this.state.pointerMoved) {
-                const totalDx = p.x - this.state.pointerStart.x;
-                const totalDy = p.y - this.state.pointerStart.y;
-                if (Math.abs(totalDx) > POINTER_MOVE_SENSIBILITY || Math.abs(totalDy) > POINTER_MOVE_SENSIBILITY) {
-                    this.state.pointerMoved = true;
                 }
             }
         }
@@ -576,10 +586,8 @@ export class SvgZoomPanService {
         // If we had two pointers and now one remains: transition from pinch to single-pointer pan/swipe
         if (hadPointer && this.pointers.size === 1) {
             const remaining = Array.from(this.pointers.values())[0];
-            const isZoomedOut = this.state.scale() <= this.state.minScale * 1.01;
-            const canSwipe = isZoomedOut; // && (remaining.pointerType !== 'pen');
-            this.state.isSwiping = canSwipe;
-            this.state.isPanning = !canSwipe;
+            this.state.isSwiping = this.state.scale() <= this.state.minScale * 1.01;
+            this.state.isPanning = !this.fullyVisible();
             this.state.last = { x: remaining.x, y: remaining.y };
             this.state.pointerStart = { x: remaining.x, y: remaining.y };
             this.state.touchStartDistance = 0;
