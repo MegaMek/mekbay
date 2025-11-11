@@ -151,7 +151,7 @@ export class UnitSvgMekService extends UnitSvgService {
         }
     }
 
-    private systemsStatus = computed(() => {
+    systemsStatus = computed(() => {
         const critSlots = this.unit.getCritSlots();        
         const hasMASC = critSlots.some(slot => slot.name && slot.name.includes('MASC'));
         const destroyedMASC = critSlots.some(slot => slot.name && slot.name.includes('MASC') && slot.destroyed);
@@ -265,7 +265,7 @@ export class UnitSvgMekService extends UnitSvgService {
         };
     });
 
-    private unitState = computed(() => {
+    unitState = computed(() => {
         const svg = this.unit.svg();
         if (!svg) return;
         const unit = this.unit.getUnit();

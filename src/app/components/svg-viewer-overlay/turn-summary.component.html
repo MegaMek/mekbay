@@ -40,7 +40,7 @@
                     <input class="range" type="range" [attr.min]="MOVE_MIN" [attr.max]="moveMax()"
                         [value]="moveDistance()" (input)="onMoveDistanceInput($event)" aria-label="Move distance" />
                     <div class="thumb-marker" [style.left.%]="moveDistancePercent()" (pointerdown)="startDrag($event)">
-                        <div class="hex" [class.valueAssigned]="hasMoveDistance()">{{ moveDistanceLabel() }}</div>
+                        <div class="hex" [class.valueAssigned]="hasMoveDistance()" [class.danger]="overDistance()">{{ moveDistanceLabel() }}</div>
                     </div>
                 </div>
             </div>

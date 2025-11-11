@@ -175,7 +175,12 @@
 
             &.valueAssigned {
                 background: var(--bt-yellow);
-            color: #000;
+                color: #000;
+            }
+
+            &.danger {
+                background: var(--danger);
+                color: #fff;
             }
         }
 

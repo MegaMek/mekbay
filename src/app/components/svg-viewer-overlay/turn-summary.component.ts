@@ -198,11 +198,20 @@ export class TurnSummaryPanelComponent {
                 turnState.moveDistance.set(null);
             }
         }
-        const maxDistance = u.getMotiveModeMaxDistance(mode);
-        if (maxDistance < this.moveDistance()) {
-            turnState.moveDistance.set(maxDistance);
-        }
+        turnState.moveDistance.set(null);
     }
+
+    overDistance = computed<boolean>(() => {
+        const u = this.unit();
+        if (!u) return false;
+        const turnState = u.turnState();
+        turnState.airborne();
+        turnState.moveMode();
+        const moveDistance = this.moveDistance();
+        const maxDistance = turnState.maxDistanceCurrentMoveMode();
+        if (moveDistance === null) return false;
+        return moveDistance > maxDistance;
+    });
 
     moveDistance = computed(() => {
         const u = this.unit();
@@ -217,7 +226,7 @@ export class TurnSummaryPanelComponent {
         if (!baseUnit) return this.MOVE_MAX;
         const mode = u.turnState().moveMode();
         if (!mode) return this.MOVE_MAX;
-        return Math.min(this.MOVE_MAX, u.getMotiveModeMaxDistance(mode));
+        return Math.min(this.MOVE_MAX, u.turnState().maxDistanceCurrentMoveMode());
     });
 
     moveDistancePercent = computed(() => {

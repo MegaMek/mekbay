@@ -71,7 +71,7 @@ export function getMotiveModeMaxDistance(mode: MotiveModes, unit: Unit, airborne
         case 'walk':
             return unit.walk;
         case 'run':
-            return unit.run;
+            return Math.max(unit.run, unit.run2);
         case 'jump':
             return unit.jump;
         case 'UMU':

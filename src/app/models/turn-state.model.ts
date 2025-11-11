@@ -1,7 +1,8 @@
 import { computed, signal } from "@angular/core";
 import { ForceUnitState } from "./force-unit-state.model";
-import { MotiveModes } from "./motiveModes.model";
+import { getMotiveModeMaxDistance, MotiveModes } from "./motiveModes.model";
 import { CriticalSlot } from "./force-serialization";
+import { UnitSvgMekService } from "../services/unit-svg-mek.service";
 
 export interface PSRCheck {
     difficulty: number;
@@ -203,4 +204,34 @@ export class TurnState {
             this.psrChecks.set({ ...psr });
         }
     }
+
+    maxDistanceCurrentMoveMode = computed<number>(() => {
+        const moveMode = this.moveMode();
+        if (moveMode === 'stationary') {
+            return 0;
+        }
+        const airborne = this.airborne();
+        if (!moveMode) {
+            return 0;
+        }
+        const forceUnit = this.unitState.unit;
+        const svgService = forceUnit.svgService;
+        if (svgService instanceof UnitSvgMekService) {
+            if (moveMode === 'walk') {
+                return svgService.unitState()?.maxWalk ?? 0;
+            }
+            if (moveMode === 'run') {
+                return svgService.unitState()?.maxRun ?? 0;
+            }
+            if (moveMode === 'jump') {
+                return svgService.unitState()?.jump ?? 0;
+            }
+            if (moveMode === 'UMU') {
+                return svgService.unitState()?.UMU ?? 0;
+            }
+        }
+        const unit = this.unitState.unit.getUnit();
+        return getMotiveModeMaxDistance(moveMode, unit, airborne ?? false);
+    });
+
 }

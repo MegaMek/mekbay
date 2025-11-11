@@ -43,7 +43,7 @@ import { C3NetworkUtil } from '../utils/c3-network.util';
 import { generateUUID } from '../services/ws.service';
 import { LoggerService } from '../services/logger.service';
 import { Sanitizer } from '../utils/sanitizer.util';
-import { getMotiveModeMaxDistance, getMotiveModesByUnit, getMotiveModesOptionsByUnit, MotiveModeOption, MotiveModes } from './motiveModes.model';
+import { getMotiveModeMaxDistance, getMotiveModesOptionsByUnit, MotiveModeOption, MotiveModes } from './motiveModes.model';
 import {
     LocationData, HeatProfile, SerializedForce, SerializedGroup,
     SerializedUnit, SerializedState, SerializedInventory, CriticalSlot, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA,
@@ -63,7 +63,7 @@ export class ForceUnit {
     force: Force;
     id: string;
     svg: WritableSignal<SVGSVGElement | null> = signal(null); // SVG representation of the unit
-    private svgService: UnitSvgService | null = null;
+    private _svgService: UnitSvgService | null = null;
     private loadingPromise: Promise<void> | null = null;
     viewState: ViewportTransform;
     initialized = false;
@@ -144,24 +144,28 @@ export class ForceUnit {
     private async performLoad() {
         switch (this.unit.type) {
             case 'Mek':
-                this.svgService = new UnitSvgMekService(this, this.dataService, this.unitInitializer, this.injector);
+                this._svgService = new UnitSvgMekService(this, this.dataService, this.unitInitializer, this.injector);
                 break;
             case 'Infantry':
-                this.svgService = new UnitSvgInfantryService(this, this.dataService, this.unitInitializer, this.injector);
+                this._svgService = new UnitSvgInfantryService(this, this.dataService, this.unitInitializer, this.injector);
                 break;
             default:
-                this.svgService = new UnitSvgService(this, this.dataService, this.unitInitializer, this.injector);
+                this._svgService = new UnitSvgService(this, this.dataService, this.unitInitializer, this.injector);
         }
-        await this.svgService.loadAndInitialize();
+        await this._svgService.loadAndInitialize();
     }
 
     destroy() {
-        if (this.svgService) {
-            this.svgService.ngOnDestroy();
-            this.svgService = null;
+        if (this._svgService) {
+            this._svgService.ngOnDestroy();
+            this._svgService = null;
         }
         this.svg.set(null);
         this.loadingPromise = null;
+    }
+
+    get svgService(): UnitSvgService | null {
+        return this._svgService;
     }
 
     get modified(): boolean {
@@ -509,10 +513,6 @@ export class ForceUnit {
         this.state.inventory.set(inventory);
         this.state.resetTurnState();
         this.setModified();
-    }
-
-    public getMotiveModeMaxDistance(mode: MotiveModes): number {
-        return getMotiveModeMaxDistance(mode, this.getUnit(), this.turnState().airborne() ?? false);
     }
 
     public getAvailableMotiveModes(): MotiveModeOption[] {
