@@ -33,16 +33,9 @@
 
 import { CommonModule } from '@angular/common';
 import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, DestroyRef, afterNextRender, ElementRef } from '@angular/core';
-import { SvgZoomPanService } from '../svg-viewer/svg-zoom-pan.service';
-import { OptionsService } from '../../services/options.service';
-import { DbService } from '../../services/db.service';
-import { DialogsService } from '../../services/dialogs.service';
-import { ForceUnit } from '../../models/force-unit.model';
-import { LoggerService } from '../../services/logger.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { LayoutService } from '../../services/layout.service';
 import { SvgInteractionOverlayComponent } from './svg-viewer-overlay.component';
 import { canChangeAirborneGround, MotiveModeOption, MotiveModes } from '../../models/motiveModes.model';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
@@ -199,6 +192,10 @@ export class TurnSummaryPanelComponent {
                 turnState.moveDistance.set(null);
             }
         }
+        const maxDistance = u.getMotiveModeMaxDistance(mode);
+        if (maxDistance < this.moveDistance()) {
+            turnState.moveDistance.set(maxDistance);
+        }
     }
 
     moveDistance = computed(() => {
@@ -207,8 +204,18 @@ export class TurnSummaryPanelComponent {
         return u.turnState().moveDistance() || 0;
     });
 
+    moveMax = computed(() => {
+        const u = this.unit();
+        if (!u) return this.MOVE_MAX;
+        const baseUnit = u.getUnit();
+        if (!baseUnit) return this.MOVE_MAX;
+        const mode = u.turnState().moveMode();
+        if (!mode) return this.MOVE_MAX;
+        return Math.min(this.MOVE_MAX, u.getMotiveModeMaxDistance(mode));
+    });
+
     moveDistancePercent = computed(() => {
-        const max = this.MOVE_MAX;
+        const max = this.moveMax();
         const val = this.moveDistance() || 0;
         return Math.max(0, Math.min(100, (val / max) * 100));
     });
@@ -228,13 +235,15 @@ export class TurnSummaryPanelComponent {
     });
 
     private percentToValue(percent: number): number {
-        const v = this.MOVE_MIN + percent * (this.MOVE_MAX - this.MOVE_MIN);
+        const max = this.moveMax();
+        const v = this.MOVE_MIN + percent * (max - this.MOVE_MIN);
         return this.alignToStep(v);
     }
 
     private alignToStep(value: number): number {
+        const max = this.moveMax();
         const stepped = Math.round(value / 1);
-        return Math.max(this.MOVE_MIN, Math.min(this.MOVE_MAX, stepped));
+        return Math.max(this.MOVE_MIN, Math.min(max, stepped));
     }
 
     onMoveDistanceInput(event: Event) {

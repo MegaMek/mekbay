@@ -64,21 +64,75 @@ export function getMotiveModeLabel(mode: MotiveModes, unit: Unit, airborne: bool
     }
 }
 
+export function getMotiveModeMaxDistance(mode: MotiveModes, unit: Unit, airborne: boolean = false): number {
+    switch (mode) {
+        case 'stationary':
+            return 0;
+        case 'walk':
+            return unit.walk;
+        case 'run':
+            return unit.run;
+        case 'jump':
+            return unit.jump;
+        case 'UMU':
+            return unit.umu;
+        case 'VTOL':
+            return unit.jump; // VTOL MP are stored in the jump field
+        default:
+            return 0;
+    }
+}
+
+function canStationary(unit: Unit, airborne: boolean = false): boolean {
+    return true;
+}
+
+function canWalk(unit: Unit, airborne: boolean = false): boolean {
+    if (!airborne) {
+        if (unit.type === 'Aero' || unit.type === 'VTOL') return false;
+    }
+    return true;
+}
+
+function canRun(unit: Unit, airborne: boolean = false): boolean {
+    if (unit.type === 'Infantry') return false;
+    if (!canWalk(unit, airborne)) return false;
+    return true;
+}
+
+function canJump(unit: Unit, airborne: boolean = false): boolean {
+    return (unit.jump > 0 && !airborne);
+}
+
+function canUMU(unit: Unit, airborne: boolean = false): boolean {
+    return (unit.umu > 0);
+}
+
+function canVTOL(unit: Unit, airborne: boolean = false): boolean {
+    // We exclude VTOL units since their walk/run are VTOL modes
+    if (unit.type === 'VTOL') return false;
+    return (airborne && unit.moveType === 'VTOL');
+}
+
 export function getMotiveModesByUnit(unit: Unit, airborne: boolean = false): MotiveModes[] {
     if ((unit.type === 'Handheld Weapon')) return [];
     const modes: MotiveModes[] = [];
-    modes.push('stationary');
-    modes.push('walk');
-    if (unit.type !== 'Infantry') {
+    if (canStationary(unit, airborne)) {
+        modes.push('stationary');
+    }
+    if (canWalk(unit, airborne)) {
+        modes.push('walk');
+    }
+    if (canRun(unit, airborne)) {
         modes.push('run');
     }
-    if (unit.jump > 0 && !airborne) {
+    if (canJump(unit, airborne)) {
         modes.push('jump');
     }
-    if (unit.umu > 0) {
+    if (canUMU(unit, airborne)) {
         modes.push('UMU');
     }
-    if (airborne && unit.moveType === 'VTOL') {
+    if (canVTOL(unit, airborne)) {
         modes.push('VTOL');
     }
     return modes;

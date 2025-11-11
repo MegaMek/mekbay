@@ -43,7 +43,7 @@ import { C3NetworkUtil } from '../utils/c3-network.util';
 import { generateUUID } from '../services/ws.service';
 import { LoggerService } from '../services/logger.service';
 import { Sanitizer } from '../utils/sanitizer.util';
-import { getMotiveModesByUnit, getMotiveModesOptionsByUnit, MotiveModeOption, MotiveModes } from './motiveModes.model';
+import { getMotiveModeMaxDistance, getMotiveModesByUnit, getMotiveModesOptionsByUnit, MotiveModeOption, MotiveModes } from './motiveModes.model';
 import {
     LocationData, HeatProfile, SerializedForce, SerializedGroup,
     SerializedUnit, SerializedState, SerializedInventory, CriticalSlot, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA,
@@ -509,6 +509,10 @@ export class ForceUnit {
         this.state.inventory.set(inventory);
         this.resetTurnState();
         this.setModified();
+    }
+
+    public getMotiveModeMaxDistance(mode: MotiveModes): number {
+        return getMotiveModeMaxDistance(mode, this.getUnit(), this.turnState().airborne() ?? false);
     }
 
     public getAvailableMotiveModes(): MotiveModeOption[] {

@@ -57,7 +57,6 @@ import { TurnSummaryPanelComponent } from './turn-summary.component';
     styleUrls: ['./svg-viewer-overlay.component.scss']
 })
 export class SvgInteractionOverlayComponent {
-    readonly FIXED_THRESHOLD_ASPECT_RATIO = 1.0; // Above this ratio, we consider the overlay to be "portrait" and always fix its position
     logger = inject(LoggerService);
     private destroyRef = inject(DestroyRef);
     private injector = inject(Injector);
@@ -69,6 +68,7 @@ export class SvgInteractionOverlayComponent {
     dbService = inject(DbService);
     private overlay = inject(Overlay);
     private host = inject(ElementRef<HTMLElement>);
+    turnSummary = viewChild.required(TurnSummaryPanelComponent);
 
     unit = input<ForceUnit | null>(null);
     width = input(200);
@@ -128,12 +128,10 @@ export class SvgInteractionOverlayComponent {
         requestAnimationFrame(() => this.overlayManager.repositionAll());
 
         return {
-            position: 'absolute' as const,
             left: `${containerLeft}px`,
             top: `${containerTop}px`,
             width: `${containerWidth}px`,
-            height: `${containerHeight}px`,
-            willChange: 'transform, left, top'
+            height: `${containerHeight}px`
         };
     });
 

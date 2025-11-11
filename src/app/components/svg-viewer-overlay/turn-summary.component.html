@@ -37,7 +37,7 @@
             @if (currentMoveMode() !== 'stationary' && currentMoveMode() !== null) {
             <div class="row">
                 <div class="move-slider-container" #sliderContainer tabindex="0" (keydown)="onKeyDown($event)">
-                    <input class="range" type="range" [attr.min]="MOVE_MIN" [attr.max]="MOVE_MAX"
+                    <input class="range" type="range" [attr.min]="MOVE_MIN" [attr.max]="moveMax()"
                         [value]="moveDistance()" (input)="onMoveDistanceInput($event)" aria-label="Move distance" />
                     <div class="thumb-marker" [style.left.%]="moveDistancePercent()" (pointerdown)="startDrag($event)">
                         <div class="hex" [class.valueAssigned]="hasMoveDistance()">{{ moveDistanceLabel() }}</div>

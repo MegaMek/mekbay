@@ -12,24 +12,24 @@
 
 .container {
     display: block;
-    position: relative;
+    position: absolute;
     box-sizing: border-box;
     transform: translateZ(0);
-    will-change: transform;
+    will-change: transform, left, top;
     pointer-events: none;
     overflow: hidden;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
 }
 
-.mainButton {
+.overlay-button {
     position: absolute;
-    top: 8px;
-    right: 8px;
     opacity: 0.8;
     outline: none;
     transition: opacity 0.2s;
     color: #000;
-    width: 40px;
-    height: 40px;
     padding: 0;
     margin: 0;
     border: none;
@@ -40,6 +40,32 @@
     &:hover {
         opacity: 1.0;
     }
+
+    :host-context(.night-mode) & {
+        color: #fff;
+    }
+
+}
+
+.end-turn-button {
+    bottom: 8px;
+    left: 0;
+    right: 0;
+    margin-left: auto;
+    margin-right: auto;
+    white-space: nowrap;
+    background-color: white;
+    width: 100px;
+    padding: 8px;
+    border: 1px solid #222;
+    text-align: center;
+}
+
+.turn-tracker-button {
+    top: 8px;
+    right: 8px;
+    width: 40px;
+    height: 40px;
 
     svg {
         width: 100%;
