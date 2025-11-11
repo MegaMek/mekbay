@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, ElementRef, OnDestroy, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, Pipe, PipeTransform } from '@angular/core';
+import { Component, signal, ElementRef, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, Pipe, PipeTransform, DestroyRef } from '@angular/core';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
@@ -95,7 +95,7 @@ export class ExpandedComponentsPipe implements PipeTransform {
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.css',
 })
-export class UnitSearchComponent implements OnDestroy {
+export class UnitSearchComponent {
     layoutService = inject(LayoutService);
     filtersService = inject(UnitSearchFiltersService);
     dataService = inject(DataService);
@@ -111,6 +111,9 @@ export class UnitSearchComponent implements OnDestroy {
     public readonly ADVANCED_FILTERS = ADVANCED_FILTERS;
     public readonly AdvFilterType = AdvFilterType;
     public readonly SORT_OPTIONS = SORT_OPTIONS;
+
+    private searchDebounceTimer: any;
+    private readonly SEARCH_DEBOUNCE_MS = 300;
 
     viewport = viewChild(CdkVirtualScrollViewport);
     searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
@@ -203,11 +206,13 @@ export class UnitSearchComponent implements OnDestroy {
             }
         }, { injector: this.injector });
         this.setupItemHeightTracking();
-    }
-
-    ngOnDestroy() {
-        this.resizeObserver?.disconnect();
-        this.overlayManager.closeAllManagedOverlays();
+        inject(DestroyRef).onDestroy(() => {
+            if (this.searchDebounceTimer) {
+                clearTimeout(this.searchDebounceTimer);
+            }
+            this.resizeObserver?.disconnect();
+            this.overlayManager.closeAllManagedOverlays();
+        });
     }
 
     private setupItemHeightTracking() {
@@ -278,8 +283,13 @@ export class UnitSearchComponent implements OnDestroy {
     }
 
     setSearch(val: string) {
-        this.filtersService.searchText.set(val);
-        this.activeIndex.set(null);
+        if (this.searchDebounceTimer) {
+            clearTimeout(this.searchDebounceTimer);
+        }
+        this.searchDebounceTimer = setTimeout(() => {
+            this.filtersService.searchText.set(val);
+            this.activeIndex.set(null);
+        }, this.SEARCH_DEBOUNCE_MS);
     }
 
     closeAdvPanel() {

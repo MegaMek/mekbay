@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, DestroyRef, afterNextRender, ElementRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, afterNextRender, ElementRef } from '@angular/core';
 import { SvgZoomPanService } from '../svg-viewer/svg-zoom-pan.service';
 import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';

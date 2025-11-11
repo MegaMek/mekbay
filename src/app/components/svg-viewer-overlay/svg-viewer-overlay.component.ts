@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, DestroyRef, afterNextRender, ElementRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, afterNextRender, ElementRef } from '@angular/core';
 import { SvgZoomPanService } from '../svg-viewer/svg-zoom-pan.service';
 import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
@@ -59,7 +59,6 @@ import { TurnSummaryPanelComponent } from './turn-summary.component';
 export class SvgInteractionOverlayComponent {
     readonly FIXED_THRESHOLD_ASPECT_RATIO = 1.0; // Above this ratio, we consider the overlay to be "portrait" and always fix its position
     logger = inject(LoggerService);
-    private destroyRef = inject(DestroyRef);
     private injector = inject(Injector);
     private dialogsService = inject(DialogsService);
     private layoutService = inject(LayoutService);

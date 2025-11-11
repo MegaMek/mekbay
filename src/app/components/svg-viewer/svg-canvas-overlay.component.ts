@@ -73,7 +73,6 @@ export class SvgCanvasOverlayComponent {
     MIN_STROKE_SIZE = 1;
     MAX_STROKE_SIZE = 10;
     logger = inject(LoggerService);
-    private destroyRef = inject(DestroyRef);
     private zoomPanService = inject(SvgZoomPanService);
     private injector = inject(Injector);
     private dialogsService = inject(DialogsService);
@@ -155,7 +154,7 @@ export class SvgCanvasOverlayComponent {
         afterNextRender(() => {
             this.addEventListeners();
         });
-        this.destroyRef.onDestroy(() => {
+        inject(DestroyRef).onDestroy(() => {
             const container = this.canvasContainer().nativeElement;
             if (container) {
                 container.removeEventListener('pointerdown', this.nativePointerDown);
