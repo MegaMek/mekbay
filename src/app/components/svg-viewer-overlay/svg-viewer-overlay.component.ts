@@ -111,6 +111,9 @@ export class SvgInteractionOverlayComponent {
     });
 
     containerStyle = computed(() => {
+        if (!this.layoutService.isDesktop()) {
+            return {};
+        }
         const state = this.zoomPanService.getState();
         const scale = state.scale();
         const translate = state.translate();
