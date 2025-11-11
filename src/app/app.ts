@@ -112,6 +112,9 @@ export class App {
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
 
     constructor() {
+        if ("virtualKeyboard" in navigator) {
+            (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
+        }
         this.dataService.initialize();
         document.addEventListener('contextmenu', (event) => event.preventDefault());
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
