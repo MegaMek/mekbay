@@ -69,7 +69,14 @@ export class RsPolyfillUtil {
         "stabilizer_hit_turret",
         "stabilizer_hit_turret_f",
         "stabilizer_hit_turret_r",
-        "flight_stabilizer_hit"
+        "flight_stabilizer_hit",
+        // Protomek
+        "gun_hit_",
+        "ra_hit_",
+        "legs_hit_",
+        "torso_hit_",
+        "la_hit_",
+        "head_hit_",
     ];
 
     /**
