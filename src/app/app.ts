@@ -218,13 +218,13 @@ export class App {
     beforeUnloadHandler = (event: BeforeUnloadEvent) => {
         if (this.dataService.hasPendingCloudSaves()) {
             event.preventDefault();
-            return '';
+            return 'Cloud sync is still pending. Are you sure you want to leave?';
         }
         if (this.forceBuilderService.forceUnits().length > 0) {
             if (!this.forceBuilderService.force.instanceId()) {
                 // We have units but we don't have an instanceId? This is not yet saved.
                 event.preventDefault();
-                return '';
+                return 'You have unsaved changes in your force. Are you sure you want to leave?';
             }
         }
         // No units, allow navigation without warning
