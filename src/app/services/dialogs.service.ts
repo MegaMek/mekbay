@@ -166,7 +166,7 @@ export class DialogsService {
         await firstValueFrom(ref.closed);
     }
 
-    async showQuestion(message: string, title: string, type: 'info' | 'danger'): Promise<string | null> {
+    async requestConfirmation(message: string, title: string, type: 'info' | 'danger'): Promise<boolean> {
         const ref = this.createDialog<string>(ConfirmDialogComponent, {
             disableClose: true,
             panelClass: type,
@@ -180,7 +180,7 @@ export class DialogsService {
             }
         });
         const answer = await firstValueFrom(ref.closed);
-        return answer ?? null;
+        return answer === 'yes';
     }
 
     async showError(message: string, title = 'Error'): Promise<void> {

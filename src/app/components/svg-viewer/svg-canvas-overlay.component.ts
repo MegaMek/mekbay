@@ -224,12 +224,12 @@ export class SvgCanvasOverlayComponent {
     }
 
     async requestClearCanvas() {
-        const confirmed = await this.dialogsService.showQuestion(
+        const confirmed = await this.dialogsService.requestConfirmation(
             'Are you sure you want to clear the canvas? This cannot be undone.',
             'Clear Canvas',
             'info'
         );
-        if (confirmed === 'yes') {
+        if (confirmed) {
             this.clearCanvas();
             const unit = this.unit();
             if (!unit) return;

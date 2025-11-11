@@ -254,8 +254,8 @@ export class SetAmmoDialogComponent {
     }
 
     async dump() {
-        const result = await this.dialogsService.showQuestion('Are you sure you want to dump all ammo?', 'Confirm Dump', 'danger')
-        if (result === 'yes') {
+        const result = await this.dialogsService.requestConfirmation('Are you sure you want to dump all ammo?', 'Confirm Dump', 'danger')
+        if (result) {
             this.dialogRef.close({ name: this.data.currentAmmo.internalName, quantity: 0, totalAmmo: this.data.quantity });
         }
     }

@@ -173,7 +173,14 @@ export class SvgInteractionOverlayComponent {
         });
     }
 
-    endTurnForAll(event: MouseEvent) {
+    async endTurnForAll(event: MouseEvent) {
         event.stopPropagation();
+        const confirm = await this.dialogsService.requestConfirmation('Are you sure you want to end the turn for all units?', 'End Turn', 'info');
+        if (!confirm) return;
+        const force = this.force();
+        if (!force) return;
+        force.units().forEach(unit => {
+            unit.endTurn();
+        });
     }
 }

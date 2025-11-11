@@ -331,11 +331,11 @@ export class ForceBuilderService {
     }
 
     public async requestCloneForce() {
-        const confirmed = await this.dialogsService.showQuestion(
+        const confirmed = await this.dialogsService.requestConfirmation(
             'Create a separate, editable copy of this force. The original will remain unchanged. Do you want to proceed?',
             'Clone Force',
             'info');
-        if (confirmed === 'yes') {
+        if (confirmed) {
             this.cloneForce();
         };
     }
@@ -399,11 +399,11 @@ export class ForceBuilderService {
     }
 
     public async repairAllUnits() {
-        const confirmed = await this.dialogsService.showQuestion(
+        const confirmed = await this.dialogsService.requestConfirmation(
             'Are you sure you want to repair all units? This will reset all damage and status effects on every unit in the force.',
             'Repair All Units',
             'info');
-        if (confirmed === 'yes') {
+        if (confirmed) {
             this.forceUnits().forEach(fu => {
                 fu.repairAll();
             });

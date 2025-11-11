@@ -134,7 +134,7 @@ export class TurnSummaryPanelComponent {
     }
 
     endTurn() {
-        this.unit()?.resetTurnState();
+        this.unit()?.endTurn();
     }
 
     openPsrWarning(event: MouseEvent) {

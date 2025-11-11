@@ -142,11 +142,11 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     async repairUnit(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
-        const confirmed = await this.dialogsService.showQuestion(
+        const confirmed = await this.dialogsService.requestConfirmation(
             `Are you sure you want to repair the unit "${unit.getUnit()?.chassis} ${unit.getUnit()?.model}"? This will reset all damage and status effects.`,
             `Repair ${unit.getUnit()?.chassis}`,
             'info');
-        if (confirmed === 'yes') {
+        if (confirmed) {
             unit.repairAll();
             return true;
         };

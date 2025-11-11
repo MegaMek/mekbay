@@ -507,7 +507,7 @@ export class ForceUnit {
             return { ...item };
         });
         this.state.inventory.set(inventory);
-        this.resetTurnState();
+        this.state.resetTurnState();
         this.setModified();
     }
 
@@ -537,8 +537,8 @@ export class ForceUnit {
 
         return modifier + destroyedFeetCount + destroyedLegsActuatorsCount + (destroyedGyroCount * 2);
     });
-
-    public resetTurnState() {
+    
+    public endTurn() {
         this.state.resetTurnState();
     }
 

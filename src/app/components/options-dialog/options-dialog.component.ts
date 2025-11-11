@@ -155,12 +155,12 @@ export class OptionsDialogComponent {
     }
 
     async onPurgeCache() {
-        const confirmed = await this.dialogsService.showQuestion(
+        const confirmed = await this.dialogsService.requestConfirmation(
             'Are you sure you want to delete all cached record sheets? They will be redownloaded as needed.',
             'Confirm Purge Cache',
             'info'
         );
-        if (confirmed === 'yes') {
+        if (confirmed) {
             await this.dbService.clearSheetsStore();
             this.updateSheetCacheSize();
 
@@ -174,12 +174,12 @@ export class OptionsDialogComponent {
     }
 
     async onPurgeCanvas() {
-        const confirmed = await this.dialogsService.showQuestion(
+        const confirmed = await this.dialogsService.requestConfirmation(
             'Are you sure you want to delete all drawings? This action cannot be undone.',
             'Confirm Purge Drawings',
             'danger'
         );
-        if (confirmed === 'yes') {
+        if (confirmed) {
             await this.dbService.clearCanvasStore();
             this.updateCanvasMemorySize();
         }
@@ -212,10 +212,10 @@ export class OptionsDialogComponent {
         }
         if (trimmed.length === 0) {
             // Generate a new UUID if input is empty
-            const confirmed = await this.dialogsService.showQuestion(
+            const confirmed = await this.dialogsService.requestConfirmation(
                 'Are you sure you want to generate a new User Identifier? This will disconnect you from your cloud data. Your local data will remain intact.',
                 'Confirm New Identifier', 'danger');
-            if (confirmed !== 'yes') {
+            if (!confirmed) {
                 this.resetUserUuidInput();
                 return;
             }
@@ -224,10 +224,10 @@ export class OptionsDialogComponent {
             return;
         }
         try {
-            const confirmed = await this.dialogsService.showQuestion(
+            const confirmed = await this.dialogsService.requestConfirmation(
                 'Are you sure you want to set a new User Identifier? This will disconnect you from your cloud data. Your local data will remain intact.',
                 'Confirm New Identifier', 'danger');
-            if (confirmed !== 'yes') {
+            if (!confirmed) {
                 this.resetUserUuidInput();
                 return;
             }
