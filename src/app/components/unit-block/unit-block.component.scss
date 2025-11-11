@@ -72,10 +72,12 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
         text-overflow: ellipsis;
+        z-index: 1;
     }
 
     .unit-alias {
         font-weight: bold;
+        z-index: 1;
     }
 
     .info-slot {
@@ -286,4 +288,33 @@
     border-color: var(--bt-yellow);
     background-color: var(--bt-yellow-background);
     opacity: 1;
+}
+
+.dirty-state {
+    position: absolute;
+    display: block;
+    width: 0;
+    height: 0;
+    bottom: 0;
+    right: 0;
+    z-index: 0;
+    border-style: solid;
+    border-width: 0 0 15px 15px;
+    border-color: transparent transparent #666 transparent;
+
+    &.move {
+        border-color: transparent transparent var(--phase-move) transparent;
+    }
+
+    &.ranged {
+        border-color: transparent transparent var(--phase-ranged) transparent;
+    }
+
+    &.physical {
+        border-color: transparent transparent var(--phase-physical) transparent;
+    }
+
+    &.heat {
+        border-color: transparent transparent var(--phase-heat) transparent;
+    }
 }

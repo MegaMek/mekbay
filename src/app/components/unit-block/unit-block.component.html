@@ -1,6 +1,16 @@
 @let unitDisplayName = optionsService.options().unitDisplayName;
+@let turnState = forceUnit()?.turnState();
 @if (compactMode()) {
 <div class="unit-square compact-mode" [class.destroyed]="forceUnit()?.destroyed">
+    @if (turnState?.dirty()) {
+        @let phase = turnState?.currentPhase();
+        <div class="dirty-state" 
+        [class.move]="phase === 'M'"
+        [class.ranged]="phase === 'W'"
+        [class.physical]="phase === 'P'"
+        [class.heat]="phase === 'H'"
+        ></div>
+    }
     <img [src]="imgSrc()" (error)="$event.target.src = '/images/unknown.png'" class="unit-icon"
         alt="{{ unit()?.chassis }} {{ unit()?.model }}" title="{{ unit()?.chassis }} {{ unit()?.model }}" />
     @if (unitDisplayName === 'chassisModel'
@@ -18,6 +28,16 @@
 </div>
 } @else {
 <div class="unit-card" [class.destroyed]="forceUnit()?.destroyed">
+    @if (turnState?.dirty()) {
+        @let phase = turnState?.currentPhase();
+        <div class="dirty-state" 
+        [class.move]="phase === 'M'"
+        [class.ranged]="phase === 'W'"
+        [class.physical]="phase === 'P'"
+        [class.heat]="phase === 'H'"
+        ></div>
+    }
+
     @let role = unit()?.role;
     <div class="unit-role" [class.tight]="(role?.length || 0) > 12">{{ role && role !== 'None' ? role : '' }}</div>
     <div class="unit-image-container">
