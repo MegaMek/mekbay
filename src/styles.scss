@@ -370,6 +370,7 @@ hr {
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
 
     &:hover {
+        border-color: transparent;
         background-color: var(--background-highlight);
         color: white;
         background-image:
@@ -379,6 +380,12 @@ hr {
             linear-gradient(white, white), linear-gradient(white, white);
         background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
         background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    }
+
+    &.selected {
+        border-color: white;
+        background-color: var(--bt-yellow);
+        color: #000;
     }
 
     &.danger {

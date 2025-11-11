@@ -54,9 +54,6 @@
             @let modifierAtk = getTargetModifierAsAttacker();
             <span>Attack Modifier:</span><span>{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>
         </div>
-        <div class="row">
-            <dice-roller #diceComp [diceCount]="2" [modifier]="modifierAtk"></dice-roller>
-        </div>
     </div>
     <div class="group">
         <div class="phaseTitle">As Defender</div>
@@ -87,15 +84,9 @@
         ⚠ PSR Check! ({{ PSRChecksCount() }})
     </button>
     }
+    @if (dirty()) {
     <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurn()">
         End Turn
     </button>
-
-    <div class="group">
-        <div class="summary-entry">
-            <div class="row">
-                <dice-roller #diceComp [diceCount]="2"></dice-roller>
-            </div>
-        </div>
-    </div>
+    }
 </div>

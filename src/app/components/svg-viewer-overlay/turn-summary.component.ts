@@ -69,6 +69,12 @@ export class TurnSummaryPanelComponent {
     sliderContainer = viewChild<ElementRef<HTMLDivElement>>('sliderContainer');
     private activePointerId: number | null = null;
 
+    dirty = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return unit.turnState().dirty();
+    });
+
     damageReceived = computed(() => {
         const unit = this.unit();
         if (!unit) return 0;
