@@ -15,6 +15,7 @@
     overflow: hidden;
     padding: 2px;
     box-sizing: border-box;
+    border: 1px solid var(--border-color);
     flex-grow: 1;
 
     &.destroyed {
@@ -23,6 +24,7 @@
                 #500B 12px,
                 #300A 12px,
                 #300A 24px);
+        border-color: #d00;
 
         &:hover {
             background-image: repeating-linear-gradient(140deg,

@@ -25,6 +25,17 @@ export class TurnState {
     dmgReceived = signal<number>(0);
     psrChecks = signal<PSRChecks>({});
 
+    dirty = computed<boolean>(() => {
+        const airborne = this.airborne();
+        const moveMode = this.moveMode();
+        const moveDistance = this.moveDistance();
+        const psrChecks = this.psrChecks();
+        return airborne !== null
+            || moveMode !== null
+            || moveDistance !== null
+            || Object.keys(psrChecks).length > 0;
+    });
+
     autoFall = computed<boolean>(() => {
         return (this.psrChecks().legsDestroyed || 0) > 0
             || this.psrChecks().gyrosDestroyed === true;

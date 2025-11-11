@@ -10,7 +10,7 @@
 
         @if (this.hasUnits()) {
         <div class="content-area">
-            <svg-viewer [unit]="selectedUnit()"></svg-viewer>
+            <svg-viewer [unit]="selectedUnit()" [force]="forceBuilderService.force"></svg-viewer>
         </div>
         } @else {
         <!-- Empty state -->

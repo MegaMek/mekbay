@@ -44,6 +44,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { TurnSummaryPanelComponent } from './turn-summary.component';
+import { Force } from '../../models/force.model';
 
 /*
  * Author: Drake
@@ -70,12 +71,19 @@ export class SvgInteractionOverlayComponent {
     turnSummary = viewChild.required(TurnSummaryPanelComponent);
 
     unit = input<ForceUnit | null>(null);
+    force = input<Force | null>(null);
     width = input(200);
     height = input(200);
 
     get nativeElement(): HTMLElement {
         return this.host.nativeElement;
     }
+
+    dirty = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return unit.turnState().dirty();
+    });
 
     hasPSRChecks = computed(() => {
         const unit = this.unit();
@@ -93,6 +101,13 @@ export class SvgInteractionOverlayComponent {
         const unit = this.unit();
         if (!unit) return '';
         return unit.turnState().currentPhase();
+    });
+
+    endTurnButtonVisible = computed(() => {
+        const force = this.force();
+        if (!force) return false;
+        const units = force.units();
+        return units.some(u => u.turnState().dirty());
     });
 
     containerStyle = computed(() => {
@@ -156,5 +171,9 @@ export class SvgInteractionOverlayComponent {
             sensitiveAreaReferenceElement: this.nativeElement,
             scrollStrategy: this.overlay.scrollStrategies.reposition()
         });
+    }
+
+    endTurnForAll(event: MouseEvent) {
+        event.stopPropagation();
     }
 }

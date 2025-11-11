@@ -96,7 +96,7 @@ export class SidebarComponent {
             } else {
                 // desktop: use computed dock width
                 width = this.desktopDockWidth();
-                offset = this.COLLAPSED_WIDTH + ((this.layout.menuOpenRatio() * this.EXPANDED_WIDTH) - this.COLLAPSED_WIDTH);
+                offset = this.COLLAPSED_WIDTH + (this.layout.menuOpenRatio() * (this.EXPANDED_WIDTH - this.COLLAPSED_WIDTH));
             }
             const docStyle = document.documentElement.style;
             docStyle.setProperty('--sidebar-expanded-width', `${this.sidebarExpandedWidth()}px`);

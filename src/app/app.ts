@@ -87,7 +87,7 @@ export class App {
     logger = inject(LoggerService);
     private swUpdate = inject(SwUpdate);
     protected dataService = inject(DataService);
-    private forceBuilderService = inject(ForceBuilderService);
+    forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
     private wsService = inject(WsService);
     private dialogService = inject(DialogsService);

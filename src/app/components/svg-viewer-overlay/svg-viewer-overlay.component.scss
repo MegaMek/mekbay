@@ -51,14 +51,14 @@
     bottom: 8px;
     left: 0;
     right: 0;
-    margin-left: auto;
-    margin-right: auto;
-    white-space: nowrap;
-    background-color: white;
-    width: 100px;
+    margin-inline: auto;
+    width: fit-content;
+    background-color: var(--bt-yellow);
     padding: 8px;
+    opacity: 1;
     border: 1px solid #222;
     text-align: center;
+    font-weight: bold;
 }
 
 .turn-tracker-button {
@@ -76,8 +76,15 @@
             fill: #fff;
         }
 
-        &.warning {
+        &.dirty {
             color: var(--bt-yellow);
+            text {
+                fill: #000;
+            }
+        }
+
+        &.warning {
+            color: var(--damage-color);
             text {
                 fill: #000;
             }

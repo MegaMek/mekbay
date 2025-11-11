@@ -43,6 +43,7 @@ import { SvgInteractionOverlayComponent } from '../svg-viewer-overlay/svg-viewer
 import { OptionsService } from '../../services/options.service';
 import { Unit } from '../../models/units.model';
 import { LayoutService } from '../../services/layout.service';
+import { Force } from '../../models/force.model';
 
 /*
  * Author: Drake
@@ -65,6 +66,7 @@ export class SvgViewerComponent implements AfterViewInit {
     private layoutService = inject(LayoutService);
     optionsService = inject(OptionsService);
     unit = input<ForceUnit | null>(null);
+    force = input<Force | null>(null);
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     slidesRef = viewChild.required<ElementRef<HTMLDivElement>>('slides');
