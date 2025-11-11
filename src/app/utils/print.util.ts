@@ -277,7 +277,6 @@ export class PrintUtil {
 
         // Remove overlay on first user interaction
         const removeOverlay = (evt: Event) => {
-            console.trace('PrintUtil', evt);
             overlay.remove();
             document.body.classList.remove('multipage-container-active');
             

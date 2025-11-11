@@ -117,6 +117,12 @@ export class TurnSummaryPanelComponent {
         return value;
     });
 
+    tracksHeat = computed(() => {
+        const u = this.unit();
+        if (!u) return false;
+        return u.getUnit().heat >= 0;
+    });
+
     heatGenerated = computed(() => {
         const u = this.unit();
         if (!u) return 0;
@@ -179,8 +185,11 @@ export class TurnSummaryPanelComponent {
         if (!u) return;
         const turnState = u.turnState();
         const currentAirborne = turnState.airborne();
-        if (currentAirborne === airborne) return;
-        turnState.airborne.set(airborne);
+        if (currentAirborne === airborne) {
+            turnState.airborne.set(null);
+        } else {
+            turnState.airborne.set(airborne);
+        }
         turnState.moveMode.set(null);
         turnState.moveDistance.set(null);
     }

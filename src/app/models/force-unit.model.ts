@@ -270,7 +270,8 @@ export class ForceUnit {
 
     applyHitToCritSlot(slot: CriticalSlot, damage: number = 1) {
         slot.hits = Math.max(0, (slot.hits ?? 0) + damage);
-        slot.destroyed = slot.armored ? slot.hits >= 2 : slot.hits >= 1;
+        const destroyed = slot.armored ? slot.hits >= 2 : slot.hits >= 1;
+        slot.destroyed = destroyed ? Date.now() : undefined;
         this.setCritSlot(slot);
     }
 
@@ -482,7 +483,7 @@ export class ForceUnit {
         // Clear all crits
         const crits = this.state.crits().map(crit => {
             if (crit.destroyed) {
-                crit.destroyed = false;
+                crit.destroyed = undefined;
             }
             if (crit.hits) {
                 crit.hits = 0;

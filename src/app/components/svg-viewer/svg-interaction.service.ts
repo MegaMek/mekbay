@@ -520,7 +520,7 @@ export class SvgInteractionService {
                 if (!id) return;
                 let critLoc = this.unit()?.getCritLoc(id);
                 if (!critLoc) return;
-                critLoc.destroyed = !critLoc.destroyed;
+                critLoc.destroyed = !!critLoc.destroyed ? undefined : Date.now();
                 this.unit()?.setCritLoc(critLoc);
             }, signal);
         });
