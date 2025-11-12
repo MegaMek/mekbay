@@ -22,7 +22,6 @@ export class UnitBlockComponent {
     onInfo = output<MouseEvent>();
     onRemoveUnit = output<MouseEvent>();
     onToggleC3 = output<MouseEvent>();
-    onToggleECM = output<MouseEvent>();
     onRepairUnit = output<MouseEvent>();
 
     unit = computed<Unit | undefined>(() => {
@@ -38,7 +37,21 @@ export class UnitBlockComponent {
     hasECM = computed(() => {
         const unit = this.unit();
         if (!unit) return false;
-        return unit.comp.some(eq => eq.eq?.flags.has('F_ECM'));
+        const hasECM = unit.comp.some(eq => eq.eq?.flags.has('F_ECM'));
+        if (hasECM) {
+            const mountedECM = this.forceUnit()?.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
+            if (mountedECM) {
+                return true;
+            }
+        }
+        return false;
+    });
+
+    getECMMode = computed(() => {
+        const unit = this.unit();
+        if (!unit) return 'N/A';
+        const mountedECM = this.forceUnit()?.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
+        return mountedECM ? mountedECM.state : 'Off';
     });
 
     imgSrc = computed(() => {
@@ -73,10 +86,5 @@ export class UnitBlockComponent {
     toggleC3Link(event: MouseEvent): void {
         event.stopPropagation();
         this.onToggleC3.emit(event);
-    }
-
-    toggleECMMode(event: MouseEvent): void {
-        event.stopPropagation();
-        this.onToggleECM.emit(event);
     }
 }

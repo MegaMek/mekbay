@@ -194,17 +194,23 @@
         background-color: rgba(27, 136, 199, 0.5);
     }
 
-    .info-slot.ecm.eccm {
-        background-color: rgba(117, 0, 212, 0.5);
+    .info-slot.ecm {
+        background-color: rgba(0, 130, 9, 0.5);
     }
 
-    .info-slot.ecm.enabled {
-        background-color: rgba(0, 130, 9, 0.5);
+    .info-slot.ecm.eccm {
+        background-color: rgba(117, 0, 212, 0.5);
     }
 
     .info-slot.ecm.ghost {
         background-color: rgba(176, 173, 0, 0.5);
     }
+
+    .info-slot.ecm.off {
+        background-color: rgba(185, 16, 16, 0.5);
+    }
+
+
 
     &.destroyed {
         background-image: repeating-linear-gradient(140deg,

@@ -62,6 +62,6 @@ export abstract class MultiModeHandler extends EquipmentInteractionHandler {
             `${equipment.name} mode: ${mode?.label || value}`,
             'info'
         );
-        return false;
+        return true;
     }
 }

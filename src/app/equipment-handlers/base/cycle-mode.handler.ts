@@ -45,19 +45,14 @@ export abstract class CycleModeHandler extends EquipmentInteractionHandler {
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
         const currentState = equipment.state || this.getDefaultMode();
         const modes = this.getModes(equipment);
-        const currentIndex = modes.findIndex(m => m.value === currentState);
+        const currentMode = modes.find(m => m.value === currentState);
         
-        // Calculate next mode (wrap around to first if at end)
-        const nextIndex = currentIndex === -1 || currentIndex === modes.length - 1 
-            ? 0 
-            : currentIndex + 1;
-        const nextMode = modes[nextIndex];
         
-        // Return single choice representing the next mode to cycle to
+        // Return single choice representing the current mode
         return [{
-            label: nextMode.label,
-            shortLabel: nextMode.shortLabel || nextMode.label,
-            value: nextMode.value,
+            label: 'Mode: ' + (currentMode?.label || currentState),
+            shortLabel: currentMode?.shortLabel || currentMode?.label || currentState,
+            value: currentMode?.value || currentState,
             disabled: equipment.destroyed,
             active: false,
             keepOpen: true,
@@ -65,15 +60,21 @@ export abstract class CycleModeHandler extends EquipmentInteractionHandler {
     }
     
     handleSelection(equipment: MountedEquipment, value: PickerValue, context: HandlerContext): boolean {
-        equipment.state = value as string;
+        const modes = this.getModes(equipment);
+        const currentIndex = modes.findIndex(m => m.value === value);
+        // Calculate next mode (wrap around to first if at end)
+        const nextIndex = currentIndex === -1 || currentIndex === modes.length - 1 
+            ? 0 
+            : currentIndex + 1;
+        const nextMode = modes[nextIndex];
+        equipment.state = nextMode.value;
         equipment.owner.setInventoryEntry(equipment);
         
-        const mode = this.getModes(equipment).find(m => m.value === value);
         context.toastService.show(
-            `${equipment.name} mode: ${mode?.label || value}`,
+            `${equipment.name} mode: ${nextMode?.label || value}`,
             'info'
         );
-        return false;
+        return true;
     }
     
     /**

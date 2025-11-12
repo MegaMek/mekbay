@@ -546,17 +546,11 @@ hr {
         color: var(--text-color-secondary);
         font-size: 0.8em;
         gap: 8px;
+        min-height: 8px; // Reserve some space even if empty
 
         .model {
             flex-grow: 1;
             min-width: 0;
-        }
-
-        .role {
-            font-style: italic;
-            flex-shrink: 0;
-            min-width: 0;
-            text-align: right;
         }
     }
 

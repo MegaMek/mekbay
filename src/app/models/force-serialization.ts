@@ -145,6 +145,7 @@ export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
     .number('totalAmmo')
     .number('consumed')
     .string('ammo')
+    .string('state')
     .boolean('destroyed')
     .build();
 

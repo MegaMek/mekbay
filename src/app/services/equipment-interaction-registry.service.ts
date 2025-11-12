@@ -86,52 +86,6 @@ export abstract class EquipmentInteractionHandler {
      * @returns true if the picker should close, false to keep it open
      */
     abstract handleSelection(equipment: MountedEquipment, value: PickerValue, context: HandlerContext): boolean;
-    
-    /**
-     * Cycle through available choices
-     * @param equipment The mounted equipment
-     * @param context Handler context
-     * @param currentValue The current value (optional, will use equipment.state if not provided)
-     * @returns The next choice, or null if no choices available
-     */
-    cycleChoice(
-        equipment: MountedEquipment,
-        context: HandlerContext,
-        currentValue?: PickerValue
-    ): PickerChoice | null {
-        const choices = this.getChoices(equipment, context);
-        if (!choices || choices.length === 0) return null;
-        
-        // Filter out disabled choices
-        const enabledChoices = choices.filter(c => !c.disabled);
-        if (enabledChoices.length === 0) return null;
-        
-        const value = currentValue ?? equipment.state;
-        const currentIndex = enabledChoices.findIndex(c => c.value === value);
-        
-        // If current value not found or is last, return first choice
-        if (currentIndex === -1 || currentIndex === enabledChoices.length - 1) {
-            return enabledChoices[0];
-        }
-        
-        // Return next choice
-        return enabledChoices[currentIndex + 1];
-    }
-    
-    /**
-     * Cycle and apply the next choice
-     * @param equipment The mounted equipment
-     * @param context Handler context
-     * @returns true if a cycle occurred, false otherwise
-     */
-    cycleAndApply(equipment: MountedEquipment, context: HandlerContext): boolean {
-        const nextChoice = this.cycleChoice(equipment, context);
-        if (nextChoice) {
-            this.handleSelection(equipment, nextChoice.value, context);
-            return true;
-        }
-        return false;
-    }
 }
 
 /**

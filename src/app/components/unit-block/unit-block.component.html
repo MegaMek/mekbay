@@ -151,7 +151,7 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                 </div>
                 }
                 @if (hasECM()) {
-                <div class="info-slot slim ecm" (click)="toggleECMMode($event)" title="Toggle ECM Mode">
+                <div class="info-slot slim ecm {{ getECMMode() }}">
                     <span>ECM</span>
                 </div>
                 }

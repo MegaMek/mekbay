@@ -67,6 +67,6 @@ export abstract class ToggleHandler extends EquipmentInteractionHandler {
             `${equipment.name} ${value === 'enabled' ? this.enabledLabel : this.disabledLabel}`,
             'info'
         );
-        return false;
+        return true;
     }
 }

@@ -787,7 +787,7 @@ export class SvgInteractionService {
                     return values;
                 };
 
-                const calculatePickerValues = calculateValues();
+                let calculatePickerValues = calculateValues();
                 if (calculatePickerValues.length === 0) {
                     return;
                 }
@@ -808,7 +808,8 @@ export class SvgInteractionService {
                             const handled = registry.handleSelection(entry, choice, context);
 
                             if (handled && choice.keepOpen) {
-                                pickerInstance.component.values.set(calculateValues());
+                                calculatePickerValues = calculateValues();
+                                pickerInstance.component.values.set(calculatePickerValues);
                                 return; // Keep picker open for state changes
                             }
                         }
