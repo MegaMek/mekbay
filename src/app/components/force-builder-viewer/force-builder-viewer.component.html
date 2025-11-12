@@ -46,6 +46,7 @@
                             [class.selected]="unit.id === forceBuilderService.selectedUnit()?.id"
                             (onRemoveUnit)="removeUnit($event, unit)" (onInfo)="showUnitInfo($event, unit)"
                             (onRepairUnit)="repairUnit($event, unit)"
+                            (onEditPilot)="editPilot($event, unit)"
                             (onToggleC3)="toggleC3Link($event, unit)"></unit-block>
                     </div>
                     }

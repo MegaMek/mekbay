@@ -134,12 +134,12 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                     <span class="value">{{ unit()?.tons | formatTons }}</span>
                     <img src="/images/weight.svg" class="icon" alt="Tonnage">
                 </div>
-                <div class="info-slot numeric">
+                <div class="info-slot numeric pilot-info interactive" (click)="editPilot($event)" title="Edit Pilot">
                     <span class="value">{{ forceUnit()?.getPilotStats() }}</span>
                     <img src="/images/helmet.svg" class="icon" alt="Pilot">
                 </div>
                 @if (unit()?.c3 !== 'None') {
-                <div class="info-slot slim c3link" [class.enabled]="forceUnit()?.c3Linked"
+                <div class="info-slot slim c3link interactive" [class.enabled]="forceUnit()?.c3Linked"
                     (click)="toggleC3Link($event)" title="Toggle C3 Link">
                     <span>{{ unit()?.c3 }}</span>
                     <svg fill="currentColor" width="14px" height="14px" viewBox="0 0 32 32" version="1.1"

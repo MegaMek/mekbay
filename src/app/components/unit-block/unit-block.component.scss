@@ -182,6 +182,16 @@
         font-weight: normal;
     }
 
+    .info-slot.interactive {
+        pointer-events: auto;
+        cursor: pointer;
+        transition: filter 0.2s, background-color 0.2s;
+        &:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            filter: brightness(1.2);
+        }
+    }
+
     .info-slot.off {
         background-color: rgba(185, 16, 16, 0.5);
     }

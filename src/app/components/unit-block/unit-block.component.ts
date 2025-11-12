@@ -23,6 +23,7 @@ export class UnitBlockComponent {
     onRemoveUnit = output<MouseEvent>();
     onToggleC3 = output<MouseEvent>();
     onRepairUnit = output<MouseEvent>();
+    onEditPilot = output<MouseEvent>();
 
     unit = computed<Unit | undefined>(() => {
         return this.forceUnit()?.getUnit();
@@ -62,17 +63,17 @@ export class UnitBlockComponent {
         return unit.model.replace(/\s*\(.*?\)\s*/g, '').trim();
     });
 
-    clickInfo(event: MouseEvent) {
+    clickInfo(event: MouseEvent): void {
         event.stopPropagation();
         this.onInfo.emit(event);
     }
 
-    repairUnit(event: MouseEvent) {
+    repairUnit(event: MouseEvent): void {
         event.stopPropagation();
         this.onRepairUnit.emit(event);
     }
 
-    clickRemove(event: MouseEvent) {
+    clickRemove(event: MouseEvent): void {
         event.stopPropagation();
         this.onRemoveUnit.emit(event);
     }
@@ -80,5 +81,10 @@ export class UnitBlockComponent {
     toggleC3Link(event: MouseEvent): void {
         event.stopPropagation();
         this.onToggleC3.emit(event);
+    }
+
+    editPilot(event: MouseEvent): void {
+        event.stopPropagation();
+        this.onEditPilot.emit(event);
     }
 }

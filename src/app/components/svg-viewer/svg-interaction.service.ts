@@ -51,6 +51,7 @@ import { DataService } from '../../services/data.service';
 import { AmmoEquipment } from '../../models/equipment.model';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
+import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '../edit-pilot-dialog/edit-pilot-dialog.component';
 
 /*
  * Author: Drake
@@ -1388,20 +1389,29 @@ export class SvgInteractionService {
 
     private async editCrewName(crewId: number) {
         if (!this.unit()) return;
-
         const crewMember = this.unit()!.getCrewMember(crewId);
-        const ref = this.dialogsService.createDialog<string | null>(InputDialogComponent, {
-            data: {
-                message: 'Crew Member Name',
-                inputType: 'text',
-                defaultValue: crewMember.getName(),
-                placeholder: 'Name'
-            } as InputDialogData
-        });
+        const ref = this.dialogsService.createDialog<EditPilotResult | null, EditPilotDialogComponent, EditPilotDialogData>(
+            EditPilotDialogComponent,
+            {
+                data: {
+                    name: crewMember.getName(),
+                    gunnery: crewMember.getSkill('gunnery'),
+                    piloting: crewMember.getSkill('piloting')
+                }
+            }
+        );
 
-        const newName = await firstValueFrom(ref.closed);
-        if (newName && newName !== null) {
-            crewMember.setName(newName);
+        const result = await firstValueFrom(ref.closed);
+        if (result && result !== null) {
+            if (result.name !== undefined) {
+                crewMember.setName(result.name);
+            }
+            if (result.gunnery !== undefined) {
+                crewMember.setSkill('gunnery', result.gunnery);
+            }
+            if (result.piloting !== undefined) {
+                crewMember.setSkill('piloting', result.piloting);
+            }
         }
     }
 
