@@ -501,6 +501,7 @@ export class ForceBuilderService {
         if (result === 'cloud') {
             // Load the cloud version
             await this.loadForce(cloudForce);
+            await this.dataService.saveForce(this.force, true);
             this.toastService.show('Cloud version loaded successfully', 'success');
         } else if (result === 'local') {
             // Keep local version and overwrite cloud

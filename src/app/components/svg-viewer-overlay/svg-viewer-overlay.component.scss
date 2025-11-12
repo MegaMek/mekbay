@@ -77,14 +77,17 @@
             fill: #fff;
         }
 
-        &.dirty {
-            color: var(--bt-yellow);
-            text {
-                fill: #000;
-            }
-            .octagon {
-                stroke: #000;
-            }
+        &.move .octagon {
+            fill: var(--phase-move);
+        }
+        &.ranged .octagon {
+            fill: var(--phase-ranged);
+        }
+        &.physical .octagon {
+            fill: var(--phase-physical);
+        }
+        &.heat .octagon {
+            fill: var(--phase-heat);
         }
 
         &.warning {

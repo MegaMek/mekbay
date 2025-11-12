@@ -166,14 +166,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
             if (entry.el) {
                 if (!entry.el.getAttribute('SSW')) return;
                 entry.destroyed = this.unit.isArmorLocDestroyed('T1');
-                if (entry.destroyed) {
-                    entry.el.classList.add('damagedInventory');
-                    entry.el.classList.remove('interactive');
-                    entry.el.classList.remove('selected');
-                } else {
-                    entry.el.classList.remove('damagedInventory');
-                    entry.el.classList.add('interactive');
-                }
+                entry.el.classList.toggle('damagedInventory', entry.destroyed);
             }
         });
     }

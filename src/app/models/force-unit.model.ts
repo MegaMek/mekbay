@@ -164,6 +164,10 @@ export class ForceUnit {
         this.loadingPromise = null;
     }
 
+    getDisplayName() {
+        return (this.unit.chassis + ' ' + this.unit.model).trim();;
+    }
+
     get svgService(): UnitSvgService | null {
         return this._svgService;
     }
@@ -525,18 +529,39 @@ export class ForceUnit {
         let modifier = 0;
         const critSlots = this.getCritSlots();
         const destroyedHips = critSlots.filter(slot => slot.name && slot.name.includes('Hip') && slot.destroyed);
-        const hipLocations = new Set<string>();
+        const hipLocations = new Map<string, number>();
         for (const hip of destroyedHips) {
+            if (!hip.destroyed) continue;
             modifier += 2;
             if (hip.loc) {
-                hipLocations.add(hip.loc);
+                hipLocations.set(hip.loc, hip.destroyed); // Destroyed contains the timestamp of the destruction
             }
         }
-        const destroyedFeetCount = critSlots.filter(slot => slot.loc && slot.name && !hipLocations.has(slot.loc) && slot.name.includes('Foot') && slot.destroyed).length;
-        const destroyedLegsActuatorsCount = critSlots.filter(slot => slot.loc && slot.name && !hipLocations.has(slot.loc) && slot.name.includes('Leg') && slot.destroyed).length;
-        const destroyedGyroCount = critSlots.filter(slot => slot.name && slot.name.includes('Gyro') && slot.destroyed).length;
+        const destroyedFeetCount = critSlots.filter(slot => {
+            if (!slot.loc || !slot.name) return false;
+            if (!slot.destroyed) return false;
+            if (!slot.name.includes('Foot')) return false;
+            const hipDestroyed = hipLocations.get(slot.loc);
+            if (hipDestroyed && hipDestroyed > slot.destroyed) {
+                return false;
+            }
+            return true;
+        }).length;
+        const destroyedLegsActuatorsCount = critSlots.filter(slot => {
+            if (!slot.loc || !slot.name) return false;
+            if (!slot.destroyed) return false;
+            if (!slot.name.includes('Leg')) return false;
+            const hipDestroyed = hipLocations.get(slot.loc);
+            if (hipDestroyed && hipDestroyed > slot.destroyed) {
+                return false;
+            }
+            return true;
+        }).length;
+        const destroyedGyroCount = critSlots.filter(slot => {
+            return slot.name && slot.destroyed && slot.name.includes('Gyro');
+        }).length;
 
-        return modifier + destroyedFeetCount + destroyedLegsActuatorsCount + (destroyedGyroCount * 2);
+        return modifier + destroyedFeetCount + destroyedLegsActuatorsCount + (destroyedGyroCount * 3);
     });
     
     public endTurn() {

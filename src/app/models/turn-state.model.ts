@@ -31,9 +31,11 @@ export class TurnState {
         const moveMode = this.moveMode();
         const moveDistance = this.moveDistance();
         const psrChecks = this.psrChecks();
+        const dmgReceived = this.dmgReceived();
         return airborne !== null
             || moveMode !== null
             || moveDistance !== null
+            || dmgReceived != 0
             || Object.keys(psrChecks).length > 0;
     });
 
@@ -142,7 +144,7 @@ export class TurnState {
         }
     });
 
-    heatGenerated = computed(() => {
+    heatGeneratedFromMovement = computed(() => {
         let heat = 0;
         const moveMode = this.moveMode();
         const critSlots = this.unitState.unit.getCritSlots();
@@ -155,9 +157,17 @@ export class TurnState {
             const hasImprovedJumpJet = critSlots.some(slot => slot.name && slot.name.includes('Improved Jump Jet') && slot.destroyed);
             heat += Math.max(3, hasImprovedJumpJet ? Math.ceil(distance / 2) : distance);
         }
-        const engineHits = critSlots.filter(slot => slot.name && slot.name.includes('Engine') && slot.destroyed).length;
-        heat += engineHits * 5;
         return heat;
+    });
+
+    heatGeneratedFromStatusEffects = computed(() => {
+        const critSlots = this.unitState.unit.getCritSlots();
+        const engineHits = critSlots.filter(slot => slot.name && slot.name.includes('Engine') && slot.destroyed).length;
+        return engineHits * 5;
+    });
+
+    heatGenerated = computed(() => {
+        return this.heatGeneratedFromMovement() + this.heatGeneratedFromStatusEffects();
     });
 
     heatDissipated = computed(() => {

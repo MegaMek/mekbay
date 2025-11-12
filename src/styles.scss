@@ -56,7 +56,8 @@ html {
     bottom: 0;
     left: 0;
     right: 0;
-    background-color: var(--background-color);}
+    background-color: var(--background-color);
+}
 
 // @media all and (display-mode: standalone) {
 //     html {
@@ -772,7 +773,7 @@ hr {
                 transparent 5px,
                 transparent 10px);
     }
-    
+
     &::after {
         content: '';
         position: absolute;
@@ -824,22 +825,6 @@ hr {
 
     .inventoryEntry:not(.interactive) {
         pointer-events: none;
-    }
-
-    .inventoryEntry.disabledInventory {
-
-        .hitMod-rect,
-        .hitMod-text {
-            display: none;
-        }
-    }
-
-    .inventoryEntry.damagedInventory {
-
-        .hitMod-rect,
-        .hitMod-text {
-            display: none;
-        }
     }
 
     #fluff-image-fo {

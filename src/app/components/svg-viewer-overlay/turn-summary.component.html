@@ -72,14 +72,13 @@
         <div class="group">
             <div class="phaseTitle">Heat</div>
             <div class="summary-entry">
-                <div class="row"><span>Heat generated:</span><span>{{ heatGenerated() }}</span></div>
-                <div class="row"><span>Heat dissipated:</span><span>{{ heatDissipated() }}</span></div>
-                <div class="row"><span>Total Heat:</span><span>{{ totalHeatDelta() }}</span></div>
+                <div class="row"><span>Movement:</span><span>{{ heatFromMovement() }}</span></div>
+                <div class="row"><span>Status Effects:</span><span>{{ heatFromStatusEffects() }}</span></div>
             </div>
         </div>
-        <button role="button" class="summary-entry bt-button" tabindex="0">
+        <!-- <button role="button" class="summary-entry bt-button" tabindex="0">
             Apply Heat
-        </button>
+        </button> -->
     }
     @if (hasPSRChecks()) {
     <button role="button" class="summary-entry bt-button warning" (click)="openPsrWarning($event)" tabindex="0">
@@ -91,4 +90,5 @@
         End Turn
     </button>
     }
+    <span style="font-size: 9px; text-align: center;">This feature is currently under development.</span>
 </div>

@@ -875,12 +875,7 @@ export class UnitSvgService implements OnDestroy {
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
             if (!entry.el) return;
-            if (entry.destroyed) {
-                entry.el.classList.add('damagedInventory');
-                entry.el.classList.remove('selected');
-            } else {
-                entry.el.classList.remove('damagedInventory');
-            }
+            entry.el.classList.toggle('damagedInventory', entry.destroyed);
         });
     }
 

@@ -866,8 +866,7 @@ export class SvgInteractionService {
 
             this.addSvgTapHandler(el, (event: Event, primaryAction: boolean) => {
                 if (this.state.clickTarget !== el) return;
-
-                if (primaryAction && !el.classList.contains('damagedInventory') && !el.classList.contains('disabledInventory')) {
+                if (primaryAction) {
                     el.classList.toggle('selected');
                 } else {
                     createAndShowPicker(event);

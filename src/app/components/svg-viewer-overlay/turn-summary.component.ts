@@ -123,10 +123,16 @@ export class TurnSummaryPanelComponent {
         return u.getUnit().heat >= 0;
     });
 
-    heatGenerated = computed(() => {
+    heatFromMovement = computed(() => {
         const u = this.unit();
         if (!u) return 0;
-        return u.turnState().heatGenerated();
+        return u.turnState().heatGeneratedFromMovement();
+    });
+
+    heatFromStatusEffects = computed(() => {
+        const u = this.unit();
+        if (!u) return 0;
+        return u.turnState().heatGeneratedFromStatusEffects();
     });
 
     heatDissipated = computed(() => {
