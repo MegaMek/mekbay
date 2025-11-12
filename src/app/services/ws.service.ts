@@ -8,7 +8,7 @@
  * version 3 or (at your option) any later version,
  * as published by the Free Software Foundation.
  *
- * MegaMek is distributed in the hope that it will be useful,
+ * MekBay is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty
  * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -33,464 +33,224 @@
 
 import { inject, Injectable, signal } from '@angular/core';
 import { UserStateService } from './userState.service';
-import { LoggerService } from './logger.service';
-import { SerializedForce } from '../models/force-serialization';
 
 /*
  * Author: Drake
  */
 
 export function generateUUID(): string {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        return crypto.randomUUID();
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            return crypto.randomUUID();
+        }
+        
+        // Fallback for non-secure contexts
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
     }
-
-    // Fallback for non-secure contexts
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
-}
 
 @Injectable({
     providedIn: 'root'
 })
 export class WsService {
-    private logger = inject(LoggerService);
     private ws: WebSocket | null = null;
-    private readonly wsUrl = 'wss://mekbay.com/ws';
+    private wsUrl = 'wss://mekbay.com/ws';
     private wsReady?: Promise<void>;
     private wsReadyResolver: (() => void) | null = null;
-    private readonly wsSessionId = generateUUID();
-    private subscriptions = new Map<string, (event: MessageEvent) => void>();
-
-    // Connection state management
-    private reconnectTimeoutId: number | null = null;
-    private shouldReconnect = true;
-    private isConnecting = false;
-    private readonly reconnectDelay = 3000;
-    private readonly connectionTimeout = 3000;
+    private wsSessionId = generateUUID();
+    private subscriptions: Map<string, (data: any) => void> = new Map();
 
     public wsConnected = signal<boolean>(false);
     private userStateService = inject(UserStateService);
+
     private globalErrorHandler: ((message: string) => void) | null = null;
 
+    public setGlobalErrorHandler(handler: (message: string) => void) {
+        this.globalErrorHandler = handler;
+    }
+
     constructor() {
-        this.initializeService();
+        this.initWebSocket();
     }
 
-    /**
-     * Initialize the WebSocket service
-     */
-    private initializeService(): void {
-        this.setupNetworkMonitoring();
-        this.connect();
-    }
-
-    /**
-     * Setup network status monitoring
-     */
-    private setupNetworkMonitoring(): void {
-        window.addEventListener('online', () => {
-            this.handleNetworkOnline();
-        });
-
-        window.addEventListener('offline', () => {
-            this.handleNetworkOffline();
-        });
-    }
-
-    /**
-     * Handle network coming back online
-     */
-    private handleNetworkOnline(): void {
-        this.shouldReconnect = true;
-        if (!this.wsConnected() && !this.isConnecting) {
-            this.clearReconnectTimer();
-            this.scheduleReconnect();
-        }
-    }
-
-    /**
-     * Handle network going offline
-     */
-    private handleNetworkOffline(): void {
-        this.wsConnected.set(false);
-        this.clearReconnectTimer();
-    }
-
-    /**
-     * Connect to WebSocket server
-     */
-    private connect(): void {
-        if (!this.wsUrl || this.isConnecting || (this.ws && this.ws.readyState === WebSocket.CONNECTING)) {
+    private initWebSocket() {
+        if (!this.wsUrl) {
+            this.cleanupWebSocket();
             return;
         }
-
-        this.isConnecting = true;
-        this.clearReconnectTimer();
-
-        // Close existing connection if any
-        if (this.ws) {
-            this.closeWebSocket(false);
-        }
-
-        try {
-            this.ws = new WebSocket(this.wsUrl);
-            this.setupWebSocketHandlers();
-            this.setupConnectionPromise();
-        } catch (error) {
-            this.logger.error(`Failed to create WebSocket: ${error}`);
-            this.isConnecting = false;
-            this.scheduleReconnect();
-        }
-    }
-
-    /**
-     * Setup WebSocket event handlers
-     */
-    private setupWebSocketHandlers(): void {
-        if (!this.ws) return;
-
-        this.ws.onopen = () => this.handleOpen();
-        this.ws.onclose = (event) => this.handleClose(event);
-        this.ws.onerror = () => this.handleError();
-        this.ws.onmessage = (event) => this.handleMessage(event);
-    }
-
-    /**
-     * Setup connection promise
-     */
-    private setupConnectionPromise(): void {
         this.wsReady = new Promise((resolve) => {
             this.wsReadyResolver = resolve;
+            this.connectWebSocket();
         });
     }
 
-    /**
-     * Handle WebSocket open event
-     */
-    private handleOpen(): void {
-        this.logger.info('WebSocket connected');
-        this.isConnecting = false;
-        this.wsConnected.set(true);
-        this.resolveConnectionPromise();
-        this.registerSession();
-    }
-
-    /**
-     * Handle WebSocket close event
-     */
-    private handleClose(event: CloseEvent): void {
-        this.logger.error(`WebSocket closed: ${event.code}, ${event.reason}`);
-        this.isConnecting = false;
-        this.wsConnected.set(false);
-
-        // Only attempt reconnection if we should reconnect and network is online
-        if (this.shouldReconnect && navigator.onLine) {
-            this.scheduleReconnect();
-        }
-    }
-
-    /**
-     * Handle WebSocket error event
-     */
-    private handleError(): void {
-        this.logger.error('WebSocket error occurred');
-        this.isConnecting = false;
-        this.wsConnected.set(false);
-    }
-
-    /**
-     * Handle incoming WebSocket messages
-     */
-    private handleMessage(event: MessageEvent): void {
-        try {
-            const msg = JSON.parse(event.data);
-            if (msg.action === 'error' && this.globalErrorHandler) {
-                this.globalErrorHandler(msg.message || 'Unknown error');
-            }
-        } catch {
-            // Ignore parse errors
-        }
-    }
-
-    /**
-     * Register this session with the server
-     */
-    private registerSession(): void {
-        const uuid = this.userStateService.uuid(); try {
-            this.send({ action: 'register', sessionId: this.wsSessionId, uuid });
-        } catch (error) {
-            this.logger.error(`Failed to register session: ${error}`);
-        }
-    }
-
-    /**
-     * Schedule a reconnection attempt
-     */
-    private scheduleReconnect(): void {
-        this.clearReconnectTimer();
-        this.logger.info(`Scheduling reconnect in ${this.reconnectDelay}ms`);
-        this.reconnectTimeoutId = window.setTimeout(() => {
-            this.connect();
-        }, this.reconnectDelay);
-    }
-
-    /**
-     * Clear reconnection timer
-     */
-    private clearReconnectTimer(): void {
-        if (this.reconnectTimeoutId !== null) {
-            clearTimeout(this.reconnectTimeoutId);
-            this.reconnectTimeoutId = null;
-        }
-    }
-
-    /**
-     * Close WebSocket connection
-     */
-    private closeWebSocket(permanent: boolean): void {
-        if (!this.ws) {
-            if (permanent) {
-                this.shouldReconnect = false;
-                this.clearReconnectTimer();
-            }
+    private connectWebSocket() {
+        if (!this.wsUrl) {
+            this.cleanupWebSocket();
             return;
         }
-        // Remove event handlers to prevent them from firing
-        this.ws.onopen = null;
-        this.ws.onclose = null;
-        this.ws.onerror = null;
-        this.ws.onmessage = null;
+        if (this.ws) this.ws.close();
+        this.ws = new WebSocket(this.wsUrl);
 
-        try {
-            if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
-                this.ws.close();
+        this.ws.onopen = async () => {
+            this.wsConnected.set(true);
+            this.resolveWsReady();
+            const uuid = this.userStateService.uuid();
+            this.send({ action: 'register', sessionId: this.wsSessionId, uuid });
+        };
+
+        this.ws.onclose = () => {
+            this.wsConnected.set(false);
+            setTimeout(() => this.connectWebSocket(), 3000);
+        };
+
+        this.ws.onerror = () => {
+            this.wsConnected.set(false);
+            if (this.ws) this.ws.close();
+        };
+
+        this.ws.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.action === 'error' && this.globalErrorHandler) {
+                    this.globalErrorHandler(msg.message || 'Unknown error');
+                }
+            } catch {
+                // Ignore parse errors
             }
-        } catch (error) {
-            this.logger.error(`Error closing WebSocket: ${error}`);
-        } finally {
-            this.ws = null;
-        }
-
-        if (permanent) {
-            this.shouldReconnect = false;
-            this.clearReconnectTimer();
-        }
+        };
     }
 
-    /**
-     * Resolve the connection promise
-     */
-    private resolveConnectionPromise(): void {
+    private cleanupWebSocket() {
+        if (this.ws) this.ws.close();
+        this.ws = null;
+        this.wsConnected.set(false);
+        this.wsReady = Promise.resolve();
+    }
+
+    private resolveWsReady() {
         if (this.wsReadyResolver) {
             this.wsReadyResolver();
             this.wsReadyResolver = null;
         }
     }
 
-    /**
-     * Wait for WebSocket to be connected
-     */
     public async waitForWebSocket(): Promise<void> {
-        const timeout = new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error('WebSocket connect timeout')), this.connectionTimeout)
+        const wsConnectTimeout = new Promise<void>((_, reject) =>
+            setTimeout(() => reject('WebSocket connect timeout'), 3000)
         );
-
         await Promise.race([
             (async () => {
-                while (!this.wsConnected()) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                }
+                while (!this.wsConnected()) await new Promise(res => setTimeout(res, 100));
             })(),
-            timeout
+            wsConnectTimeout
         ]);
     }
 
-    /**
-     * Set global error handler
-     */
-    public setGlobalErrorHandler(handler: (message: string) => void): void {
-        this.globalErrorHandler = handler;
-    }
-
-    /**
-     * Get WebSocket instance
-     */
     public getWebSocket(): WebSocket | null {
         return this.ws;
     }
 
-    /**
-     * Get session ID
-     */
     public getSessionId(): string {
         return this.wsSessionId;
     }
 
-    /**
-     * Get connection ready promise
-     */
     public getWsReady(): Promise<void> | undefined {
         return this.wsReady;
     }
 
-    /**
-     * Permanently disconnect WebSocket
-     */
-    public disconnectWebSocket(): void {
-        this.closeWebSocket(true);
-        this.wsConnected.set(false);
-        this.wsReady = Promise.resolve();
+    public disconnectWebSocket() {
+        this.cleanupWebSocket();
     }
 
-    /**
-     * Send a message through WebSocket
-     */
     public send(payload: object): void {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            this.logger.warn('Cannot send: WebSocket not connected');
-            return;
-        }
-
-        const message = {
-            ...payload,
-            sessionId: this.wsSessionId,
-            requestId: generateUUID()
-        };
-        try {
-            this.ws.send(JSON.stringify(message));
-        } catch (error) {
-            this.logger.error(`Failed to send message: ${error}`);
-        }
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        const requestId = generateUUID();
+        const message = { ...payload, sessionId: this.getSessionId(), requestId };
+        this.ws.send(JSON.stringify(message));
     }
 
-    /**
-     * Send a message and wait for response
-     */
-    public async sendAndWaitForResponse(payload: object, timeout: number = 5000): Promise<any | null> {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.warn('Cannot send: WebSocket not connected');
-            return null;
-        }
-
+    public async sendAndWaitForResponse(payload: object): Promise<any | null> {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return null;
         const requestId = generateUUID();
-        const message = {
-            ...payload,
-            sessionId: this.wsSessionId,
-            requestId
-        };
-
+        const message = { ...payload, sessionId: this.getSessionId(), requestId };
         const ws = this.ws;
-
+        ws.send(JSON.stringify(message));
         return new Promise<any | null>((resolve) => {
             let timeoutId: number | null = null;
-
             const handler = (event: MessageEvent) => {
                 try {
                     const msg = JSON.parse(event.data);
                     if (msg.requestId === requestId) {
-                        cleanup();
+                        ws.removeEventListener('message', handler);
+                        if (timeoutId) clearTimeout(timeoutId);
                         resolve(msg);
                     }
                 } catch {
-                    // Ignore parse errors
+                    resolve(null);
                 }
             };
-
-            const cleanup = () => {
-                ws.removeEventListener('message', handler);
-                if (timeoutId !== null) {
-                    clearTimeout(timeoutId);
-                }
-            };
-
             ws.addEventListener('message', handler);
-
-            timeoutId = window.setTimeout(() => {
-                cleanup();
-                resolve(null);
-            }, timeout);
-
-            try {
-                ws.send(JSON.stringify(message));
-            } catch (error) {
-                this.logger.error(`Failed to send message: ${error}`);
-                cleanup();
-                resolve(null);
-            }
+            timeoutId = setTimeout(() => {
+                ws.removeEventListener('message', handler);
+                resolve(null); // Timeout fallback
+            }, 5000);
         });
     }
 
-    /**
-     * Subscribe to instance updates
-     */
-    public async subscribeToForceUpdates(instanceId: string, onRemoteUpdate: (data: SerializedForce) => void): Promise<void> {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.warn('Cannot subscribe: WebSocket not connected');
-            return;
-        }
+    public async subscribe(instanceId: string, onRemoteUpdate: (data: string) => void): Promise<void> {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        await this.unsubscribe(instanceId);
+        const subscribePayload = {
+            action: 'subscribe',
+            instanceId,
+        };
+        this.send(subscribePayload);
 
-        // Unsubscribe from previous subscription if exists
-        await this.unsubscribeFromForceUpdates(instanceId);
-
-        // Setup message handler
         const handler = (event: MessageEvent) => {
             try {
                 const msg = JSON.parse(event.data);
-                if (msg.action === 'updatedForce' && msg.data?.instanceId === instanceId) {
-                    onRemoteUpdate(msg.data as SerializedForce);
+                if (
+                    msg.action === 'update' &&
+                    msg.data?.instanceId === instanceId
+                ) {
+                    onRemoteUpdate(msg.data);
                 }
-            } catch {
+            } catch (e) {
                 // Ignore parse errors
             }
         };
-
         this.ws.addEventListener('message', handler);
         this.subscriptions.set(instanceId, handler);
-
-        // Send subscribe message
-        this.send({
-            action: 'subscribeToForceUpdates',
-            instanceId
-        });
-
     }
-
+    
     /**
-     * Unsubscribe from instance updates
+     * Unsubscribes from WebSocket notifications for a specific instance.
+     * @param instanceId The instance ID to unsubscribe from.
      */
-    public async unsubscribeFromForceUpdates(instanceId: string): Promise<void> {
+    public async unsubscribe(instanceId: string): Promise<void> {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
         const handler = this.subscriptions.get(instanceId);
-        if (!handler) return;
-
-        this.subscriptions.delete(instanceId);
-
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            try {
-                this.send({
-                    action: 'unsubscribeFromForceUpdates',
-                    instanceId
-                });
-            } catch (error) {
-                this.logger.error(`Failed to send unsubscribe message: ${error}`);
-            }
-        }
-
-        if (this.ws) {
+        if (handler && this.ws) {
+            const unsubscribePayload = {
+                action: 'unsubscribe',
+                instanceId,
+            };
+            this.ws.send(JSON.stringify(unsubscribePayload));
             this.ws.removeEventListener('message', handler);
+            this.subscriptions.delete(instanceId);
         }
     }
 
     /**
-     * Unsubscribe from all instance updates
+     * Unsubscribes from all WebSocket notifications.
      */
-    public unsubscribeAllForForceUpdates(): void {
-        const instanceIds = Array.from(this.subscriptions.keys());
-        instanceIds.forEach(instanceId => {
-            this.unsubscribeFromForceUpdates(instanceId);
+    public unsubscribeAll(): void {
+        this.subscriptions.forEach((_handler, instanceId) => {
+            this.unsubscribe(instanceId);
         });
     }
+
 }

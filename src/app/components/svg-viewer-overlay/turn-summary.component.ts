@@ -42,6 +42,7 @@ import { LoggerService } from '../../services/logger.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { LayoutService } from '../../services/layout.service';
 import { SvgInteractionOverlayComponent } from './svg-viewer-overlay.component';
 import { canChangeAirborneGround, MotiveModeOption, MotiveModes } from '../../models/motiveModes.model';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
@@ -68,12 +69,6 @@ export class TurnSummaryPanelComponent {
     unit = inject(SvgInteractionOverlayComponent).unit;
     sliderContainer = viewChild<ElementRef<HTMLDivElement>>('sliderContainer');
     private activePointerId: number | null = null;
-
-    dirty = computed(() => {
-        const unit = this.unit();
-        if (!unit) return false;
-        return unit.turnState().dirty();
-    });
 
     damageReceived = computed(() => {
         const unit = this.unit();
@@ -117,22 +112,10 @@ export class TurnSummaryPanelComponent {
         return value;
     });
 
-    tracksHeat = computed(() => {
-        const u = this.unit();
-        if (!u) return false;
-        return u.getUnit().heat >= 0;
-    });
-
-    heatFromMovement = computed(() => {
+    heatGenerated = computed(() => {
         const u = this.unit();
         if (!u) return 0;
-        return u.turnState().heatGeneratedFromMovement();
-    });
-
-    heatFromStatusEffects = computed(() => {
-        const u = this.unit();
-        if (!u) return 0;
-        return u.turnState().heatGeneratedFromStatusEffects();
+        return u.turnState().heatGenerated();
     });
 
     heatDissipated = computed(() => {
@@ -152,7 +135,7 @@ export class TurnSummaryPanelComponent {
     }
 
     endTurn() {
-        this.unit()?.endTurn();
+        this.unit()?.resetTurnState();
     }
 
     openPsrWarning(event: MouseEvent) {
@@ -191,11 +174,8 @@ export class TurnSummaryPanelComponent {
         if (!u) return;
         const turnState = u.turnState();
         const currentAirborne = turnState.airborne();
-        if (currentAirborne === airborne) {
-            turnState.airborne.set(null);
-        } else {
-            turnState.airborne.set(airborne);
-        }
+        if (currentAirborne === airborne) return;
+        turnState.airborne.set(airborne);
         turnState.moveMode.set(null);
         turnState.moveDistance.set(null);
     }
@@ -219,20 +199,7 @@ export class TurnSummaryPanelComponent {
                 turnState.moveDistance.set(null);
             }
         }
-        turnState.moveDistance.set(null);
     }
-
-    overDistance = computed<boolean>(() => {
-        const u = this.unit();
-        if (!u) return false;
-        const turnState = u.turnState();
-        turnState.airborne();
-        turnState.moveMode();
-        const moveDistance = this.moveDistance();
-        const maxDistance = turnState.maxDistanceCurrentMoveMode();
-        if (moveDistance === null) return false;
-        return moveDistance > maxDistance;
-    });
 
     moveDistance = computed(() => {
         const u = this.unit();
@@ -240,18 +207,8 @@ export class TurnSummaryPanelComponent {
         return u.turnState().moveDistance() || 0;
     });
 
-    moveMax = computed(() => {
-        const u = this.unit();
-        if (!u) return this.MOVE_MAX;
-        const baseUnit = u.getUnit();
-        if (!baseUnit) return this.MOVE_MAX;
-        const mode = u.turnState().moveMode();
-        if (!mode) return this.MOVE_MAX;
-        return Math.min(this.MOVE_MAX, u.turnState().maxDistanceCurrentMoveMode());
-    });
-
     moveDistancePercent = computed(() => {
-        const max = this.moveMax();
+        const max = this.MOVE_MAX;
         const val = this.moveDistance() || 0;
         return Math.max(0, Math.min(100, (val / max) * 100));
     });
@@ -271,15 +228,13 @@ export class TurnSummaryPanelComponent {
     });
 
     private percentToValue(percent: number): number {
-        const max = this.moveMax();
-        const v = this.MOVE_MIN + percent * (max - this.MOVE_MIN);
+        const v = this.MOVE_MIN + percent * (this.MOVE_MAX - this.MOVE_MIN);
         return this.alignToStep(v);
     }
 
     private alignToStep(value: number): number {
-        const max = this.moveMax();
         const stepped = Math.round(value / 1);
-        return Math.max(this.MOVE_MIN, Math.min(max, stepped));
+        return Math.max(this.MOVE_MIN, Math.min(this.MOVE_MAX, stepped));
     }
 
     onMoveDistanceInput(event: Event) {

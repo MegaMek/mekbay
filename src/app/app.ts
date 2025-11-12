@@ -87,7 +87,7 @@ export class App {
     logger = inject(LoggerService);
     private swUpdate = inject(SwUpdate);
     protected dataService = inject(DataService);
-    forceBuilderService = inject(ForceBuilderService);
+    private forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
     private wsService = inject(WsService);
     private dialogService = inject(DialogsService);
@@ -112,9 +112,6 @@ export class App {
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
 
     constructor() {
-        if ("virtualKeyboard" in navigator) {
-            (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
-        }
         this.dataService.initialize();
         document.addEventListener('contextmenu', (event) => event.preventDefault());
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
@@ -175,9 +172,9 @@ export class App {
     hasUnits = computed(() => this.forceBuilderService.forceUnits().length > 0);
     selectedUnit = computed(() => this.forceBuilderService.selectedUnit());
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
-    
     @HostListener('window:online')
     onOnline() {
+        this.logger.info('Back online!');
         this.checkForUpdate();
     }
 
@@ -254,7 +251,27 @@ export class App {
     }
 
     showLoadForceDialog(): void {
-        this.forceBuilderService.showLoadForceDialog();
+        const ref = this.dialogService.createDialog(ForceLoadDialogComponent);
+        ref.componentInstance?.load.subscribe(async (force) => {
+            if (force instanceof LoadForceEntry) {
+                const requestedForce = await this.dataService.getForce(force.instanceId);
+                if (!requestedForce) {
+                    this.toastService.show('Failed to load force.', 'error');
+                    return;
+                }
+                this.forceBuilderService.loadForce(requestedForce);
+            } else {
+                if (force && force.units && force.units.length > 0) {
+                    await this.forceBuilderService.createNewForce();
+                    const group = this.forceBuilderService.addGroup();
+                    for (const unit of force.units) {
+                        if (!unit?.unit) continue;
+                        this.forceBuilderService.addUnit(unit.unit, undefined, undefined, group);
+                    }
+                }
+            }
+            ref.close();
+        });
     }
 
     showSingleUnitDetails(unit: Unit, tab?: string) {

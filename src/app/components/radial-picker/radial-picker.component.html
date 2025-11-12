@@ -47,7 +47,6 @@
                 [class.selected]="isSelected(choice)"
                 [class.highlight]="isHovered(choice) && !choice.disabled"
                 [class.disabled]="choice.disabled"
-                [class.active]="choice.active"
                 (pointerenter)="setHoveredChoice(choice)"
                 (pointerleave)="resetHovered()"
                 (pointerdown)="setHoveredChoice(choice)"
@@ -63,7 +62,6 @@
                     [class.selected]="isSelected(choice)"
                     [class.highlight]="isHovered(choice) && !choice.disabled"
                     [class.disabled]="choice.disabled"
-                    [class.active]="choice.active"
                     (pointerenter)="setHoveredChoice(choice)"
                     (pointerleave)="resetHovered()"
                     (pointerdown)="setHoveredChoice(choice)"
@@ -88,7 +86,6 @@
                     [class.selected]="isSelected(choice)"
                     [class.highlight]="isHovered(choice) && !choice.disabled"
                     [class.disabled]="choice.disabled"
-                    [class.active]="choice.active"
                     (pointerenter)="setHoveredChoice(choice)"
                     (pointerleave)="resetHovered()"
                     (pointerdown)="setHoveredChoice(choice)"
@@ -113,7 +110,7 @@
                 dy=".07em"
                 class="radial-center-value"
             >
-                {{ hoveredChoice()?.shortLabel ?? hoveredChoice()?.value ?? '' }}
+                {{ hoveredChoice()?.value ?? '' }}
             </text>
         }
         <path

@@ -233,12 +233,12 @@ export class ForceLoadDialogComponent {
         if (!force) return;
         if (!force.instanceId) return;
 
-        const confirmed = await this.dialogsService.requestConfirmation(
+        const confirmed = await this.dialogsService.showQuestion(
             `Are you sure you want to delete "${force.name}"? This action cannot be undone.`,
             'Delete Force',
             'danger'
         );
-        if (confirmed) {
+        if (confirmed === 'yes') {
             if (force.instanceId) {
                 await this.dataService.deleteForce(force.instanceId);
             }

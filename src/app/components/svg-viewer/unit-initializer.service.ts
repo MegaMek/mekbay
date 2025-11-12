@@ -32,10 +32,8 @@
  */
 
 import { inject, Injectable, Injector } from '@angular/core';
-import { ForceUnit } from '../../models/force-unit.model';
-import { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
+import { CriticalSlot, ForceUnit, MountedEquipment } from '../../models/force-unit.model';
 import { DataService } from '../../services/data.service';
-import { Equipment } from '../../models/equipment.model';
 
 /*
  * Author: Drake
@@ -162,10 +160,10 @@ export class UnitInitializerService {
         let newSlotsFound = false;
 
         critSlotsEl.forEach(critSlotEl => {
-            const id = critSlotEl.getAttribute('uid');
+            const uid = critSlotEl.getAttribute('uid');
             const loc = critSlotEl.getAttribute('loc');
             const armored = critSlotEl.getAttribute('armored') === '1';
-            if (!loc || !id) return;
+            if (!loc) return;
 
             const slot = parseInt(critSlotEl.getAttribute('slot') as string, 10);
             if (isNaN(slot)) return;
@@ -173,10 +171,7 @@ export class UnitInitializerService {
             if (critSlotMatrix[loc]?.[slot]) { // found, we keep it
                 const critSlot = critSlotMatrix[loc][slot];
                 critSlot.el = critSlotEl;
-                if (critSlot.id && critSlot.id !== id) {
-                    console.warn(`Critical slot ID mismatch for loc ${loc} slot ${slot}: expected ${critSlot.id}, found ${id}`);
-                }
-                critSlot.id = id;
+                critSlot.uid = uid ?? undefined;
                 if (critSlot.name) {
                     critSlot.eq = equipmentList[critSlot.name];
                 }
@@ -189,7 +184,7 @@ export class UnitInitializerService {
             const name = critSlotEl.getAttribute('name') || '';
             const critSlot: CriticalSlot = {
                 el: critSlotEl,
-                id: id,
+                uid: uid ?? undefined,
                 name: name,
                 loc: loc,
                 slot: slot,
@@ -230,17 +225,16 @@ export class UnitInitializerService {
             const type = el.getAttribute('type');
             if (!id || !type) return;
 
-            const existingCritLoc = critLocs.find(loc => loc.id === id || loc.name === id);
+            const existingCritLoc = critLocs.find(loc => loc.name === id);
             if (existingCritLoc) { // found, we keep it
-                existingCritLoc.id = id; // in case it was missing because we got it from the name
                 existingCritLoc.el = el;
                 criticalLocs.push(existingCritLoc);
                 return;
             }
 
             const critLoc: CriticalSlot = {
-                id: id,
-                el: el
+                el: el,
+                name: id
             };
 
             criticalLocs.push(critLoc);
@@ -255,15 +249,14 @@ export class UnitInitializerService {
     private getInventoryElements(unit: ForceUnit, svg: SVGSVGElement, inventoryEntryEls: NodeListOf<SVGElement>): MountedEquipment[] {
         const inventoryEntries: MountedEquipment[] = [];
         const allCritSlots = unit.getCritSlots();
-        const currentInventory = unit.getInventory();
         inventoryEntryEls.forEach(entryEl => {
             const id = entryEl.getAttribute('id') || '';
-            const iPhysAtk = entryEl.getAttribute('iPhysAtk') || null; // TODO: rewrite it and handle differently
+            const iPhysAtk = entryEl.getAttribute('iPhysAtk') || null;
             if (!id) return;
             entryEl.classList.add('interactive');
-            const critSlots = allCritSlots.filter(slot => slot.id === id);
+            const critSlots = allCritSlots.filter(slot => slot.uid === id);
             let name = '';
-            let eq: Equipment | undefined = undefined;
+            let eq = null;
             
             let locations = new Set<string>();
             if (critSlots.length > 0) {
@@ -293,37 +286,20 @@ export class UnitInitializerService {
                     svg.querySelector(`.inventoryEntryButton[inventory-id="${id}"]`)?.remove();
                 }
             }
-            const baseHitModClean = (baseHitMod || '').replace('−', '-');
-            let inventoryEntry: MountedEquipment;
-            const existingEntry = currentInventory.find(item => item.id === id);
-            if (existingEntry) {
-                inventoryEntry = { ...existingEntry };
-                // full refresh (but is it really needed?)
-                inventoryEntry.name = iPhysAtk || name;
-                inventoryEntry.locations = locations;
-                inventoryEntry.equipment = eq;
-                inventoryEntry.baseHitMod = baseHitModClean;
-                inventoryEntry.physical = !!iPhysAtk;
-                inventoryEntry.linkedWith = null;
-                inventoryEntry.parent = null;
-                inventoryEntry.critSlots = critSlots;
-                inventoryEntry.el = entryEl;
-            } else {
-                inventoryEntry = {
-                    owner: unit,
-                    id: id,
-                    name: iPhysAtk || name,
-                    locations: locations,
-                    equipment: eq,
-                    baseHitMod: baseHitModClean,
-                    physical: !!iPhysAtk,
-                    linkedWith: null,
-                    parent: null,
-                    destroyed: false,
-                    critSlots: critSlots,
-                    el: entryEl
-                };
-            }
+            const inventoryEntry: MountedEquipment = {
+                owner: unit,
+                id: id,
+                name: iPhysAtk || name,
+                locations: locations,
+                equipment: eq,
+                baseHitMod: (baseHitMod || '').replace('−', '-'),
+                physical: !!iPhysAtk,
+                linkedWith: null,
+                parent: null,
+                destroyed: false,
+                critSlots: critSlots,
+                el: entryEl
+            };
             const subElements = entryEl.querySelectorAll('.inventoryEntry') as NodeListOf<SVGElement>;
             if (subElements.length > 0) {
                 const linkedWith = this.getInventoryElements(unit, svg, subElements);

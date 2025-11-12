@@ -35,8 +35,7 @@ import { Component, computed, Injector, ElementRef, effect, inject, OnDestroy, C
 import { CommonModule } from '@angular/common';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
-import { Force, UnitGroup } from '../../models/force.model';
-import { ForceUnit } from '../../models/force-unit.model';
+import { ForceUnit, UnitGroup } from '../../models/force-unit.model';
 import { DragDropModule, CdkDragDrop, moveItemInArray, CdkDragMove } from '@angular/cdk/drag-drop'
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
@@ -59,7 +58,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     protected forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
     compactModeService = inject(CompactModeService);
-    private dialogsService = inject(DialogsService);
+    private dialogService = inject(DialogsService);
     private injector = inject(Injector);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
     private newGroupDropzone = viewChild<ElementRef<HTMLElement>>('newGroupDropzone');
@@ -140,24 +139,11 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         }
     }
 
-    async repairUnit(event: MouseEvent, unit: ForceUnit) {
-        event.stopPropagation();
-        const confirmed = await this.dialogsService.requestConfirmation(
-            `Are you sure you want to repair the unit "${unit.getUnit()?.chassis} ${unit.getUnit()?.model}"? This will reset all damage and status effects.`,
-            `Repair ${unit.getUnit()?.chassis}`,
-            'info');
-        if (confirmed) {
-            unit.repairAll();
-            return true;
-        };
-        return false;
-    }
-
     showUnitInfo(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
         const unitList = this.forceBuilderService.forceUnits();
         const unitIndex = unitList.findIndex(u => u.id === unit.id);
-        const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+        const ref = this.dialogService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: unitList,
                 unitIndex: unitIndex
@@ -382,7 +368,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     }
 
     shareForce() {
-        this.dialogsService.createDialog(ShareForceDialogComponent);
+        this.dialogService.createDialog(ShareForceDialogComponent);
     }
 
     onEmptyGroupClick(group: UnitGroup) {

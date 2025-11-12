@@ -51,7 +51,6 @@ import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '../../directives/swipe.directive';
-import { LayoutService } from '../../services/layout.service';
 
 /*
  * Author: Drake
@@ -117,7 +116,6 @@ interface ManufacturerInfo {
 })
 export class UnitDetailsDialogComponent {
     dataService = inject(DataService);
-    layoutService = inject(LayoutService);
     forceBuilderService = inject(ForceBuilderService);
     dialogRef = inject(DialogRef<UnitDetailsDialogComponent>);
     data = inject(DIALOG_DATA) as UnitDetailsDialogData;
@@ -127,6 +125,7 @@ export class UnitDetailsDialogComponent {
     injector = inject(Injector);
     add = output<Unit>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
+    private swipeDirective = viewChild<SwipeDirective>(SwipeDirective);
 
     tabs = ['General', 'Intel', 'Factions', 'Sheet'];
     activeTab = signal(this.tabs[0]);
@@ -223,10 +222,6 @@ export class UnitDetailsDialogComponent {
                 queryParamsHandling: 'merge',
                 replaceUrl: true
             });
-        });
-        effect(() => {
-            this.layoutService.windowWidth();
-            this.updateUseMatrixLayout();
         });
     }
 
@@ -746,6 +741,11 @@ export class UnitDetailsDialogComponent {
 
     areaHasBays(areaName: string): boolean {
         return (this.baysForArea.get(areaName)?.length || 0) > 0;
+    }
+
+    @HostListener('window:resize')
+    onWindowResize() {
+        this.updateUseMatrixLayout();
     }
 
     // Keyboard navigation (Left/Right)

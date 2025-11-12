@@ -5,12 +5,11 @@ import { Unit } from '../../models/units.model';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
-import { CdkMenuModule } from '@angular/cdk/menu';
 
 @Component({
     selector: 'unit-block',
     standalone: true,
-    imports: [CommonModule, CdkMenuModule, FormatNumberPipe, FormatTonsPipe],
+    imports: [CommonModule, FormatNumberPipe, FormatTonsPipe],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
     styleUrls: ['./unit-block.component.scss'],
@@ -22,23 +21,9 @@ export class UnitBlockComponent {
     onInfo = output<MouseEvent>();
     onRemoveUnit = output<MouseEvent>();
     onToggleC3 = output<MouseEvent>();
-    onToggleECM = output<MouseEvent>();
-    onRepairUnit = output<MouseEvent>();
 
     unit = computed<Unit | undefined>(() => {
         return this.forceUnit()?.getUnit();
-    });
-
-    getECMStatus = computed(() => {
-        const unit = this.forceUnit();
-        if (!unit) return true;
-        return false;
-    });
-
-    hasECM = computed(() => {
-        const unit = this.unit();
-        if (!unit) return false;
-        return unit.comp.some(eq => eq.eq?.flags.has('F_ECM'));
     });
 
     imgSrc = computed(() => {
@@ -56,13 +41,7 @@ export class UnitBlockComponent {
     });
 
     clickInfo(event: MouseEvent) {
-        event.stopPropagation();
         this.onInfo.emit(event);
-    }
-
-    repairUnit(event: MouseEvent) {
-        event.stopPropagation();
-        this.onRepairUnit.emit(event);
     }
 
     clickRemove(event: MouseEvent) {
@@ -73,10 +52,5 @@ export class UnitBlockComponent {
     toggleC3Link(event: MouseEvent): void {
         event.stopPropagation();
         this.onToggleC3.emit(event);
-    }
-
-    toggleECMMode(event: MouseEvent): void {
-        event.stopPropagation();
-        this.onToggleECM.emit(event);
     }
 }
