@@ -19,7 +19,6 @@
         </svg>
         } @else {
         <svg [class.dirty]="dirty()" 
-        [class.move]="phase === 'M'"
         [class.ranged]="phase === 'W'"
         [class.physical]="phase === 'P'"
         [class.heat]="phase === 'H'"
