@@ -168,6 +168,12 @@ export class Sanitizer {
             case 'date':
                 const date = value instanceof Date ? value : new Date(value as any);
                 return isNaN(date.getTime()) ? (rule.default ?? new Date()) : date;
+            case 'custom':
+                try {
+                    return rule.validate(value, options);
+                } catch (e) {
+                    return rule.default;
+                }
             case 'any':
                 return value;
             default:
@@ -288,6 +294,11 @@ export class SchemaBuilder<T extends object> {
         return this;
     }
 
+    custom<K extends keyof T>(key: K, validator: (value: unknown, options: SanitizeOptions) => T[K], opts?: { default?: T[K] }): this {
+        this._rules[key] = { kind: 'custom', validate: validator, default: opts?.default } as Rule;
+        return this;
+    }
+
     build(): Schema<T> {
         return new Schema(this._rules as Record<keyof T, Rule>);
     }
@@ -317,7 +328,7 @@ export interface SanitizeOptions {
     removeNulls?: boolean;
 }
 
-type Rule = StringRule | NumberRule | BooleanRule | ObjectRule | ArrayRule | RecordRule | EnumRule | DateRule | AnyRule;
+type Rule = StringRule | NumberRule | BooleanRule | ObjectRule | ArrayRule | RecordRule | EnumRule | DateRule | AnyRule | CustomRule;
 
 interface StringRule {
     kind: 'string';
@@ -376,6 +387,12 @@ interface DateRule {
 
 interface AnyRule {
     kind: 'any';
+    default?: any;
+}
+
+interface CustomRule {
+    kind: 'custom';
+    validate: (value: unknown, options: SanitizeOptions) => any;
     default?: any;
 }
 
