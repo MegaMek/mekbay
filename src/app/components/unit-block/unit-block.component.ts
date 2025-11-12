@@ -38,20 +38,14 @@ export class UnitBlockComponent {
         const unit = this.unit();
         if (!unit) return false;
         const hasECM = unit.comp.some(eq => eq.eq?.flags.has('F_ECM'));
-        if (hasECM) {
-            const mountedECM = this.forceUnit()?.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
-            if (mountedECM) {
-                return true;
-            }
-        }
-        return false;
+        return hasECM;
     });
 
     getECMMode = computed(() => {
         const unit = this.unit();
-        if (!unit) return 'N/A';
+        if (!unit) return '';
         const mountedECM = this.forceUnit()?.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
-        return mountedECM ? mountedECM.state : 'Off';
+        return mountedECM ? mountedECM.state : '';
     });
 
     imgSrc = computed(() => {
