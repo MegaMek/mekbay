@@ -79,9 +79,6 @@
         width: 30px;
         height: 90px;
         border: none;
-        background-color: rgba(45, 45, 45, 0.8);
-        backdrop-filter: blur(5px);
-        -webkit-backdrop-filter: blur(5px);
         color: var(--text-color);
         cursor: pointer;
         display: flex;
@@ -145,7 +142,6 @@
     z-index: 70;
     width: calc(var(--sidebar-expanded-width) + var(--safe-area-inset-left));
     transition: transform 180ms ease;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
     will-change: transform;
     touch-action: none;
     display: flex;

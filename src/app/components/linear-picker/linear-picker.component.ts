@@ -54,6 +54,7 @@ import { PickerComponent, PickerChoice, PickerValue } from '../picker/picker.int
                     [class.selected]="isSelected(choice)"
                     [class.highlight]="isHovered(choice) && !choice.disabled"
                     [class.disabled]="choice.disabled"
+                    [class.active]="choice.active"
                     [attr.data-title]="isSelected(choice) ? title() : null"
                     (pointerenter)="setHoveredChoice(choice)"
                     (pointerleave)="resetHovered()"

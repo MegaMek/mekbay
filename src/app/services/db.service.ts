@@ -38,7 +38,9 @@ import { Factions } from '../models/factions.model';
 import { Options } from '../models/options.model';
 import { Quirks } from '../models/quirks.model';
 import { EquipmentData } from '../models/equipment.model';
-import { Force, SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-unit.model';
+import { Force, UnitGroup } from '../models/force.model';
+import { ForceUnit } from '../models/force-unit.model';
+import { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { Injector } from '@angular/core';
@@ -395,7 +397,7 @@ export class DbService {
                 await Promise.all(unitIds.map(id => this.deleteCanvasData(id)));
             }
         } else if (force.units) {
-            // Backwards compatibility for forces without groups
+            //DEPRECATED: Backwards compatibility for forces without groups
             const unitIds = force.units.map(unit => unit.id).filter(id => id);
             await Promise.all(unitIds.map(id => this.deleteCanvasData(id)));
         }

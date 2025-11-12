@@ -33,7 +33,8 @@
 
 import { computed } from "@angular/core";
 import { linkedLocs, uidTranslations } from "../components/svg-viewer/common";
-import { CriticalSlot, ForceUnit, MountedEquipment } from "../models/force-unit.model";
+import { ForceUnit } from "../models/force-unit.model";
+import { CriticalSlot, MountedEquipment } from "../models/force-serialization";
 import { UnitSvgService } from "./unit-svg.service";
 
 /*
@@ -150,7 +151,7 @@ export class UnitSvgMekService extends UnitSvgService {
         }
     }
 
-    private systemsStatus = computed(() => {
+    systemsStatus = computed(() => {
         const critSlots = this.unit.getCritSlots();        
         const hasMASC = critSlots.some(slot => slot.name && slot.name.includes('MASC'));
         const destroyedMASC = critSlots.some(slot => slot.name && slot.name.includes('MASC') && slot.destroyed);
@@ -264,7 +265,7 @@ export class UnitSvgMekService extends UnitSvgService {
         };
     });
 
-    private unitState = computed(() => {
+    unitState = computed(() => {
         const svg = this.unit.svg();
         if (!svg) return;
         const unit = this.unit.getUnit();
@@ -490,6 +491,8 @@ export class UnitSvgMekService extends UnitSvgService {
             }
         }
         this.unit.getInventory().forEach(entry => {
+            if (!entry.el) return;
+            if (!entry.locations) return;
             let isDamaged = false;
             let isDisabled = false;
             let hitMod = 0;
@@ -502,7 +505,7 @@ export class UnitSvgMekService extends UnitSvgService {
                     hitMod += unitState.singleArmMod[singleLoc as ArmLocation];
                 }
             }
-            if (entry.critSlots.filter(slot => slot.destroyed).length > 0) {
+            if (entry.critSlots && entry.critSlots.filter(slot => slot.destroyed).length > 0) {
                 isDamaged = true;
             }
             if (entry.physical) {
@@ -665,10 +668,6 @@ export class UnitSvgMekService extends UnitSvgService {
             if (entry.el) {
                 entry.el.classList.toggle('disabledInventory', isDisabled);
                 entry.el.classList.toggle('damagedInventory', isDamaged);
-                entry.el.classList.toggle('interactive', !isDamaged && !isDisabled);
-                if (isDamaged || isDisabled) {
-                    entry.el.classList.remove('selected');
-                }
             }
         });
     }
@@ -677,6 +676,7 @@ export class UnitSvgMekService extends UnitSvgService {
         const svg = this.unit.svg();
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
+            if (!entry.el) return;
             const hitModifier = this.calculateHitModifiers(this.unit, entry, entry.hitModVariation || 0);
             if (entry.baseHitMod !== 'Vs' && hitModifier !== null) {
                 const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);
@@ -730,7 +730,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 const maxHits = critSlot.armored ? 2 : 1;
                 const destroyed = (locDestroyed || (critSlot.hits ?? 0) >= maxHits);
                 if (!!destroyed !== !!critSlot.destroyed) {
-                    critSlot.destroyed = destroyed;
+                    critSlot.destroyed = destroyed ? Date.now() : undefined;
                     this.unit.setCritSlot(critSlot);
                 }
             }

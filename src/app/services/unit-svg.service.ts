@@ -32,7 +32,9 @@
  */
 
 import { untracked, Injectable, Injector, effect, EffectRef, OnDestroy, inject } from '@angular/core';
-import { ForceUnit, CrewMember, SkillType, CriticalSlot, MountedEquipment } from '../models/force-unit.model';
+import { ForceUnit } from '../models/force-unit.model';
+import { CrewMember, SkillType } from '../models/crew-member.model';
+import { CriticalSlot, MountedEquipment } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
@@ -681,12 +683,12 @@ export class UnitSvgService implements OnDestroy {
 
         const heatsinkGroups = new Map<string, { dissipation: number, slots: CriticalSlot[] }>();
         heatSinkSlots.forEach(slot => {
-            if (!slot.uid) return;
-            if (!heatsinkGroups.has(slot.uid)) {
+            if (!slot.id) return;
+            if (!heatsinkGroups.has(slot.id)) {
                 const dissipation = Number(slot.el?.getAttribute('hs') ?? 1);
-                heatsinkGroups.set(slot.uid, { dissipation, slots: [] });
+                heatsinkGroups.set(slot.id, { dissipation, slots: [] });
             }
-            heatsinkGroups.get(slot.uid)!.slots.push(slot);
+            heatsinkGroups.get(slot.id)!.slots.push(slot);
         });
 
         const destroyedSuperCooledMyomer = this.unit.getCritSlots().filter(slot => slot.name && slot.name.includes('SuperCooledMyomer') && slot.destroyed).length;
@@ -795,6 +797,7 @@ export class UnitSvgService implements OnDestroy {
             }
         });
         this.unit.getInventory().forEach(entry => {
+            if (!entry.el) return;
             let additionalModifiers = 0;
             if (entry.destroyed && entry.el) {
                 const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);
@@ -871,12 +874,8 @@ export class UnitSvgService implements OnDestroy {
         const svg = this.unit.svg();
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
-            if (entry.destroyed) {
-                entry.el.classList.add('damagedInventory');
-                entry.el.classList.remove('selected');
-            } else {
-                entry.el.classList.remove('damagedInventory');
-            }
+            if (!entry.el) return;
+            entry.el.classList.toggle('damagedInventory', entry.destroyed);
         });
     }
 

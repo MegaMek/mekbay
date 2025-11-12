@@ -167,7 +167,8 @@ export class UnitSearchComponent {
     constructor() {
         effect(() => {
             if (this.advOpen()) {
-                this.layoutService.isPortraitOrientation();
+                this.layoutService.windowWidth();
+                this.layoutService.windowHeight();
                 this.advPanelUserColumns();
                 this.updateAdvPanelPosition();
                 this.updateResultsDropdownPosition();
@@ -176,7 +177,8 @@ export class UnitSearchComponent {
         effect(() => {
             this.advPanelUserColumns();
             if (this.resultsVisible()) {
-                this.layoutService.isPortraitOrientation();
+                this.layoutService.windowWidth();
+                this.layoutService.windowHeight();
                 this.updateResultsDropdownPosition();
             }
         });
@@ -277,7 +279,7 @@ export class UnitSearchComponent {
             try { this.searchInput()?.nativeElement.focus(); } catch { /* ignore */ }
         }, { injector: this.injector });
     }
-    
+
     blurInput() {
         try { this.searchInput()?.nativeElement.blur(); } catch { /* ignore */ }
     }
@@ -302,16 +304,6 @@ export class UnitSearchComponent {
             this.searchInput().nativeElement.focus();
         } else {
             this.focused.set(true);
-        }
-    }
-
-    @HostListener('window:resize')
-    onWindowResize() {
-        if (this.advOpen()) {
-            this.updateAdvPanelPosition();
-        }
-        if (this.resultsVisible()) {
-            this.updateResultsDropdownPosition();
         }
     }
 
@@ -621,7 +613,7 @@ export class UnitSearchComponent {
             this.advOpen.set(false);
         }
         this.activeIndex.set(null);
-        try { 
+        try {
             (document.activeElement as HTMLElement)?.blur();
         } catch { /* ignore */ }
     }
@@ -735,7 +727,7 @@ export class UnitSearchComponent {
 
         // Handle tag selection for all selected units
         componentRef.instance.tagSelected.subscribe(async (selectedTag: string) => {
-             this.overlayManager.closeManagedOverlay('tagSelector');
+            this.overlayManager.closeManagedOverlay('tagSelector');
 
             // If "Add new tag..." was selected, show text input dialog
             if (selectedTag === '__new__') {

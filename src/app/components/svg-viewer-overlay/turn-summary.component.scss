@@ -100,12 +100,6 @@
         text-align: center;
     }
 
-    .move-button.selected {
-        background-color: var(--bt-yellow);
-        color: #000;
-    }
-
-
     .move-slider-container {
         position: relative;
         width: calc(100% - 40px);
@@ -175,7 +169,12 @@
 
             &.valueAssigned {
                 background: var(--bt-yellow);
-            color: #000;
+                color: #000;
+            }
+
+            &.danger {
+                background: var(--danger);
+                color: #fff;
             }
         }
 

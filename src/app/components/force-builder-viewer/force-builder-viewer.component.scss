@@ -219,8 +219,7 @@
 
 .cdk-drag-placeholder ::ng-deep .unit-card {
     opacity: 0.3;
-    border: 1px dashed #aaa;
-    border-left-width: 5px;
+    border-color: #aaa;
 }
 
 .cdk-drag-animating {

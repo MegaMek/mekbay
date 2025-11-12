@@ -34,7 +34,7 @@
 /*
  * Author: Drake
  */
-import { IEquipment } from "./equipment.model";
+import { Equipment } from "./equipment.model";
 import { Era } from "./eras.model";
 
 // Weapon/component info for comp.w
@@ -63,7 +63,7 @@ export interface UnitComponent {
     c?: string;      // slots/criticals
     os?: number;     // oneshot (0 = no, 1 = oneshot, 2 = double oneshot)
     bay?: UnitComponent[];
-    eq?: IEquipment;
+    eq?: Equipment; // linked equipment data
 }
 export interface Unit {
     name: string;
@@ -95,9 +95,11 @@ export interface Unit {
     dissipation: number;
     moveType: 'Aerodyne' | 'Biped' | 'Hover' | 'Hydrofoil' | 'Jump' | 'Leg' | 'Microcopter' | 'Motorized' | 'Motorized SCUBA' | 'Naval' | 'None' | 'Quad' | 'Rail' | 'Spheroid' | 'Submarine' | 'Tracked' | 'Tripod' | 'UMU' | 'VTOL' | 'Wheeled' | 'WiGE';
     walk: number;
+    walk2: number; // Max possible
     run: number; // Without MASC systems
-    run2: number; // With MASC systems
+    run2: number; // Max possible
     jump: number;
+    jump2: number; // Max possible
     umu: number; // UMU movement points
     c3: string;
     dpt: number;

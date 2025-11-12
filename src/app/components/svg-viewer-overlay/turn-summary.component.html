@@ -37,10 +37,10 @@
             @if (currentMoveMode() !== 'stationary' && currentMoveMode() !== null) {
             <div class="row">
                 <div class="move-slider-container" #sliderContainer tabindex="0" (keydown)="onKeyDown($event)">
-                    <input class="range" type="range" [attr.min]="MOVE_MIN" [attr.max]="MOVE_MAX"
+                    <input class="range" type="range" [attr.min]="MOVE_MIN" [attr.max]="moveMax()"
                         [value]="moveDistance()" (input)="onMoveDistanceInput($event)" aria-label="Move distance" />
                     <div class="thumb-marker" [style.left.%]="moveDistancePercent()" (pointerdown)="startDrag($event)">
-                        <div class="hex" [class.valueAssigned]="hasMoveDistance()">{{ moveDistanceLabel() }}</div>
+                        <div class="hex" [class.valueAssigned]="hasMoveDistance()" [class.danger]="overDistance()">{{ moveDistanceLabel() }}</div>
                     </div>
                 </div>
             </div>
@@ -53,9 +53,6 @@
         <div class="row">
             @let modifierAtk = getTargetModifierAsAttacker();
             <span>Attack Modifier:</span><span>{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>
-        </div>
-        <div class="row">
-            <dice-roller #diceComp [diceCount]="2" [modifier]="modifierAtk"></dice-roller>
         </div>
     </div>
     <div class="group">
@@ -71,31 +68,27 @@
             </div>
         </div>
     </div>
-    <div class="group">
-        <div class="phaseTitle">Heat</div>
-        <div class="summary-entry">
-            <div class="row"><span>Heat generated:</span><span>{{ heatGenerated() }}</span></div>
-            <div class="row"><span>Heat dissipated:</span><span>{{ heatDissipated() }}</span></div>
-            <div class="row"><span>Total Heat:</span><span>{{ totalHeatDelta() }}</span></div>
+    @if (tracksHeat()) {
+        <div class="group">
+            <div class="phaseTitle">Heat</div>
+            <div class="summary-entry">
+                <div class="row"><span>Movement:</span><span>{{ heatFromMovement() }}</span></div>
+                <div class="row"><span>Status Effects:</span><span>{{ heatFromStatusEffects() }}</span></div>
+            </div>
         </div>
-    </div>
-    <button role="button" class="summary-entry bt-button" tabindex="0">
-        Apply Heat
-    </button>
+        <!-- <button role="button" class="summary-entry bt-button" tabindex="0">
+            Apply Heat
+        </button> -->
+    }
     @if (hasPSRChecks()) {
     <button role="button" class="summary-entry bt-button warning" (click)="openPsrWarning($event)" tabindex="0">
         ⚠ PSR Check! ({{ PSRChecksCount() }})
     </button>
     }
+    @if (dirty()) {
     <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurn()">
         End Turn
     </button>
-
-    <div class="group">
-        <div class="summary-entry">
-            <div class="row">
-                <dice-roller #diceComp [diceCount]="2"></dice-roller>
-            </div>
-        </div>
-    </div>
+    }
+    <span style="font-size: 9px; text-align: center;">This feature is currently under development.</span>
 </div>

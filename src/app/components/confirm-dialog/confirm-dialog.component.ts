@@ -55,6 +55,9 @@ export interface ConfirmDialogData<T = any> {
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule],
+    host: {
+        class: 'fullscreen-dialog-host glass'
+    },
     template: `
     <div class="content">
         <h2 dialog-title>{{ data.title }}</h2>
@@ -72,23 +75,8 @@ export interface ConfirmDialogData<T = any> {
     </div>
     `,
     styles: [`
-        :host {
-            display: flex;
-            justify-content: center;
-            box-sizing: border-box;
-            background-color: rgba(45, 45, 45, 0.8);
-            backdrop-filter: blur(5px);
-            width: 100vw;
-            pointer-events: auto;
-            padding: 16px;
-        }
-
         .cdk-overlay-pane.danger :host {
             background-color: #4d0400;
-        }
-
-        :host-context(.cdk-overlay-pane) {
-            transform: translateY(-10vh);
         }
 
         .content {
@@ -119,7 +107,7 @@ export class ConfirmDialogComponent<T = any> {
     public dialogRef: DialogRef<T, ConfirmDialogComponent<T>> = inject(DialogRef);
     readonly data: ConfirmDialogData<T> = inject(DIALOG_DATA);
 
-    constructor() {}
+    constructor() { }
 
     close(value: T) {
         this.dialogRef.close(value);

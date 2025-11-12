@@ -15,7 +15,7 @@
     --background-highlight: #3D3D3D;
     --background-highlight-bright: #7A7A7A;
     --primary-color: #1976d2;
-    --border-color: #444;
+    --border-color: #555;
     --scrollbar-width: 6px;
     --text-color: #ffffff;
     --text-color-secondary: silver;
@@ -36,9 +36,15 @@
 
     --disabled-color: #888;
     --damage-color: #F00;
+    --danger: #F00;
     --undamaged-highlight-color: #FEE;
     --undamaged-night-highlight-color: #300;
     --damaged-highlight-color: rgb(255, 105, 105);
+
+    --phase-move: #fff;
+    --phase-ranged: #9191ff;
+    --phase-physical: #ff2e2e;
+    --phase-heat: #dd7d00;
 }
 
 html {
@@ -50,7 +56,8 @@ html {
     bottom: 0;
     left: 0;
     right: 0;
-    background-color: var(--background-color);}
+    background-color: var(--background-color);
+}
 
 // @media all and (display-mode: standalone) {
 //     html {
@@ -137,6 +144,19 @@ hr {
 .cdk-overlay-dark-backdrop {
     background-color: rgba(0, 0, 0, 0.5);
     transition: opacity 400ms cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.fullscreen-dialog-host {
+    display: flex;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100vw;
+    pointer-events: auto;
+    padding: 16px;
+}
+
+.cdk-overlay-pane .fullscreen-dialog-host {
+    transform: translateY(-10vh);
 }
 
 .cdk-overlay-pane {
@@ -362,6 +382,7 @@ hr {
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
 
     &:hover {
+        border-color: transparent;
         background-color: var(--background-highlight);
         color: white;
         background-image:
@@ -371,6 +392,12 @@ hr {
             linear-gradient(white, white), linear-gradient(white, white);
         background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
         background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    }
+
+    &.selected {
+        border-color: white;
+        background-color: var(--bt-yellow);
+        color: #000;
     }
 
     &.danger {
@@ -557,6 +584,7 @@ hr {
     }
 
     .info-slot {
+        position: relative;
         background-color: rgba(0, 0, 0, 0.2);
         padding: 2px 4px;
         display: flex;
@@ -567,6 +595,10 @@ hr {
 
         &.numeric {
             justify-content: end;
+        }
+
+        &.slim {
+            min-width: auto;
         }
 
         .icon {
@@ -593,6 +625,7 @@ hr {
 }
 
 .unit-data-container {
+    display: flow-root;
     flex: 1 1 auto;
     width: 100%;
     min-width: 0;
@@ -726,6 +759,37 @@ hr {
     width: 100%;
 }
 
+.component-damaged {
+    &::before {
+        content: '';
+        position: absolute;
+        top: 1px;
+        left: 0px;
+        width: 100%;
+        height: 4px;
+        background-image: repeating-linear-gradient(140deg,
+                #F008 0px,
+                #F008 4px,
+                transparent 5px,
+                transparent 10px);
+    }
+
+    &::after {
+        content: '';
+        position: absolute;
+        bottom: 1px;
+        left: 0px;
+        width: 100%;
+        height: 4px;
+        background-image: repeating-linear-gradient(140deg,
+                #F008 0px,
+                #F008 4px,
+                transparent 5px,
+                transparent 10px);
+    }
+}
+
+
 /* MekBay SVG Sheet Styles */
 
 .mekbay-sheet {
@@ -761,22 +825,6 @@ hr {
 
     .inventoryEntry:not(.interactive) {
         pointer-events: none;
-    }
-
-    .inventoryEntry.disabledInventory {
-
-        .hitMod-rect,
-        .hitMod-text {
-            display: none;
-        }
-    }
-
-    .inventoryEntry.damagedInventory {
-
-        .hitMod-rect,
-        .hitMod-text {
-            display: none;
-        }
     }
 
     #fluff-image-fo {
@@ -1525,7 +1573,7 @@ hr {
             width: 100% !important;
             height: 100% !important;
             padding: 0;
-            margin: 0;
+            margin: 0 !important;
             left: 0;
             top: 0;
             display: block;

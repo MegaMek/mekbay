@@ -35,7 +35,7 @@
     position: fixed;
     bottom: 0;
     right: 0;
-    z-index: 1;
+    z-index: 3;
     pointer-events: none;
 }
 
@@ -82,7 +82,7 @@
     clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
 }
 
-.fab.main-fab img {
+.fab.main-fab svg {
     position: absolute;
     top: 16px;
     left: 16px;
@@ -113,6 +113,11 @@
     height: 40px;
     min-width: 40px;
     min-height: 40px;
+
+    & img {
+        width: 24px;
+        height: 24px;
+    }
 }
 
 .color-fab-row {

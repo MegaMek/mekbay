@@ -6,15 +6,36 @@
 <div class="fab-container" (pointerdown)="$event.stopPropagation()" (pointerup)="$event.stopPropagation()"
     (pointermove)="$event.stopPropagation()" (click)="$event.stopPropagation()" (dblclick)="$event.stopPropagation()">
     <button class="fab main-fab" [ngStyle]="mainFabStyle()" [class.active]="mode() !== 'none'"
-        (click)="toggleDrawMode()" aria-label="Toggle Draw Mode"><img src="/images/draw.svg" alt="Draw"></button>
+        (click)="toggleDrawMode()" aria-label="Toggle Draw Mode">
+        @if (mode() === 'eraser') {
+        <svg fill="currentColor" width="28px" height="28px" viewBox="0 5 20 22" version="1.1"
+            xmlns="http://www.w3.org/2000/svg">
+            <path
+                d="M2.125 13.781l7.938-7.938c0.719-0.719 1.813-0.719 2.531 0l7.688 7.688c0.719 0.719 0.719 1.844 0 2.563l-7.938 7.938c-2.813 2.813-7.375 2.813-10.219 0-2.813-2.813-2.813-7.438 0-10.25zM11.063 22.75l-7.656-7.688c-2.125 2.125-2.125 5.563 0 7.688s5.531 2.125 7.656 0z">
+            </path>
+        </svg>
+        } @else {
+        <svg fill="currentColor" width="24px" height="24px" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+            <path
+                d="M290.74 93.24l128.02 128.02-277.99 277.99-114.14 12.6C11.35 513.54-1.56 500.62.14 485.34l12.7-114.22 277.9-277.88zm207.2-19.06l-60.11-60.11c-18.75-18.75-49.16-18.75-67.91 0l-56.55 56.55 128.02 128.02 56.55-56.55c18.75-18.76 18.75-49.16 0-67.91z" />
+        </svg>
+        }
+    </button>
     @if (mode() !== 'none') {
     <div class="controls-fab-column">
         <button class="fab cornered-fab print-fab" (click)="print()" aria-label="Print Canvas"><img
                 src="/images/print.svg" alt="Print"></button>
-        <button class="fab cornered-fab clear-fab" (click)="requestClearCanvas()"
-            aria-label="Clear Canvas"><img src="/images/delete.svg" alt="Delete"></button>
-        <button class="fab cornered-fab eraser-fab" [class.active]="mode() === 'eraser'"
-            (click)="toggleEraser()" aria-label="Eraser"><img src="/images/eraser.svg" alt="Eraser"></button>
+        <button class="fab cornered-fab clear-fab" (click)="requestClearCanvas()" aria-label="Clear Canvas"><img
+                src="/images/delete.svg" alt="Delete"></button>
+        <button class="fab cornered-fab eraser-fab" [class.active]="mode() === 'eraser'" (click)="toggleEraser()"
+            aria-label="Eraser">
+            <svg fill="currentColor" width="20px" height="20px" viewBox="0 5 20 22" version="1.1"
+                xmlns="http://www.w3.org/2000/svg">
+                <path
+                    d="M2.125 13.781l7.938-7.938c0.719-0.719 1.813-0.719 2.531 0l7.688 7.688c0.719 0.719 0.719 1.844 0 2.563l-7.938 7.938c-2.813 2.813-7.375 2.813-10.219 0-2.813-2.813-2.813-7.438 0-10.25zM11.063 22.75l-7.656-7.688c-2.125 2.125-2.125 5.563 0 7.688s5.531 2.125 7.656 0z">
+                </path>
+            </svg>
+        </button>
     </div>
     <div class="color-fab-row">
         @for (color of colorOptions; let i = $index; track i) {

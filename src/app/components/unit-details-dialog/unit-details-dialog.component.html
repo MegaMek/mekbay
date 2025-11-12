@@ -100,28 +100,15 @@
 
             <!-- Weapon Type Summary Bar -->
             <div class="type-summary-bar">
-                <!-- First block: first 3 weapon types -->
-                <div class="type-summary-block">
-                    @for (type of weaponTypes.slice(0, 3); let i = $index; track i) {
-                        <div class="type-summary-rect" [ngStyle]="{'border-color': type.color}" [title]="type.name">
-                            <div [ngStyle]="{'background-color': type.color}" class="icon">
-                                <img class="type-icon" [src]="getTypeIcon(type.code)" />
-                            </div>
-                            <div class="type-count">{{ getTypeCount(type.code) }}</div>
+                @for (type of weaponTypes; let i = $index; track i) {
+                    <div class="type-summary-rect" [ngStyle]="{'border-color': type.color}" [title]="type.name">
+                        <div [ngStyle]="{'background-color': type.color}" class="icon">
+                            <img class="type-icon" [src]="getTypeIcon(type.code)" />
                         </div>
-                    }
-                </div>
-                <!-- Second block: last 3 weapon types -->
-                <div class="type-summary-block">
-                    @for (type of weaponTypes.slice(3); let i = $index; track i) {
-                        <div class="type-summary-rect" [ngStyle]="{'border-color': type.color}" [title]="type.name">
-                            <div [ngStyle]="{'background-color': type.color}" class="icon">
-                                <img class="type-icon" [src]="getTypeIcon(type.code)" />
-                            </div>
-                            <div class="type-count">{{ getTypeCount(type.code) }}</div>
-                        </div>
-                    }
-                </div>
+                        @let count = getTypeCount(type.code);
+                        <div class="type-count" [class.empty]="count === 0">{{ count }}</div>
+                    </div>
+                }
             </div>
 
             <!-- Components Grid -->

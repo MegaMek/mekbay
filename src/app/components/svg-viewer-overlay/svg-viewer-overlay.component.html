@@ -1,8 +1,16 @@
-<div class="container" [ngStyle]="containerStyle()" [class.fixed]="fixedPosition()">
-    <button role="button" class="mainButton preventZoomReset" tabindex="0" (click)="openTurnSummary($event)" >
+@if (endTurnButtonVisible()) {
+<button role="button" class="overlay-button end-turn-button preventZoomReset" tabindex="0"
+        (click)="endTurnForAll($event)">
+    END TURN FOR ALL UNITS
+</button>
+}
+<div class="container" [ngStyle]="containerStyle()">
+    <button role="button" class="overlay-button turn-tracker-button preventZoomReset" tabindex="0"
+        (click)="openTurnSummary($event)">
+        @let phase = currentPhase();
         @if (hasPSRChecks()) {
-        <svg class="warning" fill="currentColor"
-            width="40px" height="40px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+        <svg class="warning" fill="currentColor" width="40px" height="40px" viewBox="0 0 16 16"
+            xmlns="http://www.w3.org/2000/svg">
             <path
                 d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Z" />
             <text x="50%" y="55%" text-anchor="middle" dominant-baseline="mathematical" font-size="8">
@@ -10,8 +18,14 @@
             </text>
         </svg>
         } @else {
-        <svg fill="currentColor" width="40px" height="40px" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-            <path d="M30.8508,15.4487,23.8867,3.5322A1.0687,1.0687,0,0,0,22.9643,3H9.0357a1.0687,1.0687,0,0,0-.9224.5322L1.1492,15.4487a1.0933,1.0933,0,0,0,0,1.1026L8.1133,28.4678A1.0687,1.0687,0,0,0,9.0357,29H22.9643a1.0687,1.0687,0,0,0,.9224-.5322l6.9641-11.9165A1.0933,1.0933,0,0,0,30.8508,15.4487Z" />
+        <svg [class.dirty]="dirty()" 
+        [class.move]="phase === 'M'"
+        [class.ranged]="phase === 'W'"
+        [class.physical]="phase === 'P'"
+        [class.heat]="phase === 'H'"
+        fill="currentColor" width="40px" height="40px" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+            <path class="octagon"
+                d="M30.8508,15.4487,23.8867,3.5322A1.0687,1.0687,0,0,0,22.9643,3H9.0357a1.0687,1.0687,0,0,0-.9224.5322L1.1492,15.4487a1.0933,1.0933,0,0,0,0,1.1026L8.1133,28.4678A1.0687,1.0687,0,0,0,9.0357,29H22.9643a1.0687,1.0687,0,0,0,.9224-.5322l6.9641-11.9165A1.0933,1.0933,0,0,0,30.8508,15.4487Z" />
             <text x="50%" y="55%" text-anchor="middle" dominant-baseline="middle" font-size="16">
                 {{ currentPhase() }}
             </text>
