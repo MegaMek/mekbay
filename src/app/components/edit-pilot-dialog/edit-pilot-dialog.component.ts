@@ -61,7 +61,7 @@ export interface EditPilotResult {
     },
     template: `
     <div class="content">
-        <h2 dialog-title>Edit Pilot</h2>
+        <h2 dialog-title>Warrior Data</h2>
         <div dialog-content>
             <p>Name</p>
             <div class="input-wrapper">
