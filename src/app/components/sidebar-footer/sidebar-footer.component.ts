@@ -58,11 +58,41 @@ export class SidebarFooterComponent {
     }
 
     showLoadForceDialog(): void {
-        this.forceBuilderService.showLoadForceDialog();
+        const ref = this.dialogsService.createDialog(ForceLoadDialogComponent);
+        ref.componentInstance?.load.subscribe(async (force) => {
+            if (force instanceof LoadForceEntry) {
+                const requestedForce = await this.dataService.getForce(force.instanceId);
+                if (!requestedForce) {
+                    this.toastService.show('Failed to load force.', 'error');
+                    return;
+                }
+                this.forceBuilderService.loadForce(requestedForce);
+            } else {
+                if (force && force.units && force.units.length > 0) {
+                    await this.forceBuilderService.createNewForce();
+                    const group = this.forceBuilderService.addGroup();
+                    for (const unit of force.units) {
+                        if (!unit?.unit) continue;
+                        this.forceBuilderService.addUnit(unit.unit, undefined, undefined, group);
+                    }
+                }
+            }
+            ref.close();
+        });
     }
 
     showForcePackDialog(): void {
-        this.forceBuilderService.showForcePackDialog();
+        const ref = this.dialogsService.createDialog(ForcePackDialogComponent);
+        ref.componentInstance?.add.subscribe(async (pack) => {
+            if (pack) {
+                const group = this.forceBuilderService.addGroup();
+                for (const unit of pack.units) {
+                    if (!unit?.unit) continue;
+                    this.forceBuilderService.addUnit(unit.unit, undefined, undefined, group);
+                }
+            }
+            ref.close();
+        });
     }
 
     async requestNewForce(): Promise<void> {

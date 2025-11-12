@@ -31,8 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit } from '../models/force-unit.model';
-import { HeatProfile } from '../models/force-serialization';
+import { ForceUnit, HeatProfile } from '../models/force-unit.model';
 import { DataService } from '../services/data.service';
 import { OptionsService } from '../services/options.service';
 
@@ -277,6 +276,7 @@ export class PrintUtil {
 
         // Remove overlay on first user interaction
         const removeOverlay = (evt: Event) => {
+            console.trace('PrintUtil', evt);
             overlay.remove();
             document.body.classList.remove('multipage-container-active');
             

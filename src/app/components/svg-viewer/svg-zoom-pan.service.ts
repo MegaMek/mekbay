@@ -617,8 +617,6 @@ export class SvgZoomPanService {
     }
 
     private applyTransform() {
-        if (!this.containerRef) return;
-        if (!this.containerRef.nativeElement) return;
         const svg = this.containerRef.nativeElement.querySelector('svg');
         if (svg) {
             const translate = this.state.translate();

@@ -44,7 +44,6 @@ export class LayoutService {
     /** A signal that is true if the viewport matches mobile breakpoints. */
     private readonly PHONE_BREAKPOINT = 500;
     private readonly TABLET_BREAKPOINT = 900;
-    private readonly RESIZE_THROTTLE_MS = 150;
 
     public isMobile = computed(() => {
         return this.isPhone() || this.isTablet();
@@ -70,7 +69,6 @@ export class LayoutService {
     public isPortraitOrientation = computed(() => this.windowHeight() > this.windowWidth());
 
     private readonly platformId: object = inject(PLATFORM_ID);
-    private resizeTimeout: number | null = null;
 
     constructor() {
         effect(() => {
@@ -84,21 +82,14 @@ export class LayoutService {
             if (!isPlatformBrowser(this.platformId)) return;
             this.isTouchInput.set(('ontouchstart' in window) || navigator.maxTouchPoints > 0);
             
-            // Throttled resize handler
+            // Listen for orientation changes
             const resizeHandler = () => {
-                if (this.resizeTimeout !== null) {
-                    return; // Already scheduled
-                }
-                
-                this.resizeTimeout = window.setTimeout(() => {
-                    const height = window.innerHeight;
-                    const width = window.innerWidth;
-                    this.windowWidth.set(width);
-                    this.windowHeight.set(height);
-                    document.body.style.setProperty('--inner-height', `${height}px`);
-                    document.body.style.setProperty('--inner-width', `${width}px`);
-                    this.resizeTimeout = null;
-                }, this.RESIZE_THROTTLE_MS);
+                const height = window.innerHeight;
+                const width = window.innerWidth;
+                this.windowWidth.set(width);
+                this.windowHeight.set(height);
+                document.body.style.setProperty('--inner-height', `${height}px`);
+                document.body.style.setProperty('--inner-width', `${width}px`);
             };
 
             // Global input listeners
@@ -108,10 +99,6 @@ export class LayoutService {
             resizeHandler();
 
             onCleanup(() => {
-                if (this.resizeTimeout !== null) {
-                    clearTimeout(this.resizeTimeout);
-                    this.resizeTimeout = null;
-                }
                 window.removeEventListener('pointerdown', this.onPointerDown, { capture: true });
                 window.removeEventListener('orientationchange', resizeHandler, { capture: true });
                 window.removeEventListener('resize', resizeHandler, { capture: true });

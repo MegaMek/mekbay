@@ -2,7 +2,7 @@
     @if (!miniMode()) {
         <div class="force-name" (click)="promptChangeForceName()">{{ forceName() }}</div>
         @if (forceBuilderService.readOnlyForce()) {
-        <button class="bt-button btn-clone primary" (click)="forceBuilderService.requestCloneForce()">CLONE FORCE TO
+        <button class="bt-button btn-clone" (click)="forceBuilderService.requestCloneForce()">CLONE FORCE TO
             EDIT</button>
         }
     }
@@ -45,7 +45,6 @@
                             [class.miniMode]="miniMode()"
                             [class.selected]="unit.id === forceBuilderService.selectedUnit()?.id"
                             (onRemoveUnit)="removeUnit($event, unit)" (onInfo)="showUnitInfo($event, unit)"
-                            (onRepairUnit)="repairUnit($event, unit)"
                             (onToggleC3)="toggleC3Link($event, unit)"></unit-block>
                     </div>
                     }

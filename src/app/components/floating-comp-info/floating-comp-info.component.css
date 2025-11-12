@@ -5,10 +5,11 @@
     color: #fff;
     padding: 10px 14px;
     box-shadow: 0 2px 12px #0008;
+    min-width: 220px;
+    max-width: 400px;
     font-size: 0.95em;
     opacity: 0;
     transition: opacity 0.15s;
-    inline-size: 200px;
 }
 
 .floating-comp-info .caption {

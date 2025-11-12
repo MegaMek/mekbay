@@ -84,12 +84,9 @@
     font-size: 0.8em;
     margin-left: 1em;
     text-align: right;
-    display: flex;
-    flex-direction: row;
-    gap: 4px;
 }
 
-.save-state-icon {
+.cloud-icon {
     width: 16px;
     height: 16px;
     vertical-align: text-bottom;

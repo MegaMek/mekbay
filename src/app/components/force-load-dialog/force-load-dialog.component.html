@@ -28,17 +28,10 @@
                         <div class="force-header">
                             <span class="force-name">{{ force.name }}</span>
                             <div class="force-info">
-                                <span class="force-timestamp">
-                                        @if (force.local) {
-                                            <img
-                                        src="/images/floppy.svg"
-                                        class="save-state-icon" alt="Saved locally"
-                                        title="Stored locally" />
-                                    }
-                                        <img
+                                <span class="force-timestamp"><img
                                         [src]="force.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'"
-                                        class="save-state-icon" alt="Cloud status"
-                                        title="{{ force.cloud ? 'Stored online' : 'Not stored online' }}" /> {{ force.timestamp | formatTimestamp }}</span>
+                                        class="cloud-icon" alt="Cloud status"
+                                        title="{{ force.cloud ? 'Stored online' : 'Stored locally' }}" /> {{ force.timestamp | formatTimestamp }}</span>
                                 @if (force.bv > 0) {
                                     <span class="force-bv">BV: {{ force.bv | number }}</span>
                                 }

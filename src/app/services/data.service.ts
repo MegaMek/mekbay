@@ -39,12 +39,10 @@ import { Era, Eras } from '../models/eras.model';
 import { DbService, StoredTags } from './db.service';
 import { ADVANCED_FILTERS, AdvFilterType, SerializedSearchFilter } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
-import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, IAmmo, IEquipment, IWeapon, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { Quirk, Quirks } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
-import { ForceUnit } from '../models/force-unit.model';
-import { Force }    from '../models/force.model';
-import { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
+import { Force, ForceUnit, SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-unit.model';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
@@ -57,26 +55,26 @@ import { firstValueFrom } from 'rxjs';
 export const DOES_NOT_TRACK = 999;
 
 export interface MinMaxStatsRange {
-    armor: [number, number],
-    internal: [number, number],
-    heat: [number, number],
-    dissipation: [number, number],
-    dissipationEfficiency: [number, number],
-    runMP: [number, number],
-    run2MP: [number, number],
-    umuMP: [number, number],
-    jumpMP: [number, number],
-    alphaNoPhysical: [number, number],
-    alphaNoPhysicalNoOneshots: [number, number],
-    maxRange: [number, number],
-    dpt: [number, number],
+        armor: [number, number],
+        internal: [number, number],
+        heat: [number, number],
+        dissipation: [number, number],
+        dissipationEfficiency: [number, number],
+        runMP: [number, number],
+        run2MP: [number, number],
+        umuMP: [number, number],
+        jumpMP: [number, number],
+        alphaNoPhysical: [number, number],
+        alphaNoPhysicalNoOneshots: [number, number],
+        maxRange: [number, number],
+        dpt: [number, number],
 
-    // Capital ships
-    dropshipCapacity: [number, number],
-    escapePods: [number, number],
-    lifeBoats: [number, number],
-    sailIntegrity: [number, number],
-    kfIntegrity: [number, number],
+        // Capital ships
+        dropshipCapacity: [number, number],
+        escapePods: [number, number],
+        lifeBoats: [number, number],
+        sailIntegrity: [number, number],
+        kfIntegrity: [number, number],
 }
 export interface UnitTypeMaxStats {
     [unitType: string]: MinMaxStatsRange
@@ -169,34 +167,21 @@ export class DataService {
                     etag: data.etag,
                     equipment: {}
                 };
-                for (const [unitType, equipmentForType] of Object.entries(data.equipment)) {
+                for (const unitType of Object.keys(data.equipment)) {
+                    const equipmentForType = data.equipment[unitType];
                     newData.equipment[unitType] = {};
+                    for (const equipmentInternalName of Object.keys(equipmentForType)) {
 
-                    for (const [equipmentInternalName, equipmentData] of Object.entries(equipmentForType)) {
-                        try {
-                            const equipment = equipmentData as any;
-
-                            switch (equipment.type) {
-                                case 'weapon':
-                                    newData.equipment[unitType][equipmentInternalName] = new WeaponEquipment(equipment);
-                                    break;
-                                case 'ammo':
-                                    newData.equipment[unitType][equipmentInternalName] = new AmmoEquipment(equipment);
-                                    break;
-                                case 'misc':
-                                    newData.equipment[unitType][equipmentInternalName] = new MiscEquipment(equipment);
-                                    break;
-                                default:
-                                    this.logger.warn(`Unknown equipment type for ${equipmentInternalName}: ${equipment.type}`);
-                                    newData.equipment[unitType][equipmentInternalName] = new Equipment({
-                                        ...equipment,
-                                        internalName: equipmentInternalName,
-                                        name: equipment.name || equipmentInternalName,
-                                        type: equipment.type || 'misc'
-                                    });
-                            }
-                        } catch (error) {
-                            this.logger.error(`Failed to create equipment ${equipmentInternalName}: ${error}`);
+                        const equipment = equipmentForType[equipmentInternalName];
+                        if (equipment.type === 'weapon') {
+                            newData.equipment[unitType][equipmentInternalName] = new WeaponEquipment(equipment as IWeapon);
+                        } else if (equipment.type === 'ammo') {
+                            newData.equipment[unitType][equipmentInternalName] = new AmmoEquipment(equipment as IAmmo);
+                        } else if (equipment.type === 'misc') {
+                            newData.equipment[unitType][equipmentInternalName] = new MiscEquipment(equipment);
+                        } else {
+                            this.logger.warn(`Unknown equipment type for ${equipmentInternalName}: ${equipment.type}`);
+                            newData.equipment[unitType][equipmentInternalName] = new Equipment(equipment);
                         }
                     }
                 }
@@ -419,7 +404,7 @@ export class DataService {
             this.filterIndexes[filter.key] = index;
         }
 
-        const statsByType: {
+        const statsByType:  {
             [type: string]: {
                 armor: number[],
                 internal: number[],
@@ -621,7 +606,7 @@ export class DataService {
     }
 
     private async getRemoteETag(filename: string): Promise<string> {
-        const src = `https://db.mekbay.com/${filename}`;
+         const src = `https://db.mekbay.com/${filename}`;
         try {
             const resp = await firstValueFrom(
                 this.http.head(src, { observe: 'response' as const })
@@ -800,7 +785,7 @@ export class DataService {
         return cloudTs > localTs;
     }
 
-    public async getForce(instanceId: string, ownedOnly: boolean = false): Promise<Force | null> {
+    public async getForce(instanceId: string): Promise<Force | null> {
         const localRaw = await this.dbService.getForce(instanceId);
         let cloudRaw: any | null = null;
         let triedCloud = false;
@@ -809,7 +794,7 @@ export class DataService {
             const ws = await this.canUseCloud();
             if (ws) {
                 try {
-                    cloudRaw = await this.getForceCloud(instanceId, ownedOnly);
+                    cloudRaw = await this.getForceCloud(instanceId);
                     triedCloud = true;
                 } catch {
                     cloudRaw = null;
@@ -840,19 +825,14 @@ export class DataService {
         return cloud || local || null;
     }
 
-    public async saveForce(force: Force, localOnly: boolean = false): Promise<void> {
+    public async saveForce(force: Force): Promise<void> {
         if (!force.instanceId() || !force.owned()) {
             force.instanceId.set(generateUUID());
             force.owned.set(true);
         }
+        const key = force.instanceId();
         await this.dbService.saveForce(force.serialize());
-        if (!localOnly) {
-            this.saveForceCloud(force);
-        }
-    }
-
-    public async saveSerializedForceToLocalStorage(serialized: SerializedForce): Promise<void> {
-        await this.dbService.saveForce(serialized);
+        this.saveForceCloud(force);
     }
 
     public async listForces(): Promise<LoadForceEntry[]> {
@@ -870,7 +850,6 @@ export class DataService {
         for (const force of localForces) {
             if (!force) continue;
             if (!force.instanceId) continue;
-            force.local = true;
             forceMap.set(force.instanceId, force);
         }
         for (const cloudForce of cloudForces) {
@@ -878,9 +857,6 @@ export class DataService {
             if (!cloudForce.instanceId) continue;
             const localForce = forceMap.get(cloudForce.instanceId);
             if (!localForce || getTimestamp(cloudForce) >= getTimestamp(localForce)) {
-                if (localForce) {
-                    cloudForce.local = true; // This force is both local and cloud
-                }
                 forceMap.set(cloudForce.instanceId, cloudForce);
             }
         }
@@ -976,7 +952,7 @@ export class DataService {
                         name: raw.name,
                         type: raw.type,
                         bv: raw.bv || 0,
-                        timestamp: raw.timestamp,
+                        timestamp: raw.timestamp, 
                         groups: groups
                     });
                     forces.push(entry);
@@ -996,14 +972,14 @@ export class DataService {
         resolvers: Array<{ resolve: () => void, reject: (e: any) => void }>
     }>();
 
-    public hasPendingCloudSaves(): boolean {
+    public hasPendingCloudSaves(): boolean {    
         return this.saveForceCloudDebounce && this.saveForceCloudDebounce.size > 0;
     }
 
     private async saveForceCloud(force: Force): Promise<void> {
         const instanceId = force.instanceId();
         if (!instanceId) return; // Should not happen, nothing to save without an instanceId
-
+        
         return new Promise<void>((resolve, reject) => {
             const existing = this.saveForceCloudDebounce.get(instanceId);
             const schedule = () => {
@@ -1115,7 +1091,7 @@ export class DataService {
         }
     }
 
-    private async getForceCloud(instanceId: string, ownedOnly: boolean): Promise<any | null> {
+    private async getForceCloud(instanceId: string): Promise<any | null> {
         const ws = await this.canUseCloud();
         if (!ws) return null;
         const uuid = this.userStateService.uuid();
@@ -1123,7 +1099,6 @@ export class DataService {
             action: 'getForce',
             uuid,
             instanceId,
-            ownedOnly,
         };
         const response = await this.wsService.sendAndWaitForResponse(payload);
         return response.data || null;

@@ -1,16 +1,6 @@
 @let unitDisplayName = optionsService.options().unitDisplayName;
-@let turnState = forceUnit()?.turnState();
 @if (compactMode()) {
 <div class="unit-square compact-mode" [class.destroyed]="forceUnit()?.destroyed">
-    @if (turnState?.dirty()) {
-        @let phase = turnState?.currentPhase();
-        <div class="dirty-state" 
-        [class.move]="phase === 'M'"
-        [class.ranged]="phase === 'W'"
-        [class.physical]="phase === 'P'"
-        [class.heat]="phase === 'H'"
-        ></div>
-    }
     <img [src]="imgSrc()" (error)="$event.target.src = '/images/unknown.png'" class="unit-icon"
         alt="{{ unit()?.chassis }} {{ unit()?.model }}" title="{{ unit()?.chassis }} {{ unit()?.model }}" />
     @if (unitDisplayName === 'chassisModel'
@@ -28,101 +18,32 @@
 </div>
 } @else {
 <div class="unit-card" [class.destroyed]="forceUnit()?.destroyed">
-    @if (turnState?.dirty()) {
-        @let phase = turnState?.currentPhase();
-        <div class="dirty-state" 
-        [class.move]="phase === 'M'"
-        [class.ranged]="phase === 'W'"
-        [class.physical]="phase === 'P'"
-        [class.heat]="phase === 'H'"
-        ></div>
-    }
-
-    @let role = unit()?.role;
-    <div class="unit-role" [class.tight]="(role?.length || 0) > 12">{{ role && role !== 'None' ? role : '' }}</div>
     <div class="unit-image-container">
         <img class="icon unit-icon" [src]="imgSrc()" (error)="$event.target.src = '/images/unknown.png'"
             alt="{{ unit()?.chassis }} {{ unit()?.model }}" />
     </div>
     <div class="unit-data-container">
-        <div class="unit-actions">
-            <button class="info-btn" (click)="clickInfo($event);" title="Unit info">
-                <svg stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24" fill="none"
-                    xmlns="http://www.w3.org/2000/svg">
-                    <path
-                        d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z"
-                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-            </button>
-            @if (!forceUnit()?.readOnly()) {
-
-            <!-- <button class="info-btn" [cdkMenuTriggerFor]="generalMenu" title="Menu" (click)="$event.stopPropagation()">
-                <svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor"
-                    xmlns="http://www.w3.org/2000/svg">
-                    <path fill-rule="evenodd" clip-rule="evenodd"
-                        d="M12 7C10.3431 7 9 5.65685 9 4C9 2.34315 10.3431 1 12 1C13.6569 1 15 2.34315 15 4C15 5.65685 13.6569 7 12 7ZM12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9ZM12 17C10.3431 17 9 18.3431 9 20C9 21.6569 10.3431 23 12 23C13.6569 23 15 21.6569 15 20C15 18.3431 13.6569 17 12 17Z" />
-                </svg>
-            </button>
-            <ng-template #generalMenu>
-                <div class="popup-menu glass framed-borders has-shadow" cdkMenu>
-                    <button class="menu-item" cdkMenuItem (click)="repairUnit($event)">
-                        <span class="icon"><svg fill="currentColor" height="20px" width="20px" version="1.1"
-                                xmlns="http://www.w3.org/2000/svg" viewBox="0 0 143.734 143.734" xml:space="preserve">
-                                <path d="M119.743,103.298l-29.84-29.84l24.22-24.22c7.864,1.826,16.457-0.269,22.597-6.408
-c6.719-6.713,8.562-16.367,5.74-24.81l-11.403,11.397c-4.034,4.046-10.693,3.92-14.893-0.28
-c-4.183-4.189-4.314-10.848-0.286-14.887l11.397-11.397c-8.425-2.84-18.074-0.985-24.804,5.74
-c-6.128,6.122-8.216,14.714-6.385,22.591l-24.22,24.214L47.657,31.189c1.826-7.87-0.28-16.463-6.402-22.597
-c-6.713-6.719-16.361-8.568-24.804-5.746l11.397,11.403c4.04,4.034,3.92,10.699-0.286,14.893
-c-4.189,4.189-10.836,4.314-14.887,0.286L1.277,18.026c-2.828,8.431-0.979,18.092,5.752,24.81
-c6.116,6.134,14.708,8.216,22.591,6.396l24.208,24.202l-29.834,29.834c-5.43-0.376-10.979,1.426-15.114,5.585
-c-7.626,7.614-7.626,19.965,0,27.591c7.602,7.608,19.959,7.608,27.573,0c4.147-4.147,5.943-9.702,5.597-15.132l29.816-29.828
-l29.84,29.84c-0.37,5.43,1.438,10.985,5.585,15.126c7.608,7.62,19.971,7.62,27.585,0c7.614-7.614,7.614-19.965,0-27.585
-C130.728,104.719,125.173,102.917,119.743,103.298z M25.311,132.56l-9.923-2.649l-2.643-9.923l7.25-7.262l9.923,2.655l2.655,9.917
-L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.655l7.268,7.262L128.335,129.929z" />
-                            </svg></span> Repair Unit</button>
-                </div>
-            </ng-template> -->
-            <button class="repair-btn" (click)="repairUnit($event)" title="Repair unit">
-                <svg fill="currentColor" height="20px" width="20px" version="1.1" xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 256 256" xml:space="preserve">
-                    <path d="M48,244.8l126-126c0.7-0.7,1.4-1.5,2.1-2.3c20.3,6.8,43.6,2.1,59.8-14.1c17.5-17.5,21.6-43.3,12.2-64.7l-38.5,38.5
-	l-30.2-30.2l38.5-38.5c-21.4-9.3-47.2-5.2-64.7,12.2c-16.2,16.2-20.9,39.5-14.1,59.8c-0.8,0.6-1.6,1.3-2.3,2.1l-126,126
-	c-10.2,10.2-10.2,27,0,37.2l0,0C21,255,37.7,255,48,244.8z" />
-                </svg>
-            </button>
-            <button class="remove-btn" (click)="clickRemove($event)" title="Remove unit">
-                <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
-                    xmlns="http://www.w3.org/2000/svg">
-                    <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
-                        L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
-                </svg>
-            </button>
-            }
-        </div>
         <div class="secondary-info">
-            @let alias = forceUnit()?.alias();
-            @let model = unit()?.model;
-            @let chassis = unit()?.chassis;
             @if (unitDisplayName === 'chassisModel'
             || unitDisplayName === 'both'
-            || !alias) {
-            <span class="model">{{ model }}</span>
+            || !forceUnit()?.alias()) {
+            <span class="model">{{ unit()?.model }}</span>
             } @else {
-            <span class="model">{{ chassis }}</span>
+            <span class="model">{{ unit()?.chassis }}</span>
             }
             <div class="spanner"></div>
+            <div class="role" *ngIf="unit()?.role && (unit()?.role !== 'None')">{{
+                unit()?.role }}
+            </div>
         </div>
         <div class="primary-info">
             @if (unitDisplayName === 'chassisModel'
             || unitDisplayName === 'both'
-            || !alias) {
-            <span class="chassis">{{ chassis }}</span>
-            @if (unitDisplayName === 'both' && alias) {
-            <span class="unit-alias thin"> ({{ alias }})</span>
+            || !forceUnit()?.alias()) {
+            <span class="chassis">{{ unit()?.chassis }}</span>
             }
-            }
-            @if (unitDisplayName === 'alias') {
-            <div class="unit-alias">{{ alias }}</div>
+            @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
+            <div class="unit-alias" [class.thin]="unitDisplayName === 'both'">{{ forceUnit()?.alias() }}</div>
             }
         </div>
         <div class="third-info">
@@ -138,8 +59,7 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                     <span class="value">{{ forceUnit()?.getPilotStats() }}</span>
                     <img src="/images/helmet.svg" class="icon" alt="Pilot">
                 </div>
-                @if (unit()?.c3 !== 'None') {
-                <div class="info-slot slim c3link" [class.enabled]="forceUnit()?.c3Linked"
+                <div *ngIf="unit()?.c3 !== 'None'" class="info-slot c3link" [class.enabled]="forceUnit()?.c3Linked"
                     (click)="toggleC3Link($event)" title="Toggle C3 Link">
                     <span>{{ unit()?.c3 }}</span>
                     <svg fill="currentColor" width="14px" height="14px" viewBox="0 0 32 32" version="1.1"
@@ -149,14 +69,28 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                         </path>
                     </svg>
                 </div>
-                }
-                @if (hasECM()) {
-                <div class="info-slot slim ecm" (click)="toggleECMMode($event)" title="Toggle ECM Mode">
-                    <span>ECM</span>
-                </div>
-                }
             </div>
         </div>
+    </div>
+    <div class="unit-actions">
+        @if (!forceUnit()?.readOnly()) {
+        <button class="remove-btn" (click)="clickRemove($event)" title="Remove unit">
+            <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
+                xmlns="http://www.w3.org/2000/svg">
+                <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                    L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+            </svg>
+        </button>
+        }
+        <div class="spanner"></div>
+        <button class="info-btn" (click)="clickInfo($event)" title="Unit info">
+            <svg stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24" fill="none"
+                xmlns="http://www.w3.org/2000/svg">
+                <path
+                    d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+        </button>
     </div>
 </div>
 }
