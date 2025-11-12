@@ -56,13 +56,13 @@ import { copyTextToClipboard } from '../../utils/clipboard.util';
     <div class="content">
         <h2 dialog-title>{{ forceBuilderService.force.name }}</h2>
         <div dialog-content class="content">
-            <label class="description">Live battle record: share the current deployment as a read-only field report — includes damage, pilots, and status conditions.</label>
+            <label class="description"><strong>Live battle record:</strong> share the current deployment as a read-only field report — includes damage, pilots, and status conditions.</label>
             <div class="row">
                 <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="shareUrl"/>
                 <button class="bt-button" (click)="share(shareUrl)">SHARE</button>
             </div>
 
-            <label class="description">Clean roster: share a pristine copy of the force — no damage, pilots, or status conditions.</label>
+            <label class="description"><strong>Clean roster:</strong> share a pristine copy of the force — no damage, pilots, or status conditions.</label>
             <div class="row">
                 <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="cleanUrl"/>
                 <button class="bt-button" (click)="share(cleanUrl)">SHARE</button>
