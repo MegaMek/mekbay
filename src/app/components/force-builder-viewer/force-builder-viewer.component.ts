@@ -169,11 +169,13 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     }
 
     toggleC3Link(event: MouseEvent, unit: ForceUnit) {
+        if (unit.readOnly()) return;
         event.stopPropagation();
         unit.setC3Linked(!unit.c3Linked);
     }
 
     async editPilot(event: MouseEvent, unit: ForceUnit) {
+        if (unit.readOnly()) return;
         event.stopPropagation();
         const crew = unit.getCrewMembers();
         const pilot = crew.length > 0 ? crew[0] : null;
