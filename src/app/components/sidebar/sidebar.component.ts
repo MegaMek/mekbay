@@ -134,8 +134,8 @@ export class SidebarComponent {
         if (!lip) return {};
         // If we're actively dragging, prefer transient signal value
         const transientTop = this.lipTop();
-        const savedPos = untracked(() => this.options.options().sidebarLipPosition);
-        if (!transientTop && !savedPos) return {};
+        const savedPos = this.options.options().sidebarLipPosition;
+        if (transientTop === null && !savedPos) return {};
         // Determine the raw top value in pixels
         let topPx: number | null = null;
         if (transientTop !== null) {
@@ -145,7 +145,7 @@ export class SidebarComponent {
             const parsed = parseFloat(savedPos);
             if (!Number.isNaN(parsed)) topPx = parsed;
         }
-        if (!topPx) return {};
+        if (topPx === undefined) return {};
         return {'--top': `${topPx}px`, 'bottom': 'auto'};
     });
 
@@ -205,7 +205,7 @@ export class SidebarComponent {
             const btnHeight = lip.offsetHeight;
             const minTop = 0;
             const maxTop = Math.max(0, hostHeight - btnHeight);
-            const newTop = Math.min(Math.max(this.lipStartTop + dy, minTop), maxTop);
+            const newTop = Math.max(0, Math.min(Math.max(this.lipStartTop + dy, minTop), maxTop));
             this.lipTop.set(newTop);
             if (!this.lipMoved && Math.abs(dy) > 4) this.lipMoved = true;
             ev.preventDefault();
@@ -223,8 +223,11 @@ export class SidebarComponent {
             this.cleanupLipListeners();
             ev.preventDefault();
             ev.stopPropagation();
-            const finalTop = this.lipTop();
+            let finalTop = this.lipTop();
             if (finalTop !== null) {
+                if (finalTop < 0) {
+                    finalTop = 0;
+                }
                 this.options.setOption('sidebarLipPosition', `${Math.round(finalTop)}`);
             }
         };
