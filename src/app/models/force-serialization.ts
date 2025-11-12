@@ -131,7 +131,11 @@ export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()
     .number('hits')
     .number('totalAmmo')
     .number('consumed')
-    .boolean('destroyed')
+    .custom('destroyed', (value: unknown) => {
+        if (typeof value === 'boolean') return value ? Date.now() : undefined; // We may have old boolean values, we convert them to timestamp
+        if (typeof value === 'number') return value;
+        return undefined;
+    })
     .string('originalName')
     .boolean('armored')
     .build();
