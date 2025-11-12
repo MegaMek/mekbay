@@ -23,9 +23,9 @@ import { SerializedSearchFilter } from '../../services/unit-search-filters.servi
             }
         </div>
         <div class="favorites-actions">
-            <span style="font-size: 9px; text-align: center;">This feature is currently under development.</span>
-            <button type="button" class="bt-button" (click)="onSave()">ADD TO LIBRARY</button>
+        <button type="button" class="bt-button" (click)="onSave()">ADD TO LIBRARY</button>
         </div>
+        <span style="font-size: 9px; text-align: center;">This feature is currently not working and under development.</span>
     </div>
     `,
     styles: [`
