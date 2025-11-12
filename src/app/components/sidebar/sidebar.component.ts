@@ -124,30 +124,30 @@ export class SidebarComponent {
                 comp.buttonOnly.set(false);
             }
         });
-        // Lip button repositioning
-        effect(() => {
-            const height = this.layout.windowHeight();
-            const lip =  this.burgerLipBtn()?.nativeElement;
-            if (lip) {
-                if (lip.style.bottom !== 'auto') {
-                    const savedPos = untracked(() => this.options.options().sidebarLipPosition);
-                    if (savedPos) {
-                        // switch to top positioning
-                        this.renderer.setStyle(lip, 'top', savedPos);
-                        this.renderer.setStyle(lip, 'bottom', 'auto');
-                    } else {
-                        return; // still bottom positioned
-                    }
-                };
-                const topStr = lip.style.top;
-                const lipTop = (topStr ? parseFloat(topStr) : lip.offsetTop) || 0;
-                const maxTop = Math.max(0, height - lip.offsetHeight);
-                if (lipTop > (maxTop + 1)) {
-                    this.renderer.setStyle(lip, 'top', `${maxTop}px`);
-                }
-            }
-        });
     }
+
+    private lipTop = signal<number | null>(null);
+
+    lipButtonStyle = computed(() => {
+        const height = this.layout.windowHeight();
+        const lip = this.burgerLipBtn()?.nativeElement;
+        if (!lip) return {};
+        // If we're actively dragging, prefer transient signal value
+        const transientTop = this.lipTop();
+        const savedPos = untracked(() => this.options.options().sidebarLipPosition);
+        if (!transientTop && !savedPos) return {};
+        // Determine the raw top value in pixels
+        let topPx: number | null = null;
+        if (transientTop !== null) {
+            topPx = transientTop;
+        } else if (savedPos) {
+            // savedPos could be like "123px"
+            const parsed = parseFloat(savedPos);
+            if (!Number.isNaN(parsed)) topPx = parsed;
+        }
+        if (!topPx) return {};
+        return {'--top': `${topPx}px`, 'bottom': 'auto'};
+    });
 
     public toggleMenuOpenClose() {
         this.footer()?.closeAllMenus();
@@ -193,9 +193,8 @@ export class SidebarComponent {
         this.lipMoved = false;
         this.ignoreNextLipClick = false;
 
-        // switch to top positioning so we can move it
-        this.renderer.setStyle(lip, 'top', `${currentTop}px`);
-        this.renderer.setStyle(lip, 'bottom', 'auto');
+        // set transient signal so computed style will apply top positioning        
+        this.lipTop.set(currentTop);
 
         try { lip.setPointerCapture(event.pointerId); } catch { /* ignore */ }
 
@@ -207,7 +206,7 @@ export class SidebarComponent {
             const minTop = 0;
             const maxTop = Math.max(0, hostHeight - btnHeight);
             const newTop = Math.min(Math.max(this.lipStartTop + dy, minTop), maxTop);
-            this.renderer.setStyle(lip, 'top', `${newTop}px`);
+            this.lipTop.set(newTop);
             if (!this.lipMoved && Math.abs(dy) > 4) this.lipMoved = true;
             ev.preventDefault();
             ev.stopPropagation();
@@ -224,7 +223,10 @@ export class SidebarComponent {
             this.cleanupLipListeners();
             ev.preventDefault();
             ev.stopPropagation();
-            this.options.setOption('sidebarLipPosition', lip.style.top);
+            const finalTop = this.lipTop();
+            if (finalTop !== null) {
+                this.options.setOption('sidebarLipPosition', `${Math.round(finalTop)}`);
+            }
         };
 
         // keep the listeners in renderer so Angular can clean them properly
