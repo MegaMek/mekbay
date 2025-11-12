@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, signal, effect, computed, OnDestroy, Injector, inject, untracked, DestroyRef } from '@angular/core';
+import { Injectable, signal, effect, computed, Injector, inject, untracked, DestroyRef } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Unit } from '../models/units.model';
 import { Force, UnitGroup } from '../models/force.model';
@@ -75,6 +75,7 @@ export class ForceBuilderService {
     public selectedUnit = signal<ForceUnit | null>(null);
     private urlStateInitialized = false;
     private forceChangedSubscription: any;
+    private conflictDialogRef: any;
 
     constructor() {
         this.loadUnitsFromUrlOnStartup();
@@ -85,6 +86,10 @@ export class ForceBuilderService {
             // Clean up subscription
             if (this.forceChangedSubscription) {
                 this.forceChangedSubscription.unsubscribe();
+            }
+            if (this.conflictDialogRef) {
+                this.conflictDialogRef.close();
+                this.conflictDialogRef = undefined;
             }
             // Clean up units in the current force
             this.currentForce().units().forEach(unit => unit.destroy());
@@ -481,8 +486,12 @@ export class ForceBuilderService {
             if (!timestamp) return 'Unknown';
             return new Date(timestamp).toLocaleString();
         };
-
-        const dialogRef = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
+        if (this.conflictDialogRef) {
+            // Conflict dialog is already open, we replace it
+            this.conflictDialogRef.close();
+            this.conflictDialogRef = undefined;
+        }
+        this.conflictDialogRef = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
             panelClass: 'info',
             disableClose: true,
             data: <ConfirmDialogData<string>>{
@@ -496,7 +505,7 @@ export class ForceBuilderService {
             }
         });
 
-        const result = await firstValueFrom(dialogRef.closed);
+        const result = await firstValueFrom(this.conflictDialogRef.closed);
 
         if (result === 'cloud') {
             // Load the cloud version

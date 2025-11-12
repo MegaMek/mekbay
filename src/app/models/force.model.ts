@@ -238,7 +238,7 @@ export class Force {
         })) as SerializedGroup[];
         return {
             version: 1,
-            timestamp: new Date().toISOString(),
+            timestamp: this.timestamp ?? new Date().toISOString(),
             instanceId: instanceId,
             name: this.name,
             bv: this.totalBv(),
@@ -312,6 +312,7 @@ export class Force {
             clearTimeout(this._debounceTimer);
         }
         this._debounceTimer = setTimeout(() => {
+            this.timestamp = new Date().toISOString();
             this.changed.emit();
             this._debounceTimer = null;
         }, 300); // debounce
