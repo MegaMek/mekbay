@@ -5,13 +5,13 @@
         <div class="summary-entry">
             @if (canSwitchAirborneMode()) {
             <div class="row grid">
-                <button type="button" class="bt-button move-button" [class.selected]="airborne() === true"
-                    aria-pressed="{{ airborne() === true }}" (click)="setAirborne(true)">
-                    Airborne
-                </button>
                 <button type="button" class="bt-button move-button" [class.selected]="airborne() === false"
                     aria-pressed="{{ airborne() === false }}" (click)="setAirborne(false)">
                     Grounded
+                </button>
+                <button type="button" class="bt-button move-button" [class.selected]="airborne() === true"
+                    aria-pressed="{{ airborne() === true }}" (click)="setAirborne(true)">
+                    Airborne
                 </button>
             </div>
             }
