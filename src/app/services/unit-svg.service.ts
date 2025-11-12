@@ -849,6 +849,9 @@ export class UnitSvgService implements OnDestroy {
     }
 
     protected calculateHitModifiers(unit: ForceUnit, entry: MountedEquipment, additionalModifiers: number): number | null {
+        if (!entry.equipment && !entry.physical) {
+            return null; // No equipment, no hit modifier
+        }
         if (entry.equipment) {
             if (entry.equipment.flags.has('F_WEAPON_ENHANCEMENT')) {
                 if (!entry.equipment.flags.has('F_RISC_LASER_PULSE_MODULE')) {
