@@ -388,7 +388,9 @@ export class SvgCanvasOverlayComponent {
         const blob = await this.exportImageData();
         if (!blob) return;
         this.dbService.saveCanvasData(unit.id, blob);
-        unit.setModified();
+        if (!unit.modified) {
+            unit.setModified();
+        }
     }
 
     async onPointerCancel(event: PointerEvent) {
