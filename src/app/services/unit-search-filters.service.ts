@@ -1416,8 +1416,10 @@ export class UnitSearchFiltersService {
 
     getAdjustedBV(unit: Unit): number {
         const gunnery = this.pilotGunnerySkill();
-        const piloting = this.pilotPilotingSkill();
-        
+        let piloting = this.pilotPilotingSkill();
+        if (unit.type === 'ProtoMek') {
+            piloting = 5; // ProtoMeks always use Piloting 5
+        }
         // Use default skills - no adjustment needed
         if (gunnery === 4 && piloting === 5) {
             return unit.bv;

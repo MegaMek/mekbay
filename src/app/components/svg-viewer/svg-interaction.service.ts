@@ -51,7 +51,7 @@ import { DataService } from '../../services/data.service';
 import { AmmoEquipment } from '../../models/equipment.model';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
-import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '../edit-pilot-dialog/edit-pilot-dialog.component';
+import { ForceBuilderService } from '../../services/force-builder.service';
 
 /*
  * Author: Drake
@@ -75,6 +75,7 @@ export class SvgInteractionService {
     private zoomPanService = inject(SvgZoomPanService);
     private toastService = inject(ToastService);
     private layoutService = inject(LayoutService);
+    private forceBuilderService = inject(ForceBuilderService);
     private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
 
     private containerRef!: ElementRef<HTMLDivElement>;
@@ -1388,31 +1389,10 @@ export class SvgInteractionService {
     }
 
     private async editCrewName(crewId: number) {
-        if (!this.unit()) return;
-        const crewMember = this.unit()!.getCrewMember(crewId);
-        const ref = this.dialogsService.createDialog<EditPilotResult | null, EditPilotDialogComponent, EditPilotDialogData>(
-            EditPilotDialogComponent,
-            {
-                data: {
-                    name: crewMember.getName(),
-                    gunnery: crewMember.getSkill('gunnery'),
-                    piloting: crewMember.getSkill('piloting')
-                }
-            }
-        );
-
-        const result = await firstValueFrom(ref.closed);
-        if (result && result !== null) {
-            if (result.name !== undefined) {
-                crewMember.setName(result.name);
-            }
-            if (result.gunnery !== undefined) {
-                crewMember.setSkill('gunnery', result.gunnery);
-            }
-            if (result.piloting !== undefined) {
-                crewMember.setSkill('piloting', result.piloting);
-            }
-        }
+        const unit = this.unit()!;
+        if (!unit) return;
+        const crewMember = unit.getCrewMember(crewId);
+        await this.forceBuilderService.editPilotOfUnit(unit, crewMember);
     }
 
     cleanup() {

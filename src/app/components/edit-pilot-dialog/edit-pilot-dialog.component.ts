@@ -43,6 +43,9 @@ export interface EditPilotDialogData {
     name: string;
     gunnery: number;
     piloting: number;
+    labelGunnery?: string;
+    labelPiloting?: string;
+    disablePiloting?: boolean;
 }
 
 export interface EditPilotResult {
@@ -65,21 +68,23 @@ export interface EditPilotResult {
         <div dialog-content>
             <p>Name</p>
             <div class="input-wrapper">
-                <input #nameInput type="text" class="name input" [value]="data.name || ''" (keydown.enter)="submit()" />
+                <input #nameInput type="text" class="input" [value]="data.name || ''" (keydown.enter)="submit()" />
             </div>
             <div class="stats">
                 <div class="stat">
-                    <p>Gunnery</p>
+                    <p>{{ data.labelGunnery || 'Gunnery Skill' }}</p>
                     <div class="input-wrapper">
                         <input #gunneryInput type="number" class="input" [value]="data.gunnery" [placeholder]="data.gunnery" min="0" max="8" (keydown.enter)="submit()" />
                     </div>
                 </div>
                 <div class="stat">
-                    <p>Piloting</p>
-                    <div class="input-wrapper">
-                        <input #pilotingInput type="number" class="input" [value]="data.piloting" [placeholder]="data.piloting" min="0" max="8" (keydown.enter)="submit()" />
+                    @if (!data.disablePiloting) {
+                        <p>{{ data.labelPiloting || 'Piloting Skill' }}</p>
+                        <div class="input-wrapper">
+                            <input #pilotingInput type="number" class="input" [value]="data.piloting" [placeholder]="data.piloting" min="0" max="8" (keydown.enter)="submit()" />
+                        </div>
+                    }
                     </div>
-                </div>
             </div>
         </div>
         <div dialog-actions>
@@ -90,17 +95,32 @@ export interface EditPilotResult {
     `,
     styles: [`
         .content {
-            display: block;
-            max-width: 1000px;
+            width: 100%;
+            max-width: 500px;
             text-align: center;
+            container-type: inline-size;
         }
 
         h2 {
             margin-top: 8px;
-            margin-bottom: 8px;
+            margin-bottom: 0;
+        }
+
+        p {
+            margin: 8px;
+        }
+
+        [dialog-content] {
+            width: 90vw;
+            max-width: 500px;
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
 
         .input {
+            width: 100%;
             max-width: 500px;
             font-size: 1.5em;
             background: var(--background-input);
@@ -110,25 +130,15 @@ export interface EditPilotResult {
             text-align: center;
             outline: none;
             transition: all 0.2s ease-in-out;
-            padding-left: 32px;
             white-space: normal;
             overflow-wrap: break-word;
             word-break: break-word;
             flex: 1;
         }
 
-        .input.name {
-            width: calc(90vw - 32px);
-            margin-bottom: 16px;
-        }
-
-        [dialog-content] .input:focus {
+        .input:focus {
             border-bottom: 1px solid #fff;
             outline: none;
-        }
-
-        [dialog-content] {
-            margin-bottom: 16px;
         }
 
         .input-wrapper {
@@ -136,22 +146,8 @@ export interface EditPilotResult {
             display: inline-flex;
             align-items: center;
             box-sizing: border-box;
-        }
-
-        .random-button {
-            align-self: baseline;
-            height: 32px;
-            width: 32px;
-            border: none;
-            background: transparent url('/images/random.svg') center/24px 24px no-repeat;
-            cursor: pointer;
-            opacity: 0.8;
-            transition: opacity 0.2s ease-in-out;
-        }
-
-        .random-button:hover,
-        .random-button:focus {
-            opacity: 1;
+            flex: 1;
+            width: 100%;
         }
 
         [dialog-actions] {
@@ -167,14 +163,17 @@ export interface EditPilotResult {
             min-width: 100px;
         }
 
-        .input-wrapper {
-            flex: 1;
-        }
-
         .stats {
             display: flex;
             justify-content: center;
             gap: 16px;
+        }
+
+        @container (max-width: 400px) {
+            .stats {
+                flex-direction: column;
+                gap: 8px;
+            }
         }
 
         .stat {
@@ -188,7 +187,7 @@ export interface EditPilotResult {
 export class EditPilotDialogComponent {
     nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');
     gunneryInput = viewChild.required<ElementRef<HTMLInputElement>>('gunneryInput');
-    pilotingInput = viewChild.required<ElementRef<HTMLInputElement>>('pilotingInput');
+    pilotingInput = viewChild<ElementRef<HTMLInputElement>>('pilotingInput');
 
     public dialogRef = inject(DialogRef<EditPilotResult | null, EditPilotDialogComponent>);
     readonly data: EditPilotDialogData = inject(DIALOG_DATA) as EditPilotDialogData;
@@ -198,9 +197,12 @@ export class EditPilotDialogComponent {
     submit() {
         const name = this.nameInput().nativeElement.value.trim();
         const gunneryValue = this.gunneryInput().nativeElement.value;
-        const pilotingValue = this.pilotingInput().nativeElement.value;
         const gunnery = Number(gunneryValue === "" ? this.data.gunnery : gunneryValue);
-        const piloting = Number(pilotingValue === "" ? this.data.piloting : pilotingValue);
+        let piloting = this.data.piloting;
+        if (!this.data.disablePiloting) {
+            const pv = this.pilotingInput()?.nativeElement.value ?? '';
+            piloting = Number(pv === '' ? this.data.piloting : pv);
+        }
         this.dialogRef.close({ name, gunnery, piloting });
     }
 

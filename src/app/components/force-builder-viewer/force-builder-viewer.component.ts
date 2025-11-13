@@ -43,8 +43,6 @@ import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-detai
 import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
-import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '../edit-pilot-dialog/edit-pilot-dialog.component';
-import { firstValueFrom } from 'rxjs';
 
 /*
  * Author: Drake
@@ -174,36 +172,15 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         unit.setC3Linked(!unit.c3Linked);
     }
 
+
+
     async editPilot(event: MouseEvent, unit: ForceUnit) {
         if (unit.readOnly()) return;
         event.stopPropagation();
         const crew = unit.getCrewMembers();
         const pilot = crew.length > 0 ? crew[0] : null;
         if (!pilot) return;
-
-        const ref = this.dialogsService.createDialog<EditPilotResult | null, EditPilotDialogComponent, EditPilotDialogData>(
-            EditPilotDialogComponent,
-            {
-                data: {
-                    name: pilot.getName(),
-                    gunnery: pilot.getSkill('gunnery'),
-                    piloting: pilot.getSkill('piloting')
-                }
-            }
-        );
-
-        const result = await firstValueFrom(ref.closed);
-        if (!result) return;
-
-        if (result.name !== undefined && result.name !== pilot.getName()) {
-            pilot.setName(result.name);
-        }
-        if (result.gunnery !== undefined) {
-            pilot.setSkill('gunnery', result.gunnery);
-        }
-        if (result.piloting !== undefined) {
-            pilot.setSkill('piloting', result.piloting);
-        }
+        await this.forceBuilderService.editPilotOfUnit(unit, pilot);
     }
 
 

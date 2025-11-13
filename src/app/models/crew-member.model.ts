@@ -162,7 +162,11 @@ export class CrewMember {
         const crew = new CrewMember(data.id, unit);
         crew.setName(data.name);
         crew.setSkill('gunnery', data.gunnerySkill);
-        crew.setSkill('piloting', data.pilotingSkill);
+        if (unit.getUnit()?.type === 'ProtoMek') {
+            crew.setSkill('piloting', 5);
+        } else {
+            crew.setSkill('piloting', data.pilotingSkill);
+        }
         if (data.asfGunnerySkill !== undefined)
             crew.setSkill('gunnery', data.asfGunnerySkill, true);
         if (data.asfPilotingSkill !== undefined)

@@ -52,6 +52,8 @@ import { LoadForceEntry } from '../models/load-force-entry.model';
 import { ForceLoadDialogComponent } from '../components/force-load-dialog/force-load-dialog.component';
 import { ForcePackDialogComponent } from '../components/force-pack-dialog/force-pack-dialog.component';
 import { SerializedForce } from '../models/force-serialization';
+import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
+import { CrewMember } from '../models/crew-member.model';
 
 /*
  * Author: Drake
@@ -198,7 +200,10 @@ export class ForceBuilderService {
         if (gunnerySkill !== undefined || pilotingSkill !== undefined) {
             const crewMembers = newForceUnit.getCrewMembers();
             newForceUnit.disabledSaving = true;
-
+            if (unit.type === 'ProtoMek') {
+                // ProtoMeks have a fixed Piloting skill of 5
+                pilotingSkill = 5;
+            }
             for (const crew of crewMembers) {
                 if (gunnerySkill !== undefined) {
                     crew.setSkill('gunnery', gunnerySkill);
@@ -813,5 +818,51 @@ export class ForceBuilderService {
         return true;
     }
 
+
+    public async editPilotOfUnit(unit: ForceUnit, pilot: CrewMember): Promise<void> {
+        if (unit.readOnly()) return;
+        const baseUnit = unit.getUnit();
+        if (!baseUnit) return;
+        const crewMembers = unit.getCrewMembers();
+        if (crewMembers.length === 0) {
+            this.toastService.show('This unit has no crew to edit.', 'error');
+            return;
+        }
+        const disablePiloting = baseUnit.type === 'ProtoMek';
+        let labelPiloting;
+        if (baseUnit.type === 'Infantry') {
+            labelPiloting = 'Anti-Mech';
+        } else if (baseUnit.type === 'Naval' || baseUnit.type === 'Tank' || baseUnit.type === 'VTOL') {
+            labelPiloting = 'Driving';
+        } else {
+            labelPiloting = 'Piloting';
+        }
+        const ref = this.dialogsService.createDialog<EditPilotResult | null, EditPilotDialogComponent, EditPilotDialogData>(
+            EditPilotDialogComponent,
+            {
+                data: {
+                    name: pilot.getName(),
+                    gunnery: pilot.getSkill('gunnery'),
+                    piloting: pilot.getSkill('piloting'),
+                    labelGunnery: `Gunnery Skill`,
+                    labelPiloting: `${labelPiloting} Skill`,
+                    disablePiloting: disablePiloting,
+                }
+            }
+        );
+
+        const result = await firstValueFrom(ref.closed);
+        if (!result) return;
+
+        if (result.name !== undefined && result.name !== pilot.getName()) {
+            pilot.setName(result.name);
+        }
+        if (result.gunnery !== undefined) {
+            pilot.setSkill('gunnery', result.gunnery);
+        }
+        if (result.piloting !== undefined) {
+            pilot.setSkill('piloting', result.piloting);
+        }
+    };
 
 }

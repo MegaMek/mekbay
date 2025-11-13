@@ -423,13 +423,16 @@ export class ForceUnit {
         const crew = this.state.crew();
         if (crew.length === 0) return 'N/A';
         const pilot = crew[0];
+        const gunnery = pilot.getSkill('gunnery');
+        if (this.unit.type === 'ProtoMek') {
+            return `${gunnery}`;
+        }
         const piloting = pilot.getSkill('piloting');
         if (crew.length > 1) {
             const gunner = crew[1];
-            const gunnery = gunner.getSkill('gunnery');
-            return `${gunnery}/${piloting}`;
+            const gunnery2 = gunner.getSkill('gunnery');
+            return `${gunnery2}/${piloting}`;
         }
-        const gunnery = pilot.getSkill('gunnery');
         return `${gunnery}/${piloting}`;
     });
 
