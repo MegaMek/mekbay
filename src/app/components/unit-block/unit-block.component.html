@@ -1,8 +1,8 @@
 @let unitDisplayName = optionsService.options().unitDisplayName;
-@let turnState = forceUnit()?.turnState();
 @if (compactMode()) {
 <div class="unit-square compact-mode" [class.destroyed]="forceUnit()?.destroyed">
-    @if (turnState?.dirty()) {
+    @if (dirty()) {
+        @let turnState = forceUnit()?.turnState();
         @let phase = turnState?.currentPhase();
         <div class="dirty-state" 
         [class.move]="phase === 'M'"
@@ -28,7 +28,8 @@
 </div>
 } @else {
 <div class="unit-card" [class.destroyed]="forceUnit()?.destroyed">
-    @if (turnState?.dirty()) {
+    @if (dirty()) {
+        @let turnState = forceUnit()?.turnState();
         @let phase = turnState?.currentPhase();
         <div class="dirty-state" 
         [class.move]="phase === 'M'"

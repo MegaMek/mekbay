@@ -29,6 +29,15 @@ export class UnitBlockComponent {
         return this.forceUnit()?.getUnit();
     });
 
+    dirty = computed<boolean>(() => {
+        if (!this.optionsService.options().useAutomations) {
+            return false;
+        }
+        const unit = this.forceUnit();
+        if (!unit) return false;
+        return unit.turnState().dirty();
+    });
+
     getECMStatus = computed(() => {
         const unit = this.forceUnit();
         if (!unit) return true;
