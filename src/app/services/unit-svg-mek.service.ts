@@ -738,6 +738,9 @@ export class UnitSvgMekService extends UnitSvgService {
                 const destroyed = (locDestroyed || (critSlot.hits ?? 0) >= maxHits);
                 if (!!destroyed !== !!critSlot.destroying) {
                     critSlot.destroying = destroyed ? Date.now() : undefined;
+                    if (!critSlot.destroying && critSlot.destroyed) {
+                        critSlot.destroyed = critSlot.destroying; // we remove the destruction directly
+                    }
                     this.unit.setCritSlot(critSlot);
                 }
             }
