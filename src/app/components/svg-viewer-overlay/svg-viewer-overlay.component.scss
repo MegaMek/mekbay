@@ -107,123 +107,13 @@
             stroke-width: 0;
         }
     }
-
 }
 
-.phase-bar {
-    width: fit-content;
-    pointer-events: auto;
+.phase-selector {
     position: absolute;
     top: 8px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    gap: 0;
-    background-color: rgba(0, 0, 0, 0.7);
-    padding: 4px 8px;
-    z-index: 1000;
-    transition: background-color 0.2s;
-    
-    &:hover {
-        background-color: rgba(0, 0, 0, 1);
-    }
-
-    &.compact {
-        position: relative;
-    }
+    left: 8px;
 }
-
-.phase-button {
-    background: transparent;
-    border: none;
-    color: var(--text-color);
-    padding: 6px 12px;
-    cursor: pointer;
-    font-size: 0.9em;
-    transition: color 0.2s ease, background-color 0.2s ease;
-    white-space: nowrap;
-
-    &:hover {
-        color: rgba(255, 255, 255, 0.9);
-        background-color: rgba(255, 255, 255, 0.1);
-    }
-
-    &.selected {
-        color: var(--bt-yellow);
-        font-weight: bold;
-        background-color: var(--bt-yellow-background);
-    }
-}
-
-.phase-separator {
-    color: rgba(255, 255, 255, 0.4);
-    font-size: 1.2em;
-    padding: 0 4px;
-    user-select: none;
-}
-
-.phase-dropdown-toggle {
-    background: transparent;
-    border: none;
-    color: var(--text-color);
-    padding: 8px 16px;
-    cursor: pointer;
-    font-size: 0.9em;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    white-space: nowrap;
-    min-width: 150px;
-    justify-content: space-between;
-
-    &:hover {
-        color: rgba(255, 255, 255, 0.9);
-    }
-
-    .dropdown-arrow {
-        font-size: 0.8em;
-        color: rgba(255, 255, 255, 0.6);
-    }
-}
-
-.phase-dropdown-menu {
-    background-color: rgba(0, 0, 0, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    overflow: hidden;
-    min-width: 180px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
-
-.phase-dropdown-item {
-    display: block;
-    width: 100%;
-    background: transparent;
-    border: none;
-    color: var(--text-color);
-    padding: 10px 16px;
-    cursor: pointer;
-    font-size: 0.9em;
-    text-align: left;
-    transition: background-color 0.2s ease;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-
-    &:last-child {
-        border-bottom: none;
-    }
-
-    &:hover {
-        background-color: rgba(255, 255, 255, 0.1);
-    }
-
-    &.selected {
-        color: var(--bt-yellow);
-        font-weight: bold;
-        background-color: var(--bt-yellow-background);
-    }
-}
-
 
 @media print {
     :host {

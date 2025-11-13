@@ -88,7 +88,7 @@ export class SvgInteractionOverlayComponent {
         const force = this.force();
         if (!force) return;
         force.units().forEach(unit => {
-            unit.consolidateCrits();
+            unit.endPhase();
         });
         
     }

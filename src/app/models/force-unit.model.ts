@@ -297,8 +297,8 @@ export class ForceUnit {
         this.setCritSlots(crits);
     }
 
-    consolidateCrits() {
-        this.state.consolidateCrits();
+    endPhase() {
+        this.state.endPhase();
     }
 
     getInventory = this.state.inventory;
@@ -575,7 +575,7 @@ export class ForceUnit {
     });
     
     public endTurn() {
-        this.state.consolidateCrits();
+        this.state.endPhase();
         this.state.resetTurnState();
     }
 

@@ -1,4 +1,4 @@
-<div class="phase-bar preventZoomReset" [class.compact]="isCompact()">
+<div class="phase-bar glass preventZoomReset" [class.compact]="isCompact()">
   @if (isCompact()) {
     <button #toggleBtn class="phase-dropdown-toggle" (click)="toggleDropdown($event)">
       {{ getPhaseLabel(selected()) }}

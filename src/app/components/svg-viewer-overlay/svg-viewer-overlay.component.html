@@ -5,12 +5,11 @@
 </button>
 }
 
-<mb-phase-selector class="preventZoomReset"
-    [selected]="selectedPhaseButton()"
-    (phaseSelected)="selectPhase($event)">
-</mb-phase-selector>
-
 <div class="container" [ngStyle]="containerStyle()">
+    <mb-phase-selector class="phase-selector preventZoomReset"
+        [selected]="selectedPhaseButton()"
+        (phaseSelected)="selectPhase($event)">
+    </mb-phase-selector>
     <button role="button" class="overlay-button turn-tracker-button preventZoomReset" tabindex="0"
         (click)="openTurnSummary($event)">
         @let phase = currentPhase();

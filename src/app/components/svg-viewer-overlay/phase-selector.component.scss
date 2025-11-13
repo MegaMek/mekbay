@@ -5,16 +5,11 @@
 .phase-bar {
     width: fit-content;
     pointer-events: auto;
-    position: absolute;
-    top: 8px;
-    left: 50%;
-    transform: translateX(-50%);
     display: flex;
     align-items: center;
     gap: 0;
-    background-color: rgba(0, 0, 0, 0.7);
     padding: 4px 8px;
-    z-index: 1000;
+    z-index: 4;
     transition: background-color 0.2s;
 
     &:hover {

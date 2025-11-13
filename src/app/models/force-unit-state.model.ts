@@ -55,6 +55,13 @@ export class ForceUnitState {
         }
     }
 
+    endPhase() {
+        this.consolidateCrits();
+        const turnState = this.turnState();
+        turnState.psrChecks.set({});
+        turnState.dmgReceived.set(0);
+    }
+
     update(data: SerializedState, allEquipment: EquipmentUnitType) {
         this.modified.set(data.modified);
         this.destroyed.set(data.destroyed);
