@@ -930,8 +930,6 @@ hr {
             }
 
             &.willDamage .critSlot-bg-rect {
-                stroke-width: 0.5px;
-                stroke: var(--damage-color);
                 fill: #f663;
 
                 &:hover {
