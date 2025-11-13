@@ -19,7 +19,7 @@ export class PhaseSelectorComponent {
     private vcr = inject(ViewContainerRef);
     private layout = inject(LayoutService);
 
-    selected = signal<Phase>('movement');
+    selected = input<Phase>('movement');
     phaseSelected = output<Phase>();
 
     private overlayRef: OverlayRef | null = null;
@@ -108,14 +108,12 @@ export class PhaseSelectorComponent {
     }
 
     choose(phase: Phase) {
-        this.selected.set(phase);
         this.phaseSelected.emit(phase);
         this.closeDropdown();
     }
 
     clickPhase(phase: Phase, ev: MouseEvent) {
         ev.stopPropagation();
-        this.selected.set(phase);
         this.phaseSelected.emit(phase);
     }
 }
