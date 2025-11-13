@@ -38,7 +38,7 @@ export class ForceUnitState {
     }
 
     hasUnconsolidatedCrits = computed(() => {
-        return this.crits().some(crit => crit.destroying && !crit.destroyed);
+        return this.crits().some(crit => !!crit.destroying !== !!crit.destroyed);
     });
 
     consolidateCrits() {
