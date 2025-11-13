@@ -52,6 +52,7 @@ export class ForceUnitState {
         });        
         if (updated) {
             this.crits.set([...crits]);
+            this.unit.setModified();
         }
     }
 
