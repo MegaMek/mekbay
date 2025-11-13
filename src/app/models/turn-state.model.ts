@@ -41,6 +41,15 @@ export class TurnState {
             || unconsolidatedCrits;
     });
 
+    dirtyPhase = computed<boolean>(() => {
+        const psrChecks = this.psrChecks();
+        const dmgReceived = this.dmgReceived();
+        const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
+        return dmgReceived != 0
+            || Object.keys(psrChecks).length > 0
+            || unconsolidatedCrits;
+    });
+    
     autoFall = computed<boolean>(() => {
         return (this.psrChecks().legsDestroyed || 0) > 0
             || this.psrChecks().gyrosDestroyed === true;

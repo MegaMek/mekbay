@@ -40,7 +40,8 @@
                     <input class="range" type="range" [attr.min]="MOVE_MIN" [attr.max]="moveMax()"
                         [value]="moveDistance()" (input)="onMoveDistanceInput($event)" aria-label="Move distance" />
                     <div class="thumb-marker" [style.left.%]="moveDistancePercent()" (pointerdown)="startDrag($event)">
-                        <div class="hex" [class.valueAssigned]="hasMoveDistance()" [class.danger]="overDistance()">{{ moveDistanceLabel() }}</div>
+                        <div class="hex" [class.valueAssigned]="hasMoveDistance()" [class.danger]="overDistance()">{{
+                            moveDistanceLabel() }}</div>
                     </div>
                 </div>
             </div>
@@ -69,14 +70,14 @@
         </div>
     </div>
     @if (tracksHeat()) {
-        <div class="group">
-            <div class="phaseTitle">Heat</div>
-            <div class="summary-entry">
-                <div class="row"><span>Movement:</span><span>{{ heatFromMovement() }}</span></div>
-                <div class="row"><span>Status Effects:</span><span>{{ heatFromStatusEffects() }}</span></div>
-            </div>
+    <div class="group">
+        <div class="phaseTitle">Heat</div>
+        <div class="summary-entry">
+            <div class="row"><span>Movement:</span><span>{{ heatFromMovement() }}</span></div>
+            <div class="row"><span>Status Effects:</span><span>{{ heatFromStatusEffects() }}</span></div>
         </div>
-        <!-- <button role="button" class="summary-entry bt-button" tabindex="0">
+    </div>
+    <!-- <button role="button" class="summary-entry bt-button" tabindex="0">
             Apply Heat
         </button> -->
     }
@@ -88,6 +89,11 @@
     @if (dirty()) {
     <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurn()">
         End Turn
+    </button>
+    }
+    @if (endTurnForAllButtonVisible()) {
+    <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurnForAll($event)">
+        End Turn for All Units
     </button>
     }
     <span style="font-size: 9px; text-align: center;">This feature is currently under development.</span>

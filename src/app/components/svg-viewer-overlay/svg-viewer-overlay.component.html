@@ -1,15 +1,11 @@
-@if (endTurnButtonVisible()) {
+@if (dirtyPhase()) {
 <button role="button" class="overlay-button end-turn-button preventZoomReset" tabindex="0"
-    (click)="endTurnForAll($event)">
-    END TURN FOR ALL UNITS
+    (click)="endPhase($event)">
+    END PHASE
 </button>
 }
 
 <div class="container" [ngStyle]="containerStyle()">
-    <mb-phase-selector class="phase-selector preventZoomReset"
-        [selected]="selectedPhaseButton()"
-        (phaseSelected)="selectPhase($event)">
-    </mb-phase-selector>
     <button role="button" class="overlay-button turn-tracker-button preventZoomReset" tabindex="0"
         (click)="openTurnSummary($event)">
         @let phase = currentPhase();

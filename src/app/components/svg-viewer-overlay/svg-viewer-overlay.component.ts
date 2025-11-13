@@ -90,13 +90,18 @@ export class SvgInteractionOverlayComponent {
         force.units().forEach(unit => {
             unit.endPhase();
         });
-        
     }
 
     dirty = computed(() => {
         const unit = this.unit();
         if (!unit) return false;
         return unit.turnState().dirty();
+    });
+
+    dirtyPhase = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return unit.turnState().dirtyPhase();
     });
 
     hasPSRChecks = computed(() => {
@@ -180,6 +185,7 @@ export class SvgInteractionOverlayComponent {
 
         const target = event.currentTarget as HTMLElement || (event.target as HTMLElement);
         const portal = new ComponentPortal(TurnSummaryPanelComponent, null, this.injector);
+
         const compRef = this.overlayManager.createManagedOverlay('turnSummary', target, portal, {
             hasBackdrop: false,
             panelClass: 'turn-summary-overlay-panel',
@@ -188,10 +194,16 @@ export class SvgInteractionOverlayComponent {
             sensitiveAreaReferenceElement: this.nativeElement,
             scrollStrategy: this.overlay.scrollStrategies.reposition()
         });
+
+        if (compRef) {
+            compRef.setInput('endTurnForAllButtonVisible', this.endTurnButtonVisible());
+            compRef.instance.endTurnForAllClicked.subscribe(() => {
+                this.endTurnForAll();
+            });
+        }
     }
 
-    async endTurnForAll(event: MouseEvent) {
-        event.stopPropagation();
+    async endTurnForAll() {
         const confirm = await this.dialogsService.requestConfirmation('Are you sure you want to end the turn for all units?', 'End Turn', 'info');
         if (!confirm) return;
         const force = this.force();
@@ -201,5 +213,10 @@ export class SvgInteractionOverlayComponent {
         });
         this.selectedPhaseButton.set('movement');
     }
-    
+
+    async endPhase(event: MouseEvent) {
+        event.stopPropagation();
+        this.unit()?.endPhase();
+    }
+
 }

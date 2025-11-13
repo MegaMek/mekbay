@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, afterNextRender, ElementRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, afterNextRender, ElementRef, output } from '@angular/core';
 import { SvgZoomPanService } from '../svg-viewer/svg-zoom-pan.service';
 import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
@@ -66,8 +66,16 @@ export class TurnSummaryPanelComponent {
     private injector = inject(Injector);
     private overlay = inject(Overlay);
     unit = inject(SvgInteractionOverlayComponent).unit;
+    force = inject(SvgInteractionOverlayComponent).force;
     sliderContainer = viewChild<ElementRef<HTMLDivElement>>('sliderContainer');
     private activePointerId: number | null = null;
+    endTurnForAllButtonVisible = input<boolean>(false);
+    endTurnForAllClicked = output<void>();
+
+    endTurnForAll(event: MouseEvent) {
+        event.stopPropagation();
+        this.endTurnForAllClicked.emit();
+    }
 
     dirty = computed(() => {
         const unit = this.unit();
