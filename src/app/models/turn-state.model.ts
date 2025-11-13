@@ -32,11 +32,13 @@ export class TurnState {
         const moveDistance = this.moveDistance();
         const psrChecks = this.psrChecks();
         const dmgReceived = this.dmgReceived();
+        const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
         return airborne !== null
             || moveMode !== null
             || moveDistance !== null
             || dmgReceived != 0
-            || Object.keys(psrChecks).length > 0;
+            || Object.keys(psrChecks).length > 0
+            || unconsolidatedCrits;
     });
 
     autoFall = computed<boolean>(() => {

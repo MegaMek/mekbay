@@ -105,6 +105,7 @@ export interface CriticalSlot {
     hits?: number; // How many hits did this location receive. If is an armored location, this is the number of hits it has taken
     totalAmmo?: number; // If is an ammo slot: how much total ammo is in this slot.
     consumed?: number; // If is an ammo slot: how much ammo have been consumed. If is a F_MODULAR_ARMOR, is the armor points used
+    destroying?: number; // If this location is in the process of being destroyed. Contains the timestamp of when the destruction started
     destroyed?: number; // If this location is destroyed (can be from 0 hits if the structure is completely destroyed). Contains the timestamp of the destruction
     originalName?: string; // saved original name in case we override the current name
     armored?: boolean; // If this critical slot is armored (for locations that can be armored)
@@ -131,6 +132,7 @@ export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()
     .number('hits')
     .number('totalAmmo')
     .number('consumed')
+    .number('destroying')
     .custom('destroyed', (value: unknown) => {
         if (typeof value === 'boolean') return value ? Date.now() : undefined; // We may have old boolean values, we convert them to timestamp
         if (typeof value === 'number') return value;

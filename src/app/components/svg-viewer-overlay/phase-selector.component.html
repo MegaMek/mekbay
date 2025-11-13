@@ -1,0 +1,41 @@
+<div class="phase-bar preventZoomReset" [class.compact]="isCompact()">
+  @if (isCompact()) {
+    <button #toggleBtn class="phase-dropdown-toggle" (click)="toggleDropdown($event)">
+      {{ getPhaseLabel(selected()) }}
+      <span class="dropdown-arrow">{{ dropdownOpen() ? '▲' : '▼' }}</span>
+    </button>
+
+    <ng-template #menuTpl>
+      <div class="phase-dropdown-menu">
+        <button class="phase-dropdown-item" [class.selected]="selected() === 'movement'" (click)="choose('movement')">
+          Movement
+        </button>
+        <button class="phase-dropdown-item" [class.selected]="selected() === 'weapon'" (click)="choose('weapon')">
+          Weapon Attack
+        </button>
+        <button class="phase-dropdown-item" [class.selected]="selected() === 'physical'" (click)="choose('physical')">
+          Physical Attack
+        </button>
+        <button class="phase-dropdown-item" [class.selected]="selected() === 'heat'" (click)="choose('heat')">
+          Heat
+        </button>
+      </div>
+    </ng-template>
+  } @else {
+    <button class="phase-button" [class.selected]="selected() === 'movement'" (click)="clickPhase('movement', $event)">
+      Movement
+    </button>
+    <span class="phase-separator">›</span>
+    <button class="phase-button" [class.selected]="selected() === 'weapon'" (click)="clickPhase('weapon', $event)">
+      Weapon Attack
+    </button>
+    <span class="phase-separator">›</span>
+    <button class="phase-button" [class.selected]="selected() === 'physical'" (click)="clickPhase('physical', $event)">
+      Physical Attack
+    </button>
+    <span class="phase-separator">›</span>
+    <button class="phase-button" [class.selected]="selected() === 'heat'" (click)="clickPhase('heat', $event)">
+      Heat
+    </button>
+  }
+</div>

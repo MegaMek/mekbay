@@ -31,8 +31,7 @@
     scrollbar-color: #666 rgba(0, 0, 0, 0);
     -webkit-tap-highlight-color: transparent;
 
-    --highlight-color: #f0f0f0;
-    --night-highlight-color: #555;
+    --highlight-color: #8885;
 
     --disabled-color: #888;
     --damage-color: #F00;
@@ -54,7 +53,8 @@ html {
     height: 100dvh;
     width: 100vw;
     width: 100dvw;
-    background-color: var(--background-color);}
+    background-color: var(--background-color);
+}
 
 // @media all and (display-mode: standalone) {
 //     html {
@@ -918,6 +918,31 @@ hr {
             pointer-events: none;
         }
 
+        .critSlot {
+            text {
+                pointer-events: none;
+            }
+
+            .critSlot-bg-rect {
+                &:hover {
+                    fill: var(--highlight-color);
+                }
+            }
+
+            &.willDamage .critSlot-bg-rect {
+                stroke-width: 0.5px;
+                stroke: var(--damage-color);
+                fill: #f663;
+
+                &:hover {
+                    fill: #d665;
+                }
+            }
+
+
+        }
+
+
         .picker-active.critSlot text {
             text-decoration: underline !important;
         }
@@ -1360,14 +1385,6 @@ hr {
 
         .customAmmoLoadout {
             fill: #bbf;
-        }
-
-        .inventoryEntry:hover>.inventoryEntryButton {
-            fill: var(--night-highlight-color);
-        }
-
-        .inventoryEntry.selected>.inventoryEntryButton {
-            fill: var(--bt-yellow);
         }
 
         .selectable:hover,

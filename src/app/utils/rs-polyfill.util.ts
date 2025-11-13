@@ -97,6 +97,7 @@ export class RsPolyfillUtil {
         this.addHitMod(svg);
         this.injectFluffImage(unit, svg);
         this.addTurnStateClasses(unit, svg);
+        this.addCritSlotClasses(svg);
     }
 
     public static fixSvg(svg: SVGSVGElement): void {
@@ -321,7 +322,7 @@ export class RsPolyfillUtil {
         const clipPathId = `unconscious_clip_${crewId}`;
         const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
         clipPath.setAttribute('id', clipPathId);
-        
+
         const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         clipRect.setAttribute('id', `unconscious_clip_rect_${crewId}`);
         clipRect.setAttribute('x', (rectX + rectWidth).toString());
@@ -330,7 +331,7 @@ export class RsPolyfillUtil {
         clipRect.setAttribute('width', (rectX + rectWidth).toString());
         clipRect.setAttribute('height', rectHeight.toString());
         clipRect.style.transition = 'width 0.4s ease-out, x 0.4s ease-out';
-        
+
         clipPath.appendChild(clipRect);
         let defs = svg.querySelector('defs');
         if (!defs) {
@@ -871,4 +872,43 @@ export class RsPolyfillUtil {
         }
     }
 
+    private static addCritSlotClasses(svg: SVGSVGElement): void {
+        const critSlots = svg.querySelectorAll('.critSlot');
+        critSlots.forEach(critSlot => {
+            // Avoid duplicate insertion
+            if (critSlot.querySelector('.critSlot-bg-rect')) return;
+            if (critSlot.getAttribute('hittable') != '1') return;
+
+            // Find the text element inside the critSlot
+            const textElement = critSlot.querySelector('text');
+            if (!textElement) return;
+
+            // Get text bounding box for positioning
+            let bbox: DOMRect | null = null;
+            try {
+                bbox = (textElement as SVGGraphicsElement).getBBox();
+            } catch {
+                bbox = null;
+            }
+            if (!bbox) return;
+
+            // Create background rect
+            const rectWidth = Math.max(90, bbox.width + 4);
+            const rectHeight = bbox.height;
+            const rectX = bbox.x - 4; // Slight left padding
+            const rectY = bbox.y;
+
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', rectX.toString());
+            rect.setAttribute('y', rectY.toString());
+            rect.setAttribute('width', rectWidth.toString());
+            rect.setAttribute('height', rectHeight.toString());
+            rect.setAttribute('fill', 'transparent'); // Transparent background
+            rect.setAttribute('class', 'critSlot-bg-rect');
+
+            // Insert rect before the text element
+            critSlot.insertBefore(rect, textElement);
+
+        });
+    }
 }

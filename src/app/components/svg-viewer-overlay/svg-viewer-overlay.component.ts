@@ -45,6 +45,7 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { TurnSummaryPanelComponent } from './turn-summary.component';
 import { Force } from '../../models/force.model';
+import { PhaseSelectorComponent, Phase } from './phase-selector.component';
 
 /*
  * Author: Drake
@@ -53,7 +54,7 @@ import { Force } from '../../models/force.model';
     selector: 'svg-interaction-overlay',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [CommonModule, PhaseSelectorComponent],
     templateUrl: './svg-viewer-overlay.component.html',
     styleUrls: ['./svg-viewer-overlay.component.scss']
 })
@@ -77,6 +78,19 @@ export class SvgInteractionOverlayComponent {
 
     get nativeElement(): HTMLElement {
         return this.host.nativeElement;
+    }
+
+    selectedPhaseButton = signal<Phase>('movement');
+
+    selectPhase(phase: Phase) {
+        if (this.selectedPhaseButton() === phase) return;
+        this.selectedPhaseButton.set(phase);
+        const force = this.force();
+        if (!force) return;
+        force.units().forEach(unit => {
+            unit.consolidateCrits();
+        });
+        
     }
 
     dirty = computed(() => {
@@ -107,7 +121,7 @@ export class SvgInteractionOverlayComponent {
         const force = this.force();
         if (!force) return false;
         const units = force.units();
-        return units.some(u => u.turnState().dirty());
+        return (this.selectedPhaseButton() !== 'movement') || units.some(u => u.turnState().dirty());
     });
 
     containerStyle = computed(() => {
@@ -185,5 +199,7 @@ export class SvgInteractionOverlayComponent {
         force.units().forEach(unit => {
             unit.endTurn();
         });
+        this.selectedPhaseButton.set('movement');
     }
+    
 }

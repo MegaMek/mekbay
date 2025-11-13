@@ -572,7 +572,7 @@ export class SvgInteractionService {
                     const critSlot = unit.getCritSlot(loc, slot);
                     if (!critSlot) return [];
                     let values: PickerChoice[] = [];
-                    if (!critSlot.destroyed) {
+                    if (!critSlot.destroying) {
                         values.push({ label: 'Critical Hit', value: 'Hit' });
                     }
                     if ((critSlot.hits ?? 0) > 0) {

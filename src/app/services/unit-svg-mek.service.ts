@@ -100,7 +100,13 @@ export class UnitSvgMekService extends UnitSvgService {
                 }
             }
 
-            el.classList.toggle('damaged', !!criticalSlot.destroyed);
+            if (!!criticalSlot.destroyed) {
+                el.classList.add('damaged');
+                el.classList.remove('willDamage');
+            } else {
+                el.classList.remove('damaged');
+                el.classList.toggle('willDamage', !!criticalSlot.destroying);
+            }
 
             if (criticalSlot.armored && !criticalSlot.destroyed) {
                 const armorPip = el.querySelector('.armoredLocPip');
@@ -729,8 +735,8 @@ export class UnitSvgMekService extends UnitSvgService {
                 if (!critSlot) continue;
                 const maxHits = critSlot.armored ? 2 : 1;
                 const destroyed = (locDestroyed || (critSlot.hits ?? 0) >= maxHits);
-                if (!!destroyed !== !!critSlot.destroyed) {
-                    critSlot.destroyed = destroyed ? Date.now() : undefined;
+                if (!!destroyed !== !!critSlot.destroying) {
+                    critSlot.destroying = destroyed ? Date.now() : undefined;
                     this.unit.setCritSlot(critSlot);
                 }
             }

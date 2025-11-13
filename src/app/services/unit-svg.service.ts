@@ -383,6 +383,7 @@ export class UnitSvgService implements OnDestroy {
                     critLoc.el.classList.remove('fresh');
                 }
                 critLoc.el.classList.remove('damaged');
+                critLoc.el.classList.toggle('willDamage', !!critLoc.destroying);
             }
         });
     }

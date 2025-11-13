@@ -274,8 +274,11 @@ export class ForceUnit {
 
     applyHitToCritSlot(slot: CriticalSlot, damage: number = 1) {
         slot.hits = Math.max(0, (slot.hits ?? 0) + damage);
-        const destroyed = slot.armored ? slot.hits >= 2 : slot.hits >= 1;
-        slot.destroyed = destroyed ? Date.now() : undefined;
+        const destroying = slot.armored ? slot.hits >= 2 : slot.hits >= 1;
+        slot.destroying = destroying ? Date.now() : undefined;
+        if (slot.destroyed && !destroying) {
+            slot.destroyed = undefined; // Reset destroyed immediately
+        }
         this.setCritSlot(slot);
     }
 
@@ -292,6 +295,10 @@ export class ForceUnit {
             crits.push(loc); // Add new crit
         }
         this.setCritSlots(crits);
+    }
+
+    consolidateCrits() {
+        this.state.consolidateCrits();
     }
 
     getInventory = this.state.inventory;
@@ -568,6 +575,7 @@ export class ForceUnit {
     });
     
     public endTurn() {
+        this.state.consolidateCrits();
         this.state.resetTurnState();
     }
 

@@ -37,6 +37,24 @@ export class ForceUnitState {
         this.turnState.set(new TurnState(this));
     }
 
+    hasUnconsolidatedCrits = computed(() => {
+        return this.crits().some(crit => crit.destroying && !crit.destroyed);
+    });
+
+    consolidateCrits() {
+        const crits = this.crits();
+        let updated = false;
+        crits.forEach(crit => {
+            if (crit.destroying && !crit.destroyed) {
+                crit.destroyed = crit.destroying;
+                updated = true;
+            }
+        });        
+        if (updated) {
+            this.crits.set([...crits]);
+        }
+    }
+
     update(data: SerializedState, allEquipment: EquipmentUnitType) {
         this.modified.set(data.modified);
         this.destroyed.set(data.destroyed);
@@ -89,6 +107,7 @@ export class ForceUnitState {
                         existingCrit.destroyed !== incomingCrit.destroyed ||
                         existingCrit.consumed !== incomingCrit.consumed) {
                         existingCrit.hits = incomingCrit.hits;
+                        existingCrit.destroying = incomingCrit.destroying;
                         existingCrit.destroyed = incomingCrit.destroyed;
                         existingCrit.consumed = incomingCrit.consumed;
                         critsChanged = true;
