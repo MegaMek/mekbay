@@ -45,7 +45,7 @@ export class ForceUnitState {
         const crits = this.crits();
         let updated = false;
         crits.forEach(crit => {
-            if (crit.destroying && !crit.destroyed) {
+            if (!!crit.destroying !== !!crit.destroyed) {
                 crit.destroyed = crit.destroying;
                 updated = true;
             }
