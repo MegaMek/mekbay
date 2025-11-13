@@ -185,6 +185,7 @@ export class UnitSvgService implements OnDestroy {
         const critSlots = this.unit.getCritSlots();
         const locations = this.unit.getLocations();
         const inventory = this.unit.getInventory();
+        this.unit.phaseTrigger(); // Ensure phase changes trigger update
 
         // Update all displays
         this.updateBVDisplay();
@@ -546,6 +547,7 @@ export class UnitSvgService implements OnDestroy {
     protected updateArmorDisplay(initial: boolean = false) {
         const svg = this.unit.svg();
         if (!svg) return;
+        this.unit.phaseTrigger(); // Ensure phase changes trigger update
 
         const armorPips = svg.querySelectorAll(`.armor.pip`);
         const locations = this.unit.getLocations();

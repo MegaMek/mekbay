@@ -53,6 +53,7 @@ export class UnitSvgMekService extends UnitSvgService {
         const critSlots = this.unit.getCritSlots();
         const locations = this.unit.getLocations();
         const inventory = this.unit.getInventory();
+        this.unit.phaseTrigger(); // Ensure phase changes trigger update
         // Update all displays
         this.updateBVDisplay();
         this.updateCrewDisplay(crew);

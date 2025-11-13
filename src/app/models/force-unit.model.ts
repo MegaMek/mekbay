@@ -80,6 +80,7 @@ export class ForceUnit {
     private injector: Injector;
     private isLoaded: boolean = false;
     public disabledSaving: boolean = false;
+    phaseTrigger = signal(0); // Used to trigger change detection on phase changes
 
     readOnly = computed(() => this.force.owned() === false);
     alias = computed<string | undefined>(() => {
@@ -306,6 +307,7 @@ export class ForceUnit {
 
     endPhase() {
         this.state.endPhase();
+        this.phaseTrigger.set(this.phaseTrigger() + 1); // Trigger change detection
     }
 
     getInventory = this.state.inventory;

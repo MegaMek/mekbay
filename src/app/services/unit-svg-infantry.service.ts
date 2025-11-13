@@ -44,6 +44,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
         // Read all reactive state properties to ensure they are tracked by the effect.
         const crew = this.unit.getCrewMembers();
         const locations = this.unit.getLocations();
+        this.unit.phaseTrigger(); // Ensure phase changes trigger update
 
         // Update all displays
         this.updateBVDisplay();
