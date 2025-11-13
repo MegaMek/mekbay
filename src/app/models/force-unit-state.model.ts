@@ -42,6 +42,7 @@ export class ForceUnitState {
     });
 
     consolidateCrits() {
+        if (!this.hasUnconsolidatedCrits()) return;
         const crits = this.crits();
         let updated = false;
         crits.forEach(crit => {

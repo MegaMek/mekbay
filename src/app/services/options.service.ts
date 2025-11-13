@@ -49,6 +49,7 @@ const DEFAULT_OPTIONS: Options = {
     gameSystem: 'cbt',
     recordSheetCenterPanelContent: 'clusterTable',
     syncZoomBetweenSheets: true,
+    useAutomations: true,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -65,6 +66,7 @@ export class OptionsService {
         unitDisplayName: DEFAULT_OPTIONS.unitDisplayName,
         gameSystem: DEFAULT_OPTIONS.gameSystem,
         recordSheetCenterPanelContent: DEFAULT_OPTIONS.recordSheetCenterPanelContent,
+        useAutomations: DEFAULT_OPTIONS.useAutomations,
     });
 
     constructor() {
@@ -85,6 +87,7 @@ export class OptionsService {
             recordSheetCenterPanelContent: saved?.recordSheetCenterPanelContent ?? DEFAULT_OPTIONS.recordSheetCenterPanelContent,
             lastCanvasState: saved?.lastCanvasState,
             sidebarLipPosition: saved?.sidebarLipPosition,
+            useAutomations: saved?.useAutomations ?? DEFAULT_OPTIONS.useAutomations,
         });
     }
 

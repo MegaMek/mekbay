@@ -38,6 +38,21 @@
                             slots applies a critical hit.</p>
                     </div>
                 </div>
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="useAutomations">Use Automations:</label>
+                        <select id="useAutomations" class="bt-select" [value]="optionsService.options().useAutomations"
+                            (change)="onUseAutomationsChange($event)">
+                            <option value="true">Enabled (default)</option>
+                            <option value="false">Disabled</option>
+                        </select>
+                    </div>
+                    <div class="description">
+                        <p>Automations provide automatic calculations and effects for various game mechanics, such as
+                            turn/phase tracking, PSRs, critical table, and damage application.</p>
+                        <p>Disabling automations will require manual tracking of these mechanics during gameplay.</p>
+                    </div>
+                </div>
                 <hr />
                 <div class="option-col">
                     <label for="userUuid">User Identifier:</label>

@@ -683,12 +683,12 @@ export class SvgInteractionService {
                             pickerInstance.component.values.set(calculateValues());
                         }
                         if (val == 'Hit') {
-                            unit.applyHitToCritSlot(critSlot, 1);
+                            unit.applyHitToCritSlot(critSlot, 1, !this.optionsService.options().useAutomations);
                             this.toastService.show(`Critical Hit on ${labelText}`, 'info');
                             pickerInstance.component.values.set(calculateValues());
                         }
                         if (val == 'Repair') {
-                            unit.applyHitToCritSlot(critSlot, -1);
+                            unit.applyHitToCritSlot(critSlot, -1, !this.optionsService.options().useAutomations);
                             this.toastService.show(`Repaired ${labelText}`, 'info');
                             pickerInstance.component.values.set(calculateValues());
                         }
@@ -716,7 +716,7 @@ export class SvgInteractionService {
                     } else {
                         // default is damage
                         if (!critSlot.destroyed) {
-                            unit.applyHitToCritSlot(critSlot, 1);
+                            unit.applyHitToCritSlot(critSlot, 1, !this.optionsService.options().useAutomations);
                             this.toastService.show(`Critical Hit on ${labelText}`, 'info');
                             return;
                         }

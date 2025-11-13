@@ -7,13 +7,15 @@
             [width]="this.svgWidth"
             [height]="this.svgHeight"
         ></svg-canvas-overlay>
-        <svg-interaction-overlay
-            #interactionOverlay
-            [unit]="unit()"
-            [force]="force()"
-            [width]="this.svgWidth"
-            [height]="this.svgHeight"
-        ></svg-interaction-overlay>
+        @if (useAutomations()) {
+            <svg-interaction-overlay
+                #interactionOverlay
+                [unit]="unit()"
+                [force]="force()"
+                [width]="this.svgWidth"
+                [height]="this.svgHeight"
+            ></svg-interaction-overlay>
+        }
     }
 </div>
 @if (!readOnly()) {

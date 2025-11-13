@@ -50,4 +50,5 @@ export interface Options {
         eraserSize: number;
     },
     sidebarLipPosition?: string;
+    useAutomations: boolean;
 }

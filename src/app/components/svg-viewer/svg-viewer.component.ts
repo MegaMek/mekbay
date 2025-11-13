@@ -106,6 +106,11 @@ export class SvgViewerComponent implements AfterViewInit {
     private prevSvg: SVGSVGElement | null = null;
     private nextSvg: SVGSVGElement | null = null;
 
+
+    useAutomations = computed(() => {
+        return this.optionsService.options().useAutomations;
+    });
+
     // Signals for picker state
     private isPickerOpen = signal(false);
 

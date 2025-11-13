@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { signal, computed, WritableSignal, EventEmitter, Injector } from '@angular/core';
+import { signal, computed, WritableSignal, Injector } from '@angular/core';
 import { BVCalculatorUtil } from "../utils/bv-calculator.util";
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
@@ -54,6 +54,7 @@ import { Force } from './force.model';
 import { CrewMember, SkillType } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';
 import { TurnState } from './turn-state.model';
+import { OptionsService } from '../services/options.service';
 
 /*
  * Author: Drake
@@ -272,14 +273,20 @@ export class ForceUnit {
         this.turnState().evaluateCritSlot(slot);
     }
 
-    applyHitToCritSlot(slot: CriticalSlot, damage: number = 1) {
+    applyHitToCritSlot(slot: CriticalSlot, damage: number = 1, consolidateImmediately: boolean = false) {
         slot.hits = Math.max(0, (slot.hits ?? 0) + damage);
         const destroying = slot.armored ? slot.hits >= 2 : slot.hits >= 1;
         slot.destroying = destroying ? Date.now() : undefined;
         if (slot.destroyed && !destroying) {
             slot.destroyed = undefined; // Reset destroyed immediately
         }
+        if (consolidateImmediately) {
+            slot.destroyed = slot.destroying;
+        }
         this.setCritSlot(slot);
+        if (consolidateImmediately) {
+            this.state.consolidateCrits(); // Consolidate immediately in case we have pending hits to apply
+        }
     }
 
     getCritLoc(id: string): CriticalSlot | null {
