@@ -198,46 +198,46 @@ export class ForceBuilderViewerComponent implements OnDestroy {
     }
 
     onUnitDragMoved(event: CdkDragMove<any>) {
-       if (this.forceBuilderService.readOnlyForce()) return;
+        if (this.forceBuilderService.readOnlyForce()) return;
 
-       const scrollRef = this.scrollableContent?.();
-       if (!scrollRef) {
-           this.stopAutoScrollLoop();
-           return;
-       }
-       const container = scrollRef.nativeElement as HTMLElement;
-       const rect = container.getBoundingClientRect();
+        const scrollRef = this.scrollableContent?.();
+        if (!scrollRef) {
+            this.stopAutoScrollLoop();
+            return;
+        }
+        const container = scrollRef.nativeElement as HTMLElement;
+        const rect = container.getBoundingClientRect();
 
-       // Get pointer Y position from event (or fallback to last known position)
-       const pointerY = (event.event as PointerEvent)?.clientY ?? event.pointerPosition?.y;
-       if (pointerY == null) {
-           this.stopAutoScrollLoop();
-           return;
-       }
+        // Get pointer Y position from event (or fallback to last known position)
+        const pointerY = (event.event as PointerEvent)?.clientY ?? event.pointerPosition?.y;
+        if (pointerY == null) {
+            this.stopAutoScrollLoop();
+            return;
+        }
 
-       const topDist = pointerY - rect.top;
-       const bottomDist = rect.bottom - pointerY;
+        const topDist = pointerY - rect.top;
+        const bottomDist = rect.bottom - pointerY;
 
-       let ratio = 0;
-       if (topDist < this.AUTOSCROLL_EDGE) {
-           ratio = (this.AUTOSCROLL_EDGE - topDist) / this.AUTOSCROLL_EDGE; // 0..1
-           ratio = Math.max(0, Math.min(1, ratio));
-           ratio = ratio * ratio; // ease-in
-           this.autoScrollVelocity.set(-Math.max(this.AUTOSCROLL_MIN, ratio * this.AUTOSCROLL_MAX));
-       } else if (bottomDist < this.AUTOSCROLL_EDGE) {
-           ratio = (this.AUTOSCROLL_EDGE - bottomDist) / this.AUTOSCROLL_EDGE;
-           ratio = Math.max(0, Math.min(1, ratio));
-           ratio = ratio * ratio;
-           this.autoScrollVelocity.set(Math.max(this.AUTOSCROLL_MIN, ratio * this.AUTOSCROLL_MAX));
-       } else {
-           this.autoScrollVelocity.set(0);
-       }
+        let ratio = 0;
+        if (topDist < this.AUTOSCROLL_EDGE) {
+            ratio = (this.AUTOSCROLL_EDGE - topDist) / this.AUTOSCROLL_EDGE; // 0..1
+            ratio = Math.max(0, Math.min(1, ratio));
+            ratio = ratio * ratio; // ease-in
+            this.autoScrollVelocity.set(-Math.max(this.AUTOSCROLL_MIN, ratio * this.AUTOSCROLL_MAX));
+        } else if (bottomDist < this.AUTOSCROLL_EDGE) {
+            ratio = (this.AUTOSCROLL_EDGE - bottomDist) / this.AUTOSCROLL_EDGE;
+            ratio = Math.max(0, Math.min(1, ratio));
+            ratio = ratio * ratio;
+            this.autoScrollVelocity.set(Math.max(this.AUTOSCROLL_MIN, ratio * this.AUTOSCROLL_MAX));
+        } else {
+            this.autoScrollVelocity.set(0);
+        }
 
-       if (Math.abs(this.autoScrollVelocity()) > 0.5) {
-           this.startAutoScrollLoop();
-       } else {
-           this.stopAutoScrollLoop();
-       }
+        if (Math.abs(this.autoScrollVelocity()) > 0.5) {
+            this.startAutoScrollLoop();
+        } else {
+            this.stopAutoScrollLoop();
+        }
     }
 
     onUnitDragEnd() {
@@ -246,7 +246,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         this.isUnitDragging.set(false);
     }
 
-       
+
     private startAutoScrollLoop() {
         if (this.autoScrollRafId) return;
         this.lastAutoScrollTs = performance.now();
@@ -286,7 +286,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     drop(event: CdkDragDrop<ForceUnit[]>) {
         if (this.forceBuilderService.readOnlyForce()) return;
-        
+
         const force = this.forceBuilderService.force;
         const groups = force.groups();
 
@@ -297,10 +297,14 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
         if (!fromGroupId || !toGroupId) return;
 
-       const fromGroup = groups.find(g => g.id === fromGroupId);
+        const fromGroup = groups.find(g => g.id === fromGroupId);
         const toGroup = groups.find(g => g.id === toGroupId);
         if (!fromGroup || !toGroup) return;
-
+        
+        // No-op if same group and same index
+        if (fromGroup === toGroup && event.previousIndex === event.currentIndex) {
+            return;
+        }
         // Work with snapshots of the signals' arrays and then write them back.
         if (fromGroup === toGroup) {
             const units = [...fromGroup.units()]; // snapshot
@@ -337,7 +341,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
         return ids;
     }
 
-    dropForNewGroup(event: CdkDragDrop<any, any, any>) {        
+    dropForNewGroup(event: CdkDragDrop<any, any, any>) {
         if (this.forceBuilderService.readOnlyForce()) return;
 
         const force = this.forceBuilderService.force;
