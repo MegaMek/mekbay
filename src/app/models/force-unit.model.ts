@@ -179,8 +179,8 @@ export class ForceUnit {
     }
 
     setModified() {
-        if (this.disabledSaving) return;
         this.svgService?.evaluateDestroyed();
+        if (this.disabledSaving) return;
         this.state.modified.set(true);
         this.force.emitChanged();
     }
