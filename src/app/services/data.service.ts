@@ -1006,18 +1006,6 @@ export class DataService {
 
         return new Promise<void>((resolve, reject) => {
             const existing = this.saveForceCloudDebounce.get(instanceId);
-            const schedule = () => {
-                const timeout = setTimeout(() => {
-                    void this.flushSaveForceCloud(instanceId);
-                }, this.SAVE_FORCE_CLOUD_DEBOUNCE_MS);
-                // store/replace entry
-                this.saveForceCloudDebounce.set(instanceId, {
-                    timeout,
-                    force,
-                    resolvers: existing ? existing.resolvers.concat([{ resolve, reject }]) : [{ resolve, reject }]
-                });
-            };
-
             if (existing) {
                 // clear previous timeout and replace stored force with latest
                 clearTimeout(existing.timeout);
@@ -1030,7 +1018,15 @@ export class DataService {
                 existing.timeout = timeout;
                 this.saveForceCloudDebounce.set(instanceId, existing);
             } else {
-                schedule();
+                const timeout = setTimeout(() => {
+                    void this.flushSaveForceCloud(instanceId);
+                }, this.SAVE_FORCE_CLOUD_DEBOUNCE_MS);
+                // store/replace entry
+                this.saveForceCloudDebounce.set(instanceId, {
+                    timeout,
+                    force,
+                    resolvers: [{ resolve, reject }]
+                });
             }
         });
     }

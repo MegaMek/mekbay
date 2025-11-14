@@ -180,6 +180,7 @@ export class ForceUnit {
 
     setModified() {
         if (this.disabledSaving) return;
+        this.svgService?.evaluateDestroyed();
         this.state.modified.set(true);
         this.force.emitChanged();
     }

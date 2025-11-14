@@ -202,16 +202,10 @@ export class UnitSvgService implements OnDestroy {
         // Armor effect
         this.armorEffectRef = effect(() => {
             this.updateArmorDisplay(false);
-            untracked(() => {
-                this.evaluateDestroyed();
-            });
         }, { injector: this.injector });
         // Data effect
         this.dataEffectRef = effect(() => {
             this.updateAllDisplays();
-            untracked(() => {
-                this.evaluateDestroyed();
-            });
         }, { injector: this.injector });
         // Destroy effect
         this.destroyEffectRef = effect(() => {
@@ -236,7 +230,7 @@ export class UnitSvgService implements OnDestroy {
         this.unit.svg.set(null); // Clear SVG on destruction
     }
 
-    protected evaluateDestroyed() {
+    public evaluateDestroyed() {
         const svg = this.unit.svg();
         if (!svg) return;
         let destroyed = false;

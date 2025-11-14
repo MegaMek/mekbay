@@ -709,7 +709,7 @@ export class UnitSvgMekService extends UnitSvgService {
         });
     }
 
-    protected override evaluateDestroyed(): void {
+    public override evaluateDestroyed(): void {
         const svg = this.unit.svg();
         if (!svg) return;
 
@@ -737,6 +737,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 const maxHits = critSlot.armored ? 2 : 1;
                 const destroyed = (locDestroyed || (critSlot.hits ?? 0) >= maxHits);
                 if (!!destroyed !== !!critSlot.destroying) {
+                    console.log(destroyed, !!critSlot.destroying, critSlot.destroying, critSlot);
                     critSlot.destroying = destroyed ? Date.now() : undefined;
                     if (!critSlot.destroying && critSlot.destroyed) {
                         critSlot.destroyed = critSlot.destroying; // we remove the destruction directly

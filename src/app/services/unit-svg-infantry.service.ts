@@ -55,7 +55,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
         this.updateTurnState();
     }
 
-    protected override evaluateDestroyed(): void {
+    public override evaluateDestroyed(): void {
         const svg = this.unit.svg();
         if (!svg) return;
 
