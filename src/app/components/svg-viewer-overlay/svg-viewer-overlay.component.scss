@@ -42,18 +42,26 @@
     }
 }
 
-.end-turn-button {
+.end-phase-button {
+    opacity: 1.0;
     bottom: 8px;
     left: 0;
     right: 0;
     margin-inline: auto;
     width: fit-content;
-    background-color: white;
-    color: #000;
+    background-color: #f00;
+    color: white;
     padding: 8px;
     border: 1px solid #222;
     text-align: center;
     font-weight: bold;
+    transition: filter 0.2s;
+    font-size: 1.1em;
+
+    &:hover {
+        filter: brightness(1.2);
+    }
+
 }
 
 .turn-tracker-button {
@@ -107,12 +115,6 @@
             stroke-width: 0;
         }
     }
-}
-
-.phase-selector {
-    position: absolute;
-    top: 8px;
-    left: 8px;
 }
 
 @media print {

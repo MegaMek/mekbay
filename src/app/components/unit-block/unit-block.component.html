@@ -9,6 +9,7 @@
         [class.ranged]="phase === 'W'"
         [class.physical]="phase === 'P'"
         [class.heat]="phase === 'H'"
+        [class.pending-effects]="hasPendingEffects()"
         ></div>
     }
     <img [src]="imgSrc()" (error)="$event.target.src = '/images/unknown.png'" class="unit-icon"
@@ -36,6 +37,7 @@
         [class.ranged]="phase === 'W'"
         [class.physical]="phase === 'P'"
         [class.heat]="phase === 'H'"
+        [class.pending-effects]="hasPendingEffects()"
         ></div>
     }
 

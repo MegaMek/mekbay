@@ -38,6 +38,15 @@ export class UnitBlockComponent {
         return unit.turnState().dirty();
     });
 
+    hasPendingEffects = computed<boolean>(() => {
+        if (!this.optionsService.options().useAutomations) {
+            return false;
+        }
+        const unit = this.forceUnit();
+        if (!unit) return false;
+        return unit.turnState().dirtyPhase();
+    });
+
     getECMStatus = computed(() => {
         const unit = this.forceUnit();
         if (!unit) return true;

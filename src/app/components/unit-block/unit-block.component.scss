@@ -315,7 +315,7 @@
     right: 0;
     z-index: 0;
     border-style: solid;
-    border-width: 0 0 15px 15px;
+    border-width: 0 0 30px 30px;
     border-color: transparent transparent #666 transparent;
 
     &.move {
@@ -332,5 +332,9 @@
 
     &.heat {
         border-color: transparent transparent var(--phase-heat) transparent;
+    }
+
+    &.pending-effects {
+        border-color: transparent transparent var(--phase-pending-effects) transparent;
     }
 }
