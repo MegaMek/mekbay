@@ -817,6 +817,20 @@ hr {
         pointer-events: none;
     }
 
+    .inventoryEntry.disabledInventory {
+        .hitMod-rect,
+        .hitMod-text {
+            display: none;
+        }
+    }
+
+    .inventoryEntry.damagedInventory {
+        .hitMod-rect,
+        .hitMod-text {
+            display: none;
+        }
+    }
+
     #fluff-image-fo {
         transform: none;
         pointer-events: none;
