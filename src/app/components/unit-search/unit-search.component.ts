@@ -87,7 +87,7 @@ export class ExpandedComponentsPipe implements PipeTransform {
     }
 }
 
-const PRECONFIGURED_TAGS = ['★ Favorites', '◆ My Collection'];
+const PRECONFIGURED_TAGS = ['Favorites', 'My Collection'];
 
 @Component({
     selector: 'unit-search',
