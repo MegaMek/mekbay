@@ -278,7 +278,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
     { key: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'cbt' },
     { key: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'cbt' },
-    { key: '_dissipationEfficiency', label: 'Dissipation Efficiency', type: AdvFilterType.RANGE, curve: 1, game: 'cbt' },
+    { key: '_dissipationEfficiency', label: 'Heat Efficiency', type: AdvFilterType.RANGE, curve: 1, game: 'cbt' },
     { key: '_maxRange', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
     { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
     { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
