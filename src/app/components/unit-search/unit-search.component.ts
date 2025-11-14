@@ -87,6 +87,8 @@ export class ExpandedComponentsPipe implements PipeTransform {
     }
 }
 
+const PRECONFIGURED_TAGS = ['★ Favorites', '◆ My Collection'];
+
 @Component({
     selector: 'unit-search',
     standalone: true,
@@ -685,11 +687,18 @@ export class UnitSearchComponent {
 
         // Collect all unique tags from all units
         const tagOptions = this.filtersService.getAllTags();
+        for (const preconfiguredTag of PRECONFIGURED_TAGS) {
+            if (!tagOptions.includes(preconfiguredTag)) {
+                tagOptions.unshift(preconfiguredTag);
+            }
+        }
 
-        // Create overlay positioned near the click
-        const target = event.target as HTMLElement;
+        // Create overlay positioned near the clicked button
+        const evtTarget = (event.currentTarget as HTMLElement) || (event.target as HTMLElement);
+        const anchorEl = (evtTarget.closest('.add-tag-btn') as HTMLElement) || evtTarget;
+
         const portal = new ComponentPortal(TagSelectorComponent, null, this.injector);
-        const componentRef = this.overlayManager.createManagedOverlay('tagSelector', target, portal, {
+        const componentRef = this.overlayManager.createManagedOverlay('tagSelector', anchorEl, portal, {
             scrollStrategy: this.overlay.scrollStrategies.reposition(),
             hasBackdrop: false,
             panelClass: 'tag-selector-overlay'
