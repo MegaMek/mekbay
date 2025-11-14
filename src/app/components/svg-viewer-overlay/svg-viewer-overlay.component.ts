@@ -91,6 +91,12 @@ export class SvgInteractionOverlayComponent {
         return unit.turnState().dirtyPhase();
     });
 
+    falling = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return false;
+    });
+
     hasPSRChecks = computed(() => {
         const unit = this.unit();
         if (!unit) return false;

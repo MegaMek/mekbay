@@ -9,7 +9,9 @@
     <button role="button" class="overlay-button turn-tracker-button preventZoomReset" tabindex="0"
         (click)="openTurnSummary($event)">
         @let phase = currentPhase();
-        @if (hasPSRChecks()) {
+        @if (falling()) {
+            <img src="/images/warning_fall.svg" />
+        } @else if (hasPSRChecks()) {
         <svg class="warning" fill="currentColor" width="40px" height="40px" viewBox="0 0 16 16"
             xmlns="http://www.w3.org/2000/svg">
             <path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Z" />
