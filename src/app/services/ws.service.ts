@@ -64,7 +64,8 @@ export class WsService {
     private wsReadyResolver: (() => void) | null = null;
     private readonly wsSessionId = generateUUID();
     private subscriptions = new Map<string, (event: MessageEvent) => void>();
-
+    private actionHandlers = new Map<string, Set<(msg: any, event: MessageEvent) => void>>();
+    
     // Connection state management
     private reconnectTimeoutId: number | null = null;
     private shouldReconnect = true;
@@ -206,13 +207,43 @@ export class WsService {
      * Handle incoming WebSocket messages
      */
     private handleMessage(event: MessageEvent): void {
+        let msg: any;
         try {
-            const msg = JSON.parse(event.data);
-            if (msg.action === 'error' && this.globalErrorHandler) {
-                this.globalErrorHandler(msg.message || 'Unknown error');
-            }
+            msg = JSON.parse(event.data);
         } catch {
-            // Ignore parse errors
+            return;
+        }
+
+        if (msg?.action === 'error' && this.globalErrorHandler) {
+            this.globalErrorHandler(msg.message || 'Unknown error');
+        }
+
+        const action = msg?.action;
+        if (!action) {
+            return;
+        }
+        // Dispatch to specific action handlers
+        const handlers = this.actionHandlers.get(action);
+        if (handlers) {
+            handlers.forEach(h => {
+                try {
+                    h(msg, event);
+                } catch (err) {
+                    this.logger.error(`Action handler error for "${action}": ${err}`);
+                }
+            });
+        }
+
+        // Wildcard handlers (optional global listeners)
+        const wildcardHandlers = this.actionHandlers.get('*');
+        if (wildcardHandlers) {
+            wildcardHandlers.forEach(h => {
+                try {
+                    h(msg, event);
+                } catch (err) {
+                    this.logger.error(`Wildcard handler error: ${err}`);
+                }
+            });
         }
     }
 
@@ -492,5 +523,37 @@ export class WsService {
         instanceIds.forEach(instanceId => {
             this.unsubscribeFromForceUpdates(instanceId);
         });
+    }
+
+    public registerMessageHandler(actions: string | string[], handler: (msg: any, event: MessageEvent) => void): () => void {
+        const list = Array.isArray(actions) ? actions : [actions];
+        list.forEach(action => {
+            let set = this.actionHandlers.get(action);
+            if (!set) {
+                set = new Set();
+                this.actionHandlers.set(action, set);
+            }
+            set.add(handler);
+        });
+        // Unsubscribe closure
+        return () => {
+            list.forEach(action => {
+                const set = this.actionHandlers.get(action);
+                if (set) {
+                    set.delete(handler);
+                    if (set.size === 0) {
+                        this.actionHandlers.delete(action);
+                    }
+                }
+            });
+        };
+    }
+
+    public clearHandlersForAction(action: string): void {
+        this.actionHandlers.delete(action);
+    }
+
+    public clearAllMessageHandlers(): void {
+        this.actionHandlers.clear();
     }
 }
