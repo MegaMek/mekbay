@@ -329,15 +329,16 @@ export class UnitSvgService implements OnDestroy {
                 const svgElement = svg.querySelector(selector) as SVGElement | null;
                 if (svgElement) {
                     const skillValue = member.getSkill(skill.name, skill.asf).toString();
-                    if (PSRMod && skill.name === 'piloting') {
-                        const targetPSR = parseInt(skillValue) + PSRMod;
+                    const modifier = PSRMod?.modifier ?? 0;
+                    if (modifier && skill.name === 'piloting') {
+                        const targetPSR = parseInt(skillValue) + modifier;
                         if (targetPSR > 12) {
                             svgElement.textContent = `FAIL`;
                         } else {
-                            if (PSRMod > 0) {
-                                svgElement.textContent = `${skillValue}+${PSRMod}`;
+                            if (modifier > 0) {
+                                svgElement.textContent = `${skillValue}+${modifier}`;
                             } else {
-                                svgElement.textContent = `${skillValue}${PSRMod}`;
+                                svgElement.textContent = `${skillValue}${modifier}`;
                             }
                         }
                     } else {

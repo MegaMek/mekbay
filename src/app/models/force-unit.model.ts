@@ -549,7 +549,7 @@ export class ForceUnit {
         return getMotiveModesOptionsByUnit(this.getUnit(), this.turnState().airborne() ?? false);
     }
 
-    PSRModifiers = computed<number>(() => {
+    PSRModifiers = computed<{modifier: number, modifiers: PSRCheck[]}>(() => {
         const ignoreLeg = new Set<string>();
         let preExisting = 0;
         const modifiers: PSRCheck[] = [];
@@ -637,16 +637,13 @@ export class ForceUnit {
             });
         }
         if (!ignorePreExistingGyro) {
-            let isHeavyDutyGyro = false;
+            const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
             const previouslyDestroyedGyroCount = critSlots.filter(slot => {
                 if (!slot.name || !slot.destroyed) return false;
                 if (!slot.name.includes('Gyro')) return false;
-                if (!isHeavyDutyGyro && slot.name.includes('Heavy Duty')) {
-                    isHeavyDutyGyro = true;
-                }
                 return true;
             }).length;
-            if (isHeavyDutyGyro && (previouslyDestroyedGyroCount === 1)) {
+            if (hasHeavyDutyGyro && (previouslyDestroyedGyroCount === 1)) {
                 modifiers.push({
                     pilotCheck: 1,
                     reason: 'Heavy Duty Gyro first damage'
@@ -660,14 +657,15 @@ export class ForceUnit {
                 });
             }
         }
-        return preExisting + currentModifiers;
+        const finalModifier = preExisting + currentModifiers;
+        return {modifier: finalModifier, modifiers: modifiers};
     });
 
     PSRTargetRoll = computed<number>(() => {
         const pilot = this.getCrewMember(0);
         const piloting = pilot.getSkill('piloting');
         const modifiers = this.PSRModifiers();
-        return piloting + modifiers;
+        return piloting + modifiers.modifier;
     });
     
     public endTurn() {

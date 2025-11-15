@@ -359,10 +359,22 @@ export class TurnSummaryPanelComponent {
         <div class="body">
             <div class="psr-list">
                 @for (check of psrChecks(); let i = $index; track i) {
-                    <div class="psr-item">
-                        <div class="psr-marker">▸</div>
-                        <div class="psr-reason">{{ check.reason }}</div>
-                    </div>
+                    @if (check.fallCheck) {
+                        <div class="psr-item">
+                            <div class="psr-marker">▸</div>
+                            <div class="psr-reason">{{ check.reason }}</div>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="header">Modifiers</div>
+            <div class="modifiers">
+                @for (modifier of modifiersList(); let i = $index; track i) {
+                    @if (modifier.pilotCheck) {
+                        <div class="modifier-item">
+                            {{ modifier.reason }}: {{ modifier.pilotCheck >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}
+                        </div>
+                    }
                 }
             </div>
             <div class="psr-target">
@@ -388,13 +400,16 @@ export class TurnSummaryPanelComponent {
             padding: 8px;
             gap: 8px;
             transition: opacity 0.2s;
+            max-height: 80dvh;
+            overflow-x: hidden;
+            overflow-y: auto;
         }
         .header {
             font-weight: bold;
             text-align: center;
         }
         .body {
-            color: var(--text-color-secondary, #bbb);
+            color: var(--text-color-secondary);
         }
         .psr-list {
             display: flex;
@@ -411,14 +426,13 @@ export class TurnSummaryPanelComponent {
         .psr-marker {
             color: var(--danger);
             font-weight: bold;
-            font-size: 1.1em;
-            line-height: 1.4;
+            font-size: 2em;
+            line-height: 0;
             flex-shrink: 0;
         }
         .psr-reason {
             flex: 1;
-            font-size: 0.9em;
-            color: var(--text-color-secondary, #ddd);
+            color: var(--text-color-secondary);
             line-height: 1.4;
         }
         .psr-target {
@@ -427,6 +441,11 @@ export class TurnSummaryPanelComponent {
             font-size: 1em;
             color: var(--text-color);
             text-align: center;
+        }
+        .modifiers {
+            margin-top: 8px;
+            padding: 8px 12px;
+            font-size: 0.9em;
         }
         .actions {
             display: flex;
@@ -442,9 +461,17 @@ class PsrWarningPanelComponent {
     private parent = inject(SvgInteractionOverlayComponent);
     private overlayManager = inject(OverlayManagerService);
     unit = this.parent.unit;
+    
     close() {
         this.overlayManager.closeManagedOverlay('psrWarning');
     }
+    
+    modifiersList = computed(() => {
+        const unit = this.unit();
+        if (!unit) return [];
+        return unit.PSRModifiers().modifiers;
+    });
+
     psrChecks = computed(() => {
         const unit = this.unit();
         if (!unit) return [];

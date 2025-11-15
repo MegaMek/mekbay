@@ -122,13 +122,11 @@ export class TurnState {
             }
             const gyroHits = (psr.gyroHit || 0);
             if (gyroHits > 0) {
-                let hasHeavyDutyGyro = false;
+                const critSlots = unit.getCritSlots();
+                const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
                 const previouslyDestroyedGyroCount = unit.getCritSlots().filter(slot => {
                     if (!slot.name || !slot.destroyed) return false;
                     if (!slot.name.includes('Gyro')) return false;
-                    if (!hasHeavyDutyGyro && slot.name.includes('Heavy Duty')) {
-                        hasHeavyDutyGyro = true;
-                    }
                     return true;
                 }).length;
                 if (hasHeavyDutyGyro && (previouslyDestroyedGyroCount + gyroHits) === 1) {
@@ -381,22 +379,19 @@ export class TurnState {
                 isPsrRelevant = true;
             }
         } else if (crit.name?.includes('Gyro')) {
-            let isHeavyDutyGyro = false;
             psr.gyroHit = Math.max(0, (psr.gyroHit || 0) + delta);
             isPsrRelevant = true;
             if (delta > 0 && !psr.gyrosDestroyed) {
                 // This is an Hit. Check if gyros are destroyed
                 const critSlots = this.unitState.unit.getCritSlots();
+                const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
                 const gyroHits = critSlots.filter(slot => {
                     if (!slot.name) return false;
                     if (!slot.destroyed && !slot.destroying) return false;
                     if (!slot.name.includes('Gyro')) return false;
-                    if (!isHeavyDutyGyro && slot.name.includes('Heavy Duty')) {
-                        isHeavyDutyGyro = true;
-                    }
                     return true;
                 }).length;
-                if (((isHeavyDutyGyro && gyroHits > 2) || (!isHeavyDutyGyro && gyroHits > 1))) { // It's destroyed this turn
+                if (((hasHeavyDutyGyro && gyroHits > 2) || (!hasHeavyDutyGyro && gyroHits > 1))) { // It's destroyed this turn
                     psr.gyrosDestroyed = true;
                 } else {
                     psr.gyrosDestroyed = false;
