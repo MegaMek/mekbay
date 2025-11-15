@@ -166,13 +166,14 @@ export class TurnSummaryPanelComponent {
             return;
         }
 
-        const target = event.currentTarget as HTMLElement || (event.target as HTMLElement);
         const portal = new ComponentPortal(PsrWarningPanelComponent, null, this.injector);
-        const compRef = this.overlayManager.createManagedOverlay('psrWarning', target, portal, {
-            hasBackdrop: false,
+        const compRef = this.overlayManager.createManagedOverlay('psrWarning', null as any, portal, {
+            hasBackdrop: true,
+            backdropClass: 'cdk-overlay-dark-backdrop',
             panelClass: 'psr-warning-overlay-panel',
             closeOnOutsideClick: true,
-            scrollStrategy: this.overlay.scrollStrategies.close()
+            scrollStrategy: this.overlay.scrollStrategies.block(),
+            positions: [] // empty positions array signals to use global positioning
         });
     }
 
@@ -207,7 +208,7 @@ export class TurnSummaryPanelComponent {
         if (!u) return [];
         return u.getAvailableMotiveModes();
     });
-    
+
     selectMove(mode: MotiveModes) {
         const u = this.unit();
         if (!u) return;
@@ -352,9 +353,16 @@ export class TurnSummaryPanelComponent {
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
-        <div class="header">PSR Check</div>
+        <div class="header">PSR Checks</div>
         <div class="body">
-            This unit has a PSR (Pilot Skill Roll) warning.
+            <div class="psr-list">
+                @for (check of psrChecks(); let i = $index; track i) {
+                    <div class="psr-item">
+                        <div class="psr-marker">▸</div>
+                        <div class="psr-reason">{{ check.reason }}</div>
+                    </div>
+                }
+            </div>
         </div>
         <div class="actions">
             <button class="bt-button" type="button" (click)="close()">DISMISS</button>
@@ -383,8 +391,32 @@ export class TurnSummaryPanelComponent {
         }
         .body {
             margin-bottom: 12px;
-            font-size: 0.9em;
             color: var(--text-color-secondary, #bbb);
+        }
+        .psr-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 8px;
+        }
+        .psr-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: background 0.2s;
+        }
+        .psr-marker {
+            color: var(--danger);
+            font-weight: bold;
+            font-size: 1.1em;
+            line-height: 1.4;
+            flex-shrink: 0;
+        }
+        .psr-reason {
+            flex: 1;
+            font-size: 0.9em;
+            color: var(--text-color-secondary, #ddd);
+            line-height: 1.4;
         }
         .actions {
             display: flex;
@@ -393,8 +425,14 @@ export class TurnSummaryPanelComponent {
     `]
 })
 class PsrWarningPanelComponent {
+    private parent = inject(SvgInteractionOverlayComponent);
     private overlayManager = inject(OverlayManagerService);
     close() {
         this.overlayManager.closeManagedOverlay('psrWarning');
     }
+    psrChecks = computed(() => {
+        const unit = this.parent.unit();
+        if (!unit) return [];
+        return unit.turnState().getPSRChecks().filter(c => !c.fallCheck !== undefined);
+    });
 }

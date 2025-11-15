@@ -67,35 +67,35 @@ export class TurnState {
             checks.push({
                 fallCheck: 100,
                 pilotCheck: 6,
-                reason: 'Gyro destroyed this phase'
+                reason: 'Gyro destroyed'
             });
         } else if ((psr.legsDestroyed?.size || 0) > 0) {
             checks.push({
                 fallCheck: 100,
                 pilotCheck: 5,
                 // legFilter not needed since we go down anyway, this will filter all other PSRs
-                reason: 'Legs destroyed this phase'
+                reason: 'Legs destroyed'
             });
         } else {
             if (this.psrChecks().shutdown) {
                 checks.push({
                     fallCheck: 3,
                     pilotCheck: 3,
-                    reason: 'Shutdown this phase'
+                    reason: 'Shutdown'
                 });
             }
             if (this.dmgReceived() >= 20) {
                 checks.push({
                     fallCheck: 1,
                     pilotCheck: 1,
-                    reason: 'Received 20 or more damage this phase'
+                    reason: 'Received 20 or more damage'
                 });
             }
             for (let i = 0; i < (psr.legsFeetHit || 0); i++) {
                 checks.push({
                     fallCheck: 1,
                     pilotCheck: 1,
-                    reason: 'Legs/Feet hit this phase'
+                    reason: 'Leg actuator hit'
                 });
             }
             if (psr.hipsHit) {
@@ -104,7 +104,7 @@ export class TurnState {
                         fallCheck: 2,
                         pilotCheck: 2,
                         legFilter: loc,
-                        reason: 'Hips hit this phase'
+                        reason: 'Hip hit'
                     });
                 });
             }
@@ -114,13 +114,13 @@ export class TurnState {
                 if (hasHeavyDutyGyro && gyroHits === 1) {
                     checks.push({
                         pilotCheck: 1,
-                        reason: 'Gyro hit this phase'
+                        reason: 'Gyro hit' // This will not trigger a PSR, no fallCheck value
                     });
                 } else {
                     checks.push({
                         fallCheck: 3,
                         pilotCheck: 3,
-                        reason: 'Gyro hit this phase'
+                        reason: 'Gyro hit'
                     });
                 }
             }
@@ -159,7 +159,7 @@ export class TurnState {
                         checks.push({
                             fallCheck: 0,
                             pilotCheck: 0,
-                            reason: 'Jumping with damaged leg actuators'
+                            reason: 'Jumping with damaged leg actuator'
                         });
                     } else if (hasDamagedLeg) {
                         checks.push({

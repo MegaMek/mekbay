@@ -94,7 +94,7 @@ export class OverlayManagerService {
 
     createManagedOverlay<T>(
         key: string,
-        target: HTMLElement | ElementRef<HTMLElement>,
+        target: HTMLElement | ElementRef<HTMLElement> | null,
         portal: ComponentPortal<T>,
         opts?: {
             positions?: Array<any>,
@@ -111,18 +111,22 @@ export class OverlayManagerService {
     ) {
         // close existing with same key first
         this.closeManagedOverlay(key);
-
-        const el = (target as ElementRef<HTMLElement>)?.nativeElement ?? (target as HTMLElement);
-        const positionStrategy = this.overlay.position()
+        const el = target ? ((target as ElementRef<HTMLElement>)?.nativeElement ?? (target as HTMLElement)) : null;
+    
+        const positionStrategy = el ? this.overlay.position()
             .flexibleConnectedTo(el)
             .withPositions(opts?.positions ?? [
-                { originX: 'end', originY: 'bottom', overlayX: 'end',   overlayY: 'top',    offsetY: 4 }, // prefer left-extension
+                { originX: 'end', originY: 'bottom', overlayX: 'end',   overlayY: 'top',    offsetY: 4 },
                 { originX: 'end', originY: 'top',    overlayX: 'end',   overlayY: 'bottom', offsetY: -4 },
                 { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top',  offsetY: 4 },
                 { originX: 'start', originY: 'top',    overlayX: 'start', overlayY: 'bottom',offsetY: -4 }
             ])
             .withPush(true)
-            .withViewportMargin(4);
+            .withViewportMargin(4)
+        : this.overlay.position()
+            .global()
+            .centerHorizontally()
+            .centerVertically();
 
         const overlayRef = this.overlay.create({
             positionStrategy,
@@ -272,19 +276,20 @@ export class OverlayManagerService {
             entry.triggerElement = triggerEl;
         }
 
-        // observe element size/attribute changes so overlays reposition when the trigger moves
-        try {
-            const ro = new ResizeObserver(() => this.schedulePositionUpdate());
-            ro.observe(el);
-            entry.resizeObserver = ro;
-        } catch { /* ResizeObserver may not be available in some test envs */ }
-
-        try {
-            const mo = new MutationObserver(() => this.schedulePositionUpdate());
-            // watch for style/class changes that commonly indicate a positional transform
-            mo.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
-            entry.mutationObserver = mo;
-        } catch { /* ignore */ }
+        if (el) {
+            // observe element size/attribute changes so overlays reposition when the trigger moves
+            try {
+                const ro = new ResizeObserver(() => this.schedulePositionUpdate());
+                ro.observe(el);
+                entry.resizeObserver = ro;
+            } catch { /* ResizeObserver may not be available in some test envs */ }
+            try {
+                const mo = new MutationObserver(() => this.schedulePositionUpdate());
+                // watch for style/class changes that commonly indicate a positional transform
+                mo.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+                entry.mutationObserver = mo;
+            } catch { /* ignore */ }
+        }
 
         this.managed.set(key, entry);
 
