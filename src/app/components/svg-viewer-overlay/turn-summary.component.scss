@@ -70,6 +70,7 @@
 
     &.bt-button {
         pointer-events: auto;
+        flex-direction: row;
         cursor: pointer;
         outline: none;
         padding: 4px 8px;

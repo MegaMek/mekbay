@@ -18,7 +18,7 @@ interface PSRChecks {
     legActuators?: Map<string, number>;
     hipsHit?: Set<string>;
     gyroHit?: number;
-    gyrosDestroyed?: boolean;
+    gyroDestroyed?: boolean;
     legsDestroyed?: Set<string>;
     shutdown?: boolean;
 }
@@ -58,7 +58,7 @@ export class TurnState {
 
     autoFall = computed<boolean>(() => {
         return (this.psrChecks().legsDestroyed?.size || 0) > 0
-            || this.psrChecks().gyrosDestroyed === true;
+            || this.psrChecks().gyroDestroyed === true;
     });
 
     getPSRChecks = computed<PSRCheck[]>(() => {
@@ -66,7 +66,7 @@ export class TurnState {
         const psr = this.psrChecks();
         const unit = this.unitState.unit;
 
-        if (psr.gyrosDestroyed) {
+        if (psr.gyroDestroyed) {
             checks.push({
                 fallCheck: 100,
                 pilotCheck: 6,
@@ -381,21 +381,19 @@ export class TurnState {
         } else if (crit.name?.includes('Gyro')) {
             psr.gyroHit = Math.max(0, (psr.gyroHit || 0) + delta);
             isPsrRelevant = true;
-            if (delta > 0 && !psr.gyrosDestroyed) {
-                // This is an Hit. Check if gyros are destroyed
-                const critSlots = this.unitState.unit.getCritSlots();
-                const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
-                const gyroHits = critSlots.filter(slot => {
-                    if (!slot.name) return false;
-                    if (!slot.destroyed && !slot.destroying) return false;
-                    if (!slot.name.includes('Gyro')) return false;
-                    return true;
-                }).length;
-                if (((hasHeavyDutyGyro && gyroHits > 2) || (!hasHeavyDutyGyro && gyroHits > 1))) { // It's destroyed this turn
-                    psr.gyrosDestroyed = true;
-                } else {
-                    psr.gyrosDestroyed = false;
-                }
+            // This is an Hit. Check if gyros are destroyed
+            const critSlots = this.unitState.unit.getCritSlots();
+            const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
+            const gyroHits = critSlots.filter(slot => {
+                if (!slot.name) return false;
+                if (!slot.destroyed && !slot.destroying) return false;
+                if (!slot.name.includes('Gyro')) return false;
+                return true;
+            }).length;
+            if (((hasHeavyDutyGyro && gyroHits > 2) || (!hasHeavyDutyGyro && gyroHits > 1))) { // It's destroyed this turn
+                psr.gyroDestroyed = true;
+            } else {
+                psr.gyroDestroyed = false;
             }
         }
         if (isPsrRelevant) {
