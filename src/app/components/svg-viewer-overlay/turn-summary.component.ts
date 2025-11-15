@@ -201,6 +201,7 @@ export class TurnSummaryPanelComponent {
         }
         turnState.moveMode.set(null);
         turnState.moveDistance.set(null);
+        turnState.applyMovePSR.set(true);
     }
 
     moveModes = computed<MotiveModeOption[]>(() => {
@@ -223,6 +224,7 @@ export class TurnSummaryPanelComponent {
             }
         }
         turnState.moveDistance.set(null);
+        turnState.applyMovePSR.set(true);
     }
 
     overDistance = computed<boolean>(() => {
