@@ -609,7 +609,24 @@ export class ForceUnit {
             preExisting -= 1; // AES in legs intact gives -1 modifier
             modifiers.push({
                 pilotCheck: -1,
-                reason: 'AES in Legs'
+                reason: '’Mech mounts AES in its legs'
+            });
+        }
+        const hardenedArmor = this.getUnit().armorType === 'Hardened';
+        if (hardenedArmor) {
+            preExisting += 1; // Hardened armor gives +1 modifier
+            modifiers.push({
+                pilotCheck: 1,
+                reason: '’Mech mounts Hardened Armor'
+            });
+        }
+        const hasSmallOrTorsoCockpit = critSlots.some(slot => slot.name && slot.loc && slot.name.includes('Cockpit') && slot.name.includes('Small')) 
+            || critSlots.some(slot => slot.name && slot.loc && slot.loc === 'CT' && slot.name.includes('Cockpit'));
+        if (hasSmallOrTorsoCockpit) {
+            preExisting += 1; // Small or Torso cockpit gives +1 modifier
+            modifiers.push({
+                pilotCheck: +1,
+                reason: '’Mech mounts small or torso-mounted cockpit'
             });
         }
         const destroyedHips = critSlots.filter(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && slot.name.includes('Hip'));

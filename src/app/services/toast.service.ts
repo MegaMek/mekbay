@@ -68,7 +68,8 @@ export class ToastService {
                 const updatedToasts = [...toasts];
                 updatedToasts[existingToastIndex] = {
                     ...updatedToasts[existingToastIndex],
-                    message: message
+                    message: message,
+                    type: type
                 };
                 this.toastsSignal.set(updatedToasts);
                 

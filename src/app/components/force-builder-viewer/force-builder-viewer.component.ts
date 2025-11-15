@@ -43,6 +43,7 @@ import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-detai
 import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
+import { ToastService } from '../../services/toast.service';
 
 /*
  * Author: Drake
@@ -57,6 +58,7 @@ import { CompactModeService } from '../../services/compact-mode.service';
 })
 export class ForceBuilderViewerComponent implements OnDestroy {
     protected forceBuilderService = inject(ForceBuilderService);
+    protected toastService = inject(ToastService);
     protected layoutService = inject(LayoutService);
     compactModeService = inject(CompactModeService);
     private dialogsService = inject(DialogsService);
@@ -148,6 +150,7 @@ export class ForceBuilderViewerComponent implements OnDestroy {
             'info');
         if (confirmed) {
             unit.repairAll();
+            this.toastService.show(`Repaired unit ${unit.getUnit()?.chassis} ${unit.getUnit()?.model}.`, 'success');
             return true;
         };
         return false;

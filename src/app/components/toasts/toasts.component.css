@@ -31,7 +31,8 @@
 }
 
 .toast.success {
-    background: blue;
+    background: #65A6ED;
+    color: #000;
 }
 
 @media print {

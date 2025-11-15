@@ -73,7 +73,7 @@ export class SidebarFooterComponent {
 
     async requestRepairAll(): Promise<void> {
         if (await this.forceBuilderService.repairAllUnits()) {
-            this.toastService.show(`Repaired all units.`, 'info');
+            this.toastService.show(`Repaired all units.`, 'success');
         }
     }
 

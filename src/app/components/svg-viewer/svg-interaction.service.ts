@@ -326,7 +326,7 @@ export class SvgInteractionService {
             lastAmountVariationTimestamp = Date.now();
             const remaining = totalTroops - getHits();
             const amountText = amount > 0 ? `+${amount}` : amount.toString();
-            this.toastService.show(`${amountText} hits (${remaining}/${totalTroops})`, 'info', toastId);
+            this.toastService.show(`${amountText} hits (${remaining}/${totalTroops})`, amount > 0 ? 'error' : 'success', toastId);
         };
         svg.querySelectorAll('.soldierPip').forEach(el => {
             const svgEl = el as SVGElement;
@@ -394,7 +394,7 @@ export class SvgInteractionService {
                 const amountText = amount > 0 ? `+${amount}` : amount.toString();
                 const totalPips = pipsCount + availableModularArmorPoints + consumedModularArmorPoints;
                 const location = isStructure ? 'internal' : isShield ? 'shield' : 'armor';
-                this.toastService.show(`${amountText} ${rear ? ' rear' : ''} ${location} hits in ${loc} (${remaining}/${totalPips})`, 'info', armorToastId);
+                this.toastService.show(`${amountText} ${rear ? ' rear' : ''} ${location} hits in ${loc} (${remaining}/${totalPips})`, amount > 0 ? 'error' : 'success', armorToastId);
             };
 
             const createAndShowPicker = (event: PointerEvent) => {
@@ -684,12 +684,12 @@ export class SvgInteractionService {
                         }
                         if (val == 'Hit') {
                             unit.applyHitToCritSlot(critSlot, 1, !this.optionsService.options().useAutomations);
-                            this.toastService.show(`Critical Hit on ${labelText}`, 'info');
+                            this.toastService.show(`Critical Hit on ${labelText}`, 'error');
                             pickerInstance.component.values.set(calculateValues());
                         }
                         if (val == 'Repair') {
                             unit.applyHitToCritSlot(critSlot, -1, !this.optionsService.options().useAutomations);
-                            this.toastService.show(`Repaired ${labelText}`, 'info');
+                            this.toastService.show(`Repaired ${labelText}`, 'success');
                             pickerInstance.component.values.set(calculateValues());
                         }
                     },
@@ -717,7 +717,7 @@ export class SvgInteractionService {
                         // default is damage
                         if (!critSlot.destroyed) {
                             unit.applyHitToCritSlot(critSlot, 1, !this.optionsService.options().useAutomations);
-                            this.toastService.show(`Critical Hit on ${labelText}`, 'info');
+                            this.toastService.show(`Critical Hit on ${labelText}`, 'error');
                             return;
                         }
                     }
@@ -848,13 +848,13 @@ export class SvgInteractionService {
                         if (val == 'Hit') {
                             entry.destroyed = true;
                             this.unit()?.setInventoryEntry(entry);
-                            this.toastService.show(`Critical Hit on ${nameText}`, 'info');
+                            this.toastService.show(`Critical Hit on ${nameText}`, 'error');
                             pickerInstance.component.values.set(calculateValues());
                         }
                         if (val == 'Repair') {
                             entry.destroyed = false;
                             this.unit()?.setInventoryEntry(entry);
-                            this.toastService.show(`Repaired ${nameText}`, 'info');
+                            this.toastService.show(`Repaired ${nameText}`, 'success');
                             pickerInstance.component.values.set(calculateValues());
                         }
                         if (!choice || !choice.keepOpen) {
