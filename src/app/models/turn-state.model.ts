@@ -9,11 +9,13 @@ export interface PSRCheck {
     fallCheck?: number;
     pilotCheck?: number;
     reason: string;
+    loc?: string;
     legFilter?: string;
+    ignorePreExistingGyro?: boolean;
 }
 
 interface PSRChecks {
-    legsFeetHit?: number;
+    legActuators?: Map<string, number>;
     hipsHit?: Set<string>;
     gyroHit?: number;
     gyrosDestroyed?: boolean;
@@ -67,15 +69,19 @@ export class TurnState {
             checks.push({
                 fallCheck: 100,
                 pilotCheck: 6,
-                reason: 'Gyro destroyed'
+                reason: 'Gyro destroyed',
+                ignorePreExistingGyro: true,
             });
         } else if ((psr.legsDestroyed?.size || 0) > 0) {
-            checks.push({
-                fallCheck: 100,
-                pilotCheck: 5,
-                // legFilter not needed since we go down anyway, this will filter all other PSRs
-                reason: 'Legs destroyed'
-            });
+            psr.legsDestroyed?.forEach((loc => {
+                checks.push({
+                    fallCheck: 100,
+                    pilotCheck: 5,
+                    loc: loc,
+                    legFilter: loc,
+                    reason: 'Leg destroyed'
+                });
+            }));
         } else {
             if (this.psrChecks().shutdown) {
                 checks.push({
@@ -91,18 +97,23 @@ export class TurnState {
                     reason: 'Received 20 or more damage'
                 });
             }
-            for (let i = 0; i < (psr.legsFeetHit || 0); i++) {
-                checks.push({
-                    fallCheck: 1,
-                    pilotCheck: 1,
-                    reason: 'Leg actuator hit'
-                });
-            }
+            // We place the actuators FIRST so that the hips of this turn will not filter them out
+            psr.legActuators?.forEach((count, loc) => {
+                for (let i = 0; i < count; i++) {
+                    checks.push({
+                        fallCheck: 1,
+                        pilotCheck: 1,
+                        loc: loc,
+                        reason: 'Leg actuator hit',
+                    });
+                }
+            });
             if (psr.hipsHit) {
                 psr.hipsHit.forEach((loc) => {
                     checks.push({
                         fallCheck: 2,
                         pilotCheck: 2,
+                        loc: loc,
                         legFilter: loc,
                         reason: 'Hip hit'
                     });
@@ -110,18 +121,28 @@ export class TurnState {
             }
             const gyroHits = (psr.gyroHit || 0);
             if (gyroHits > 0) {
-                const hasHeavyDutyGyro = unit.getCritSlots().some(slot => slot.name && slot.name.includes('Heavy Duty Gyro'));
-                if (hasHeavyDutyGyro && gyroHits === 1) {
+                let hasHeavyDutyGyro = false;
+                const previouslyDestroyedGyroCount = unit.getCritSlots().filter(slot => {
+                    if (!slot.name || !slot.destroyed) return false;
+                    if (!slot.name.includes('Gyro')) return false;
+                    if (!hasHeavyDutyGyro && slot.name.includes('Heavy Duty')) {
+                        hasHeavyDutyGyro = true;
+                    }
+                    return true;
+                }).length;
+                if (hasHeavyDutyGyro && (previouslyDestroyedGyroCount + gyroHits) === 1) {
                     checks.push({
                         pilotCheck: 1,
-                        reason: 'Gyro hit' // This will not trigger a PSR, no fallCheck value
+                        reason: 'Gyro hit', // This will not trigger a PSR, no fallCheck value
                     });
                 } else {
                     checks.push({
                         fallCheck: 3,
                         pilotCheck: 3,
-                        reason: 'Gyro hit'
+                        reason: 'Gyro hit',
+                        ignorePreExistingGyro: true,
                     });
+                    
                 }
             }
             const moveMode = this.moveMode();
@@ -329,7 +350,10 @@ export class TurnState {
         const psr = this.psrChecks();
         if (LEG_LOCATIONS.has(crit.loc)) { // Leg location, check for leg/foot/hip hits
             if (crit.name?.includes('Foot') || crit.name?.includes('Leg')) {
-                psr.legsFeetHit = Math.max(0, (psr.legsFeetHit || 0) + delta);
+                if (!psr.legActuators) {
+                    psr.legActuators = new Map<string, number>();
+                }
+                psr.legActuators.set(crit.loc, Math.max(0, (psr.legActuators.get(crit.loc) || 0) + delta));
                 isPsrRelevant = true;
             } else if (crit.name?.includes('Hip')) {
                 if (!psr.hipsHit) {

@@ -570,16 +570,24 @@ export class ForceUnit {
         if (isFourLegged && undamagedLegs) {
             preExisting -= 2; // Four-legged unit with all legs intact gets -2 modifier
         }
-
         // Calculate current turn modifiers
+        let ignorePreExistingGyro = false;
         let currentModifiers = 0;
         const turnState = this.turnState();
         const phasePSRs = turnState.getPSRChecks();
         phasePSRs.forEach((check) => {
             if (check.pilotCheck === undefined) return; // No fall check, skip
+            if (check.loc) {
+                if (ignoreLeg.has(check.loc)) {
+                    return; // Ignore this leg for further calculations
+                }
+            }
             currentModifiers += check.pilotCheck;
             if (check.legFilter) {
                 ignoreLeg.add(check.legFilter); // Ignore this leg for further calculations
+            }
+            if (check.ignorePreExistingGyro) {
+                ignorePreExistingGyro = true;
             }
         });
 
@@ -599,19 +607,21 @@ export class ForceUnit {
             return true;
         }).length;
         preExisting += relevantDestroyedLegActuatorsCount;
-        let isHeavyDutyGyro = false;
-        const previouslyDestroyedGyroCount = critSlots.filter(slot => {
-            if (!slot.name || !slot.destroyed) return false;
-            if (!slot.name.includes('Gyro')) return false;
-            if (!isHeavyDutyGyro && slot.name.includes('Heavy Duty')) {
-                isHeavyDutyGyro = true;
+        if (!ignorePreExistingGyro) {
+            let isHeavyDutyGyro = false;
+            const previouslyDestroyedGyroCount = critSlots.filter(slot => {
+                if (!slot.name || !slot.destroyed) return false;
+                if (!slot.name.includes('Gyro')) return false;
+                if (!isHeavyDutyGyro && slot.name.includes('Heavy Duty')) {
+                    isHeavyDutyGyro = true;
+                }
+                return true;
+            }).length;
+            if (isHeavyDutyGyro && (previouslyDestroyedGyroCount === 1)) {
+                preExisting += 1;
+            } else if (previouslyDestroyedGyroCount > 0) {
+                preExisting += 3;
             }
-            return true;
-        }).length;
-        if (isHeavyDutyGyro && (previouslyDestroyedGyroCount === 1)) {
-            preExisting += 1;
-        } else if (previouslyDestroyedGyroCount > 0) {
-            preExisting += 3;
         }
         return preExisting + currentModifiers;
     });
