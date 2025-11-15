@@ -620,6 +620,17 @@ export class ForceUnit {
                 reason: '’Mech mounts Hardened Armor'
             });
         }
+        const modularArmorPanelsCount = critSlots.filter(slot => slot.name && slot.name.includes('Modular Armor')).length;
+        if (modularArmorPanelsCount > 0) {
+            const destroyedModularArmorPanelsCount = critSlots.filter(slot => slot.name && slot.name.includes('Modular Armor') && (slot.destroyed || ((slot.consumed ?? 0) >= 10))).length;
+            if (destroyedModularArmorPanelsCount < modularArmorPanelsCount) {
+                preExisting += 1; // Modular armor gives +1 modifier (until destroyed or fully consumed)
+                modifiers.push({
+                    pilotCheck: 1,
+                    reason: '’Mech mounts Modular Armor'
+                });
+            }
+        }
         const hasSmallOrTorsoCockpit = critSlots.some(slot => slot.name && slot.loc && slot.name.includes('Cockpit') && slot.name.includes('Small')) 
             || critSlots.some(slot => slot.name && slot.loc && slot.loc === 'CT' && slot.name.includes('Cockpit'));
         if (hasSmallOrTorsoCockpit) {
