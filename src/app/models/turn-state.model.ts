@@ -161,14 +161,11 @@ export class TurnState {
                         hasDamagedLeg = true;
                     }
                 });
-                let hasDamagedLegActuators = false;
-                if (!hasDamagedLeg) {
-                    hasDamagedLegActuators = critSlots.some(slot => {
+                const hasDamagedLegActuators = critSlots.some(slot => {
                         if (!slot.name || !slot.loc || !slot.destroyed) return false;
                         if (!LEG_LOCATIONS.has(slot.loc)) return false;
                         return (slot.name.includes('Leg') || slot.name.includes('Foot') || slot.name.includes('Hip'));
                     });
-                }
                 if (moveMode === 'jump') {
                     if (hasDamagedGyro) {
                         checks.push({
@@ -176,17 +173,17 @@ export class TurnState {
                             pilotCheck: 0,
                             reason: 'Jumping with damaged gyro'
                         });
-                    } else if (hasDamagedLegActuators) {
-                        checks.push({
-                            fallCheck: 0,
-                            pilotCheck: 0,
-                            reason: 'Jumping with damaged leg actuator'
-                        });
                     } else if (hasDamagedLeg) {
                         checks.push({
                             fallCheck: 0,
                             pilotCheck: 0,
                             reason: 'Jumping with damaged leg'
+                        });
+                    } else if (hasDamagedLegActuators) {
+                        checks.push({
+                            fallCheck: 0,
+                            pilotCheck: 0,
+                            reason: 'Jumping with damaged leg actuator'
                         });
                     }
                 } else if (moveMode === 'run') {
@@ -196,7 +193,20 @@ export class TurnState {
                             pilotCheck: 0,
                             reason: 'Running with damaged gyro'
                         });
-                    }
+                    } else if (hasDamagedLegActuators) {             
+                        const hasDamagedHip = critSlots.some(slot => {
+                            if (!slot.name || !slot.loc || !slot.destroyed) return false;
+                            if (!LEG_LOCATIONS.has(slot.loc)) return false;
+                            return slot.name.includes('Hip');
+                        });
+                        if (hasDamagedHip) {
+                            checks.push({
+                                fallCheck: 0,
+                                pilotCheck: 0,
+                                reason: 'Running with damaged hip'
+                            });
+                        }
+                    } 
                 }
             }
         }
