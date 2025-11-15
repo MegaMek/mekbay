@@ -310,6 +310,7 @@ export class TurnState {
     });
 
     heatGeneratedFromDamagedEngine = computed(() => {
+        if (this.unitState.unit.shutdown) return 0;
         const critSlots = this.unitState.unit.getCritSlots();
         const engineHits = critSlots.filter(slot => slot.name && slot.name.includes('Engine') && slot.destroyed).length;
         return engineHits * 5;
