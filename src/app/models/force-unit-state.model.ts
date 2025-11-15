@@ -60,8 +60,7 @@ export class ForceUnitState {
     endPhase() {
         this.consolidateCrits();
         const turnState = this.turnState();
-        turnState.psrChecks.set({});
-        turnState.dmgReceived.set(0);
+        turnState.resetPSRChecks();
     }
 
     update(data: SerializedState, allEquipment: EquipmentUnitType) {

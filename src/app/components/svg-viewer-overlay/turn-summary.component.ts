@@ -92,13 +92,19 @@ export class TurnSummaryPanelComponent {
     hasPSRChecks = computed(() => {
         const unit = this.unit();
         if (!unit) return false;
-        return unit.turnState().hasPSRCheck();
+        return unit.turnState().PSRRollsCount() > 0;
+    });
+
+    falling = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return unit.turnState().autoFall();
     });
 
     PSRChecksCount = computed(() => {
         const unit = this.unit();
         if (!unit) return 0;
-        return unit.turnState().getPSRChecks().length;
+        return unit.turnState().PSRRollsCount();
     });
 
     currentMoveMode = computed(() => {
@@ -137,22 +143,10 @@ export class TurnSummaryPanelComponent {
         return u.turnState().heatGeneratedFromMovement();
     });
 
-    heatFromStatusEffects = computed(() => {
+    heatGeneratedFromDamagedEngine = computed(() => {
         const u = this.unit();
         if (!u) return 0;
-        return u.turnState().heatGeneratedFromStatusEffects();
-    });
-
-    heatDissipated = computed(() => {
-        const u = this.unit();
-        if (!u) return 0;
-        return u.turnState().heatDissipated();
-    });
-
-    totalHeatDelta = computed(() => {
-        const u = this.unit();
-        if (!u) return 0;
-        return u.turnState().totalHeatDelta();
+        return u.turnState().heatGeneratedFromDamagedEngine();
     });
 
     close() {

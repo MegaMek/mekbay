@@ -286,7 +286,7 @@ export class UnitSvgMekService extends UnitSvgService {
         
         const systemsStatus = this.systemsStatus();
         const internalLocations = new Set<string>(this.unit.locations?.internal.keys() || []);
-        
+        let runDisabled = false;
         // Walk MP and crits computation
         if (internalLocations.has('LL') && internalLocations.has('RL')) {
             for (let i = 0; i < systemsStatus.destroyedHipsCount; i++) {
@@ -297,6 +297,12 @@ export class UnitSvgMekService extends UnitSvgService {
             if (systemsStatus.destroyedLegsCount == 1) {
                 walkValue = 1;
                 moveImpaired = true;
+                runDisabled = true;
+            }
+            if (systemsStatus.destroyedLegsCount >= 2) {
+                walkValue = 0;
+                moveImpaired = true;
+                runDisabled = true;
             }
         } else if (internalLocations.has('RLL') && internalLocations.has('FLL') && internalLocations.has('RRL') && internalLocations.has('FRL')) {
             // Quadrupeds
@@ -304,14 +310,20 @@ export class UnitSvgMekService extends UnitSvgService {
                 moveImpaired = true;
                 walkValue -= systemsStatus.destroyedHipsCount;
             }
-            if (systemsStatus.destroyedLegsCount == 1) {
+            if (systemsStatus.destroyedLegsCount === 1) {
                 walkValue = walkValue - 1;
                 moveImpaired = true;
             }
-        }
-        if (systemsStatus.destroyedLegsCount >= 2) {
-            walkValue = 0;
-            moveImpaired = true;
+            if (systemsStatus.destroyedLegsCount === 2) {
+                walkValue = 1;
+                moveImpaired = true;
+                runDisabled = true;
+            }
+            if (systemsStatus.destroyedLegsCount >= 3) {
+                walkValue = 0;
+                moveImpaired = true;
+                runDisabled = true;
+            }
         }
         walkValue -= systemsStatus.destroyedLegActuatorsCount;
         walkValue -= systemsStatus.destroyedFeetCount;
@@ -352,7 +364,7 @@ export class UnitSvgMekService extends UnitSvgService {
         const armorModifierOnRun = (this.unit.getUnit().armorType === 'Hardened') ? -1 : 0;
         let runValue;
         let maxRunValue;
-        if (walkValue === 0) {
+        if (walkValue === 0 || runDisabled) {
             runValue = 0;
             maxRunValue = 0;
         } else {
@@ -716,26 +728,25 @@ export class UnitSvgMekService extends UnitSvgService {
     public override evaluateDestroyed(): void {
         const svg = this.unit.svg();
         if (!svg) return;
-
-        const internalLocs = new Set<string>(this.unit.locations?.internal.keys() || []);
+        
         const locationsToDestroy = new Set<String>();
-        for (const loc of internalLocs) {
+        this.unit.locations?.internal?.forEach((_value, loc) => {
             if (this.unit.isInternalLocDestroyed(loc)) {
                 locationsToDestroy.add(loc);
                 if (linkedLocs[loc]) {
                     linkedLocs[loc].forEach(linkedLoc => {
-                        if (internalLocs.has(linkedLoc)) {
+                        if (this.unit.locations?.internal?.has(linkedLoc)) {
                             locationsToDestroy.add(linkedLoc);
                         }
                     });
                 }
             }
-        }
+        });
         const critSlots = this.unit.getCritSlotsAsMatrix();
-        for (const loc of internalLocs) {
+        this.unit.locations?.internal?.forEach((_value, loc) => {
             const locDestroyed = locationsToDestroy.has(loc);
             const critSlotsInLoc = critSlots[loc] || [];
-            if (critSlotsInLoc.length === 0) continue;
+            if (critSlotsInLoc.length === 0) return;
             for (const critSlot of critSlotsInLoc) {
                 if (!critSlot) continue;
                 const maxHits = critSlot.armored ? 2 : 1;
@@ -748,7 +759,7 @@ export class UnitSvgMekService extends UnitSvgService {
                     this.unit.setCritSlot(critSlot);
                 }
             }
-        }
+        });
 
         // Check if the unit is destroyed based on its critical slots
         // Check critSlots with uid="Engine" are damaged

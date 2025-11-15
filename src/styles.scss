@@ -465,6 +465,12 @@ hr {
     }
 }
 
+span {
+    &.danger {
+        color: var(--danger);
+    }
+}
+
 .popup-menu {
     padding: 8px 0;
     display: flex;

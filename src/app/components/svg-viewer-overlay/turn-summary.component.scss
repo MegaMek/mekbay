@@ -93,6 +93,15 @@
                 background-color: #ffdd33;
             }
         }
+
+        &.danger {
+            background-color: var(--danger);
+            color: #fff;
+
+            &:hover {
+                background-color: #ff4444;
+            }
+        }
     }
 
     .move-button {

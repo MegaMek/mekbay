@@ -164,6 +164,7 @@ export class UnitInitializerService {
         critSlotsEl.forEach(critSlotEl => {
             const id = critSlotEl.getAttribute('uid');
             const loc = critSlotEl.getAttribute('loc');
+            const name = critSlotEl.getAttribute('name') || '';
             const armored = critSlotEl.getAttribute('armored') === '1';
             if (!loc || !id) return;
 
@@ -177,6 +178,7 @@ export class UnitInitializerService {
                     console.warn(`Critical slot ID mismatch for loc ${loc} slot ${slot}: expected ${critSlot.id}, found ${id}`);
                 }
                 critSlot.id = id;
+                critSlot.name = name;
                 if (critSlot.name) {
                     critSlot.eq = equipmentList[critSlot.name];
                 }
@@ -186,7 +188,6 @@ export class UnitInitializerService {
                 criticalSlots.push(critSlot);
                 return;
             }
-            const name = critSlotEl.getAttribute('name') || '';
             const critSlot: CriticalSlot = {
                 el: critSlotEl,
                 id: id,

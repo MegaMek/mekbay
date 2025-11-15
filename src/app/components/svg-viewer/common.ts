@@ -84,3 +84,7 @@ export const linkedLocs: { [key: string]: string[] } = {
     'RT': ['RA'],
     'LT': ['LA'],
 };
+
+
+export const LEG_LOCATIONS = new Set(['LL', 'RL', 'CL', 'FRL', 'FLL', 'RRL', 'RLL']);
+export const FOUR_LEGGED_LOCATIONS = new Set(['FRL', 'FLL', 'RRL', 'RLL']);

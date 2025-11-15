@@ -55,6 +55,7 @@ import { CrewMember, SkillType } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';
 import { TurnState } from './turn-state.model';
 import { OptionsService } from '../services/options.service';
+import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "../components/svg-viewer/common";
 
 /*
  * Author: Drake
@@ -272,7 +273,6 @@ export class ForceUnit {
             crits.push(slot); // Add new crit
         }
         this.setCritSlots(crits);
-        this.turnState().evaluateCritSlot(slot);
     }
 
     applyHitToCritSlot(slot: CriticalSlot, damage: number = 1, consolidateImmediately: boolean = false) {
@@ -289,6 +289,7 @@ export class ForceUnit {
         if (consolidateImmediately) {
             this.state.consolidateCrits(); // Consolidate immediately in case we have pending hits to apply
         }
+        this.turnState().evaluateCritSlotHit(slot);
     }
 
     getCritLoc(id: string): CriticalSlot | null {
@@ -400,6 +401,7 @@ export class ForceUnit {
         locations[loc].internal += hits;
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
         this.state.turnState().addDmgReceived(hits);
+        this.state.turnState().evaluateLegDestroyed(loc, hits);
         this.setModified();
     }
 
@@ -509,6 +511,9 @@ export class ForceUnit {
             if (crit.destroyed) {
                 crit.destroyed = undefined;
             }
+            if (crit.destroying) {
+                crit.destroying = undefined;
+            }
             if (crit.hits) {
                 crit.hits = 0;
             }
@@ -544,44 +549,73 @@ export class ForceUnit {
         return getMotiveModesOptionsByUnit(this.getUnit(), this.turnState().airborne() ?? false);
     }
 
-    // TODO: must be reworded, create an history list of modifiers applied so that we can apply the proper sequence for Hip/Foot/Leg
     PSRModifiers = computed<number>(() => {
-        let modifier = 0;
-        const critSlots = this.getCritSlots();
-        const destroyedHips = critSlots.filter(slot => slot.name && slot.name.includes('Hip') && slot.destroyed);
-        const hipLocations = new Map<string, number>();
-        for (const hip of destroyedHips) {
-            if (!hip.destroyed) continue;
-            modifier += 2;
-            if (hip.loc) {
-                hipLocations.set(hip.loc, hip.destroyed); // Destroyed contains the timestamp of the destruction
-            }
-        }
-        const destroyedFeetCount = critSlots.filter(slot => {
-            if (!slot.loc || !slot.name) return false;
-            if (!slot.destroyed) return false;
-            if (!slot.name.includes('Foot')) return false;
-            const hipDestroyed = hipLocations.get(slot.loc);
-            if (hipDestroyed && hipDestroyed > slot.destroyed) {
-                return false;
-            }
-            return true;
-        }).length;
-        const destroyedLegsActuatorsCount = critSlots.filter(slot => {
-            if (!slot.loc || !slot.name) return false;
-            if (!slot.destroyed) return false;
-            if (!slot.name.includes('Leg')) return false;
-            const hipDestroyed = hipLocations.get(slot.loc);
-            if (hipDestroyed && hipDestroyed > slot.destroyed) {
-                return false;
-            }
-            return true;
-        }).length;
-        const destroyedGyroCount = critSlots.filter(slot => {
-            return slot.name && slot.destroyed && slot.name.includes('Gyro');
-        }).length;
+        const ignoreLeg = new Set<string>();
+        let preExisting = 0;
 
-        return modifier + destroyedFeetCount + destroyedLegsActuatorsCount + (destroyedGyroCount * 3);
+        let isFourLegged = false;
+        let undamagedLegs = true;
+        // Calculate pre-existing leg destruction modifiers. If a leg is gone, is gone.
+        this.locations?.internal?.forEach((_value, loc) => {
+            if (!LEG_LOCATIONS.has(loc)) return; // Only consider leg locations
+            if (!isFourLegged && FOUR_LEGGED_LOCATIONS.has(loc)) {
+                isFourLegged = true;
+            }
+            if (this.isInternalLocDestroyed(loc)) {
+                undamagedLegs = false;
+                ignoreLeg.add(loc); // Track destroyed legs, we ignore further modifiers on that leg
+                preExisting += 5;
+            }
+        });
+        if (isFourLegged && undamagedLegs) {
+            preExisting -= 2; // Four-legged unit with all legs intact gets -2 modifier
+        }
+
+        // Calculate current turn modifiers
+        let currentModifiers = 0;
+        const turnState = this.turnState();
+        const phasePSRs = turnState.getPSRChecks();
+        phasePSRs.forEach((check) => {
+            if (check.pilotCheck === undefined) return; // No fall check, skip
+            currentModifiers += check.pilotCheck;
+            if (check.legFilter) {
+                ignoreLeg.add(check.legFilter); // Ignore this leg for further calculations
+            }
+        });
+
+        // Calculate pre-existing modifiers for hips and leg actuators destroyed the previous turns
+        const critSlots = this.getCritSlots();
+        const destroyedHips = critSlots.filter(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && slot.name.includes('Hip'));
+        for (const hip of destroyedHips) {
+            if (!hip.loc) continue;
+            preExisting += 2;
+            ignoreLeg.add(hip.loc); // Track destroyed hip locations, we ignore further modifiers on that leg
+        }
+        const relevantDestroyedLegActuatorsCount = critSlots.filter(slot => {
+            if (!slot.loc || !slot.name || !slot.destroyed) return false;
+            if (!LEG_LOCATIONS.has(slot.loc)) return false;
+            if (ignoreLeg.has(slot.loc)) return false;
+            if (!slot.name.includes('Foot') && !slot.name.includes('Leg')) return false;
+            return true;
+        }).length;
+        preExisting += relevantDestroyedLegActuatorsCount;
+        let isHeavyDutyGyro = false;
+        const previouslyDestroyedGyroCount = critSlots.filter(slot => {
+            if (!slot.name || !slot.destroyed) return false;
+            if (!slot.name.includes('Gyro')) return false;
+            if (!isHeavyDutyGyro && slot.name.includes('Heavy Duty')) {
+                isHeavyDutyGyro = true;
+            }
+            return true;
+        }).length;
+        if (isHeavyDutyGyro && (previouslyDestroyedGyroCount === 1)) {
+            preExisting += 1;
+        } else if (previouslyDestroyedGyroCount > 0) {
+            preExisting += 3;
+        }
+
+
+        return preExisting + currentModifiers;
     });
     
     public endTurn() {

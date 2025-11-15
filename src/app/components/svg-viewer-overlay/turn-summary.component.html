@@ -73,17 +73,23 @@
     <div class="group">
         <div class="phaseTitle">Heat</div>
         <div class="summary-entry">
-            <div class="row"><span>Movement:</span><span>{{ heatFromMovement() }}</span></div>
-            <div class="row"><span>Status Effects:</span><span>{{ heatFromStatusEffects() }}</span></div>
+            <div class="row"><span>Movement:</span><span>{{ (heatFromMovement() > 0 ? '+' : '') +  heatFromMovement() }}</span></div>
+            @if (heatGeneratedFromDamagedEngine() > 0) {
+                <div class="row"><span>Damaged Engine:</span><span class="danger">+{{ heatGeneratedFromDamagedEngine() }}</span></div>
+            }
         </div>
     </div>
     <!-- <button role="button" class="summary-entry bt-button" tabindex="0">
             Apply Heat
         </button> -->
     }
-    @if (hasPSRChecks()) {
+    @if (falling()) {
+    <button role="button" class="summary-entry bt-button danger" tabindex="0">
+        ⚠ FALLING!
+    </button>
+    } @else if (hasPSRChecks()) {
     <button role="button" class="summary-entry bt-button warning" (click)="openPsrWarning($event)" tabindex="0">
-        ⚠ PSR Check! ({{ PSRChecksCount() }})
+        ⚠ PSR Checks! ({{ PSRChecksCount() }})
     </button>
     }
     @if (dirty()) {
