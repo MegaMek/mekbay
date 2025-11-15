@@ -613,9 +613,14 @@ export class ForceUnit {
         } else if (previouslyDestroyedGyroCount > 0) {
             preExisting += 3;
         }
-
-
         return preExisting + currentModifiers;
+    });
+
+    PSRTargetRoll = computed<number>(() => {
+        const pilot = this.getCrewMember(0);
+        const piloting = pilot.getSkill('piloting');
+        const modifiers = this.PSRModifiers();
+        return piloting + modifiers;
     });
     
     public endTurn() {

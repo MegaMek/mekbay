@@ -353,7 +353,7 @@ export class TurnSummaryPanelComponent {
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
-        <div class="header">PSR Checks</div>
+        <div class="header">Piloting Skill Rolls</div>
         <div class="body">
             <div class="psr-list">
                 @for (check of psrChecks(); let i = $index; track i) {
@@ -362,6 +362,9 @@ export class TurnSummaryPanelComponent {
                         <div class="psr-reason">{{ check.reason }}</div>
                     </div>
                 }
+            </div>
+            <div class="psr-target">
+                Target roll: {{ unit()?.PSRTargetRoll() }}
             </div>
         </div>
         <div class="actions">
@@ -380,17 +383,15 @@ export class TurnSummaryPanelComponent {
             min-width: 200px;
             display: flex;
             flex-direction: column;
-            padding: 4px;
-            gap: 4px;
+            padding: 8px;
+            gap: 8px;
             transition: opacity 0.2s;
         }
         .header {
             font-weight: bold;
-            margin-bottom: 4px;
             text-align: center;
         }
         .body {
-            margin-bottom: 12px;
             color: var(--text-color-secondary, #bbb);
         }
         .psr-list {
@@ -418,20 +419,32 @@ export class TurnSummaryPanelComponent {
             color: var(--text-color-secondary, #ddd);
             line-height: 1.4;
         }
+        .psr-target {
+            padding: 8px 12px;
+            font-weight: bold;
+            font-size: 1em;
+            color: var(--text-color);
+            text-align: center;
+        }
         .actions {
             display: flex;
             justify-content: center;
+        }
+
+        .bt-button {
+            width: 100%;
         }
     `]
 })
 class PsrWarningPanelComponent {
     private parent = inject(SvgInteractionOverlayComponent);
     private overlayManager = inject(OverlayManagerService);
+    unit = this.parent.unit;
     close() {
         this.overlayManager.closeManagedOverlay('psrWarning');
     }
     psrChecks = computed(() => {
-        const unit = this.parent.unit();
+        const unit = this.unit();
         if (!unit) return [];
         return unit.turnState().getPSRChecks().filter(c => !c.fallCheck !== undefined);
     });
