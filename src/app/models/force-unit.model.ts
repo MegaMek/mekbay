@@ -220,21 +220,26 @@ export class ForceUnit {
 
     getHeat = this.state.heat;
 
-    setHeat(heat: number) {
-        const storedHeat = this.state.heat();
-        if (heat === storedHeat.current) return; // No change
-        const newHeatData: HeatProfile = { current: heat, previous: storedHeat.current };
-        if (storedHeat.heatsinksOff !== undefined) {
-            newHeatData.heatsinksOff = storedHeat.heatsinksOff;
+    setHeat(heatValue: number, consolidateImmediately: boolean = false) {
+        const heatData = this.state.heat();
+        if (heatValue === heatData.next) return; // No change
+        heatData.next = heatValue;
+        this.state.heat.set({ ...heatData });
+        if (consolidateImmediately) {
+            this.state.consolidateHeat();
         }
-        this.state.heat.set(newHeatData);
+        this.setModified();
+    }
+
+    setHeatData(heatData: HeatProfile) {
+        this.state.heat.set({ ...heatData });
         this.setModified();
     }
 
     setHeatsinksOff(heatsinksOff: number) {
         const storedHeat = this.state.heat();
         if (heatsinksOff === storedHeat.heatsinksOff) return; // No change
-        const newHeatData: HeatProfile = { current: storedHeat.current, previous: storedHeat.previous, heatsinksOff: heatsinksOff };
+        const newHeatData: HeatProfile = { current: storedHeat.current, previous: storedHeat.previous, next: storedHeat.next, heatsinksOff: heatsinksOff };
         this.state.heat.set(newHeatData);
         this.setModified();
     }
@@ -526,7 +531,7 @@ export class ForceUnit {
         // Clear all damage
         this.state.locations.set({});
         // Clear heat
-        this.state.heat.set({ current: 0, previous: 0 });
+        this.state.heat.set({ current: 0, previous: 0, next: 0 });
         // Clear destroyed state
         this.state.destroyed.set(false);
         this.state.shutdown.set(false);

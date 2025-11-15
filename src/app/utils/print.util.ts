@@ -57,7 +57,7 @@ export class PrintUtil {
                 if (unitHeat.heatsinksOff !== undefined) {
                     unit.setHeatsinksOff(0);
                 }
-                unit.setHeat(0);
+                unit.setHeat(0, true);
             }
         }
 
@@ -284,8 +284,7 @@ export class PrintUtil {
                 for (const unit of forceUnits) {
                     const heat = originalHeats.get(unit);
                     if (heat) {
-                        unit.setHeat(heat.previous);
-                        unit.setHeat(heat.current);
+                        unit.setHeatData(heat);
                         if (heat.heatsinksOff !== undefined) {
                             unit.setHeatsinksOff(heat.heatsinksOff);
                         }

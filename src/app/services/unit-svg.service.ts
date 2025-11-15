@@ -34,7 +34,7 @@
 import { untracked, Injectable, Injector, effect, EffectRef, OnDestroy, inject } from '@angular/core';
 import { ForceUnit } from '../models/force-unit.model';
 import { CrewMember, SkillType } from '../models/crew-member.model';
-import { CriticalSlot, MountedEquipment } from '../models/force-serialization';
+import { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
@@ -393,7 +393,7 @@ export class UnitSvgService implements OnDestroy {
         });
     }
 
-    protected updateHeatDisplay(heat: { current: number, previous: number }) {
+    protected updateHeatDisplay(heat: HeatProfile) {
         const svg = this.unit.svg();
         if (!svg) return;
 
@@ -402,14 +402,13 @@ export class UnitSvgService implements OnDestroy {
         let highestHeatVal = -Infinity;
 
         // Update heat scale rectangles
-        svg.querySelectorAll('#heatScale .heat').forEach(heatRect => {
+        svg.querySelectorAll('#heatScale rect.heat').forEach(heatRect => {
             const heatVal = Number((heatRect as SVGElement).getAttribute('heat'));
-
+            if (heatVal > highestHeatVal) {
+                highestHeatVal = heatVal;
+            }
             if (heatVal <= heat.current) {
                 heatRect.classList.add('hot');
-                if (heatVal > highestHeatVal) {
-                    highestHeatVal = heatVal;
-                }
             } else {
                 heatRect.classList.remove('hot');
             }
@@ -459,7 +458,8 @@ export class UnitSvgService implements OnDestroy {
         });
 
         // Handle overflow frame
-        if (highestHeatVal < heat.current) {
+        const heatValue = heat.next ?? heat.current;
+        if (highestHeatVal < heatValue) {
             svg.querySelector('#heatScale .overflowFrame')?.classList.add('hot');
 
             const overflowFrameEl = svg.querySelector('#heatScale .overflowFrame') as SVGGraphicsElement | null;
@@ -484,7 +484,7 @@ export class UnitSvgService implements OnDestroy {
                     overflowText.setAttribute('y', centerY.toString());
                     svg.getElementById('heatScale')!.appendChild(overflowText);
                 }
-                overflowText.textContent = `${heat.current}`;
+                overflowText.textContent = `${heatValue}`;
             }
         } else {
             svg.querySelector('#heatScale .overflowFrame')?.classList.remove('hot');
@@ -494,12 +494,16 @@ export class UnitSvgService implements OnDestroy {
             }
         }
 
-        const updateArrow = (id: string, value: number, isCurrent: boolean) => {
+        const updateArrow = (id: string, value: undefined | number, state: 'current' | 'nextHot' | 'nextCold' | 'previous') => {
             let arrow = svg.querySelector(`#${id}`) as SVGPolygonElement | null;
+
+            if (value === undefined) {
+                arrow?.remove();
+                return;
+            }
             const heatEl = this.getHeatElementFromValue(value);
 
             if (heatEl) {
-
                 const elX = heatEl.getAttribute('x');
                 const elY = heatEl.getAttribute('y');
                 const elHeight = heatEl.getAttribute('height');
@@ -514,9 +518,17 @@ export class UnitSvgService implements OnDestroy {
                     heatEl.parentElement?.appendChild(arrow);
                 }
                 arrow.setAttribute('points', `${x + 8},${y - 5} ${x},${y} ${x + 8},${y + 5}`);
-                if (isCurrent) {
+                if (state === 'current') {
                     arrow.setAttribute('fill', '#666');
                     arrow.setAttribute('stroke', '#000');
+                    arrow.setAttribute('stroke-width', '1');
+                } else if (state === 'nextHot') {
+                    arrow.setAttribute('fill', '#f00');
+                    arrow.setAttribute('stroke', '#f00');
+                    arrow.setAttribute('stroke-width', '1');
+                } else if (state === 'nextCold') {
+                    arrow.setAttribute('fill', '#66f');
+                    arrow.setAttribute('stroke', '#66f');
                     arrow.setAttribute('stroke-width', '1');
                 } else {
                     arrow.setAttribute('fill', 'none');
@@ -529,10 +541,20 @@ export class UnitSvgService implements OnDestroy {
             }
         };
 
-        updateArrow('now-arrow', heat.current, true);
+        if (heat.next === heat.current) {
+            updateArrow('now-arrow', heat.current, 'current');
+            svg.querySelector('#next-arrow')?.remove();
+        } else {
+            if (heat.next !== undefined) {
+                updateArrow('next-arrow', heat.next, heat.next > heat.current ? 'nextHot' : 'nextCold');
+            } else {            
+                svg.querySelector('#next-arrow')?.remove();
+            }
+            updateArrow('now-arrow', heat.current, 'current');
+        }
 
-        if (heat.previous !== heat.current) {
-            updateArrow('faded-arrow', heat.previous, false);
+        if (heat.previous !== heat.current && heat.previous !== heat.next) {
+            updateArrow('faded-arrow', heat.previous, 'previous');
         } else {
             svg.querySelector('#faded-arrow')?.remove();
         }

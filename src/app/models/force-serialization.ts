@@ -42,6 +42,7 @@ export interface LocationData {
 
 export interface HeatProfile {
     current: number;
+    next?: number;
     previous: number;
     heatsinksOff?: number;
 }
@@ -84,7 +85,7 @@ export interface SerializedState {
     crew: any[]; // Serialized CrewMember objects
     crits: CriticalSlot[];
     locations: Record<string, LocationData>;
-    heat: { current: number, previous: number, heatsinksOff?: number };
+    heat: HeatProfile;
     inventory?: SerializedInventory[];
 }
 
@@ -116,6 +117,7 @@ export interface CriticalSlot {
 export const HEAT_SCHEMA = Sanitizer.schema<HeatProfile>()
     .number('current', { default: 0, min: 0 })
     .number('previous', { default: 0, min: 0 })
+    .number('next')
     .number('heatsinksOff', { min: 0 })
     .build();
 

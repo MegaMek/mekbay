@@ -48,12 +48,14 @@ export class TurnState {
     });
 
     dirtyPhase = computed<boolean>(() => {
+        const heat = this.unitState.heat();
         const psrChecks = this.psrChecks();
         const dmgReceived = this.dmgReceived();
         const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
         return dmgReceived != 0
             || Object.keys(psrChecks).length > 0
-            || unconsolidatedCrits;
+            || unconsolidatedCrits
+            || heat.next !== undefined;
     });
 
     autoFall = computed<boolean>(() => {

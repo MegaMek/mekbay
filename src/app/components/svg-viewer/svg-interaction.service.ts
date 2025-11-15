@@ -131,12 +131,13 @@ export class SvgInteractionService {
 
             this.state.diffHeatMarkerVisible.set(isVisible);
 
+            const currentHeat = currentUnit.getHeat();
             if (!isVisible) {
-                this.updateHeatHighlight(currentUnit.getHeat().current);
+                this.updateHeatHighlight(currentHeat.next ?? currentHeat.current);
                 return;
             }
 
-            const diff = data.heat - currentUnit.getHeat().current;
+            const diff = data.heat - currentHeat.current;
             const container = this.containerRef.nativeElement;
             const containerRect = container.getBoundingClientRect();
             const elRect = data.el?.getBoundingClientRect();
@@ -159,7 +160,7 @@ export class SvgInteractionService {
             marker.style.transform = `translate(${x}px, ${y}px)`;
 
             let color = '#666';
-            if (diff < 0) color = '#00f';
+            if (diff < 0) color = '#66f';
             else if (diff > 0) color = '#f00';
 
             this.diffHeatTextRef.nativeElement.style.backgroundColor = color;
@@ -942,7 +943,7 @@ export class SvgInteractionService {
         const onPointerUp = (evt: PointerEvent) => {
             if (!dragState || evt.pointerId !== dragState.pointerId) return;
             const heatValue = Number(this.state.clickTarget?.getAttribute('heat') || 0);
-            unit.setHeat(heatValue);
+            unit.setHeat(heatValue, !this.optionsService.options().useAutomations);
             cancelHeatDrag();
         };
 
@@ -993,18 +994,19 @@ export class SvgInteractionService {
         const overflowButton = svg.querySelector('#heatScale .overflowButton');
         if (overflowFrame && overflowButton) {
             const promptHeatOverflow = async (evt: Event) => {
+                const currentHeat = unit.getHeat();
                 const ref = this.dialogsService.createDialog<number | null>(InputDialogComponent, {
                     data: {
                         message: 'Heat',
                         inputType: 'number',
-                        defaultValue: unit.getHeat().current,
+                        defaultValue: currentHeat.next ?? currentHeat.current,
                         placeholder: 'Heat value'
                     } as InputDialogData
                 });
                 const newHeatValue = await firstValueFrom(ref.closed);
                 if (newHeatValue === null || isNaN(Number(newHeatValue))) return;
                 const heatValue = Math.max(0, Number(newHeatValue));
-                unit.setHeat(heatValue);
+                unit.setHeat(heatValue, !this.optionsService.options().useAutomations);
             };
             overflowButton.classList.add('interactive');
             overflowButton.addEventListener('click', promptHeatOverflow, { passive: false, signal });

@@ -24,7 +24,7 @@ export class ForceUnitState {
     /** Locations and their armor/structure and other properties */
     public locations = signal<Record<string, LocationData>>({});
     /** Heat state of the unit */
-    public heat = signal<HeatProfile>({ current: 0, previous: 0 });
+    public heat = signal<HeatProfile>({ current: 0, previous: 0, next: 0 });
     /** Inventory of the unit */
     public inventory = signal<MountedEquipment[]>([]);
     public readonly turnState = signal(new TurnState(this));
@@ -50,7 +50,7 @@ export class ForceUnitState {
                 crit.destroyed = crit.destroying;
                 updated = true;
             }
-        });        
+        });
         if (updated) {
             this.crits.set([...crits]);
             this.unit.svgService?.evaluateDestroyed();
@@ -58,7 +58,19 @@ export class ForceUnitState {
         }
     }
 
+    consolidateHeat() {
+        const heat = this.heat();
+        if (heat.next !== undefined) {
+            heat.previous = heat.current;
+            heat.current = heat.next;
+            heat.next = undefined;
+            this.heat.set({ ...heat });
+        }
+        this.unit.setModified();
+    }
+
     endPhase() {
+        this.consolidateHeat();
         this.consolidateCrits();
         const turnState = this.turnState();
         turnState.resetPSRChecks();
@@ -70,7 +82,7 @@ export class ForceUnitState {
         this.shutdown.set(data.shutdown);
         this.c3Linked.set(data.c3Linked);
         this.heat.set(data.heat);
-                
+
         // We update it only if changed
         if (data.locations) {
             const currentLocations = this.locations();
