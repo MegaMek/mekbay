@@ -53,7 +53,7 @@ import {
 import { Force } from './force.model';
 import { CrewMember, SkillType } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';
-import { TurnState } from './turn-state.model';
+import { PSRCheck, TurnState } from './turn-state.model';
 import { OptionsService } from '../services/options.service';
 import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "../components/svg-viewer/common";
 
@@ -552,6 +552,7 @@ export class ForceUnit {
     PSRModifiers = computed<number>(() => {
         const ignoreLeg = new Set<string>();
         let preExisting = 0;
+        const modifiers: PSRCheck[] = [];
 
         let isFourLegged = false;
         let undamagedLegs = true;
@@ -565,10 +566,18 @@ export class ForceUnit {
                 undamagedLegs = false;
                 ignoreLeg.add(loc); // Track destroyed legs, we ignore further modifiers on that leg
                 preExisting += 5;
+                modifiers.push({
+                    pilotCheck: 5,
+                    reason: 'Leg Destroyed'
+                });
             }
         });
         if (isFourLegged && undamagedLegs) {
             preExisting -= 2; // Four-legged unit with all legs intact gets -2 modifier
+            modifiers.push({
+                pilotCheck: -2  ,
+                reason: 'Four-legged ’Mech with all legs'
+            });
         }
         // Calculate current turn modifiers
         let ignorePreExistingGyro = false;
@@ -589,14 +598,28 @@ export class ForceUnit {
             if (check.ignorePreExistingGyro) {
                 ignorePreExistingGyro = true;
             }
+            modifiers.push(check);
         });
 
         // Calculate pre-existing modifiers for hips and leg actuators destroyed the previous turns
         const critSlots = this.getCritSlots();
+        const hasAESinLegs = critSlots.some(slot => slot.name && slot.loc && !slot.destroyed && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
+        const hasAESinLegsDestroyed = critSlots.some(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
+        if (hasAESinLegs && !hasAESinLegsDestroyed) {
+            preExisting -= 1; // AES in legs intact gives -1 modifier
+            modifiers.push({
+                pilotCheck: -1,
+                reason: 'AES in Legs'
+            });
+        }
         const destroyedHips = critSlots.filter(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && slot.name.includes('Hip'));
         for (const hip of destroyedHips) {
             if (!hip.loc) continue;
             preExisting += 2;
+            modifiers.push({
+                pilotCheck: 2,
+                reason: 'Hip Destroyed'
+            });
             ignoreLeg.add(hip.loc); // Track destroyed hip locations, we ignore further modifiers on that leg
         }
         const relevantDestroyedLegActuatorsCount = critSlots.filter(slot => {
@@ -607,6 +630,12 @@ export class ForceUnit {
             return true;
         }).length;
         preExisting += relevantDestroyedLegActuatorsCount;
+        if (relevantDestroyedLegActuatorsCount > 0) {
+            modifiers.push({
+                pilotCheck: relevantDestroyedLegActuatorsCount,
+                reason: 'Leg Actuator(s) Destroyed'
+            });
+        }
         if (!ignorePreExistingGyro) {
             let isHeavyDutyGyro = false;
             const previouslyDestroyedGyroCount = critSlots.filter(slot => {
@@ -618,9 +647,17 @@ export class ForceUnit {
                 return true;
             }).length;
             if (isHeavyDutyGyro && (previouslyDestroyedGyroCount === 1)) {
+                modifiers.push({
+                    pilotCheck: 1,
+                    reason: 'Heavy Duty Gyro first damage'
+                });
                 preExisting += 1;
             } else if (previouslyDestroyedGyroCount > 0) {
                 preExisting += 3;
+                modifiers.push({
+                    pilotCheck: 3,
+                    reason: 'Gyro damaged'
+                });
             }
         }
         return preExisting + currentModifiers;

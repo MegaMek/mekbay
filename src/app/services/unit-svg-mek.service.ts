@@ -171,7 +171,7 @@ export class UnitSvgMekService extends UnitSvgService {
         const hasPartialWings = critSlots.some(slot => slot.name && slot.name.includes('PartialWing'));
         const destroyedPartialWings = hasPartialWings ? critSlots.filter(slot => slot.name && slot.name.includes('PartialWing') && slot.destroyed).length : 0;
         const hasTripleStrengthMyomer = critSlots.some(slot => slot.name && slot.name.includes('Triple Strength Myomer'));
-        const cockpitLoc = critSlots.find(slot => slot.name === "Cockpit")?.loc ?? 'HD';
+        const cockpitLoc = critSlots.find(slot => slot.name && slot.name.includes("Cockpit"))?.loc ?? 'HD';
         const destroyedSensorsCountInHD = critSlots.filter(slot => slot.loc === 'HD' && slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
         const destroyedSensorsCount = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
         const destroyedTargetingComputers = critSlots.filter(slot => slot.name && slot.name.includes('Targeting Computer') && slot.destroyed).length;
@@ -191,9 +191,9 @@ export class UnitSvgMekService extends UnitSvgService {
             if (this.unit.isInternalLocDestroyed(loc)) {
                 destroyedLegsCount++;
             } else {
-                destroyedHipsCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name === 'Hip' && slot.destroyed).length;
-                destroyedLegActuatorsCount += critSlots.filter(slot => slot.loc === loc && slot.name && (slot.name === 'Upper Leg' || slot.name === 'Lower Leg') && slot.destroyed).length;
-                destroyedFeetCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name === 'Foot' && slot.destroyed).length;
+                destroyedHipsCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name.includes('Hip') && slot.destroyed).length;
+                destroyedLegActuatorsCount += critSlots.filter(slot => slot.loc === loc && slot.name && (slot.name.includes('Upper Leg') || slot.name.includes('Lower Leg')) && slot.destroyed).length;
+                destroyedFeetCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name.includes('Foot') && slot.destroyed).length;
             }
         };
 
@@ -765,11 +765,11 @@ export class UnitSvgMekService extends UnitSvgService {
         // Check critSlots with uid="Engine" are damaged
         const engineHitElems = Array.from(svg.querySelectorAll('[id^="engine_hit_"]'));
         const engineSlotsRequired = engineHitElems.length;
-        const allEngineSlots = this.unit.getCritSlots().filter(slot => slot.name === "Engine" && slot.destroyed);
-        const engineBlowed = allEngineSlots.length >= engineSlotsRequired;
+        const destroyedEngineSlots = this.unit.getCritSlots().filter(slot => slot.name && slot.destroyed && slot.name.includes("Engine"));
+        const engineBlowed = destroyedEngineSlots.length >= engineSlotsRequired;
 
         // Check critSlots with uid="Cockpit" are damaged
-        const cockpitDestroyed = this.unit.getCritSlots().some(slot => slot.name === "Cockpit" && slot.destroyed);
+        const cockpitDestroyed = this.unit.getCritSlots().some(slot => slot.name && slot.destroyed && slot.name.includes("Cockpit"));
 
         const destroyed = engineBlowed || cockpitDestroyed;
         if (this.unit.destroyed !== destroyed) {
