@@ -520,9 +520,9 @@ export class ForceUnit {
             if (crit.consumed) {
                 crit.consumed = 0;
             }
-            return { ...crit };
+            return crit;
         });
-        this.state.crits.set(crits);
+        this.state.crits.set([...crits]);
         // Clear all damage
         this.state.locations.set({});
         // Clear heat
@@ -538,9 +538,9 @@ export class ForceUnit {
             if (item.consumed) {
                 item.consumed = 0;
             }
-            return { ...item };
+            return item;
         });
-        this.state.inventory.set(inventory);
+        this.state.inventory.set([...inventory]);
         this.state.resetTurnState();
         this.setModified();
     }
