@@ -33,6 +33,7 @@ export class TurnState {
     applyMovePSR = signal<boolean>(true);
 
     dirty = computed<boolean>(() => {
+        const heat = this.unitState.heat();
         const airborne = this.airborne();
         const moveMode = this.moveMode();
         const moveDistance = this.moveDistance();
@@ -44,7 +45,8 @@ export class TurnState {
             || moveDistance !== null
             || dmgReceived != 0
             || Object.keys(psrChecks).length > 0
-            || unconsolidatedCrits;
+            || unconsolidatedCrits
+            || heat.next !== undefined;
     });
 
     dirtyPhase = computed<boolean>(() => {
