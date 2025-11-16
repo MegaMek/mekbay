@@ -44,7 +44,7 @@
 
 .end-phase-button {
     opacity: 1.0;
-    bottom: 8px;
+    bottom: calc(8px + var(--safe-area-inset-bottom));
     left: 0;
     right: 0;
     margin-inline: auto;
