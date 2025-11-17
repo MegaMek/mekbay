@@ -1436,6 +1436,24 @@ span {
         }
 
 
+        .inventoryEntry {
+            &.selected > text {
+                fill: #000;
+            }
+            &.selected > g:not(.alternativeMode) > text {
+                fill: #000;
+            }
+        }
+
+        .inventoryEntry > .alternativeMode {
+            &.selected > text {
+                fill: #000;
+            }
+            &.selected > g > text {
+                fill: #000;
+            }
+        }
+
         .hot {
             &.heat0 {
                 fill: #000000 !important;
