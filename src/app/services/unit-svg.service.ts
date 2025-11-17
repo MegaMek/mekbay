@@ -913,30 +913,7 @@ export class UnitSvgService implements OnDestroy {
             } else {
                 entry.el.classList.remove('damagedInventory');
             }
-            this.updateInventoryEntryStates(entry);
         });
-    }
-
-    protected updateInventoryEntryStates(entry: MountedEquipment) {
-        if (entry.el && entry.states && entry.states.size > 0) {
-            const stateNames = Array.from(entry.states.keys());
-            const classList = Array.from(entry.el.classList);
-
-            classList.forEach(className => {
-                // Check if this class matches any state pattern (state-stateName--*) and remove it
-                stateNames.forEach(stateName => {
-                    const escapedStateName = CSS.escape(stateName);
-                    if (className.startsWith(`state-${escapedStateName}--`)) {
-                        entry.el?.classList.remove(className);
-                    }
-                });
-            });
-
-            // Add current state classes
-            entry.states.forEach((value, name) => {
-                entry.el?.classList.add(`state-${CSS.escape(name)}--${CSS.escape(value)}`);
-            });
-        }
     }
 
     protected updateTurnState() {

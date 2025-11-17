@@ -694,7 +694,6 @@ export class UnitSvgMekService extends UnitSvgService {
                     entry.el.classList.remove('selected');
                 }
             }
-            this.updateInventoryEntryStates(entry);
         });
     }
 
