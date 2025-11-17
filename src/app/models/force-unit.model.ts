@@ -543,6 +543,11 @@ export class ForceUnit {
             if (item.consumed) {
                 item.consumed = 0;
             }
+            if (item.states && item.states.size > 0) {
+                item.states.forEach((value, key) => {
+                    item.states!.set(key, ''); // Clear all states, assuming empty string will fallback to default
+                });
+            }
             return item;
         });
         this.state.inventory.set([...inventory]);
