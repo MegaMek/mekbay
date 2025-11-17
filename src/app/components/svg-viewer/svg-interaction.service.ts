@@ -887,9 +887,8 @@ export class SvgInteractionService {
                         }
                     }
                     el.classList.toggle('selected');
-                } else {
-                    createAndShowPicker(event);
                 }
+                createAndShowPicker(event);
             }, signal);
         });
     }
