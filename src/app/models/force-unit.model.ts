@@ -531,7 +531,7 @@ export class ForceUnit {
         // Clear all damage
         this.state.locations.set({});
         // Clear heat
-        this.state.heat.set({ current: 0, previous: 0, next: 0 });
+        this.state.heat.set({ current: 0, previous: 0 });
         // Clear destroyed state
         this.state.destroyed.set(false);
         this.state.shutdown.set(false);

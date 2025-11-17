@@ -24,7 +24,7 @@ export class ForceUnitState {
     /** Locations and their armor/structure and other properties */
     public locations = signal<Record<string, LocationData>>({});
     /** Heat state of the unit */
-    public heat = signal<HeatProfile>({ current: 0, previous: 0, next: 0 });
+    public heat = signal<HeatProfile>({ current: 0, previous: 0 });
     /** Inventory of the unit */
     public inventory = signal<MountedEquipment[]>([]);
     public readonly turnState = signal(new TurnState(this));
