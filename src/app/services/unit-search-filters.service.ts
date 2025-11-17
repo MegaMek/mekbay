@@ -1023,16 +1023,12 @@ export class UnitSearchFiltersService {
             const isDataReady = this.dataService.isDataReady();
             if (isDataReady && !this.urlStateInitialized) {
                 const params = this.route.snapshot.queryParamMap;
-                
-                const expandedParam = params.get('expanded');
-                if (expandedParam === 'true') {
-                    this.expandedView.set(true);
-                }
-
+                let hasFilters = false;
                 // Load search query
                 const searchParam = params.get('q');
                 if (searchParam) {
                     this.searchText.set(decodeURIComponent(searchParam));
+                    hasFilters = true;
                 }
                 
                 // Load sort settings
@@ -1049,6 +1045,7 @@ export class UnitSearchFiltersService {
                 // Load filters
                 const filtersParam = params.get('filters');
                 if (filtersParam) {
+                    hasFilters = true;
                     try {
                         const decodedFilters = decodeURIComponent(filtersParam);
                         const parsedFilters = this.parseCompactFiltersFromUrl(decodedFilters);
@@ -1093,6 +1090,12 @@ export class UnitSearchFiltersService {
                     } catch (error) {
                         this.logger.warn('Failed to parse filters from URL: ' + error);
                     }
+                }
+
+                const expandedParam = params.get('expanded');
+                const suggestExpanded = !params.has('instance') && !params.has('units') && hasFilters;
+                if (expandedParam === 'true' || suggestExpanded) {
+                    this.expandedView.set(true);
                 }
 
                 if (params.has('gunnery')) {
