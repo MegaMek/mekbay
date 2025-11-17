@@ -249,6 +249,15 @@ export class UnitSvgService implements OnDestroy {
                 destroyed = true;
             }
         }
+
+        const unitType = this.unit.getUnit().type;
+        if (unitType === 'Naval' || unitType === 'Tank' || unitType === 'VTOL') {
+            this.unit.locations?.internal.forEach((value, loc) => { // If any part is destroyed, the unit is destroyed
+                if (this.unit.isInternalLocDestroyed(loc)) {
+                    destroyed = true;
+                }
+            });
+        }
         if (this.unit.destroyed !== destroyed) {
             this.unit.setDestroyed(destroyed);
         }
