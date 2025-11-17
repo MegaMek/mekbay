@@ -293,13 +293,13 @@ export class PrintUtil {
                 }
             }
 
-            window.removeEventListener('click', removeOverlay, true);
-            window.removeEventListener('keydown', removeOverlay, true);
-            window.removeEventListener('pointerdown', removeOverlay, true);
+            window.removeEventListener('click', removeOverlay, { capture: true });
+            window.removeEventListener('keydown', removeOverlay, { capture: true });
+            window.removeEventListener('pointerdown', removeOverlay, { capture: true });
         };
-        window.addEventListener('click', removeOverlay, true);
-        window.addEventListener('keydown', removeOverlay, true);
-        window.addEventListener('pointerdown', removeOverlay, true);
+        window.addEventListener('click', removeOverlay, { capture: true, once: true });
+        window.addEventListener('keydown', removeOverlay, { capture: true, once: true });
+        window.addEventListener('pointerdown', removeOverlay, { capture: true, once: true });
     }
 
     private static async waitForSvgImagesToLoad(root: ParentNode): Promise<void> {

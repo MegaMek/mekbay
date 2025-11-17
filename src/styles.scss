@@ -1570,7 +1570,7 @@ span {
         overflow: unset;
     }
 
-    body.multipage-container-active *:not(#multipage-container):not(#multipage-container *) {
+    body.multipage-container-active *:not(#multipage-container):not(#multipage-container *):not(defs):not(defs *):not(symbol):not(symbol *):not(marker):not(marker *):not(clipPath):not(clipPath *):not(pattern):not(pattern *):not(linearGradient):not(linearGradient *):not(radialGradient):not(radialGradient *) {
         display: none !important;
         visibility: hidden !important;
     }
