@@ -57,7 +57,7 @@ export class PrintUtil {
                 if (unitHeat.heatsinksOff !== undefined) {
                     unit.setHeatsinksOff(0);
                 }
-                unit.setHeat(0, true);
+                unit.setHeatData({ current: 0, previous: 0, next: undefined });
             }
         }
 
