@@ -811,11 +811,15 @@ span {
         stroke: var(--damage-color);
     }
 
-    .inventoryEntry>*:not(.inventoryEntryButton):not(.inventoryEntry) {
+    .inventoryEntry > *:not(.inventoryEntryButton):not(.inventoryEntry):not(.alternativeMode) {
         pointer-events: none;
     }
 
-    .inventoryEntryButton {
+    .inventoryEntry > .alternativeMode > *:not(.inventoryEntryButton):not(.alternativeModeButton) {
+        pointer-events: none;
+    }
+
+    .inventoryEntryButton, .alternativeModeButton {
         fill: transparent;
     }
 
@@ -1064,6 +1068,20 @@ span {
         }
 
         .inventoryEntry {
+            &:hover>.inventoryEntryButton {
+                fill: var(--highlight-color);
+            }
+
+            &:active>.inventoryEntryButton {
+                filter: brightness(1.03);
+            }
+
+            &.selected>.inventoryEntryButton {
+                fill: var(--bt-yellow);
+            }
+        }
+
+        .inventoryEntry > .alternativeMode {
             &:hover>.inventoryEntryButton {
                 fill: var(--highlight-color);
             }

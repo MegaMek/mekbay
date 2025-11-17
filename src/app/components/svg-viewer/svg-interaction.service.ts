@@ -871,6 +871,21 @@ export class SvgInteractionService {
             this.addSvgTapHandler(el, (event: Event, primaryAction: boolean) => {
                 if (this.state.clickTarget !== el) return;
                 if (primaryAction && !el.classList.contains('damagedInventory') && !el.classList.contains('disabledInventory')) {
+                    if (event.target instanceof Element) {
+                        if (event.target.classList.contains('alternativeModeButton')) {
+                            const altModeEl = event.target.parentElement;
+                            if (altModeEl) {
+                                const wasSelected = altModeEl.classList.contains('selected');
+                                el.querySelectorAll('.alternativeMode') .forEach(optionEl => {
+                                    if (optionEl === altModeEl) return;
+                                    optionEl.classList.remove('selected');
+                                });
+                                altModeEl.classList.toggle('selected', !wasSelected);
+                                el.classList.toggle('selected', !wasSelected);
+                                return;
+                            }
+                        }
+                    }
                     el.classList.toggle('selected');
                 } else {
                     createAndShowPicker(event);

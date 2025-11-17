@@ -659,6 +659,22 @@ export class RsPolyfillUtil {
             rect.setAttribute('inventory-id', id);
             rect.setAttribute('class', 'inventoryEntryButton interactive noprint');
             nameEl.parentElement?.insertBefore(rect, nameEl.parentElement.firstChild);
+
+            const alternativeModes = group.querySelectorAll('.alternativeMode');
+            alternativeModes.forEach(mode => {
+                const modeName = mode.getAttribute('mode');
+                if (!modeName) return;
+                const modeBBox = (mode as SVGGraphicsElement).getBBox();
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', rectX.toString());
+                rect.setAttribute('y', modeBBox.y.toString());
+                rect.setAttribute('width', rectWidth.toString());
+                rect.setAttribute('height', rectHeight.toString());
+                rect.setAttribute('inventory-id', id);
+                rect.setAttribute('mode', modeName);
+                rect.setAttribute('class', 'inventoryEntryButton alternativeModeButton interactive noprint');
+                mode.insertBefore(rect, mode.firstElementChild);
+            });
         });
     }
 
