@@ -39,11 +39,12 @@ import { PickerChoice, PickerValue } from '../../components/picker/picker.interf
  * Base handler for equipment with multiple modes
  */
 export abstract class MultiModeHandler extends EquipmentInteractionHandler {
+    protected readonly stateKey: string = 'state';
     protected abstract getModes(equipment: MountedEquipment): Array<{ value: string; label: string; shortLabel?: string }>;
     protected abstract getDefaultMode(): string;
     
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
-        const currentState = equipment.state || this.getDefaultMode();
+        const currentState = equipment.states?.get(this.stateKey) || this.getDefaultMode();
         return this.getModes(equipment).map(mode => ({
             label: mode.label,
             shortLabel: mode.shortLabel,
@@ -54,12 +55,12 @@ export abstract class MultiModeHandler extends EquipmentInteractionHandler {
     }
     
     handleSelection(equipment: MountedEquipment, value: PickerValue, context: HandlerContext): boolean {
-        equipment.state = value as string;
+        equipment.states?.set(this.stateKey, String(value));
         equipment.owner.setInventoryEntry(equipment);
         
         const mode = this.getModes(equipment).find(m => m.value === value);
         context.toastService.show(
-            `${equipment.name} mode: ${mode?.label || value}`,
+            `${equipment.equipment?.name||equipment.name} mode: ${mode?.label || value}`,
             'info'
         );
         return true;

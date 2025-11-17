@@ -177,12 +177,15 @@ export class ForceUnitState {
 
     inventoryForSerialization(): SerializedInventory[] {
         const inventory = this.inventory();
-        return inventory.map(item => ({
+        const serializedData = inventory.map(item => ({
             id: item.id,
             ...(item.destroyed !== undefined && { destroyed: item.destroyed }),
             ...(item.consumed !== undefined && { consumed: item.consumed }),
-            ...(item.state !== undefined && { state: item.state }),
+            ...(item.states !== undefined && item.states.size > 0 && { 
+                states: Array.from(item.states.entries()).map(([name, value]) => ({ name, value })) 
+            })
         }));
+        return serializedData;
     }
 
     deserializeInventory(serializedInventory: SerializedInventory[], allEquipment: EquipmentUnitType) {
@@ -201,14 +204,15 @@ export class ForceUnitState {
                 newItem = {
                     owner: this.unit,
                     id: entry.id,
-                    name: name
+                    name: name,
+                    states: new Map<string, string>(),
                 }
             }
             if (entry.destroyed !== undefined) {
                 newItem.destroyed = entry.destroyed;
             }
-            if (entry.state !== undefined) {
-                newItem.state = entry.state;
+            if (entry.states !== undefined) {
+                newItem.states = new Map(entry.states.map(s => [s.name, s.value]));
             }
             if (entry.ammo !== undefined) {
                 newItem.ammo = entry.ammo;

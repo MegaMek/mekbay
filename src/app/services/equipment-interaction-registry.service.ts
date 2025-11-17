@@ -61,9 +61,14 @@ export abstract class EquipmentInteractionHandler {
     abstract readonly id: string;
     
     /**
-     * The equipment flag this handler responds to ('F_ECM', 'F_MASC', etc.)
+     * The equipment flags this handler responds to ('F_ECM', 'F_MASC', etc.). If multiple flags, it has to match all.
      */
-    abstract readonly flag: string;
+    abstract readonly flags: string[];
+
+    /**
+     * Optional method to determine if this handler applies to the given equipment
+     */
+    applicableTo?(equipment: MountedEquipment): boolean;
     
     /**
      * Priority for this handler (higher = checked first)
@@ -125,8 +130,8 @@ class EquipmentInteractionRegistry {
         if (!equipment.equipment?.flags) return [];
         
         const applicableHandlers = Array.from(this.handlers.values())
-            .filter(handler => equipment.equipment!.flags.has(handler.flag));
-        
+            .filter(handler => handler.flags.every(flag => equipment.equipment!.flags.has(flag)) && (!handler.applicableTo || handler.applicableTo(equipment)));
+            
         // Sort by priority (descending)
         applicableHandlers.sort((a, b) => b.priority - a.priority);
         

@@ -38,7 +38,8 @@ import { CycleModeHandler } from './base/cycle-mode.handler';
 
 export class ECMHandler extends CycleModeHandler {
     readonly id = 'ecm-handler';
-    readonly flag = 'F_ECM';
+    override readonly stateKey = 'ecm_mode';
+    readonly flags = ['F_ECM'];
     override readonly priority = 10;
 
     protected getDefaultMode(): string {
@@ -81,6 +82,7 @@ export class ECMHandler extends CycleModeHandler {
     }
 
     isActive(equipment: MountedEquipment): boolean {
-        return (equipment.state || 'ecm') !== 'off';
+        const ecmMode = equipment.states?.get(this.stateKey);
+        return (ecmMode || 'ecm') !== 'off';
     }
 }

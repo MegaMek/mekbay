@@ -35,7 +35,7 @@ import { ToggleHandler } from './base/toggle.handler';
 
 export class StealthHandler extends ToggleHandler {
     readonly id = 'stealth-handler';
-    readonly flag = 'F_STEALTH';
+    readonly flags = ['F_STEALTH'];
     override readonly priority = 10;
     
     protected override readonly enabledLabel = 'Enable Stealth';

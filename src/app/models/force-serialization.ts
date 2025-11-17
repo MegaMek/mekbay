@@ -92,7 +92,7 @@ export interface SerializedState {
 export interface SerializedInventory {
     id: string;
     destroyed?: boolean;
-    state?: string;
+    states?: { name: string; value: string }[];
     consumed?: number;
     ammo?: string;
     totalAmmo?: number;
@@ -149,7 +149,23 @@ export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
     .number('totalAmmo')
     .number('consumed')
     .string('ammo')
-    .string('state')
+    .custom('states', (value: unknown) => {
+        if (!value) return undefined;
+        if (Array.isArray(value)) {
+            return value
+                .filter(item => 
+                    typeof item === 'object' && 
+                    item !== null && 
+                    'name' in item && 
+                    'value' in item
+                )
+                .map(item => ({
+                    name: String(item.name),
+                    value: String(item.value)
+                }));
+        }
+        return undefined;
+    })
     .boolean('destroyed')
     .build();
 
@@ -167,7 +183,7 @@ export interface MountedEquipment {
     parent?: null | MountedEquipment;
     destroyed?: boolean;
     critSlots?: CriticalSlot[];
-    state?: string;
+    states: Map<string, string>;
     el?: SVGElement;
     // Used for entries that doesn't have critical slots
     ammo?: string;

@@ -175,6 +175,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
                     entry.el.classList.remove('damagedInventory');
                     entry.el.classList.add('interactive');
                 }
+                this.updateInventoryEntryStates(entry);
             }
         });
     }

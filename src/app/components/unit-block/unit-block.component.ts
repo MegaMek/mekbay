@@ -64,7 +64,7 @@ export class UnitBlockComponent {
         const unit = this.unit();
         if (!unit) return '';
         const mountedECM = this.forceUnit()?.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
-        return mountedECM ? mountedECM.state : '';
+        return mountedECM ? mountedECM.states?.get('ecm_mode') || '' : '';
     });
 
     imgSrc = computed(() => {

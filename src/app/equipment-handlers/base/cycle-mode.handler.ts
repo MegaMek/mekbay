@@ -39,23 +39,25 @@ import { PickerChoice, PickerValue } from '../../components/picker/picker.interf
  * Base handler for equipment with multiple modes
  */
 export abstract class CycleModeHandler extends EquipmentInteractionHandler {
-    protected abstract getModes(equipment: MountedEquipment): Array<{ value: string; label: string; shortLabel?: string }>;
+    protected readonly modeLabel: string = 'Mode';
+    protected readonly stateKey: string = 'state';
+    protected abstract getModes(equipment: MountedEquipment): Array<PickerChoice>;
     protected abstract getDefaultMode(): string;
     
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
-        const currentState = equipment.state || this.getDefaultMode();
+        const currentState = this.getCurrentState(equipment);
         const modes = this.getModes(equipment);
         const currentMode = modes.find(m => m.value === currentState);
         
         
         // Return single choice representing the current mode
         return [{
-            label: 'Mode: ' + (currentMode?.label || currentState),
-            shortLabel: currentMode?.shortLabel || currentMode?.label || currentState,
-            value: currentMode?.value || currentState,
+            label: this.modeLabel + ': ' + (currentMode?.label ?? currentState),
+            shortLabel: currentMode?.shortLabel ?? currentMode?.label ?? currentState,
+            value: currentMode?.value ?? currentState,
             disabled: equipment.destroyed,
             active: false,
-            keepOpen: true,
+            keepOpen: currentMode?.keepOpen ?? true,
         }];
     }
     
@@ -67,11 +69,11 @@ export abstract class CycleModeHandler extends EquipmentInteractionHandler {
             ? 0 
             : currentIndex + 1;
         const nextMode = modes[nextIndex];
-        equipment.state = nextMode.value;
+        equipment.states?.set(this.stateKey, String(nextMode.value));
         equipment.owner.setInventoryEntry(equipment);
         
         context.toastService.show(
-            `${equipment.name} mode: ${nextMode?.label || value}`,
+            `${equipment.equipment?.name||equipment.name} ${this.modeLabel.toLowerCase()}: ${nextMode?.label || value}`,
             'info'
         );
         return true;
@@ -81,16 +83,20 @@ export abstract class CycleModeHandler extends EquipmentInteractionHandler {
      * Get the current mode display name
      */
     getCurrentMode(equipment: MountedEquipment): string {
-        const currentState = equipment.state || this.getDefaultMode();
+        const currentState = this.getCurrentState(equipment);
         const mode = this.getModes(equipment).find(m => m.value === currentState);
         return mode?.label || currentState;
+    }
+
+    private getCurrentState(equipment: MountedEquipment): string {
+        return equipment.states?.get(this.stateKey) || this.getDefaultMode();
     }
     
     /**
      * Get the next mode that will be cycled to
      */
-    getNextMode(equipment: MountedEquipment): { value: string; label: string; shortLabel?: string } {
-        const currentState = equipment.state || this.getDefaultMode();
+    getNextMode(equipment: MountedEquipment): PickerChoice {
+        const currentState = this.getCurrentState(equipment);
         const modes = this.getModes(equipment);
         const currentIndex = modes.findIndex(m => m.value === currentState);
         

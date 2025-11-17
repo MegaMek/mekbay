@@ -322,7 +322,8 @@ export class UnitInitializerService {
                     parent: null,
                     destroyed: false,
                     critSlots: critSlots,
-                    el: entryEl
+                    el: entryEl,
+                    states: new Map<string, string>(),
                 };
             }
             const subElements = entryEl.querySelectorAll('.inventoryEntry') as NodeListOf<SVGElement>;

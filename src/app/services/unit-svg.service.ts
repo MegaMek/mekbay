@@ -547,7 +547,7 @@ export class UnitSvgService implements OnDestroy {
         } else {
             if (heat.next !== undefined) {
                 updateArrow('next-arrow', heat.next, heat.next > heat.current ? 'nextHot' : 'nextCold');
-            } else {            
+            } else {
                 svg.querySelector('#next-arrow')?.remove();
             }
             updateArrow('now-arrow', heat.current, 'current');
@@ -906,14 +906,37 @@ export class UnitSvgService implements OnDestroy {
         const svg = this.unit.svg();
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
-            if (!entry.el) return;            
+            if (!entry.el) return;
             if (entry.destroyed) {
                 entry.el.classList.add('damagedInventory');
                 entry.el.classList.remove('selected');
             } else {
                 entry.el.classList.remove('damagedInventory');
             }
+            this.updateInventoryEntryStates(entry);
         });
+    }
+
+    protected updateInventoryEntryStates(entry: MountedEquipment) {
+        if (entry.el && entry.states && entry.states.size > 0) {
+            const stateNames = Array.from(entry.states.keys());
+            const classList = Array.from(entry.el.classList);
+
+            classList.forEach(className => {
+                // Check if this class matches any state pattern (state-stateName--*) and remove it
+                stateNames.forEach(stateName => {
+                    const escapedStateName = CSS.escape(stateName);
+                    if (className.startsWith(`state-${escapedStateName}--`)) {
+                        entry.el?.classList.remove(className);
+                    }
+                });
+            });
+
+            // Add current state classes
+            entry.states.forEach((value, name) => {
+                entry.el?.classList.add(`state-${CSS.escape(name)}--${CSS.escape(value)}`);
+            });
+        }
     }
 
     protected updateTurnState() {
@@ -950,17 +973,17 @@ export class UnitSvgService implements OnDestroy {
                     rectEl.style.display = 'none';
                 });
             } else
-            if (otherEl !== el || (moveMode === 'stationary')) {
-                otherEl?.classList.add('unusedMoveMode');
-                otherEl?.classList.remove('currentMoveMode');
-                const sibling = otherEl.previousElementSibling as SVGElement | null;
-                sibling?.classList.add('unusedMoveMode');
-                sibling?.classList.remove('currentMoveMode');
-                // Use an ID selector and the generic overload so TypeScript treats results as SVGElement
-                svg.querySelectorAll<SVGElement>(`.${CSS.escape(otherEl.id)}-rect`).forEach((rectEl: SVGElement) => {
-                    rectEl.style.display = 'none';
-                });
-            }
+                if (otherEl !== el || (moveMode === 'stationary')) {
+                    otherEl?.classList.add('unusedMoveMode');
+                    otherEl?.classList.remove('currentMoveMode');
+                    const sibling = otherEl.previousElementSibling as SVGElement | null;
+                    sibling?.classList.add('unusedMoveMode');
+                    sibling?.classList.remove('currentMoveMode');
+                    // Use an ID selector and the generic overload so TypeScript treats results as SVGElement
+                    svg.querySelectorAll<SVGElement>(`.${CSS.escape(otherEl.id)}-rect`).forEach((rectEl: SVGElement) => {
+                        rectEl.style.display = 'none';
+                    });
+                }
         }
         if (el) {
             if (moveMode === 'stationary') {

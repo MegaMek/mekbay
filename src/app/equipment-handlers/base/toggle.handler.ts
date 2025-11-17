@@ -39,11 +39,12 @@ import { PickerChoice, PickerValue } from '../../components/picker/picker.interf
  * Base handler for simple on/off equipment
  */
 export abstract class ToggleHandler extends EquipmentInteractionHandler {
+    protected readonly stateKey: string = 'state';
     protected readonly enabledLabel: string = 'Enable';
     protected readonly disabledLabel: string = 'Disable';
     
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
-        const currentState = equipment.state || 'disabled';
+        const currentState = equipment.states?.get(this.stateKey) || 'disabled';
         return [
             {
                 label: this.enabledLabel,
@@ -61,10 +62,10 @@ export abstract class ToggleHandler extends EquipmentInteractionHandler {
     }
     
     handleSelection(equipment: MountedEquipment, value: PickerValue, context: HandlerContext): boolean {
-        equipment.state = value as string;
+        equipment.states?.set(this.stateKey, value as string);
         equipment.owner.setInventoryEntry(equipment);
         context.toastService.show(
-            `${equipment.name} ${value === 'enabled' ? this.enabledLabel : this.disabledLabel}`,
+            `${equipment.equipment?.name||equipment.name} ${value === 'enabled' ? this.enabledLabel : this.disabledLabel}`,
             'info'
         );
         return true;

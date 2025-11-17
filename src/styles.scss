@@ -1244,6 +1244,24 @@ span {
         .unusedMoveMode {
             opacity: 0.5;
         }
+
+        // States for inventory entries
+
+        .inventoryEntry.state-state--jammed {
+            & text {
+                font-style: italic;
+            } 
+            & .damaged-strike {
+                display: block;
+                stroke: var(--disabled-color);
+                stroke-width: 1;
+                filter: drop-shadow(0 2px 0 var(--disabled-color));
+                transform: translateY(-1px);
+            }
+            & .hitMod-rect {
+                fill: var(--disabled-color) !important;
+            }
+        }
     }
 }
 

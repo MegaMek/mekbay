@@ -31,13 +31,34 @@
  * affiliated with Microsoft.
  */
 
+import { PickerChoice } from '../components/picker/picker.interface';
+import { WeaponEquipment } from '../models/equipment.model';
+import { MountedEquipment } from '../models/force-serialization';
+import { CycleModeHandler } from './base/cycle-mode.handler';
 import { ToggleHandler } from './base/toggle.handler';
 
-export class BAPHandler extends ToggleHandler {
-    readonly id = 'bap-handler';
-    readonly flags = ['F_BAP'];
+export class UACJammingHandler extends CycleModeHandler {
+    protected override readonly modeLabel: string = 'State';
+    readonly id = 'uac-jamming-handler';
+    readonly flags = ['F_BALLISTIC', 'F_DIRECT_FIRE'];
     override readonly priority = 10;
-    
-    protected override readonly enabledLabel = 'Active Probe On';
-    protected override readonly disabledLabel = 'Active Probe Off';
+
+    override applicableTo = (equipment: MountedEquipment): boolean => {
+        if (equipment.equipment instanceof WeaponEquipment) {
+            const ammoType = equipment.equipment.ammoType;
+            return ammoType.includes('Ultra Autocannon') || ammoType.includes('Rotary Autocannon');
+        }
+        return false;
+    }
+
+    protected getDefaultMode(): string {
+        return 'working';
+    }
+
+    protected getModes(): PickerChoice[] {
+        return [
+            { value: 'working', label: 'Working', shortLabel: 'Work', keepOpen: false },
+            { value: 'jammed', label: 'Jammed', shortLabel: 'Jam', keepOpen: false }
+        ];
+    }
 }
