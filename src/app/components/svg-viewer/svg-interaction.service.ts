@@ -1144,7 +1144,7 @@ export class SvgInteractionService {
             const svgEl = el as SVGElement;
             svgEl.style.cursor = 'pointer';
             svgEl.addEventListener('click', (evt: Event) => {
-                const crewId = Number(svgEl.getAttribute('crew') || 0);
+                const crewId = Number(svgEl.getAttribute('crewId') || 0);
                 this.editCrewName(crewId);
             }, { passive: false, signal });
         });
