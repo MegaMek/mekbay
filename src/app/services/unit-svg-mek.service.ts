@@ -682,12 +682,14 @@ export class UnitSvgMekService extends UnitSvgService {
                     }
                 }
             }
+            if (entry.states.get('state') === 'jammed') {
+                isDisabled = true;
+            }
             entry.hitModVariation = hitMod;
             entry.destroyed = isDamaged;
             if (entry.el) {
                 entry.el.classList.toggle('disabledInventory', isDisabled);
                 entry.el.classList.toggle('damagedInventory', isDamaged);
-                entry.el.classList.toggle('interactive', !isDamaged && !isDisabled);
                 if (isDamaged || isDisabled) {
                     entry.el.classList.remove('selected');
                 }
