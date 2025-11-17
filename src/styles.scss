@@ -1440,7 +1440,7 @@ span {
             &.selected > text {
                 fill: #000;
             }
-            &.selected > g:not(.alternativeMode) > text {
+            &.selected > g:not(.alternativeMode):not(.weaponQuirks) > text {
                 fill: #000;
             }
         }
