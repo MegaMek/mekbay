@@ -1614,11 +1614,11 @@ span {
 
         .dirtyHeat.hot {
             .applyHeatButtonFrame {
-                fill: hsl(0, 100%, 90%) !important;
+                fill: hsl(0, 100%, 95%) !important;
                 stroke: var(--hot-color) !important;
 
                 .night-mode & {
-                    fill: hsl(0, 100%, 10%) !important;
+                    fill: hsl(0, 100%, 8%) !important;
                 }
             }
 
@@ -1629,11 +1629,11 @@ span {
 
         .dirtyHeat.cold {
             .applyHeatButtonFrame {
-                fill: hsl(240, 100%, 90%) !important;
+                fill: hsl(240, 100%, 95%) !important;
                 stroke: var(--cold-color) !important;
 
                 .night-mode & {
-                    fill: hsl(240, 100%, 10%) !important;
+                    fill: hsl(240, 100%, 8%) !important;
                 }
             }
 
