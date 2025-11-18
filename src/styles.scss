@@ -1238,29 +1238,8 @@ span {
             }
         }
 
-        #applyHeatButton {
-            cursor: pointer;
-            touch-action: manipulation;
-            display: none;
-
-            path {
-                transition: fill 0.2s;
-                fill: var(--hot-color);
-            }
-
-            &:hover {
-                path {
-                    fill: #d00;
-                }
-            }
-        }
-
         .applyHeatButtonFrame {
             transition: stroke 0.2s;
-        }
-
-        .dirtyHeat #applyHeatButton.interactive {
-            display: block;
         }
 
         .dirtyHeat.hot {
@@ -1282,8 +1261,24 @@ span {
             #applyHeatButton path {
                 fill: var(--cold-color);
             }
-
         }
+
+        #applyHeatButton {
+            display: none;
+        }
+
+        .dirtyHeat #applyHeatButton.interactive {
+            display: block;
+            path {
+                transition: filter 0.2s;
+            }
+            &:hover {
+                path {
+                    filter: brightness(1.2);
+                }
+            }
+        }
+
 
         /* workaround to prevent Battle Armor text and images to steal the click event for the armor picker */
         #suit0>text,
