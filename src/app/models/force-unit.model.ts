@@ -312,11 +312,6 @@ export class ForceUnit {
         this.setCritSlots(crits);
     }
 
-    endPhase() {
-        this.state.endPhase();
-        this.phaseTrigger.set(this.phaseTrigger() + 1); // Trigger change detection
-    }
-
     getInventory = this.state.inventory;
 
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
@@ -705,9 +700,19 @@ export class ForceUnit {
         const modifiers = this.PSRModifiers();
         return piloting + modifiers.modifier;
     });
+
+    endPhase() {
+        this.state.endPhase();
+        this.phaseTrigger.set(this.phaseTrigger() + 1); // Trigger change detection
+    }
+
+    applyHeat() {
+        this.state.consolidateHeat();
+    }
     
     public endTurn() {
-        this.state.endPhase();
+        this.state.endTurn();
+        this.phaseTrigger.set(this.phaseTrigger() + 1); // Trigger change detection
         this.state.resetTurnState();
     }
 

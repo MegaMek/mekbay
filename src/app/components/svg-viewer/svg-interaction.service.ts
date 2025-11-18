@@ -1026,9 +1026,20 @@ export class SvgInteractionService {
             overflowButton.addEventListener('click', promptHeatOverflow, { passive: false, signal });
         }
 
-        // Setup heat data panel interactions
         const heatDataPanel = svg.getElementById('heatDataPanel') as SVGElement | null;
+
         if (heatDataPanel) {
+            const applyHeatButton = heatDataPanel.querySelector('#applyHeatButton') as SVGElement | null;
+            if (applyHeatButton) {
+                applyHeatButton.classList.add('interactive');
+                applyHeatButton.addEventListener('click', (evt: MouseEvent) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    unit.applyHeat();
+                }, { passive: false, signal } );
+            }
+
+            const hsPipEl = heatDataPanel.querySelector('g.hsPips') as SVGElement | null;
 
             const totalHeatsinkPips = heatDataPanel.querySelectorAll<SVGElement>('.pip.hsPip').length;
             // Setup interactions for the heat data panel that allows to turn on/off heat sinks and reduce the dissipation power
@@ -1043,30 +1054,32 @@ export class SvgInteractionService {
                 return choices;
             }
 
-            this.addSvgTapHandler(heatDataPanel, (event: PointerEvent) => {
-                if (this.state.clickTarget !== heatDataPanel) return;
-                const pickerInstance: PickerInstance = this.showPicker({
-                    event: event,
-                    el: heatDataPanel,
-                    title: `Active Heatsinks`,
-                    values: getHeatsinkPickerChoices(unit),
-                    selected: 0,
-                    suggestedPickerStyle: 'radial',
-                    targetType: 'heatsinks',
-                    onPick: (val: PickerValue) => {
-                        this.removePicker();
-                        if (val) {
-                            const heatsinksOff = (unit.getHeat().heatsinksOff || 0) - (val as number);
-                            unit.setHeatsinksOff(heatsinksOff);
-                            this.toastService.show(`Heatsink settings updated.`, 'info');
+            if (hsPipEl) {
+                this.addSvgTapHandler(hsPipEl, (event: PointerEvent) => {
+                    if (this.state.clickTarget !== hsPipEl) return;
+                    const pickerInstance: PickerInstance = this.showPicker({
+                        event: event,
+                        el: hsPipEl,
+                        title: `Active Heatsinks`,
+                        values: getHeatsinkPickerChoices(unit),
+                        selected: 0,
+                        suggestedPickerStyle: 'radial',
+                        targetType: 'heatsinks',
+                        onPick: (val: PickerValue) => {
+                            this.removePicker();
+                            if (val) {
+                                const heatsinksOff = (unit.getHeat().heatsinksOff || 0) - (val as number);
+                                unit.setHeatsinksOff(heatsinksOff);
+                                this.toastService.show(`Heatsink settings updated.`, 'info');
+                            }
+                        },
+                        onCancel: () => {
+                            this.removePicker();
                         }
-                    },
-                    onCancel: () => {
-                        this.removePicker();
-                    }
-                });
-
-            }, signal);
+                    });
+    
+                }, signal);
+            }
         }
     }
 

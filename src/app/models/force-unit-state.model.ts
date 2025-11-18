@@ -70,10 +70,14 @@ export class ForceUnitState {
     }
 
     endPhase() {
-        this.consolidateHeat();
         this.consolidateCrits();
         const turnState = this.turnState();
         turnState.resetPSRChecks();
+    }
+
+    endTurn() {
+        this.consolidateHeat();
+        this.endPhase();
     }
 
     update(data: SerializedState, allEquipment: EquipmentUnitType) {

@@ -89,6 +89,7 @@ export class RsPolyfillUtil {
             this.addCriticalLocs(svg);
         }
         this.addHeatLevels(svg);
+        this.addApplyHeatButton(svg);
         this.addCrewSkillsButtons(svg);
         this.addCrewNamesButtons(svg);
         this.addCrewDamageClasses(unit, svg);
@@ -732,6 +733,46 @@ export class RsPolyfillUtil {
             rect.setAttribute('fill', 'transparent');
             rect.setAttribute('pointer-events', 'all');
             overflowFrameEl.parentElement?.insertBefore(rect, overflowFrameEl);
+        }
+    }
+
+    private static addApplyHeatButton(svg: SVGSVGElement): void {
+        const heatDataPanel = svg.querySelector('#heatDataPanel');
+        if (!heatDataPanel) return;
+        // We search the first <g>, we clone the content and create a button
+        const firstGroup = heatDataPanel.querySelector('g');
+        if (!firstGroup) return;
+        const buttonGroup = firstGroup.cloneNode(true) as SVGGElement;
+        buttonGroup.setAttribute('id', 'applyHeatButton');
+        buttonGroup.setAttribute('class', 'noprint');
+        const textEl = buttonGroup.querySelector('text');
+        if (textEl) {
+            textEl.textContent = 'APPLY HEAT';
+        }
+        heatDataPanel.appendChild(buttonGroup);
+        // We find the 2nd path and we add a class to it so we can style the border of the frame
+        const paths = heatDataPanel.querySelectorAll('path');
+        if (paths.length >= 2) {
+            paths[1].classList.add('applyHeatButtonFrame');
+        }
+
+        const pipsGroup = heatDataPanel.querySelector('g.hsPips');
+        // We create a background rectangle to act as button hit area
+        if (pipsGroup) {
+            const bbox = (pipsGroup as SVGGraphicsElement).getBBox();
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            const x = bbox.x - 6;
+            const y = bbox.y - 6;
+            const width = bbox.width + 12;
+            const height = bbox.height + 12;
+            rect.setAttribute('x', x.toString());
+            rect.setAttribute('y', y.toString());
+            rect.setAttribute('width', width.toString());
+            rect.setAttribute('height', height.toString());
+            rect.setAttribute('class', 'changeActiveHeatsinksCountButton noprint');
+            rect.setAttribute('fill', 'transparent');
+            rect.setAttribute('pointer-events', 'all');
+            pipsGroup.insertBefore(rect, pipsGroup.firstChild);
         }
     }
 

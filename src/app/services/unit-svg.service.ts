@@ -408,6 +408,13 @@ export class UnitSvgService implements OnDestroy {
 
         if (!svg.getElementById('heatScale')) return;
 
+        const heatDataPanel = svg.querySelector('#heatDataPanel');
+        if (heatDataPanel && !this.unit.readOnly()) {
+            heatDataPanel.classList.toggle('dirtyHeat', heat.next !== undefined);
+            heatDataPanel.classList.toggle('hot', heat.next !== undefined && heat.current <= heat.next);
+            heatDataPanel.classList.toggle('cold', heat.next !== undefined && heat.current > heat.next);
+        }
+
         let highestHeatVal = -Infinity;
 
         // Update heat scale rectangles

@@ -45,6 +45,8 @@
     --phase-physical: #cfcc00;
     --phase-heat: #dd7d00;
     --phase-pending-effects: #d00;
+    --hot-color: #f00;
+    --cold-color: #66f;
 }
 
 html {
@@ -811,15 +813,16 @@ span {
         stroke: var(--damage-color);
     }
 
-    .inventoryEntry > *:not(.inventoryEntryButton):not(.inventoryEntry):not(.alternativeMode) {
+    .inventoryEntry>*:not(.inventoryEntryButton):not(.inventoryEntry):not(.alternativeMode) {
         pointer-events: none;
     }
 
-    .inventoryEntry > .alternativeMode > *:not(.inventoryEntryButton):not(.alternativeModeButton) {
+    .inventoryEntry>.alternativeMode>*:not(.inventoryEntryButton):not(.alternativeModeButton) {
         pointer-events: none;
     }
 
-    .inventoryEntryButton, .alternativeModeButton {
+    .inventoryEntryButton,
+    .alternativeModeButton {
         fill: transparent;
     }
 
@@ -828,6 +831,7 @@ span {
     }
 
     .inventoryEntry.disabledInventory {
+
         .hitMod-rect,
         .hitMod-text {
             display: none;
@@ -835,6 +839,7 @@ span {
     }
 
     .inventoryEntry.damagedInventory {
+
         .hitMod-rect,
         .hitMod-text {
             display: none;
@@ -972,7 +977,7 @@ span {
         }
 
         .heatEffect.hot {
-            fill: var(--damage-color) !important;
+            fill: var(--hot-color) !important;
             font-weight: bold;
 
             &.surpassed {
@@ -982,7 +987,7 @@ span {
         }
 
         #heatScale .overflowFrame.hot {
-            fill: var(--damage-color) !important;
+            fill: var(--hot-color) !important;
         }
 
         #faded-arrow {
@@ -1081,7 +1086,7 @@ span {
             }
         }
 
-        .inventoryEntry > .alternativeMode {
+        .inventoryEntry>.alternativeMode {
             &:hover>.inventoryEntryButton {
                 fill: var(--highlight-color);
             }
@@ -1221,6 +1226,65 @@ span {
             }
         }
 
+        g.hsPips.interactive {
+            .changeActiveHeatsinksCountButton {
+                transition: stroke 0.2s;
+                stroke-width: 1px;
+                stroke: transparent;
+
+                &:hover {
+                    stroke: var(--highlight-color);
+                }
+            }
+        }
+
+        #applyHeatButton {
+            cursor: pointer;
+            touch-action: manipulation;
+            display: none;
+
+            path {
+                transition: fill 0.2s;
+                fill: var(--hot-color);
+            }
+
+            &:hover {
+                path {
+                    fill: #d00;
+                }
+            }
+        }
+
+        .applyHeatButtonFrame {
+            transition: stroke 0.2s;
+        }
+
+        .dirtyHeat #applyHeatButton.interactive {
+            display: block;
+        }
+
+        .dirtyHeat.hot {
+            .applyHeatButtonFrame {
+                stroke: var(--hot-color);
+
+            }
+
+            #applyHeatButton path {
+                fill: var(--hot-color);
+            }
+        }
+
+        .dirtyHeat.cold {
+            .applyHeatButtonFrame {
+                stroke: var(--cold-color);
+            }
+
+            #applyHeatButton path {
+                fill: var(--cold-color);
+            }
+
+        }
+
         /* workaround to prevent Battle Armor text and images to steal the click event for the armor picker */
         #suit0>text,
         #suit0>image,
@@ -1234,6 +1298,10 @@ span {
         #suit4>image,
         #suit5>text,
         #suit5>image {
+            pointer-events: none;
+        }
+
+        .pip.hsPip {
             pointer-events: none;
         }
 
@@ -1437,19 +1505,21 @@ span {
 
 
         .inventoryEntry {
-            &.selected > text {
+            &.selected>text {
                 fill: #000;
             }
-            &.selected > g:not(.alternativeMode):not(.weaponQuirks):not(.linked) > text {
+
+            &.selected>g:not(.alternativeMode):not(.weaponQuirks):not(.linked)>text {
                 fill: #000;
             }
         }
 
-        .inventoryEntry > .alternativeMode {
-            &.selected > text {
+        .inventoryEntry>.alternativeMode {
+            &.selected>text {
                 fill: #000;
             }
-            &.selected > g > text {
+
+            &.selected>g>text {
                 fill: #000;
             }
         }

@@ -211,4 +211,9 @@ export class SvgInteractionOverlayComponent {
         this.unit()?.endPhase();
     }
 
+    async endTurn(event: MouseEvent) {
+        event.stopPropagation();
+        this.unit()?.endTurn();
+    }
+
 }

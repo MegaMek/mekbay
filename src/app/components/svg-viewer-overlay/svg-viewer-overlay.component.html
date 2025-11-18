@@ -1,8 +1,10 @@
 @if (dirtyPhase()) {
-<button role="button" class="overlay-button end-phase-button preventZoomReset" tabindex="0"
-    (click)="endPhase($event)">
-    COMMIT AND END PHASE
-</button>
+<div class="phase-controls">
+    <button role="button" class="phase-button end-phase-button preventZoomReset" tabindex="0"
+        (click)="endPhase($event)">
+        COMMIT AND END PHASE
+    </button>
+</div>
 }
 
 <div class="container" [ngStyle]="containerStyle()">

@@ -42,26 +42,41 @@
     }
 }
 
-.end-phase-button {
-    opacity: 1.0;
+.phase-controls {
     bottom: calc(8px + var(--safe-area-inset-bottom));
     left: 0;
     right: 0;
-    margin-inline: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: absolute;
     width: fit-content;
-    background-color: #f00;
-    color: white;
-    padding: 8px;
-    border: 1px solid #222;
-    text-align: center;
-    font-weight: bold;
-    transition: filter 0.2s;
-    font-size: 1.1em;
+    margin-inline: auto;
+    pointer-events: auto;
+    gap: 8px;
 
-    &:hover {
-        filter: brightness(1.2);
+    .phase-button {
+        cursor: pointer;
+        opacity: 1.0;
+        margin-inline: auto;
+        width: fit-content;
+        border: 1px solid #000;
+        padding: 8px;
+        text-align: center;
+        font-weight: bold;
+        transition: filter 0.2s;
+        font-size: 1.1em;
+
+        &.end-phase-button {
+            background-color: #f00;
+            color: white;
+        }
+
+        &:hover {
+            filter: brightness(1.2);
+        }
+
     }
-
 }
 
 .turn-tracker-button {
