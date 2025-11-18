@@ -22,7 +22,6 @@
     --text-color-tertiary: #888;
     --bt-yellow: #EAAE3F;
     --bt-yellow-strong: #FFAE16;
-    /* --bt-yellow-background: rgba(209, 175, 73, 0.2); */
     --bt-yellow-background: #443912;
     --bt-yellow-background-bright: #5f5018;
     --bt-yellow-background-light: #FFCF73;
@@ -46,7 +45,7 @@
     --phase-heat: #dd7d00;
     --phase-pending-effects: #d00;
     --hot-color: #f00;
-    --cold-color: #66f;
+    --cold-color: #0081FF;
 }
 
 html {
@@ -1238,47 +1237,6 @@ span {
             }
         }
 
-        .applyHeatButtonFrame {
-            transition: stroke 0.2s;
-        }
-
-        .dirtyHeat.hot {
-            .applyHeatButtonFrame {
-                stroke: var(--hot-color);
-
-            }
-
-            #applyHeatButton path {
-                fill: var(--hot-color);
-            }
-        }
-
-        .dirtyHeat.cold {
-            .applyHeatButtonFrame {
-                stroke: var(--cold-color);
-            }
-
-            #applyHeatButton path {
-                fill: var(--cold-color);
-            }
-        }
-
-        #applyHeatButton {
-            display: none;
-        }
-
-        .dirtyHeat #applyHeatButton.interactive {
-            display: block;
-            path {
-                transition: filter 0.2s;
-            }
-            &:hover {
-                path {
-                    filter: brightness(1.2);
-                }
-            }
-        }
-
 
         /* workaround to prevent Battle Armor text and images to steal the click event for the armor picker */
         #suit0>text,
@@ -1644,6 +1602,62 @@ span {
                 fill: #FF0000 !important;
             }
         }
+    }
+}
+
+@media screen {
+    .mekbay-sheet {
+    
+        .applyHeatButtonFrame {
+            transition: stroke 0.2s, fill 0.2s;
+        }
+
+        .dirtyHeat.hot {
+            .applyHeatButtonFrame {
+                fill: hsl(0, 100%, 90%) !important;
+                stroke: var(--hot-color) !important;
+
+                .night-mode & {
+                    fill: hsl(0, 100%, 10%) !important;
+                }
+            }
+
+            #applyHeatButton path {
+                fill: var(--hot-color) !important;
+            }
+        }
+
+        .dirtyHeat.cold {
+            .applyHeatButtonFrame {
+                fill: hsl(240, 100%, 90%) !important;
+                stroke: var(--cold-color) !important;
+
+                .night-mode & {
+                    fill: hsl(240, 100%, 10%) !important;
+                }
+            }
+
+            #applyHeatButton path {
+                fill: var(--cold-color) !important;
+            }
+        }
+
+        #applyHeatButton {
+            display: none;
+        }
+
+        .dirtyHeat #applyHeatButton.interactive {
+            display: block;
+            path {
+                transition: filter 0.2s;
+            }
+            &:hover {
+                path {
+                    filter: brightness(1.2);
+                }
+            }
+        }
+
     }
 }
 

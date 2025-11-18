@@ -160,8 +160,8 @@ export class SvgInteractionService {
             marker.style.transform = `translate(${x}px, ${y}px)`;
 
             let color = '#666';
-            if (diff < 0) color = '#66f';
-            else if (diff > 0) color = '#f00';
+            if (diff < 0) color = 'var(--cold-color)';
+            else if (diff > 0) color = 'var(--hot-color)';
 
             this.diffHeatTextRef.nativeElement.style.backgroundColor = color;
             this.diffHeatArrowRef.nativeElement.style.borderLeftColor = color;

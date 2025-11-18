@@ -539,12 +539,12 @@ export class UnitSvgService implements OnDestroy {
                     arrow.setAttribute('stroke', '#000');
                     arrow.setAttribute('stroke-width', '1');
                 } else if (state === 'nextHot') {
-                    arrow.setAttribute('fill', '#f00');
-                    arrow.setAttribute('stroke', '#f00');
+                    arrow.setAttribute('fill', 'var(--hot-color)');
+                    arrow.setAttribute('stroke', 'var(--hot-color)');
                     arrow.setAttribute('stroke-width', '1');
                 } else if (state === 'nextCold') {
-                    arrow.setAttribute('fill', '#66f');
-                    arrow.setAttribute('stroke', '#66f');
+                    arrow.setAttribute('fill', 'var(--cold-color)');
+                    arrow.setAttribute('stroke', 'var(--cold-color)');
                     arrow.setAttribute('stroke-width', '1');
                 } else {
                     arrow.setAttribute('fill', 'none');
