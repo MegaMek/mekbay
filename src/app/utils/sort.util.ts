@@ -85,10 +85,11 @@ function tokenizeForNaturalCompare(s: string, is_model: boolean): CacheEntry {
 }
 
 function getCachedParts(s: string, is_model: boolean): CacheEntry {
-    const key = (typeof s === 'string') ? s : (s == null ? '' : String(s));
-    const existing = naturalCompareCache.get(key + is_model);
+    const token = (typeof s === 'string') ? s : (s == null ? '' : String(s));
+    const key = token + is_model;
+    const existing = naturalCompareCache.get(key);
     if (existing) return existing;
-    const entry = tokenizeForNaturalCompare(key, is_model);
+    const entry = tokenizeForNaturalCompare(token, is_model);
     naturalCompareCache.set(key, entry);
     return entry;
 }
