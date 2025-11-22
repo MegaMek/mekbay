@@ -1,10 +1,11 @@
 @let componentTechBase = comp()?.eq?.base ?? 'All';
+@let compEntry = comp();
 @if (displayStyle() === 'text') {
     <span #component
         class="component {{ displayStyle() }}-data"
         (pointerenter)="onPointerEnter($event)" 
         (click)="onCompClick($event)" 
-        (pointerleave)="onPointerLeave($event)">{{ comp()?.q }}×{{ comp()?.n }} @if (comp()?.q2) {<span class="ammo-count"> ({{ comp()?.q2 }})</span>}</span>
+        (pointerleave)="onPointerLeave($event)">{{ compEntry?.q }}×{{ compEntry?.n }} @if (compEntry?.q2) {<span class="ammo-count"> ({{ compEntry?.q2 }})</span>}</span>
 } @else {
 <div #component
     class="component {{ displayStyle() }}-data {{ typeClass() }}"
@@ -12,8 +13,10 @@
     (click)="onCompClick($event)"
     (pointerleave)="onPointerLeave($event)">
         <div class="comp-title">
-            <span class="comp-qty">{{ comp()?.q }}×</span>
-            <span class="comp-name">{{ comp()?.n }} @if (comp()?.q2) {<span class="ammo-count"> ({{ comp()?.q2 }})</span>}</span>
+            <span class="comp-qty">{{ compEntry?.q }}×</span>
+            <span class="comp-name">{{ compEntry?.n }} 
+                @if (compEntry?.rear) {<span class="rear-indicator" title="Rear Mounted">(R)</span>} 
+                @if (compEntry?.q2) {<span class="ammo-count"> ({{ compEntry?.q2 }})</span>}</span>
             
             @if (displayStyle() === 'normal') {
                 @if (unit().techBase == 'Mixed' && componentTechBase != 'All') {

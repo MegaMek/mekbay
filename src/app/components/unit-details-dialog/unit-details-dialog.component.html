@@ -13,7 +13,9 @@
         <div class="header-details-container">
             <div class="spanner"></div>
             <div class="header-details">
-                <div class="role" *ngIf="unit.role && unit.role != 'None'"><strong>{{ unit.role }}</strong></div>
+                @if (unit.role && unit.role != 'None') {
+                    <div class="role"><strong>{{ unit.role }}</strong></div>
+                }
                 <div class="info-slot numeric allow-select" title="Tonnage">
                     <span class="value">{{ formatThousands(unit.tons) }}</span>
                     <img src="/images/weight.svg" class="icon" alt="tons">
@@ -74,8 +76,9 @@
                         @if (unit.jump) { / {{ unit.jump }}}
                         @if (unit.umu) { / {{ unit.umu }}} 
                     </strong></div>
-                <div *ngIf="unit.c3 && unit.c3 != 'None'"><span class="muted">Network: </span><strong>{{ unit.c3
-                        }}</strong></div>
+                @if (unit.c3 && unit.c3 != 'None') {
+                    <div><span class="muted">Network: </span><strong>{{ unit.c3 }}</strong></div>
+                }
             </div>
             <div class="quirks-block" *ngIf="unit.quirks && unit.quirks.length > 0">
                 <div class="quirks">

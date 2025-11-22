@@ -56,6 +56,7 @@ export interface UnitComponent {
     t: 'E' | 'M' | 'B' | 'A' | 'X' | 'P' | 'O' | 'HIDDEN'; // type
     p: number; // the location id 
     l: string;      // location (RA, LT, LA, etc. Can contain multiple locations if component is split: LA/LT)
+    rear?: boolean  // rear-mounted
     r?: string;      // range (e.g. "6/12/18")
     m?: string;      // minimum range or other info
     d?: string;      // damage per shot
