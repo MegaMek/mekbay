@@ -711,6 +711,15 @@ export class ForceUnit {
     }
     
     public endTurn() {
+        // deselect all inventory items
+        this.getInventory().forEach(entry => {
+            if (!entry.el) return;
+            console.log(entry.el);
+            entry.el.classList.remove('selected');
+            entry.el.querySelectorAll('.alternativeMode').forEach(optionEl => {
+                optionEl.classList.remove('selected');
+            });
+        });
         this.state.endTurn();
         this.phaseTrigger.set(this.phaseTrigger() + 1); // Trigger change detection
         this.state.resetTurnState();

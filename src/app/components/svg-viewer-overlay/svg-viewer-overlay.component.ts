@@ -189,7 +189,10 @@ export class SvgInteractionOverlayComponent {
         });
 
         if (compRef) {
-            compRef.setInput('endTurnForAllButtonVisible', this.endTurnButtonVisible());
+            const watcher = effect(() => {
+                compRef.setInput('endTurnForAllButtonVisible', this.endTurnButtonVisible());
+            }, { injector: this.injector });
+            compRef.onDestroy(() => watcher.destroy());
             compRef.instance.endTurnForAllClicked.subscribe(() => {
                 this.endTurnForAll();
             });
