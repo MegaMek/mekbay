@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve",
-    "build": "ng build --configuration=production",
-    "watch": "ng build --watch --configuration=development",
-    "test": "ng test",
-    "deploy": "npm run build && node deploy.js"
+    "gen-meta": "node scripts/generate-build-meta.js",
+    "start": "npm run gen-meta && ng serve --host 0.0.0.0",
+    "build": "npm run gen-meta && ng build --configuration=production",
+    "watch": "npm run gen-meta && ng build --watch --configuration=development",
+    "test": "npm run gen-meta && ng test",
+    "deploy": "npm run gen-meta && npm run build && node deploy.js"
   },
   "private": true,
   "dependencies": {
