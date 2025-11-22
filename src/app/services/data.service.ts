@@ -629,7 +629,7 @@ export class DataService {
             const etag = resp.headers.get('ETag') || '';
             return etag;
         } catch (err: any) {
-            this.logger.warn(`Failed to fetch ETag via HttpClient HEAD for ${src}: ${err.message || err}`);
+            this.logger.warn(`Failed to fetch ETag via HttpClient HEAD for ${src}: ${err.message ?? err}`);
             return '';
         }
     }
@@ -726,8 +726,8 @@ export class DataService {
                         reject(error);
                     }
                 },
-                error: (err) => {
-                    this.logger.error(`Failed to download ${remoteStore.key}: ` + err);
+                error: (err: any) => {
+                    this.logger.error(`Failed to download ${remoteStore.key}: ` + (err.message ?? err));
                     reject(err);
                 }
             });
