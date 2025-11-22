@@ -628,8 +628,8 @@ export class DataService {
             );
             const etag = resp.headers.get('ETag') || '';
             return etag;
-        } catch (err) {
-            this.logger.warn(`Failed to fetch ETag via HttpClient HEAD for ${src}: ${err}`);
+        } catch (err: any) {
+            this.logger.warn(`Failed to fetch ETag via HttpClient HEAD for ${src}: ${err.message || err}`);
             return '';
         }
     }
