@@ -62,7 +62,7 @@ export class OptionsDialogComponent {
     dialogsService = inject(DialogsService);
     isIOS = isIOS();
     
-    tabs = ['General', 'Sheets', 'Advanced', 'Experimental', 'Debug'];
+    tabs = ['General', 'Sheets', 'Advanced', 'Debug'];
     activeTab = signal(this.tabs[0]);
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
