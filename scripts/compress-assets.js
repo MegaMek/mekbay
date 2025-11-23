@@ -39,7 +39,7 @@ const crypto = require('crypto');
 const root = path.resolve(__dirname, '..');
 const unitIconsDir = path.join(root, 'public', 'images', 'units');
 const unitIconsOutputZip = path.join(root, 'public', 'zip', 'unitIcons.zip');
-const fixedDate = new Date('3050-01-01T00:00:00Z');
+const fixedDate = new Date('1984-01-01T00:00:00Z');
 
 function addDirectoryToZip(zip, dirPath, rootPath, counter) {
   // Sort files to ensure deterministic order (important for the hash)
