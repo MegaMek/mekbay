@@ -7,55 +7,59 @@
 
 <div class="searchbar-container" [class.expanded]="this.expandedView()">
     @if (buttonOnly() && !this.expandedView()) {
-        <button type="button" class="bt-button expand-btn square-large" (click)="toggleExpandedView()">
-            <svg stroke="currentColor"  width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M15.8053 15.8013L21 21M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" 
-                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </button>
+    <button type="button" class="bt-button expand-btn square-large" (click)="toggleExpandedView()">
+        <svg stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24" fill="none"
+            xmlns="http://www.w3.org/2000/svg">
+            <path
+                d="M15.8053 15.8013L21 21M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+    </button>
     } @else {
-        <button type="button" class="bt-button expand-btn square" (click)="toggleExpandedView()"
-            [title]="this.expandedView() ? 'Collapse View' : 'Expand View'"
-            [attr.aria-label]="this.expandedView() ? 'Collapse View' : 'Expand View'">
-            @if (this.expandedView()) {
-            <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
-                focusable="false" aria-hidden="true" role="img">
-                <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            } @else {
-            <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
-                focusable="false" aria-hidden="true" role="img">
-                <path d="M14 10L21 3M21 3H15M21 3V9M10 14L3 21M3 21H9M3 21L3 15" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            }
+    <button type="button" class="bt-button expand-btn square" (click)="toggleExpandedView()"
+        [title]="this.expandedView() ? 'Collapse View' : 'Expand View'"
+        [attr.aria-label]="this.expandedView() ? 'Collapse View' : 'Expand View'">
+        @if (this.expandedView()) {
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+            focusable="false" aria-hidden="true" role="img">
+            <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        } @else {
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+            focusable="false" aria-hidden="true" role="img">
+            <path d="M14 10L21 3M21 3H15M21 3V9M10 14L3 21M3 21H9M3 21L3 15" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        }
+    </button>
+    <div class="searchbar-input-container">
+        <input #searchInput class="bt-input searchbar" type="text" [disabled]="!this.filtersService.isDataReady()"
+            [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
+            [value]="this.filtersService.searchText()" (input)="setSearch(searchInput.value)"
+            (focus)="focused.set(true)" id="unit-search-input" autocomplete="off" />
+        @if (this.filtersService.searchText().length > 0) {
+        <button class="searchbar-cancel-btn" type="button" (click)="clearSearch()" title="Clear search"
+            aria-label="Clear search" tabindex="-1">
+            &#10005;
         </button>
-        <div class="searchbar-input-container">
-            <input #searchInput class="bt-input searchbar" type="text" [disabled]="!this.filtersService.isDataReady()"
-                [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
-                [value]="this.filtersService.searchText()" (input)="setSearch(searchInput.value)"
-                (focus)="focused.set(true)" id="unit-search-input" autocomplete="off" />
-            @if (this.filtersService.searchText().length > 0) {
-            <button class="searchbar-cancel-btn" type="button" (click)="clearSearch()" title="Clear search"
-                aria-label="Clear search" tabindex="-1">
-                &#10005;
-            </button>
-            }
-        </div>
-
-        <button #favBtn type="button" class="bt-button favorites-btn square" (click)="openFavorites($event)"
-            [title]="'Favorites'" aria-label="Favorites">
-            <svg width="24px" fill="currentColor" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M23.632 9.201a.628.628 0 0 1-.22.678l-5.726 4.96 1.727 7.394a.606.606 0 0 1-.935.676l-6.503-3.953-6.503 3.953a.713.713 0 0 1-.374.112.57.57 0 0 1-.34-.109.629.629 0 0 1-.222-.679l1.729-7.393L.539 9.879A.607.607 0 0 1 .897 8.78l7.536-.635 2.965-7.083a.62.62 0 0 1 1.155.001l2.965 7.082 7.536.635a.63.63 0 0 1 .578.42z"/></svg>
-        </button>
+        }
+    </div>
+    <button #favBtn type="button" class="bt-button favorites-btn square" (click)="openFavorites($event)"
+        [title]="'Favorites'" aria-label="Favorites">
+        <svg width="24px" fill="currentColor" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path
+                d="M23.632 9.201a.628.628 0 0 1-.22.678l-5.726 4.96 1.727 7.394a.606.606 0 0 1-.935.676l-6.503-3.953-6.503 3.953a.713.713 0 0 1-.374.112.57.57 0 0 1-.34-.109.629.629 0 0 1-.222-.679l1.729-7.393L.539 9.879A.607.607 0 0 1 .897 8.78l7.536-.635 2.965-7.083a.62.62 0 0 1 1.155.001l2.965 7.082 7.536.635a.63.63 0 0 1 .578.42z" />
+        </svg>
+    </button>
     <button #advBtn class="bt-button adv-btn square" [class.active]="isAdvActive()"
-            [disabled]="!this.filtersService.isDataReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
-            <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
-                focusable="false">
-                <path d="M4 4h16l-6 8v5l-4 3v-8z" />
-            </svg>
-        </button>
+        [disabled]="!this.filtersService.isDataReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+            focusable="false">
+            <path d="M4 4h16l-6 8v5l-4 3v-8z" />
+        </svg>
+    </button>
     }
 </div>
 
@@ -207,6 +211,12 @@
                     }
                 </button>
             </div>
+            <button class="bt-button square share-btn" (click)="openShareSearch($event)" title="Share Search Results">
+                <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path fill-rule="evenodd" clip-rule="evenodd"
+                        d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z" />
+                </svg>
+            </button>
         </div>
         }
         } @else {
@@ -227,11 +237,13 @@
 <div #advPanel class="adv-panel framed-borders has-shadow" [hidden]="!advOpen()" [ngStyle]="advPanelStyle()"
     [class.docked]="advPanelDocked()">
     <div class="adv-panel-header" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
+        <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
         <div class="pilot-skills-section framed-borders">
             <div class="pilot-skills-controls">
                 <div class="skill-control">
                     <label for="gunnery-skill">Gunnery:</label>
-                    <select id="gunnery-skill" class="bt-input skill-select" [value]="gunnery"
+                    <select id="gunnery-skill" class="bt-input skill-select" 
+                        [class.active]="gunnery != 4" [value]="gunnery"
                         (change)="setPilotSkill('gunnery', +$any($event.target).value)">
                         @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
                         <option [value]="n" [selected]="n === gunnery">{{ n }}</option>
@@ -241,7 +253,8 @@
                 </div>
                 <div class="skill-control">
                     <label for="piloting-skill">Piloting:</label>
-                    <select id="piloting-skill" class="bt-input skill-select" [value]="piloting"
+                    <select id="piloting-skill" class="bt-input skill-select"
+                        [class.active]="piloting != 5" [value]="piloting"
                         (change)="setPilotSkill('piloting', +$any($event.target).value)">
                         @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
                         <option [value]="n" [selected]="n === piloting">{{ n }}</option>
@@ -250,7 +263,6 @@
                 </div>
             </div>
         </div>
-        <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
     </div>
     <div class="adv-panel-content" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         <!-- Dropdown filters -->
@@ -398,7 +410,8 @@
                     @if (unit.engine) {
                     <div class="info-item">
                         <span class="info-label muted">Engine:</span>
-                        <span class="info-value">@if(unit.engineRating){ {{ unit.engineRating }} }{{  unit.engine }}</span>
+                        <span class="info-value">@if(unit.engineRating){ {{ unit.engineRating }} }{{ unit.engine
+                            }}</span>
                     </div>
                     }
                     @if (unit.c3) {
@@ -411,9 +424,9 @@
                     <div class="info-item">
                         <span class="info-label muted">Movement:</span>
                         <span class="info-value">{{ unit.walk }} / {{ unit.run }}
-                            @if(unit.run2 != unit.run){ [{{  unit.run2 }}]}
+                            @if(unit.run2 != unit.run){ [{{ unit.run2 }}]}
                             @if(unit.jump){ / {{ unit.jump }} }
-                            @if (unit.umu) { / {{ unit.umu }}} 
+                            @if (unit.umu) { / {{ unit.umu }}}
                         </span>
                     </div>
                     }

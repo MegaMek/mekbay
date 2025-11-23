@@ -285,6 +285,18 @@ hr {
             linear-gradient(red, red);
     }
 
+    &.active {
+        background-image:
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow));
+    }
+
     &:hover {
         background-color: var(--background-highlight);
     }

@@ -1153,39 +1153,43 @@ export class UnitSearchFiltersService {
         return values;
     }
 
+    queryParameters = computed(() => {
+        const search = this.searchText();
+        const filterState = this.filterState();
+        const selectedSort = this.selectedSort();
+        const selectedSortDirection = this.selectedSortDirection();
+        const expanded = this.expandedView();
+        const gunnery = this.pilotGunnerySkill();
+        const piloting = this.pilotPilotingSkill();
+        
+        const queryParams: any = {};
+        
+        // Add search query if present
+        queryParams.q = search.trim() ? encodeURIComponent(search.trim()) : null;
+        
+        // Add sort if not default
+        queryParams.sort = (selectedSort !== 'name') ? selectedSort : null;
+        queryParams.sortDir = (selectedSortDirection !== 'asc') ? selectedSortDirection : null;
+        
+        // Add filters if any are active
+        const filtersParam = this.generateCompactFiltersParam(filterState);
+        queryParams.filters = filtersParam ? filtersParam : null;
+        queryParams.gunnery = (gunnery !== 4) ? gunnery : null;
+        queryParams.piloting = (piloting !== 5) ? piloting : null;
+        queryParams.expanded = (expanded ? 'true' : null);
+        return queryParams;
+    });
+
+
     private updateUrlOnFiltersChange() {
         effect(() => {
-            const search = this.searchText();
-            const filterState = this.filterState();
-            const selectedSort = this.selectedSort();
-            const selectedSortDirection = this.selectedSortDirection();
-            const expanded = this.expandedView();
-            const gunnery = this.pilotGunnerySkill();
-            const piloting = this.pilotPilotingSkill();
-
+            const queryParameters = this.queryParameters();
             if (!this.urlStateInitialized) {
                 return;
             }
-
-            const queryParams: any = {};
-            
-            // Add search query if present
-            queryParams.q = search.trim() ? encodeURIComponent(search.trim()) : null;
-            
-            // Add sort if not default
-            queryParams.sort = (selectedSort !== 'name') ? selectedSort : null;
-            queryParams.sortDir = (selectedSortDirection !== 'asc') ? selectedSortDirection : null;
-            
-            // Add filters if any are active
-            const filtersParam = this.generateCompactFiltersParam(filterState);
-            queryParams.filters = filtersParam ? filtersParam : null;
-            queryParams.gunnery = (gunnery !== 4) ? gunnery : null;
-            queryParams.piloting = (piloting !== 5) ? piloting : null;
-            queryParams.expanded = (expanded ? 'true' : null);
-
             this.router.navigate([], {
                 relativeTo: this.route,
-                queryParams: Object.keys(queryParams).length > 0 ? queryParams : {},
+                queryParams: Object.keys(queryParameters).length > 0 ? queryParameters : {},
                 queryParamsHandling: 'merge',
                 replaceUrl: true
             });

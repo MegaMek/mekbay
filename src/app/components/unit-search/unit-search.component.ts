@@ -59,6 +59,7 @@ import { OptionsService } from '../../services/options.service';
 import { LongPressDirective } from '../../directives/long-press.directive';
 import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
+import { ShareSearchDialogComponent } from './share-search.component';
 
 
 
@@ -905,6 +906,11 @@ export class UnitSearchComponent {
         this.filtersService.searchText.set('');
         this.activeIndex.set(null);
         this.focusInput();
+    }
+
+    openShareSearch(event: MouseEvent) {
+        event.stopPropagation();
+        this.dialogsService.createDialog(ShareSearchDialogComponent);
     }
 
     /* ------------------------------------------
