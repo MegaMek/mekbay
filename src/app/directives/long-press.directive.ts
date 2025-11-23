@@ -114,10 +114,12 @@ export class LongPressDirective {
     }
 
     @HostListener('contextmenu', ['$event'])
-    onContextMenu(event: PointerEvent) {
+    onContextMenu(event: Event) {
         event.preventDefault();
         event.stopPropagation();
-        if (event.pointerType !== 'mouse') return;
+        if (event instanceof PointerEvent) {
+            if (event.pointerType !== 'mouse') return;
+        }
         if (!this.timeoutId) {
             this.longPressed = true;
             this.longPress.emit(this.pointerDownEvent!);
