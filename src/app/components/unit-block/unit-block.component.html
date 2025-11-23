@@ -12,8 +12,7 @@
         [class.pending-effects]="hasPendingEffects()"
         ></div>
     }
-    <img [src]="imgSrc()" (error)="$event.target.src = '/images/unknown.png'" class="unit-icon"
-        alt="{{ unit()?.chassis }} {{ unit()?.model }}" title="{{ unit()?.chassis }} {{ unit()?.model }}" />
+    <unit-icon [unit]="unit()"></unit-icon>
     @if (unitDisplayName === 'chassisModel'
     || unitDisplayName === 'both'
     || !forceUnit()?.alias()) {
@@ -43,9 +42,8 @@
 
     @let role = unit()?.role;
     <div class="unit-role" [class.tight]="(role?.length || 0) > 12">{{ role && role !== 'None' ? role : '' }}</div>
-    <div class="unit-image-container">
-        <img class="icon unit-icon" [src]="imgSrc()" (error)="$event.target.src = '/images/unknown.png'"
-            alt="{{ unit()?.chassis }} {{ unit()?.model }}" />
+    <div class="unit-image-container"> 
+        <unit-icon [unit]="unit()"></unit-icon>
     </div>
     <div class="unit-data-container">
         <div class="unit-actions">

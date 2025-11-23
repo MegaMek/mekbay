@@ -35,7 +35,7 @@
         }
     }
 
-    .unit-icon {
+    unit-icon {
         width: 32px;
         height: 32px;
         object-fit: contain;
@@ -44,7 +44,7 @@
         pointer-events: none;
     }
 
-    &.destroyed .unit-icon {
+    &.destroyed unit-icon {
         filter: grayscale(1) brightness(0.7) sepia(1) hue-rotate(-30deg) saturate(6) contrast(1.2);
         transition: filter 0.3s;
     }
@@ -106,7 +106,7 @@
     min-width: 64px;
     overflow: hidden;
 
-    .unit-icon {
+    unit-icon {
         width: 24px;
         height: 24px;
     }
@@ -238,7 +238,7 @@
                     #400A 24px);
         }
 
-        img.unit-icon {
+        unit-icon {
             filter: grayscale(1) brightness(0.7) sepia(1) hue-rotate(-30deg) saturate(6) contrast(1.2);
             transition: filter 0.3s;
         }

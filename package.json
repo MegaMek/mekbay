@@ -4,11 +4,13 @@
   "scripts": {
     "ng": "ng",
     "gen-meta": "node scripts/generate-build-meta.js",
-    "start": "npm run gen-meta && ng serve --host 0.0.0.0",
-    "build": "npm run gen-meta && ng build --configuration=production",
-    "watch": "npm run gen-meta && ng build --watch --configuration=development",
-    "test": "npm run gen-meta && ng test",
-    "deploy": "npm run gen-meta && npm run build && node deploy.js"
+    "gen-assets": "node scripts/compress-assets.js",
+    "prerun": "npm run gen-meta && npm run gen-assets",
+    "start": "ng serve --host 0.0.0.0",
+    "build": "npm run prerun && ng build --configuration=production",
+    "watch": "ng build --watch --configuration=development",
+    "test": "ng test",
+    "deploy": "npm run build && node deploy.js"
   },
   "private": true,
   "dependencies": {
@@ -19,6 +21,7 @@
     "@angular/platform-browser": "^20.3.6",
     "@angular/router": "^20.3.6",
     "@angular/service-worker": "^20.3.6",
+    "jszip": "^3.10.1",
     "tslib": "^2.3.0"
   },
   "devDependencies": {
@@ -27,6 +30,7 @@
     "@angular/cli": "^20.3.6",
     "@angular/compiler-cli": "^20.3.6",
     "@types/jasmine": "~5.1.0",
+    "@types/jszip": "^3.4.0",
     "@types/pako": "^2.0.4",
     "jasmine-core": "~5.7.0",
     "karma": "~6.4.0",

@@ -42,6 +42,7 @@ import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { OptionsService } from '../../services/options.service';
 import { FORCE_PACKS } from '../../models/forcepacks.model';
 import { Unit } from '../../models/units.model';
+import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
 /*
  * Author: Drake
@@ -88,7 +89,7 @@ export class FormatTimestamp implements PipeTransform {
     selector: 'force-load-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp],
+    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, UnitIconComponent],
     templateUrl: './force-load-dialog.component.html',
     styleUrls: ['./force-load-dialog.component.css']
 })

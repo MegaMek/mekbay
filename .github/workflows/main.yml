@@ -20,9 +20,6 @@ jobs:
         with:
           node-version: 'latest'
 
-      - name: Generate build metadata
-        run: node ./scripts/generate-build-meta.js
-
       - name: Install NPM and Build Angular Project
         run: |  
           npm ci

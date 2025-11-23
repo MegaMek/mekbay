@@ -6,11 +6,12 @@ import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CdkMenuModule } from '@angular/cdk/menu';
+import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
 @Component({
     selector: 'unit-block',
     standalone: true,
-    imports: [CommonModule, CdkMenuModule, FormatNumberPipe, FormatTonsPipe],
+    imports: [CommonModule, CdkMenuModule, FormatNumberPipe, FormatTonsPipe, UnitIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
     styleUrls: ['./unit-block.component.scss'],
@@ -65,14 +66,6 @@ export class UnitBlockComponent {
         if (!unit) return '';
         const mountedECM = this.forceUnit()?.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
         return mountedECM ? mountedECM.states?.get('ecm_mode') || '' : '';
-    });
-
-    imgSrc = computed(() => {
-        const unit = this.unit();
-        if (!unit || !unit.icon) {
-            return '/images/unknown.png';
-        }
-        return `https://db.mekbay.com/images/units/${unit.icon}`;
     });
 
     cleanedModel = computed(() => {

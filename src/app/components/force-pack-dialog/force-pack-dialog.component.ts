@@ -38,6 +38,7 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { FORCE_PACKS } from '../../models/forcepacks.model';
 import { Unit } from '../../models/units.model';
+import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
 /*
  * Author: Drake
@@ -60,7 +61,7 @@ type ResolvedPack = {
     selector: 'force-pack-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent],
+    imports: [CommonModule, BaseDialogComponent, UnitIconComponent],
     templateUrl: './force-pack-dialog.component.html',
     styleUrls: ['./force-pack-dialog.component.css']
 })

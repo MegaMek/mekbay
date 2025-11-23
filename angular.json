@@ -20,7 +20,10 @@
               {
                 "glob": "**/*",
                 "input": "public",
-                "output": "."
+                "output": ".",
+                "ignore": [
+                  "images/units/**"
+                ]
               }
             ],
             "styles": [
@@ -34,7 +37,10 @@
                 {
                   "glob": "**/*",
                   "input": "public",
-                  "output": "."
+                  "output": ".",
+                  "ignore": [
+                    "images/units/**"
+                  ]
                 },
                 {
                   "glob": "icon-192x192.png",
@@ -61,7 +67,10 @@
                 {
                   "glob": "**/*",
                   "input": "public",
-                  "output": "."
+                  "output": ".",
+                  "ignore": [
+                    "images/units/**"
+                  ]
                 },
                 {
                   "glob": "icon-192x192.png",

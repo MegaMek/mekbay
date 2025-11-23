@@ -401,7 +401,7 @@
     order: -1;
 }
 
-.expanded-image .icon {
+.expanded-image {
     height: 56px;
     object-fit: contain;
 }

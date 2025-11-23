@@ -19,30 +19,52 @@ MekBay is an Angular-based application designed for BattleTech enthusiasts to:
 
 ## Development
 
+This project was generated with [Angular CLI](https://github.com/angular/angular-cli). Follow the steps below to set up your local development environment.
+
 ### Prerequisites
 
-- Node.js (version 20 or higher)
-- npm package manager
-- Modern web browser
+Before you begin, ensure you have the following installed on your machine:
+
+- **Node.js**: Version 20 LTS or higher is required. You can download it from [nodejs.org](https://nodejs.org/).
+- **npm**: This is usually installed automatically with Node.js.
+- **Angular CLI**: While not strictly required to run scripts (as we use local binaries), installing it globally is helpful for generating components.
+  ```bash
+  npm install -g @angular/cli
+  ```
+- **Git**: For version control and cloning the repository.
 
 ### Installation
 
-1. Clone the repository:
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/MegaMek/mekbay.git
+   cd mekbay
+   ```
 
-2. Install dependencies:
-```bash
-npm install
-```
+2. **Install dependencies**:
+   This command downloads all necessary packages defined in `package.json`.
+   ```bash
+   npm install
+   ```
 
-### Development server
+### Development
 
-To start a local development server, run:
+To start a local development server, follow these steps:
 
-```bash
-npm start
-```
+1. **Generate Assets**:
+   Before running the app for the first time, you must generate compressed assets and metadata (required only once).
+   ```bash
+   npm run prerun
+   ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+2. **Start the Server**:
+   Launch the development server. This watches for file changes and rebuilds the app in memory.
+   ```bash
+   npm start
+   ```
+
+3. **Access the App**:
+   Open your browser and navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
 
 ### Building
 

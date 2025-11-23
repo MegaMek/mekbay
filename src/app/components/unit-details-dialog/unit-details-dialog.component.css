@@ -91,7 +91,7 @@
     align-items: center;
 }
 
-.header-icon-container .icon {
+.header-icon-container unit-icon {
     height: 48px;
     vertical-align: middle;
 }

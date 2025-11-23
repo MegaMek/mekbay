@@ -52,6 +52,7 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '../../directives/swipe.directive';
 import { LayoutService } from '../../services/layout.service';
+import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
 /*
  * Author: Drake
@@ -111,7 +112,7 @@ interface ManufacturerInfo {
     selector: 'unit-details-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, UnitComponentItemComponent, StatBarSpecsPipe, FilterAmmoPipe, SvgViewerLiteComponent, TooltipDirective, SwipeDirective],
+    imports: [CommonModule, BaseDialogComponent, UnitComponentItemComponent, StatBarSpecsPipe, FilterAmmoPipe, SvgViewerLiteComponent, TooltipDirective, SwipeDirective, UnitIconComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css']
 })

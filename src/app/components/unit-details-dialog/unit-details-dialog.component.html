@@ -2,8 +2,7 @@
     <div dialog-header class="header">
         <div class="header-group">
             <div class="header-icon-container">
-                <img src="{{ unit.icon ? `https://db.mekbay.com/images/units/${unit.icon}` : '/images/unknown.png' }}" (error)="$event.target.src = '/images/unknown.png'" class="icon"
-                    alt="{{ unit.chassis }} {{ unit.model }}" />
+                <unit-icon [unit]="unit"></unit-icon>
             </div>
             <div class="header-name-group">
                 <div class="header-model allow-select">{{ unit.model }}</div>
