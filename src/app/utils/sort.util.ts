@@ -39,7 +39,7 @@ type CacheEntry = { parts: Part[] };
 
 let naturalCompareCache = new Map<string, CacheEntry>();
 
-function tokenizeForNaturalCompare(s: string, is_model: boolean): CacheEntry {
+function tokenizeForNaturalCompare(s: string, isModel: boolean): CacheEntry {
     // Normalize input
     if (typeof s !== 'string') {
         if (s == null) s = '';
@@ -48,7 +48,7 @@ function tokenizeForNaturalCompare(s: string, is_model: boolean): CacheEntry {
     s = s.trim();
 
     // Make 'Prime' and 'Standard' variants go first, but only if this is the entire model name
-    if (is_model) {
+    if (isModel) {
         if (s == 'Prime') {
             const part: Part = {
                 raw: s,
@@ -84,12 +84,12 @@ function tokenizeForNaturalCompare(s: string, is_model: boolean): CacheEntry {
     return { parts };
 }
 
-function getCachedParts(s: string, is_model: boolean): CacheEntry {
+function getCachedParts(s: string, isModel: boolean): CacheEntry {
     const token = (typeof s === 'string') ? s : (s == null ? '' : String(s));
-    const key = token + is_model;
+    const key = token + (isModel ? '~model' : '');
     const existing = naturalCompareCache.get(key);
     if (existing) return existing;
-    const entry = tokenizeForNaturalCompare(token, is_model);
+    const entry = tokenizeForNaturalCompare(token, isModel);
     naturalCompareCache.set(key, entry);
     return entry;
 }
@@ -100,11 +100,11 @@ function getCachedParts(s: string, is_model: boolean): CacheEntry {
  * @param b The second string to compare.
  * @returns A negative number if a < b, a positive number if a > b, and 0 if they are equal.
  */
-export function naturalCompare(a: string, b: string, is_model: boolean = false): number {
+export function naturalCompare(a: string, b: string, isModel: boolean = false): number {
     if (a === b) return 0;
 
-    const entryA = getCachedParts(a, is_model);
-    const entryB = getCachedParts(b, is_model);
+    const entryA = getCachedParts(a, isModel);
+    const entryB = getCachedParts(b, isModel);
 
     const partsA = entryA.parts;
     const partsB = entryB.parts;
