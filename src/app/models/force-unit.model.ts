@@ -150,7 +150,7 @@ export class ForceUnit {
         this.svgServiceInjector = createEnvironmentInjector([], parentEnvInjector);
 
         await untracked(async () => {
-            runInInjectionContext(this.svgServiceInjector!, () => {
+            await runInInjectionContext(this.svgServiceInjector!, async () => {
                 switch (this.unit.type) {
                     case 'Mek':
                         this._svgService = new UnitSvgMekService(this, this.dataService, this.unitInitializer);
@@ -161,10 +161,8 @@ export class ForceUnit {
                     default:
                         this._svgService = new UnitSvgService(this, this.dataService, this.unitInitializer);
                 }
-            });
-            if (this._svgService) {
                 await this._svgService.loadAndInitialize();
-            }
+            });
         }); 
     }
 
