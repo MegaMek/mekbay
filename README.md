@@ -1,6 +1,6 @@
 [![CD/CI Release](https://github.com/MegaMek/mekbay/actions/workflows/main.yml/badge.svg)](https://github.com/MegaMek/mekbay/actions/workflows/main.yml)[![CD/CI Next Release](https://github.com/MegaMek/mekbay/actions/workflows/next.yml/badge.svg)](https://github.com/MegaMek/mekbay/actions/workflows/next.yml)
 
-# Mekbay
+# MekBay
 
 A web-based application for managing BattleTech forces with interactive record sheets that can be used online or printed.
 
@@ -10,7 +10,7 @@ A web-based application for managing BattleTech forces with interactive record s
 
 ## Overview
 
-Mekbay is an Angular-based application designed for BattleTech enthusiasts to:
+MekBay is an Angular-based application designed for BattleTech enthusiasts to:
 
 - **Manage BattleTech Forces**: Organize and track your mechs, vehicles, and other units
 - **Interactive Record Sheets**: Use digital record sheets during gameplay with real-time damage tracking and status updates

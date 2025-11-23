@@ -2,11 +2,11 @@
     <div class="sidebar-inner"
         [class.tiny]="tinyMode()">
         <div class="header">
-            <div class="brand" (click)="toggleMenuOpenClose()" aria-label="Mekbay">
+            <div class="brand" (click)="toggleMenuOpenClose()" aria-label="MekBay">
             @if (tinyMode()) {
-                <img class="logo" src="/icons/icon-192x192.png" alt="Mekbay">
+                <img class="logo" src="/icons/icon-192x192.png" alt="MekBay">
             } @else {
-                <img class="logo" src="/images/logo.png" alt="Mekbay">
+                <img class="logo" src="/images/logo.png" alt="MekBay">
             }
             </div>
             <div class="searchPortal" [cdkPortalOutlet]="unitSearchPortal()"></div>

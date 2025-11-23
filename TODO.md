@@ -4,7 +4,7 @@ MML:
 - in the AERO sheets there is a white background behind the compass: remove
 - in the Vehicles, behind the CGL logo, there is a white background: remove
 
-Mekbay:
+MekBay:
 - inventory state for bays
 - saving/loading of inventory state
 - GATOR
@@ -13,7 +13,7 @@ Mekbay:
 - sources with image preview and linking to CGL store
 - fluff images
 - unit construction
-- generate the sheets directly from Mekbay
+- generate the sheets directly from MekBay
 - import MUL and other formats
 
 Known bugs:
