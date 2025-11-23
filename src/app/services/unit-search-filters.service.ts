@@ -1047,8 +1047,7 @@ export class UnitSearchFiltersService {
                 if (filtersParam) {
                     hasFilters = true;
                     try {
-                        const decodedFilters = decodeURIComponent(filtersParam);
-                        const parsedFilters = this.parseCompactFiltersFromUrl(decodedFilters);
+                        const parsedFilters = this.parseCompactFiltersFromUrl(filtersParam);
                         const validFilters: FilterState = {};
                         
                         for (const [key, state] of Object.entries(parsedFilters)) {
@@ -1283,22 +1282,22 @@ export class UnitSearchFiltersService {
                             let state: MultiState = 'or';
                             let count = 1;
                             
-                            // Parse state suffix
-                            if (item.endsWith('.')) {
-                                state = 'and';
-                                encodedName = item.slice(0, -1);
-                            } else if (item.endsWith('!')) {
-                                state = 'not';
-                                encodedName = item.slice(0, -1);
-                            } else {
-                                state = 'or'; // default state
-                            }
-                            
-                            // Parse count
+                            // Parse count first
                             const starIndex = encodedName.indexOf('~');
                             if (starIndex !== -1) {
                                 count = parseInt(encodedName.substring(starIndex + 1)) || 1;
                                 encodedName = encodedName.substring(0, starIndex);
+                            }
+
+                            // Parse state suffix
+                            if (encodedName.endsWith('.')) {
+                                state = 'and';
+                                encodedName = encodedName.slice(0, -1);
+                            } else if (encodedName.endsWith('!')) {
+                                state = 'not';
+                                encodedName = encodedName.slice(0, -1);
+                            } else {
+                                state = 'or'; // default state
                             }
                             
                             // Decode the name to restore spaces and special characters
