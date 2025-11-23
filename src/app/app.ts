@@ -101,6 +101,8 @@ export class App {
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
     protected title = 'mekbay';
     protected updateAvailable = signal(false);
+    protected showInstallButton = signal(false);
+    private deferredPrompt: any;
 
 
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
@@ -116,6 +118,19 @@ export class App {
         //     (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
         // }
         this.dataService.initialize();
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            this.deferredPrompt = e;
+            this.showInstallButton.set(true);
+        });
+
+        window.addEventListener('appinstalled', () => {
+            this.showInstallButton.set(false);
+            this.deferredPrompt = null;
+            this.logger.info('PWA was installed');
+        });
+
         document.addEventListener('contextmenu', (event) => event.preventDefault());
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
         if (this.swUpdate.isEnabled) {
@@ -143,6 +158,7 @@ export class App {
                         this.unitSearchPortalForceBuilder.set(this.unitSearchPortal);
                     } else {
                         this.unitSearchPortalMain = this.unitSearchPortal;
+                        this.unitSearchComponentRef()?.buttonOnly.set(false);
                     }
                 }
             }
@@ -205,6 +221,17 @@ export class App {
                 this.logger.error('Error checking for updates:' + err);
             }
         }
+    }
+
+    async installPwa() {
+        if (!this.deferredPrompt) {
+            return;
+        }
+        this.deferredPrompt.prompt();
+        const { outcome } = await this.deferredPrompt.userChoice;
+        this.logger.info(`User response to the install prompt: ${outcome}`);
+        this.deferredPrompt = null;
+        this.showInstallButton.set(false);
     }
 
     public removeBeforeUnloadHandler() {

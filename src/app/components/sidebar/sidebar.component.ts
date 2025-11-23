@@ -112,7 +112,7 @@ export class SidebarComponent {
         // If a unit-search component instance is passed in, have the sidebar
         // control its `buttonOnly` input only when the portal provided to this
         // sidebar is the active host. Otherwise ensure the component stays false.
-        effect(() => {
+        effect((onCleanup) => {
             const comp = this.unitSearchComponent?.();
             const portal = this.unitSearchPortal?.();
             if (!comp) return;
@@ -123,6 +123,11 @@ export class SidebarComponent {
                 // Revert to main-app default when not hosted in sidebar
                 comp.buttonOnly.set(false);
             }
+            onCleanup(() => {
+                if (comp) {
+                    comp.buttonOnly.set(false);
+                }
+            });
         });
     }
 
