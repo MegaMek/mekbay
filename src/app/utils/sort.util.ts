@@ -39,13 +39,37 @@ type CacheEntry = { parts: Part[] };
 
 let naturalCompareCache = new Map<string, CacheEntry>();
 
-function tokenizeForNaturalCompare(s: string): CacheEntry {
+function tokenizeForNaturalCompare(s: string, isModel: boolean): CacheEntry {
     // Normalize input
     if (typeof s !== 'string') {
         if (s == null) s = '';
         else s = String(s);
     }
     s = s.trim();
+
+    // Make 'Prime' and 'Standard' variants go first, but only if this is the entire model name
+    if (isModel) {
+        if (s == 'Prime') {
+            const part: Part = {
+                raw: s,
+                normalized: '0',
+                isNum: false,
+                num: 0
+            };
+            return {parts: [part]};
+        }
+        if (s == '') {
+            const part: Part = {
+                raw: s,
+                normalized: '0',
+                isNum: true,
+                num: 0
+            };
+            return {parts: [part]};
+        }
+    }
+
+    // Otherwise, tokenize and compare the strings piecewise.
     const re = /(\d+|[A-Za-z]+|[^A-Za-z\d]+)/g;
     const rawParts = s.match(re) || [s];
     const parts: Part[] = rawParts.map(p => {
@@ -60,11 +84,12 @@ function tokenizeForNaturalCompare(s: string): CacheEntry {
     return { parts };
 }
 
-function getCachedParts(s: string): CacheEntry {
-    const key = (typeof s === 'string') ? s : (s == null ? '' : String(s));
+function getCachedParts(s: string, isModel: boolean): CacheEntry {
+    const token = (typeof s === 'string') ? s : (s == null ? '' : String(s));
+    const key = token + (isModel ? '~model' : '');
     const existing = naturalCompareCache.get(key);
     if (existing) return existing;
-    const entry = tokenizeForNaturalCompare(key);
+    const entry = tokenizeForNaturalCompare(token, isModel);
     naturalCompareCache.set(key, entry);
     return entry;
 }
@@ -75,11 +100,11 @@ function getCachedParts(s: string): CacheEntry {
  * @param b The second string to compare.
  * @returns A negative number if a < b, a positive number if a > b, and 0 if they are equal.
  */
-export function naturalCompare(a: string, b: string): number {
+export function naturalCompare(a: string, b: string, isModel: boolean = false): number {
     if (a === b) return 0;
 
-    const entryA = getCachedParts(a);
-    const entryB = getCachedParts(b);
+    const entryA = getCachedParts(a, isModel);
+    const entryB = getCachedParts(b, isModel);
 
     const partsA = entryA.parts;
     const partsB = entryB.parts;

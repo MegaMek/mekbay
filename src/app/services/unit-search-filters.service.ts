@@ -691,7 +691,7 @@ export class UnitSearchFiltersService {
             if (sortKey === 'name') {
                 comparison = naturalCompare(a.chassis || '', b.chassis || '');
                 if (comparison === 0) {
-                    comparison = naturalCompare(a.model || '', b.model || '');
+                    comparison = naturalCompare(a.model || '', b.model || '', true);
                     if (comparison === 0) {
                         comparison = (a.year || 0) - (b.year || 0);
                     }
