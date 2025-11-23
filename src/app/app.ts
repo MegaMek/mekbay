@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, signal, HostListener, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector, untracked } from '@angular/core';
+import { Component, computed, signal, HostListener, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector, untracked, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
@@ -51,16 +51,14 @@ import { WsService } from './services/ws.service';
 import { ToastService } from './services/toast.service';
 import { DialogsService } from './services/dialogs.service';
 import { BetaDialogComponent } from './components/beta-dialog/beta-dialog.component';
-import { ForceLoadDialogComponent } from './components/force-load-dialog/force-load-dialog.component';
 import { UpdateButtonComponent } from './components/update-button/update-button.component';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { APP_VERSION_STRING } from './build-meta';
 import { copyTextToClipboard } from './utils/clipboard.util';
-import { LoadForceEntry } from './models/load-force-entry.model';
 import { LoggerService } from './services/logger.service';
-
+import { isIOS, isRunningStandalone } from './utils/platform.util';
 
 /*
  * Author: Drake
@@ -119,19 +117,14 @@ export class App {
         // }
         this.dataService.initialize();
 
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            this.deferredPrompt = e;
+        // iOS doesn't fire beforeinstallprompt, so we check manually
+        if (isIOS() && !isRunningStandalone()) {
             this.showInstallButton.set(true);
-        });
+        }
 
-        window.addEventListener('appinstalled', () => {
-            this.showInstallButton.set(false);
-            this.deferredPrompt = null;
-            this.logger.info('PWA was installed');
-        });
-
-        document.addEventListener('contextmenu', (event) => event.preventDefault());
+        window.addEventListener('beforeinstallprompt', this.beforeInstallPromptHandler);
+        window.addEventListener('appinstalled', this.appInstalledHandler);
+        document.addEventListener('contextmenu', this.contextMenuHandler);
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
         if (this.swUpdate.isEnabled) {
             setInterval(() => this.checkForUpdate(), this.updateCheckInterval);
@@ -186,12 +179,18 @@ export class App {
                 }
             }
         });
+        inject(DestroyRef).onDestroy(() => {
+            this.removeBeforeUnloadHandler();
+            window.removeEventListener('beforeinstallprompt', this.beforeInstallPromptHandler);
+            window.removeEventListener('appinstalled', this.appInstalledHandler);
+            document.removeEventListener('contextmenu', this.contextMenuHandler);
+        });
     }
 
     hasUnits = computed(() => this.forceBuilderService.forceUnits().length > 0);
     selectedUnit = computed(() => this.forceBuilderService.selectedUnit());
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
-    
+
     @HostListener('window:online')
     onOnline() {
         this.checkForUpdate();
@@ -201,6 +200,22 @@ export class App {
     onFocus() {
         this.checkForUpdate();
     }
+
+    private beforeInstallPromptHandler = (e: any) => {
+        e.preventDefault();
+        this.deferredPrompt = e;
+        this.showInstallButton.set(true);
+    };
+
+    private appInstalledHandler = () => {
+        this.showInstallButton.set(false);
+        this.deferredPrompt = null;
+        this.logger.info('PWA was installed');
+    };
+
+    private contextMenuHandler = (event: Event) => {
+        event.preventDefault();
+    };
 
     private async checkForUpdate() {
         const now = Date.now();
@@ -224,6 +239,11 @@ export class App {
     }
 
     async installPwa() {
+        if (isIOS()) {
+            this.dialogService.showNotice('To install on iOS, tap the Share button and select "Add to Home Screen".', 'App Installation');
+            return;
+        }
+
         if (!this.deferredPrompt) {
             return;
         }
@@ -236,10 +256,6 @@ export class App {
 
     public removeBeforeUnloadHandler() {
         window.removeEventListener('beforeunload', this.beforeUnloadHandler);
-    }
-
-    ngOnDestroy() {
-        this.removeBeforeUnloadHandler();
     }
 
     beforeUnloadHandler = (event: BeforeUnloadEvent) => {

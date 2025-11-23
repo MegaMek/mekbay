@@ -48,3 +48,7 @@ export function isIOS(): boolean {
     }
     return isiDevice;
 }
+
+export function isRunningStandalone(): boolean {
+    return (window.navigator as any).standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+}

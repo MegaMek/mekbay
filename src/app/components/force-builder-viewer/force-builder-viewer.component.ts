@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, Injector, ElementRef, effect, inject, OnDestroy, ChangeDetectionStrategy, viewChild, viewChildren, input, signal, afterNextRender } from '@angular/core';
+import { Component, computed, Injector, ElementRef, effect, inject, ChangeDetectionStrategy, viewChild, viewChildren, input, signal, afterNextRender, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
@@ -56,7 +56,7 @@ import { ToastService } from '../../services/toast.service';
     templateUrl: './force-builder-viewer.component.html',
     styleUrls: ['./force-builder-viewer.component.scss']
 })
-export class ForceBuilderViewerComponent implements OnDestroy {
+export class ForceBuilderViewerComponent {
     protected forceBuilderService = inject(ForceBuilderService);
     protected toastService = inject(ToastService);
     protected layoutService = inject(LayoutService);
@@ -100,6 +100,9 @@ export class ForceBuilderViewerComponent implements OnDestroy {
                     this.scrollToUnit(selected.id);
                 }, { injector: this.injector });
             }
+        });
+        inject(DestroyRef).onDestroy(() => {
+            this.stopAutoScrollLoop();
         });
     }
 
@@ -189,10 +192,6 @@ export class ForceBuilderViewerComponent implements OnDestroy {
 
     toggleMenu() {
         this.layoutService.toggleMenu();
-    }
-
-    ngOnDestroy() {
-        this.stopAutoScrollLoop();
     }
 
     onUnitDragStart() {

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { signal, computed, WritableSignal, Injector } from '@angular/core';
+import { signal, computed, WritableSignal, Injector, EnvironmentInjector, createEnvironmentInjector, runInInjectionContext, untracked } from '@angular/core';
 import { BVCalculatorUtil } from "../utils/bv-calculator.util";
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
@@ -66,6 +66,7 @@ export class ForceUnit {
     id: string;
     svg: WritableSignal<SVGSVGElement | null> = signal(null); // SVG representation of the unit
     private _svgService: UnitSvgService | null = null;
+    private svgServiceInjector: EnvironmentInjector | null = null;
     private loadingPromise: Promise<void> | null = null;
     viewState: ViewportTransform;
     initialized = false;
@@ -145,24 +146,35 @@ export class ForceUnit {
     }
 
     private async performLoad() {
-        switch (this.unit.type) {
-            case 'Mek':
-                this._svgService = new UnitSvgMekService(this, this.dataService, this.unitInitializer, this.injector);
-                break;
-            case 'Infantry':
-                this._svgService = new UnitSvgInfantryService(this, this.dataService, this.unitInitializer, this.injector);
-                break;
-            default:
-                this._svgService = new UnitSvgService(this, this.dataService, this.unitInitializer, this.injector);
+        const parentEnvInjector = this.injector.get(EnvironmentInjector);
+        this.svgServiceInjector = createEnvironmentInjector([], parentEnvInjector);
+
+        untracked(() => {
+            runInInjectionContext(this.svgServiceInjector!, () => {
+                switch (this.unit.type) {
+                    case 'Mek':
+                        this._svgService = new UnitSvgMekService(this, this.dataService, this.unitInitializer);
+                        break;
+                    case 'Infantry':
+                        this._svgService = new UnitSvgInfantryService(this, this.dataService, this.unitInitializer);
+                        break;
+                    default:
+                        this._svgService = new UnitSvgService(this, this.dataService, this.unitInitializer);
+                }
+            });
+        });
+        
+        if (this._svgService) {
+            await this._svgService.loadAndInitialize();
         }
-        await this._svgService.loadAndInitialize();
     }
 
     destroy() {
-        if (this._svgService) {
-            this._svgService.ngOnDestroy();
-            this._svgService = null;
+        if (this.svgServiceInjector) {
+            this.svgServiceInjector.destroy();
+            this.svgServiceInjector = null;
         }
+        this._svgService = null;
         this.svg.set(null);
         this.loadingPromise = null;
     }

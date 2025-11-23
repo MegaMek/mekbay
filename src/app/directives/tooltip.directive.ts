@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Directive, ElementRef, Input, OnDestroy, inject } from '@angular/core';
+import { DestroyRef, Directive, ElementRef, Input, inject } from '@angular/core';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { TooltipComponent } from '../components/tooltip/tooltip.component';
@@ -40,7 +40,7 @@ import { TooltipComponent } from '../components/tooltip/tooltip.component';
     selector: '[tooltip]',
     standalone: true,
 })
-export class TooltipDirective implements OnDestroy {
+export class TooltipDirective {
     @Input('tooltip') tooltipText: string | null = null;
     @Input() tooltipDelay = 400; // ms
 
@@ -57,8 +57,18 @@ export class TooltipDirective implements OnDestroy {
         el.addEventListener('pointerout', this.onPointerOut, { passive: true });
         el.addEventListener('pointerdown', this.onPointerDown, { passive: true });
         el.addEventListener('pointercancel', this.hideImmediate, { passive: true });
+    
+        inject(DestroyRef).onDestroy(() => {
+            this.clearShowTimeout();
+            this.hideImmediate();
+            const el = this.host.nativeElement;
+            el.removeEventListener('pointerover', this.onPointerOver);
+            el.removeEventListener('pointerout', this.onPointerOut);
+            el.removeEventListener('pointerdown', this.onPointerDown);
+            el.removeEventListener('pointercancel', this.hideImmediate);
+        });
     }
-
+    
     private onPointerOver = (ev: PointerEvent) => {
         if (ev.pointerType === 'touch') return;
         const related = ev.relatedTarget as Node | null;
@@ -174,14 +184,4 @@ export class TooltipDirective implements OnDestroy {
         }
         this.isVisible = false;
     };
-
-    ngOnDestroy(): void {
-        this.clearShowTimeout();
-        this.hideImmediate();
-        const el = this.host.nativeElement;
-        el.removeEventListener('pointerover', this.onPointerOver);
-        el.removeEventListener('pointerout', this.onPointerOut);
-        el.removeEventListener('pointerdown', this.onPointerDown);
-        el.removeEventListener('pointercancel', this.hideImmediate);
-    }
 }

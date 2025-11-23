@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, AfterViewInit, OnDestroy, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, HostListener, viewChild } from '@angular/core';
+import { Component, ElementRef, AfterViewInit, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, HostListener, viewChild, DestroyRef, inject } from '@angular/core';
 import { PickerComponent, PickerChoice, PickerValue, PickerInteractionType, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 /*
@@ -309,7 +309,7 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
         }
     `]
 })
-export class RotatingPickerComponent implements AfterViewInit, OnDestroy, PickerComponent {
+export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     pickerRef = viewChild.required<ElementRef<SVGElement>>('picker');
 
@@ -472,6 +472,10 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
             const initialValue = typeof selectedValue === 'number' ? selectedValue : 0;
             untracked(() => this.currentValue.set(this.clampValue(initialValue)));
         });
+        inject(DestroyRef).onDestroy(() => {     
+            this.cleanupEventListeners();
+            this.clearKeyboardInputTimeout();
+        });
     }
 
     // Keyboard event handlers
@@ -556,11 +560,6 @@ export class RotatingPickerComponent implements AfterViewInit, OnDestroy, Picker
             });
             pickerEl.dispatchEvent(syntheticEvent);
         }
-    }
-
-    ngOnDestroy(): void {
-        this.cleanupEventListeners();
-        this.clearKeyboardInputTimeout();
     }
 
     pick(val: PickerValue): void {

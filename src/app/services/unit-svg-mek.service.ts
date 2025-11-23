@@ -33,7 +33,6 @@
 
 import { computed } from "@angular/core";
 import { linkedLocs, uidTranslations } from "../components/svg-viewer/common";
-import { ForceUnit } from "../models/force-unit.model";
 import { CriticalSlot, MountedEquipment } from "../models/force-serialization";
 import { UnitSvgService } from "./unit-svg.service";
 

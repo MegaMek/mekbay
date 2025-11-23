@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Directive, ElementRef, output, input, inject, effect, Renderer2, OnDestroy, signal } from '@angular/core';
+import { Directive, ElementRef, output, input, inject, effect, Renderer2, signal, DestroyRef } from '@angular/core';
 
 export type SwipeDirection = 'horizontal' | 'vertical' | 'both';
 
@@ -63,7 +63,7 @@ export interface SwipeEndEvent {
     selector: '[swipe]',
     standalone: true,
 })
-export class SwipeDirective implements OnDestroy {
+export class SwipeDirective {
     private readonly elRef = inject(ElementRef<HTMLElement>);
     private readonly renderer = inject(Renderer2);
 
@@ -113,10 +113,9 @@ export class SwipeDirective implements OnDestroy {
             );
             onCleanup(() => unlisten());
         });
-    }
-
-    ngOnDestroy(): void {
-        this.cleanup();
+        inject(DestroyRef).onDestroy(() => {
+            this.cleanup();
+        });
     }
 
     /**

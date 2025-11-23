@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { untracked, Injectable, Injector, effect, EffectRef, OnDestroy, inject } from '@angular/core';
+import { Injectable, effect, inject, DestroyRef } from '@angular/core';
 import { ForceUnit } from '../models/force-unit.model';
 import { CrewMember, SkillType } from '../models/crew-member.model';
 import { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
@@ -49,21 +49,31 @@ import { LoggerService } from './logger.service';
  * An instance of this service should be created for each ForceUnit.
  */
 @Injectable()
-export class UnitSvgService implements OnDestroy {
-    protected logger: LoggerService;
-
-    private dataEffectRef: EffectRef | null = null;
-    private armorEffectRef: EffectRef | null = null;
-    private destroyEffectRef: EffectRef | null = null;
+export class UnitSvgService {
+    protected logger = inject(LoggerService);
     private svgDimensions = { width: 0, height: 0 };
 
     constructor(
         protected unit: ForceUnit,
         protected dataService: DataService,
-        protected unitInitializer: UnitInitializerService,
-        protected injector: Injector
+        protected unitInitializer: UnitInitializerService
     ) {
-        this.logger = this.injector.get(LoggerService);
+        // Armor effect
+        effect(() => {
+            this.updateArmorDisplay(false);
+        });
+        // Data effect
+        effect(() => {
+            this.updateAllDisplays();
+        });
+        // Destroy effect
+        effect(() => {
+            const destroyed = this.unit.destroyed;
+            this.updateDestroyedOverlayDisplay(destroyed);
+        });
+        inject(DestroyRef).onDestroy(() => {        
+            this.unit.svg.set(null); // Clear SVG on destruction
+        });
     }
 
     public async loadAndInitialize(): Promise<void> {
@@ -106,9 +116,6 @@ export class UnitSvgService implements OnDestroy {
                 }
                 document.body.removeChild(hiddenContainer);
             }
-
-            // Set up the effect to keep the SVG updated
-            this.setupDataEffect();
         } catch (error) {
             this.logger.error(`Failed to load or initialize SVG for ${this.unit.getUnit().name}: ${error}`);
             this.unit.svg.set(null);
@@ -196,38 +203,6 @@ export class UnitSvgService implements OnDestroy {
         this.updateInventory();
         this.updateHitMod();
         this.updateTurnState();
-    }
-
-    private setupDataEffect(): void {
-        // Armor effect
-        this.armorEffectRef = effect(() => {
-            this.updateArmorDisplay(false);
-        }, { injector: this.injector });
-        // Data effect
-        this.dataEffectRef = effect(() => {
-            this.updateAllDisplays();
-        }, { injector: this.injector });
-        // Destroy effect
-        this.destroyEffectRef = effect(() => {
-            const destroyed = this.unit.destroyed;
-            this.updateDestroyedOverlayDisplay(destroyed);
-        }, { injector: this.injector });
-    }
-
-    ngOnDestroy(): void {
-        if (this.armorEffectRef) {
-            this.armorEffectRef.destroy();
-            this.armorEffectRef = null;
-        }
-        if (this.dataEffectRef) {
-            this.dataEffectRef.destroy();
-            this.dataEffectRef = null;
-        }
-        if (this.destroyEffectRef) {
-            this.destroyEffectRef.destroy();
-            this.destroyEffectRef = null;
-        }
-        this.unit.svg.set(null); // Clear SVG on destruction
     }
 
     public evaluateDestroyed() {
