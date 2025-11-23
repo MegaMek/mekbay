@@ -149,7 +149,7 @@ export class ForceUnit {
         const parentEnvInjector = this.injector.get(EnvironmentInjector);
         this.svgServiceInjector = createEnvironmentInjector([], parentEnvInjector);
 
-        untracked(() => {
+        await untracked(async () => {
             runInInjectionContext(this.svgServiceInjector!, () => {
                 switch (this.unit.type) {
                     case 'Mek':
@@ -162,11 +162,10 @@ export class ForceUnit {
                         this._svgService = new UnitSvgService(this, this.dataService, this.unitInitializer);
                 }
             });
-        });
-        
-        if (this._svgService) {
-            await this._svgService.loadAndInitialize();
-        }
+            if (this._svgService) {
+                await this._svgService.loadAndInitialize();
+            }
+        }); 
     }
 
     destroy() {
