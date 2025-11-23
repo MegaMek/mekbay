@@ -39,21 +39,41 @@ const crypto = require('crypto');
 const root = path.resolve(__dirname, '..');
 const unitIconsDir = path.join(root, 'public', 'images', 'units');
 const unitIconsOutputZip = path.join(root, 'public', 'zip', 'unitIcons.zip');
+const fixedDate = new Date('3050-01-01T00:00:00Z');
 
 function addDirectoryToZip(zip, dirPath, rootPath, counter) {
-  const files = fs.readdirSync(dirPath);
+  // Sort files to ensure deterministic order (important for the hash)
+  const files = fs.readdirSync(dirPath).sort();
 
   files.forEach(file => {
+    // Ignore hidden files and system files that might change automatically
+    if (file.startsWith('.') || file === 'Thumbs.db' || file === 'Desktop.ini') {
+      return;
+    }
+
     const fullPath = path.join(dirPath, file);
     const stat = fs.statSync(fullPath);
 
     if (stat.isDirectory()) {
+      const relativePath = path.relative(rootPath, fullPath).split(path.sep).join('/');
+      
+      // Explicitly add directory entry with fixed timestamp to ensure determinism
+      zip.file(relativePath + '/', null, {
+        dir: true,
+        date: fixedDate,
+        unixPermissions: "755"
+      });
+
       addDirectoryToZip(zip, fullPath, rootPath, counter);
     } else {
       const relativePath = path.relative(rootPath, fullPath).split(path.sep).join('/');
       
       const data = fs.readFileSync(fullPath);
-      zip.file(relativePath, data);
+      // Use a fixed date to ensure deterministic zip generation regardless of file modification time
+      zip.file(relativePath, data, { 
+          date: fixedDate,
+          unixPermissions: "644"
+      });
       counter.count++;
     }
   });
@@ -99,8 +119,8 @@ async function compress() {
         hashSum.update(fileBuffer);
         const hex = hashSum.digest('hex');
         
-        // Create unitIcons.sha256 adjacent to unitIcons.zip
-        const hashFile = unitIconsOutputZip.replace('.zip', '.sha256');
+        // Create unitIcons.zip.sha256 adjacent to unitIcons.zip
+        const hashFile = unitIconsOutputZip + '.sha256';
         fs.writeFileSync(hashFile, hex);
 
         console.log(`[Compress] Created ${unitIconsOutputZip} (${size} MB) with ${counter.count} files.`);

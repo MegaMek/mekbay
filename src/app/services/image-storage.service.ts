@@ -42,177 +42,231 @@ import { LoggerService } from './logger.service';
  */
 
 const DB_NAME = 'mekbay-assets';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const UNIT_ICONS_STORE_NAME = 'unitIcons';
+const METADATA_STORE_NAME = 'metadata';
 
 @Injectable({
-  providedIn: 'root'
+    providedIn: 'root'
 })
 export class ImageStorageService {
-  private dbPromise: Promise<IDBDatabase>;
-  private http = inject(HttpClient);
-  private logger = inject(LoggerService);
+    private dbPromise: Promise<IDBDatabase>;
+    private http = inject(HttpClient);
+    private logger = inject(LoggerService);
 
-  public loading$ = new BehaviorSubject<boolean>(false);
-  public progress$ = new BehaviorSubject<number>(0);
+    public loading$ = new BehaviorSubject<boolean>(false);
+    public progress$ = new BehaviorSubject<number>(0);
 
-  constructor() {
-    this.dbPromise = this.initIndexedDb();
-    this.checkAndHydrate();
-  }
-
-  private initIndexedDb(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        
-        if (db.objectStoreNames.contains(UNIT_ICONS_STORE_NAME)) {
-          db.deleteObjectStore(UNIT_ICONS_STORE_NAME);
-        }
-        
-        db.createObjectStore(UNIT_ICONS_STORE_NAME);
-      };
-
-      request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
-      request.onerror = (event) => {
-        this.logger.error('ImageStorage DB Error: ' + (event.target as IDBOpenDBRequest).error);
-        reject((event.target as IDBOpenDBRequest).error);
-      };
-    });
-  }
-
-  private async checkAndHydrate() {
-    try {
-      const count = await this.getCount();
-      const localHash = localStorage.getItem('unitIcons_zip_hash');
-      
-      let remoteHash: string | null = null;
-      try {
-        // Fetch the hash file with a timestamp to prevent caching
-        remoteHash = await firstValueFrom(
-          this.http.get('zip/unitIcons.zip.sha256?t=' + Date.now(), { responseType: 'text' })
-        );
-        remoteHash = remoteHash ? remoteHash.trim() : null;
-      } catch (e) {
-        this.logger.warn('Could not fetch unitIcons.zip.sha256: ' + e);
-      }
-
-      // If we have a remote hash and it differs from local, OR if DB is empty
-      if ((remoteHash && remoteHash !== localHash) || count === 0) {
-        this.logger.info('Icons cache outdated or empty. Downloading unitIcons.zip...');
-        
-        if (count > 0) {
-          await this.clearStore();
-        }
-
-        await this.loadImagesFromZip(remoteHash);
-      }
-    } catch (err) {
-      this.logger.error('Error checking icons cache: ' + err);
+    constructor() {
+        this.dbPromise = this.initIndexedDb();
+        this.checkAndHydrate();
     }
-  }
 
-  private async clearStore(): Promise<void> {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readwrite');
-      const store = transaction.objectStore(UNIT_ICONS_STORE_NAME);
-      const request = store.clear();
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
+    private initIndexedDb(): Promise<IDBDatabase> {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-  private getCount(): Promise<number> {
-    return this.dbPromise.then(db => {
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readonly');
-        const store = transaction.objectStore(UNIT_ICONS_STORE_NAME);
-        const request = store.count();
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    });
-  }
+            request.onupgradeneeded = (event) => {
+                const db = (event.target as IDBOpenDBRequest).result;
 
-  private async loadImagesFromZip(newHash: string | null = null) {
-    this.loading$.next(true);
-    try {
-      // Download
-      const zipData = await firstValueFrom(
-        this.http.get('zip/unitIcons.zip', { responseType: 'arraybuffer', reportProgress: true })
-      );
+                if (db.objectStoreNames.contains(UNIT_ICONS_STORE_NAME)) {
+                    db.deleteObjectStore(UNIT_ICONS_STORE_NAME);
+                }
+                db.createObjectStore(UNIT_ICONS_STORE_NAME);
 
-      // Unzip
-      const zip = await JSZip.loadAsync(zipData);
-      const files = Object.keys(zip.files).filter(name => !zip.files[name].dir);
-      
-      // Store in DB
-      const db = await this.dbPromise;
+                if (db.objectStoreNames.contains(METADATA_STORE_NAME)) {
+                    db.deleteObjectStore(METADATA_STORE_NAME);
+                }
+                db.createObjectStore(METADATA_STORE_NAME);
+            };
 
-      let processed = 0;
-      const total = files.length;
-      const BATCH_SIZE = 50;
-      
-      // Process in batches to avoid TransactionInactiveError due to async/await in loop
-      for (let i = 0; i < total; i += BATCH_SIZE) {
-        const batchFiles = files.slice(i, i + BATCH_SIZE);
-        const batchData: { name: string, blob: Blob }[] = [];
+            request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
+            request.onerror = (event) => {
+                this.logger.error('ImageStorage DB Error: ' + (event.target as IDBOpenDBRequest).error);
+                reject((event.target as IDBOpenDBRequest).error);
+            };
+        });
+    }
 
-        // 1. Prepare data (async unzip) - outside transaction
-        for (const filename of batchFiles) {
-          const content = await zip.files[filename].async('blob');
-          batchData.push({ name: filename, blob: content });
+    private async checkAndHydrate() {
+        try {
+            const count = await this.getCount();
+            const localHash = await this.getLocalHash();
+            this.logger.info(`Unit icons in DB: ${count}, local hash: ${localHash || 'none'}`);
+
+            let remoteHash: string | null = null;
+            try {
+                // Fetch the hash file with a timestamp to prevent caching
+                remoteHash = await firstValueFrom(
+                    this.http.get('zip/unitIcons.zip.sha256?t=' + Date.now(), { responseType: 'text' })
+                );
+                remoteHash = remoteHash ? remoteHash.trim() : null;
+                if (remoteHash && remoteHash === localHash) {
+                    this.logger.info('Icons cache is up to date.');
+                    return;
+                }
+            } catch (e) {
+                this.logger.warn('Could not fetch zip/unitIcons.zip.sha256: ' + e);
+            }
+
+            // If we have a remote hash or if DB is empty
+            if (remoteHash || count === 0) {
+                this.logger.info('Icons cache outdated or empty. Downloading unitIcons.zip...');
+
+                await this.loadImagesFromZip(remoteHash);
+            }
+        } catch (err) {
+            this.logger.error('Error checking icons cache: ' + err);
         }
+    }
 
-        // 2. Write batch - inside transaction
-        await new Promise<void>((resolve, reject) => {
+    private async getLocalHash(): Promise<string | null> {
+        const db = await this.dbPromise;
+        return new Promise((resolve) => {
+            const transaction = db.transaction(METADATA_STORE_NAME, 'readonly');
+            const store = transaction.objectStore(METADATA_STORE_NAME);
+            const request = store.get('unitIcons_zip_hash');
+            request.onsuccess = () => resolve(request.result as string || null);
+            request.onerror = () => resolve(null);
+        });
+    }
+
+    private async setLocalHash(hash: string): Promise<void> {
+        const db = await this.dbPromise;
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(METADATA_STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(METADATA_STORE_NAME);
+            const request = store.put(hash, 'unitIcons_zip_hash');
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    private async clearStore(): Promise<void> {
+        const db = await this.dbPromise;
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(UNIT_ICONS_STORE_NAME);
+            const request = store.clear();
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    private getCount(): Promise<number> {
+        return this.dbPromise.then(db => {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readonly');
+                const store = transaction.objectStore(UNIT_ICONS_STORE_NAME);
+                const request = store.count();
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        });
+    }
+
+    private async loadImagesFromZip(newHash: string | null = null) {
+        this.loading$.next(true);
+        try {
+            // Download
+            const zipData = await firstValueFrom(
+                this.http.get('zip/unitIcons.zip', { responseType: 'arraybuffer', reportProgress: true })
+            );
+
+            // Unzip
+            const zip = await JSZip.loadAsync(zipData);
+            const files = Object.keys(zip.files).filter(name => !zip.files[name].dir);
+            
+            // Store in DB
+            const db = await this.dbPromise;
+
+            let processed = 0;
+            const total = files.length;
+            const BATCH_SIZE = 50;
+            
+            // Process in batches to avoid TransactionInactiveError due to async/await in loop
+            for (let i = 0; i < total; i += BATCH_SIZE) {
+                const batchFiles = files.slice(i, i + BATCH_SIZE);
+                const batchData: { name: string, blob: Blob }[] = [];
+
+                // 1. Prepare data (async unzip) - outside transaction
+                for (const filename of batchFiles) {
+                    const content = await zip.files[filename].async('blob');
+                    batchData.push({ name: filename, blob: content });
+                }
+
+                // 2. Write batch - inside transaction
+                await new Promise<void>((resolve, reject) => {
+                    const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readwrite');
+                    const store = transaction.objectStore(UNIT_ICONS_STORE_NAME);
+
+                    transaction.oncomplete = () => resolve();
+                    transaction.onerror = () => reject(transaction.error);
+
+                    for (const item of batchData) {
+                        store.put(item.blob, item.name);
+                    }
+                });
+
+                processed += batchFiles.length;
+                this.progress$.next(Math.round((processed / total) * 100));
+            }
+
+            // Cleanup files that are in DB but not in the new Zip
+            await this.cleanupObsoleteFiles(db, files);
+
+            if (newHash) {
+                await this.setLocalHash(newHash);
+            }
+
+            this.logger.info(`Hydrated ${processed} icons into ${DB_NAME}`);
+
+        } catch (err) {
+            this.logger.error('Failed to load unitIcons.zip: ' + err);
+        } finally {
+            this.loading$.next(false);
+        }
+    }
+
+    private async cleanupObsoleteFiles(db: IDBDatabase, keepFiles: string[]): Promise<void> {
+        const keepSet = new Set(keepFiles);
+        return new Promise((resolve, reject) => {
           const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readwrite');
           const store = transaction.objectStore(UNIT_ICONS_STORE_NAME);
+          
+          const request = store.getAllKeys();
+          
+          request.onsuccess = () => {
+            const keys = request.result as string[];
+            const keysToDelete = keys.filter(key => !keepSet.has(key));
+            
+            if (keysToDelete.length > 0) {
+              this.logger.info(`Removing ${keysToDelete.length} obsolete icons.`);
+              keysToDelete.forEach(key => store.delete(key));
+            }
+          };
 
           transaction.oncomplete = () => resolve();
           transaction.onerror = () => reject(transaction.error);
-
-          for (const item of batchData) {
-            store.put(item.blob, item.name);
-          }
         });
-
-        processed += batchFiles.length;
-        this.progress$.next(Math.round((processed / total) * 100));
       }
 
-      if (newHash) {
-        localStorage.setItem('unitIcons_zip_hash', newHash);
-      }
+    public async getImage(filename: string): Promise<string | null> {
+        const db = await this.dbPromise;
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readonly');
+            const store = transaction.objectStore(UNIT_ICONS_STORE_NAME);
+            const request = store.get(filename);
 
-      this.logger.info(`Hydrated ${processed} icons into ${DB_NAME}`);
-
-    } catch (err) {
-      this.logger.error('Failed to load unitIcons.zip: ' + err);
-    } finally {
-      this.loading$.next(false);
+            request.onsuccess = () => {
+                const blob = request.result as Blob;
+                if (blob) {
+                    resolve(URL.createObjectURL(blob));
+                } else {
+                    resolve(null);
+                }
+            };
+            request.onerror = () => resolve(null); // Fail gracefully
+        });
     }
-  }
-
-  public async getImage(filename: string): Promise<string | null> {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readonly');
-      const store = transaction.objectStore(UNIT_ICONS_STORE_NAME);
-      const request = store.get(filename);
-
-      request.onsuccess = () => {
-        const blob = request.result as Blob;
-        if (blob) {
-          resolve(URL.createObjectURL(blob));
-        } else {
-          resolve(null);
-        }
-      };
-      request.onerror = () => resolve(null); // Fail gracefully
-    });
-  }
 }
