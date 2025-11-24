@@ -16,6 +16,9 @@
             "outputPath": "dist",
             "index": "src/index.html",
             "tsConfig": "tsconfig.app.json",
+            "allowedCommonJsDependencies": [
+              "jszip"
+            ],
             "assets": [
               {
                 "glob": "**/*",
