@@ -499,12 +499,26 @@ export class UnitSearchComponent {
         const tokenMap = new Map<string, 'exact' | 'partial'>();
         for (const group of searchGroups) {
             for (const t of group.tokens) {
-                const existing = tokenMap.get(t.token);
-                if (!existing) {
-                    tokenMap.set(t.token, t.mode);
-                } else if (existing === 'partial' && t.mode === 'exact') {
-                    // prefer exact if same token appears as exact and partial
-                    tokenMap.set(t.token, 'exact');
+                if (Array.isArray(t.token)) {
+                    // For an array of tokens add both the full sequence and individual parts for highlighting.
+                    const fullSequence = t.token.join('');
+                    if (fullSequence && !tokenMap.has(fullSequence)) {
+                        tokenMap.set(fullSequence, 'partial');
+                    }
+                    for (const subToken of t.token) {
+                        if (subToken && !tokenMap.has(subToken)) {
+                            tokenMap.set(subToken, 'partial');
+                        }
+                    }
+                } else {
+                    const token = t.token;
+                    const existing = tokenMap.get(token);
+                    if (!existing) {
+                        tokenMap.set(token, t.mode);
+                    } else if (existing === 'partial' && t.mode === 'exact') {
+                        // prefer exact if same token appears as exact and partial
+                        tokenMap.set(token, 'exact');
+                    }
                 }
             }
         }

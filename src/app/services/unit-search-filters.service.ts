@@ -41,6 +41,9 @@ import { naturalCompare } from '../utils/sort.util';
 import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
 
+const PARTIAL_TOKEN_SPLITTERS = ['-'];
+const PARTIAL_TOKEN_SPLIT_REGEX = new RegExp(`([${PARTIAL_TOKEN_SPLITTERS.map(s => `\\${s}`).join('')}])`);
+
 /*
  * Author: Drake
  */
@@ -339,7 +342,7 @@ function getUnitComponentData(unit: Unit) {
 }
 
 interface SearchToken {
-    token: string;
+    token: string | string[];
     mode: 'exact' | 'partial';
 }
 
@@ -439,16 +442,34 @@ export class UnitSearchFiltersService {
                     if (cleaned) tokens.push({ token: cleaned, mode: 'exact' });
                 } else if (m[2] !== undefined) {
                     const cleaned = DataService.removeAccents(m[2].trim());
-                    if (cleaned) tokens.push({ token: cleaned, mode: 'partial' });
+                    if (cleaned) {
+                        if (PARTIAL_TOKEN_SPLITTERS.some(char => cleaned.includes(char))) {
+                            const subTokens = cleaned.split(PARTIAL_TOKEN_SPLIT_REGEX).filter(Boolean);
+                            if (subTokens.length > 1) {
+                                tokens.push({ token: subTokens, mode: 'partial' });
+                            } else {
+                                tokens.push({ token: cleaned, mode: 'partial' });
+                            }
+                        } else {
+                            tokens.push({ token: cleaned, mode: 'partial' });
+                        }
+                    }
                 }
             }
 
             // Deduplicate tokens while preserving the longest-first ordering for partial matches
             const uniqueMap = new Map<string, SearchToken>();
             // Sort by length desc so longer partial tokens are matched first
-            tokens.sort((a, b) => b.token.length - a.token.length);
+            tokens.sort((a, b) => {
+                const aToken = a.token;
+                const bToken = b.token;
+                const lenA = Array.isArray(aToken) ? aToken.join('').length : aToken.length;
+                const lenB = Array.isArray(bToken) ? bToken.join('').length : bToken.length;
+                return lenB - lenA;
+            });
             for (const t of tokens) {
-                if (!uniqueMap.has(t.token)) uniqueMap.set(t.token, t);
+                const key = Array.isArray(t.token) ? t.token.join('') : t.token as string;
+                if (!uniqueMap.has(key)) uniqueMap.set(key, t);
             }
 
             return { tokens: Array.from(uniqueMap.values()) };
@@ -653,11 +674,8 @@ export class UnitSearchFiltersService {
             // Unit matches if it matches ANY of the OR groups
             return searchTokens.some(group => {
                 // Separate exact and partial tokens
-                const exactTokens = group.tokens.filter(t => t.mode === 'exact').map(t => t.token);
-                const partialTokens = group.tokens
-                    .filter(t => t.mode === 'partial')
-                    .map(t => t.token)
-                    .sort((a, b) => b.length - a.length); // longest-first for non-overlap matching
+                const exactTokens = group.tokens.filter(t => t.mode === 'exact').map(t => t.token as string);
+                const partialTokens = group.tokens.filter(t => t.mode === 'partial');
 
                 // All exact tokens must match via exactMatchWord
                 for (const et of exactTokens) {
@@ -666,7 +684,7 @@ export class UnitSearchFiltersService {
 
                 // All partial tokens must match non-overlappingly
                 if (partialTokens.length > 0) {
-                    if (!this.partialMatchWords(unit, partialTokens)) return false;
+                    if (!this.matchPartialTokens(unit, partialTokens)) return false;
                 }
 
                 return true;
@@ -964,15 +982,39 @@ export class UnitSearchFiltersService {
 });
 
     /**
-     * Checks if a unit chassis/model matches all the given words.
+     * Checks if a unit chassis/model matches all the given partial tokens and sequences.
      * @param unit The unit to check.
-     * @param words The words to match against the unit's properties, they must be sorted from longest to shortest
-     * @returns True if the unit matches all words, false otherwise.
+     * @param searchTokens The partial tokens to match.
+     * @returns True if the unit matches all tokens, false otherwise.
      */
-    private partialMatchWords(unit: Unit, words: string[]): boolean {
-        if (!words || words.length === 0) return true;
-        const text = `${unit._chassis ?? ''} ${unit._model ?? ''}`;
-        return this.tokensMatchNonOverlapping(text, words);
+    private matchPartialTokens(unit: Unit, searchTokens: SearchToken[]): boolean {
+        if (!searchTokens || searchTokens.length === 0) return true;
+        const chassis = unit._chassis ?? '';
+        const model = unit._model ?? '';
+        const hay = `${chassis} ${model}`;
+        
+        const taken: Array<[number, number]> = [];
+
+        // tokens are already sorted from longest to shortest in searchTokens
+        for (const searchToken of searchTokens) {
+            const tokenValue = searchToken.token;
+            if (Array.isArray(tokenValue)) {
+                // Ordered sequence matching: must be entirely within chassis OR model.
+                const modelOffset = chassis.length + 1;
+                
+                if (!(this.tokensMatchInOrder(chassis, tokenValue, taken) || 
+                      this.tokensMatchInOrder(model, tokenValue, taken, modelOffset))) {
+                    // Sequence could not be found in a non-overlapping way in either part.
+                    return false;
+                }
+            } else {
+                // Single token, non-overlapping matching (can span chassis and model)
+                if (!this.tokenMatchNonOverlapping(hay, tokenValue as string, taken)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private exactMatchWord(unit: Unit, word: string): boolean {
@@ -984,28 +1026,68 @@ export class UnitSearchFiltersService {
         return false;
     }
 
-    private tokensMatchNonOverlapping(text: string, tokens: string[]): boolean {
-        const hay = text;
-        const taken: Array<[number, number]> = [];
-        for (const token of tokens) {
-            if (!token) continue;
-            let start = 0;
-            let found = false;
-            while (start <= hay.length - token.length) {
-                const idx = hay.indexOf(token, start);
-                if (idx === -1) break;
-                const end = idx + token.length;
-                const overlaps = taken.some(([s, e]) => !(end <= s || idx >= e));
-                if (!overlaps) {
-                    taken.push([idx, end]);
-                    found = true;
+    private tokenMatchNonOverlapping(hay: string, token: string, taken: Array<[number, number]>): boolean {
+        if (!token) return true;
+        let start = 0;
+        while (start <= hay.length - token.length) {
+            const idx = hay.indexOf(token, start);
+            if (idx === -1) break;
+            const end = idx + token.length;
+            const overlaps = taken.some(([s, e]) => !(end <= s || idx >= e));
+            if (!overlaps) {
+                taken.push([idx, end]);
+                return true;
+            }
+            start = idx + 1;
+        }
+        return false;
+    }
+
+    private tokensMatchInOrder(hay: string, sequence: string[], taken: Array<[number, number]>, offset = 0): boolean {
+        if (!sequence || sequence.length === 0) return true;
+
+        let searchFrom = 0;
+        while (searchFrom < hay.length) {
+            let currentPos = searchFrom;
+            let found = true;
+            const potentialTaken: Array<[number, number]> = [];
+            let firstIndexInHay = -1;
+
+            // Find an occurrence of the sequence
+            for (const token of sequence) {
+                if (!token) continue; // Skip empty tokens in sequence
+                const idx = hay.indexOf(token, currentPos);
+                if (idx === -1) {
+                    found = false;
                     break;
                 }
-                start = idx + 1;
+                if (firstIndexInHay === -1) {
+                    firstIndexInHay = idx;
+                }
+                potentialTaken.push([idx + offset, idx + token.length + offset]);
+                currentPos = idx + token.length;
             }
-            if (!found) return false;
+
+            if (!found) {
+                return false; // Sequence not found at all from `searchFrom` onwards
+            }
+
+            // Check for overlaps with already taken ranges
+            const overlaps = potentialTaken.some(([s1, e1]) => 
+                taken.some(([s2, e2]) => !(e1 <= s2 || s1 >= e2))
+            );
+
+            if (!overlaps) {
+                // Found a valid, non-overlapping match for the sequence.
+                taken.push(...potentialTaken);
+                return true;
+            }
+            
+            // The sequence we found overlaps. We need to continue searching for the sequence.
+            searchFrom = firstIndexInHay + 1;
         }
-        return true;
+
+        return false; // No non-overlapping occurrence of the sequence found
     }
 
     private getValidFilterValues(units: Unit[], conf: AdvFilterConfig): number[] {
@@ -1367,11 +1449,6 @@ export class UnitSearchFiltersService {
             ...current,
             [key]: { value, interactedWith: interacted }
         }));
-    }
-
-    // Override search setter to handle URL updates
-    setSearch(query: string) {
-        this.searchText.set(query);
     }
 
     clearFilters() {
