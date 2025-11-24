@@ -47,22 +47,13 @@ function tokenizeForNaturalCompare(s: string, isModel: boolean): CacheEntry {
     }
     s = s.trim();
 
-    // Make 'Prime' and 'Standard' variants go first, but only if this is the entire model name
+    // Make 'Prime' variants go first, but only if this is the entire model name
     if (isModel) {
         if (s == 'Prime') {
             const part: Part = {
                 raw: s,
                 normalized: '0',
                 isNum: false,
-                num: 0
-            };
-            return {parts: [part]};
-        }
-        if (s == '') {
-            const part: Part = {
-                raw: s,
-                normalized: '0',
-                isNum: true,
                 num: 0
             };
             return {parts: [part]};
@@ -111,8 +102,8 @@ export function naturalCompare(a: string, b: string, isModel: boolean = false): 
 
     const maxLen = Math.max(partsA.length, partsB.length);
     for (let i = 0; i < maxLen; i++) {
-        const pa = partsA[i] || { raw: '', normalized: '', isNum: false };
-        const pb = partsB[i] || { raw: '', normalized: '', isNum: false };
+        const pa = partsA[i] || { raw: '', normalized: '', isNum: true, num: 0};
+        const pb = partsB[i] || { raw: '', normalized: '', isNum: true, num: 0};
 
         const isNumA = pa.isNum;
         const isNumB = pb.isNum;
