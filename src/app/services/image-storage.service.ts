@@ -190,7 +190,8 @@ export class ImageStorageService {
             );
 
             // Unzip
-            const JSZip = await import('jszip');
+            const jszipModule = await import('jszip');
+            const JSZip = (jszipModule as any).default ?? jszipModule;
             const zip = await JSZip.loadAsync(zipData);
             const files = Object.keys(zip.files).filter(name => !zip.files[name].dir);
             
