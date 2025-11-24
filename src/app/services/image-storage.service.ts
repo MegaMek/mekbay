@@ -33,7 +33,6 @@
 
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import * as JSZip from 'jszip';
 import { BehaviorSubject, firstValueFrom } from 'rxjs';
 import { LoggerService } from './logger.service';
 
@@ -57,7 +56,7 @@ export class ImageStorageService {
     public loading$ = new BehaviorSubject<boolean>(false);
     public progress$ = new BehaviorSubject<number>(0);
 
-    private readonly MAX_CACHE_SIZE = 1000;
+    private readonly MAX_CACHE_SIZE = 8000;
     private urlCache = new Map<string, string>();
     private pendingRequests = new Map<string, Promise<string | null>>();
 
@@ -124,6 +123,30 @@ export class ImageStorageService {
         }
     }
 
+    private async getStorageUsage(): Promise<number> {
+        const db = await this.dbPromise;
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readonly');
+            const store = transaction.objectStore(UNIT_ICONS_STORE_NAME);
+            let totalSize = 0;
+            const request = store.openCursor();
+
+            request.onsuccess = (event) => {
+                const cursor = (event.target as IDBRequest).result;
+                if (cursor) {
+                    const blob = cursor.value as Blob;
+                    if (blob) {
+                        totalSize += blob.size;
+                    }
+                    cursor.continue();
+                } else {
+                    resolve(totalSize);
+                }
+            };
+            request.onerror = () => reject(request.error);
+        });
+    }
+
     private async getLocalHash(): Promise<string | null> {
         const db = await this.dbPromise;
         return new Promise((resolve) => {
@@ -141,17 +164,6 @@ export class ImageStorageService {
             const transaction = db.transaction(METADATA_STORE_NAME, 'readwrite');
             const store = transaction.objectStore(METADATA_STORE_NAME);
             const request = store.put(hash, 'unitIcons_zip_hash');
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
-    }
-
-    private async clearStore(): Promise<void> {
-        const db = await this.dbPromise;
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readwrite');
-            const store = transaction.objectStore(UNIT_ICONS_STORE_NAME);
-            const request = store.clear();
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
@@ -178,6 +190,7 @@ export class ImageStorageService {
             );
 
             // Unzip
+            const JSZip = await import('jszip');
             const zip = await JSZip.loadAsync(zipData);
             const files = Object.keys(zip.files).filter(name => !zip.files[name].dir);
             
@@ -223,8 +236,8 @@ export class ImageStorageService {
                 await this.setLocalHash(newHash);
             }
 
-            this.logger.info(`Hydrated ${processed} icons into ${DB_NAME}`);
-
+            const usage = await this.getStorageUsage();
+            this.logger.info(`Hydrated ${processed} icons into ${DB_NAME} (${(usage / (1024 * 1024)).toFixed(2)} MB)`);
         } catch (err) {
             this.logger.error('Failed to load unitIcons.zip: ' + err);
         } finally {
