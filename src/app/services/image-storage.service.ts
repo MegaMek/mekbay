@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, firstValueFrom } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 import { LoggerService } from './logger.service';
 
 /*
@@ -53,8 +53,13 @@ export class ImageStorageService {
     private http = inject(HttpClient);
     private logger = inject(LoggerService);
 
-    public loading$ = new BehaviorSubject<boolean>(false);
-    public progress$ = new BehaviorSubject<number>(0);
+    // Internal signals
+    private _loading = signal<boolean>(false);
+    private _progress = signal<number>(0);
+
+    // Public read-only signals
+    public loading = this._loading.asReadonly();
+    public progress = this._progress.asReadonly();
 
     private readonly MAX_CACHE_SIZE = 8000;
     private urlCache = new Map<string, string>();
@@ -182,7 +187,7 @@ export class ImageStorageService {
     }
 
     private async loadImagesFromZip(newHash: string | null = null) {
-        this.loading$.next(true);
+        this._loading.set(true);
         try {
             // Download
             const zipData = await firstValueFrom(
@@ -227,7 +232,7 @@ export class ImageStorageService {
                 });
 
                 processed += batchFiles.length;
-                this.progress$.next(Math.round((processed / total) * 100));
+                this._progress.set(Math.round((processed / total) * 100));
             }
 
             // Cleanup files that are in DB but not in the new Zip
@@ -242,7 +247,7 @@ export class ImageStorageService {
         } catch (err) {
             this.logger.error('Failed to load unitIcons.zip: ' + err);
         } finally {
-            this.loading$.next(false);
+            this._loading.set(false);
         }
     }
 

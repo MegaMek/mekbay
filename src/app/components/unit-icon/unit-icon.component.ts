@@ -23,7 +23,7 @@ import { Unit } from '../../models/units.model';
 })
 export class UnitIconComponent {
   private imageService = inject(ImageStorageService);
-  private isLoading = toSignal(this.imageService.loading$, { initialValue: false });
+  private isLoading = this.imageService.loading;
   
   // Primary Input
   unit = input<Unit | undefined | null>(null);
