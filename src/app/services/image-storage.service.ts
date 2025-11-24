@@ -57,6 +57,10 @@ export class ImageStorageService {
     public loading$ = new BehaviorSubject<boolean>(false);
     public progress$ = new BehaviorSubject<number>(0);
 
+    private readonly MAX_CACHE_SIZE = 1000;
+    private urlCache = new Map<string, string>();
+    private pendingRequests = new Map<string, Promise<string | null>>();
+
     constructor() {
         this.dbPromise = this.initIndexedDb();
         this.checkAndHydrate();
@@ -252,8 +256,58 @@ export class ImageStorageService {
       }
 
     public async getImage(filename: string): Promise<string | null> {
+        if (this.urlCache.has(filename)) {
+            this.refreshCacheEntry(filename);
+            return this.urlCache.get(filename)!;
+        }
+
+        if (this.pendingRequests.has(filename)) {
+            return this.pendingRequests.get(filename)!;
+        }
+
+        const promise = this.fetchFromDb(filename).finally(() => {
+            this.pendingRequests.delete(filename);
+        });
+
+        this.pendingRequests.set(filename, promise);
+        return promise;
+    }
+
+    public getCachedUrl(filename: string): string | undefined {
+        if (this.urlCache.has(filename)) {
+            this.refreshCacheEntry(filename);
+            return this.urlCache.get(filename);
+        }
+        return undefined;
+    }
+
+    private refreshCacheEntry(filename: string) {
+        const url = this.urlCache.get(filename);
+        if (url) {
+            // Delete and re-set to move it to the end of the Map (most recently used)
+            this.urlCache.delete(filename);
+            this.urlCache.set(filename, url);
+        }
+    }
+
+    private cacheUrl(filename: string, url: string) {
+        if (this.urlCache.size >= this.MAX_CACHE_SIZE) {
+            // Map.keys() returns an iterator in insertion order. The first one is the oldest (LRU).
+            const oldestKey = this.urlCache.keys().next().value;
+            if (oldestKey) {
+                const oldestUrl = this.urlCache.get(oldestKey);
+                if (oldestUrl) {
+                    URL.revokeObjectURL(oldestUrl);
+                }
+                this.urlCache.delete(oldestKey);
+            }
+        }
+        this.urlCache.set(filename, url);
+    }
+
+    private async fetchFromDb(filename: string): Promise<string | null> {
         const db = await this.dbPromise;
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readonly');
             const store = transaction.objectStore(UNIT_ICONS_STORE_NAME);
             const request = store.get(filename);
@@ -261,7 +315,9 @@ export class ImageStorageService {
             request.onsuccess = () => {
                 const blob = request.result as Blob;
                 if (blob) {
-                    resolve(URL.createObjectURL(blob));
+                    const url = URL.createObjectURL(blob);
+                    this.cacheUrl(filename, url);
+                    resolve(url);
                 } else {
                     resolve(null);
                 }

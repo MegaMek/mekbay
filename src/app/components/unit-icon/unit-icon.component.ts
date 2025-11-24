@@ -32,8 +32,9 @@ export class UnitIconComponent {
   styleClass = input<string>('');
 
   private readonly FALLBACK = '/images/unknown.png';
+  private readonly TRANSPARENT = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
   
-  currentSrc = signal<string>(this.FALLBACK);
+  currentSrc = signal<string>(this.TRANSPARENT);
 
   displayAlt = computed(() => {
     if (this.alt()) return this.alt();
@@ -63,6 +64,15 @@ export class UnitIconComponent {
         this.currentSrc.set(this.FALLBACK);
         return;
       }
+
+      const cached = this.imageService.getCachedUrl(path);
+      if (cached) {
+        this.currentSrc.set(cached);
+        return;
+      }
+
+      // Show transparent while loading to avoid flashing unknown icon
+      this.currentSrc.set(this.TRANSPARENT);
 
       this.imageService.getImage(path).then(url => {
         this.currentSrc.set(url || this.FALLBACK);
