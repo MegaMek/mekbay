@@ -17,8 +17,6 @@ MekBay is an Angular-based application designed for BattleTech enthusiasts to:
 - **Print Support**: Generate printable versions of record sheets for tabletop play
 - **Force Organization**: Build and maintain multiple force compositions, save/load/share them across devices with cloud sync
 
-## Development
-
 This project was generated with [Angular CLI](https://github.com/angular/angular-cli). Follow the steps below to set up your local development environment.
 
 ### Prerequisites
@@ -47,6 +45,16 @@ Before you begin, ensure you have the following installed on your machine:
    npm install
    ```
 
+### Dependencies
+
+The application depends on the `mm-data` repository for the `prerun` task (see [`Development`](#development) section below). Clone it as a sibling to the `mekbay` folder.
+```bash
+cd ..
+git clone https://github.com/MegaMek/mm-data.git
+cd mekbay
+```
+*Note: You can configure a custom path to `mm-data` by creating a `.env` file in the project root and setting the `MM_DATA_PATH` variable (for example: `MM_DATA_PATH=../../mm-data`).*
+
 ### Development
 
 To start a local development server, follow these steps:
@@ -56,6 +64,7 @@ To start a local development server, follow these steps:
    ```bash
    npm run prerun
    ```
+   *Note: The `mm-data` repository is required for generating compressed assets. Without it, the application will still run, but unit icons and other resources will be missing.*
 
 2. **Start the Server**:
    Launch the development server. This watches for file changes and rebuilds the app in memory.

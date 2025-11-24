@@ -37,7 +37,42 @@ const JSZip = require('jszip');
 const crypto = require('crypto');
 
 const root = path.resolve(__dirname, '..');
-const unitIconsDir = path.join(root, 'public', 'images', 'units');
+
+// Load .env file if it exists to support local configuration overrides
+const envPath = path.join(root, '.env');
+if (fs.existsSync(envPath)) {
+  try {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    envContent.split(/\r?\n/).forEach(line => {
+      line = line.trim();
+      if (!line || line.startsWith('#')) return;
+      const parts = line.split('=');
+      if (parts.length >= 2) {
+        const key = parts[0].trim();
+        let value = parts.slice(1).join('=').trim();
+        // Remove quotes if present
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        if (!process.env[key]) {
+          process.env[key] = value;
+        }
+      }
+    });
+    console.log(`[Compress] Loaded configuration from ${envPath}`);
+  } catch (e) {
+    console.warn('[Compress] Failed to parse .env file:', e.message);
+  }
+}
+
+// Configuration:
+// MM_DATA_PATH can be set in .env or environment variables.
+// Default assumes mm-data is located at ../mm-data relative to this project root.
+const mmDataPath = process.env.MM_DATA_PATH || '../mm-data';
+const unitIconsDir = path.resolve(root, mmDataPath, 'data/images/units');
+
+console.log(`[Compress] Using unit icons from: ${unitIconsDir}`);
+
 const unitIconsOutputZip = path.join(root, 'public', 'zip', 'unitIcons.zip');
 const fixedDate = new Date('1984-01-01T00:00:00Z');
 
@@ -82,6 +117,7 @@ function addDirectoryToZip(zip, dirPath, rootPath, counter) {
 async function compress() {
   if (!fs.existsSync(unitIconsDir)) {
     console.log(`[Compress] Source directory not found: ${unitIconsDir}`);
+    console.log(`[Compress] Please check MM_DATA_PATH in .env or environment variables.`);
     return;
   }
 
