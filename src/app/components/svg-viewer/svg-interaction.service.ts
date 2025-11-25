@@ -592,7 +592,7 @@ export class SvgInteractionService {
                     title: labelText,
                     values: calculateValues(),
                     selected: null,
-                    suggestedPickerStyle: 'auto',
+                    suggestedPickerStyle: 'linear',
                     targetType: 'crit',
                     onPick: async (val: PickerValue) => {
                         this.removePicker();
@@ -801,7 +801,7 @@ export class SvgInteractionService {
                     title: nameText,
                     values: calculatePickerValues,
                     selected: null,
-                    suggestedPickerStyle: 'auto',
+                    suggestedPickerStyle: 'linear',
                     targetType: 'crit',
                     onPick: (val: PickerValue) => {
                         // Try equipment-specific handlers first

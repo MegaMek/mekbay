@@ -950,9 +950,9 @@ export class RsPolyfillUtil {
             if (!bbox) return;
 
             // Create background rect
-            const rectWidth = Math.max(90, bbox.width + 4);
+            const rectWidth = Math.max(90, bbox.width)+6;
             const rectHeight = bbox.height;
-            const rectX = bbox.x - 4; // Slight left padding
+            const rectX = bbox.x - 12; // Slight left padding
             const rectY = bbox.y;
 
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
