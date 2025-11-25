@@ -233,9 +233,13 @@ export function highlightMatches(
     let pattern = tokens.map(escapeRegExp).join('|');
 
     if (alphanumericNormalization) {
-        const alphaNumTokens = tokens.map(token => 
-            token.split('').map(char => `${escapeRegExp(char)}[^a-zA-Z0-9]*`).join('')
-        );
+        const alphaNumTokens = tokens.map(token => {
+            const chars = token.split('');
+            return chars.map((char, index) => {
+                const isLastChar = index === chars.length - 1;
+                return `${escapeRegExp(char)}${isLastChar ? '' : '[^a-zA-Z0-9]*'}`;
+            }).join('');
+        });
         pattern += '|' + alphaNumTokens.join('|');
     }
     
@@ -245,6 +249,6 @@ export function highlightMatches(
 
     const parts = text.split(regex);
     return parts
-        .map((part) => (regex.test(part) ? `<span class="matchHighlight">${escapeHtml(part)}</span>` : escapeHtml(part)))
+        .map((part, index) => ((index % 2) === 1 ? `<span class="matchHighlight">${escapeHtml(part)}</span>` : escapeHtml(part)))
         .join('');
 }
