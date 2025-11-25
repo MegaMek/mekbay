@@ -594,13 +594,13 @@ export class SvgInteractionService {
                     title: labelText,
                     values: calculateValues(),
                     selected: null,
-                    suggestedPickerStyle: 'linear',
+                    pickerStyle: 'linear',
                     targetType: 'crit',
-                    onPick: async (val: PickerChoice) => {
+                    onPick: async (choice: HandlerChoice) => {
                         this.removePicker();
                         const critSlot = unit.getCritSlot(loc, slot);
                         if (!critSlot) return;
-                        if (val.value == '+1') {
+                        if (choice.value == '+1') {
                             if (critSlot.consumed === undefined) {
                                 return;
                             }
@@ -610,7 +610,7 @@ export class SvgInteractionService {
                             showAmmoToast(critSlot, 1);
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        if (val.value == '-1') {
+                        if (choice.value == '-1') {
                             if (critSlot.consumed === undefined) {
                                 critSlot.consumed = 0;
                             }
@@ -620,13 +620,13 @@ export class SvgInteractionService {
                             showAmmoToast(critSlot, -1);
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        if (val.value == 'Empty') {
+                        if (choice.value == 'Empty') {
                             critSlot.consumed = totalAmmo;
                             unit.setCritSlot(critSlot);
                             this.toastService.show(`Emptied ${labelText}`, 'info');
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        if (val.value == 'Set Ammo') {
+                        if (choice.value == 'Set Ammo') {
                             const amountUsed = critSlot.consumed ?? 0;
                             const ammoOptions: AmmoEquipment[] = [];
                             if (!critSlot.name || !critSlot.eq) return;
@@ -685,12 +685,12 @@ export class SvgInteractionService {
                             }
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        if (val.value == 'Hit') {
+                        if (choice.value == 'Hit') {
                             unit.applyHitToCritSlot(critSlot, 1, !this.optionsService.options().useAutomations);
                             this.toastService.show(`Critical Hit on ${labelText}`, 'error');
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        if (val.value == 'Repair') {
+                        if (choice.value == 'Repair') {
                             unit.applyHitToCritSlot(critSlot, -1, !this.optionsService.options().useAutomations);
                             this.toastService.show(`Repaired ${labelText}`, 'success');
                             pickerInstance.component.values.set(calculateValues());
@@ -803,7 +803,7 @@ export class SvgInteractionService {
                     title: nameText,
                     values: calculatePickerValues,
                     selected: null,
-                    suggestedPickerStyle: 'linear',
+                    pickerStyle: 'linear',
                     targetType: 'crit',
                     onPick: (choice: HandlerChoice) => {
                         // Try equipment-specific handlers first
@@ -1247,7 +1247,8 @@ export class SvgInteractionService {
         title: string | null,
         values: PickerChoice[],
         selected: PickerValue | null,
-        suggestedPickerStyle: 'radial' | 'linear' | 'auto',
+        pickerStyle?: 'radial' | 'linear',
+        suggestedPickerStyle?: 'radial' | 'linear' | 'auto',
         targetType?: PickerTargetType,
         onPick: (val: PickerChoice) => void,
         onCancel: () => void
@@ -1263,13 +1264,15 @@ export class SvgInteractionService {
         const rect = opts.el.getBoundingClientRect();
 
         // Determine picker style
-        let pickerStyle = opts.suggestedPickerStyle;
+        let pickerStyle = opts.pickerStyle ?? opts.suggestedPickerStyle ?? 'auto';
         if (pickerStyle === 'auto') {
             pickerStyle = this.state.interactionMode() == 'mouse' ? 'linear' : 'radial';
         }
-        const optionsPickerStyle = this.optionsService.options().pickerStyle;
-        if (optionsPickerStyle !== 'default') {
-            pickerStyle = optionsPickerStyle;
+        if (!opts.pickerStyle) {
+            const optionsPickerStyle = this.optionsService.options().pickerStyle;
+            if (optionsPickerStyle !== 'default') {
+                pickerStyle = optionsPickerStyle;
+            }
         }
 
         // Create appropriate picker component
