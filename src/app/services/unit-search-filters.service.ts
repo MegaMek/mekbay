@@ -38,8 +38,10 @@ import { MultiState, MultiStateSelection } from '../components/multi-select-drop
 import { ActivatedRoute, Router } from '@angular/router';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { naturalCompare } from '../utils/sort.util';
+import { parseSearchQuery, SearchTokensGroup } from '../utils/search.util';
 import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
+import { matchesSearch } from '../utils/search.util';
 
 /*
  * Author: Drake
@@ -338,14 +340,7 @@ function getUnitComponentData(unit: Unit) {
     return cached;
 }
 
-interface SearchToken {
-    token: string;
-    mode: 'exact' | 'partial';
-}
 
-interface SearchTokens {
-    tokens: SearchToken[];
-}
 
 @Injectable({ providedIn: 'root' })
 export class UnitSearchFiltersService {
@@ -403,57 +398,8 @@ export class UnitSearchFiltersService {
         return 'Structure / Squad Size';
     });
 
-    searchTokens = computed((): SearchTokens[] => {
-        const query = this.searchText().trim().toLowerCase();
-        if (!query) return [];
-
-        // Split top-level on commas/semicolons but ignore those inside double quotes
-        const groups: string[] = [];
-        let buf = '';
-        let inQuotes = false;
-        for (let i = 0; i < query.length; i++) {
-            const ch = query[i];
-            if (ch === '"') {
-                inQuotes = !inQuotes;
-                buf += ch;
-            } else if ((ch === ',' || ch === ';') && !inQuotes) {
-                const trimmed = buf.trim();
-                if (trimmed) groups.push(trimmed);
-                buf = '';
-            } else {
-                buf += ch;
-            }
-        }
-        const last = buf.trim();
-        if (last) groups.push(last);
-
-        const results = groups.map(group => {
-            const tokens: SearchToken[] = [];
-            // Extract quoted tokens (exact) and unquoted tokens (partial)
-            const re = /"([^"]+)"|(\S+)/g;
-            let m: RegExpExecArray | null;
-            while ((m = re.exec(group)) !== null) {
-                if (m[1] !== undefined) {
-                    // Quoted exact token: keep the full content (may contain commas/spaces)
-                    const cleaned = DataService.removeAccents(m[1].trim());
-                    if (cleaned) tokens.push({ token: cleaned, mode: 'exact' });
-                } else if (m[2] !== undefined) {
-                    const cleaned = DataService.removeAccents(m[2].trim());
-                    if (cleaned) tokens.push({ token: cleaned, mode: 'partial' });
-                }
-            }
-
-            // Deduplicate tokens while preserving the longest-first ordering for partial matches
-            const uniqueMap = new Map<string, SearchToken>();
-            // Sort by length desc so longer partial tokens are matched first
-            tokens.sort((a, b) => b.token.length - a.token.length);
-            for (const t of tokens) {
-                if (!uniqueMap.has(t.token)) uniqueMap.set(t.token, t);
-            }
-
-            return { tokens: Array.from(uniqueMap.values()) };
-        });
-        return results;
+    searchTokens = computed((): SearchTokensGroup[] => {
+        return parseSearchQuery(this.searchText());
     });
 
     private recalculateBVRange() {
@@ -646,33 +592,12 @@ export class UnitSearchFiltersService {
 
     filteredUnitsBySearchTextTokens = computed(() => {
         if (!this.isDataReady()) return [];
-        let results = this.units;
         const searchTokens = this.searchTokens();
-        if (searchTokens.length === 0) return results;
-        results = results.filter(unit => {
-            // Unit matches if it matches ANY of the OR groups
-            return searchTokens.some(group => {
-                // Separate exact and partial tokens
-                const exactTokens = group.tokens.filter(t => t.mode === 'exact').map(t => t.token);
-                const partialTokens = group.tokens
-                    .filter(t => t.mode === 'partial')
-                    .map(t => t.token)
-                    .sort((a, b) => b.length - a.length); // longest-first for non-overlap matching
+        if (searchTokens.length === 0) return this.units;
 
-                // All exact tokens must match via exactMatchWord
-                for (const et of exactTokens) {
-                    if (!this.exactMatchWord(unit, et)) return false;
-                }
-
-                // All partial tokens must match non-overlappingly
-                if (partialTokens.length > 0) {
-                    if (!this.partialMatchWords(unit, partialTokens)) return false;
-                }
-
-                return true;
-            });
-        });
-        return results;
+        return this.units.filter(unit => 
+            matchesSearch(`${unit._chassis ?? ''} ${unit._model ?? ''}`, searchTokens, true)
+        );
     });
 
     // All filters applied
@@ -963,50 +888,6 @@ export class UnitSearchFiltersService {
     return result;
 });
 
-    /**
-     * Checks if a unit chassis/model matches all the given words.
-     * @param unit The unit to check.
-     * @param words The words to match against the unit's properties, they must be sorted from longest to shortest
-     * @returns True if the unit matches all words, false otherwise.
-     */
-    private partialMatchWords(unit: Unit, words: string[]): boolean {
-        if (!words || words.length === 0) return true;
-        const text = `${unit._chassis ?? ''} ${unit._model ?? ''}`;
-        return this.tokensMatchNonOverlapping(text, words);
-    }
-
-    private exactMatchWord(unit: Unit, word: string): boolean {
-        if (!word || word.length === 0) return true;
-        if (word == unit._chassis) return true;
-        if (word == unit._model) return true;
-        if (word === `${unit._chassis ?? ''} ${unit._model ?? ''}`) return true;
-        if (word === `${unit._model ?? ''} ${unit._chassis ?? ''}`) return true;
-        return false;
-    }
-
-    private tokensMatchNonOverlapping(text: string, tokens: string[]): boolean {
-        const hay = text;
-        const taken: Array<[number, number]> = [];
-        for (const token of tokens) {
-            if (!token) continue;
-            let start = 0;
-            let found = false;
-            while (start <= hay.length - token.length) {
-                const idx = hay.indexOf(token, start);
-                if (idx === -1) break;
-                const end = idx + token.length;
-                const overlaps = taken.some(([s, e]) => !(end <= s || idx >= e));
-                if (!overlaps) {
-                    taken.push([idx, end]);
-                    found = true;
-                    break;
-                }
-                start = idx + 1;
-            }
-            if (!found) return false;
-        }
-        return true;
-    }
 
     private getValidFilterValues(units: Unit[], conf: AdvFilterConfig): number[] {
         let vals = units

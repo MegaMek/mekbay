@@ -103,7 +103,7 @@
                         @if (option.img) {
                             <img [src]="option.img" class="option-img" alt="">
                         }
-                        <span>{{ option.name }}</span>
+                        <span [innerHTML]="highlight(option.name)"></span>
                         @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
                             <div class="quantity-input">
                             <input type="number" 

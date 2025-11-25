@@ -34,6 +34,7 @@
 import { Component, HostListener, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LayoutService } from '../../services/layout.service';
+import { highlightMatches, matchesSearch, parseSearchQuery } from '../../utils/search.util';
 
 /*
  * Author: Drake
@@ -99,18 +100,20 @@ export class MultiSelectDropdownComponent {
     });
 
     filteredOptions = computed(() => {
-        const filter = this.filterText().toLowerCase().replace(/[^a-z0-9]/gi, '');
-        // Normalize filter for smart matching (e.g. "AC/5" matches "ac5" or "AC 5")
-        function normalize(str: string) {
-            return str.toLowerCase().replace(/[^a-z0-9]/gi, '');
-        }
-        const nameFiltered = filter ? this.options().filter(option => normalize(option.name).includes(filter)) : this.options();
+        const searchTokens = parseSearchQuery(this.filterText());
+        const nameFiltered = this.options().filter(option => matchesSearch(option.name, searchTokens, true));
+
         // if the toggle is off, hide unavailable items
         if (!this.showUnavailable()) {
             return nameFiltered.filter(option => option.available !== false || this.isSelected(option.name));
         }
         return nameFiltered;
     });
+
+    highlight(text: string): string {
+        const searchTokens = parseSearchQuery(this.filterText());
+        return highlightMatches(text, searchTokens, true);
+    }
 
     toggleUnavailable(event: MouseEvent) {
         // prevent the click from closing the dropdown
