@@ -34,40 +34,37 @@
 import { EquipmentInteractionHandler, HandlerContext } from '../services/equipment-interaction-registry.service';
 import { MountedEquipment } from '../models/force-serialization';
 import { PickerChoice, PickerValue } from '../components/picker/picker.interface';
-import { CycleModeHandler } from './base/cycle-mode.handler';
 
-export class ECMHandler extends CycleModeHandler {
+export class ECMHandler extends EquipmentInteractionHandler {
     readonly id = 'ecm-handler';
-    override readonly stateKey = 'ecm_mode';
     readonly flags = ['F_ECM'];
     override readonly priority = 10;
 
-    protected getDefaultMode(): string {
+    private readonly stateKey = 'ecm_mode';
+
+    private getDefaultMode(): string {
         return 'ecm';
     }
 
-    protected getModes(equipment: MountedEquipment) {
+    private getModes(equipment: MountedEquipment) {
         const modes = [
-            { value: 'ecm', label: 'ECM', shortLabel: 'ECM' },
-            { value: 'eccm', label: 'ECCM', shortLabel: 'ECCM' },
-            { value: 'ghost', label: 'Ghost', shortLabel: 'Ghost' },
-            { value: 'off', label: 'Off', shortLabel: 'Off' }
+            { value: 'ecm', label: 'ECM' },
+            { value: 'eccm', label: 'ECCM' },
+            { value: 'ghost', label: 'Ghost' },
+            { value: 'off', label: 'Off' }
         ];
         if (equipment.equipment?.flags.has('F_ANGEL_ECM')) {
             modes.splice(modes.length - 1, 0, // Insert before "Off"
                 {
                     label: 'ECM+ECCM',
-                    shortLabel: 'Dual',
                     value: 'ecm-eccm',
                 },
                 {
                     label: 'ECM+Ghost',
-                    shortLabel: 'ECM+Ghost',
                     value: 'ecm-ghost',
                 },
                 {
                     label: 'ECCM+Ghost',
-                    shortLabel: 'ECCM+Ghost',
                     value: 'eccm-ghost',
                 }
             );
@@ -75,10 +72,30 @@ export class ECMHandler extends CycleModeHandler {
         return modes;
     }
 
-    // Override to add Angel ECM support
-    override getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
-        const choices = super.getChoices(equipment, context);
-        return choices;
+    getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
+        const currentState = equipment.states?.get(this.stateKey) || this.getDefaultMode();
+        const modes = this.getModes(equipment);
+
+        return [
+            {
+                label: 'ECM Mode:',
+                value: currentState,
+                displayType: 'dropdown',
+                choices: modes,
+                disabled: equipment.destroyed,
+                keepOpen: true
+            }
+        ];
+    }
+
+    handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {
+        equipment.states?.set(this.stateKey, String(choice.value));
+        equipment.owner.setInventoryEntry(equipment);
+        context.toastService.show(
+            `${equipment.equipment?.name||equipment.name} mode: ${choice.label}`,
+            'info'
+        );
+        return true;
     }
 
     isActive(equipment: MountedEquipment): boolean {

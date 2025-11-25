@@ -54,13 +54,13 @@ export abstract class MultiModeHandler extends EquipmentInteractionHandler {
         }));
     }
     
-    handleSelection(equipment: MountedEquipment, value: PickerValue, context: HandlerContext): boolean {
+    handleSelection(equipment: MountedEquipment, value: PickerChoice, context: HandlerContext): boolean {
         equipment.states?.set(this.stateKey, String(value));
         equipment.owner.setInventoryEntry(equipment);
         
-        const mode = this.getModes(equipment).find(m => m.value === value);
+        const mode = this.getModes(equipment).find(m => m.value === value.value);
         context.toastService.show(
-            `${equipment.equipment?.name||equipment.name} mode: ${mode?.label || value}`,
+            `${equipment.equipment?.name||equipment.name} mode: ${mode?.label || value.value}`,
             'info'
         );
         return true;

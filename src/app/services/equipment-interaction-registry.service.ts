@@ -48,7 +48,7 @@ export interface HandlerContext {
  */
 export interface HandlerChoice extends PickerChoice {
     /** Internal identifier linking this choice to its handler */
-    _handlerId?: string;
+    _handler?: EquipmentInteractionHandler;
 }
 
 /**
@@ -90,7 +90,7 @@ export abstract class EquipmentInteractionHandler {
      * @param context Additional context information
      * @returns true if the picker should close, false to keep it open
      */
-    abstract handleSelection(equipment: MountedEquipment, value: PickerValue, context: HandlerContext): boolean;
+    abstract handleSelection(equipment: MountedEquipment, value: PickerChoice, context: HandlerContext): boolean;
 }
 
 /**
@@ -151,7 +151,7 @@ class EquipmentInteractionRegistry {
                 // Tag each choice with the handler ID
                 const taggedChoices = choices.map(choice => ({
                     ...choice,
-                    _handlerId: handler.id
+                    _handler: handler
                 }));
                 allChoices.push(...taggedChoices);
             }
@@ -168,18 +168,11 @@ class EquipmentInteractionRegistry {
         choice: HandlerChoice,
         context: HandlerContext
     ): boolean {
-        if (!choice._handlerId) {
-            console.warn('Choice missing handler ID, cannot process');
+        if (!choice._handler) {
             return false;
         }
         
-        const handler = this.handlers.get(choice._handlerId);
-        if (!handler) {
-            console.warn(`Handler "${choice._handlerId}" not found`);
-            return false;
-        }
-        
-        return handler.handleSelection(equipment, choice.value, context);
+        return choice._handler.handleSelection(equipment, choice, context);
     }
 }
 

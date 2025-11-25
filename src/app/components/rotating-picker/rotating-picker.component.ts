@@ -320,7 +320,7 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
     position = signal<PickerPosition>({ x: 0, y: 0 });
     initialEvent = signal<PointerEvent | null>(null);
 
-    picked = output<PickerValue>();
+    picked = output<PickerChoice>();
     cancelled = output<void>();
 
     // Component-specific signals
@@ -512,7 +512,7 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
         // Handle Enter key to confirm current value
         if (event.key === 'Enter') {
             event.preventDefault();
-            this.pick(this.currentValue());
+            this.pick({ value: this.currentValue(), label: this.currentValue().toString() });
             return;
         }
 
@@ -562,7 +562,7 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
         }
     }
 
-    pick(val: PickerValue): void {
+    pick(val: PickerChoice): void {
         this.picked.emit(val);
     }
 
@@ -750,7 +750,7 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
         if (!this.isDragging) {
             const target = document.elementFromPoint(event.clientX, event.clientY) as SVGElement;
             if (target && target.classList.contains('dial-center-area')) {
-                this.pick(this.currentValue());
+                this.pick({ value: this.currentValue(), label: this.currentValue().toString() } );
             }
         }
         // Clean up regardless of whether a drag occurred

@@ -65,7 +65,7 @@ export class RadialPickerComponent implements PickerComponent {
     readonly beginEndPadding = signal<number>(BEGIN_END_SECTOR_PADDING);
     readonly initialEvent = signal<PointerEvent | null>(null);
 
-    picked = output<PickerValue>();
+    picked = output<PickerChoice>();
     cancelled = output<void>();
 
     hoveredChoice = signal<PickerChoice | null>(null);
@@ -358,10 +358,10 @@ export class RadialPickerComponent implements PickerComponent {
         event.stopPropagation();
         event.preventDefault();
         this.pointerDownInside = false;
-        this.pick(choice.value);
+        this.pick({value: choice.value, label: choice.label});
     }
 
-    pick(val: PickerValue): void {
+    pick(val: PickerChoice): void {
         this.picked.emit(val);
         this.resetHovered();
     }
@@ -431,7 +431,7 @@ export class RadialPickerComponent implements PickerComponent {
         }
         event.stopPropagation();
         event.preventDefault();
-        this.pick(hoveredChoice.value);
+        this.pick(hoveredChoice);
     };
 
     private readonly handleOutsideClick = (event: PointerEvent): void => {
