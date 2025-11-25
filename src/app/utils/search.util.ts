@@ -245,6 +245,6 @@ export function highlightMatches(
 
     const parts = text.split(regex);
     return parts
-        .map((part) => (regex.test(part) ? `<b>${escapeHtml(part)}</b>` : escapeHtml(part)))
+        .map((part) => (regex.test(part) ? `<span class="matchHighlight">${escapeHtml(part)}</span>` : escapeHtml(part)))
         .join('');
 }

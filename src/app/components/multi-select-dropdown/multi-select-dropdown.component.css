@@ -122,6 +122,11 @@
     -webkit-overflow-scrolling: touch;
 }
 
+.option-item ::ng-deep .matchHighlight {
+    font-weight: bolder;
+    color: var(--bt-yellow);
+}
+
 .option-item.selected-single {
     background-color: var(--bt-yellow-background);
     color: var(--bt-yellow);
