@@ -930,8 +930,9 @@ export class RsPolyfillUtil {
     }
 
     private static addCritSlotClasses(svg: SVGSVGElement): void {
-        const critSlots = svg.querySelectorAll('.critSlot');
-        critSlots.forEach(critSlot => {
+        const critSlots = svg.querySelectorAll<SVGSVGElement>('.critSlot');
+        const columns = new Map<ParentNode, DOMRect>();
+        critSlots.forEach((critSlot: SVGSVGElement) => {
             // Avoid duplicate insertion
             if (critSlot.querySelector('.critSlot-bg-rect')) return;
             if (critSlot.getAttribute('hittable') != '1') return;
@@ -942,17 +943,27 @@ export class RsPolyfillUtil {
 
             // Get text bounding box for positioning
             let bbox: DOMRect | null = null;
+            let parentBBox: DOMRect | null = null;
             try {
-                bbox = (textElement as SVGGraphicsElement).getBBox();
+                bbox = critSlot.getBBox();
+                // having the parentBBox saved avoids the drifting of the X position after we add elements with X-1
+                if (columns.has(critSlot.parentNode as ParentNode)) {
+                    parentBBox = columns.get(critSlot.parentNode as ParentNode) || null;
+                } else {
+                    parentBBox = (critSlot.parentNode as SVGGraphicsElement).getBBox();
+                    columns.set(critSlot.parentNode as ParentNode, parentBBox);
+                }
             } catch {
                 bbox = null;
+                parentBBox = null;
             }
-            if (!bbox) return;
+
+            if (!bbox || !parentBBox) return;
 
             // Create background rect
-            const rectWidth = Math.max(90, bbox.width)+6;
+            const rectWidth = 95; //Math.max(90, bbox.width)+5;
             const rectHeight = bbox.height;
-            const rectX = bbox.x - 12; // Slight left padding
+            const rectX = parentBBox.x - 1; // Slight left padding
             const rectY = bbox.y;
 
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -965,7 +976,7 @@ export class RsPolyfillUtil {
 
             // Insert rect before the text element
             critSlot.insertBefore(rect, textElement);
-
         });
+        columns.clear();
     }
 }
