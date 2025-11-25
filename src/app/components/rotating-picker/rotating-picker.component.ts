@@ -33,8 +33,9 @@
 
 import { CommonModule } from '@angular/common';
 import { Component, ElementRef, AfterViewInit, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, HostListener, viewChild, DestroyRef, inject } from '@angular/core';
-import { PickerComponent, PickerChoice, PickerValue, PickerInteractionType, PickerPosition } from '../picker/picker.interface';
+import { PickerComponent, PickerChoice, PickerValue, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
+import { LayoutService } from '../../services/layout.service';
 /*
  * Author: Drake
  */
@@ -310,14 +311,14 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
     `]
 })
 export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
+    public layoutService = inject(LayoutService);
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     pickerRef = viewChild.required<ElementRef<SVGElement>>('picker');
 
-    interactionType = signal<PickerInteractionType>('mouse');
-    title = signal<string | null>(null);
+    title = input<string | null>(null);
     values = signal<PickerChoice[]>([]); // We will use only the min/max value of it...
-    selected = signal<PickerValue | null>(0);
-    position = signal<PickerPosition>({ x: 0, y: 0 });
+    selected = input<PickerValue | null>(0);
+    position = input<PickerPosition>({ x: 0, y: 0 });
     initialEvent = signal<PointerEvent | null>(null);
 
     picked = output<PickerChoice>();
@@ -353,7 +354,7 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
     });
 
     // Computed properties
-    readonly diameter = computed(() => this.interactionType() === 'touch' ? ROTATING_PICKER_DIAMETER * 1.3 : ROTATING_PICKER_DIAMETER);
+    readonly diameter = computed(() => this.layoutService.isTouchInput() ? ROTATING_PICKER_DIAMETER * 1.3 : ROTATING_PICKER_DIAMETER);
     readonly radius = computed(() => this.diameter() / 2);
     readonly innerRadius = computed(() => this.radius() * 0.4);
     readonly notchIndices = computed(() => Array.from({ length: 24 }, (_, i) => i));

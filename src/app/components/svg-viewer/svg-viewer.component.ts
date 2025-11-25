@@ -63,7 +63,7 @@ export class SvgViewerComponent implements AfterViewInit {
     private zoomPanService = inject(SvgZoomPanService);
     private interactionService = inject(SvgInteractionService);
     private forceBuilder = inject(ForceBuilderService);
-    private layoutService = inject(LayoutService);
+    public layoutService = inject(LayoutService);
     optionsService = inject(OptionsService);
     unit = input<ForceUnit | null>(null);
     force = input<Force | null>(null);
@@ -113,11 +113,6 @@ export class SvgViewerComponent implements AfterViewInit {
 
     // Signals for picker state
     private isPickerOpen = signal(false);
-
-    // Interaction mode and visibility signals from interaction service
-    get interactionMode() {
-        return this.interactionService.getState().interactionMode;
-    }
 
     get diffHeatMarkerVisible() {
         return this.interactionService.getState().diffHeatMarkerVisible;

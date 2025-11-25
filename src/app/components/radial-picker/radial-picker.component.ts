@@ -32,8 +32,9 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, signal, computed, output, ChangeDetectionStrategy, viewChild, effect, afterNextRender, inject, Injector } from '@angular/core';
+import { Component, ElementRef, signal, computed, output, ChangeDetectionStrategy, viewChild, effect, afterNextRender, inject, Injector, input } from '@angular/core';
 import { PickerChoice, PickerComponent, PickerValue } from '../picker/picker.interface';
+import { LayoutService } from '../../services/layout.service';
 
 /*
  * Author: Drake
@@ -53,13 +54,13 @@ const BEGIN_END_SECTOR_PADDING = 110;
 })
 export class RadialPickerComponent implements PickerComponent {
     private readonly injector = inject(Injector);
+    public readonly layoutService = inject(LayoutService);
 
     // Input signals
-    readonly interactionType = signal<'mouse' | 'touch'>('mouse');
-    readonly title = signal<string | null>(null);
+    readonly title = input<string | null>(null);
     readonly values = signal<PickerChoice[]>([]);
-    readonly selected = signal<PickerValue | null>(null);
-    readonly position = signal<{ x: number, y: number }>({ x: 0, y: 0 });
+    readonly selected = input<PickerValue | null>(null);
+    readonly position = input<{ x: number, y: number }>({ x: 0, y: 0 });
     readonly useCurvedText = signal<boolean>(false);
     readonly innerRadius = signal<number>(DEFAULT_RADIAL_INNER_RADIUS);
     readonly beginEndPadding = signal<number>(BEGIN_END_SECTOR_PADDING);
@@ -84,7 +85,7 @@ export class RadialPickerComponent implements PickerComponent {
             return baseRadius * 2;
         }
 
-        const baseDiameter = this.interactionType() === 'touch'
+        const baseDiameter = this.layoutService.isTouchInput()
             ? RADIAL_PICKER_DIAMETER * 1.3
             : RADIAL_PICKER_DIAMETER;
         const baseOuterDiameter = Math.max(baseRadius * 2, baseDiameter);
@@ -209,7 +210,7 @@ export class RadialPickerComponent implements PickerComponent {
 
     getLabelPosition(index: number): { x: number, y: number } {
         const n = this.values().length;
-        const coefficient = this.interactionType() === 'touch' ? 0.7 : 0.6;
+        const coefficient = this.layoutService.isTouchInput() ? 0.7 : 0.6;
         const labelRadius = this.innerRadius() + (this.radius() - this.innerRadius()) * coefficient;
 
         // Special case for single value - center at top

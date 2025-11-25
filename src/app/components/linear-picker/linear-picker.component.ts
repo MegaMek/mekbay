@@ -32,9 +32,10 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, signal, output, computed, inject, Injector, ChangeDetectionStrategy, viewChild, afterNextRender, effect } from '@angular/core';
+import { Component, ElementRef, signal, output, computed, inject, Injector, ChangeDetectionStrategy, viewChild, afterNextRender, effect, input } from '@angular/core';
 import { PickerComponent, PickerValue } from '../picker/picker.interface';
 import { HandlerChoice } from '../../services/equipment-interaction-registry.service';
+import { LayoutService } from '../../services/layout.service';
 
 /*
  * Author: Drake
@@ -49,15 +50,15 @@ import { HandlerChoice } from '../../services/equipment-interaction-registry.ser
 })
 export class LinearPickerComponent implements PickerComponent {
     private readonly injector = inject(Injector);
+    public readonly layoutService = inject(LayoutService);
 
     // Input signals
-    readonly interactionType = signal<'mouse' | 'touch'>('mouse');
-    readonly title = signal<string | null>(null);
+    readonly title = input<string | null>(null);
     readonly values = signal<HandlerChoice[]>([]);
-    readonly selected = signal<PickerValue | null>(null);
-    readonly position = signal<{ x: number, y: number }>({ x: 0, y: 0 });
-    readonly horizontal = signal<boolean>(false);
-    readonly align = signal<'topleft' | 'left' | 'center'>('center');
+    readonly selected = input<PickerValue | null>(null);
+    readonly position = input<{ x: number, y: number }>({ x: 0, y: 0 });
+    readonly horizontal = input<boolean>(false);
+    readonly align = input<'topleft' | 'left' | 'center'>('center');
     readonly initialEvent = signal<PointerEvent | null>(null);
 
     picked = output<HandlerChoice>();
@@ -268,7 +269,7 @@ export class LinearPickerComponent implements PickerComponent {
         let pickerOffsetX = this.position().x - cellCenterX;
         const pickerOffsetY = this.position().y - cellCenterY;
         
-        if (this.interactionType() === 'touch') {
+        if (this.layoutService.isTouchInput()) {
             // For touch interaction, adjust the offset to center the cell
             pickerOffsetX -= (cellRect.width / 3);
         }

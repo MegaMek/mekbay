@@ -57,7 +57,6 @@ import { ForceBuilderService } from '../../services/force-builder.service';
  * Author: Drake
  */
 export interface InteractionState {
-    interactionMode: WritableSignal<'touch' | 'mouse'>;
     clickTarget: SVGElement | null;
     isHeatDragging: boolean;
     diffHeatMarkerVisible: WritableSignal<boolean>;
@@ -83,7 +82,6 @@ export class SvgInteractionService {
     private injector!: Injector;
 
     private state: InteractionState = {
-        interactionMode: signal<'touch' | 'mouse'>('touch'),
         clickTarget: null,
         isHeatDragging: false,
         diffHeatMarkerVisible: signal(false),
@@ -148,7 +146,7 @@ export class SvgInteractionService {
             }
 
             this.updateHeatHighlight(data.heat);
-            const isMouse = this.state.interactionMode() === 'mouse';
+            const isMouse = !this.layoutService.isTouchInput();
             const markerWidth = isMouse ? 50 : 150;
             const markerHeight = isMouse ? 22 : 44;
             const spacing = 4;
@@ -176,7 +174,6 @@ export class SvgInteractionService {
 
     getState(): Readonly<InteractionState> {
         return {
-            interactionMode: this.state.interactionMode,
             clickTarget: this.state.clickTarget,
             isHeatDragging: this.state.isHeatDragging,
             diffHeatMarkerVisible: this.state.diffHeatMarkerVisible,
@@ -220,7 +217,6 @@ export class SvgInteractionService {
 
         el.addEventListener('pointerdown', (evt: PointerEvent) => {
             evt.preventDefault();
-            this.state.interactionMode.set(evt.pointerType === 'mouse' ? 'mouse' : 'touch');
             this.state.clickTarget = el;
             this.zoomPanService.pointerMoved = false;
             clearLongTouch();
@@ -978,8 +974,6 @@ export class SvgInteractionService {
             el.addEventListener('pointerdown', (evt: PointerEvent) => {
                 evt.preventDefault();
                 if (dragState) return;
-                const interactionType = evt.pointerType === 'mouse' ? 'mouse' : 'touch';
-                this.state.interactionMode.set(interactionType);
                 this.zoomPanService.pointerMoved = false;
                 dragState = {
                     pointerId: evt.pointerId,
@@ -1266,7 +1260,7 @@ export class SvgInteractionService {
         // Determine picker style
         let pickerStyle = opts.pickerStyle ?? opts.suggestedPickerStyle ?? 'auto';
         if (pickerStyle === 'auto') {
-            pickerStyle = this.state.interactionMode() == 'mouse' ? 'linear' : 'radial';
+            pickerStyle = !this.layoutService.isTouchInput() ? 'linear' : 'radial';
         }
         if (!opts.pickerStyle) {
             const optionsPickerStyle = this.optionsService.options().pickerStyle;
@@ -1312,27 +1306,28 @@ export class SvgInteractionService {
         });
 
         const instance = compRef.instance;
-        instance.interactionType.set(this.state.interactionMode());
-        instance.title.set(opts.title);
+        compRef.setInput('title', opts.title);
+        compRef.setInput('selected', opts.selected);
         instance.values.set(opts.values);
-        instance.selected.set(opts.selected);
 
         if (opts.targetType === 'crit') {
-            instance.horizontal.set(true);
-            instance.align.set('topleft');
             const pickerX = opts.position?.x ?? rect.left;
             const pickerY = opts.position?.y ?? rect.top;
-            instance.position.set({ x: pickerX, y: pickerY });
+            compRef.setInput('position', { x: pickerX, y: pickerY });
+            compRef.setInput('align', 'topleft');
+            compRef.setInput('horizontal', true);
         } else
             if (opts.targetType === 'inventory') {
-                instance.align.set('left');
                 const pickerX = opts.position?.x ?? (rect.left + rect.width + 4);
                 const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-                instance.position.set({ x: pickerX, y: pickerY });
+                compRef.setInput('position', { x: pickerX, y: pickerY });
+                compRef.setInput('align', 'left');
+                compRef.setInput('horizontal', true);
             } else {
                 const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
                 const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-                instance.position.set({ x: pickerX, y: pickerY });
+                compRef.setInput('position', { x: pickerX, y: pickerY });
+                compRef.setInput('horizontal', false);
             }
         if (opts.event instanceof PointerEvent) {
             instance.initialEvent.set(opts.event);
@@ -1348,14 +1343,13 @@ export class SvgInteractionService {
         });
 
         const instance = compRef.instance;
-        instance.interactionType.set(this.state.interactionMode());
-        instance.title.set(opts.title);
         instance.values.set(opts.values);
-        instance.selected.set(opts.selected);
+        compRef.setInput('title', opts.title);
+        compRef.setInput('selected', opts.selected);
 
         const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
         const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-        instance.position.set({ x: pickerX, y: pickerY });
+        compRef.setInput('position', { x: pickerX, y: pickerY });
         if (opts.event instanceof PointerEvent) {
             instance.initialEvent.set(opts.event);
         }
@@ -1370,28 +1364,27 @@ export class SvgInteractionService {
         });
 
         const instance = compRef.instance;
-        instance.interactionType.set(this.state.interactionMode());
-        instance.title.set(opts.title);
         instance.values.set(opts.values);
-        instance.selected.set(opts.selected);
+        compRef.setInput('title', opts.title);
+        compRef.setInput('selected', opts.selected);
 
         if (opts.targetType === 'crit' || opts.targetType === 'inventory') {
+            const x = opts.event.clientX;
+            const y = opts.event.clientY;
             instance.beginEndPadding.set(0);
             instance.useCurvedText.set(true);
             instance.innerRadius.set(40);
+            compRef.setInput('position', { x: opts.position?.x ?? x, y: opts.position?.y ?? y });
+        } else if (opts.targetType === 'armor') {
             const x = opts.event.clientX;
             const y = opts.event.clientY;
-            instance.position.set({ x: opts.position?.x ?? x, y: opts.position?.y ?? y });
-        } else if (opts.targetType === 'armor') {
             instance.beginEndPadding.set(50);
             instance.innerRadius.set(50);
-            const x = opts.event.clientX;
-            const y = opts.event.clientY;
-            instance.position.set({ x: opts.position?.x ?? x, y: opts.position?.y ?? y });
+            compRef.setInput('position', { x: opts.position?.x ?? x, y: opts.position?.y ?? y });
         } else {
             const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
             const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-            instance.position.set({ x: pickerX, y: pickerY });
+            compRef.setInput('position', { x: pickerX, y: pickerY });
             if (!opts.title) {
                 instance.beginEndPadding.set(0);
             }
