@@ -283,11 +283,6 @@ export class App {
         window.location.reload();
     }
 
-    copyBuildInfo(): void {
-        if (!copyTextToClipboard(this.buildInfo)) return;
-        this.toastService.show('Build info copied to clipboard.', 'info');
-    }
-
     showLicenseDialog(): void {
         this.dialogService.createDialog(LicenseDialogComponent);
     }
