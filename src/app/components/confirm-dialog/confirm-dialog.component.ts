@@ -34,6 +34,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 /*
  * Author: Drake
@@ -46,7 +47,8 @@ export interface ConfirmDialogButton<T = any> {
 
 export interface ConfirmDialogData<T = any> {
     title: string;
-    message: string;
+    message?: string;
+    messageHtml?: string;
     buttons: ConfirmDialogButton<T>[];
 }
 
@@ -62,7 +64,11 @@ export interface ConfirmDialogData<T = any> {
     <div class="content">
         <h2 dialog-title>{{ data.title }}</h2>
         <div dialog-content>
-            <p>{{ data.message }}</p>
+            @if (safeMessageHtml) {
+                <div [innerHTML]="safeMessageHtml"></div>
+            } @else {
+                <p>{{ data.message }}</p>
+            }
         </div>
         <div dialog-actions>
             @for (btn of data.buttons; let i = $index; track i) {
@@ -106,8 +112,14 @@ export interface ConfirmDialogData<T = any> {
 export class ConfirmDialogComponent<T = any> {
     public dialogRef: DialogRef<T, ConfirmDialogComponent<T>> = inject(DialogRef);
     readonly data: ConfirmDialogData<T> = inject(DIALOG_DATA);
+    private sanitizer = inject(DomSanitizer);
+    safeMessageHtml: SafeHtml | null = null;
 
-    constructor() { }
+    constructor() {
+        if (this.data.messageHtml) {
+            this.safeMessageHtml = this.sanitizer.bypassSecurityTrustHtml(this.data.messageHtml);
+        }
+    }
 
     close(value: T) {
         this.dialogRef.close(value);
