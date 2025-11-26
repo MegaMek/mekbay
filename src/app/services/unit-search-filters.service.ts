@@ -48,7 +48,7 @@ import { matchesSearch } from '../utils/search.util';
  */
 export interface SortOption {
     key: string;
-    label: string;    
+    label: string;
     slotLabel?: string; // Optional label prefix to show in the slot (e.g., "BV")
     slotIcon?: string;  // Optional icon for the slot (e.g., '/images/calendar.svg')
     gameSystem?: 'cbt' | 'as';
@@ -113,7 +113,7 @@ type AdvFilterOptions = DropdownFilterOptions | RangeFilterOptions;
 const DEFAULT_FILTER_CURVE = 0;
 export const FACTION_EXTINCT = 3;
 
-function smartDropdownSort(options: string[], predefinedOrder?: string[]): string[] {
+function sortAvailableDropdownOptions(options: string[], predefinedOrder?: string[]): string[] {
     if (predefinedOrder && predefinedOrder.length > 0) {
         const optionsSet = new Set(options);
         const sortedOptions: string[] = [];
@@ -153,10 +153,10 @@ function getProperty(obj: any, key?: string) {
 }
 
 function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiStateSelection): Unit[] {
-    const orList: Array<{name: string, count: number}> = [];
-    const andList: Array<{name: string, count: number}> = [];
+    const orList: Array<{ name: string, count: number }> = [];
+    const andList: Array<{ name: string, count: number }> = [];
     const notSet = new Set<string>();
-    
+
     for (const [name, selectionValue] of Object.entries(selection)) {
         const { state, count } = selectionValue;
         if (state === 'or') orList.push({ name, count });
@@ -168,7 +168,7 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
     if (orList.length === 0 && andList.length === 0 && notSet.size === 0) {
         return units;
     }
-    
+
     const needsQuantityCounting = [...orList, ...andList].some(item => item.count > 1);
     const isComponentFilter = key === 'componentName';
 
@@ -179,7 +179,7 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
     return units.filter(unit => {
         let unitData: { names: Set<string>; counts?: Map<string, number> };
 
-         if (isComponentFilter) {
+        if (isComponentFilter) {
             // Use cached component data for performance
             const cached = getUnitComponentData(unit);
             unitData = {
@@ -190,7 +190,7 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
             const propValue = getProperty(unit, key);
             const unitValues = Array.isArray(propValue) ? propValue : [propValue];
             const names = new Set(unitValues.filter(v => v != null));
-            
+
             unitData = { names };
             if (needsQuantityCounting) {
                 const counts = new Map<string, number>();
@@ -202,7 +202,7 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
                 unitData.counts = counts;
             }
         }
-        
+
         if (notSet.size > 0) {
             for (const notName of notSet) {
                 if (unitData.names.has(notName)) return false;
@@ -247,7 +247,7 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
 
 export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'era', label: 'Era', type: AdvFilterType.DROPDOWN, external: true },
-    { key: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true },
+    { key: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true, multistate: true },
     { key: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'cbt' },
     { key: 'as.TP', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'as' },
     { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: 'cbt' },
@@ -308,8 +308,8 @@ export const SORT_OPTIONS: SortOption[] = [
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
         .filter(f => !['era', 'faction', 'componentName', 'source'].includes(f.key))
-        .map(f => ({ 
-            key: f.key, 
+        .map(f => ({
+            key: f.key,
             label: f.label,
             slotLabel: f.label,
             gameSystem: f.game,
@@ -327,13 +327,13 @@ function getUnitComponentData(unit: Unit) {
     if (!cached) {
         const componentNames = new Set<string>();
         const componentCounts = new Map<string, number>();
-        
+
         for (const component of unit.comp) {
             const name = component.n;
             componentNames.add(name);
             componentCounts.set(name, (componentCounts.get(name) || 0) + component.q);
         }
-        
+
         cached = { componentNames, componentCounts };
         unitComponentCache.set(unit, cached);
     }
@@ -349,7 +349,7 @@ export class UnitSearchFiltersService {
     private router = inject(Router);
     private route = inject(ActivatedRoute);
     logger = inject(LoggerService);
-    
+
     ADVANCED_FILTERS = ADVANCED_FILTERS;
     pilotGunnerySkill = signal(4);
     pilotPilotingSkill = signal(5);
@@ -377,7 +377,7 @@ export class UnitSearchFiltersService {
         effect(() => {
             const gunnery = this.pilotGunnerySkill();
             const piloting = this.pilotPilotingSkill();
-            
+
             if (this.isDataReady() && this.advOptions()['bv']) {
                 this.recalculateBVRange();
             }
@@ -418,7 +418,7 @@ export class UnitSearchFiltersService {
 
         // Update the totalRangesCache which the computed signal depends on
         this.totalRangesCache['bv'] = [min, max];
-        
+
         // Adjust current filter value to fit within new range if it exists
         const currentFilter = this.filterState()['bv'];
         if (currentFilter?.interactedWith) {
@@ -427,7 +427,7 @@ export class UnitSearchFiltersService {
                 Math.max(min, currentValue[0]),
                 Math.min(max, currentValue[1])
             ];
-            
+
             // Only update if the value actually changed
             if (adjustedValue[0] !== currentValue[0] || adjustedValue[1] !== currentValue[1]) {
                 this.setFilter('bv', adjustedValue);
@@ -473,9 +473,9 @@ export class UnitSearchFiltersService {
     private getUnitIdsForSelectedEras(selectedEraNames: string[]): Set<number> | null {
         if (!selectedEraNames || selectedEraNames.length === 0) return null;
         const unitIds = new Set<number>();
-    
+
         const extinctFaction = this.dataService.getFactions().find(f => f.id === FACTION_EXTINCT);
-        
+
         for (const eraName of selectedEraNames) {
             const era = this.dataService.getEraByName(eraName);
             if (era) {
@@ -490,21 +490,84 @@ export class UnitSearchFiltersService {
         return unitIds;
     }
 
-    private getUnitIdsForSelectedFactions(selectedFactionNames: string[], contextEraIds?: Set<number>): Set<number> | null {
-        if (!selectedFactionNames || selectedFactionNames.length === 0) return null;
+    private getUnitIdsForFaction(factionName: string, contextEraIds?: Set<number>): Set<number> {
         const unitIds = new Set<number>();
-        for (const factionName of selectedFactionNames) {
-            const faction = this.dataService.getFactionByName(factionName);
-            if (faction) {
-                for (const eraIdStr in faction.eras) {
-                    const eraId = Number(eraIdStr);
-                    if (!contextEraIds || contextEraIds.has(eraId)) {
-                        (faction.eras[eraId] as Set<number>).forEach(id => unitIds.add(id));
-                    }
+        const faction = this.dataService.getFactionByName(factionName);
+        if (faction) {
+            for (const eraIdStr in faction.eras) {
+                const eraId = Number(eraIdStr);
+                if (!contextEraIds || contextEraIds.has(eraId)) {
+                    (faction.eras[eraId] as Set<number>).forEach(id => unitIds.add(id));
                 }
             }
         }
         return unitIds;
+    }
+
+    private getAllUnitIdsInContext(contextEraIds?: Set<number>): Set<number> {
+        if (!contextEraIds || contextEraIds.size === 0) {
+            // No era filter, get all unit IDs from the master list
+            return new Set(this.units.map(u => u.id));
+        }
+
+        // Era filter is present. We can reuse the logic from getUnitIdsForSelectedEras
+        const contextEraNames = this.dataService.getEras()
+            .filter(e => contextEraIds.has(e.id))
+            .map(e => e.name);
+
+        return this.getUnitIdsForSelectedEras(contextEraNames) || new Set<number>();
+    }
+
+    private getUnitIdsForSelectedFactions(selectedFactionEntries: MultiStateSelection, contextEraIds?: Set<number>): Set<number> | null {
+        const orFactions: string[] = [];
+        const andFactions: string[] = [];
+        const notFactions: string[] = [];
+        for (const [name, selection] of Object.entries(selectedFactionEntries)) {
+            if (!selection.state) continue;
+            if (selection.state === 'or') orFactions.push(selection.name);
+            else if (selection.state === 'and') andFactions.push(selection.name);
+            else if (selection.state === 'not') notFactions.push(selection.name);
+        }        
+        if (orFactions.length === 0 && andFactions.length === 0 && notFactions.length === 0) {
+            return null;
+        }
+
+        let resultSet: Set<number> | null = null;
+
+        // Handle OR selections to create the base set of unit IDs.
+        if (orFactions.length > 0) {
+            resultSet = new Set<number>();
+            for (const factionName of orFactions) {
+                this.getUnitIdsForFaction(factionName, contextEraIds)
+                    .forEach(id => resultSet!.add(id));
+            }
+        }
+
+        // Intersect with AND selections.
+        for (const factionName of andFactions) {
+            const factionUnitIds = this.getUnitIdsForFaction(factionName, contextEraIds);
+            if (resultSet === null) {
+                // If no ORs, the first AND sets the initial list.
+                resultSet = new Set(factionUnitIds);
+            } else {
+                // Intersect with the existing results.
+                resultSet = new Set([...resultSet].filter(id => factionUnitIds.has(id)));
+            }
+        }
+
+        // Subtract NOT selections.
+        if (notFactions.length > 0) {
+            if (resultSet === null) {
+                // If no ORs or ANDs, start with all units in context.
+                resultSet = this.getAllUnitIdsInContext(contextEraIds);
+            }
+            for (const factionName of notFactions) {
+                this.getUnitIdsForFaction(factionName, contextEraIds)
+                    .forEach(id => resultSet!.delete(id));
+            }
+        }
+
+        return resultSet;
     }
 
     private applyFilters(units: Unit[], state: FilterState): Unit[] {
@@ -514,20 +577,20 @@ export class UnitSearchFiltersService {
             .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
 
         const currentGame = this.gameSystem();
-        
+
         // Handle external (ID-based) filters first
         const selectedEraNames = activeFilters['era'] as string[] || [];
-        const selectedFactionNames = activeFilters['faction'] as string[] || [];
+        const selectedFactionEntries = activeFilters['faction'] as MultiStateSelection || {};
 
         let eraUnitIds: Set<number> | null = null;
         let factionUnitIds: Set<number> | null = null;
-        if (selectedFactionNames.length > 0) {
+        if (Object.values(selectedFactionEntries).some(s => s.state)) {
             const selectedEraIds = new Set(this.dataService.getEras().filter(e => selectedEraNames.includes(e.name)).map(e => e.id));
-            factionUnitIds = this.getUnitIdsForSelectedFactions(selectedFactionNames, selectedEraIds.size > 0 ? selectedEraIds : undefined);
+            factionUnitIds = this.getUnitIdsForSelectedFactions(selectedFactionEntries, selectedEraIds.size > 0 ? selectedEraIds : undefined);
         } else
-        if (selectedEraNames.length > 0) {
-            eraUnitIds = this.getUnitIdsForSelectedEras(selectedEraNames);
-        }
+            if (selectedEraNames.length > 0) {
+                eraUnitIds = this.getUnitIdsForSelectedEras(selectedEraNames);
+            }
 
         if (eraUnitIds || factionUnitIds) {
             let finalIds: Set<number> | null;
@@ -549,12 +612,14 @@ export class UnitSearchFiltersService {
             if (!filterState || !filterState.interactedWith) continue;
 
             const val = filterState.value;
-            
+
             if (conf.type === AdvFilterType.DROPDOWN && conf.multistate && val && typeof val === 'object') {
-                results = filterUnitsByMultiState(results, conf.key, val);
-                continue;
+                if (!conf.external) {
+                    results = filterUnitsByMultiState(results, conf.key, val);
+                    continue;
+                }
             }
-            
+
             if (conf.type === AdvFilterType.DROPDOWN && Array.isArray(val) && val.length > 0) {
                 results = results.filter(u => {
                     const v = getProperty(u, conf.key);
@@ -576,8 +641,7 @@ export class UnitSearchFiltersService {
                 } else {
                     results = results.filter(u => {
                         const unitValue = getProperty(u, conf.key);
-                        if (conf.ignoreValues && conf.ignoreValues.includes(unitValue)) 
-                        {
+                        if (conf.ignoreValues && conf.ignoreValues.includes(unitValue)) {
                             if (val[0] === 0) return true; // If the range starts at 0, we allow -1 values
                             return false; // Ignore this unit if it has an ignored value
                         }
@@ -595,7 +659,7 @@ export class UnitSearchFiltersService {
         const searchTokens = this.searchTokens();
         if (searchTokens.length === 0) return this.units;
 
-        return this.units.filter(unit => 
+        return this.units.filter(unit =>
             matchesSearch(`${unit._chassis ?? ''} ${unit._model ?? ''}`, searchTokens, true)
         );
     });
@@ -622,23 +686,23 @@ export class UnitSearchFiltersService {
                     }
                 }
             } else
-            if (sortKey === 'bv') {
-                // Use adjusted BV for sorting
-                const aBv = this.getAdjustedBV(a);
-                const bBv = this.getAdjustedBV(b);
-                comparison = aBv - bBv;
-            } else
-            if (sortKey in a && sortKey in b) {
-                const key = sortKey as keyof Unit;
-                const aValue = a[key];
-                const bValue = b[key];
-                if (typeof aValue === 'string' && typeof bValue === 'string') {
-                    comparison = naturalCompare(aValue, bValue);
-                }
-                if (typeof aValue === 'number' && typeof bValue === 'number') {
-                    comparison = aValue - bValue;
-                }
-            }
+                if (sortKey === 'bv') {
+                    // Use adjusted BV for sorting
+                    const aBv = this.getAdjustedBV(a);
+                    const bBv = this.getAdjustedBV(b);
+                    comparison = aBv - bBv;
+                } else
+                    if (sortKey in a && sortKey in b) {
+                        const key = sortKey as keyof Unit;
+                        const aValue = a[key];
+                        const bValue = b[key];
+                        if (typeof aValue === 'string' && typeof bValue === 'string') {
+                            comparison = naturalCompare(aValue, bValue);
+                        }
+                        if (typeof aValue === 'number' && typeof bValue === 'number') {
+                            comparison = aValue - bValue;
+                        }
+                    }
             if (sortDirection === 'desc') {
                 return -comparison;
             }
@@ -662,7 +726,10 @@ export class UnitSearchFiltersService {
             .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
 
         const selectedEraNames = activeFilters['era'] as string[] || [];
-        const selectedFactionNames = activeFilters['faction'] as string[] || [];
+        const selectedFactionEntries = activeFilters['faction'] as MultiStateSelection || {};
+        const selectedFactionNames: string[] = Object.entries(selectedFactionEntries)
+            .filter(([_, sel]) => sel.state !== 'not')
+            .map(([name, _]) => name);
 
         for (const conf of ADVANCED_FILTERS) {
             let label = conf.label;
@@ -672,221 +739,225 @@ export class UnitSearchFiltersService {
             const contextState = { ...state };
             delete contextState[conf.key];
             let contextUnits = this.applyFilters(baseUnits, contextState);
-
-            if (conf.multistate && conf.type === AdvFilterType.DROPDOWN) {
-                const isComponentFilter = conf.key === 'componentName';
-                const isTagsFilter = conf.key === '_tags';
-                const currentFilter = state[conf.key];
-                const hasQuantityFilters = conf.countable && isComponentFilter
-                    && currentFilter?.interactedWith && currentFilter.value &&
-                    Object.values(currentFilter.value as MultiStateSelection).some(selection => selection.count > 1);
-
-                const namesCacheKey = isTagsFilter 
-                    ? `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}-${_tagsCacheKey}`
-                    : `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}`;
-                
-                let availableNames = this.availableNamesCache.get(namesCacheKey);
-                if (!availableNames) {
-                    // Collect unique values efficiently
-                    const nameSet = new Set<string>();
-                    
-                    if (isComponentFilter) {
-                        for (const unit of contextUnits) {
-                            for (const component of unit.comp) {
-                                nameSet.add(component.n);
-                            }
-                        }
-                    } else {
-                        for (const unit of contextUnits) {
-                            const propValue = getProperty(unit, conf.key);
-                            const values = Array.isArray(propValue) ? propValue : [propValue];
-                            for (const value of values) {
-                                if (value) nameSet.add(value);
-                            }
-                        }
-                    }
-                    
-                    availableNames = Array.from(nameSet);
-                    this.availableNamesCache.set(namesCacheKey, availableNames);
-                }
-
-                let filteredAvailableNames = availableNames;
-                
-                if (currentFilter?.interactedWith && currentFilter.value) {
-                    const selection = currentFilter.value as MultiStateSelection;
-                    const andEntries = Object.entries(selection).filter(([_, sel]) => sel.state === 'and');
-                    
-                    if (andEntries.length > 0) {
-                        const andMap = new Map(andEntries.map(([name, sel]) => [name, sel.count]));
-                        const notSet = new Set(
-                            Object.entries(selection)
-                                .filter(([_, sel]) => sel.state === 'not')
-                                .map(([name]) => name)
+            let availableOptions: { name: string, img?: string }[] = [];
+            if (conf.type === AdvFilterType.DROPDOWN) {
+                if (conf.external) {
+                    const contextUnitIds = new Set(contextUnits.filter(u => u.id !== -1).map(u => u.id));
+                    if (conf.key === 'era') {
+                        const selectedFactionsAvailableEraIds: Set<number> = new Set(
+                            this.dataService.getFactions()
+                                .filter(faction => selectedFactionNames.includes(faction.name))
+                                .flatMap(faction =>
+                                    Object.entries(faction.eras)
+                                        .filter(([_, unitIds]) => unitIds.size > 0)
+                                        .map(([eraId]) => Number(eraId))
+                                )
                         );
-                        
-                        // Pre-filter units that satisfy AND conditions
-                        const validUnits = contextUnits.filter(unit => {
-                            if (isComponentFilter) {
-                                const cached = getUnitComponentData(unit);
-                                
-                                // Check NOT conditions
-                                for (const notName of notSet) {
-                                    if (cached.componentNames.has(notName)) return false;
+                        availableOptions = this.dataService.getEras()
+                            .filter(era => {
+                                if (selectedFactionsAvailableEraIds.size > 0) {
+                                    if (!selectedFactionsAvailableEraIds.has(era.id)) return false;
                                 }
-                                
-                                // Check AND conditions
-                                for (const [name, requiredCount] of andMap) {
-                                    if ((cached.componentCounts.get(name) || 0) < requiredCount) return false;
+                                return [...(era.units as Set<number>)].some(id => contextUnitIds.has(id))
+                            }).map(era => ({ name: era.name, img: era.img }));
+                    } else 
+                    if (conf.key === 'faction') {
+                        const selectedEraIds: Set<number> = new Set(this.dataService.getEras().filter(e => selectedEraNames.includes(e.name)).map(e => e.id));
+                        availableOptions = this.dataService.getFactions()
+                            .filter(faction => {
+                                for (const eraIdStr in faction.eras) {
+                                    if (selectedEraIds.size > 0) {
+                                        if (!selectedEraIds.has(Number(eraIdStr))) continue;
+                                    }
+                                    if ([...(faction.eras[eraIdStr] as Set<number>)].some(id => contextUnitIds.has(id))) return true;
                                 }
-                            } else {
-                                // Handle other properties (simplified for brevity)
-                                const propValue = getProperty(unit, conf.key);
-                                const values = Array.isArray(propValue) ? propValue : [propValue];
-                                const valueSet = new Set(values);
-                                
-                                for (const notName of notSet) {
-                                    if (valueSet.has(notName)) return false;
-                                }
-                                
-                                for (const [name] of andMap) {
-                                    if (!valueSet.has(name)) return false;
+                                return false;
+                            })
+                            .map(faction => ({ name: faction.name, img: faction.img }));
+                    }
+                }
+                else if (conf.multistate) {
+                    const isComponentFilter = conf.key === 'componentName';
+                    const isTagsFilter = conf.key === '_tags';
+                    const currentFilter = state[conf.key];
+                    const hasQuantityFilters = conf.countable && isComponentFilter
+                        && currentFilter?.interactedWith && currentFilter.value &&
+                        Object.values(currentFilter.value as MultiStateSelection).some(selection => selection.count > 1);
+
+                    const namesCacheKey = isTagsFilter
+                        ? `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}-${_tagsCacheKey}`
+                        : `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}`;
+
+                    let availableNames = this.availableNamesCache.get(namesCacheKey);
+                    if (!availableNames) {
+                        // Collect unique values efficiently
+                        const nameSet = new Set<string>();
+
+                        if (isComponentFilter) {
+                            for (const unit of contextUnits) {
+                                for (const component of unit.comp) {
+                                    nameSet.add(component.n);
                                 }
                             }
-                            return true;
-                        });
-                        
-                        // Collect available names from valid units
-                        const filteredNameSet = new Set<string>();
-                        for (const unit of validUnits) {
-                            if (isComponentFilter) {
-                                for (const component of unit.comp) {
-                                    filteredNameSet.add(component.n);
-                                }
-                            } else {
+                        } else {
+                            for (const unit of contextUnits) {
                                 const propValue = getProperty(unit, conf.key);
                                 const values = Array.isArray(propValue) ? propValue : [propValue];
                                 for (const value of values) {
-                                    if (value) filteredNameSet.add(value);
+                                    if (value) nameSet.add(value);
                                 }
                             }
                         }
-                        filteredAvailableNames = Array.from(filteredNameSet);
-                    }
-                }
-            
-            const sortedNames = smartDropdownSort(availableNames);
-            const filteredSet = new Set(filteredAvailableNames);
-            
-            // Create options with availability flag and count
-            const optionsWithAvailability = sortedNames.map(name => {
-                const option: { name: string; available: boolean; count?: number } = {
-                    name,
-                    available: filteredSet.has(name)
-                };
-                
-                // Add count only if needed and for component filters
-                if (hasQuantityFilters) {
-                    let totalCount = 0;
-                    for (const unit of contextUnits) {
-                        const cached = getUnitComponentData(unit);
-                        totalCount += cached.componentCounts.get(name) || 0;
-                    }
-                    option.count = totalCount;
-                }
-                
-                return option;
-            });
 
-            result[conf.key] = {
-                type: 'dropdown',
-                label,
-                options: optionsWithAvailability,
-                value: state[conf.key]?.interactedWith ? state[conf.key].value : {},
-                interacted: state[conf.key]?.interactedWith ?? false
-            };
-            continue;
-        }
-        if (conf.type === AdvFilterType.DROPDOWN) {
-            let availableOptions: { name: string, img?: string }[] = [];
-            if (conf.external) {
-                const contextUnitIds = new Set(contextUnits.filter(u => u.id !== -1).map(u => u.id));
-                if (conf.key === 'era') {
-                    const selectedFactionsAvailableEraIds: Set<number> = new Set(
-                        this.dataService.getFactions()
-                            .filter(faction => selectedFactionNames.includes(faction.name))
-                            .flatMap(faction => Object.keys(faction.eras).map(Number))
-                    );
-                    availableOptions = this.dataService.getEras()
-                        .filter(era => {
-                            if (selectedFactionsAvailableEraIds.size > 0) {
-                                if (!selectedFactionsAvailableEraIds.has(era.id)) return false;
-                            }
-                            return [...(era.units as Set<number>)].some(id => contextUnitIds.has(id))
-                        }).map(era => ({ name: era.name, img: era.img }));
-                } else 
-                if (conf.key === 'faction') {
-                    const selectedEraIds: Set<number> = new Set(this.dataService.getEras().filter(e => selectedEraNames.includes(e.name)).map(e => e.id));
-                    availableOptions = this.dataService.getFactions()
-                        .filter(faction => {
-                            for (const eraIdStr in faction.eras) {
-                                if (selectedEraIds.size > 0) {
-                                    if (!selectedEraIds.has(Number(eraIdStr))) continue;
+                        availableNames = Array.from(nameSet);
+                        this.availableNamesCache.set(namesCacheKey, availableNames);
+                    }
+
+                    let filteredAvailableNames = availableNames;
+
+                    if (currentFilter?.interactedWith && currentFilter.value) {
+                        const selection = currentFilter.value as MultiStateSelection;
+                        const andEntries = Object.entries(selection).filter(([_, sel]) => sel.state === 'and');
+
+                        if (andEntries.length > 0) {
+                            const andMap = new Map(andEntries.map(([name, sel]) => [name, sel.count]));
+                            const notSet = new Set(
+                                Object.entries(selection)
+                                    .filter(([_, sel]) => sel.state === 'not')
+                                    .map(([name]) => name)
+                            );
+
+                            // Pre-filter units that satisfy AND conditions
+                            const validUnits = contextUnits.filter(unit => {
+                                if (isComponentFilter) {
+                                    const cached = getUnitComponentData(unit);
+
+                                    // Check NOT conditions
+                                    for (const notName of notSet) {
+                                        if (cached.componentNames.has(notName)) return false;
+                                    }
+
+                                    // Check AND conditions
+                                    for (const [name, requiredCount] of andMap) {
+                                        if ((cached.componentCounts.get(name) || 0) < requiredCount) return false;
+                                    }
+                                } else {
+                                    // Handle other properties (simplified for brevity)
+                                    const propValue = getProperty(unit, conf.key);
+                                    const values = Array.isArray(propValue) ? propValue : [propValue];
+                                    const valueSet = new Set(values);
+
+                                    for (const notName of notSet) {
+                                        if (valueSet.has(notName)) return false;
+                                    }
+
+                                    for (const [name] of andMap) {
+                                        if (!valueSet.has(name)) return false;
+                                    }
                                 }
-                                if ([...(faction.eras[eraIdStr] as Set<number>)].some(id => contextUnitIds.has(id))) return true;
+                                return true;
+                            });
+
+                            // Collect available names from valid units
+                            const filteredNameSet = new Set<string>();
+                            for (const unit of validUnits) {
+                                if (isComponentFilter) {
+                                    for (const component of unit.comp) {
+                                        filteredNameSet.add(component.n);
+                                    }
+                                } else {
+                                    const propValue = getProperty(unit, conf.key);
+                                    const values = Array.isArray(propValue) ? propValue : [propValue];
+                                    for (const value of values) {
+                                        if (value) filteredNameSet.add(value);
+                                    }
+                                }
                             }
-                            return false;
-                        })
-                        .map(faction => ({ name: faction.name, img: faction.img }));
+                            filteredAvailableNames = Array.from(filteredNameSet);
+                        }
+                    }
+
+                    const sortedNames = sortAvailableDropdownOptions(availableNames);
+                    const filteredSet = new Set(filteredAvailableNames);
+
+                    // Create options with availability flag and count
+                    const optionsWithAvailability = sortedNames.map(name => {
+                        const option: { name: string; available: boolean; count?: number } = {
+                            name,
+                            available: filteredSet.has(name)
+                        };
+
+                        // Add count only if needed and for component filters
+                        if (hasQuantityFilters) {
+                            let totalCount = 0;
+                            for (const unit of contextUnits) {
+                                const cached = getUnitComponentData(unit);
+                                totalCount += cached.componentCounts.get(name) || 0;
+                            }
+                            option.count = totalCount;
+                        }
+
+                        return option;
+                    });
+
+                    result[conf.key] = {
+                        type: 'dropdown',
+                        label,
+                        options: optionsWithAvailability,
+                        value: state[conf.key]?.interactedWith ? state[conf.key].value : {},
+                        interacted: state[conf.key]?.interactedWith ?? false
+                    };
+                    continue;
+                } else {
+                    const allOptions = Array.from(new Set(contextUnits
+                        .map(u => getProperty(u, conf.key))
+                        .filter(v => v != null && v !== '')));
+                    const sortedOptions = sortAvailableDropdownOptions(allOptions, conf.sortOptions);
+                    availableOptions = sortedOptions.map(name => ({ name }));
                 }
-            } else {
-                const allOptions = Array.from(new Set(contextUnits
-                    .map(u => getProperty(u, conf.key))
-                    .filter(v => v != null && v !== '')));
-                const sortedOptions = smartDropdownSort(allOptions, conf.sortOptions);
-                availableOptions = sortedOptions.map(name => ({ name }));
+                result[conf.key] = {
+                    type: 'dropdown',
+                    label,
+                    options: availableOptions,
+                    value: state[conf.key]?.interactedWith ? state[conf.key].value : [],
+                    interacted: state[conf.key]?.interactedWith ?? false
+                };
             }
-            result[conf.key] = {
-                type: 'dropdown',
-                label,
-                options: availableOptions,
-                value: state[conf.key]?.interactedWith ? state[conf.key].value : [],
-                interacted: state[conf.key]?.interactedWith ?? false
-            };
-        } else if (conf.type === AdvFilterType.RANGE) {
-            const totalRange = this.totalRangesCache[conf.key] || [0, 0];
-            
-            // Special handling for BV to use adjusted values
-            let vals: number[];
-            if (conf.key === 'bv') {
-                vals = contextUnits
-                    .map(u => this.getAdjustedBV(u))
-                    .filter(bv => bv > 0);
-            } else {
-                vals = this.getValidFilterValues(contextUnits, conf);
+            else if (conf.type === AdvFilterType.RANGE) {
+                const totalRange = this.totalRangesCache[conf.key] || [0, 0];
+
+                // Special handling for BV to use adjusted values
+                let vals: number[];
+                if (conf.key === 'bv') {
+                    vals = contextUnits
+                        .map(u => this.getAdjustedBV(u))
+                        .filter(bv => bv > 0);
+                } else {
+                    vals = this.getValidFilterValues(contextUnits, conf);
+                }
+
+                const availableRange = vals.length ? [Math.min(...vals), Math.max(...vals)] : totalRange;
+
+                let currentValue = state[conf.key]?.interactedWith ? state[conf.key].value : availableRange;
+
+                // Clamp both min and max to the available range, and ensure min <= max
+                let clampedMin = Math.max(availableRange[0], Math.min(currentValue[0], availableRange[1]));
+                let clampedMax = Math.min(availableRange[1], Math.max(currentValue[1], availableRange[0]));
+                if (clampedMin > clampedMax) [clampedMin, clampedMax] = [clampedMax, clampedMin];
+                currentValue = [clampedMin, clampedMax];
+
+                result[conf.key] = {
+                    type: 'range',
+                    label,
+                    totalRange: totalRange,
+                    options: availableRange as [number, number],
+                    value: currentValue,
+                    interacted: state[conf.key]?.interactedWith ?? false
+                };
             }
-            
-            const availableRange = vals.length ? [Math.min(...vals), Math.max(...vals)] : totalRange;
-
-            let currentValue = state[conf.key]?.interactedWith ? state[conf.key].value : availableRange;
-
-            // Clamp both min and max to the available range, and ensure min <= max
-            let clampedMin = Math.max(availableRange[0], Math.min(currentValue[0], availableRange[1]));
-            let clampedMax = Math.min(availableRange[1], Math.max(currentValue[1], availableRange[0]));
-            if (clampedMin > clampedMax) [clampedMin, clampedMax] = [clampedMax, clampedMin];
-            currentValue = [clampedMin, clampedMax];
-
-            result[conf.key] = {
-                type: 'range',
-                label,
-                totalRange: totalRange,
-                options: availableRange as [number, number],
-                value: currentValue,
-                interacted: state[conf.key]?.interactedWith ?? false
-            };
         }
-    }
-    return result;
-});
+        return result;
+    });
 
 
     private getValidFilterValues(units: Unit[], conf: AdvFilterConfig): number[] {
@@ -911,18 +982,18 @@ export class UnitSearchFiltersService {
                     this.searchText.set(decodeURIComponent(searchParam));
                     hasFilters = true;
                 }
-                
+
                 // Load sort settings
                 const sortParam = params.get('sort');
                 if (sortParam && SORT_OPTIONS.some(opt => opt.key === sortParam)) {
                     this.selectedSort.set(sortParam);
                 }
-                
+
                 const sortDirParam = params.get('sortDir');
                 if (sortDirParam === 'desc' || sortDirParam === 'asc') {
                     this.selectedSortDirection.set(sortDirParam);
                 }
-                
+
                 // Load filters
                 const filtersParam = params.get('filters');
                 if (filtersParam) {
@@ -930,32 +1001,32 @@ export class UnitSearchFiltersService {
                     try {
                         const parsedFilters = this.parseCompactFiltersFromUrl(filtersParam);
                         const validFilters: FilterState = {};
-                        
+
                         for (const [key, state] of Object.entries(parsedFilters)) {
                             const conf = ADVANCED_FILTERS.find(f => f.key === key);
                             if (!conf) continue; // Skip unknown filter keys
-                            
+
                             if (conf.type === AdvFilterType.DROPDOWN) {
                                 // Get all available values for this dropdown
                                 const availableValues = this.getAvailableDropdownValues(conf);
-                                
+
                                 if (conf.multistate) {
                                     const selection = state.value as MultiStateSelection;
                                     const validSelection: MultiStateSelection = {};
-                                    
+
                                     for (const [name, selectionValue] of Object.entries(selection)) {
                                         if (availableValues.has(name)) {
                                             validSelection[name] = selectionValue;
                                         }
                                     }
-                                    
+
                                     if (Object.keys(validSelection).length > 0) {
                                         validFilters[key] = { value: validSelection, interactedWith: true };
                                     }
                                 } else {
                                     const values = state.value as string[];
                                     const validValues = values.filter(v => availableValues.has(v));
-                                    
+
                                     if (validValues.length > 0) {
                                         validFilters[key] = { value: validValues, interactedWith: true };
                                     }
@@ -987,7 +1058,7 @@ export class UnitSearchFiltersService {
                         }
                     }
                 }
-                
+
                 if (params.has('piloting')) {
                     const pilotingParam = params.get('piloting');
                     if (pilotingParam) {
@@ -1005,7 +1076,7 @@ export class UnitSearchFiltersService {
 
     private getAvailableDropdownValues(conf: AdvFilterConfig): Set<string> {
         const values = new Set<string>();
-        
+
         if (conf.external) {
             if (conf.key === 'era') {
                 this.dataService.getEras().forEach(era => values.add(era.name));
@@ -1030,7 +1101,7 @@ export class UnitSearchFiltersService {
                 }
             }
         }
-        
+
         return values;
     }
 
@@ -1042,16 +1113,16 @@ export class UnitSearchFiltersService {
         const expanded = this.expandedView();
         const gunnery = this.pilotGunnerySkill();
         const piloting = this.pilotPilotingSkill();
-        
+
         const queryParams: any = {};
-        
+
         // Add search query if present
         queryParams.q = search.trim() ? encodeURIComponent(search.trim()) : null;
-        
+
         // Add sort if not default
         queryParams.sort = (selectedSort !== 'name') ? selectedSort : null;
         queryParams.sortDir = (selectedSortDirection !== 'asc') ? selectedSortDirection : null;
-        
+
         // Add filters if any are active
         const filtersParam = this.generateCompactFiltersParam(filterState);
         queryParams.filters = filtersParam ? filtersParam : null;
@@ -1079,13 +1150,13 @@ export class UnitSearchFiltersService {
 
     private generateCompactFiltersParam(state: FilterState): string | null {
         const parts: string[] = [];
-        
+
         for (const [key, filterState] of Object.entries(state)) {
             if (!filterState.interactedWith) continue;
-            
+
             const conf = ADVANCED_FILTERS.find(f => f.key === key);
             if (!conf) continue;
-            
+
             if (conf.type === AdvFilterType.RANGE) {
                 const [min, max] = filterState.value;
                 parts.push(`${key}:${min}-${max}`);
@@ -1093,25 +1164,25 @@ export class UnitSearchFiltersService {
                 if (conf.multistate) {
                     const selection = filterState.value as MultiStateSelection;
                     const subParts: string[] = [];
-                    
+
                     for (const [name, selectionValue] of Object.entries(selection)) {
                         if (selectionValue.state !== false) {
                             // URL encode names that might contain spaces or special characters
                             let part = encodeURIComponent(name);
-                            
+
                             // Use single characters for states
                             if (selectionValue.state === 'and') part += '.';
                             else if (selectionValue.state === 'not') part += '!';
                             // 'or' state is default, no suffix needed
 
-                            
+
                             if (selectionValue.count > 1) {
                                 part += `~${selectionValue.count}`;
                             }
                             subParts.push(part);
                         }
                     }
-                    
+
                     if (subParts.length > 0) {
                         parts.push(`${key}:${subParts.join(',')}`);
                     }
@@ -1125,26 +1196,26 @@ export class UnitSearchFiltersService {
                 }
             }
         }
-        
+
         return parts.length > 0 ? parts.join('|') : null;
     }
 
     private parseCompactFiltersFromUrl(filtersParam: string): FilterState {
         const filterState: FilterState = {};
-        
+
         try {
             const parts = filtersParam.split('|');
-            
+
             for (const part of parts) {
                 const colonIndex = part.indexOf(':');
                 if (colonIndex === -1) continue;
-                
+
                 const key = part.substring(0, colonIndex);
                 const valueStr = part.substring(colonIndex + 1);
-                
+
                 const conf = ADVANCED_FILTERS.find(f => f.key === key);
                 if (!conf) continue;
-                
+
                 if (conf.type === AdvFilterType.RANGE) {
                     const match = valueStr.match(/^(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$/);
                     if (match) {
@@ -1161,12 +1232,12 @@ export class UnitSearchFiltersService {
                     if (conf.multistate) {
                         const selection: MultiStateSelection = {};
                         const items = valueStr.split(',');
-                        
+
                         for (const item of items) {
                             let encodedName = item;
                             let state: MultiState = 'or';
                             let count = 1;
-                            
+
                             // Parse count first
                             const starIndex = encodedName.indexOf('~');
                             if (starIndex !== -1) {
@@ -1184,12 +1255,12 @@ export class UnitSearchFiltersService {
                             } else {
                                 state = 'or'; // default state
                             }
-                            
+
                             // Decode the name to restore spaces and special characters
                             const name = decodeURIComponent(encodedName);
-                            selection[name] = { state, count };
+                            selection[name] = { name, state, count };
                         }
-                        
+
                         if (Object.keys(selection).length > 0) {
                             filterState[key] = {
                                 value: selection,
@@ -1213,7 +1284,7 @@ export class UnitSearchFiltersService {
         } catch (error) {
             this.logger.warn('Failed to parse compact filters from URL: ' + error);
         }
-        
+
         return filterState;
     }
 
@@ -1268,14 +1339,14 @@ export class UnitSearchFiltersService {
     getAllTags(): string[] {
         const allUnits = this.dataService.getUnits();
         const existingTags = new Set<string>();
-        
+
         for (const u of allUnits) {
             if (u._tags) {
                 u._tags.forEach(tag => existingTags.add(tag));
             }
         }
         // Convert to sorted array
-        return Array.from(existingTags).sort((a, b) => 
+        return Array.from(existingTags).sort((a, b) =>
             a.toLowerCase().localeCompare(b.toLowerCase())
         );
     }
@@ -1283,7 +1354,7 @@ export class UnitSearchFiltersService {
     public invalidateTagsCache(): void {
         // Update cache key to trigger recomputation of advOptions
         this.tagsCacheKey.set(Date.now().toString());
-        
+
         // Clear any cached tag-related data
         for (const [key] of this.availableNamesCache) {
             if (key.includes('_tags')) {
@@ -1295,7 +1366,7 @@ export class UnitSearchFiltersService {
     public async saveTagsToStorage(): Promise<void> {
         await this.dataService.saveUnitTags(this.dataService.getUnits());
     }
-   
+
     setPilotSkills(gunnery: number, piloting: number) {
         this.pilotGunnerySkill.set(gunnery);
         this.pilotPilotingSkill.set(piloting);
@@ -1311,11 +1382,11 @@ export class UnitSearchFiltersService {
         if (gunnery === 4 && piloting === 5) {
             return unit.bv;
         }
-        
+
         return BVCalculatorUtil.calculateAdjustedBV(unit.bv, gunnery, piloting);
     }
 
-    
+
     public serializeCurrentSearchFilter(name: string): SerializedSearchFilter {
         const filter: SerializedSearchFilter = { name };
 

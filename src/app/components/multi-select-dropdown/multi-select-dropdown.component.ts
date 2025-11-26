@@ -47,8 +47,15 @@ export interface DropdownOption {
 }
 
 export type MultiState = false | 'or' | 'and' | 'not';
+
+export interface MultiStateOption {
+    name: string;
+    state: MultiState;
+    count: number;
+}
+
 export interface MultiStateSelection {
-  [key: string]: { state: MultiState; count: number };
+  [key: string]: MultiStateOption;
 }
 
 @Component({
@@ -229,7 +236,7 @@ export class MultiSelectDropdownComponent {
                 delete currentSelection[optionName];
             } else {
                 const count = nextState === 'not' ? 1 : current.count;
-                currentSelection[optionName] = { state: nextState, count };
+                currentSelection[optionName] = { name: optionName, state: nextState, count };
             }
             this.selectionChange.emit(currentSelection);
         } else {
@@ -316,6 +323,7 @@ export class MultiSelectDropdownComponent {
         
         if (current && (current.state === 'and' || current.state === 'or')) {
             currentSelection[optionName] = { 
+                name: optionName,
                 state: current.state, 
                 count: Math.max(1, count) 
             };
