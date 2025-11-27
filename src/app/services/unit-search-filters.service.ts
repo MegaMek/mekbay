@@ -1321,11 +1321,6 @@ export class UnitSearchFiltersService {
         }));
     }
 
-    // Override search setter to handle URL updates
-    setSearch(query: string) {
-        this.searchText.set(query);
-    }
-
     clearFilters() {
         this.searchText.set('');
         this.filterState.set({});
