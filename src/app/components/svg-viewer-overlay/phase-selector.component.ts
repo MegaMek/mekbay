@@ -1,5 +1,5 @@
 import { Component, ChangeDetectionStrategy, inject, input, output, TemplateRef, ViewChild, ElementRef, ViewContainerRef, computed, signal, viewChild, DestroyRef, effect } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
@@ -9,7 +9,7 @@ export type Phase = 'movement' | 'weapon' | 'physical' | 'heat';
 @Component({
     selector: 'mb-phase-selector',
     standalone: true,
-    imports: [CommonModule],
+    imports: [],
     templateUrl: './phase-selector.component.html',
     styleUrls: ['./phase-selector.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
+
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
@@ -45,9 +45,8 @@ import { APP_VERSION_STRING } from '../../build-meta';
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        CommonModule,
-        BaseDialogComponent,
-    ],
+    BaseDialogComponent
+],
     template: `
     <base-dialog>
         <div dialog-header><div class="title">Beta Notice</div></div>

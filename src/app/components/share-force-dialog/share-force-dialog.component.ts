@@ -32,7 +32,7 @@
  */
 
 
-import { CommonModule } from '@angular/common';
+
 import { ChangeDetectionStrategy, Component, effect, ElementRef, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -48,7 +48,7 @@ import { copyTextToClipboard } from '../../utils/clipboard.util';
     selector: 'share-force-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

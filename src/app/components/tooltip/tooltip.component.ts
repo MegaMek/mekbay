@@ -1,10 +1,10 @@
-import { CommonModule } from '@angular/common';
+
 import { ChangeDetectionStrategy, Component, HostBinding } from '@angular/core';
 
 @Component({
     selector: 'tooltip',
     standalone: true,
-    imports: [CommonModule],
+    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `<div class="tooltip-content framed-borders has-shadow">{{ text }}</div>`,
     styles: [`

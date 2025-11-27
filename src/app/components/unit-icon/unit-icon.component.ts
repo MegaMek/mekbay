@@ -1,12 +1,12 @@
 import { Component, ChangeDetectionStrategy, inject, input, signal, effect, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { ImageStorageService } from '../../services/image-storage.service';
 import { Unit } from '../../models/units.model';
 
 @Component({
   selector: 'unit-icon',
   standalone: true,
-  imports: [CommonModule],
+  imports: [],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <img [src]="currentSrc()" 

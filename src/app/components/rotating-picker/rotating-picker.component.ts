@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
+
 import { Component, ElementRef, AfterViewInit, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, HostListener, viewChild, DestroyRef, inject } from '@angular/core';
 import { PickerComponent, PickerChoice, PickerValue, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
@@ -53,7 +53,7 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
     selector: 'rotating-picker',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div #container class="rotating-picker-container"
             [style.position]="'fixed'"

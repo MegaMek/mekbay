@@ -1,319 +1,367 @@
 <base-dialog #baseDialog [tabs]="tabs" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)" (closed)="onClose()">
-    <div dialog-header class="header">
-        <div class="header-group">
-            <div class="header-icon-container">
-                <unit-icon [unit]="unit"></unit-icon>
-            </div>
-            <div class="header-name-group">
-                <div class="header-model allow-select">{{ unit.model }}</div>
-                <div class="header-chassis allow-select">{{ unit.chassis }}</div>
-            </div>
-        </div>
-        <div class="header-details-container">
-            <div class="spanner"></div>
-            <div class="header-details">
-                @if (unit.role && unit.role != 'None') {
-                    <div class="role"><strong>{{ unit.role }}</strong></div>
-                }
-                <div class="info-slot numeric allow-select" title="Tonnage">
-                    <span class="value">{{ formatThousands(unit.tons) }}</span>
-                    <img src="/images/weight.svg" class="icon" alt="tons">
-                </div>
-            </div>
-        </div>
+<div dialog-header class="header">
+  <div class="header-group">
+    <div class="header-icon-container">
+      <unit-icon [unit]="unit"></unit-icon>
     </div>
-    <div tab-actions>
-        <button class="tab-actions-button" (click)="onShare()">
-            <svg fill="currentColor" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path fill-rule="evenodd" clip-rule="evenodd" d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z"/>
-            </svg>
-        </button>
+    <div class="header-name-group">
+      <div class="header-model allow-select">{{ unit.model }}</div>
+      <div class="header-chassis allow-select">{{ unit.chassis }}</div>
     </div>
-    <div dialog-body class="dialog-body"
-        swipe
-        [direction]="'horizontal'"
-        [threshold]="20"
-        [shouldBlockSwipe]="shouldBlockSwipe"
-        (swipestart)="onSwipeStart($event)"
-        (swipeend)="onSwipeEnd($event)">
-        <img *ngIf="fluffImageUrl()" [src]="fluffImageUrl()" class="fluff-bg-image" alt="">
-        <div class="tab-content tab-general" *ngIf="activeTab() === 'General'">
-            <!-- Basic Info -->
-            <div class="basic-info-block allow-select">
-                <div><strong>{{ unit.type }}<span *ngIf="unit.subtype != unit.type"> - {{ unit.subtype }}</span> - {{
-                        unit.weightClass }}</strong></div>
-                <div>
-                    <span class="muted">BV: </span>
-                    @if (getAdjustedBV() != null && getAdjustedBV() != unit.bv) {
-                        <strong>{{ formatThousands(getAdjustedBV()!) }}</strong>
-                        <span class="muted"> ({{ formatThousands(unit.bv) }})</span>
-                    } @else {
-                        <strong>{{ formatThousands(unit.bv) }}</strong>
-                    }
-                </div>
-                <div><span class="muted">Rules: </span><strong>{{ unit.level }}</strong></div>
-                <div><span class="muted">Tech: </span><strong>{{ unit.techBase }} | {{ unit.techRating }}</strong></div>
-                @if (unit.year) {
-                    <div><span class="muted">Intro Year: </span><strong>{{ unit.year }}</strong>
-                        @if (unit._era?.img) {
-                            <img [src]="unit._era?.img" class="era-icon" title="{{ unit._era?.name }}" />
-                        }
-                    </div>
-                }
-                <div><span class="muted">C-Bill Cost: </span><strong>{{ formatThousands(unit.cost) }}</strong></div>
-                <div *ngIf="unit.armorType"><span class="muted">Armor Type: </span><strong>{{ unit.armorType }}</strong>
-                </div>
-                <div *ngIf="unit.structureType"><span class="muted">Structure Type: </span><strong>{{ unit.structureType
-                        }}</strong></div>
-                <div *ngIf="unit.engine"><span class="muted">Engine: </span><strong><span *ngIf="unit.engineRating">{{
-                            unit.engineRating }} </span>{{ unit.engine }}</strong></div>
-                <div *ngIf="unit.moveType && unit.moveType != 'None'"><span class="muted">Motive Type: </span><strong>{{
-                        unit.moveType }}</strong></div>
-                <div *ngIf="unit.walk || unit.run || unit.jump || unit.umu"><span class="muted">Movement: </span>
-                    <strong>{{ unit.walk }} / {{ unit.run
-                        }}<span *ngIf="unit.run2 != unit.run"> [{{ unit.run2 }}]</span>
-                        @if (unit.jump) { / {{ unit.jump }}}
-                        @if (unit.umu) { / {{ unit.umu }}} 
-                    </strong></div>
-                @if (unit.c3 && unit.c3 != 'None') {
-                    <div><span class="muted">Network: </span><strong>{{ unit.c3 }}</strong></div>
-                }
-            </div>
-            <div class="quirks-block" *ngIf="unit.quirks && unit.quirks.length > 0">
-                <div class="quirks">
-                    <div class="muted">Quirks: </div>
-                    @for (quirk of unit.quirks; let i = $index; track i) {
-                        <div class="quirk" [ngClass]="getQuirkClass(quirk)" [tooltip]="getQuirkDesc(quirk)">{{ quirk }}</div>
-                    }
-                </div>
-            </div>
-            <!-- Stat Progress Bars -->
-            <div class="stat-bars-columns">
-                @for (spec of (unit | statBarSpecs); let i = $index; track i) {
-                    <div class="stat-bar-row">
-                        <div class="stat-bar">
-                            <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
-                        </div>
-                        <span class="stat-label">{{ spec.label }}</span>
-                        <span class="stat-value">{{ spec.valueText ?? spec.value }}</span>
-                    </div>
-                }
-            </div>
-
-            <!-- Weapon Type Summary Bar -->
-            <div class="type-summary-bar">
-                @for (type of weaponTypes; let i = $index; track i) {
-                    <div class="type-summary-rect" [ngStyle]="{'border-color': type.color}" [title]="type.name">
-                        <div [ngStyle]="{'background-color': type.color}" class="icon">
-                            <img class="type-icon" [src]="getTypeIcon(type.code)" />
-                        </div>
-                        @let count = getTypeCount(type.code);
-                        <div class="type-count" [class.empty]="count === 0">{{ count }}</div>
-                    </div>
-                }
-            </div>
-
-            <!-- Components Grid -->
-            <!-- Matrix layout (3x3) when supported and defined for unit.type -->
-            @if (useMatrixLayout()) {
-                <div class="components-matrix" [style.grid-template-areas]="gridAreas">
-                    @for (area of matrixAreaCodes; let i = $index; track i) {
-                        <div class="component-rect" [style.grid-area]="area">
-                            <div class="comp-loc">{{ getAreaLabel(area) }}</div>
-                            <div class="comp-list">
-                                <!-- Bays (matrix) -->
-                                @if (areaHasBays(area)) {
-                                    <div class="bay">
-                                        @for (bay of getBaysForArea(area); let i = $index; track trackByBay(bay)) {
-                                            <unit-component-item [unit]="unit" [comp]="bay" displayStyle="small"></unit-component-item>
-                                        }
-                                    </div>
-                                } @else {
-                                    <!-- Normal components (matrix) -->
-                                    @for (comp of getComponentsForArea(area); let i = $index; track trackByComp(comp)) {
-                                    <unit-component-item [unit]="unit" [comp]="comp" displayStyle="normal"></unit-component-item>
-                                    }
-                                }
-                            </div>
-                        </div>
-                    }
-                </div>
-            } @else {
-                <!-- Default -->
-                @if (hasBays()) {
-                    <div class="components-container">
-                        @for (group of groupedBays; let i = $index; track group.l) {
-                            <div class="component-rect">
-                                <div class="comp-loc">{{ group.l }}</div>
-                                <div class="bay">
-                                    @for (bay of group.bays; let j = $index; track j) {
-                                        <unit-component-item [unit]="unit" [comp]="bay" displayStyle="small" class="comp-single"></unit-component-item>
-                                    }
-                                </div>
-                            </div>
-                        }
-                    </div>
-                } @else {
-                    <div class="components-container">
-                        @for (comp of components; let i = $index; track i) {
-                            <div class="component-rect">
-                                <div class="comp-loc">{{ comp.l }}</div>
-                                <div class="comp-list">
-                                    <unit-component-item [unit]="unit" [comp]="comp" displayStyle="normal" class="comp-single"></unit-component-item>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-                @if ((unit.comp | filterAmmo); as ammoList) {
-                    @if (ammoList.length > 0) {
-                        <div class="ammo-list"><span class="info-label muted">Ammo: </span>
-                            @for (comp of ammoList; let last = $last; let i = $index; track i) {
-                                <unit-component-item [unit]="unit" [comp]="comp" displayStyle="text"></unit-component-item>@if(!last){, }
-                            }
-                        </div>
-                    }
-                }
-            }
-
-            @if (unit.capital && unit.capital.gravDecks && unit.capital.gravDecks.length > 0) {
-                <div class="grav-list allow-select">
-                    <span class="muted">Grav Decks: </span>
-                        @for (deck of unit.capital.gravDecks; let last = $last; let i = $index; track i) {
-                            <span class="deck-entry">Deck #{{ i + 1 }} ({{ deck }}-meters)</span>@if (!last) {, }
-                        }
-                </div>
-            }
-
-            @if (unit.cargo && unit.cargo.length > 0) {
-                <div class="cargo-container allow-select">
-                    <span class="info-label muted">Cargo: </span>
-                    <div class="cargo-list">
-                        @for (cargo of unit.cargo; let last = $last; let i = $index; track i) {
-                            <span class="cargo-box">
-                                <div class="cargo-caption">Bay {{ cargo.n }}:</div>
-                                <div class="cargo-content">{{ cargo.type }} ({{ cargo.capacity }})</div>
-                                <div class="cargo-doors">({{ cargo.doors }} door{{ cargo.doors !== 1 ? 's' : '' }})</div>
-                            </span>
-                        }
-                    </div>
-                </div>
-            }
-
-            <div class="spanner"></div>
-
-            <div class="bottom-info">
-                <div class="bottom-left" *ngIf="unit.source"><span class="label muted">Source: </span><strong>{{
-                        unit.source }}</strong></div>
-                <div class="bottom-right" *ngIf="unit.id && unit.id > 0"><span class="label muted">MUL ID: </span><a
-                        class="mul-link" target=_BLANK href="http://masterunitlist.info/Unit/Details/{{unit.id}}">{{
-                        unit.id }}</a></div>
-            </div>
+  </div>
+  <div class="header-details-container">
+    <div class="spanner"></div>
+    <div class="header-details">
+      @if (unit.role && unit.role != 'None') {
+        <div class="role"><strong>{{ unit.role }}</strong></div>
+      }
+      <div class="info-slot numeric allow-select" title="Tonnage">
+        <span class="value">{{ formatThousands(unit.tons) }}</span>
+        <img src="/images/weight.svg" class="icon" alt="tons">
+      </div>
+    </div>
+  </div>
+</div>
+<div tab-actions>
+  <button class="tab-actions-button" (click)="onShare()">
+    <svg fill="currentColor" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z"/>
+    </svg>
+  </button>
+</div>
+<div dialog-body class="dialog-body"
+  swipe
+  [direction]="'horizontal'"
+  [threshold]="20"
+  [shouldBlockSwipe]="shouldBlockSwipe"
+  (swipestart)="onSwipeStart($event)"
+  (swipeend)="onSwipeEnd($event)">
+  @if (fluffImageUrl()) {
+    <img [src]="fluffImageUrl()" class="fluff-bg-image" alt="">
+  }
+  @if (activeTab() === 'General') {
+    <div class="tab-content tab-general">
+      <!-- Basic Info -->
+      <div class="basic-info-block allow-select">
+        <div><strong>{{ unit.type }}@if (unit.subtype != unit.type) {
+          <span> - {{ unit.subtype }}</span>
+          } - {{
+        unit.weightClass }}</strong></div>
+        <div>
+          <span class="muted">BV: </span>
+          @if (getAdjustedBV() != null && getAdjustedBV() != unit.bv) {
+            <strong>{{ formatThousands(getAdjustedBV()!) }}</strong>
+            <span class="muted"> ({{ formatThousands(unit.bv) }})</span>
+          } @else {
+            <strong>{{ formatThousands(unit.bv) }}</strong>
+          }
         </div>
-
-        <!-- Factions -->
-        <div class="tab-content" *ngIf="activeTab() === 'Factions'">
-            <div class="faction-availability-list allow-select">
-                @if (factionAvailability.length === 0) {
-                    <div class="no-factions">No faction availability information for this unit.</div>
-                } @else {
-                    @for (era of factionAvailability; let i = $index; track i) {
-                        <div class="era-name">
-                            <img [src]="era.eraImg" class="era-icon" *ngIf="era.eraImg" />
-                            <strong>{{ era.eraName }}:</strong>
-                        </div>
-                        <div class="faction-list">
-                            @for (faction of era.factions; let isLast = $last; track faction.name) {
-                                <span>{{ faction.name }}{{ !isLast ? ', ' : '' }}</span>
-                            }
-                        </div>
-                    }
-                }
-            </div>
+        <div><span class="muted">Rules: </span><strong>{{ unit.level }}</strong></div>
+        <div><span class="muted">Tech: </span><strong>{{ unit.techBase }} | {{ unit.techRating }}</strong></div>
+        @if (unit.year) {
+          <div><span class="muted">Intro Year: </span><strong>{{ unit.year }}</strong>
+          @if (unit._era?.img) {
+            <img [src]="unit._era?.img" class="era-icon" title="{{ unit._era?.name }}" />
+          }
         </div>
-
-        <!-- Intel -->
-        @if (activeTab() === 'Intel') {
-            <div class="tab-content">
-                <div class="fluff-content allow-select">
-                    @if (unit.fluff) {
-
-                        <!-- Fluff Image -->
-                        <div class="fluff-image-container" *ngIf="fluffImageUrl()">
-                            <img [src]="fluffImageUrl()" class="fluff-image" (error)="onFluffImageError()"
-                                alt="{{ unit.chassis }} {{ unit.model }}" />
-                        </div>
-    
-                        <div class="fluff-section" *ngIf="unit.fluff.systems && unit.fluff.systems.length > 0">
-                            <div class="fluff-label">Systems:</div>
-                            <div class="fluff-text">
-                                @for (system of unit.fluff.systems; track system.label) {
-                                    <div>
-                                        <strong *ngIf="system.label">{{ system.label }}: </strong>
-                                        <span *ngIf="system.manufacturer">{{ system.manufacturer }} </span>
-                                        <span *ngIf="system.model">({{ system.model }})</span>
-                                    </div>
-                                }
-                            </div>
-                        </div>
-    
-                        <div class="fluff-section" *ngIf="unit.fluff.manufacturer">
-                            <div class="fluff-label">Manufacturers:</div>
-                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.manufacturer) }}</div>
-                        </div>
-    
-                        <div class="fluff-section" *ngIf="unit.fluff.primaryFactory">
-                            <div class="fluff-label">Primary Factories:</div>
-                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.primaryFactory) }}</div>
-                        </div>
-    
-                        <div class="fluff-section" *ngIf="unit.fluff.capabilities">
-                            <div class="fluff-label">Capabilities:</div>
-                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.capabilities) }}</div>
-                        </div>
-    
-                        <div class="fluff-section" *ngIf="unit.fluff.overview">
-                            <div class="fluff-label">Overview:</div>
-                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.overview) }}</div>
-                        </div>
-    
-                        <div class="fluff-section" *ngIf="unit.fluff.deployment">
-                            <div class="fluff-label">Deployment:</div>
-                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.deployment) }}</div>
-                        </div>
-    
-                        <div class="fluff-section" *ngIf="unit.fluff.history">
-                            <div class="fluff-label">History:</div>
-                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.history) }}</div>
-                        </div>
-    
-                        <div class="fluff-section" *ngIf="unit.fluff.notes">
-                            <div class="fluff-label">Notes:</div>
-                            <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.notes) }}</div>
-                        </div>
-                    } @else {
-                        <div class="no-fluff">
-                            No intel available for this unit.
-                        </div>
-                    }
-                </div>
+      }
+      <div><span class="muted">C-Bill Cost: </span><strong>{{ formatThousands(unit.cost) }}</strong></div>
+      @if (unit.armorType) {
+        <div><span class="muted">Armor Type: </span><strong>{{ unit.armorType }}</strong>
+      </div>
+    }
+    @if (unit.structureType) {
+      <div><span class="muted">Structure Type: </span><strong>{{ unit.structureType
+    }}</strong></div>
+  }
+  @if (unit.engine) {
+    <div><span class="muted">Engine: </span><strong>@if (unit.engineRating) {
+    <span>{{
+    unit.engineRating }} </span>
+  }{{ unit.engine }}</strong></div>
+}
+@if (unit.moveType && unit.moveType != 'None') {
+  <div><span class="muted">Motive Type: </span><strong>{{
+unit.moveType }}</strong></div>
+}
+@if (unit.walk || unit.run || unit.jump || unit.umu) {
+  <div><span class="muted">Movement: </span>
+  <strong>{{ unit.walk }} / {{ unit.run
+    }}@if (unit.run2 != unit.run) {
+    <span> [{{ unit.run2 }}]</span>
+  }
+  @if (unit.jump) { / {{ unit.jump }}}
+    @if (unit.umu) { / {{ unit.umu }}}
+    </strong></div>
+  }
+  @if (unit.c3 && unit.c3 != 'None') {
+    <div><span class="muted">Network: </span><strong>{{ unit.c3 }}</strong></div>
+  }
+</div>
+@if (unit.quirks && unit.quirks.length > 0) {
+  <div class="quirks-block">
+    <div class="quirks">
+      <div class="muted">Quirks: </div>
+      @for (quirk of unit.quirks; let i = $index; track i) {
+        <div class="quirk" [ngClass]="getQuirkClass(quirk)" [tooltip]="getQuirkDesc(quirk)">{{ quirk }}</div>
+      }
+    </div>
+  </div>
+}
+<!-- Stat Progress Bars -->
+<div class="stat-bars-columns">
+  @for (spec of (unit | statBarSpecs); let i = $index; track i) {
+    <div class="stat-bar-row">
+      <div class="stat-bar">
+        <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
+      </div>
+      <span class="stat-label">{{ spec.label }}</span>
+      <span class="stat-value">{{ spec.valueText ?? spec.value }}</span>
+    </div>
+  }
+</div>
+<!-- Weapon Type Summary Bar -->
+<div class="type-summary-bar">
+  @for (type of weaponTypes; let i = $index; track i) {
+    <div class="type-summary-rect" [ngStyle]="{'border-color': type.color}" [title]="type.name">
+      <div [ngStyle]="{'background-color': type.color}" class="icon">
+        <img class="type-icon" [src]="getTypeIcon(type.code)" />
+      </div>
+      @let count = getTypeCount(type.code);
+      <div class="type-count" [class.empty]="count === 0">{{ count }}</div>
+    </div>
+  }
+</div>
+<!-- Components Grid -->
+<!-- Matrix layout (3x3) when supported and defined for unit.type -->
+@if (useMatrixLayout()) {
+  <div class="components-matrix" [style.grid-template-areas]="gridAreas">
+    @for (area of matrixAreaCodes; let i = $index; track i) {
+      <div class="component-rect" [style.grid-area]="area">
+        <div class="comp-loc">{{ getAreaLabel(area) }}</div>
+        <div class="comp-list">
+          <!-- Bays (matrix) -->
+          @if (areaHasBays(area)) {
+            <div class="bay">
+              @for (bay of getBaysForArea(area); let i = $index; track trackByBay(bay)) {
+                <unit-component-item [unit]="unit" [comp]="bay" displayStyle="small"></unit-component-item>
+              }
             </div>
+          } @else {
+            <!-- Normal components (matrix) -->
+            @for (comp of getComponentsForArea(area); let i = $index; track trackByComp(comp)) {
+              <unit-component-item [unit]="unit" [comp]="comp" displayStyle="normal"></unit-component-item>
+            }
+          }
+        </div>
+      </div>
+    }
+  </div>
+} @else {
+  <!-- Default -->
+  @if (hasBays()) {
+    <div class="components-container">
+      @for (group of groupedBays; let i = $index; track group.l) {
+        <div class="component-rect">
+          <div class="comp-loc">{{ group.l }}</div>
+          <div class="bay">
+            @for (bay of group.bays; let j = $index; track j) {
+              <unit-component-item [unit]="unit" [comp]="bay" displayStyle="small" class="comp-single"></unit-component-item>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  } @else {
+    <div class="components-container">
+      @for (comp of components; let i = $index; track i) {
+        <div class="component-rect">
+          <div class="comp-loc">{{ comp.l }}</div>
+          <div class="comp-list">
+            <unit-component-item [unit]="unit" [comp]="comp" displayStyle="normal" class="comp-single"></unit-component-item>
+          </div>
+        </div>
+      }
+    </div>
+  }
+  @if ((unit.comp | filterAmmo); as ammoList) {
+    @if (ammoList.length > 0) {
+      <div class="ammo-list"><span class="info-label muted">Ammo: </span>
+      @for (comp of ammoList; let last = $last; let i = $index; track i) {
+        <unit-component-item [unit]="unit" [comp]="comp" displayStyle="text"></unit-component-item>@if(!last){, }
+      }
+    </div>
+  }
+}
+}
+@if (unit.capital && unit.capital.gravDecks && unit.capital.gravDecks.length > 0) {
+  <div class="grav-list allow-select">
+    <span class="muted">Grav Decks: </span>
+    @for (deck of unit.capital.gravDecks; let last = $last; let i = $index; track i) {
+      <span class="deck-entry">Deck #{{ i + 1 }} ({{ deck }}-meters)</span>@if (!last) {, }
+    }
+  </div>
+}
+@if (unit.cargo && unit.cargo.length > 0) {
+  <div class="cargo-container allow-select">
+    <span class="info-label muted">Cargo: </span>
+    <div class="cargo-list">
+      @for (cargo of unit.cargo; let last = $last; let i = $index; track i) {
+        <span class="cargo-box">
+          <div class="cargo-caption">Bay {{ cargo.n }}:</div>
+          <div class="cargo-content">{{ cargo.type }} ({{ cargo.capacity }})</div>
+          <div class="cargo-doors">({{ cargo.doors }} door{{ cargo.doors !== 1 ? 's' : '' }})</div>
+        </span>
+      }
+    </div>
+  </div>
+}
+<div class="spanner"></div>
+<div class="bottom-info">
+  @if (unit.source) {
+    <div class="bottom-left"><span class="label muted">Source: </span><strong>{{
+  unit.source }}</strong></div>
+}
+@if (unit.id && unit.id > 0) {
+  <div class="bottom-right"><span class="label muted">MUL ID: </span><a
+  class="mul-link" target=_BLANK href="http://masterunitlist.info/Unit/Details/{{unit.id}}">{{
+unit.id }}</a></div>
+}
+</div>
+</div>
+}
+
+<!-- Factions -->
+@if (activeTab() === 'Factions') {
+  <div class="tab-content">
+    <div class="faction-availability-list allow-select">
+      @if (factionAvailability.length === 0) {
+        <div class="no-factions">No faction availability information for this unit.</div>
+      } @else {
+        @for (era of factionAvailability; let i = $index; track i) {
+          <div class="era-name">
+            @if (era.eraImg) {
+              <img [src]="era.eraImg" class="era-icon" />
+            }
+            <strong>{{ era.eraName }}:</strong>
+          </div>
+          <div class="faction-list">
+            @for (faction of era.factions; let isLast = $last; track faction.name) {
+              <span>{{ faction.name }}{{ !isLast ? ', ' : '' }}</span>
+            }
+          </div>
         }
+      }
+    </div>
+  </div>
+}
 
-        @if (activeTab() === 'Sheet') {
-            <div class="tab-content">
-                <svg-viewer-lite [unit]="unit"></svg-viewer-lite>
+<!-- Intel -->
+@if (activeTab() === 'Intel') {
+  <div class="tab-content">
+    <div class="fluff-content allow-select">
+      @if (unit.fluff) {
+
+        <!-- Fluff Image -->
+        @if (fluffImageUrl()) {
+          <div class="fluff-image-container">
+            <img [src]="fluffImageUrl()" class="fluff-image" (error)="onFluffImageError()"
+              alt="{{ unit.chassis }} {{ unit.model }}" />
             </div>
+          }
+
+          @if (unit.fluff.systems && unit.fluff.systems.length > 0) {
+            <div class="fluff-section">
+              <div class="fluff-label">Systems:</div>
+              <div class="fluff-text">
+                @for (system of unit.fluff.systems; track system.label) {
+                  <div>
+                    @if (system.label) {
+                      <strong>{{ system.label }}: </strong>
+                    }
+                    @if (system.manufacturer) {
+                      <span>{{ system.manufacturer }} </span>
+                    }
+                    @if (system.model) {
+                      <span>({{ system.model }})</span>
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+          }
+
+          @if (unit.fluff.manufacturer) {
+            <div class="fluff-section">
+              <div class="fluff-label">Manufacturers:</div>
+              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.manufacturer) }}</div>
+            </div>
+          }
+
+          @if (unit.fluff.primaryFactory) {
+            <div class="fluff-section">
+              <div class="fluff-label">Primary Factories:</div>
+              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.primaryFactory) }}</div>
+            </div>
+          }
+
+          @if (unit.fluff.capabilities) {
+            <div class="fluff-section">
+              <div class="fluff-label">Capabilities:</div>
+              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.capabilities) }}</div>
+            </div>
+          }
+
+          @if (unit.fluff.overview) {
+            <div class="fluff-section">
+              <div class="fluff-label">Overview:</div>
+              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.overview) }}</div>
+            </div>
+          }
+
+          @if (unit.fluff.deployment) {
+            <div class="fluff-section">
+              <div class="fluff-label">Deployment:</div>
+              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.deployment) }}</div>
+            </div>
+          }
+
+          @if (unit.fluff.history) {
+            <div class="fluff-section">
+              <div class="fluff-label">History:</div>
+              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.history) }}</div>
+            </div>
+          }
+
+          @if (unit.fluff.notes) {
+            <div class="fluff-section">
+              <div class="fluff-label">Notes:</div>
+              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.notes) }}</div>
+            </div>
+          }
+        } @else {
+          <div class="no-fluff">
+            No intel available for this unit.
+          </div>
         }
+      </div>
     </div>
-    <div class="footer" dialog-footer>
-        <button [class.hidden]="!hasPrev" class="nav-arrow nav-arrow-left" (click)="onPrev()" aria-label="Previous Unit">
-            &#10094;
-        </button>
-        <button [disabled]="this.forceBuilderService.readOnlyForce()" class="modal-btn bt-button" (click)="onAdd()">ADD</button>
-        <button class="modal-btn bt-button" (click)="onClose()">CLOSE</button>
-        <button [class.hidden]="!hasNext" class="nav-arrow nav-arrow-right" (click)="onNext()" aria-label="Next Unit">
-            &#10095;
-        </button>
+  }
+
+  @if (activeTab() === 'Sheet') {
+    <div class="tab-content">
+      <svg-viewer-lite [unit]="unit"></svg-viewer-lite>
     </div>
+  }
+</div>
+<div class="footer" dialog-footer>
+  <button [class.hidden]="!hasPrev" class="nav-arrow nav-arrow-left" (click)="onPrev()" aria-label="Previous Unit">
+    &#10094;
+  </button>
+  <button [disabled]="this.forceBuilderService.readOnlyForce()" class="modal-btn bt-button" (click)="onAdd()">ADD</button>
+  <button class="modal-btn bt-button" (click)="onClose()">CLOSE</button>
+  <button [class.hidden]="!hasNext" class="nav-arrow nav-arrow-right" (click)="onNext()" aria-label="Next Unit">
+    &#10095;
+  </button>
+</div>
 </base-dialog>

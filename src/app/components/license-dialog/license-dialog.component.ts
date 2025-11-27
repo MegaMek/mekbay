@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
+
 import { Component, Output, EventEmitter, inject, ChangeDetectionStrategy } from '@angular/core';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
@@ -44,9 +44,8 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        CommonModule,
-        BaseDialogComponent,
-    ],
+    BaseDialogComponent
+],
     template: `
     <base-dialog>
       <div dialog-header><div class="title">License & Legal Notice</div></div>

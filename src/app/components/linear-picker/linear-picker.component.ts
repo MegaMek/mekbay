@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
+
 import { Component, ElementRef, signal, output, computed, inject, Injector, ChangeDetectionStrategy, viewChild, afterNextRender, effect, input } from '@angular/core';
 import { PickerComponent, PickerValue } from '../picker/picker.interface';
 import { HandlerChoice } from '../../services/equipment-interaction-registry.service';
@@ -44,7 +44,7 @@ import { LayoutService } from '../../services/layout.service';
     selector: 'linear-picker',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [],
     templateUrl: './linear-picker.component.html',
     styleUrls: ['./linear-picker.component.scss']
 })

@@ -32,7 +32,7 @@
  */
 
 import { Component, input, ElementRef, AfterViewInit, Renderer2, Injector, signal, EffectRef, effect, inject, ChangeDetectionStrategy, viewChild, ComponentRef, ViewContainerRef, TemplateRef, afterNextRender, computed, DestroyRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { ForceUnit } from '../../models/force-unit.model';
 import { ViewportTransform } from '../../models/force-serialization';
 import { SvgZoomPanService, SwipeCallbacks } from './svg-zoom-pan.service';
@@ -52,7 +52,7 @@ import { Force } from '../../models/force.model';
     selector: 'svg-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, SvgCanvasOverlayComponent, SvgInteractionOverlayComponent],
+    imports: [SvgCanvasOverlayComponent, SvgInteractionOverlayComponent],
     providers: [SvgZoomPanService, SvgInteractionService],
     templateUrl: './svg-viewer.component.html',
     styleUrls: ['./svg-viewer.component.css']

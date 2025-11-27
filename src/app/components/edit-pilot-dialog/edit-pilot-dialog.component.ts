@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
+
 import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 
@@ -58,7 +58,7 @@ export interface EditPilotResult {
     selector: 'edit-pilot-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

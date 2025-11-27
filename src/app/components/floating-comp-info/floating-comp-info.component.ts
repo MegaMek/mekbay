@@ -32,7 +32,7 @@
  */
 
 import { Component, input, signal, effect, inject, ChangeDetectionStrategy } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { Unit } from '../../models/units.model';
@@ -45,7 +45,7 @@ import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
     selector: 'floating-comp-info',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [],
     templateUrl: './floating-comp-info.component.html',
     styleUrls: ['./floating-comp-info.component.css'],
     host: {

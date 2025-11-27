@@ -32,7 +32,7 @@
  */
 
 import { Component, computed, signal, HostListener, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector, untracked, DestroyRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { SvgViewerComponent } from './components/svg-viewer/svg-viewer.component';
@@ -68,16 +68,15 @@ import { isIOS, isRunningStandalone } from './utils/platform.util';
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        CommonModule,
-        ToastsComponent,
-        SvgViewerComponent,
-        LayoutModule,
-        UpdateButtonComponent,
-        SidebarComponent,
-        UnitSearchComponent,
-        OverlayModule,
-        PortalModule
-    ],
+    ToastsComponent,
+    SvgViewerComponent,
+    LayoutModule,
+    UpdateButtonComponent,
+    SidebarComponent,
+    UnitSearchComponent,
+    OverlayModule,
+    PortalModule
+],
     templateUrl: './app.html',
     styleUrl: './app.scss'
 })

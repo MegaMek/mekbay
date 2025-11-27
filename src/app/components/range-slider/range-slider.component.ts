@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
+
 import { Component, signal, computed, ElementRef, input, output, effect, ChangeDetectionStrategy, HostListener, viewChild } from '@angular/core';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 /*
@@ -41,7 +41,7 @@ import { FormatNumberPipe } from '../../pipes/format-number.pipe';
     selector: 'range-slider',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, FormatNumberPipe],
+    imports: [FormatNumberPipe],
     templateUrl: './range-slider.component.html',
     styleUrl: './range-slider.component.css',
 })

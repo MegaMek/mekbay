@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
+
 import { Component, ElementRef, signal, computed, output, ChangeDetectionStrategy, viewChild, effect, afterNextRender, inject, Injector, input } from '@angular/core';
 import { PickerChoice, PickerComponent, PickerValue } from '../picker/picker.interface';
 import { LayoutService } from '../../services/layout.service';
@@ -48,7 +48,7 @@ const BEGIN_END_SECTOR_PADDING = 110;
     selector: 'radial-picker',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [],
     templateUrl: 'radial-picker.component.html',
     styleUrls: ['radial-picker.component.css']
 })

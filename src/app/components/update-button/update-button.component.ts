@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 import { ChangeDetectionStrategy, Component, signal, input, computed, effect, inject, afterNextRender, Injector } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { App } from '../../app';
 
 /*
@@ -41,7 +41,7 @@ import { App } from '../../app';
     selector: 'update-button',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule], 
+    imports: [], 
     templateUrl: './update-button.component.html',
     styleUrls: ['./update-button.component.css']
 })
