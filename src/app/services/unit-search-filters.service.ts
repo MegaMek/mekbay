@@ -43,9 +43,6 @@ import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
 import { matchesSearch } from '../utils/search.util';
 
-const PARTIAL_TOKEN_SPLITTERS = ['-'];
-const PARTIAL_TOKEN_SPLIT_REGEX = new RegExp(`([${PARTIAL_TOKEN_SPLITTERS.map(s => `\\${s}`).join('')}])`);
-
 /*
  * Author: Drake
  */
