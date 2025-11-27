@@ -32,7 +32,7 @@
  */
 
 
-import { CommonModule } from '@angular/common';
+
 import { ChangeDetectionStrategy, Component, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -48,7 +48,7 @@ import { UnitSearchFiltersService } from '../../services/unit-search-filters.ser
     selector: 'share-search-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

@@ -31,9 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
-import { Component, ElementRef, signal, output, computed, inject, Injector, ChangeDetectionStrategy, viewChild, afterNextRender, effect } from '@angular/core';
-import { PickerComponent, PickerChoice, PickerValue } from '../picker/picker.interface';
+
+import { Component, ElementRef, signal, output, computed, inject, Injector, ChangeDetectionStrategy, viewChild, afterNextRender, effect, input } from '@angular/core';
+import { PickerComponent, PickerValue } from '../picker/picker.interface';
+import { HandlerChoice } from '../../services/equipment-interaction-registry.service';
+import { LayoutService } from '../../services/layout.service';
 
 /*
  * Author: Drake
@@ -42,202 +44,27 @@ import { PickerComponent, PickerChoice, PickerValue } from '../picker/picker.int
     selector: 'linear-picker',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
-    template: `
-        <div #picker class="linear-picker" 
-                [class.touch]="interactionType() === 'touch'"
-                [class.horizontal]="horizontal()"
-                [class.vertical]="!horizontal()"
-        >    
-            @for (choice of values(); let i = $index; track choice.value) {
-                <div class="value-cell"
-                    [class.selected]="isSelected(choice)"
-                    [class.highlight]="isHovered(choice) && !choice.disabled"
-                    [class.disabled]="choice.disabled"
-                    [class.active]="choice.active"
-                    [attr.data-title]="isSelected(choice) ? title() : null"
-                    (pointerenter)="setHoveredChoice(choice)"
-                    (pointerleave)="resetHovered()"
-                    (pointerdown)="setHoveredChoice(choice)"
-                    (click)="handleChoiceClick($event, choice)">
-                    {{ choice.label }}
-                </div>
-            }
-        </div>
-    `,
-    styles: [`
-    .linear-picker {
-        font-family: 'Roboto', sans-serif;
-        position: fixed;
-        z-index: 9999;
-        user-select: none;
-        padding: 0;
-        background: #000;
-        color: #fff;
-        border: 2px solid #fff;
-        width: auto;
-        min-width: max-content;
-        white-space: nowrap;
-    }
-    
-    /* Horizontal layout */
-    .linear-picker.horizontal {
-        display: flex;
-        flex-direction: row;
-    }
-    
-    /* Vertical layout (default) */
-    .linear-picker.vertical {
-        display: flex;
-        flex-direction: column;
-    }
-    
-    .value-cell.selected[data-title]::before {
-        position: absolute;
-        height: 100%;
-        min-height: 100%;
-        display: flex;
-        align-items: center;
-        padding-left: 12px;
-        padding-right: 12px;
-        border: 2px solid #000;
-        content: attr(data-title);
-        background-color: #000;
-        color: #fff;
-        white-space: nowrap;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        box-sizing: border-box;
-        font-weight: bold;
-    }
-    
-    /* Vertical layout title positioning */
-    .linear-picker.vertical .value-cell.selected[data-title]::before {
-        top: 0;
-        right: 100%;
-    }
-    
-    /* Horizontal layout title positioning */
-    .linear-picker.horizontal .value-cell.selected[data-title]::before {
-        bottom: 100%;
-        left: 0;
-        width: 100%;
-        min-width: 100%;
-        height: auto;
-        min-height: auto;
-        justify-content: center;
-    }
-    
-    .value-cell {
-        position: relative;
-        font-size: 0.8em;
-        text-align: center;
-        cursor: pointer;
-        transition: background-color 0.15s ease-in-out;
-        flex-shrink: 0;
-    }
-    
-    .value-cell.disabled {
-        cursor: not-allowed;
-        color: #666;
-        opacity: 0.6;
-    }
-    
-    /* Vertical layout cell styling */
-    .linear-picker.vertical .value-cell {
-        padding: 2px 8px;
-    }
-    .linear-picker.vertical.touch .value-cell {
-        padding: 3px 64px 3px 8px;
-        font-size: 0.9em;
-        text-align: right;
-    }
-
-    /* Horizontal layout cell styling */
-    .linear-picker.horizontal .value-cell {
-        padding: 8px 12px;
-        border-right: 1px solid rgba(255, 255, 255, 0.3);
-    }
-    
-    .linear-picker.horizontal .value-cell:last-child {
-        border-right: none;
-    }
-    
-    .linear-picker.horizontal.touch .value-cell {
-        padding: 12px 16px;
-        font-size: 1em;
-    }
-    
-    .value-cell.selected {
-        background: var(--bt-yellow-background-bright);
-        font-weight: bold;
-        z-index: 2;
-    }
-    
-    /* Vertical layout selected cell */
-    .linear-picker.vertical .value-cell.selected {
-        padding-top: 4px !important;
-        padding-bottom: 4px !important;
-    }
-    
-    /* Horizontal layout selected cell */
-    .linear-picker.horizontal .value-cell.selected {
-        padding-left: 16px !important;
-        padding-right: 16px !important;
-    }
-    
-    .value-cell.highlight:not(.disabled) {
-        background: var(--bt-yellow);
-    }
-    
-    /* Night mode styles */
-    :host-context(.night-mode) .linear-picker {
-        background: #fff;
-        color: #000;
-        border-color: #000;
-    }
-    
-    :host-context(.night-mode) .value-cell.selected[data-title]::before {
-        background: #fff;
-        color: #000;
-        border-color: #000;
-    }
-    
-    :host-context(.night-mode) .value-cell.disabled {
-        color: #999;
-        background: #ccc;
-    }
-    
-    :host-context(.night-mode) .value-cell.selected {
-        background: var(--bt-yellow-background-light);
-    }
-    
-    :host-context(.night-mode) .value-cell.highlight:not(.disabled) {
-        background: var(--bt-yellow-strong);
-    }
-    
-    :host-context(.night-mode) .linear-picker.horizontal .value-cell {
-        border-right-color: rgba(0, 0, 0, 0.3);
-    }
-`]
+    imports: [],
+    templateUrl: './linear-picker.component.html',
+    styleUrls: ['./linear-picker.component.scss']
 })
 export class LinearPickerComponent implements PickerComponent {
     private readonly injector = inject(Injector);
+    public readonly layoutService = inject(LayoutService);
 
     // Input signals
-    readonly interactionType = signal<'mouse' | 'touch'>('mouse');
-    readonly title = signal<string | null>(null);
-    readonly values = signal<PickerChoice[]>([]);
-    readonly selected = signal<PickerValue | null>(null);
-    readonly position = signal<{ x: number, y: number }>({ x: 0, y: 0 });
-    readonly horizontal = signal<boolean>(false);
-    readonly align = signal<'topleft' | 'left' | 'center'>('center');
+    readonly title = input<string | null>(null);
+    readonly values = signal<HandlerChoice[]>([]);
+    readonly selected = input<PickerValue | null>(null);
+    readonly position = input<{ x: number, y: number }>({ x: 0, y: 0 });
+    readonly horizontal = input<boolean>(false);
+    readonly align = input<'topleft' | 'left' | 'center'>('center');
     readonly initialEvent = signal<PointerEvent | null>(null);
 
-    picked = output<PickerValue>();
+    picked = output<HandlerChoice>();
     cancelled = output<void>();
 
-    hoveredChoice = signal<PickerChoice | null>(null);
+    hoveredChoice = signal<HandlerChoice | null>(null);
 
     pickerRef = viewChild.required<ElementRef<HTMLDivElement>>('picker');
 
@@ -269,16 +96,16 @@ export class LinearPickerComponent implements PickerComponent {
     }
 
     // Helper methods
-    isSelected(choice: PickerChoice): boolean {
+    isSelected(choice: HandlerChoice): boolean {
         return choice.value === this.selected();
     }
 
-    isHovered(choice: PickerChoice): boolean {
+    isHovered(choice: HandlerChoice): boolean {
         return choice === this.hoveredChoice();
     }
 
     // Event handlers
-    setHoveredChoice(choice: PickerChoice): void {
+    setHoveredChoice(choice: HandlerChoice): void {
         if (choice.disabled) return;
         this.hoveredChoice.set(choice);
     }
@@ -287,17 +114,27 @@ export class LinearPickerComponent implements PickerComponent {
         this.hoveredChoice.set(null);
     }
 
-    handleChoiceClick(event: MouseEvent, choice: PickerChoice): void {
+    handleChoiceClick(event: MouseEvent, choice: HandlerChoice): void {
         if (!this.pointerDownInside || choice.disabled) {
             return;
         }
         event.stopPropagation();
         event.preventDefault();
         this.pointerDownInside = false;
-        this.pick(choice.value);
+        this.pick(choice);
     }
 
-    pick(val: PickerValue): void {
+    handleDropdownChange(event: Event, choice: HandlerChoice): void {
+        const selectElement = event.target as HTMLSelectElement;
+        const selectedValue = selectElement.value;
+        const selectedOption = choice.choices?.find(c => c.value == selectedValue);
+        if (selectedOption) {
+            const newChoice = { ...choice, value: selectedOption.value, label: selectedOption.label };
+            this.pick(newChoice);
+        }
+    }
+
+    pick(val: HandlerChoice): void {
         this.picked.emit(val);
     }
 
@@ -432,7 +269,7 @@ export class LinearPickerComponent implements PickerComponent {
         let pickerOffsetX = this.position().x - cellCenterX;
         const pickerOffsetY = this.position().y - cellCenterY;
         
-        if (this.interactionType() === 'touch') {
+        if (this.layoutService.isTouchInput()) {
             // For touch interaction, adjust the offset to center the cell
             pickerOffsetX -= (cellRect.width / 3);
         }
@@ -460,7 +297,7 @@ export class LinearPickerComponent implements PickerComponent {
         }
         event.stopPropagation();
         event.preventDefault();
-        this.pick(hoveredChoice.value);
+        this.pick(hoveredChoice);
     };
 
     private readonly handleOutsideClick = (event: PointerEvent): void => {

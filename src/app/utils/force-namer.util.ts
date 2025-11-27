@@ -175,14 +175,8 @@ export class ForceNamerUtil {
                 if (!eraUnitIds) continue;
 
                 let count = 0;
-                if (eraUnitIds instanceof Set) {
-                    for (const id of unitIds) {
-                        if (eraUnitIds.has(id)) count++;
-                    }
-                } else {
-                    for (const id of unitIds) {
-                        if (eraUnitIds.includes(id)) count++;
-                    }
+                for (const id of unitIds) {
+                    if (eraUnitIds.has(id)) count++;
                 }
 
                 if (count > 0) {

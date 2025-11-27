@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { ChangeDetectionStrategy, Component, inject, computed, input, ElementRef, Renderer2, Injector, viewChildren } from '@angular/core';
 import { PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
@@ -25,7 +25,7 @@ import { CompactModeService } from '../../services/compact-mode.service';
     selector: 'sidebar-footer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, PortalModule, CdkMenuModule],
+    imports: [PortalModule, CdkMenuModule],
     templateUrl: './sidebar-footer.component.html',
     styleUrls: ['./sidebar-footer.component.scss'],
 })

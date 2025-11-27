@@ -32,7 +32,7 @@
  */
 
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 
 /*
  * Author: Drake
@@ -41,7 +41,7 @@ import { CommonModule } from '@angular/common';
     selector: 'tag-selector',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [],
     templateUrl: './tag-selector.component.html',
     styleUrl: './tag-selector.component.css'
 })

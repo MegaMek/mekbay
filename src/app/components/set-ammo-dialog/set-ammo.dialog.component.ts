@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
+
 import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { AmmoEquipment } from '../../models/equipment.model';
@@ -53,7 +53,7 @@ export interface SetAmmoDialogData {
     selector: 'set-ammo-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

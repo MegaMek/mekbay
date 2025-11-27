@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, ChangeDetectionStrategy, computed, input, output, inject } from '@angular/core';
 import { ForceUnit } from '../../models/force-unit.model';
 import { Unit } from '../../models/units.model';
@@ -11,7 +11,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 @Component({
     selector: 'unit-block',
     standalone: true,
-    imports: [CommonModule, CdkMenuModule, FormatNumberPipe, FormatTonsPipe, UnitIconComponent],
+    imports: [CdkMenuModule, FormatNumberPipe, FormatTonsPipe, UnitIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
     styleUrls: ['./unit-block.component.scss'],

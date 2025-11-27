@@ -60,6 +60,7 @@ import { LongPressDirective } from '../../directives/long-press.directive';
 import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ShareSearchDialogComponent } from './share-search.component';
+import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
 
@@ -493,56 +494,7 @@ export class UnitSearchComponent {
 
     highlight(text: string): string {
         const searchGroups = this.filtersService.searchTokens();
-        if (!searchGroups || searchGroups.length === 0) return this.escapeHtml(text);
-
-        // Flatten tokens across all OR groups, preserve exact tokens (prefer exact over partial on same string)
-        const tokenMap = new Map<string, 'exact' | 'partial'>();
-        for (const group of searchGroups) {
-            for (const t of group.tokens) {
-                if (Array.isArray(t.token)) {
-                    // For an array of tokens add both the full sequence and individual parts for highlighting.
-                    const fullSequence = t.token.join('');
-                    if (fullSequence && !tokenMap.has(fullSequence)) {
-                        tokenMap.set(fullSequence, 'partial');
-                    }
-                    for (const subToken of t.token) {
-                        if (subToken && !tokenMap.has(subToken)) {
-                            tokenMap.set(subToken, 'partial');
-                        }
-                    }
-                } else {
-                    const token = t.token;
-                    const existing = tokenMap.get(token);
-                    if (!existing) {
-                        tokenMap.set(token, t.mode);
-                    } else if (existing === 'partial' && t.mode === 'exact') {
-                        // prefer exact if same token appears as exact and partial
-                        tokenMap.set(token, 'exact');
-                    }
-                }
-            }
-        }
-
-        const tokens = Array.from(tokenMap.keys())
-            .sort((a, b) => b.length - a.length) // longest first to avoid partial overlaps
-            .filter(Boolean);
-
-        if (tokens.length === 0) return this.escapeHtml(text);
-
-        const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const pattern = tokens.map(escapeRegExp).join('|');
-        if (!pattern) return this.escapeHtml(text);
-
-        const regex = new RegExp(`(${pattern})`, 'gi');
-
-        // Split on matches, escape parts and wrap matches in <b>
-        const parts = text.split(regex);
-        return parts
-            .map((part, idx) => (idx % 2 === 1)
-                ? `<b>${this.escapeHtml(part)}</b>`
-                : this.escapeHtml(part)
-            )
-            .join('');
+        return highlightMatches(text, searchGroups, true);
     }
 
     async openRangeValueDialog(filterKey: string, type: 'min' | 'max', currentValue: number, totalRange: [number, number]) {
@@ -588,14 +540,7 @@ export class UnitSearchComponent {
         }
     }
 
-    private escapeHtml(s: string): string {
-        return s
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
+
 
     getUnitDisplayName(unit: any): string {
         return `${unit.chassis} ${unit.model}`;

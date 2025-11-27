@@ -49,23 +49,19 @@ export abstract class ToggleHandler extends EquipmentInteractionHandler {
             {
                 label: this.enabledLabel,
                 value: 'enabled',
-                disabled: equipment.destroyed || currentState === 'enabled',
-                active: currentState === 'enabled'
+                disabled: equipment.destroyed,
+                active: currentState === 'enabled',
+                displayType: 'toggle',
             },
-            {
-                label: this.disabledLabel,
-                value: 'disabled',
-                disabled: equipment.destroyed || currentState === 'disabled',
-                active: currentState === 'disabled'
-            }
         ];
     }
     
-    handleSelection(equipment: MountedEquipment, value: PickerValue, context: HandlerContext): boolean {
-        equipment.states?.set(this.stateKey, value as string);
+    handleSelection(equipment: MountedEquipment, value: PickerChoice, context: HandlerContext): boolean {
+        const newState = value.value === 'enabled' ? 'disabled' : 'enabled';
+        equipment.states?.set(this.stateKey, newState);
         equipment.owner.setInventoryEntry(equipment);
         context.toastService.show(
-            `${equipment.equipment?.name||equipment.name} ${value === 'enabled' ? this.enabledLabel : this.disabledLabel}`,
+            `${equipment.equipment?.name||equipment.name} ${newState === 'enabled' ? this.enabledLabel : this.disabledLabel}`,
             'info'
         );
         return true;

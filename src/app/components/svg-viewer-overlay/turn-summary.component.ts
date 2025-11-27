@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
+
 import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, afterNextRender, ElementRef, output } from '@angular/core';
 import { SvgZoomPanService } from '../svg-viewer/svg-zoom-pan.service';
 import { OptionsService } from '../../services/options.service';
@@ -44,7 +44,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { SvgInteractionOverlayComponent } from './svg-viewer-overlay.component';
 import { canChangeAirborneGround, MotiveModeOption, MotiveModes } from '../../models/motiveModes.model';
-import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
+import { CommonModule } from '@angular/common';
 
 /*
  * Author: Drake
@@ -53,7 +53,7 @@ import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 @Component({
     selector: 'turn-summary-panel',
     standalone: true,
-    imports: [CommonModule, DiceRollerComponent],
+    imports: [CommonModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './turn-summary.component.html',
     styleUrls: [`./turn-summary.component.scss`]
@@ -351,7 +351,7 @@ export class TurnSummaryPanelComponent {
 @Component({
     selector: 'psr-warning-panel',
     standalone: true,
-    imports: [CommonModule],
+    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">

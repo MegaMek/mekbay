@@ -1,6 +1,6 @@
 <div
     class="radial-picker-container"
-    [class.touch]="interactionType() === 'touch'"
+    [class.touch]="this.layoutService.isTouchInput()"
     [style.width.px]="diameter()"
     [style.position]="'absolute'"
     [style.left.px]="position().x - diameter() / 2"

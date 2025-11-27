@@ -32,7 +32,7 @@
  */
 
 import { Component, computed, signal, HostListener, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector, untracked, DestroyRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { SvgViewerComponent } from './components/svg-viewer/svg-viewer.component';
@@ -68,16 +68,15 @@ import { isIOS, isRunningStandalone } from './utils/platform.util';
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        CommonModule,
-        ToastsComponent,
-        SvgViewerComponent,
-        LayoutModule,
-        UpdateButtonComponent,
-        SidebarComponent,
-        UnitSearchComponent,
-        OverlayModule,
-        PortalModule
-    ],
+    ToastsComponent,
+    SvgViewerComponent,
+    LayoutModule,
+    UpdateButtonComponent,
+    SidebarComponent,
+    UnitSearchComponent,
+    OverlayModule,
+    PortalModule
+],
     templateUrl: './app.html',
     styleUrl: './app.scss'
 })
@@ -240,7 +239,11 @@ export class App {
 
     async installPwa() {
         if (isIOS()) {
-            this.dialogService.showNotice('To install on iOS, tap the Share button and select "Add to Home Screen".', 'App Installation');
+            this.dialogService.showNoticeHtml(`To install on iOS, tap the 
+                <svg style="position: relative; top: 0.4em; margin-left: -0.2em; margin-right: -0.3em;" fill="currentColor" width="1.5em" height="1.5em" viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg"><path d="M30.3 13.7L25 8.4l-5.3 5.3-1.4-1.4L25 5.6l6.7 6.7z"/><path d="M24 7h2v21h-2z"/><path d="M35 40H15c-1.7 0-3-1.3-3-3V19c0-1.7 1.3-3 3-3h7v2h-7c-.6 0-1 .4-1 1v18c0 .6.4 1 1 1h20c.6 0 1-.4 1-1V19c0-.6-.4-1-1-1h-7v-2h7c1.7 0 3 1.3 3 3v18c0 1.7-1.3 3-3 3z"/></svg>
+                "Share" button and select 
+                <svg style="position: relative; top: 0.1em; margin-left: 0.1em;" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 16 16" style="display: inline-block; vertical-align: -0.125em; margin-right: 0.2em;"><path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+                "Add to Home Screen".`, 'App Installation');
             return;
         }
 
@@ -277,11 +280,6 @@ export class App {
 
     reloadForUpdate(): void {
         window.location.reload();
-    }
-
-    copyBuildInfo(): void {
-        if (!copyTextToClipboard(this.buildInfo)) return;
-        this.toastService.show('Build info copied to clipboard.', 'info');
     }
 
     showLicenseDialog(): void {

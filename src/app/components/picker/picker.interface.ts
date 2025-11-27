@@ -44,8 +44,16 @@ export interface PickerPosition {
 
 export type PickerTargetType = 'skill' | 'crit' | 'armor' | 'inventory' | 'heatsinks';
 
-export type PickerInteractionType = 'mouse' | 'touch';
 export type PickerValue = string | number;
+
+export type PickerDisplayType = 'button' | 'dropdown' | 'label' | 'state-button' | 'toggle';
+
+export type PickerDropdownOption = {
+    label: string;
+    value: PickerValue;
+    disabled?: boolean;
+};
+
 export type PickerChoice = {
     label: string;
     shortLabel?: string;
@@ -53,21 +61,22 @@ export type PickerChoice = {
     disabled?: boolean;
     active?: boolean;
     keepOpen?: boolean;
+    displayType?: PickerDisplayType;
+    choices?: PickerDropdownOption[];
 };
 
 export interface PickerComponent {
-    interactionType: WritableSignal<PickerInteractionType>;
-    title: WritableSignal<string | null>;
+    title: InputSignal<string | null>;
     values: WritableSignal<PickerChoice[]>;
-    selected: WritableSignal<PickerValue | null>;
-    position: WritableSignal<PickerPosition>;
+    selected: InputSignal<PickerValue | null>;
+    position: InputSignal<PickerPosition>;
 
     // Output emitters
-    picked: OutputEmitterRef<PickerValue>;
+    picked: OutputEmitterRef<PickerChoice>;
     cancelled: OutputEmitterRef<void>;
 
     // Methods
-    pick(val: PickerValue): void;
+    pick(val: PickerChoice): void;
     cancel(): void;
 }
 

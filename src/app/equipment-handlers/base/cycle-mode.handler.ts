@@ -52,18 +52,19 @@ export abstract class CycleModeHandler extends EquipmentInteractionHandler {
         
         // Return single choice representing the current mode
         return [{
-            label: this.modeLabel + ': ' + (currentMode?.label ?? currentState),
+            label: this.modeLabel,
             shortLabel: currentMode?.shortLabel ?? currentMode?.label ?? currentState,
             value: currentMode?.value ?? currentState,
             disabled: equipment.destroyed,
             active: false,
             keepOpen: currentMode?.keepOpen ?? true,
+            displayType: 'state-button',
         }];
     }
     
-    handleSelection(equipment: MountedEquipment, value: PickerValue, context: HandlerContext): boolean {
+    handleSelection(equipment: MountedEquipment, value: PickerChoice, context: HandlerContext): boolean {
         const modes = this.getModes(equipment);
-        const currentIndex = modes.findIndex(m => m.value === value);
+        const currentIndex = modes.findIndex(m => m.value === value.value);
         // Calculate next mode (wrap around to first if at end)
         const nextIndex = currentIndex === -1 || currentIndex === modes.length - 1 
             ? 0 

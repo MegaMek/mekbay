@@ -20,7 +20,7 @@
 </div>
 @if (!readOnly()) {
 <div #diffHeatMarker class="heat-diff-marker" 
-     [class.small]="interactionMode() === 'mouse'"
+     [class.small]="!this.layoutService.isTouchInput()"
      [hidden]="!diffHeatMarkerVisible()">
     <div #diffHeatText class="heat-diff-text"></div>
     <div #diffHeatArrow class="heat-diff-arrow"></div>

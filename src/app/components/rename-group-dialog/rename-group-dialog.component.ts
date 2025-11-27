@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
+
 import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -48,41 +48,43 @@ export interface RenameGroupDialogData {
     selector: 'rename-group-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
     template: `
     <div class="content">
-        <h2 dialog-title></h2>
-        <div dialog-content>
-            <p>Group Name</p>
-            <div class="input-wrapper">
-                <div 
-                    class="input"
-                    contentEditable="true"
-                    #inputRef
-                    [textContent]="data.group.name()"
-                    (keydown.enter)="submit()"
-                    required
-                ></div>
-                <button
-                    type="button"
-                    class="random-button"
-                    (click)="fillRandomName()"
-                    aria-label="Generate random force name"
-                ></button>
-            </div>
-            <details class="faction-accordion" *ngIf="formationsText">
-                <summary>Formations ({{ formationsText.length }})</summary>
-                <p>{{ formationsText.join(', ') }}</p>
-            </details>
+      <h2 dialog-title></h2>
+      <div dialog-content>
+        <p>Group Name</p>
+        <div class="input-wrapper">
+          <div
+            class="input"
+            contentEditable="true"
+            #inputRef
+            [textContent]="data.group.name()"
+            (keydown.enter)="submit()"
+            required
+          ></div>
+          <button
+            type="button"
+            class="random-button"
+            (click)="fillRandomName()"
+            aria-label="Generate random force name"
+          ></button>
         </div>
-        <div dialog-actions>
-            <button (click)="submit()" class="bt-button">CONFIRM</button>
-            <button (click)="submitEmpty()" class="bt-button">UNSET</button>
-            <button (click)="close()" class="bt-button">DISMISS</button>
-        </div>
+        @if (formationsText) {
+          <details class="faction-accordion">
+            <summary>Formations ({{ formationsText.length }})</summary>
+            <p>{{ formationsText.join(', ') }}</p>
+          </details>
+        }
+      </div>
+      <div dialog-actions>
+        <button (click)="submit()" class="bt-button">CONFIRM</button>
+        <button (click)="submitEmpty()" class="bt-button">UNSET</button>
+        <button (click)="close()" class="bt-button">DISMISS</button>
+      </div>
     </div>
     `,
     styles: [`

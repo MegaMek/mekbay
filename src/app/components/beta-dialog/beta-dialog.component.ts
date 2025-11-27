@@ -31,10 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
+
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
+import { APP_VERSION_STRING } from '../../build-meta';
 
 /*
  * Author: Drake
@@ -44,13 +45,14 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        CommonModule,
-        BaseDialogComponent,
-    ],
+    BaseDialogComponent
+],
     template: `
     <base-dialog>
         <div dialog-header><div class="title">Beta Notice</div></div>
         <div dialog-body>
+            <p>Version: 
+            <span class="build-info allow-select">{{ appVersionString }}</span></p>
             <p>This is a development and public beta version of MekBay.</p>
             <p>It may contain bugs and issues that need to be resolved, and things might break unexpectedly.</p>
             <p>Features are subject to change, and some functionality may be incomplete or experimental.</p>
@@ -68,11 +70,17 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
             <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
         </div>
     </base-dialog>
-    `
+    `,
+    styles: [`
+    .build-info {
+        font-weight: bold;
+    }
+    `],
 })
 export class BetaDialogComponent {
     dialogRef = inject(DialogRef<BetaDialogComponent>);
     data = inject(DIALOG_DATA, { optional: true });
+    appVersionString = APP_VERSION_STRING;
 
     onClose() {
         this.dialogRef.close();

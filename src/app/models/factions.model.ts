@@ -39,7 +39,7 @@ export interface Faction {
     name: string; // Faction name
     group: string; // Inner Sphere, Clan, etc.
     img: string; // Logo URL for the faction
-    eras: { [key: number]: number[] | Set<number> }; // Indexed by era ID, value is a list of unit IDs
+    eras: { [key: number]: Set<number> }; // Indexed by era ID, value is a list of unit IDs
 }
 
 export interface Factions {

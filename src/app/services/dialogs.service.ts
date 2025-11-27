@@ -154,6 +154,18 @@ export class DialogsService {
         };
     }
 
+    async showNoticeHtml(messageHtml: string, title = 'Notice'): Promise<void> {
+        const ref = this.createDialog(ConfirmDialogComponent, {
+            disableClose: true,
+            data: <ConfirmDialogData<string>>{
+                title,
+                messageHtml,
+                buttons: [{ label: 'DISMISS', value: 'nop' }]
+            }
+        });
+        await firstValueFrom(ref.closed);
+    }
+
     async showNotice(message: string, title = 'Notice'): Promise<void> {
         const ref = this.createDialog(ConfirmDialogComponent, {
             disableClose: true,

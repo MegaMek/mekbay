@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, input, output } from '@angular/core';
 import { SerializedSearchFilter } from '../../services/unit-search-filters.service';
 
@@ -6,26 +6,28 @@ import { SerializedSearchFilter } from '../../services/unit-search-filters.servi
 @Component({
     selector: 'search-favorites-menu',
     standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
     <div class="favorites-menu glass framed-borders has-shadow">
-        <div class="favorites-list">
-            @let favorites = this.favorites();
-            @if (!favorites || favorites.length === 0) {
-                <div class="no-favorites">No Tactical Bookmarks</div>
-            } @else {
-                @for (f of favorites; let i = $index; track i) {
-                    <div *ngIf="f" class="favorite-item"
-                         (click)="selectFavorite(f)" style="padding:8px; cursor:pointer; border-radius:4px;">
-                        {{ f.name }}
-                    </div>
-                }
+      <div class="favorites-list">
+        @let favorites = this.favorites();
+        @if (!favorites || favorites.length === 0) {
+          <div class="no-favorites">No Tactical Bookmarks</div>
+        } @else {
+          @for (f of favorites; let i = $index; track i) {
+            @if (f) {
+              <div class="favorite-item"
+                (click)="selectFavorite(f)" style="padding:8px; cursor:pointer; border-radius:4px;">
+                {{ f.name }}
+              </div>
             }
-        </div>
-        <div class="favorites-actions">
+          }
+        }
+      </div>
+      <div class="favorites-actions">
         <button type="button" class="bt-button" (click)="onSave()">ADD TO LIBRARY</button>
-        </div>
-        <span style="font-size: 9px; text-align: center;">This feature is currently not working and under development.</span>
+      </div>
+      <span style="font-size: 9px; text-align: center;">This feature is currently not working and under development.</span>
     </div>
     `,
     styles: [`

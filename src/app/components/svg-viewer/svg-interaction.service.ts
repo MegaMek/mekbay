@@ -57,7 +57,6 @@ import { ForceBuilderService } from '../../services/force-builder.service';
  * Author: Drake
  */
 export interface InteractionState {
-    interactionMode: WritableSignal<'touch' | 'mouse'>;
     clickTarget: SVGElement | null;
     isHeatDragging: boolean;
     diffHeatMarkerVisible: WritableSignal<boolean>;
@@ -83,7 +82,6 @@ export class SvgInteractionService {
     private injector!: Injector;
 
     private state: InteractionState = {
-        interactionMode: signal<'touch' | 'mouse'>('touch'),
         clickTarget: null,
         isHeatDragging: false,
         diffHeatMarkerVisible: signal(false),
@@ -148,7 +146,7 @@ export class SvgInteractionService {
             }
 
             this.updateHeatHighlight(data.heat);
-            const isMouse = this.state.interactionMode() === 'mouse';
+            const isMouse = !this.layoutService.isTouchInput();
             const markerWidth = isMouse ? 50 : 150;
             const markerHeight = isMouse ? 22 : 44;
             const spacing = 4;
@@ -176,7 +174,6 @@ export class SvgInteractionService {
 
     getState(): Readonly<InteractionState> {
         return {
-            interactionMode: this.state.interactionMode,
             clickTarget: this.state.clickTarget,
             isHeatDragging: this.state.isHeatDragging,
             diffHeatMarkerVisible: this.state.diffHeatMarkerVisible,
@@ -220,7 +217,6 @@ export class SvgInteractionService {
 
         el.addEventListener('pointerdown', (evt: PointerEvent) => {
             evt.preventDefault();
-            this.state.interactionMode.set(evt.pointerType === 'mouse' ? 'mouse' : 'touch');
             this.state.clickTarget = el;
             this.zoomPanService.pointerMoved = false;
             clearLongTouch();
@@ -457,15 +453,15 @@ export class SvgInteractionService {
                     selected: 0,
                     suggestedPickerStyle: 'radial',
                     targetType: 'armor',
-                    onPick: (val: PickerValue) => {
+                    onPick: (val: PickerChoice) => {
                         this.removePicker();
                         const unit = this.unit();
                         if (!unit) return;
                         if (val) {
                             if (isStructure) {
-                                unit.addInternalHits(loc, val as number);
+                                unit.addInternalHits(loc, val.value as number);
                             } else {
-                                let valueToApply = val as number;
+                                let valueToApply = val.value as number;
                                 // We remove/add first from/to the modular armor, if any
                                 if (availableModularArmorPoints > 0 && valueToApply > 0) {
                                     unit.getCritSlotsAsMatrix()[loc]?.forEach(critSlot => {
@@ -499,7 +495,7 @@ export class SvgInteractionService {
                                     this.unit()?.addArmorHits(loc, valueToApply, rear);
                                 }
                             }
-                            showArmorToast(val as number);
+                            showArmorToast(val.value as number);
                         }
                     },
                     onCancel: () => {
@@ -565,6 +561,8 @@ export class SvgInteractionService {
                 this.toastService.show(`${amountText} ${amount >= 0 ? 'to' : 'from'} ${labelText} (${remaining}/${totalAmmo})`, 'info', ammoToastId);
             };
 
+            const registry = this.equipmentRegistryService.getRegistry();
+            
             const createAndShowPicker = (event: Event) => {
                 if (unit.isInternalLocDestroyed(loc)) {
                     return;
@@ -592,13 +590,13 @@ export class SvgInteractionService {
                     title: labelText,
                     values: calculateValues(),
                     selected: null,
-                    suggestedPickerStyle: 'auto',
+                    pickerStyle: 'linear',
                     targetType: 'crit',
-                    onPick: async (val: PickerValue) => {
+                    onPick: async (choice: HandlerChoice) => {
                         this.removePicker();
                         const critSlot = unit.getCritSlot(loc, slot);
                         if (!critSlot) return;
-                        if (val == '+1') {
+                        if (choice.value == '+1') {
                             if (critSlot.consumed === undefined) {
                                 return;
                             }
@@ -608,7 +606,7 @@ export class SvgInteractionService {
                             showAmmoToast(critSlot, 1);
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        if (val == '-1') {
+                        if (choice.value == '-1') {
                             if (critSlot.consumed === undefined) {
                                 critSlot.consumed = 0;
                             }
@@ -618,13 +616,13 @@ export class SvgInteractionService {
                             showAmmoToast(critSlot, -1);
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        if (val == 'Empty') {
+                        if (choice.value == 'Empty') {
                             critSlot.consumed = totalAmmo;
                             unit.setCritSlot(critSlot);
                             this.toastService.show(`Emptied ${labelText}`, 'info');
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        if (val == 'Set Ammo') {
+                        if (choice.value == 'Set Ammo') {
                             const amountUsed = critSlot.consumed ?? 0;
                             const ammoOptions: AmmoEquipment[] = [];
                             if (!critSlot.name || !critSlot.eq) return;
@@ -683,12 +681,12 @@ export class SvgInteractionService {
                             }
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        if (val == 'Hit') {
+                        if (choice.value == 'Hit') {
                             unit.applyHitToCritSlot(critSlot, 1, !this.optionsService.options().useAutomations);
                             this.toastService.show(`Critical Hit on ${labelText}`, 'error');
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        if (val == 'Repair') {
+                        if (choice.value == 'Repair') {
                             unit.applyHitToCritSlot(critSlot, -1, !this.optionsService.options().useAutomations);
                             this.toastService.show(`Repaired ${labelText}`, 'success');
                             pickerInstance.component.values.set(calculateValues());
@@ -801,13 +799,11 @@ export class SvgInteractionService {
                     title: nameText,
                     values: calculatePickerValues,
                     selected: null,
-                    suggestedPickerStyle: 'auto',
+                    pickerStyle: 'linear',
                     targetType: 'crit',
-                    onPick: (val: PickerValue) => {
+                    onPick: (choice: HandlerChoice) => {
                         // Try equipment-specific handlers first
-                        const choice = calculatePickerValues.find(c => c.value === val) as HandlerChoice | undefined;
-
-                        if (choice?._handlerId) {
+                        if (choice?._handler) {
                             const handled = registry.handleSelection(entry, choice, context);
 
                             if (handled && choice.keepOpen) {
@@ -818,7 +814,7 @@ export class SvgInteractionService {
                         }
 
                         // Handle standard options
-                        if (val == '+1') {
+                        if (choice.value == '+1') {
                             if (entry.consumed === undefined) {
                                 return;
                             }
@@ -829,7 +825,7 @@ export class SvgInteractionService {
                             pickerInstance.component.values.set(calculateValues());
                             return;
                         }
-                        if (val == '-1') {
+                        if (choice.value == '-1') {
                             if (entry.consumed === undefined) {
                                 entry.consumed = 0;
                             }
@@ -840,19 +836,19 @@ export class SvgInteractionService {
                             pickerInstance.component.values.set(calculateValues());
                             return;
                         }
-                        if (val == 'Empty') {
+                        if (choice.value == 'Empty') {
                             entry.consumed = totalAmmo;
                             this.unit()?.setInventoryEntry(entry);
                             this.toastService.show(`Emptied ${nameText}`, 'info');
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        if (val == 'Hit') {
+                        if (choice.value == 'Hit') {
                             entry.destroyed = true;
                             this.unit()?.setInventoryEntry(entry);
                             this.toastService.show(`Critical Hit on ${nameText}`, 'error');
                             pickerInstance.component.values.set(calculateValues());
                         }
-                        if (val == 'Repair') {
+                        if (choice.value == 'Repair') {
                             entry.destroyed = false;
                             this.unit()?.setInventoryEntry(entry);
                             this.toastService.show(`Repaired ${nameText}`, 'success');
@@ -978,8 +974,6 @@ export class SvgInteractionService {
             el.addEventListener('pointerdown', (evt: PointerEvent) => {
                 evt.preventDefault();
                 if (dragState) return;
-                const interactionType = evt.pointerType === 'mouse' ? 'mouse' : 'touch';
-                this.state.interactionMode.set(interactionType);
                 this.zoomPanService.pointerMoved = false;
                 dragState = {
                     pointerId: evt.pointerId,
@@ -1065,10 +1059,10 @@ export class SvgInteractionService {
                         selected: 0,
                         suggestedPickerStyle: 'radial',
                         targetType: 'heatsinks',
-                        onPick: (val: PickerValue) => {
+                        onPick: (val: PickerChoice) => {
                             this.removePicker();
                             if (val) {
-                                const heatsinksOff = (unit.getHeat().heatsinksOff || 0) - (val as number);
+                                const heatsinksOff = (unit.getHeat().heatsinksOff || 0) - (val.value as number);
                                 unit.setHeatsinksOff(heatsinksOff);
                                 this.toastService.show(`Heatsink settings updated.`, 'info');
                             }
@@ -1141,8 +1135,8 @@ export class SvgInteractionService {
                     selected: currentValue,
                     suggestedPickerStyle: 'radial',
                     targetType: 'skill',
-                    onPick: (val: PickerValue) => {
-                        crewMember.setSkill(skill, parseInt(val as string), asf);
+                    onPick: (val: PickerChoice) => {
+                        crewMember.setSkill(skill, parseInt(val.value as string), asf);
                         this.removePicker();
                     },
                     onCancel: () => this.removePicker()
@@ -1247,9 +1241,10 @@ export class SvgInteractionService {
         title: string | null,
         values: PickerChoice[],
         selected: PickerValue | null,
-        suggestedPickerStyle: 'radial' | 'linear' | 'auto',
+        pickerStyle?: 'radial' | 'linear',
+        suggestedPickerStyle?: 'radial' | 'linear' | 'auto',
         targetType?: PickerTargetType,
-        onPick: (val: PickerValue) => void,
+        onPick: (val: PickerChoice) => void,
         onCancel: () => void
     }): PickerInstance {
         if (this.pickerRef) this.removePicker();
@@ -1263,13 +1258,15 @@ export class SvgInteractionService {
         const rect = opts.el.getBoundingClientRect();
 
         // Determine picker style
-        let pickerStyle = opts.suggestedPickerStyle;
+        let pickerStyle = opts.pickerStyle ?? opts.suggestedPickerStyle ?? 'auto';
         if (pickerStyle === 'auto') {
-            pickerStyle = this.state.interactionMode() == 'mouse' ? 'linear' : 'radial';
+            pickerStyle = !this.layoutService.isTouchInput() ? 'linear' : 'radial';
         }
-        const optionsPickerStyle = this.optionsService.options().pickerStyle;
-        if (optionsPickerStyle !== 'default') {
-            pickerStyle = optionsPickerStyle;
+        if (!opts.pickerStyle) {
+            const optionsPickerStyle = this.optionsService.options().pickerStyle;
+            if (optionsPickerStyle !== 'default') {
+                pickerStyle = optionsPickerStyle;
+            }
         }
 
         // Create appropriate picker component
@@ -1309,27 +1306,28 @@ export class SvgInteractionService {
         });
 
         const instance = compRef.instance;
-        instance.interactionType.set(this.state.interactionMode());
-        instance.title.set(opts.title);
+        compRef.setInput('title', opts.title);
+        compRef.setInput('selected', opts.selected);
         instance.values.set(opts.values);
-        instance.selected.set(opts.selected);
 
         if (opts.targetType === 'crit') {
-            instance.horizontal.set(true);
-            instance.align.set('topleft');
             const pickerX = opts.position?.x ?? rect.left;
             const pickerY = opts.position?.y ?? rect.top;
-            instance.position.set({ x: pickerX, y: pickerY });
+            compRef.setInput('position', { x: pickerX, y: pickerY });
+            compRef.setInput('align', 'topleft');
+            compRef.setInput('horizontal', true);
         } else
             if (opts.targetType === 'inventory') {
-                instance.align.set('left');
                 const pickerX = opts.position?.x ?? (rect.left + rect.width + 4);
                 const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-                instance.position.set({ x: pickerX, y: pickerY });
+                compRef.setInput('position', { x: pickerX, y: pickerY });
+                compRef.setInput('align', 'left');
+                compRef.setInput('horizontal', true);
             } else {
                 const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
                 const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-                instance.position.set({ x: pickerX, y: pickerY });
+                compRef.setInput('position', { x: pickerX, y: pickerY });
+                compRef.setInput('horizontal', false);
             }
         if (opts.event instanceof PointerEvent) {
             instance.initialEvent.set(opts.event);
@@ -1345,14 +1343,13 @@ export class SvgInteractionService {
         });
 
         const instance = compRef.instance;
-        instance.interactionType.set(this.state.interactionMode());
-        instance.title.set(opts.title);
         instance.values.set(opts.values);
-        instance.selected.set(opts.selected);
+        compRef.setInput('title', opts.title);
+        compRef.setInput('selected', opts.selected);
 
         const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
         const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-        instance.position.set({ x: pickerX, y: pickerY });
+        compRef.setInput('position', { x: pickerX, y: pickerY });
         if (opts.event instanceof PointerEvent) {
             instance.initialEvent.set(opts.event);
         }
@@ -1367,28 +1364,27 @@ export class SvgInteractionService {
         });
 
         const instance = compRef.instance;
-        instance.interactionType.set(this.state.interactionMode());
-        instance.title.set(opts.title);
         instance.values.set(opts.values);
-        instance.selected.set(opts.selected);
+        compRef.setInput('title', opts.title);
+        compRef.setInput('selected', opts.selected);
 
         if (opts.targetType === 'crit' || opts.targetType === 'inventory') {
+            const x = opts.event.clientX;
+            const y = opts.event.clientY;
             instance.beginEndPadding.set(0);
             instance.useCurvedText.set(true);
             instance.innerRadius.set(40);
+            compRef.setInput('position', { x: opts.position?.x ?? x, y: opts.position?.y ?? y });
+        } else if (opts.targetType === 'armor') {
             const x = opts.event.clientX;
             const y = opts.event.clientY;
-            instance.position.set({ x: opts.position?.x ?? x, y: opts.position?.y ?? y });
-        } else if (opts.targetType === 'armor') {
             instance.beginEndPadding.set(50);
             instance.innerRadius.set(50);
-            const x = opts.event.clientX;
-            const y = opts.event.clientY;
-            instance.position.set({ x: opts.position?.x ?? x, y: opts.position?.y ?? y });
+            compRef.setInput('position', { x: opts.position?.x ?? x, y: opts.position?.y ?? y });
         } else {
             const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
             const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-            instance.position.set({ x: pickerX, y: pickerY });
+            compRef.setInput('position', { x: pickerX, y: pickerY });
             if (!opts.title) {
                 instance.beginEndPadding.set(0);
             }

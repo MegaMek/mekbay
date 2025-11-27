@@ -1,5 +1,5 @@
 import { Component, ChangeDetectionStrategy, signal, effect, input, inject, viewChild, ElementRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { Unit } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { OptionsService } from '../../services/options.service';
@@ -8,7 +8,7 @@ import { LoggerService } from '../../services/logger.service';
 @Component({
     selector: 'svg-viewer-lite',
     standalone: true,
-    imports: [CommonModule],
+    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './svg-viewer-lite.component.html',
     styleUrls: ['./svg-viewer-lite.component.css']

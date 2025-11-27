@@ -294,6 +294,9 @@ export class UnitDetailsDialogComponent {
     }
 
     private normalizeLoc(loc: string): string {
+        if (!loc) {
+            return 'UNK';
+        }
         let norm = (loc === '*') ? 'ALL' : loc.trim();
         norm = norm.replace(/[^A-Za-z0-9_-]/g, '');
         if (/^[0-9]/.test(norm)) norm = 'L' + norm;
