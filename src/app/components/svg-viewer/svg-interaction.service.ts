@@ -578,8 +578,8 @@ export class SvgInteractionService {
                         values.push({ label: 'Repair', value: 'Repair' });
                     }
                     if (!critSlot.destroyed && critSlot.eq instanceof AmmoEquipment) {
-                        values.unshift({ label: '+1', value: '+1', disabled: ((critSlot.consumed ?? 0) == 0) });
-                        values.unshift({ label: '-1', value: '-1', disabled: ((critSlot.consumed ?? 0) >= totalAmmo) });
+                        values.unshift({ label: '+1', value: '+1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) == 0) });
+                        values.unshift({ label: '-1', value: '-1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) >= totalAmmo) });
                         values.push({ label: 'Set Ammo', value: 'Set Ammo' });
                     }
                     return values;
@@ -781,8 +781,8 @@ export class SvgInteractionService {
 
                     // Add ammo management options if applicable
                     if (!entry.destroyed && (totalAmmo > 0)) {
-                        values.unshift({ label: '+1', value: '+1', disabled: ((entry.consumed ?? 0) == 0) });
-                        values.unshift({ label: '-1', value: '-1', disabled: ((entry.consumed ?? 0) >= totalAmmo) });
+                        values.unshift({ label: '+1', value: '+1', keepOpen: true, disabled: ((entry.consumed ?? 0) == 0) });
+                        values.unshift({ label: '-1', value: '-1', keepOpen: true, disabled: ((entry.consumed ?? 0) >= totalAmmo) });
                         values.push({ label: 'Empty', value: 'Empty', disabled: ((entry.consumed ?? 0) >= totalAmmo) });
                     }
                     return values;
