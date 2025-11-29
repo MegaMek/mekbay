@@ -28,6 +28,28 @@ h2 {
     outline: none;
 }
 
+.range-separator {
+    display: none;
+}
+
+@media screen and (min-width: 600px) {
+    .range-inputs-wrapper {
+        display: flex;
+        justify-content: center;
+        align-items: baseline;
+        gap: 1em;
+    }
+
+    .range-separator {
+        display: inline;
+        font-size: 2em;
+    }
+
+    .range-inputs-wrapper input {
+        width: 250px;
+    }
+}
+
 [dialog-actions] {
     padding-top: 8px;
     display: flex;

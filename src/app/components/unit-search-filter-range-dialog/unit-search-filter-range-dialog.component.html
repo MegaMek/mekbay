@@ -2,10 +2,13 @@
     <h2 dialog-title>{{ data.title }}</h2>
     <div dialog-content>
         <p>{{ data.message }}</p>
-        <input numericInput [allowFloatingValues]="data.allowFloatingValues ?? false" [field]="rangeForm.from" type="text" [placeholder]="toDisplay(data.range.from)"
-            (keydown.enter)="submit()" (blur)="onFromBlur()" />
-        <input numericInput [allowFloatingValues]="data.allowFloatingValues ?? false" [field]="rangeForm.to" type="text" [placeholder]="toDisplay(data.range.to)"
-            (keydown.enter)="submit()" (blur)="onToBlur()" />
+        <div class="range-inputs-wrapper">
+            <input numericInput [allowFloatingValues]="data.allowFloatingValues ?? false" [field]="rangeForm.from" type="text" [placeholder]="toDisplay(data.range.from)"
+                (keydown.enter)="submit()" (blur)="onFromBlur()" />
+            <span class="range-separator">~</span>
+            <input numericInput [allowFloatingValues]="data.allowFloatingValues ?? false" [field]="rangeForm.to" type="text" [placeholder]="toDisplay(data.range.to)"
+                (keydown.enter)="submit()" (blur)="onToBlur()" />
+        </div>
     </div>
     <div dialog-actions>
         <button (click)="submit()" class="bt-button">CONFIRM</button>
