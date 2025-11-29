@@ -113,19 +113,22 @@
     border-radius: 2px;
 }
 
+.adv-panel .range-label {
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.adv-panel .range-label:hover {
+    color: var(--bt-yellow);
+    text-decoration: underline;
+}
+
 .adv-panel .range-values {
     color: var(--text-color-secondary);
     font-size: 0.9em;
 }
 
-
-.adv-panel .range-values .clickable {
-    cursor: pointer;
-    transition: color 0.2s;
-}
-
-.adv-panel .range-values .clickable:hover {
-    text-decoration: underline;
+.adv-panel .range-label:hover .range-values {
     color: var(--bt-yellow);
 }
 

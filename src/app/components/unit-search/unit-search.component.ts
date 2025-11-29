@@ -62,6 +62,7 @@ import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ShareSearchDialogComponent } from './share-search.component';
 import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { RangeModel, UnitSearchFilterRangeDialogComponent, UnitSearchFilterRangeDialogData } from '../unit-search-filter-range-dialog/unit-search-filter-range-dialog.component';
 
 
 
@@ -497,47 +498,46 @@ export class UnitSearchComponent {
         return highlightMatches(text, searchGroups, true);
     }
 
-    async openRangeValueDialog(filterKey: string, type: 'min' | 'max', currentValue: number, totalRange: [number, number]) {
-        const isMin = type === 'min';
+    async openRangeValueDialog(filterKey: string, currentValue: number[], totalRange: [number, number]) {
         const currentFilter = this.filtersService.advOptions()[filterKey];
+        if (!currentFilter || currentFilter.type !== 'range') {
+            return;
+        }
         const filterName = currentFilter?.label || filterKey;
-        const message = `Enter the ${isMin ? 'minimum' : 'maximum'} ${filterName} value (${totalRange[0]} - ${totalRange[1]}):`;
+        const message = `Enter the ${filterName} range values:`;
 
-        const ref = this.dialogsService.createDialog<number | null>(InputDialogComponent, {
+        const ref = this.dialogsService.createDialog<RangeModel | null>(UnitSearchFilterRangeDialogComponent, {
             data: {
                 title: filterName,
                 message: message,
-                inputType: 'number',
-                defaultValue: currentValue,
-                placeholder: currentValue.toString()
-            } as InputDialogData
+                range: {
+                    from: currentValue[0],
+                    to: currentValue[1]
+                }
+            } as UnitSearchFilterRangeDialogData
         });
-        let newValue = await firstValueFrom(ref.closed);
-        if (newValue === undefined || newValue === null || isNaN(Number(newValue))) return;
+        let newValues = await firstValueFrom(ref.closed);
+        if (newValues === undefined || newValues === null) return;
 
-        if (newValue < totalRange[0]) {
-            newValue = totalRange[0];
-        } else if (newValue > totalRange[1]) {
-            newValue = totalRange[1];
+        let newFrom = newValues.from ?? 0;
+        let newTo = newValues.to ?? Number.MAX_SAFE_INTEGER;
+        if (newFrom < totalRange[0]) {
+            newFrom = totalRange[0];
+        } else if (newTo > totalRange[1]) {
+            newTo = totalRange[1];
         }
 
-        if (currentFilter && currentFilter.type === 'range') {
-            const currentRange = [...currentFilter.value] as [number, number];
-
-            if (isMin) {
-                if (newValue > currentRange[1]) {
-                    newValue = currentRange[1];
-                }
-                currentRange[0] = newValue;
-            } else {
-                if (newValue < currentRange[0]) {
-                    newValue = currentRange[0];
-                }
-                currentRange[1] = newValue;
-            }
-
-            this.setAdvFilter(filterKey, currentRange);
+        const currentRange = [...currentFilter.value] as [number, number];
+        if (newFrom > currentRange[1]) {
+            newFrom = currentRange[1];
         }
+        currentRange[0] = newFrom;
+        if (newTo < currentRange[0]) {
+            newTo = currentRange[0];
+        }
+        currentRange[1] = newTo;
+
+        this.setAdvFilter(filterKey, currentRange);
     }
 
 

@@ -1,0 +1,42 @@
+.content {
+    display: block;
+    max-width: 1000px;
+    text-align: center;
+}
+
+h2 {
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+[dialog-content] input {
+    width: 90vw;
+    max-width: 500px;
+    margin-bottom: 16px;
+    font-size: 1.5em;
+    background: var(--background-input);
+    color: white;
+    border: 0;
+    border-bottom: 1px solid #666;
+    text-align: center;
+    outline: none;
+    transition: all 0.2s ease-in-out;
+}
+
+[dialog-content] input:focus {
+    border-bottom: 1px solid #fff;
+    outline: none;
+}
+
+[dialog-actions] {
+    padding-top: 8px;
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+[dialog-actions] button {
+    padding: 8px;
+    min-width: 100px;
+}
