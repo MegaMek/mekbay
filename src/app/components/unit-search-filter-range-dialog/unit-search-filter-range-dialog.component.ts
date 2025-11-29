@@ -268,6 +268,10 @@ export class UnitSearchFilterRangeDialogComponent {
 
         this.dialogRef.close(result);
     }
+    
+    submitEmpty() {
+        this.dialogRef.close({ from: null, to: null });
+    }
 
     close(value: null = null) {
         this.dialogRef.close(value);
