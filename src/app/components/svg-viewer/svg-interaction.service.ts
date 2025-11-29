@@ -593,7 +593,7 @@ export class SvgInteractionService {
                     pickerStyle: 'linear',
                     targetType: 'crit',
                     onPick: async (choice: HandlerChoice) => {
-                        this.removePicker();
+                        if (!choice.keepOpen) { this.removePicker(); }
                         const critSlot = unit.getCritSlot(loc, slot);
                         if (!critSlot) return;
                         if (choice.value == '+1') {
