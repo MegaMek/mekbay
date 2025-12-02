@@ -118,7 +118,7 @@ export class ImageStorageService {
             }
 
             // If we have a remote hash or if DB is empty
-            if (remoteHash || count === 0) {
+            if (remoteHash || count < 6500) {
                 this.logger.info('Icons cache outdated or empty. Downloading unitIcons.zip...');
 
                 await this.loadImagesFromZip(remoteHash);
