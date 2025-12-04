@@ -27,6 +27,6 @@
     }
   ],
   "launch_handler": {
-    "client_mode": "navigate-existing"
+    "client_mode": "auto"
   }
 }

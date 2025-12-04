@@ -278,6 +278,7 @@
     margin-top: 16px;
     margin-bottom: 16px;
     align-self: center;
+    width: 100%;
 }
 
 @container (max-width: 640px) {

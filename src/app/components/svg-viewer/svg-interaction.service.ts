@@ -562,7 +562,7 @@ export class SvgInteractionService {
             };
 
             const registry = this.equipmentRegistryService.getRegistry();
-            
+
             const createAndShowPicker = (event: Event) => {
                 if (unit.isInternalLocDestroyed(loc)) {
                     return;
@@ -578,12 +578,15 @@ export class SvgInteractionService {
                         values.push({ label: 'Repair', value: 'Repair' });
                     }
                     if (!critSlot.destroyed && critSlot.eq instanceof AmmoEquipment) {
-                        values.unshift({ label: '+1', value: '+1', disabled: ((critSlot.consumed ?? 0) == 0) });
-                        values.unshift({ label: '-1', value: '-1', disabled: ((critSlot.consumed ?? 0) >= totalAmmo) });
+                        values.unshift({ label: '+1', value: '+1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) == 0) });
+                        values.unshift({ label: '-1', value: '-1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) >= totalAmmo) });
                         values.push({ label: 'Set Ammo', value: 'Set Ammo' });
                     }
                     return values;
                 };
+
+                // TODO: merge it with the inventory interaction system. 
+                // Make that we find the inventory entry from the crit slot and then we handle from there.
                 const pickerInstance: PickerInstance = this.showPicker({
                     event: event,
                     el: svgEl,
@@ -593,7 +596,10 @@ export class SvgInteractionService {
                     pickerStyle: 'linear',
                     targetType: 'crit',
                     onPick: async (choice: HandlerChoice) => {
-                        this.removePicker();
+                        if (!choice || !choice.keepOpen) {
+                            this.removePicker();
+                        }
+                        if (!choice) return;
                         const critSlot = unit.getCritSlot(loc, slot);
                         if (!critSlot) return;
                         if (choice.value == '+1') {
@@ -604,9 +610,7 @@ export class SvgInteractionService {
                             critSlot.consumed--;
                             unit.setCritSlot(critSlot);
                             showAmmoToast(critSlot, 1);
-                            pickerInstance.component.values.set(calculateValues());
-                        }
-                        if (choice.value == '-1') {
+                        } else if (choice.value == '-1') {
                             if (critSlot.consumed === undefined) {
                                 critSlot.consumed = 0;
                             }
@@ -614,15 +618,11 @@ export class SvgInteractionService {
                             critSlot.consumed++;
                             unit.setCritSlot(critSlot);
                             showAmmoToast(critSlot, -1);
-                            pickerInstance.component.values.set(calculateValues());
-                        }
-                        if (choice.value == 'Empty') {
+                        } else if (choice.value == 'Empty') {
                             critSlot.consumed = totalAmmo;
                             unit.setCritSlot(critSlot);
                             this.toastService.show(`Emptied ${labelText}`, 'info');
-                            pickerInstance.component.values.set(calculateValues());
-                        }
-                        if (choice.value == 'Set Ammo') {
+                        } else if (choice.value == 'Set Ammo') {
                             const amountUsed = critSlot.consumed ?? 0;
                             const ammoOptions: AmmoEquipment[] = [];
                             if (!critSlot.name || !critSlot.eq) return;
@@ -679,16 +679,14 @@ export class SvgInteractionService {
                             if (deltaChange !== 0) {
                                 showAmmoToast(critSlot, deltaChange);
                             }
-                            pickerInstance.component.values.set(calculateValues());
-                        }
-                        if (choice.value == 'Hit') {
+                        } else if (choice.value == 'Hit') {
                             unit.applyHitToCritSlot(critSlot, 1, !this.optionsService.options().useAutomations);
                             this.toastService.show(`Critical Hit on ${labelText}`, 'error');
-                            pickerInstance.component.values.set(calculateValues());
-                        }
-                        if (choice.value == 'Repair') {
+                        } else if (choice.value == 'Repair') {
                             unit.applyHitToCritSlot(critSlot, -1, !this.optionsService.options().useAutomations);
                             this.toastService.show(`Repaired ${labelText}`, 'success');
+                        }
+                        if (choice.keepOpen) {
                             pickerInstance.component.values.set(calculateValues());
                         }
                     },
@@ -781,8 +779,8 @@ export class SvgInteractionService {
 
                     // Add ammo management options if applicable
                     if (!entry.destroyed && (totalAmmo > 0)) {
-                        values.unshift({ label: '+1', value: '+1', disabled: ((entry.consumed ?? 0) == 0) });
-                        values.unshift({ label: '-1', value: '-1', disabled: ((entry.consumed ?? 0) >= totalAmmo) });
+                        values.unshift({ label: '+1', value: '+1', keepOpen: true, disabled: ((entry.consumed ?? 0) == 0) });
+                        values.unshift({ label: '-1', value: '-1', keepOpen: true, disabled: ((entry.consumed ?? 0) >= totalAmmo) });
                         values.push({ label: 'Empty', value: 'Empty', disabled: ((entry.consumed ?? 0) >= totalAmmo) });
                     }
                     return values;
@@ -802,60 +800,51 @@ export class SvgInteractionService {
                     pickerStyle: 'linear',
                     targetType: 'crit',
                     onPick: (choice: HandlerChoice) => {
-                        // Try equipment-specific handlers first
-                        if (choice?._handler) {
-                            const handled = registry.handleSelection(entry, choice, context);
+                        if (!choice || !choice.keepOpen) {
+                            this.removePicker();
+                        }
+                        if (!choice) return;
 
-                            if (handled && choice.keepOpen) {
-                                calculatePickerValues = calculateValues();
-                                pickerInstance.component.values.set(calculatePickerValues);
-                                return; // Keep picker open for state changes
-                            }
+                        // Try equipment-specific handlers first
+                        let handled = false;
+                        if (choice?._handler) {
+                            handled = registry.handleSelection(entry, choice, context);
                         }
 
                         // Handle standard options
-                        if (choice.value == '+1') {
-                            if (entry.consumed === undefined) {
-                                return;
+                        if (!handled) {
+                            if (choice.value == '+1') {
+                                if (entry.consumed === undefined) {
+                                    return;
+                                }
+                                if (entry.consumed <= 0) return;
+                                entry.consumed--;
+                                this.unit()?.setInventoryEntry(entry);
+                                showAmmoToast(entry, 1);
+                            } else if (choice.value == '-1') {
+                                if (entry.consumed === undefined) {
+                                    entry.consumed = 0;
+                                }
+                                if (entry.consumed >= totalAmmo) return;
+                                entry.consumed++;
+                                this.unit()?.setInventoryEntry(entry);
+                                showAmmoToast(entry, -1);
+                            } else if (choice.value == 'Empty') {
+                                entry.consumed = totalAmmo;
+                                this.unit()?.setInventoryEntry(entry);
+                                this.toastService.show(`Emptied ${nameText}`, 'info');
+                            } else if (choice.value == 'Hit') {
+                                entry.destroyed = true;
+                                this.unit()?.setInventoryEntry(entry);
+                                this.toastService.show(`Critical Hit on ${nameText}`, 'error');
+                            } else if (choice.value == 'Repair') {
+                                entry.destroyed = false;
+                                this.unit()?.setInventoryEntry(entry);
+                                this.toastService.show(`Repaired ${nameText}`, 'success');
                             }
-                            if (entry.consumed <= 0) return;
-                            entry.consumed--;
-                            this.unit()?.setInventoryEntry(entry);
-                            showAmmoToast(entry, 1);
-                            pickerInstance.component.values.set(calculateValues());
-                            return;
                         }
-                        if (choice.value == '-1') {
-                            if (entry.consumed === undefined) {
-                                entry.consumed = 0;
-                            }
-                            if (entry.consumed >= totalAmmo) return;
-                            entry.consumed++;
-                            this.unit()?.setInventoryEntry(entry);
-                            showAmmoToast(entry, -1);
+                        if (choice.keepOpen) {
                             pickerInstance.component.values.set(calculateValues());
-                            return;
-                        }
-                        if (choice.value == 'Empty') {
-                            entry.consumed = totalAmmo;
-                            this.unit()?.setInventoryEntry(entry);
-                            this.toastService.show(`Emptied ${nameText}`, 'info');
-                            pickerInstance.component.values.set(calculateValues());
-                        }
-                        if (choice.value == 'Hit') {
-                            entry.destroyed = true;
-                            this.unit()?.setInventoryEntry(entry);
-                            this.toastService.show(`Critical Hit on ${nameText}`, 'error');
-                            pickerInstance.component.values.set(calculateValues());
-                        }
-                        if (choice.value == 'Repair') {
-                            entry.destroyed = false;
-                            this.unit()?.setInventoryEntry(entry);
-                            this.toastService.show(`Repaired ${nameText}`, 'success');
-                            pickerInstance.component.values.set(calculateValues());
-                        }
-                        if (!choice || !choice.keepOpen) {
-                            this.removePicker();
                         }
                     },
                     onCancel: () => {
@@ -872,7 +861,7 @@ export class SvgInteractionService {
                             const altModeEl = event.target.parentElement;
                             if (altModeEl) {
                                 const wasSelected = altModeEl.classList.contains('selected');
-                                el.querySelectorAll('.alternativeMode') .forEach(optionEl => {
+                                el.querySelectorAll('.alternativeMode').forEach(optionEl => {
                                     if (optionEl === altModeEl) return;
                                     optionEl.classList.remove('selected');
                                 });
@@ -1030,7 +1019,7 @@ export class SvgInteractionService {
                     evt.preventDefault();
                     evt.stopPropagation();
                     unit.applyHeat();
-                }, { passive: false, signal } );
+                }, { passive: false, signal });
             }
 
             const hsPipEl = heatDataPanel.querySelector('g.hsPips') as SVGElement | null;
@@ -1071,7 +1060,7 @@ export class SvgInteractionService {
                             this.removePicker();
                         }
                     });
-    
+
                 }, signal);
             }
         }

@@ -282,14 +282,10 @@
         @if (optionsData.type === 'range') {
         <div class="filter-row">
             <div class="range">
-                <label>{{ optionsData.label }}
+                <label class="range-label" (click)="openRangeValueDialog(conf.key, optionsData.value, optionsData.options)">{{ optionsData.label }}
                     <span class="range-values">
-                        (<span class="range-value-min clickable"
-                            (click)="openRangeValueDialog(conf.key, 'min', optionsData.value[0], optionsData.options)">{{
-                            optionsData.value[0] | formatNumber:false:true }}</span>~<span
-                            class="range-value-max clickable"
-                            (click)="openRangeValueDialog(conf.key, 'max', optionsData.value[1], optionsData.options)">{{
-                            optionsData.value[1] | formatNumber:false:true }}</span>)
+                        (<span class="range-value-min">{{ optionsData.value[0] | formatNumber:false:true }}</span>~<span
+                            class="range-value-max">{{ optionsData.value[1] | formatNumber:false:true }}</span>)
                     </span>
                 </label>
                 <range-slider [min]="optionsData.totalRange[0]" [max]="optionsData.totalRange[1]"
