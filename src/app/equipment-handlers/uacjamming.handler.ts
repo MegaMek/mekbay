@@ -57,8 +57,8 @@ export class UACJammingHandler extends CycleModeHandler {
 
     protected getModes(): PickerChoice[] {
         return [
-            { value: 'working', label: 'Working', shortLabel: 'Work', keepOpen: false },
-            { value: 'jammed', label: 'Jammed', shortLabel: 'Jam', keepOpen: false }
+            { value: 'working', label: 'Working', keepOpen: false },
+            { value: 'jammed', label: 'Jammed', keepOpen: false }
         ];
     }
 }
