@@ -66,6 +66,10 @@ svg {
     fill: #fff;
     stroke-width: 3px;
     r: 12px;
+
+    &.structure {
+        fill: #bbb;
+    }
 }
 
 .caption {
@@ -75,7 +79,11 @@ svg {
 .box-text {
     font-size: 28px;
     text-anchor: start;
-    font-family: 'Roboto Condensed', sans-serif;
+    font-family: 'Roboto', sans-serif;
+
+    &.condensed {
+        font-family: 'Roboto Condensed', sans-serif;
+    }
 }
 
 @media screen {

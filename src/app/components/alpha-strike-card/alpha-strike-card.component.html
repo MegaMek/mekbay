@@ -98,17 +98,15 @@
         <rect class="frame" x="30" y="506" width="605" height="119"/>
         
         <!-- Armor Pips -->
-        <text x="45" y="550" font-size="28">A: </text>
+        <text class="box-text caption" x="45" y="550" font-size="28">A: </text>
         @for (i of range(armorPips()); track i) {
-            <circle class="cursor-pointer" [attr.cx]="90 + (i * 32)" cy="540" r="14" fill="rgb(0,0,0)"/>
-            <circle class="cursor-pointer" [attr.cx]="90 + (i * 32)" cy="540" r="11" fill="rgb(255,255,255)"/>
+            <circle class="pip" [attr.cx]="90 + (i * 32)" cy="540"/>
         }
         
         <!-- Structure Pips -->
-        <text x="45" y="606" font-size="28">S: </text>
+        <text class="box-text caption" x="45" y="606" font-size="28">S: </text>
         @for (i of range(structurePips()); track i) {
-            <circle class="cursor-pointer" [attr.cx]="90 + (i * 32)" cy="596" r="14" fill="rgb(0,0,0)"/>
-            <circle class="cursor-pointer" [attr.cx]="90 + (i * 32)" cy="596" r="11" fill="rgb(153,153,153)"/>
+            <circle class="pip structure" [attr.cx]="90 + (i * 32)" cy="596"/>
         }
         
         <!-- Specials Box -->

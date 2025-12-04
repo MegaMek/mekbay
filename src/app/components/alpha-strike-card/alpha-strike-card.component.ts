@@ -154,7 +154,7 @@ export class AlphaStrikeCardComponent {
         const startX = 42;
         const maxWidth = 940; // Box width minus padding
         const lineHeight = 32;
-        const charWidth = 10; // Approximate character width
+        const charWidth = 12.5; // Approximate character width
         const labelWidth = 85; // Width of "SPECIAL: " label
         
         let currentX = startX + labelWidth;
