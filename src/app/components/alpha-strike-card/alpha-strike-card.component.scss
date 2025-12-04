@@ -2,93 +2,462 @@
     display: contents;
 }
 
-svg {
+.card-container {
+    position: relative;
     width: 100%;
-    height: auto;
-    max-width: 100%;
+    aspect-ratio: 1120 / 800;
+    font-family: 'Roboto', sans-serif;
+    font-size: 2.5cqw;
+    overflow: hidden;
+    container-type: inline-size;
+}
+
+// Background styles
+.card-background {
+    position: absolute;
+    inset: 0.71% 0.71%;
+    background: #fff;
+    border: 1.43cqw solid #000;
+    box-sizing: border-box;
+}
+
+.card-background-image {
+    position: absolute;
+    inset: 0;
+    background-image: url('/images/ascard_background_dark.jpg');
+    background-size: cover;
+    background-position: center;
+}
+
+// Fluff Image
+.fluff-image-container {
+    position: absolute;
+    top: 14%;
+    left: 57.14%;
+    width: 40.36%;
+    height: 58.75%;
+    overflow: hidden;
+}
+
+.fluff-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center top;
+}
+
+// Header Section
+.header-section {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 16.25%;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.unit-name {
+    padding: 2.5% 0 0 2.86%;
+    width: 75%;
+}
+
+.model-text {
+    font-size: 3cqw;
+    line-height: 3cqw;
+    min-height: 3cqw;
+}
+
+.chassis-text {
+    font-weight: bold;
+    font-size: 5cqw;
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
+// PV Box
+.pv-box {
+    position: absolute;
+    top: 14%;
+    right: 0;
+    width: 24.11%; // (1120 - 850) / 1120
+    height: 12.25%; // 98px / 800px
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.pv-box-background {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    clip-path: polygon(22.22% 0, 100% 0, 100% 100%, 0 100%);
 }
 
 .pv-text {
-    font-size: 60px;
-    font-weight: bolder;
-    text-anchor: middle;
-    letter-spacing: 4px;
+    font-size: 5.36cqw; // 60px / 1120
+    font-weight: 900;
+    text-align: center;
+    letter-spacing: 0.36cqw;
+    z-index: 1;
+}
+
+.base-pv-text {
+    font-size: 2.5cqw; // 28px / 1120
+    font-weight: bold;
+    text-align: center;
+    margin-top: 0.5cqw;
+    z-index: 1;
 }
 
 .stroke-text {
-    stroke: #fff;
-    stroke-width: 2px;
-    fill: #000;
+    -webkit-text-stroke: 0.18cqw #fff;
+    color: #000;
     paint-order: stroke fill;
 }
 
-.alphastrike-footer {
-    fill: #fff;
-    font-size: 42px;
-    font-weight: 900;
-    font-family: 'Roboto Condensed', sans-serif;
-    text-anchor: middle;
-    letter-spacing: 4px;
-}
-
+// Frame/Box styling
 .frame {
-    fill: rgba(255,255,255,.7);
-    rx: 17;
-    ry: 17;
-    stroke-width: 4px;
-    stroke: #221F20;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 1.52cqw;
+    border: 0.36cqw solid #221F20;
+    box-sizing: border-box;
+    padding: 0.5cqw 1.25cqw;
+    color: #000;
 }
 
-.box-title {
-    font-size: 32px;
-    font-weight: 700;
-    text-anchor: middle;
+.stats-container {
+    position: absolute;
+    bottom: 12%;
+    left: 2.5%;
+    right: 2.5%;
+    height: 73%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.5cqw;
 }
 
-.critical-name {
-    font-size: 22px;
-    font-weight: 900;
-    text-anchor: end;
-    font-family: 'Roboto Condensed', sans-serif;
-    letter-spacing: -0.5px;
+.stats-container-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5cqw;
 }
 
-.critical-desc {
-    font-size: 22px;
+.stats-container-column {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.5cqw;
+
+    &.stats-left {
+        flex: 0 0 57.5%;
+    }
+    &.stats-right {
+        flex: 0 0 42%;
+    }
+}
+
+
+.stats-box {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+}
+
+.stats-row {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 3cqw;
+    font-size: 2.5cqw; // 28px / 1120
+}
+
+.stat-item {
+    white-space: nowrap;
+}
+
+.stat-right {
+    margin-left: auto;
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.sprint-text {
+    font-size: 1.52cqw; // 17px / 1120
+    margin-top: -0.25cqw;
+}
+
+// Damage Box
+.damage-box {
+    display: flex;
+    align-items: center;
+}
+
+.damage-label {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 1.52cqw; // 17px / 1120
+    text-align: center;
+    margin-right: 1.5cqw;
     font-weight: 600;
-    text-anchor: start;
-    font-family: 'Roboto Condensed', sans-serif;
+}
+
+.damage-ranges {
+    display: flex;
+    flex: 1;
+    justify-content: space-around;
+}
+
+.damage-range {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.range-header {
+    font-size: 1.96cqw; // 22px / 1120
+}
+
+.range-value {
+    font-size: 3.48cqw; // 39px / 1120
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.range-distance {
+    font-size: 1.96cqw; // 22px / 1120
+}
+
+// Heat Box
+.heat-box {
+    display: flex;
+    align-items: center;
+}
+
+.heat-content {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 2cqw;
+}
+
+.ov-value {
+    font-size: 3.48cqw; // 39px / 1120
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+.heat-label {
+    font-size: 1.52cqw; // 17px / 1120
+    white-space: nowrap;
+}
+
+.heat-track {
+    display: flex;
+    background: #000;
+    border-radius: 3.04cqw; // 34px / 1120
+    padding: 0.54cqw; // 6px / 1120
+    height: 6.7cqw; // 75px / 1120
+    margin-left: auto;
+}
+
+.heat-level {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 4.46cqw; // 50px / 1120
+    height: 100%;
+    background: rgb(102, 102, 102);
+    color: #fff;
+    font-size: 3.48cqw; // 39px / 1120
+    cursor: pointer;
+    transition: background-color 0.2s;
+
+    &.heat-0 {
+        width: 2.5cqw;
+        border-radius: 2.5cqw 0 0 2.5cqw;
+        &.active {
+            background: rgb(0, 200, 0);
+        }
+    }
+
+    &.heat-1.active {
+        background: rgb(255, 200, 0);
+    }
+
+    &.heat-2.active {
+        background: rgb(255, 150, 0);
+    }
+
+    &.heat-3.active {
+        background: rgb(255, 100, 0);
+    }
+
+    &.heat-s {
+        width: 2.5cqw;
+        border-radius: 0 2.5cqw 2.5cqw 0;
+        &.active {
+            background: rgb(255, 0, 0);
+        }
+    }
+}
+
+// Armor/Structure Box
+.armor-box {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+}
+
+.pip-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5cqw;
+}
+
+.pip-label {
+    font-size: 2.5cqw; // 28px / 1120
+    font-weight: bold;
+    min-width: 3.5cqw;
+}
+
+.pips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.71cqw; // 8px / 1120
 }
 
 .pip {
+    width: 2.14cqw; // 24px / 1120
+    height: 2.14cqw;
+    border-radius: 50%;
+    border: 0.27cqw solid #000; // 3px / 1120
+    background: #fff;
     cursor: pointer;
-    stroke: #000;
-    fill: #fff;
-    stroke-width: 3px;
-    r: 12px;
+    box-sizing: border-box;
+    position: relative;
+    top: 0.2cqw;
 
     &.structure {
-        fill: #bbb;
+        background: #bbb;
     }
 }
 
-.caption {
+// Critical Hits Box
+.critical-hits-box {
+    display: flex;
+    flex-direction: column;
+}
+
+.critical-title {
+    font-size: 2.86cqw; // 32px / 1120
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 1.5cqw;
+}
+
+.critical-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.89cqw;
+    font-family: 'Roboto Condensed', sans-serif;
+}
+
+.critical-name {
+    font-size: 2cqw;
+    font-weight: 900;
+    text-align: right;
+    min-width: 32%;
+    padding-right: 1cqw;
+    letter-spacing: -0.05cqw;
+}
+
+.critical-pips {
+    display: flex;
+    gap: 0.5cqw;
+    position: relative;
+    top: -0.2cqw;
+}
+
+.critical-desc {
+    font-size: 2.1cqw;
+    font-weight: 600;
+    margin-left: 0.5cqw;
+    white-space: nowrap;
+    letter-spacing: -0.05cqw;
+}
+
+// Specials Box
+.specials-box {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    align-content: flex-start;
+    font-size: 2.5cqw;
+}
+
+.special-label {
     font-weight: bold;
 }
 
-.box-text {
-    font-size: 28px;
-    text-anchor: start;
-    font-family: 'Roboto', sans-serif;
+.special-content {
+    display: inline;
+}
 
-    &.condensed {
-        font-family: 'Roboto Condensed', sans-serif;
+.special-ability {
+    cursor: pointer;
+    transition: text-decoration 0.15s ease;
+
+    &:hover {
+        text-decoration: underline;
     }
 }
 
+// Footer Section
+.footer-section {
+    position: absolute;
+    bottom: 2.5%;
+    left: 2.5%;
+    right: 2.5%;
+    height: 9%;
+    display: flex;
+    align-items: center;
+}
+
+.alphastrike-footer {
+    position: absolute;
+    left: 28.04%;
+    bottom: 5%;
+    font-size: 4.6cqw;
+    font-weight: 900;
+    font-family: 'Roboto Condensed', sans-serif;
+    letter-spacing: 0.36cqw;
+    transform: translateX(-50%);
+}
+
+.battletech-logo {
+    position: absolute;
+    right: 2.68%;
+    bottom: 5%;
+    width: 25%;
+    height: 100%;
+
+    svg {
+        width: 100%;
+        height: 100%;
+    }
+}
+
+// Screen-only styles
 @media screen {
     .fluff-image {
-        transform: none;
         filter: invert(1) contrast(5) brightness(5);
         mix-blend-mode: lighten;
     }
@@ -98,11 +467,11 @@ svg {
     }
 
     .model-text {
-        fill: #ECD24B;
+        color: #ECD24B;
     }
 
     .critical-name {
-        fill: #893735;
+        color: #893735;
     }
 
     .battletech-logo .logo-text {
@@ -110,28 +479,23 @@ svg {
     }
 
     .alphastrike-text {
-        fill: #B63731;
-        stroke: #ECD24B;
-        stroke-width: 5px;
+        color: #B63731;
+        -webkit-text-stroke: 0.45cqw #ECD24B;
         paint-order: stroke fill;
     }
 }
 
-.special-ability {
-    cursor: pointer;
-    transition: text-decoration 0.15s ease;
-
-    &:hover,
-    &.special-ability-hovered {
-        text-decoration: underline;
-    }
-}
-
+// Print styles
 @media print {
     .screen-only {
         display: none;
     }
+
     .frame {
-        fill: rgba(255,255,255,.9);
+        background: rgba(255, 255, 255, 0.9);
+    }
+
+    .alphastrike-footer {
+        color: #fff;
     }
 }

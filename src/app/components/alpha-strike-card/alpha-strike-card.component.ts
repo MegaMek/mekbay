@@ -146,47 +146,9 @@ export class AlphaStrikeCardComponent {
         return Array.from({ length: count }, (_, i) => i);
     }
     
-    // Get special items with calculated positions for word wrapping
-    getSpecialItems(): { value: string; index: number; x: number | null; dy: number }[] {
-        const specials = this.asStats().specials;
-        const items: { value: string; index: number; x: number | null; dy: number }[] = [];
-        
-        const startX = 42;
-        const maxWidth = 940; // Box width minus padding
-        const lineHeight = 32;
-        const charWidth = 12.5; // Approximate character width
-        const labelWidth = 85; // Width of "SPECIAL: " label
-        
-        let currentX = startX + labelWidth;
-        let currentLine = 0;
-        
-        for (let i = 0; i < specials.length; i++) {
-            const special = specials[i];
-            const isLast = i === specials.length - 1;
-            const textWidth = (special.length + (isLast ? 0 : 2)) * charWidth; // +2 for comma and space
-            
-            // Check if we need to wrap to next line
-            if (currentX + textWidth > startX + maxWidth && currentLine < 2) {
-                currentLine++;
-                currentX = startX;
-            }
-            
-            items.push({
-                value: special,
-                index: i,
-                x: currentLine > 0 && currentX === startX ? startX : null,
-                dy: currentLine > 0 && currentX === startX ? lineHeight : 0
-            });
-            
-            currentX += textWidth;
-        }
-        
-        return items;
-    }
-    
-    // Handle special ability hover
-    onSpecialHover(index: number | null): void {
-        this.hoveredSpecial.set(index);
+    // Get special items
+    getSpecialItems(): string[] {
+        return this.asStats().specials;
     }
     
     // Handle special ability click
