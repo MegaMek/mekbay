@@ -35,32 +35,28 @@ import { EquipmentInteractionHandler, HandlerContext } from '../../services/equi
 import { MountedEquipment } from '../../models/force-serialization';
 import { PickerChoice, PickerValue } from '../../components/picker/picker.interface';
 
-export interface PickerChoiceTooltip extends PickerChoice {
-    tooltipType?: 'info' | 'success' | 'error';
-}
-
 /**
  * Base handler for equipment with multiple modes
  */
 export abstract class CycleModeHandler extends EquipmentInteractionHandler {
     protected readonly modeLabel: string = 'Mode';
     protected readonly stateKey: string = 'state';
-    protected abstract getModes(equipment: MountedEquipment): Array<PickerChoiceTooltip>;
+    protected abstract getModes(equipment: MountedEquipment): Array<PickerChoice>;
     protected abstract getDefaultMode(): string;
     
-    getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoiceTooltip[] {
+    getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
         const nextMode = this.getNextMode(equipment);
         
         // Return single choice representing the next mode
         return [{...nextMode, disabled: equipment.destroyed }];
     }
     
-    handleSelection(equipment: MountedEquipment, choice: PickerChoiceTooltip, context: HandlerContext): boolean {
+    handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {
         equipment.states?.set(this.stateKey, String(choice.value));
         equipment.owner.setInventoryEntry(equipment);
         
         context.toastService.show(
-            `${equipment.equipment?.name||equipment.name} ${this.modeLabel.toLowerCase()}: ${choice.label}`,
+            `${equipment.equipment?.name||equipment.name} changed ${this.modeLabel.toLowerCase()}: ${choice.label}`,
             choice.tooltipType || 'info'
         );
         return true;
@@ -82,7 +78,7 @@ export abstract class CycleModeHandler extends EquipmentInteractionHandler {
     /**
      * Get the next mode that will be cycled to
      */
-    getNextMode(equipment: MountedEquipment): PickerChoiceTooltip {
+    getNextMode(equipment: MountedEquipment): PickerChoice {
         const currentState = this.getCurrentState(equipment);
         const modes = this.getModes(equipment);
         const currentIndex = modes.findIndex(m => m.value === currentState);
