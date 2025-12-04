@@ -34,8 +34,7 @@
 import { PickerChoice } from '../components/picker/picker.interface';
 import { WeaponEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/force-serialization';
-import { CycleModeHandler } from './base/cycle-mode.handler';
-import { ToggleHandler } from './base/toggle.handler';
+import { CycleModeHandler, PickerChoiceTooltip } from './base/cycle-mode.handler';
 
 export class UACJammingHandler extends CycleModeHandler {
     protected override readonly modeLabel: string = 'State';
@@ -55,10 +54,10 @@ export class UACJammingHandler extends CycleModeHandler {
         return 'working';
     }
 
-    protected getModes(): PickerChoice[] {
+    protected getModes(): PickerChoiceTooltip[] {
         return [
-            { value: 'working', label: 'Working', keepOpen: false },
-            { value: 'jammed', label: 'Jammed', keepOpen: false }
+            { value: 'working', label: 'Unjammed', shortLabel: 'Unjam', keepOpen: false, tooltipType: 'success' },
+            { value: 'jammed', label: 'Jammed', shortLabel: 'Jam', keepOpen: false, tooltipType: 'error' }
         ];
     }
 }

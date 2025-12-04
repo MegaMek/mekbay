@@ -32,7 +32,7 @@
         [class.active]="choice.active" [attr.data-title]="isSelected(choice) ? title() : null"
         (pointerenter)="setHoveredChoice(choice)" (pointerleave)="resetHovered()"
         (pointerdown)="setHoveredChoice(choice)" (click)="handleChoiceClick($event, choice)">
-        {{ choice.label }}
+        {{ choice.shortLabel ?? choice.label }}
     </div>
     }
     }
