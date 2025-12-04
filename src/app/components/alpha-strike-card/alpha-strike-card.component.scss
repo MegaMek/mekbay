@@ -1,5 +1,6 @@
 :host {
     display: contents;
+    --as-red: #893735;
 }
 
 .card-container {
@@ -70,21 +71,25 @@
 }
 
 .unit-name {
-    padding: 2.5% 0 0 2.86%;
+    position: absolute;
+    top: 2.8cqw;
+    left: 2.8cqw;
     width: 75%;
 }
 
 .model-text {
-    font-size: 3cqw;
-    line-height: 3cqw;
-    min-height: 3cqw;
+    font-size: 4cqw;
+    line-height: 4cqw;
+    // min-height: 4cqw;
 }
 
 .chassis-text {
     font-weight: bold;
-    font-size: 5cqw;
-    line-height: 1.2;
+    font-size: 7.2cqw;
+    line-height: 7.2cqw;
+    letter-spacing: 0.2cqw;
     text-transform: uppercase;
+    font-family: 'Roboto Condensed', sans-serif;
 }
 
 // PV Box
@@ -133,20 +138,33 @@
     box-sizing: border-box;
     padding: 0.5cqw 1.25cqw;
     color: #000;
-    border-style: solid;
+    position: relative;
+
+    .frame-content {
+        z-index: 1;
+        width: 100%;
+    }
 
     @media print {
+        border-style: solid;
         background: rgba(255, 255, 255, 0.7);
         border-radius: 1.52cqw;
         border: 0.36cqw solid #221F20;
     }
 
     @media screen {
-        border-image-slice: 100 100 100 100 fill;
-        border-image-width: 18px;
-        border-image-outset: 0px;
-        border-image-repeat: round round;
-        border-image-source: url("/images/asframe.png");
+        .frame-background {
+            width: 100%;
+            height: 100%;
+            opacity: 0.7;
+            position: absolute;
+            margin: -0.5cqw -1.25cqw;
+            border-image-slice: 100 100 100 100 fill;
+            border-image-width: 18px;
+            border-image-outset: 0px;
+            border-image-repeat: round;
+            border-image-source: url("/images/asframe.png");
+        }
     }
 }
 
@@ -187,8 +205,12 @@
 
 .stats-box {
     display: flex;
-    flex-direction: column;
-    justify-content: space-around;
+
+    .frame-content {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+    }
 }
 
 .stats-row {
@@ -219,13 +241,19 @@
 // Damage Box
 .damage-box {
     display: flex;
-    align-items: center;
+
+    .frame-content {
+        display: flex;
+        align-items: center;
+    }
 }
 
 .damage-label {
+    position: absolute;
+    height: 92%;
     writing-mode: vertical-rl;
     transform: rotate(180deg);
-    font-size: 1.52cqw; // 17px / 1120
+    font-size: 1.52cqw;
     text-align: center;
     margin-right: 1.5cqw;
     font-weight: 600;
@@ -261,7 +289,11 @@
 // Heat Box
 .heat-box {
     display: flex;
-    align-items: center;
+
+    .frame-content {
+        display: flex;
+        align-items: center;
+    }
 }
 
 .heat-content {
@@ -337,8 +369,12 @@
 // Armor/Structure Box
 .armor-box {
     display: flex;
-    flex-direction: column;
-    justify-content: space-around;
+
+    .frame-content {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+    }
 }
 
 .pip-row {
@@ -388,7 +424,11 @@
 // Critical Hits Box
 .critical-hits-box {
     display: flex;
-    flex-direction: column;
+
+    .frame-content {
+        display: flex;
+        flex-direction: column;
+    }
 }
 
 .critical-title {
@@ -432,10 +472,14 @@
 // Specials Box
 .specials-box {
     display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    align-content: flex-start;
-    font-size: 2.5cqw;
+
+    .frame-content {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        align-content: flex-start;
+        font-size: 2.5cqw;
+    }
 }
 
 .special-label {
@@ -446,8 +490,20 @@
     cursor: pointer;
     transition: text-decoration 0.15s ease;
 
+    @media screen {
+        font-weight: 900;
+        color: var(--as-red);
+    }
+
     &:hover {
         text-decoration: underline;
+    }
+}
+
+.special-separator {
+    @media screen {
+        font-weight: 900;
+        color: var(--as-red);
     }
 }
 
@@ -517,7 +573,7 @@
     }
 
     .critical-name {
-        color: #893735;
+        color: var(--as-red);
     }
 
     .battletech-logo .logo-text {
@@ -535,9 +591,5 @@
 @media print {
     .screen-only {
         display: none;
-    }
-
-    .frame {
-        background: rgba(255, 255, 255, 0.9);
     }
 }
