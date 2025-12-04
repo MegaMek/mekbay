@@ -10,23 +10,34 @@
     font-size: 2.5cqw;
     overflow: hidden;
     container-type: inline-size;
+
+    @media print {
+        width: 88mm;
+        // height: 63mm;
+    }
 }
 
 // Background styles
 .card-background {
     position: absolute;
-    inset: 0.71% 0.71%;
-    background: #fff;
+    width: 100%;
+    height: 100%;
+    background: #000;
     border: 1.43cqw solid #000;
     box-sizing: border-box;
+
+    @media print {
+        background: #fff;
+    }
 }
 
 .card-background-image {
     position: absolute;
-    inset: 0;
-    background-image: url('/images/ascard_background_dark.jpg');
+    inset: 1.8cqw;
+    background-image: url('/images/ascard_background1.jpg');
     background-size: cover;
     background-position: center;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 8cqw 100%, 0 calc(100% - 8cqw));
 }
 
 // Fluff Image
@@ -79,10 +90,9 @@
 // PV Box
 .pv-box {
     position: absolute;
-    top: 14%;
-    right: 0;
-    width: 24.11%; // (1120 - 850) / 1120
-    height: 12.25%; // 98px / 800px
+    top: 16%;
+    right: 1.8cqw;
+    width: 17%;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -92,11 +102,11 @@
     position: absolute;
     inset: 0;
     background: #000;
-    clip-path: polygon(22.22% 0, 100% 0, 100% 100%, 0 100%);
+    clip-path: polygon(74% 0, 100% 0, 100% 9cqw, 82% 9cqw);
 }
 
 .pv-text {
-    font-size: 5.36cqw; // 60px / 1120
+    font-size: 5.36cqw;
     font-weight: 900;
     text-align: center;
     letter-spacing: 0.36cqw;
@@ -104,15 +114,15 @@
 }
 
 .base-pv-text {
-    font-size: 2.5cqw; // 28px / 1120
+    font-size: 2.5cqw;
     font-weight: bold;
     text-align: center;
-    margin-top: 0.5cqw;
+    margin-top: 1.2cqw;
     z-index: 1;
 }
 
 .stroke-text {
-    -webkit-text-stroke: 0.18cqw #fff;
+    -webkit-text-stroke: 0.3cqw #fff;
     color: #000;
     paint-order: stroke fill;
 }
@@ -120,12 +130,24 @@
 // Frame/Box styling
 .frame {
     width: 100%;
-    background: rgba(255, 255, 255, 0.7);
-    border-radius: 1.52cqw;
-    border: 0.36cqw solid #221F20;
     box-sizing: border-box;
     padding: 0.5cqw 1.25cqw;
     color: #000;
+    border-style: solid;
+
+    @media print {
+        background: rgba(255, 255, 255, 0.7);
+        border-radius: 1.52cqw;
+        border: 0.36cqw solid #221F20;
+    }
+
+    @media screen {
+        border-image-slice: 100 100 100 100 fill;
+        border-image-width: 18px;
+        border-image-outset: 0px;
+        border-image-repeat: round round;
+        border-image-source: url("/images/asframe.png");
+    }
 }
 
 .stats-container {
@@ -156,6 +178,7 @@
     &.stats-left {
         flex: 0 0 57.5%;
     }
+
     &.stats-right {
         flex: 0 0 42%;
     }
@@ -283,6 +306,7 @@
     &.heat-0 {
         width: 2.5cqw;
         border-radius: 2.5cqw 0 0 2.5cqw;
+
         &.active {
             background: rgb(0, 200, 0);
         }
@@ -303,6 +327,7 @@
     &.heat-s {
         width: 2.5cqw;
         border-radius: 0 2.5cqw 2.5cqw 0;
+
         &.active {
             background: rgb(255, 0, 0);
         }
@@ -360,7 +385,7 @@
     font-size: 2.86cqw; // 32px / 1120
     font-weight: 700;
     text-align: center;
-    margin-bottom: 1.5cqw;
+    margin-bottom: 1cqw;
 }
 
 .critical-row {
@@ -407,10 +432,6 @@
     font-weight: bold;
 }
 
-.special-content {
-    display: inline;
-}
-
 .special-ability {
     cursor: pointer;
     transition: text-decoration 0.15s ease;
@@ -431,6 +452,15 @@
     align-items: center;
 }
 
+
+
+.alphastrike-footer-background {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    clip-path: polygon(0 89%, 50% 89%, 58% 100%, 0 100%);
+}
+
 .alphastrike-footer {
     position: absolute;
     left: 28.04%;
@@ -440,6 +470,12 @@
     font-family: 'Roboto Condensed', sans-serif;
     letter-spacing: 0.36cqw;
     transform: translateX(-50%);
+
+    @media print {
+        bottom: -9%;
+        left: 25%;
+        color: #fff;
+    }
 }
 
 .battletech-logo {
@@ -493,9 +529,5 @@
 
     .frame {
         background: rgba(255, 255, 255, 0.9);
-    }
-
-    .alphastrike-footer {
-        color: #fff;
     }
 }

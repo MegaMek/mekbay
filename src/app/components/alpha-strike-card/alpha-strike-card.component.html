@@ -1,9 +1,10 @@
 <div class="card-container">
     <!-- Background -->
-    <div class="card-background print-only"></div>
+    <div class="card-background"></div>
     <div class="card-background-image screen-only"></div>
 
     <!-- Footer -->
+    <div class="alphastrike-footer-background print-only"></div>
     <div class="footer-section">
         <div class="alphastrike-footer alphastrike-text">ALPHA STRIKE</div>
 
@@ -40,8 +41,8 @@
         </div>
 
         <!-- PV Box -->
+        <div class="pv-box-background print-only"></div>
         <div class="pv-box">
-            <div class="pv-box-background print-only"></div>
             <div class="pv-text alphastrike-text">{{ adjustedPV() }}</div>
             @if (basePV() != adjustedPV()) {
             <div class="base-pv-text stroke-text">Base PV: {{ basePV() }}</div>
@@ -209,13 +210,11 @@
         @if (getSpecialItems().length > 0) {
         <div class="stats-container-row">
             <div class="specials-box frame">
-                <span class="special-label">SPECIAL: </span>
-                <span class="special-content">
-                    @for (item of getSpecialItems(); track item; let isLast = $last) {
-                    <span class="special-ability" (click)="onSpecialClick(item)">{{ item }}</span>@if (!isLast) {<span
-                        class="special-separator">, </span>}
-                    }
-                </span>
+                <span class="special-label">SPECIAL:&nbsp;</span>
+                @for (item of getSpecialItems(); track item; let isLast = $last) {
+                <span class="special-ability" (click)="onSpecialClick(item)">{{ item }}</span>
+                @if (!isLast) {<span class="special-separator">,&nbsp;</span>}
+                }
             </div>
         </div>
         }
