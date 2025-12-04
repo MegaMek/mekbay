@@ -311,10 +311,10 @@
 
 .heat-track {
     display: flex;
-    border-radius: 2cqw;
+    border-radius: 1.5cqw;
     border: 0.27cqw solid #000;
     background-color: rgba(0, 0, 0, .4);
-    padding: 0.5cqw;
+    overflow: hidden;
     margin-left: auto;
 }
 
