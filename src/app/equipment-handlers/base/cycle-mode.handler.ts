@@ -59,7 +59,6 @@ export abstract class CycleModeHandler extends EquipmentInteractionHandler {
         equipment.states?.set(this.stateKey, String(choice.value));
         equipment.owner.setInventoryEntry(equipment);
         
-        console.log(choice);
         context.toastService.show(
             `${equipment.equipment?.name||equipment.name} ${this.modeLabel.toLowerCase()}: ${choice.label}`,
             choice.tooltipType || 'info'
