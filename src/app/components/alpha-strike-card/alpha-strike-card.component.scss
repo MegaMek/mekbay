@@ -298,30 +298,23 @@
     }
 }
 
-.heat-content {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    gap: 2cqw;
-}
-
 .ov-value {
-    font-size: 3.48cqw; // 39px / 1120
+    font-size: 3.48cqw;
     font-weight: 500;
     flex-shrink: 0;
 }
 
 .heat-label {
-    font-size: 1.52cqw; // 17px / 1120
+    font-size: 1.52cqw;
     white-space: nowrap;
 }
 
 .heat-track {
     display: flex;
-    background: #000;
-    border-radius: 3.04cqw; // 34px / 1120
-    padding: 0.54cqw; // 6px / 1120
-    height: 6.7cqw; // 75px / 1120
+    border-radius: 2cqw;
+    border: 0.27cqw solid #000;
+    background-color: rgba(0, 0, 0, .4);
+    padding: 0.5cqw;
     margin-left: auto;
 }
 
@@ -329,21 +322,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 4.46cqw; // 50px / 1120
+    width: 4.5cqw;
     height: 100%;
-    background: rgb(102, 102, 102);
     color: #fff;
-    font-size: 3.48cqw; // 39px / 1120
+    font-size: 3.5cqw;
     cursor: pointer;
     transition: background-color 0.2s;
 
-    &.heat-0 {
-        width: 2.5cqw;
-        border-radius: 2.5cqw 0 0 2.5cqw;
-
-        &.active {
-            background: rgb(0, 200, 0);
-        }
+    &.heat-0.active {
+        background: rgb(0, 200, 0);
     }
 
     &.heat-1.active {
@@ -358,13 +345,8 @@
         background: rgb(255, 100, 0);
     }
 
-    &.heat-s {
-        width: 2.5cqw;
-        border-radius: 0 2.5cqw 2.5cqw 0;
-
-        &.active {
-            background: rgb(255, 0, 0);
-        }
+    &.heat-s.active {
+        background: rgb(255, 0, 0);
     }
 }
 
