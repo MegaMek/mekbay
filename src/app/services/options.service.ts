@@ -50,6 +50,8 @@ const DEFAULT_OPTIONS: Options = {
     recordSheetCenterPanelContent: 'clusterTable',
     syncZoomBetweenSheets: true,
     useAutomations: true,
+    ASUseHex: false,
+    ASCardStyle: 'colored',
 };
 
 @Injectable({ providedIn: 'root' })
@@ -67,6 +69,8 @@ export class OptionsService {
         gameSystem: DEFAULT_OPTIONS.gameSystem,
         recordSheetCenterPanelContent: DEFAULT_OPTIONS.recordSheetCenterPanelContent,
         useAutomations: DEFAULT_OPTIONS.useAutomations,
+        ASUseHex: DEFAULT_OPTIONS.ASUseHex,
+        ASCardStyle: DEFAULT_OPTIONS.ASCardStyle,
     });
 
     constructor() {
@@ -88,6 +92,8 @@ export class OptionsService {
             lastCanvasState: saved?.lastCanvasState,
             sidebarLipPosition: saved?.sidebarLipPosition,
             useAutomations: saved?.useAutomations ?? DEFAULT_OPTIONS.useAutomations,
+            ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
+            ASCardStyle: saved?.ASCardStyle ?? DEFAULT_OPTIONS.ASCardStyle,
         });
     }
 

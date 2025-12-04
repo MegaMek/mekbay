@@ -41,6 +41,7 @@ import { UserStateService } from '../../services/userState.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { isIOS } from '../../utils/platform.util';
 import { LoggerService } from '../../services/logger.service';
+import { GameService } from '../../services/game.service';
 
 /*
  * Author: Drake
@@ -56,14 +57,20 @@ import { LoggerService } from '../../services/logger.service';
 export class OptionsDialogComponent {
     logger = inject(LoggerService)
     optionsService = inject(OptionsService);
+    gameSystem = inject(GameService);
     dbService = inject(DbService);
     dialogRef = inject(DialogRef<OptionsDialogComponent>);
     userStateService = inject(UserStateService);
     dialogsService = inject(DialogsService);
     isIOS = isIOS();
     
-    tabs = ['General', 'Sheets', 'Advanced', 'Debug'];
-    activeTab = signal(this.tabs[0]);
+    tabs = computed(() => {
+        if (this.gameSystem.isAlphaStrike()) {
+            return ['General', 'Alpha Strike', 'Advanced', 'Debug'];
+        }
+        return ['General', 'Sheets', 'Advanced', 'Debug'];
+    });
+    activeTab = signal(this.tabs()[0]);
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
     userUuid = computed(() => this.userStateService.uuid() || '');
@@ -152,6 +159,16 @@ export class OptionsDialogComponent {
     onUseAutomationsChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('useAutomations', value);
+    }
+
+    onASUseHexChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('ASUseHex', value);
+    }
+
+    onASCardStyleChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as 'colored' | 'monochrome';
+        this.optionsService.setOption('ASCardStyle', value);
     }
 
     selectAll(event: FocusEvent) {

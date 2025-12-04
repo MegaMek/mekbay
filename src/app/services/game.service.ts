@@ -31,26 +31,19 @@
  * affiliated with Microsoft.
  */
 
+import { Injectable, signal, effect, inject, computed, untracked } from '@angular/core';
+import { OptionsService } from './options.service';
+
 /*
  * Author: Drake
  */
-export interface Options {
-    uuid?: string; // deprecated, use UserStateService instead
-    sheetsColor: 'normal' | 'night';
-    pickerStyle: 'default' | 'radial' | 'linear';
-    quickActions: 'enabled' | 'disabled';
-    canvasInput: 'all' | 'touch' | 'pen';
-    swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
-    syncZoomBetweenSheets: boolean;
-    unitDisplayName: 'chassisModel' | 'alias' | 'both';
-    gameSystem: 'cbt' | 'as';
-    recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
-    lastCanvasState?: {
-        brushSize: number;
-        eraserSize: number;
-    },
-    sidebarLipPosition?: string;
-    useAutomations: boolean;
-    ASUseHex: boolean;
-    ASCardStyle: 'colored' | 'monochrome';
+@Injectable({
+    providedIn: 'root'
+})
+export class GameService {
+    private readonly optionsService = inject(OptionsService);
+
+    isAlphaStrike() {
+        return this.optionsService.options().gameSystem === 'as';
+    }
 }

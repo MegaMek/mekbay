@@ -57,9 +57,9 @@ import { UnitSearchFiltersService } from './services/unit-search-filters.service
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { APP_VERSION_STRING } from './build-meta';
-import { copyTextToClipboard } from './utils/clipboard.util';
 import { LoggerService } from './services/logger.service';
 import { isIOS, isRunningStandalone } from './utils/platform.util';
+import { GameService } from './services/game.service';
 
 /*
  * Author: Drake
@@ -94,6 +94,7 @@ export class App {
     protected optionsService = inject(OptionsService);
     public unitSearchFilter = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
+    public gameService = inject(GameService);
 
     protected buildInfo = APP_VERSION_STRING;
     private lastUpdateCheck: number = 0;
