@@ -27,18 +27,26 @@
     border: 1.43cqw solid #000;
     box-sizing: border-box;
 
+    :host(.monochrome) & {
+        background: #fff;
+    }
+
     @media print {
         background: #fff;
     }
 }
 
-.card-background-image {
+:host:not(.monochrome) .card-background-image {
     position: absolute;
     inset: 1.8cqw;
     background-image: url('/images/ascard_background1.jpg');
     background-size: cover;
     background-position: center;
     clip-path: polygon(0 0, 100% 0, 100% 100%, 8cqw 100%, 0 calc(100% - 8cqw));
+
+    @media print {
+        display: none;
+    }
 }
 
 // Fluff Image
@@ -75,6 +83,7 @@
     top: 2.8cqw;
     left: 2.8cqw;
     width: 75%;
+    color: #000;
 }
 
 .model-text {
@@ -147,26 +156,37 @@
         padding-bottom: 0.5cqw;
     }
 
+    :host(.monochrome) & {
+        border-style: solid;
+        background: rgba(255, 255, 255, 0.7);
+        border-radius: 1.6cqw;
+        border: 0.36cqw solid #221F20;
+        padding-top: 0.3cqw;
+        padding-bottom: 0.3cqw;
+    }
+
     @media print {
         border-style: solid;
         background: rgba(255, 255, 255, 0.7);
-        border-radius: 1.52cqw;
+        border-radius: 1.6cqw;
         border: 0.36cqw solid #221F20;
+        padding-top: 0.3cqw;
+        padding-bottom: 0.3cqw;
     }
+}
 
-    @media screen {
-        .frame-background {
-            width: 100%;
-            height: 100%;
-            opacity: 0.7;
-            position: absolute;
-            margin: -0.5cqw -1.25cqw;
-            border-image-slice: 100 100 100 100 fill;
-            border-image-width: 18px;
-            border-image-outset: 0px;
-            border-image-repeat: round;
-            border-image-source: url("/images/asframe.png");
-        }
+@media screen {
+    :host:not(.monochrome) .frame-background {
+        width: 100%;
+        height: 100%;
+        opacity: 0.7;
+        position: absolute;
+        margin: -0.5cqw -1.25cqw;
+        border-image-slice: 100 100 100 100 fill;
+        border-image-width: 18px;
+        border-image-outset: 0px;
+        border-image-repeat: round;
+        border-image-source: url("/images/asframe.png");
     }
 }
 
@@ -388,6 +408,10 @@
     @media print {
         width: 100%;
         text-align: right;
+
+        .current-value {
+            display: none;
+        }
     }
 }
 
@@ -422,16 +446,6 @@
         flex-direction: column;
         align-items: center;
         gap: 0.8cqw;
-    }
-}
-
-.frame-title-background {
-    @media screen {
-        background: linear-gradient(to right, transparent 0%, #5B504E 1.5cqw, #5B504E calc(100% - 1.5cqw), transparent 100%);
-        color: #fff;
-        font-weight: bold;
-        padding-left: 2.2cqw;
-        padding-right: 2.2cqw;
     }
 }
 
@@ -571,38 +585,43 @@
 
 // Screen-only styles
 @media screen {
-    .fluff-image {
-        filter: invert(1) contrast(5) brightness(5);
-        mix-blend-mode: lighten;
+    :host:not(.monochrome) {
+
+        .frame-title-background {
+            background: linear-gradient(to right, transparent 0%, #5B504E 1.5cqw, #5B504E calc(100% - 1.5cqw), transparent 100%);
+            color: #fff;
+            font-weight: bold;
+            padding-left: 2.2cqw;
+            padding-right: 2.2cqw;
+        }
+
+        .fluff-image {
+            filter: invert(1) contrast(5) brightness(5);
+            mix-blend-mode: lighten;
+        }
+
+        .print-only {
+            display: none;
+        }
+
+        .model-text {
+            color: #ECD24B;
+        }
+
+        .critical-name {
+            color: var(--as-red);
+        }
+
+        .battletech-logo .logo-text {
+            fill: #fff;
+        }
+
+        .alphastrike-text {
+            color: #B63731;
+            -webkit-text-stroke: 0.45cqw #ECD24B;
+            paint-order: stroke fill;
+            position: relative;
+        }
     }
 
-    .print-only {
-        display: none;
-    }
-
-    .model-text {
-        color: #ECD24B;
-    }
-
-    .critical-name {
-        color: var(--as-red);
-    }
-
-    .battletech-logo .logo-text {
-        fill: #fff;
-    }
-
-    .alphastrike-text {
-        color: #B63731;
-        -webkit-text-stroke: 0.45cqw #ECD24B;
-        paint-order: stroke fill;
-        position: relative;
-    }
-}
-
-// Print styles
-@media print {
-    .screen-only {
-        display: none;
-    }
 }

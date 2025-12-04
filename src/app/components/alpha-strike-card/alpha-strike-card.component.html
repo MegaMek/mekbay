@@ -1,7 +1,7 @@
 <div class="card-container">
     <!-- Background -->
     <div class="card-background"></div>
-    <div class="card-background-image screen-only"></div>
+    <div class="card-background-image"></div>
 
     <!-- Footer -->
     <div class="alphastrike-footer-background print-only"></div>
@@ -83,21 +83,21 @@
                             <div class="damage-range">
                                 <div class="range-header">S (0 | 3+)</div>
                                 <div class="range-value">{{ asStats().dmg.dmgS }}</div>
-                                <div class="range-distance">0-6"</div>
+                                <div class="range-distance">{{ rangeShort() }}</div>
                             </div>
 
                             <!-- Medium Range -->
                             <div class="damage-range">
                                 <div class="range-header">M (+2 | 5+)</div>
                                 <div class="range-value">{{ asStats().dmg.dmgM }}</div>
-                                <div class="range-distance">6"-24"</div>
+                                <div class="range-distance">{{ rangeMedium() }}</div>
                             </div>
 
                             <!-- Long Range -->
                             <div class="damage-range">
                                 <div class="range-header">L (+4 | 7+)</div>
                                 <div class="range-value">{{ asStats().dmg.dmgL }}</div>
-                                <div class="range-distance">24"-42"</div>
+                                <div class="range-distance">{{ rangeLong() }}</div>
                             </div>
                         </div>
                     </div>
@@ -148,7 +148,7 @@
                         <div class="pip-row">
                             <span class="as-caption">A:</span>
                             @if (showArmorAsNumber()) {
-                            <span class="pip-value"><span class="current-value screen-only">0</span>/{{ armorPips()
+                            <span class="pip-value"><span class="current-value">0</span>/{{ armorPips()
                                 }}</span>
                             } @else {
                             <div class="pips">

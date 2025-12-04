@@ -31,9 +31,10 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, computed } from '@angular/core';
 import { Force } from '../../models/force.model';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
+import { OptionsService } from '../../services/options.service';
 
 /*
  * Author: Drake
@@ -48,5 +49,19 @@ import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card
     styleUrl: './alpha-strike-viewer.component.scss'
 })
 export class AlphaStrikeViewerComponent {
+    private optionsService = inject(OptionsService);
+    
     force = input.required<Force>();
+    
+    useHex = computed(() => this.optionsService.options().ASUseHex);
+    cardStyle = computed(() => this.optionsService.options().ASCardStyle);
+    
+    toggleHexMode(): void {
+        this.optionsService.setOption('ASUseHex', !this.useHex());
+    }
+    
+    toggleCardStyle(): void {
+        const newStyle = this.cardStyle() === 'colored' ? 'monochrome' : 'colored';
+        this.optionsService.setOption('ASCardStyle', newStyle);
+    }
 }

@@ -46,10 +46,15 @@ import { AlphaStrikeUnitStats, Unit } from '../../models/units.model';
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [UpperCasePipe],
     templateUrl: './alpha-strike-card.component.html',
-    styleUrl: './alpha-strike-card.component.scss'
+    styleUrl: './alpha-strike-card.component.scss',
+    host: {
+        '[class.monochrome]': 'cardStyle() === "monochrome"'
+    }
 })
 export class AlphaStrikeCardComponent {
     forceUnit = input.required<ForceUnit>();
+    useHex = input<boolean>(false);
+    cardStyle = input<'colored' | 'monochrome'>('colored');
     
     imageUrl = signal<string>('');
     
@@ -70,10 +75,19 @@ export class AlphaStrikeCardComponent {
     adjustedPV = computed<number>(() => this.calculateAdjustedPV(this.basePV(), this.skill()));
     
     // Sprint movement
-    sprintMove = computed<string>(() => {
+    sprintMove = computed<number>(() => {
         const walkMove = this.parseMovement(this.asStats().MV);
-        return Math.ceil(walkMove * 1.5) + '"';
+        const sprintInches = Math.ceil(walkMove * 1.5);
+        if (this.useHex()) {
+            return Math.floor(sprintInches / 2);
+        }
+        return sprintInches;
     });
+    
+    // Range distances based on hex mode
+    rangeShort = computed<string>(() => this.useHex() ? '0-3' : '0-6"');
+    rangeMedium = computed<string>(() => this.useHex() ? '3-12' : '6"-24"');
+    rangeLong = computed<string>(() => this.useHex() ? '12-21' : '24"-42"');
     
     // Armor and structure pips
     armorPips = computed<number>(() => this.asStats().Arm);
@@ -162,19 +176,34 @@ export class AlphaStrikeCardComponent {
         // TODO: Implement special ability details popup
     }
     
+    // Convert inches to hex
+    private inchesToHex(inches: number): number {
+        return Math.floor(inches / 2);
+    }
+    
+    // Format movement value based on hex mode
+    private formatMovement(inches: number, suffix: string = ''): string {
+        if (this.useHex()) {
+            return this.inchesToHex(inches) + suffix;
+        }
+        return inches + '"' + suffix;
+    }
+    
     // Get movement modes display
     getMovementDisplay(): string {
         const stats = this.asStats();
         const mvx = stats.MVx;
+        const baseMove = this.parseMovement(stats.MV);
+        
         if (!mvx || Object.keys(mvx).length === 0) {
-            return stats.MV;
+            return this.formatMovement(baseMove);
         }
         
         // Build movement string with modes
-        let display = stats.MV;
+        let display = this.formatMovement(baseMove);
         for (const [mode, value] of Object.entries(mvx)) {
             if (mode === 'j' && value > 0) {
-                display = display.replace(/"$/, `"/${value}"j`);
+                display += '/' + this.formatMovement(value as number, 'j');
             }
         }
         return display;
