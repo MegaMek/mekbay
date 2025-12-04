@@ -1,0 +1,129 @@
+:host {
+    display: contents;
+}
+
+svg {
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+}
+
+.pv-text {
+    font-size: 60px;
+    font-weight: bolder;
+    text-anchor: middle;
+    letter-spacing: 4px;
+}
+
+.stroke-text {
+    stroke: #fff;
+    stroke-width: 2px;
+    fill: #000;
+    paint-order: stroke fill;
+}
+
+.alphastrike-footer {
+    fill: #fff;
+    font-size: 42px;
+    font-weight: 900;
+    font-family: 'Roboto Condensed', sans-serif;
+    text-anchor: middle;
+    letter-spacing: 4px;
+}
+
+.frame {
+    fill: rgba(255,255,255,.7);
+    rx: 17;
+    ry: 17;
+    stroke-width: 4px;
+    stroke: #221F20;
+}
+
+.box-title {
+    font-size: 32px;
+    font-weight: 700;
+    text-anchor: middle;
+}
+
+.critical-name {
+    font-size: 22px;
+    font-weight: 900;
+    text-anchor: end;
+    font-family: 'Roboto Condensed', sans-serif;
+    letter-spacing: -0.5px;
+}
+
+.critical-desc {
+    font-size: 22px;
+    font-weight: 600;
+    text-anchor: start;
+    font-family: 'Roboto Condensed', sans-serif;
+}
+
+.pip {
+    cursor: pointer;
+    stroke: #000;
+    fill: #fff;
+    stroke-width: 3px;
+    r: 12px;
+}
+
+.caption {
+    font-weight: bold;
+}
+
+.box-text {
+    font-size: 28px;
+    text-anchor: start;
+    font-family: 'Roboto Condensed', sans-serif;
+}
+
+@media screen {
+    .fluff-image {
+        transform: none;
+        filter: invert(1) contrast(5) brightness(5);
+        mix-blend-mode: lighten;
+    }
+
+    .print-only {
+        display: none;
+    }
+
+    .model-text {
+        fill: #ECD24B;
+    }
+
+    .critical-name {
+        fill: #893735;
+    }
+
+    .battletech-logo .logo-text {
+        fill: #fff;
+    }
+
+    .alphastrike-text {
+        fill: #B63731;
+        stroke: #ECD24B;
+        stroke-width: 5px;
+        paint-order: stroke fill;
+    }
+}
+
+.special-ability {
+    cursor: pointer;
+    transition: text-decoration 0.15s ease;
+
+    &:hover,
+    &.special-ability-hovered {
+        text-decoration: underline;
+    }
+}
+
+@media print {
+    .screen-only {
+        display: none;
+    }
+    .frame {
+        fill: rgba(255,255,255,.9);
+    }
+}

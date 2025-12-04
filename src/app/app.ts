@@ -36,6 +36,7 @@ import { Component, computed, signal, HostListener, inject, effect, ChangeDetect
 import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { SvgViewerComponent } from './components/svg-viewer/svg-viewer.component';
+import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
 import { DataService } from './services/data.service';
 import { ForceBuilderService } from './services/force-builder.service';
 import { Unit } from './models/units.model';
@@ -70,6 +71,7 @@ import { isIOS, isRunningStandalone } from './utils/platform.util';
     imports: [
     ToastsComponent,
     SvgViewerComponent,
+    AlphaStrikeViewerComponent,
     LayoutModule,
     UpdateButtonComponent,
     SidebarComponent,
@@ -89,7 +91,7 @@ export class App {
     private wsService = inject(WsService);
     private dialogService = inject(DialogsService);
     private toastService = inject(ToastService);
-    private optionsService = inject(OptionsService);
+    protected optionsService = inject(OptionsService);
     public unitSearchFilter = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
 

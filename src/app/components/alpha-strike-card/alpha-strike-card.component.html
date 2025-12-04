@@ -1,0 +1,179 @@
+<svg font-family="Roboto, sans-serif" version="1.1" x="0px" y="0px" viewBox="0 0 1120 800" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <!-- Diagonal stripes pattern for headers/footers -->
+        <pattern id="stripes" patternUnits="userSpaceOnUse" width="128" height="8" patternTransform="rotate(-45)">
+            <rect width="64" height="8" fill="rgb(180,180,180)"/>
+            <rect x="64" width="64" height="8" fill="rgb(220,220,220)"/>
+        </pattern>        
+        <clipPath id="fluff-image-clip">
+            <polygon points="0,0 850,0 910,98 1100,98 1100,750 0,750"/>
+        </clipPath>
+    </defs>
+    <g transform="translate(0, 0)">
+        <!-- Background -->
+        <rect class="print-only" x="8" y="8" width="1104" height="784" fill="#fff" stroke="#000" stroke-width="16"/>
+        
+        <!-- Background Image -->
+        <image class="screen-only" href="images/ascard_background_dark.jpg" x="0" y="0" width="1120" height="800" preserveAspectRatio="xMidYMid slice"/>
+        
+        <!-- Unit Image -->
+        @if (imageUrl()) {
+            <image class="fluff-image" preserveAspectRatio="xMidYMin meet" [attr.href]="imageUrl()" x="640" y="112" width="452" height="470" clip-path="url(#fluff-image-clip)"/>
+        }
+        
+        <!-- Unit Name -->
+        <text class="model-text" x="32" y="56" font-size="28">{{ model() }}</text>
+        <text class="chassis-text alphastrike-text" x="32" y="106" style="font-weight: bold; font-size: 50px;">{{ chassis() }}</text>
+        
+        <!-- PV Box -->
+        <polygon class="print-only" points="850,0 1120,0 1120,98 910,98" fill="rgb(0,0,0)"/>
+
+        <text class="pv-text alphastrike-text" x="1000" y="75" text-anchor="middle">{{ adjustedPV() }}</text>
+        @if (basePV() != adjustedPV()) {
+            <text class="stroke-text" x="1000" y="130" text-anchor="middle" font-size="28" style="font-weight: bold;">Base PV: {{ basePV() }}</text>
+        }
+        
+        <!-- Stats Box 1 - Type, Size, TMM, Movement -->
+        <rect class="frame" x="30" y="131" width="605" height="119"/>
+        <text x="34" y="175" font-size="28">TP: {{ asStats().TP }}</text>
+        <text x="168" y="175" font-size="28">SZ: {{ asStats().SZ }}</text>
+        <text x="263" y="175" font-size="28">TMM: {{ getTMMDisplay() }}</text>
+        <text x="605" y="175" text-anchor="end" font-size="28">MV: {{ getMovementDisplay() }}</text>
+        <text x="605" y="194" text-anchor="end" font-size="17">Sprint: {{ sprintMove() }}</text>
+        <text x="34" y="225" font-size="28">ROLE: {{ unit().role | uppercase }}</text>
+        <text x="605" y="225" text-anchor="end" font-size="28">SKILL: {{ skill() }}</text>
+        
+        <!-- Damage Box -->
+        <rect class="frame" x="30" y="269" width="605" height="112"/>
+        <text x="62" y="312" text-anchor="middle" font-size="17" transform="rotate(270, 65, 312)">DAMAGE</text>
+        
+        <!-- Short Range -->
+        <text x="146" y="306" text-anchor="middle" font-size="22">S (0 | 3+)</text>
+        <text x="146" y="375" text-anchor="middle" font-size="22">0-6"</text>
+        <text x="146" y="350" text-anchor="middle" font-size="39">{{ asStats().dmg.dmgS }}</text>
+        
+        <!-- Medium Range -->
+        <text x="314" y="306" text-anchor="middle" font-size="22">M (+2 | 5+)</text>
+        <text x="314" y="375" text-anchor="middle" font-size="22">6"-24"</text>
+        <text x="314" y="350" text-anchor="middle" font-size="39">{{ asStats().dmg.dmgM }}</text>
+        
+        <!-- Long Range -->
+        <text x="482" y="306" text-anchor="middle" font-size="22">L (+4 | 7+)</text>
+        <text x="482" y="375" text-anchor="middle" font-size="22">24"-42"</text>
+        <text x="482" y="350" text-anchor="middle" font-size="39">{{ asStats().dmg.dmgL }}</text>
+        
+        <!-- Heat/OV Box -->
+        @if (asStats().usesOV) {
+            <rect class="frame" x="30" y="400" width="605" height="88"/>
+            <text x="45" y="456" font-size="39">OV: {{ asStats().OV }}</text>
+            <text x="269" y="454" text-anchor="end" font-size="17">HEAT SCALE</text>
+            
+            <!-- Heat Scale Track -->
+            <rect x="330" y="406" width="297" height="75" fill="rgb(0,0,0)" rx="34" ry="34"/>
+            
+            <!-- Heat 0 -->
+            <rect class="cursor-pointer" x="364" y="412" width="28" height="62" [attr.fill]="heatLevel() === 0 ? 'rgb(0,200,0)' : 'rgb(102,102,102)'"/>
+            <circle class="cursor-pointer" cx="364" cy="444" r="28" [attr.fill]="heatLevel() === 0 ? 'rgb(0,200,0)' : 'rgb(102,102,102)'"/>
+            <text class="cursor-pointer" x="353" y="460" text-anchor="left" font-size="39" style="fill: rgb(255, 255, 255);">0</text>
+            
+            <!-- Heat 1 -->
+            <rect class="cursor-pointer" x="398" y="412" width="50" height="62" [attr.fill]="heatLevel() === 1 ? 'rgb(255,200,0)' : 'rgb(102,102,102)'"/>
+            <text class="cursor-pointer" x="409" y="460" text-anchor="left" font-size="39" style="fill: rgb(255, 255, 255);">1</text>
+            
+            <!-- Heat 2 -->
+            <rect class="cursor-pointer" x="454" y="412" width="50" height="62" [attr.fill]="heatLevel() === 2 ? 'rgb(255,150,0)' : 'rgb(102,102,102)'"/>
+            <text class="cursor-pointer" x="465" y="460" text-anchor="left" font-size="39" style="fill: rgb(255, 255, 255);">2</text>
+            
+            <!-- Heat 3 -->
+            <rect class="cursor-pointer" x="510" y="412" width="50" height="62" [attr.fill]="heatLevel() === 3 ? 'rgb(255,100,0)' : 'rgb(102,102,102)'"/>
+            <text class="cursor-pointer" x="521" y="460" text-anchor="left" font-size="39" style="fill: rgb(255, 255, 255);">3</text>
+            
+            <!-- Shutdown -->
+            <rect class="cursor-pointer" x="566" y="412" width="28" height="62" [attr.fill]="heatLevel() >= 4 ? 'rgb(255,0,0)' : 'rgb(102,102,102)'"/>
+            <circle class="cursor-pointer" cx="594" cy="444" r="28" [attr.fill]="heatLevel() >= 4 ? 'rgb(255,0,0)' : 'rgb(102,102,102)'"/>
+            <text class="cursor-pointer" x="577" y="460" text-anchor="left" font-size="39" style="fill: rgb(255, 255, 255);">S</text>
+        }
+        
+        <!-- Armor/Structure Box -->
+        <rect class="frame" x="30" y="506" width="605" height="119"/>
+        
+        <!-- Armor Pips -->
+        <text x="45" y="550" font-size="28">A: </text>
+        @for (i of range(armorPips()); track i) {
+            <circle class="cursor-pointer" [attr.cx]="90 + (i * 32)" cy="540" r="14" fill="rgb(0,0,0)"/>
+            <circle class="cursor-pointer" [attr.cx]="90 + (i * 32)" cy="540" r="11" fill="rgb(255,255,255)"/>
+        }
+        
+        <!-- Structure Pips -->
+        <text x="45" y="606" font-size="28">S: </text>
+        @for (i of range(structurePips()); track i) {
+            <circle class="cursor-pointer" [attr.cx]="90 + (i * 32)" cy="596" r="14" fill="rgb(0,0,0)"/>
+            <circle class="cursor-pointer" [attr.cx]="90 + (i * 32)" cy="596" r="11" fill="rgb(153,153,153)"/>
+        }
+        
+        <!-- Specials Box -->
+        <rect class="frame" x="30" y="644" width="1059" height="81"/>
+        <text class="box-text" x="42" y="675">
+            <tspan class="caption">SPECIAL: </tspan>
+            @for (item of getSpecialItems(); track item.index; let isLast = $last) {
+                <tspan 
+                    class="special-ability"
+                    [class.special-ability-hovered]="hoveredSpecial() === item.index"
+                    (mouseenter)="onSpecialHover(item.index)"
+                    (mouseleave)="onSpecialHover(null)"
+                    (click)="onSpecialClick(item.value)"
+                    [attr.x]="item.x"
+                    [attr.dy]="item.dy">{{ item.value }}</tspan>@if (!isLast) {<tspan>, </tspan>}
+            }
+        </text>
+        
+        <!-- Critical Hits Box -->
+        <g class="critiical-hits-box" transform="translate(0, 0)">
+            <rect class="frame" x="656" y="410" width="432" height="222"/>
+            <text class="box-title" x="879" y="450">CRITICAL HITS</text>
+            
+            <!-- Engine -->
+            <text class="critical-name" x="795" y="490" text-anchor="end" font-size="22">ENGINE</text>
+            @for (i of range(engineHits); track i) {
+                <circle class="pip" [attr.cx]="816 + (i * 32)" cy="482"/>
+            }
+            <text class="critical-desc" x="870" y="490">+1 Heat/Firing Weapons</text>
+            
+            <!-- Fire Control -->
+            <text class="critical-name" x="795" y="530" text-anchor="end" font-size="22">FIRE CONTROL</text>
+            @for (i of range(fireControlHits); track i) {
+                <circle class="pip" [attr.cx]="816 + (i * 32)" cy="522"/>
+            }
+            <text class="critical-desc"  x="935" y="530">+2 TN Each</text>
+            
+            <!-- MP -->
+            <text class="critical-name" x="795" y="570" text-anchor="end" font-size="22">MP</text>
+            @for (i of range(mpHits); track i) {
+                <circle class="pip" [attr.cx]="816 + (i * 32)" cy="562"/>
+            }
+            <text class="critical-desc"  x="935" y="570">½ MV Each</text>
+            
+            <!-- Weapons -->
+            <text class="critical-name" x="795" y="610" text-anchor="end" font-size="22">WEAPONS</text>
+            @for (i of range(weaponsHits); track i) {
+                <circle class="pip" [attr.cx]="816 + (i * 32)" cy="602"/>
+            }
+            <text class="critical-desc"  x="935" y="610">-1 Damage Each</text>
+            
+        </g>
+        <!-- Footer -->
+        
+        <polygon class="print-only" points="0,738 448,738 510,806 0,806" fill="rgb(0,0,0)"/>
+        <text class="alphastrike-footer alphastrike-text" x="314" y="770">ALPHA STRIKE</text>
+        
+        <!-- BattleTech Logo -->
+        <svg class="battletech-logo" version="1.1" xmlns="http://www.w3.org/2000/svg" xml:space="preserve" height="41px" width="280px" x="810px" y="734px" viewBox="0 0 790 100">
+            <g>
+                <path class="logo-text" d="m 613.14797,97.475074 c -22.55326,-4.54102 -37.15014,-23.093463 -35.59872,-45.245504 0.80541,-11.500123 4.65183,-20.129404 12.33332,-27.669285 8.70005,-8.53966 19.66012,-12.841085 32.94182,-12.928434 13.03574,-0.08571 22.06992,3.344107 29.95796,11.373609 4.30902,4.386291 9.64083,12.354358 8.81769,13.177502 -0.48955,0.489545 -18.75978,9.049511 -20.47631,9.59357 -1.28765,0.408111 -1.96543,-0.151872 -3.84663,-3.178085 -1.45635,-2.342783 -3.5741,-4.429788 -5.84618,-5.761307 -9.13401,-5.352899 -22.62013,-0.192407 -26.08697,9.982218 -1.87994,5.517331 -1.54632,13.334811 0.76721,17.977475 4.14483,8.317581 13.22817,12.313718 22.27788,9.800981 3.11377,-0.864571 10.18475,-7.253029 10.18475,-9.201671 0,-0.612272 0.31314,-1.306735 0.69586,-1.543272 0.55987,-0.346024 21.30969,8.637335 22.34734,9.674984 0.15811,0.158104 -0.66682,2.076919 -1.83316,4.264015 -2.70077,5.064342 -10.72234,13.110593 -15.73262,15.781022 -8.54657,4.555229 -20.29316,6.038485 -30.90324,3.902182 z M 1.432377,54.886471 l 0,-42.291291 26.734517,0.0117 c 28.953298,0.01266 32.397458,0.368487 38.567864,3.984585 13.631143,7.988382 13.737063,28.930366 0.181219,35.829155 -2.190529,1.114789 -2.191238,1.117415 -0.451992,1.669431 2.916553,0.92567 8.378881,6.520629 10.230164,10.478542 2.158699,4.615149 2.382168,12.500468 0.509976,17.995039 -1.645329,4.828763 -7.551683,10.785957 -12.587425,12.69577 -3.388228,1.284982 -6.476365,1.438839 -33.45854,1.667006 l -29.725783,0.251359 0,-42.291282 z m 48.096499,19.665707 c 0.898395,-0.472873 1.880668,-1.230047 2.182849,-1.682594 C 52.668353,71.4369 52.329337,68.475488 51.046407,67.057876 49.949844,65.846179 48.500843,65.6903 38.333494,65.6903 l -11.475292,0 0,4.860823 0,4.860823 10.518626,0 c 6.479807,0 11.145807,-0.330129 12.152048,-0.859768 z M 49.420837,42.018111 c 1.678338,-1.518873 1.768324,-4.237325 0.192417,-5.813223 -0.959715,-0.959724 -3.153138,-1.17515 -11.965096,-1.17515 l -10.789956,0 0,4.113006 0,4.112997 10.597539,0 c 8.81168,0 10.827988,-0.208552 11.965096,-1.23763 z m 127.001083,24.439995 0,-30.640563 -11.03033,-0.20695 -11.03032,-0.206942 0,-11.217279 0,-11.217279 35.14748,0 35.14747,0 0,11.217279 0,11.217279 -11.03032,0.206942 -11.03033,0.20695 0,30.640563 0,30.640572 -13.08682,0 -13.08683,0 z m 74.78186,-0.01994 0,-30.660561 -11.23676,0 -11.23675,0 0.20642,-11.404231 0.20644,-11.404241 35.14747,0 35.14748,0 0,11.217279 0,11.21728 -11.03033,0.206941 -11.03033,0.20696 0,30.640563 0,30.640572 -13.08682,0 -13.08682,0 z m 53.27584,-11.404231 0.19319,-42.064802 12.89987,-0.204611 12.89986,-0.204612 0,30.678221 0,30.678222 15.70419,0 15.70419,0 0,11.591182 0,11.591193 -28.79724,0 -28.79723,0 z m 63.70339,41.071024 c -0.20974,-0.54658 -0.28331,-19.475735 -0.16349,-42.064792 l 0.21787,-41.071034 68.61235,-0.190863 68.61235,-0.190873 0,11.595104 0,11.595104 -11.21728,0 -11.21728,0 0,30.660561 0,30.660562 -12.71291,0 -12.71292,0 0,-30.660562 0,-30.660561 -31.78229,0 -31.78228,0 0,3.739093 0,3.739093 18.69546,0 18.69546,0 0,11.217279 0,11.21728 -18.69546,0 -18.69546,0 0,4.112996 0,4.113007 19.06937,0 19.06937,0 0,11.591182 0,11.591193 -31.80576,0 c -25.76175,0 -31.87822,-0.18885 -32.1871,-0.993769 z m 142.51381,-41.257985 0,-42.251745 31.78229,0 31.78229,0 0,11.591183 0,11.591193 -18.69546,0 -18.69547,0 0,3.739093 0,3.739093 18.32155,0 18.32156,0 0,11.217279 0,11.21728 -18.32156,0 -18.32155,0 0,4.112996 0,4.113007 18.69547,0 18.69546,0 0,11.591182 0,11.591193 -31.78229,0 -31.78229,0 z m 154.97917,0.186961 0.19318,-42.064802 12.89988,-0.204611 12.89986,-0.204612 0,14.974032 0,14.974032 14.58246,0 14.58247,0 0,-14.974032 0,-14.974032 12.89986,0.204612 12.89988,0.204611 0,41.877841 0,41.877841 -12.89988,0.204611 -12.89986,0.204621 0,-16.095762 0,-16.095762 -14.58247,0 -14.58246,0 0,16.078103 0,16.078102 -13.09305,0 -13.09304,0 z"/>
+                <path d="m 81.354266,96.997204 m -1.627755,-27.03083 c 0,-1.33965 39.191139,-70.72527986 39.670909,-70.23501986 0.33538,0.34274 9.36944,16.27127986 20.07565,35.39672986 l 19.46585,34.77357 -13.19042,0.20474 c -7.25473,0.11262 -13.43513,-0.0556 -13.73422,-0.3739 -0.29911,-0.31827 -3.31884,-5.57872 -6.71055,-11.68991 -5.31432,-9.57538 -6.27985,-10.91917 -6.98514,-9.72164 -0.45011,0.76429 -3.34948,5.9326 -6.44302,11.48516 l -5.62462,10.09555 -13.262212,0.20421 c -7.294228,0.11231 -13.262227,0.0496 -13.262227,-0.13949 z" style="fill: rgb(223, 171, 45); fill-opacity: 1;"/>
+                <path d="m 81.354266,96.997204 c 0.132976,-0.52117 2.748565,-5.40069 5.812408,-10.84338 l 5.570619,-9.89577 26.257817,0 26.25782,0 5.74945,10.15953 c 3.16218,5.58774 5.74943,10.46725 5.74943,10.84337 0,0.40421 -15.46403,0.68383 -37.81966,0.68383 -30.157097,0 -37.770684,-0.19199 -37.577884,-0.94758 z" style="fill: rgb(223, 171, 45); fill-opacity: 1;"/>
+            </g>
+            <text class="logo-text" x="750" y="30" text-anchor="start" font-size="25">TM</text>
+        </svg>
+    </g>
+</svg>

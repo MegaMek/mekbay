@@ -10,7 +10,11 @@
 
         @if (this.hasUnits()) {
         <div class="content-area">
-            <svg-viewer [unit]="selectedUnit()" [force]="forceBuilderService.force"></svg-viewer>
+            @if (optionsService.options().gameSystem === 'as') {
+                <alpha-strike-viewer [force]="forceBuilderService.force"></alpha-strike-viewer>
+            } @else {
+                <svg-viewer [unit]="selectedUnit()" [force]="forceBuilderService.force"></svg-viewer>
+            }
         </div>
         } @else {
         <!-- Empty state -->

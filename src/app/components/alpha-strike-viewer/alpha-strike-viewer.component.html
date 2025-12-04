@@ -1,0 +1,22 @@
+<div class="alpha-strike-viewer">
+    <div class="section-content">
+        <div class="flex-grid flex-2">
+            @let groups = force().groups();
+            @for (group of groups; track group.id) {
+                @if (groups.length > 1) {
+                    <div class="group-header">
+                        {{ group.name() }}
+                    </div>
+                }
+                @for (forceUnit of group.units(); track forceUnit.id) {
+                    <div class="as-unit-card">
+                        <alpha-strike-card [forceUnit]="forceUnit" />
+                    </div>
+                }
+                @if (groups.length > 1) {
+                    <hr class="group-separator"/>
+                }
+            }
+        </div>
+    </div>
+</div>
