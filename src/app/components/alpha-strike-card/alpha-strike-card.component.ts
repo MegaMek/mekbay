@@ -79,6 +79,11 @@ export class AlphaStrikeCardComponent {
     armorPips = computed<number>(() => this.asStats().Arm);
     structurePips = computed<number>(() => this.asStats().Str);
     
+    // Threshold for showing numeric values instead of pips
+    readonly pipThreshold = 30;
+    showArmorAsNumber = computed<boolean>(() => this.armorPips() > this.pipThreshold);
+    showStructureAsNumber = computed<boolean>(() => this.structurePips() > this.pipThreshold);
+    
     // Critical hits (simplified for now)
     engineHits = 2;
     fireControlHits = 4;

@@ -353,6 +353,16 @@
     min-width: 3.5cqw;
 }
 
+.pip-value {
+    font-size: 2.5cqw;
+    font-weight: bold;
+
+    @media print {
+        width: 100%;
+        text-align: right;
+    }
+}
+
 .pips {
     display: flex;
     flex-wrap: wrap;

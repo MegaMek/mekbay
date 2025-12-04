@@ -133,21 +133,29 @@
                     <!-- Armor Pips -->
                     <div class="pip-row">
                         <span class="pip-label">A:</span>
+                        @if (showArmorAsNumber()) {
+                        <span class="pip-value"><span class="current-value screen-only">0</span>/{{ armorPips() }}</span>
+                        } @else {
                         <div class="pips">
                             @for (i of range(armorPips()); track i) {
                             <div class="pip"></div>
                             }
                         </div>
+                        }
                     </div>
 
                     <!-- Structure Pips -->
                     <div class="pip-row">
                         <span class="pip-label">S:</span>
+                        @if (showStructureAsNumber()) {
+                        <span class="pip-value">{{ structurePips() }}/{{ structurePips() }}</span>
+                        } @else {
                         <div class="pips">
                             @for (i of range(structurePips()); track i) {
                             <div class="pip structure"></div>
                             }
                         </div>
+                        }
                     </div>
                 </div>
             </div>
