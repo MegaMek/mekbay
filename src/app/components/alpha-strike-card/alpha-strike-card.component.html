@@ -109,7 +109,10 @@
                     <div class="frame-background"></div>
 
                     <div class="frame-content">
-                            <div class="ov-value">OV: {{ asStats().OV }}</div>
+                            <div class="ov-value">
+                                <div class="as-caption">OV:&nbsp;</div>
+                                <div class="as-value">{{ asStats().OV }}</div>
+                            </div>
                             <div class="frame-title-background heat-label">HEAT SCALE</div>
                             <div class="heat-track">
                                 <!-- Heat 0 -->
@@ -143,7 +146,7 @@
                     <div class="frame-content">
                         <!-- Armor Pips -->
                         <div class="pip-row">
-                            <span class="pip-label">A:</span>
+                            <span class="as-caption">A:</span>
                             @if (showArmorAsNumber()) {
                             <span class="pip-value"><span class="current-value screen-only">0</span>/{{ armorPips()
                                 }}</span>
@@ -158,7 +161,7 @@
 
                         <!-- Structure Pips -->
                         <div class="pip-row">
-                            <span class="pip-label">S:</span>
+                            <span class="as-caption">S:</span>
                             @if (showStructureAsNumber()) {
                             <span class="pip-value">{{ structurePips() }}/{{ structurePips() }}</span>
                             } @else {
@@ -236,9 +239,9 @@
             <div class="specials-box frame">
                 <div class="frame-background"></div>
                 <div class="frame-content">
-                    <span class="special-label">SPECIAL:&nbsp;</span>
+                    <span class="as-caption">SPECIAL:&nbsp;</span>
                     @for (item of getSpecialItems(); track item; let isLast = $last) {
-                    <span class="special-ability" (click)="onSpecialClick(item)">{{ item }}</span>
+                    <span class="special-ability as-value" (click)="onSpecialClick(item)">{{ item }}</span>
                     @if (!isLast) {<span class="special-separator">,&nbsp;</span>}
                     }
                 </div>

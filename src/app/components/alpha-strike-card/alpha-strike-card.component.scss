@@ -170,6 +170,26 @@
     }
 }
 
+.as-caption {
+    font-size: 2.5cqw;
+    font-weight: bold;
+}
+
+.as-value {
+    font-size: 2.5cqw;
+    font-weight: 900;
+
+    @media screen {
+        color: var(--as-red);
+    }
+
+    @media print {
+        -webkit-text-stroke: 0.3cqw #fff;
+        color: #000;
+        paint-order: stroke fill;
+    }
+}
+
 .stats-container {
     position: absolute;
     bottom: 12%;
@@ -295,34 +315,28 @@
     .frame-content {
         display: flex;
         align-items: center;
+        justify-content: space-between;
     }
 }
 
 .ov-value {
-    font-size: 3.48cqw;
-    font-weight: 500;
-    flex-shrink: 0;
-}
-
-.heat-label {
-    font-size: 1.52cqw;
-    white-space: nowrap;
+    display: flex;
+    flex-direction: row;
 }
 
 .heat-track {
     display: flex;
     border-radius: 1.5cqw;
-    border: 0.27cqw solid #000;
+    border: 0.25cqw solid #000;
     background-color: rgba(0, 0, 0, .4);
     overflow: hidden;
-    margin-left: auto;
 }
 
 .heat-level {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 4.5cqw;
+    width: 4cqw;
     height: 100%;
     color: #fff;
     font-size: 3.5cqw;
@@ -365,12 +379,6 @@
     display: flex;
     align-items: baseline;
     gap: 0.5cqw;
-}
-
-.pip-label {
-    font-size: 2.5cqw; // 28px / 1120
-    font-weight: bold;
-    min-width: 3.5cqw;
 }
 
 .pip-value {
@@ -419,19 +427,21 @@
 
 .frame-title-background {
     @media screen {
-        background: linear-gradient(to right, transparent 0%, #5B504E 2cqw, #5B504E calc(100% - 2cqw), transparent 100%);
+        background: linear-gradient(to right, transparent 0%, #5B504E 1.5cqw, #5B504E calc(100% - 1.5cqw), transparent 100%);
         color: #fff;
         font-weight: bold;
-        padding-left: 4cqw;
-        padding-right: 4cqw;
+        padding-left: 2.2cqw;
+        padding-right: 2.2cqw;
     }
 }
 
+.heat-label,
 .critical-title {
     font-size: 2.86cqw;
     font-weight: 700;
     text-align: center;
     width: fit-content;
+    white-space: nowrap;
 }
 
 .critical-row {
@@ -478,18 +488,9 @@
     }
 }
 
-.special-label {
-    font-weight: bold;
-}
-
 .special-ability {
     cursor: pointer;
     transition: text-decoration 0.15s ease;
-
-    @media screen {
-        font-weight: 900;
-        color: var(--as-red);
-    }
 
     &:hover {
         text-decoration: underline;
