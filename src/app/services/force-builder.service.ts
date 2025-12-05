@@ -54,6 +54,7 @@ import { ForcePackDialogComponent } from '../components/force-pack-dialog/force-
 import { SerializedForce } from '../models/force-serialization';
 import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
 import { CrewMember } from '../models/crew-member.model';
+import { GameService } from './game.service';
 
 /*
  * Author: Drake
@@ -71,6 +72,7 @@ export class ForceBuilderService {
     private route = inject(ActivatedRoute);
     private dialogsService = inject(DialogsService);
     private unitInitializer = inject(UnitInitializerService);
+    private gameService = inject(GameService);
     private injector = inject(Injector);
 
     private currentForce = signal<Force>(new Force('My Force', this.dataService, this.unitInitializer, this.injector));
@@ -546,6 +548,7 @@ export class ForceBuilderService {
             this.router.navigate([], {
                 relativeTo: this.route,
                 queryParams: {
+                    gs: queryParameters.gs,
                     units: queryParameters.units,
                     name: queryParameters.name,
                     instance: this.force.instanceId() || null
@@ -566,6 +569,7 @@ export class ForceBuilderService {
         }
         const groupParams = this.generateGroupParams(groups);
         return {
+            gs: this.gameService.isAlphaStrike() ? 'as' : 'cbt',
             units: groupParams.length > 0 ? groupParams.join('|') : null,
             name: forceName || null,
             instance: instanceId || null
@@ -626,6 +630,7 @@ export class ForceBuilderService {
                 const instanceParam = params.get('instance');
                 const unitsParam = params.get('units');
                 const forceNameParam = params.get('name');
+                const gameStyleParam = params.get('gs') ?? 'cbt';
                 let loadedInstance = null;
                 if (instanceParam) {
                     // Try to find an existing force with this instance ID in the storage.
@@ -655,6 +660,12 @@ export class ForceBuilderService {
                     }
                     this.force.loading = true;
                     try {
+                        if (gameStyleParam === 'as') {
+                            this.gameService.setGameSystem('as');
+                        } else
+                        if (gameStyleParam === 'cbt') {
+                            this.gameService.setGameSystem('cbt');
+                        }
                         if (forceNameParam) {
                             this.force.setName(forceNameParam);
                         }

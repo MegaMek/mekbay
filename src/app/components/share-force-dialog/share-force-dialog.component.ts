@@ -33,7 +33,7 @@
 
 
 
-import { ChangeDetectionStrategy, Component, effect, ElementRef, inject, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -56,17 +56,22 @@ import { copyTextToClipboard } from '../../utils/clipboard.util';
     <div class="content">
         <h2 dialog-title>{{ forceBuilderService.force.name }}</h2>
         <div dialog-content class="content">
-            <label class="description"><strong>Live battle record:</strong> share the current deployment as a read-only field report — includes damage, pilots, and status conditions.</label>
-            <div class="row">
-                <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="shareUrl"/>
-                <button class="bt-button" (click)="share(shareUrl)">SHARE</button>
-            </div>
-
-            <label class="description"><strong>Clean roster:</strong> share a pristine copy of the force — no damage, pilots, or status conditions.</label>
-            <div class="row">
-                <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="cleanUrl"/>
-                <button class="bt-button" (click)="share(cleanUrl)">SHARE</button>
-            </div>
+            @let shareLiveUrlString = shareLiveUrl();
+            @if (shareLiveUrlString != null) {
+                <label class="description"><strong>Live battle record:</strong> share the current deployment as a read-only field report — includes damage, pilots, and status conditions.</label>
+                <div class="row">
+                    <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="shareLiveUrlString"/>
+                    <button class="bt-button" (click)="share(shareLiveUrlString)">SHARE</button>
+                </div>
+            }
+            @let cleanUrlString = cleanUrl();
+            @if (cleanUrlString != null) {
+                <label class="description"><strong>Clean roster:</strong> share a pristine copy of the force — no damage, pilots, or status conditions.</label>
+                <div class="row">
+                    <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="cleanUrlString"/>
+                    <button class="bt-button" (click)="share(cleanUrlString)">SHARE</button>
+                </div>
+            }
         </div>
         <div dialog-actions>
             <button class="bt-button" (click)="close(null)">DISMISS</button>
@@ -127,13 +132,12 @@ export class ShareForceDialogComponent {
     toastService = inject(ToastService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
-    shareUrl: string = '';
-    cleanUrl: string = '';
+    shareLiveUrl = signal<string | null>(null);
+    cleanUrl = signal<string | null>(null);
 
     constructor() {
         this.buildUrls();
     }
-
 
     private buildUrls() {
         const origin = window.location.origin || '';
@@ -143,21 +147,22 @@ export class ShareForceDialogComponent {
         const instanceTree = this.router.createUrlTree([], {
             relativeTo: this.route,
             queryParams: {
-                units: queryParameters.units,
-                instance: queryParameters.instance || null,
-                name: queryParameters.name || null
+                instance: queryParameters.instance || null
             }
         });
-        this.shareUrl = origin + this.router.serializeUrl(instanceTree);
+        const shareLiveUrl = this.router.serializeUrl(instanceTree);
+        this.shareLiveUrl.set(shareLiveUrl.length > 1 ? origin + shareLiveUrl : null);
 
         const cleanTree = this.router.createUrlTree([], {
             relativeTo: this.route,
             queryParams: {
+                gs: queryParameters.gs,
                 units: queryParameters.units,
                 name: queryParameters.name || null
             }
         });
-        this.cleanUrl = origin + this.router.serializeUrl(cleanTree);
+        const cleanUrl = this.router.serializeUrl(cleanTree);
+        this.cleanUrl.set(cleanUrl.length > 1 ? origin + cleanUrl : null);
     }
 
     async share(url: string) {

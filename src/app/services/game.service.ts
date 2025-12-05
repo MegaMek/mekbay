@@ -43,7 +43,15 @@ import { OptionsService } from './options.service';
 export class GameService {
     private readonly optionsService = inject(OptionsService);
 
-    isAlphaStrike() {
+    isAlphaStrike = computed(() => {
         return this.optionsService.options().gameSystem === 'as';
+    });
+
+    isClassicBattleTech = computed(() => {
+        return this.optionsService.options().gameSystem === 'cbt';
+    });
+
+    setGameSystem(gameSystem: 'as' | 'cbt'): void {
+        this.optionsService.setOption('gameSystem', gameSystem);
     }
 }
