@@ -6,7 +6,7 @@
         @if (activeTab() === 'General') {
         <div class="tab-content">
             <div class="option-row">
-                <label for="gameSystem">Game System:</label>
+                <label for="gameSystem">Game system:</label>
                 <select id="gameSystem" class="bt-select" [value]="optionsService.options().gameSystem"
                     (change)="onGameSystemChange($event)">
                     <option value="cbt">BattleTech Classic (default)</option>
@@ -14,25 +14,17 @@
                 </select>
             </div>
             <div class="option-row">
-                <label for="sheetsColor">Theme:</label>
-                <select id="sheetsColor" class="bt-select" [value]="optionsService.options().sheetsColor"
-                    (change)="onSheetsColorChange($event)">
-                    <option value="normal">Normal (default)</option>
-                    <option value="night">Night mode</option>
-                </select>
-            </div>
-            <div class="option-row">
-                <label for="unitDisplayName">Unit Display Name:</label>
+                <label for="unitDisplayName">Unit display name:</label>
                 <select id="unitDisplayName" class="bt-select" [value]="optionsService.options().unitDisplayName"
                     (change)="onUnitDisplayNameChange($event)">
-                    <option value="chassisModel">Chassis & Model (default)</option>
-                    <option value="alias">Pilot Name</option>
-                    <option value="both">Chassis, Model and Pilot</option>
+                    <option value="chassisModel">Chassis & model (default)</option>
+                    <option value="alias">Pilot name</option>
+                    <option value="both">Chassis, model and pilot</option>
                 </select>
             </div>
             <hr />
             <div class="option-col">
-                <label for="userUuid">User Identifier:</label>
+                <label for="userUuid">User identifier:</label>
                 <div class="option-row">
                     <input #uuidInput id="userUuid" class="bt-input" [class.error]="!!userUuidError" type="text"
                         [value]="userUuid()" (focus)="selectAll($event)" (keydown)="onUserUuidKeydown($event)" />
@@ -50,6 +42,14 @@
         }
         @if (activeTab() === 'Sheets') {
         <div class="tab-content">
+            <div class="option-row">
+                <label for="sheetsColor">Color schema:</label>
+                <select id="sheetsColor" class="bt-select" [value]="optionsService.options().sheetsColor"
+                    (change)="onSheetsColorChange($event)">
+                    <option value="normal">Normal (default)</option>
+                    <option value="night">Night mode</option>
+                </select>
+            </div>
             <div class="option-col">
                 <div class="option-row">
                     <label for="quickActions">Quick actions:</label>
@@ -69,7 +69,7 @@
             </div>
             <div class="option-col">
                 <div class="option-row">
-                    <label for="useAutomations">Use Automations:</label>
+                    <label for="useAutomations">Use automations:</label>
                     <select id="useAutomations" class="bt-select" [value]="optionsService.options().useAutomations"
                         (change)="onUseAutomationsChange($event)">
                         <option value="true">Enabled (default)</option>
@@ -83,11 +83,11 @@
                 </div>
             </div>
             <div class="option-row">
-                <label for="recordSheetCenterPanelContent">Center Panel:</label>
+                <label for="recordSheetCenterPanelContent">Center panel:</label>
                 <select id="recordSheetCenterPanelContent" class="bt-select"
                     [value]="optionsService.options().recordSheetCenterPanelContent"
                     (change)="onRecordSheetCenterPanelContentChange($event)">
-                    <option value="clusterTable">Hit Location and Cluster Table (default)</option>
+                    <option value="clusterTable">Hit location and cluster table (default)</option>
                     <option value="fluffImage">Artwork</option>
                 </select>
             </div>
@@ -141,11 +141,11 @@
         @if (activeTab() === 'Alpha Strike') {
         <div class="tab-content">
             <div class="option-row">
-                <label for="ASCardStyle">Card Style:</label>
+                <label for="ASCardStyle">Card style:</label>
                 <select id="ASCardStyle" class="bt-select" [value]="optionsService.options().ASCardStyle"
                     (change)="onASCardStyleChange($event)">
-                    <option value="colored">Colored (default)</option>
-                    <option value="monochrome">Black&White</option>
+                    <option value="colored">Color (default)</option>
+                    <option value="monochrome">Monochrome</option>
                 </select>
             </div>
             <div class="option-row">
