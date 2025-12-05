@@ -77,8 +77,39 @@
     .tab-buttons {
         display: flex;
         flex-direction: row;
-        overflow-y: hidden;
-        overflow-x: auto;
+        overflow: hidden;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .tab-buttons.wrap {
+        flex-wrap: wrap;
+        overflow: visible;
+    }
+
+    .tab-overflow-trigger {
+        display: flex;
+        align-items: center;
+        gap: 0.25em;
+    }
+
+    .overflow-active-label {
+        max-width: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .overflow-icon {
+        font-size: 0.8em;
+        opacity: 0.8;
+    }
+
+    .tab-header.wrap-mode {
+        flex-wrap: wrap;
+    }
+
+    .tab-header.wrap-mode .tab-actions {
+        margin-left: auto;
     }
 
     .tab-actions {
@@ -86,6 +117,7 @@
         flex-direction: row;
         align-items: center;
         margin-right: 0.5em;
+        container-type: inline-size;
     }
 
     ::ng-deep .tab-actions-button {
@@ -113,6 +145,11 @@
         transition: color 0.2s, border-color 0.2s;
         outline: none;
         white-space: nowrap;
+
+        @container (max-width: 500px) {
+            padding: 0.5em 0.5em;
+            font-size: 0.95em;
+        }
     }
 
     .tab-button:focus-visible:not(.active),
