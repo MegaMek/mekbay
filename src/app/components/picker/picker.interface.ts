@@ -63,6 +63,7 @@ export type PickerChoice = {
     keepOpen?: boolean;
     displayType?: PickerDisplayType;
     choices?: PickerDropdownOption[];
+    tooltipType?: 'info' | 'success' | 'error';
 };
 
 export interface PickerComponent {

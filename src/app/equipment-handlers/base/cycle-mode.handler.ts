@@ -45,37 +45,19 @@ export abstract class CycleModeHandler extends EquipmentInteractionHandler {
     protected abstract getDefaultMode(): string;
     
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
-        const currentState = this.getCurrentState(equipment);
-        const modes = this.getModes(equipment);
-        const currentMode = modes.find(m => m.value === currentState);
+        const nextMode = this.getNextMode(equipment);
         
-        
-        // Return single choice representing the current mode
-        return [{
-            label: this.modeLabel,
-            shortLabel: currentMode?.shortLabel ?? currentMode?.label ?? currentState,
-            value: currentMode?.value ?? currentState,
-            disabled: equipment.destroyed,
-            active: false,
-            keepOpen: currentMode?.keepOpen ?? true,
-            displayType: 'state-button',
-        }];
+        // Return single choice representing the next mode
+        return [{...nextMode, disabled: equipment.destroyed }];
     }
     
-    handleSelection(equipment: MountedEquipment, value: PickerChoice, context: HandlerContext): boolean {
-        const modes = this.getModes(equipment);
-        const currentIndex = modes.findIndex(m => m.value === value.value);
-        // Calculate next mode (wrap around to first if at end)
-        const nextIndex = currentIndex === -1 || currentIndex === modes.length - 1 
-            ? 0 
-            : currentIndex + 1;
-        const nextMode = modes[nextIndex];
-        equipment.states?.set(this.stateKey, String(nextMode.value));
+    handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {
+        equipment.states?.set(this.stateKey, String(choice.value));
         equipment.owner.setInventoryEntry(equipment);
         
         context.toastService.show(
-            `${equipment.equipment?.name||equipment.name} ${this.modeLabel.toLowerCase()}: ${nextMode?.label || value}`,
-            'info'
+            `${equipment.equipment?.name||equipment.name} changed ${this.modeLabel.toLowerCase()}: ${choice.label}`,
+            choice.tooltipType || 'info'
         );
         return true;
     }
