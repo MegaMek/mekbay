@@ -77,6 +77,8 @@
     .tab-buttons {
         display: flex;
         flex-direction: row;
+        overflow-y: hidden;
+        overflow-x: auto;
     }
 
     .tab-actions {
@@ -110,6 +112,7 @@
         border-bottom: 2px solid transparent;
         transition: color 0.2s, border-color 0.2s;
         outline: none;
+        white-space: nowrap;
     }
 
     .tab-button:focus-visible:not(.active),
