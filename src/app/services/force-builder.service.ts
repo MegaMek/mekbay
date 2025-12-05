@@ -558,19 +558,39 @@ export class ForceBuilderService {
 
     queryParameters = computed(() => {
         const instanceId = this.force.instanceId();
+        const groups = this.force.groups();
         const units = this.forceUnits();
         let forceName: string | null = this.force.name;
         if (units.length === 0) {
             forceName = null;
         }
-        const unitParams = this.generateUnitParams(units);
+        const groupParams = this.generateGroupParams(groups);
         return {
-            units: unitParams.length > 0 ? unitParams.join(',') : null,
+            units: groupParams.length > 0 ? groupParams.join('|') : null,
             name: forceName || null,
             instance: instanceId || null
         };
     });
 
+    /**
+     * Generates URL parameters for all groups in the force.
+     * Format: groupName~unit1,unit2|groupName2~unit3,unit4
+     * If a group has default name and no nameLock, the name is omitted.
+     */
+    private generateGroupParams(groups: UnitGroup[]): string[] {
+        return groups.filter(g => g.units().length > 0).map(group => {
+            const unitParams = this.generateUnitParams(group.units());
+            const groupName = group.nameLock ? group.name() : '';
+            // Format: groupName~unit1,unit2 (name is optional)
+            const prefix = groupName ? `${encodeURIComponent(groupName)}~` : '';
+            return prefix + unitParams.join(',');
+        });
+    }
+
+    /**
+     * Generates URL parameters for units within a group.
+     * Format: unitName:gunnery:piloting
+     */
     private generateUnitParams(units: ForceUnit[]): string[] {
         return units.map(fu => {
             const unit = fu.getUnit();
@@ -639,11 +659,14 @@ export class ForceBuilderService {
                             this.force.setName(forceNameParam);
                         }
                         if (unitsParam) {
+                            // parseUnitsFromUrl now handles group creation internally
+                            // and adds units directly to the force
                             const forceUnits = this.parseUnitsFromUrl(unitsParam);
 
                             if (forceUnits.length > 0) {
                                 this.logger.info(`ForceBuilderService: Loaded ${forceUnits.length} units from URL on startup.`);
-                                this.force.setUnits(forceUnits);
+                                // Remove empty groups that may have been created during parsing
+                                this.force.removeEmptyGroups();
                                 this.selectUnit(forceUnits[0]);
                                 if (this.layoutService.isMobile()) {
                                     this.layoutService.openMenu();
@@ -660,13 +683,69 @@ export class ForceBuilderService {
         });
     }
 
+    /**
+     * Parses units from URL parameter with group support.
+     * New format: groupName~unit1,unit2|groupName2~unit3,unit4
+     * Legacy format (backward compatible): unit1,unit2,unit3
+     */
     private parseUnitsFromUrl(unitsParam: string): ForceUnit[] {
-        const unitParams = unitsParam.split(',');
         const allUnits = this.dataService.getUnits();
         const unitMap = new Map(allUnits.map(u => [u.name, u]));
+        const allForceUnits: ForceUnit[] = [];
+
+        // Check if it's the new group format (contains '|' or '~')
+        const hasGroups = unitsParam.includes('|') || unitsParam.includes('~');
+
+        if (hasGroups) {
+            // New format with groups
+            const groupParams = unitsParam.split('|');
+            for (const groupParam of groupParams) {
+                if (!groupParam.trim()) continue;
+
+                let groupName: string | null = null;
+                let unitsStr: string;
+
+                // Check if group has a name (format: groupName~units)
+                if (groupParam.includes('~')) {
+                    const [namePart, unitsPart] = groupParam.split('~', 2);
+                    groupName = decodeURIComponent(namePart);
+                    unitsStr = unitsPart || '';
+                } else {
+                    unitsStr = groupParam;
+                }
+
+                // Create or get group
+                const group = this.force.addGroup(groupName || 'Group');
+                if (groupName) {
+                    group.nameLock = true;
+                }
+
+                // Parse units for this group
+                const groupUnits = this.parseUnitParams(unitsStr, unitMap, group);
+                allForceUnits.push(...groupUnits);
+            }
+        } else {
+            // Legacy format without groups - all units in default group
+            const groupUnits = this.parseUnitParams(unitsParam, unitMap);
+            allForceUnits.push(...groupUnits);
+        }
+
+        return allForceUnits;
+    }
+
+    /**
+     * Parses individual unit parameters from a comma-separated string.
+     * Format: unitName:gunnery:piloting,unitName2:gunnery:piloting
+     */
+    private parseUnitParams(unitsStr: string, unitMap: Map<string, Unit>, group?: UnitGroup): ForceUnit[] {
+        if (!unitsStr.trim()) return [];
+
+        const unitParams = unitsStr.split(',');
         const forceUnits: ForceUnit[] = [];
 
         for (const unitParam of unitParams) {
+            if (!unitParam.trim()) continue;
+
             const parts = unitParam.split(':');
             const unitName = parts[0];
             const unit = unitMap.get(unitName);
@@ -677,6 +756,16 @@ export class ForceBuilderService {
             }
 
             const forceUnit = this.force.addUnit(unit);
+
+            // Move unit to the specified group if provided
+            if (group) {
+                // Remove from default group and add to specified group
+                const defaultGroup = this.force.groups().find(g => g.units().some(u => u.id === forceUnit.id));
+                if (defaultGroup && defaultGroup.id !== group.id) {
+                    defaultGroup.units.set(defaultGroup.units().filter(u => u.id !== forceUnit.id));
+                    group.units.set([...group.units(), forceUnit]);
+                }
+            }
 
             // Parse crew skills if present
             if (parts.length > 1) {
