@@ -34,6 +34,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
 import { Options } from '../models/options.model';
+import { GameSystem } from '../models/common.model';
 
 /*
  * Author: Drake
@@ -46,7 +47,7 @@ const DEFAULT_OPTIONS: Options = {
     canvasInput: 'all',
     swipeToNextSheet: 'horizontal',
     unitDisplayName: 'chassisModel',
-    gameSystem: 'cbt',
+    gameSystem: GameSystem.CBT,
     recordSheetCenterPanelContent: 'clusterTable',
     syncZoomBetweenSheets: true,
     useAutomations: true,

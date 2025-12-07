@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { GameSystem } from "./common.model";
 import { Unit } from "./units.model";
 
 /*
@@ -51,7 +52,7 @@ export interface LoadForceGroup {
 export class LoadForceEntry {
     instanceId: string;
     timestamp: string;
-    type?: 'cbt' | 'as';
+    type: GameSystem;
     cloud: boolean;
     local: boolean;
     name: string;
@@ -62,7 +63,7 @@ export class LoadForceEntry {
     constructor(data: Partial<LoadForceEntry>) {
         this.instanceId = data.instanceId ?? '';
         this.timestamp = data.timestamp ?? '';
-        this.type = data.type;
+        this.type = data.type ?? GameSystem.CBT;
         this.cloud = data.cloud ?? false;
         this.local = data.local ?? false;
         this.name = data.name ?? '';

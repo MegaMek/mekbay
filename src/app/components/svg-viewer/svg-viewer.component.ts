@@ -44,6 +44,8 @@ import { OptionsService } from '../../services/options.service';
 import { Unit } from '../../models/units.model';
 import { LayoutService } from '../../services/layout.service';
 import { Force } from '../../models/force.model';
+import { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { CBTForce } from '../../models/cbt-force.model';
 
 /*
  * Author: Drake
@@ -65,8 +67,8 @@ export class SvgViewerComponent implements AfterViewInit {
     private forceBuilder = inject(ForceBuilderService);
     public layoutService = inject(LayoutService);
     optionsService = inject(OptionsService);
-    unit = input<ForceUnit | null>(null);
-    force = input<Force | null>(null);
+    unit = input<CBTForceUnit | null>(null);
+    force = input<CBTForce | null>(null);
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     slidesRef = viewChild.required<ElementRef<HTMLDivElement>>('slides');
@@ -101,11 +103,21 @@ export class SvgViewerComponent implements AfterViewInit {
     private swipeLastDx = 0;
     private swipeVelocity = 0; // px / s
 
-    private prevUnit: ForceUnit | null = null;
-    private nextUnit: ForceUnit | null = null;
+    private prevUnit: CBTForceUnit | null = null;
+    private nextUnit: CBTForceUnit | null = null;
     private prevSvg: SVGSVGElement | null = null;
     private nextSvg: SVGSVGElement | null = null;
 
+    swipeAllowed = computed(() => {
+        if (this.optionsService.options().swipeToNextSheet === 'disabled') {
+            return false;
+        }
+        const currentForce = this.forceBuilder.currentForce();
+        if (!currentForce) {
+            return false;
+        }
+        return currentForce.units().length >= 2;
+    });
 
     useAutomations = computed(() => {
         return this.optionsService.options().useAutomations;
@@ -124,7 +136,7 @@ export class SvgViewerComponent implements AfterViewInit {
 
     constructor() {
         // Watch for unit changes using effect instead of ngOnChanges
-        let previousUnit: ForceUnit | null = null;
+        let previousUnit: CBTForceUnit | null = null;
         this.unitChangeEffectRef = effect(async () => {
             // If there was a previous unit, save its view state
             const currentUnit = this.unit();
@@ -186,7 +198,7 @@ export class SvgViewerComponent implements AfterViewInit {
     }
 
     // Lifecycle hooks implementation for base class
-    protected saveViewState(unit: ForceUnit): void {
+    protected saveViewState(unit: CBTForceUnit): void {
         const viewState = this.zoomPanService.getViewState();
         this.lastViewState = viewState;
         unit.viewState = {
@@ -384,14 +396,14 @@ export class SvgViewerComponent implements AfterViewInit {
 
     private async preloadNeighbors() {
         const current = this.unit();
-        let prevUnit: ForceUnit | null = null;
-        let nextUnit: ForceUnit | null = null;
+        let prevUnit: CBTForceUnit | null = null;
+        let nextUnit: CBTForceUnit | null = null;
         let prevSvg: SVGSVGElement | null = null;
         let nextSvg: SVGSVGElement | null = null;
 
         if (current) {
-            prevUnit = this.forceBuilder.getPreviousUnit(current);
-            nextUnit = this.forceBuilder.getNextUnit(current);
+            prevUnit = this.forceBuilder.getPreviousUnit(current) as CBTForceUnit | null;
+            nextUnit = this.forceBuilder.getNextUnit(current) as CBTForceUnit | null;
 
             if (prevUnit) {
                 await prevUnit.load();
@@ -509,8 +521,7 @@ export class SvgViewerComponent implements AfterViewInit {
     }
 
     private async onSwipeStart() {
-        if (this.optionsService.options().swipeToNextSheet === 'disabled') return;
-        if (this.forceBuilder.forceUnits().length < 2) return; // No swipe if only one unit
+        if (!this.swipeAllowed()) return; // No swipe if only one unit
         this.swipeStarted = true;
         this.ensureNeighborSlides('prev', true);
         this.ensureNeighborSlides('next', true);

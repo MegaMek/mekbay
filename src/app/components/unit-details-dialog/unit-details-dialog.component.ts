@@ -53,6 +53,8 @@ import { FloatingOverlayService } from '../../services/floating-overlay.service'
 import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '../../directives/swipe.directive';
 import { LayoutService } from '../../services/layout.service';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { ASForceUnit } from '../../models/as-force-unit.model';
 
 /*
  * Author: Drake
@@ -136,15 +138,21 @@ export class UnitDetailsDialogComponent {
     unitIndex = signal(this.data.unitIndex);
     gunnerySkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList[this.unitIndex()]
-        if (currentUnit instanceof ForceUnit) {
+        if (currentUnit instanceof CBTForceUnit) {
             return currentUnit.getCrewMember(0).getSkill('gunnery');
+        } else 
+        if (currentUnit instanceof ASForceUnit) {
+            return currentUnit.getPilotSkill();
         }
         return this.data.gunnerySkill;
     });
     pilotingSkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList[this.unitIndex()]
-        if (currentUnit instanceof ForceUnit) {
+        if (currentUnit instanceof CBTForceUnit) {
             return currentUnit.getCrewMember(0).getSkill('piloting');
+        } else 
+        if (currentUnit instanceof ASForceUnit) {
+            return currentUnit.getPilotSkill();
         }
         return this.data.pilotingSkill;
     });
@@ -801,18 +809,21 @@ export class UnitDetailsDialogComponent {
         }
     }
 
-    onAdd() {
+    async onAdd() {
         const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
         let gunnery;
         let piloting;
-        if (this.unit instanceof ForceUnit) {
+        if (this.unit instanceof CBTForceUnit) {
             gunnery = this.unit.getCrewMember(0).getSkill('gunnery');
             piloting = this.unit.getCrewMember(0).getSkill('piloting');
+        } else if (this.unit instanceof ASForceUnit) {
+            gunnery = this.unit.getPilotSkill();
+            piloting = this.unit.getPilotSkill();
         } else {
             gunnery = this.gunnerySkill();
             piloting = this.pilotingSkill();
         }
-        const addedUnit = this.forceBuilderService.addUnit(
+        const addedUnit = await this.forceBuilderService.addUnit(
             selectedUnit,
             gunnery,
             piloting,

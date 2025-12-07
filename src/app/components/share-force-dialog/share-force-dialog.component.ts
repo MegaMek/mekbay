@@ -33,16 +33,21 @@
 
 
 
-import { ChangeDetectionStrategy, Component, effect, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ToastService } from '../../services/toast.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { Force } from '../../models/force.model';
 
 /*
  * Author: Drake
  */
+
+export interface ShareForceDialogData {
+    force: Force;
+}
 
 @Component({
     selector: 'share-force-dialog',
@@ -54,7 +59,7 @@ import { copyTextToClipboard } from '../../utils/clipboard.util';
     },
     template: `
     <div class="content">
-        <h2 dialog-title>{{ forceBuilderService.force.name }}</h2>
+        <h2 dialog-title>{{ force.name }}</h2>
         <div dialog-content class="content">
             @let shareLiveUrlString = shareLiveUrl();
             @if (shareLiveUrlString != null) {
@@ -128,14 +133,17 @@ import { copyTextToClipboard } from '../../utils/clipboard.util';
 
 export class ShareForceDialogComponent {
     public dialogRef: DialogRef<string | number | null, ShareForceDialogComponent> = inject(DialogRef);
+    private data: ShareForceDialogData = inject(DIALOG_DATA);
     forceBuilderService = inject(ForceBuilderService);
     toastService = inject(ToastService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
     shareLiveUrl = signal<string | null>(null);
     cleanUrl = signal<string | null>(null);
+    force: Force;
 
     constructor() {
+        this.force = this.data.force;
         this.buildUrls();
     }
 
@@ -156,7 +164,6 @@ export class ShareForceDialogComponent {
         const cleanTree = this.router.createUrlTree([], {
             relativeTo: this.route,
             queryParams: {
-                gs: queryParameters.gs,
                 units: queryParameters.units,
                 name: queryParameters.name || null
             }
@@ -168,7 +175,7 @@ export class ShareForceDialogComponent {
     async share(url: string) {
         if (navigator.share) {
             navigator.share({
-                title: this.forceBuilderService.force.name || 'Shared MekBay Force',
+                title: this.force.name || 'Shared MekBay Force',
                 url: url
             }).catch(() => {
                 // fallback if user cancels or error

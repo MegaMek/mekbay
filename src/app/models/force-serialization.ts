@@ -34,6 +34,8 @@
 import { Equipment } from './equipment.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { ForceUnit } from './force-unit.model';
+import { GameSystem } from './common.model';
+import { CBTForceUnit } from './cbt-force-unit.model';
 
 export interface LocationData {
     armor?: number;
@@ -51,10 +53,11 @@ export interface SerializedForce {
     version: number;
     timestamp: string;
     instanceId: string;
-    type?: 'cbt' | 'as';
+    type: GameSystem;
     name: string;
     nameLock?: boolean;
-    bv: number;
+    bv?: number;
+    pv?: number;
     owned?: boolean;
     groups?: SerializedGroup[];
     units?: SerializedUnit[]; // Deprecated, use groups instead
@@ -74,21 +77,36 @@ export interface SerializedUnit {
     model?: string;
     chassis?: string;
     alias?: string;
-    state: SerializedState; // Serialized ForceUnitState object
+    state: SerializedState;
+}
+export interface ASSerializedUnit extends SerializedUnit {
+    state: ASSerializedState;
 }
 
+export interface CBTSerializedUnit extends SerializedUnit {
+    state: CBTSerializedState;
+}
 export interface SerializedState {
     modified: boolean;
     destroyed: boolean;
     shutdown: boolean;
     c3Linked: boolean;
+}
+
+export interface ASSerializedState extends SerializedState {
+    skill: number;
+    heat: number;
+    armor: number;
+    internal: number;
+}
+
+export interface CBTSerializedState extends SerializedState {
     crew: any[]; // Serialized CrewMember objects
     crits: CriticalSlot[];
     locations: Record<string, LocationData>;
     heat: HeatProfile;
     inventory?: SerializedInventory[];
 }
-
 export interface SerializedInventory {
     id: string;
     destroyed?: boolean;
@@ -171,7 +189,7 @@ export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
 
     
 export interface MountedEquipment {
-    owner: ForceUnit;
+    owner: CBTForceUnit;
     id: string;
     name: string;
     locations?: Set<string>;

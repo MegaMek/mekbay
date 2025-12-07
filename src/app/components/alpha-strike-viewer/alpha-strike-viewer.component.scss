@@ -78,9 +78,9 @@
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    border: 2px solid var(--text-color, #333);
-    background: var(--background-color, #fff);
-    color: var(--text-color, #333);
+    border: 2px solid var(--text-color);
+    background: var(--background-color);
+    color: var(--text-color);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -93,8 +93,8 @@
     }
     
     &.active {
-        background: var(--text-color, #333);
-        color: var(--background-color, #fff);
+        background: var(--text-color);
+        color: var(--background-color);
     }
     
     svg {

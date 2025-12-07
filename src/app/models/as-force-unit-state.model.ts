@@ -31,28 +31,36 @@
  * affiliated with Microsoft.
  */
 
-import { GameSystem } from "./common.model";
+import { signal } from '@angular/core';
+import { ForceUnitState } from './force-unit-state.model';
+import { ASForceUnit } from './as-force-unit.model';
+import { ASSerializedState } from './force-serialization';
 
 /*
  * Author: Drake
  */
-export interface Options {
-    uuid?: string; // deprecated, use UserStateService instead
-    sheetsColor: 'normal' | 'night';
-    pickerStyle: 'default' | 'radial' | 'linear';
-    quickActions: 'enabled' | 'disabled';
-    canvasInput: 'all' | 'touch' | 'pen';
-    swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
-    syncZoomBetweenSheets: boolean;
-    unitDisplayName: 'chassisModel' | 'alias' | 'both';
-    gameSystem: GameSystem;
-    recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
-    lastCanvasState?: {
-        brushSize: number;
-        eraserSize: number;
-    },
-    sidebarLipPosition?: string;
-    useAutomations: boolean;
-    ASUseHex: boolean;
-    ASCardStyle: 'colored' | 'monochrome';
+export class ASForceUnitState extends ForceUnitState {
+    declare unit: ASForceUnit;
+
+    /** Adjusted Point Value, if any */
+    public adjustedPv = signal<number | null>(null);
+    public skill = signal<number>(4);
+    public heat = signal<number>(0);
+    public armor = signal<number>(0);
+    public internal = signal<number>(0);
+
+    constructor(unit: ASForceUnit) {
+        super(unit);
+    }
+
+    override update(data: ASSerializedState) {
+        this.modified.set(data.modified);
+        this.destroyed.set(data.destroyed);
+        this.shutdown.set(data.shutdown);
+        this.c3Linked.set(data.c3Linked);
+        this.skill.set(data.skill);
+        this.heat.set(data.heat);
+        this.armor.set(data.armor);
+        this.internal.set(data.internal);
+    }
 }

@@ -31,28 +31,32 @@
  * affiliated with Microsoft.
  */
 
-import { GameSystem } from "./common.model";
+import { ChangeDetectionStrategy, Component, inject, computed } from '@angular/core';
+import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { ParsedAbility } from '../../services/as-ability-lookup.service';
 
-/*
- * Author: Drake
- */
-export interface Options {
-    uuid?: string; // deprecated, use UserStateService instead
-    sheetsColor: 'normal' | 'night';
-    pickerStyle: 'default' | 'radial' | 'linear';
-    quickActions: 'enabled' | 'disabled';
-    canvasInput: 'all' | 'touch' | 'pen';
-    swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
-    syncZoomBetweenSheets: boolean;
-    unitDisplayName: 'chassisModel' | 'alias' | 'both';
-    gameSystem: GameSystem;
-    recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
-    lastCanvasState?: {
-        brushSize: number;
-        eraserSize: number;
-    },
-    sidebarLipPosition?: string;
-    useAutomations: boolean;
-    ASUseHex: boolean;
-    ASCardStyle: 'colored' | 'monochrome';
+export interface AbilityInfoDialogData {
+    parsedAbility: ParsedAbility;
+}
+
+@Component({
+    selector: 'ability-info-dialog',
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    templateUrl: './ability-info-dialog.component.html',
+    styleUrl: './ability-info-dialog.component.scss'
+})
+export class AbilityInfoDialogComponent {
+    private readonly dialogRef = inject(DialogRef);
+    private readonly data = inject<AbilityInfoDialogData>(DIALOG_DATA);
+
+    readonly originalText = computed(() => this.data.parsedAbility.originalText);
+    readonly mainAbility = computed(() => this.data.parsedAbility.ability);
+    readonly abilityName = computed(() => this.mainAbility()?.name ?? null);
+    readonly turretDamage = computed(() => this.data.parsedAbility.turretDamage ?? null);
+    readonly subAbilities = computed(() => this.data.parsedAbility.subAbilities ?? []);
+    readonly hasSubAbilities = computed(() => this.subAbilities().length > 0);
+
+    close(): void {
+        this.dialogRef.close();
+    }
 }

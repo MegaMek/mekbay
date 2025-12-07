@@ -4,6 +4,7 @@ import { getMotiveModeMaxDistance, MotiveModes } from "./motiveModes.model";
 import { CriticalSlot } from "./force-serialization";
 import { UnitSvgMekService } from "../services/unit-svg-mek.service";
 import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "../components/svg-viewer/common";
+import { CBTForceUnitState } from "./cbt-force-unit-state.model";
 
 export interface PSRCheck {
     fallCheck?: number;
@@ -24,7 +25,7 @@ interface PSRChecks {
 }
 
 export class TurnState {
-    unitState: ForceUnitState;
+    unitState: CBTForceUnitState;
     airborne = signal<boolean | null>(null);
     moveMode = signal<MotiveModes | null>(null);
     moveDistance = signal<number | null>(null);
@@ -318,7 +319,7 @@ export class TurnState {
         return engineHits * 5;
     });
 
-    constructor(unitState: ForceUnitState) {
+    constructor(unitState: CBTForceUnitState) {
         this.unitState = unitState;
     }
 

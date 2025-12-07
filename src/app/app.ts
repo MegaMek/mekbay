@@ -60,6 +60,11 @@ import { APP_VERSION_STRING } from './build-meta';
 import { LoggerService } from './services/logger.service';
 import { isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
+import { CBTForceUnit } from './models/cbt-force-unit.model';
+import { CBTForce } from './models/cbt-force.model';
+import { ASForceUnit } from './models/as-force-unit.model';
+import { ASForce } from './models/as-force.model';
+import { GameSystem } from './models/common.model';
 
 /*
  * Author: Drake
@@ -92,10 +97,11 @@ export class App {
     private dialogService = inject(DialogsService);
     private toastService = inject(ToastService);
     protected optionsService = inject(OptionsService);
-    public unitSearchFilter = inject(UnitSearchFiltersService);
+    public unitSearchFiltersService = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
     public gameService = inject(GameService);
 
+    protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
     private lastUpdateCheck: number = 0;
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
@@ -146,7 +152,7 @@ export class App {
                     this.unitSearchPortal.detach();
                 }
                 this.unitSearchPortal = new DomPortal(unitSearchContainer);
-                if (this.unitSearchFilter.expandedView()) {
+                if (this.unitSearchFiltersService.expandedView()) {
                     this.unitSearchPortalExtended = this.unitSearchPortal;
                 } else {
                     if (this.sidebar()) {
@@ -189,9 +195,29 @@ export class App {
         });
     }
 
-    hasUnits = computed(() => this.forceBuilderService.forceUnits().length > 0);
-    selectedUnit = computed(() => this.forceBuilderService.selectedUnit());
+    hasUnits = this.forceBuilderService.hasUnits;
+
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
+
+    // Type-safe computed signals for CBT game system
+    selectedCBTUnit = computed<CBTForceUnit | null>(() => {
+        if (this.gameService.isAlphaStrike()) return null;
+        return this.forceBuilderService.selectedUnit() as CBTForceUnit | null;
+    });
+    currentCBTForce = computed<CBTForce | null>(() => {
+        if (this.gameService.isAlphaStrike()) return null;
+        return this.forceBuilderService.currentForce() as CBTForce | null;
+    });
+
+    // Type-safe computed signals for Alpha Strike game system
+    selectedASUnit = computed<ASForceUnit | null>(() => {
+        if (!this.gameService.isAlphaStrike()) return null;
+        return this.forceBuilderService.selectedUnit() as ASForceUnit | null;
+    });
+    currentASForce = computed<ASForce | null>(() => {
+        if (!this.gameService.isAlphaStrike()) return null;
+        return this.forceBuilderService.currentForce() as ASForce | null;
+    });
 
     @HostListener('window:online')
     onOnline() {
@@ -269,12 +295,11 @@ export class App {
             event.preventDefault();
             return 'Cloud sync is still pending. Are you sure you want to leave?';
         }
-        if (this.forceBuilderService.forceUnits().length > 0) {
-            if (!this.forceBuilderService.force.instanceId()) {
-                // We have units but we don't have an instanceId? This is not yet saved.
-                event.preventDefault();
-                return 'You have unsaved changes in your force. Are you sure you want to leave?';
-            }
+        const currentForce = this.forceBuilderService.currentForce();
+        if (currentForce && currentForce.units().length > 0 && !currentForce.instanceId()) {
+            // We have units but we don't have an instanceId? This is not yet saved.
+            event.preventDefault();
+            return 'You have unsaved changes in your force. Are you sure you want to leave?';
         }
         // No units, allow navigation without warning
         return undefined;

@@ -7,13 +7,13 @@
 .die {
     width: 24px;
     height: 24px;
-    border: 1px solid var(--border-color, #666);
+    border: 1px solid var(--border-color);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-weight: 600;
-    background: var(--surface, #fff);
-    color: var(--text, #111);
+    background: #fff;
+    color: #111;
     border-radius: 2px;
     cursor: pointer;
     user-select: none;
@@ -55,8 +55,8 @@
     font-size: 28px;
     border-radius: 6px;
     border-width: 2px;
-    background: var(--surface, #fff);
-    color: var(--text, #111);
+    background: #fff;
+    color: #111;
     display: inline-flex;
     align-items: center;
     justify-content: center;

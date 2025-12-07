@@ -35,6 +35,10 @@ import { Component, ChangeDetectionStrategy, input, computed, inject, signal, ef
 import { UpperCasePipe } from '@angular/common';
 import { ForceUnit } from '../../models/force-unit.model';
 import { AlphaStrikeUnitStats, Unit } from '../../models/units.model';
+import { ASForceUnit } from '../../models/as-force-unit.model';
+import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
+import { DialogsService } from '../../services/dialogs.service';
+import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 
 /*
  * Author: Drake
@@ -52,7 +56,10 @@ import { AlphaStrikeUnitStats, Unit } from '../../models/units.model';
     }
 })
 export class AlphaStrikeCardComponent {
-    forceUnit = input.required<ForceUnit>();
+    private readonly abilityLookup = inject(AsAbilityLookupService);
+    private readonly dialogs = inject(DialogsService);
+    
+    forceUnit = input.required<ASForceUnit>();
     useHex = input<boolean>(false);
     cardStyle = input<'colored' | 'monochrome'>('colored');
     
@@ -64,10 +71,12 @@ export class AlphaStrikeCardComponent {
     chassis = computed<string>(() => this.unit().chassis);
     model = computed<string>(() => this.unit().model);
     
+    // Flag for long chassis names that need smaller font
+    isLongChassis = computed<boolean>(() => this.chassis().length > 20);
+    
     // Crew and skill
     skill = computed<number>(() => {
-        const crew = this.forceUnit().getCrewMembers();
-        return crew[0]?.getSkill('gunnery') ?? 4;
+        return this.forceUnit().getPilotStats();
     });
     
     // PV calculations
@@ -105,10 +114,7 @@ export class AlphaStrikeCardComponent {
     weaponsHits = 4;
     
     // Heat level
-    heatLevel = computed<number>(() => this.forceUnit().getHeat().current);
-    
-    // Hovered special ability index
-    hoveredSpecial = signal<number | null>(null);
+    heatLevel = computed<number>(() => this.forceUnit().getHeat());
     
     constructor() {
         // Effect to load image when forceUnit changes
@@ -172,8 +178,11 @@ export class AlphaStrikeCardComponent {
     
     // Handle special ability click
     onSpecialClick(special: string): void {
-        console.log('Special clicked:', special);
-        // TODO: Implement special ability details popup
+        const parsedAbility = this.abilityLookup.parseAbility(special);
+        
+        this.dialogs.createDialog<void>(AbilityInfoDialogComponent, {
+            data: { parsedAbility } as AbilityInfoDialogData
+        });
     }
     
     // Convert inches to hex

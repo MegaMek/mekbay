@@ -55,7 +55,6 @@ import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
-import { OptionsService } from '../../services/options.service';
 import { LongPressDirective } from '../../directives/long-press.directive';
 import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
@@ -63,6 +62,8 @@ import { ShareSearchDialogComponent } from './share-search.component';
 import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { RangeModel, UnitSearchFilterRangeDialogComponent, UnitSearchFilterRangeDialogData } from '../unit-search-filter-range-dialog/unit-search-filter-range-dialog.component';
+import { GameSystem } from '../../models/common.model';
+import { GameService } from '../../services/game.service';
 
 
 
@@ -106,7 +107,7 @@ export class UnitSearchComponent {
     filtersService = inject(UnitSearchFiltersService);
     dataService = inject(DataService);
     forceBuilderService = inject(ForceBuilderService);
-    optionsService = inject(OptionsService);
+    gameService = inject(GameService);
     overlayManager = inject(OverlayManagerService);
 
     private injector = inject(Injector);
@@ -128,7 +129,7 @@ export class UnitSearchComponent {
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
     resultsDropdown = viewChild<ElementRef<HTMLElement>>('resultsDropdown');
 
-    gameSystem = computed(() => this.optionsService.options().gameSystem);
+    gameSystem = computed(() => this.gameService.currentGameSystem());
     autoFocus = input(false);
     buttonOnly = signal(false);
     expandedView = this.filtersService.expandedView;
@@ -564,7 +565,7 @@ export class UnitSearchComponent {
         });
 
         ref.componentInstance?.add.subscribe(newUnit => {
-            if (this.forceBuilderService.forceUnits().length === 1) {
+            if (this.forceBuilderService.currentForce()?.units().length === 1) {
                 // If this is the first unit being added, close the search panel
                 this.closeAllPanels();
             }
@@ -835,14 +836,14 @@ export class UnitSearchComponent {
         this.selectedUnits.set(allNames);
     }
 
-    addSelectedUnits() {
+    async addSelectedUnits() {
         const gunnery = this.filtersService.pilotGunnerySkill();
         const piloting = this.filtersService.pilotPilotingSkill();
         const selectedUnits = this.selectedUnits();
         for (let selectedUnit of selectedUnits) {
             const unit = this.dataService.getUnitByName(selectedUnit);
             if (unit) {
-                if (!this.forceBuilderService.addUnit(unit, gunnery, piloting)) {
+                if (!await this.forceBuilderService.addUnit(unit, gunnery, piloting)) {
                     break;
                 }
             }

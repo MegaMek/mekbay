@@ -20,6 +20,7 @@
     --text-color: #ffffff;
     --text-color-secondary: silver;
     --text-color-tertiary: #888;
+    --accent-color: #EAAE3F;
     --bt-yellow: #EAAE3F;
     --bt-yellow-strong: #FFAE16;
     --bt-yellow-background: #443912;
@@ -508,7 +509,7 @@ span {
         transition: color 0.2s, background-color 0.2s;
 
         &:hover {
-            background-color: var(--background-highlight, #444);
+            background-color: var(--background-highlight);
         }
 
         &:disabled {

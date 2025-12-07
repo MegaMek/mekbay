@@ -42,6 +42,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { isIOS } from '../../utils/platform.util';
 import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
+import { GameSystem } from '../../models/common.model';
 
 /*
  * Author: Drake
@@ -65,10 +66,7 @@ export class OptionsDialogComponent {
     isIOS = isIOS();
     
     tabs = computed(() => {
-        if (this.gameSystem.isAlphaStrike()) {
-            return ['General', 'Alpha Strike', 'Advanced', 'Debug'];
-        }
-        return ['General', 'Sheets', 'Advanced', 'Debug'];
+        return ['General', 'Sheets', 'Alpha Strike', 'Advanced', 'Logs'];
     });
     activeTab = signal(this.tabs()[0]);
 
@@ -112,7 +110,7 @@ export class OptionsDialogComponent {
     }
 
     onGameSystemChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value as 'cbt' | 'as';
+        const value = (event.target as HTMLSelectElement).value as GameSystem;
         this.optionsService.setOption('gameSystem', value);
     }
 

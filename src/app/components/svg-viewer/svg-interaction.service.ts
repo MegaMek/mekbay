@@ -52,6 +52,7 @@ import { AmmoEquipment } from '../../models/equipment.model';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
+import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 
 /*
  * Author: Drake
@@ -78,7 +79,7 @@ export class SvgInteractionService {
     private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
 
     private containerRef!: ElementRef<HTMLDivElement>;
-    private unit = signal<ForceUnit | null>(null);
+    private unit = signal<CBTForceUnit | null>(null);
     private injector!: Injector;
 
     private state: InteractionState = {
@@ -182,7 +183,7 @@ export class SvgInteractionService {
         };
     }
 
-    updateUnit(unit: ForceUnit | null) {
+    updateUnit(unit: CBTForceUnit | null) {
         this.unit.set(unit);
     }
 
@@ -1026,7 +1027,7 @@ export class SvgInteractionService {
 
             const totalHeatsinkPips = heatDataPanel.querySelectorAll<SVGElement>('.pip.hsPip').length;
             // Setup interactions for the heat data panel that allows to turn on/off heat sinks and reduce the dissipation power
-            const getHeatsinkPickerChoices = (unit: ForceUnit): PickerChoice[] => {
+            const getHeatsinkPickerChoices = (unit: CBTForceUnit): PickerChoice[] => {
 
                 const choices: PickerChoice[] = [];
                 const turnedOffHeatsinks = (unit.getHeat().heatsinksOff || 0);

@@ -12,10 +12,11 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { DataService } from '../../services/data.service';
 import { ForcePackDialogComponent } from '../force-pack-dialog/force-pack-dialog.component';
-import { PrintUtil } from '../../utils/print.util';
+import { CBTPrintUtil } from '../../utils/cbtprint.util';
 import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
-import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
+import { ShareForceDialogComponent, ShareForceDialogData } from '../share-force-dialog/share-force-dialog.component';
 import { CompactModeService } from '../../services/compact-mode.service';
+import { CBTForce } from '../../models/cbt-force.model';
 
 /*
  * Sidebar footer component
@@ -65,8 +66,8 @@ export class SidebarFooterComponent {
         this.forceBuilderService.showForcePackDialog();
     }
 
-    async requestNewForce(): Promise<void> {
-        if (await this.forceBuilderService.createNewForce()) {
+    async requestRemoveForce(): Promise<void> {
+        if (await this.forceBuilderService.removeForce()) {
             this.layoutService.closeMenu();
         }
     }
@@ -82,11 +83,21 @@ export class SidebarFooterComponent {
     }
 
     shareForce() {
-        this.dialogsService.createDialog(ShareForceDialogComponent);
+        const currentForce = this.forceBuilderService.currentForce();
+        if (!currentForce) return;
+        this.dialogsService.createDialog(ShareForceDialogComponent, {
+            data: { force: currentForce }
+        });
     }
 
     printAll(): void {
-        PrintUtil.multipagePrint(this.dataService, this.optionsService, this.forceBuilderService.forceUnits());
+        const currentForce = this.forceBuilderService.currentForce();
+        if (!currentForce) {
+            return;
+        }
+        if (currentForce instanceof CBTForce) {
+            CBTPrintUtil.multipagePrint(this.dataService, this.optionsService, currentForce.units());
+        }
     }
 
     closeAllMenus(): void {

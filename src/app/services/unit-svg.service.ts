@@ -32,7 +32,6 @@
  */
 
 import { Injectable, effect, inject, DestroyRef } from '@angular/core';
-import { ForceUnit } from '../models/force-unit.model';
 import { CrewMember, SkillType } from '../models/crew-member.model';
 import { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
 import { DataService } from './data.service';
@@ -40,6 +39,7 @@ import { UnitInitializerService } from '../components/svg-viewer/unit-initialize
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { heatLevels, linkedLocs, uidTranslations } from '../components/svg-viewer/common';
 import { LoggerService } from './logger.service';
+import { CBTForceUnit } from '../models/cbt-force-unit.model';
 
 /*
  * Author: Drake
@@ -54,7 +54,7 @@ export class UnitSvgService {
     private svgDimensions = { width: 0, height: 0 };
 
     constructor(
-        protected unit: ForceUnit,
+        protected unit: CBTForceUnit,
         protected dataService: DataService,
         protected unitInitializer: UnitInitializerService
     ) {
@@ -868,7 +868,7 @@ export class UnitSvgService {
         });
     }
 
-    protected calculateHitModifiers(unit: ForceUnit, entry: MountedEquipment, additionalModifiers: number): number | null {
+    protected calculateHitModifiers(unit: CBTForceUnit, entry: MountedEquipment, additionalModifiers: number): number | null {
         if (!entry.equipment && !entry.physical) {
             return null; // No equipment, no hit modifier
         }

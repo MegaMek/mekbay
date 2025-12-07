@@ -31,27 +31,105 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, signal, effect, inject, computed, untracked } from '@angular/core';
+import { Injectable, signal, inject, computed, effect, untracked } from '@angular/core';
 import { OptionsService } from './options.service';
+import { ForceBuilderService } from './force-builder.service';
+import { GameSystem } from '../models/common.model';
+import { ActivatedRoute, Router } from '@angular/router';
 
 /*
  * Author: Drake
+ * This service manages the current game system selection (Alpha Strike or Classic BattleTech).
+ * 
+ * Priority order for determining the active game system:
+ * 1. Current force's game system (if a force is loaded)
+ * 2. Temporary override
+ * 3. Options
+ * 
+ * The override allows viewing game-specific filters from shared links
+ * without permanently changing the user's preferred game system.
  */
 @Injectable({
     providedIn: 'root'
 })
 export class GameService {
+    private router = inject(Router);
+    private route = inject(ActivatedRoute);
     private readonly optionsService = inject(OptionsService);
+    private readonly forceBuilderService = inject(ForceBuilderService);
+
+
+    public readonly currentGameSystem = signal<GameSystem>(this.optionsService.options().gameSystem);
+
+    /**
+     * Temporary game system override. Used when URL parameters specify a game system
+     * but no force is loaded. This does NOT persist to user options.
+     */
+    private readonly gameSystemOverride = signal<GameSystem | null>(null);
+
+    constructor() {
+        // Auto-clear override when a force is loaded, since the force's game system takes precedence
+        effect(() => {
+            const currentForce = this.forceBuilderService.currentForce();
+            if (currentForce && this.gameSystemOverride()) {
+                this.setOverride(null);
+            }
+        });
+        /**
+         * Computes the effective game system based on priority:
+         * 1. Force game system (highest priority - explicit user action)
+         * 2. Override (from URL filters when no force exists)
+         * 3. User options (default fallback)
+         */
+        effect(() => {
+            const currentForce = this.forceBuilderService.currentForce();
+            let gameSystem: GameSystem;
+            if (currentForce) {
+                gameSystem = currentForce.gameSystem;
+            } else {
+                const override = this.gameSystemOverride();
+                const optionsGameSystem = this.optionsService.options().gameSystem;
+                if (override) {
+                    gameSystem = override;
+                } else {
+                    gameSystem = optionsGameSystem;
+                }
+            }
+            const currentGameSystem = untracked(() => { return this.currentGameSystem(); });
+            if (currentGameSystem === gameSystem) {
+                return;
+            }
+            this.currentGameSystem.set(gameSystem);
+        });
+        effect(() => {
+            this.router.navigate([], {
+                relativeTo: this.route,
+                queryParams: {
+                    gs: this.currentGameSystem()
+                },
+                queryParamsHandling: 'merge',
+                replaceUrl: true
+            });
+        });
+    }
+
+    /**
+     * Sets a temporary game system override without affecting user options.
+     * The override is automatically cleared when a force is loaded.
+     */
+    setOverride(gameSystem: GameSystem | null): void {
+        this.gameSystemOverride.set(gameSystem);
+    }
+
+    /**
+     * Clears the temporary game system override.
+     */
+    clearOverride(): void {
+        this.setOverride(null);
+    }
 
     isAlphaStrike = computed(() => {
-        return this.optionsService.options().gameSystem === 'as';
+        return this.currentGameSystem() === GameSystem.AS;
     });
 
-    isClassicBattleTech = computed(() => {
-        return this.optionsService.options().gameSystem === 'cbt';
-    });
-
-    setGameSystem(gameSystem: 'as' | 'cbt'): void {
-        this.optionsService.setOption('gameSystem', gameSystem);
-    }
 }

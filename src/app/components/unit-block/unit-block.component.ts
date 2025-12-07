@@ -7,6 +7,9 @@ import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { ECMMode } from '../../models/common.model';
+import { ASForceUnit } from '../../models/as-force-unit.model';
 
 @Component({
     selector: 'unit-block',
@@ -36,7 +39,26 @@ export class UnitBlockComponent {
         }
         const unit = this.forceUnit();
         if (!unit) return false;
-        return unit.turnState().dirty();
+        if (unit instanceof ASForceUnit) {
+            return false;
+        } else
+        if (unit instanceof CBTForceUnit) {
+            return unit.turnState().dirty();
+        }
+        return false;
+    });
+
+    unitPhase = computed<string>(() => {
+        const unit = this.forceUnit();
+        if (!unit) return '';
+        if (unit instanceof ASForceUnit) {
+            return '';
+        } else
+        if (unit instanceof CBTForceUnit) {
+            const phase = unit.turnState().currentPhase();
+            return phase || '';
+        }
+        return '';
     });
 
     hasPendingEffects = computed<boolean>(() => {
@@ -45,7 +67,13 @@ export class UnitBlockComponent {
         }
         const unit = this.forceUnit();
         if (!unit) return false;
-        return unit.turnState().dirtyPhase();
+        if (unit instanceof ASForceUnit) {
+            return false;
+        } else
+        if (unit instanceof CBTForceUnit) {
+            return unit.turnState().dirtyPhase();
+        }
+        return false;
     });
 
     getECMStatus = computed(() => {
@@ -61,11 +89,17 @@ export class UnitBlockComponent {
         return hasECM;
     });
 
-    getECMMode = computed(() => {
-        const unit = this.unit();
-        if (!unit) return '';
-        const mountedECM = this.forceUnit()?.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
-        return mountedECM ? mountedECM.states?.get('ecm_mode') || '' : '';
+    getECMMode = computed<ECMMode | undefined>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return undefined;
+        if (forceUnit instanceof ASForceUnit) {
+            return ECMMode.ECM;
+        } else 
+        if (forceUnit instanceof CBTForceUnit) {
+            const mountedECM = forceUnit.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
+            return mountedECM ? mountedECM.states?.get('ecm_mode') as ECMMode || undefined : undefined;
+        }
+        return undefined;
     });
 
     cleanedModel = computed(() => {

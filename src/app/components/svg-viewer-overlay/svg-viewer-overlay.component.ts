@@ -45,6 +45,8 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { TurnSummaryPanelComponent } from './turn-summary.component';
 import { Force } from '../../models/force.model';
+import { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { CBTForce } from '../../models/cbt-force.model';
 
 /*
  * Author: Drake
@@ -70,8 +72,8 @@ export class SvgInteractionOverlayComponent {
     private host = inject(ElementRef<HTMLElement>);
     turnSummary = viewChild.required(TurnSummaryPanelComponent);
 
-    unit = input<ForceUnit | null>(null);
-    force = input<Force | null>(null);
+    unit = input<CBTForceUnit | null>(null);
+    force = input<CBTForce | null>(null);
     width = input(200);
     height = input(200);
 

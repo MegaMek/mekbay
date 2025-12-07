@@ -42,6 +42,8 @@ import { parseSearchQuery, SearchTokensGroup } from '../utils/search.util';
 import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
 import { matchesSearch } from '../utils/search.util';
+import { GameSystem } from '../models/common.model';
+import { GameService } from './game.service';
 
 /*
  * Author: Drake
@@ -51,7 +53,7 @@ export interface SortOption {
     label: string;
     slotLabel?: string; // Optional label prefix to show in the slot (e.g., "BV")
     slotIcon?: string;  // Optional icon for the slot (e.g., '/images/calendar.svg')
-    gameSystem?: 'cbt' | 'as';
+    gameSystem?: GameSystem;
 }
 
 export enum AdvFilterType {
@@ -59,7 +61,7 @@ export enum AdvFilterType {
     RANGE = 'range'
 }
 export interface AdvFilterConfig {
-    game?: 'cbt' | 'as';
+    game?: GameSystem;
     key: string;
     label: string;
     type: AdvFilterType;
@@ -248,60 +250,60 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
 export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'era', label: 'Era', type: AdvFilterType.DROPDOWN, external: true },
     { key: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true, multistate: true },
-    { key: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'cbt' },
-    { key: 'as.TP', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'as' },
-    { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: 'cbt' },
+    { key: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.CBT },
+    { key: 'as.TP', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.AS },
+    { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: GameSystem.CBT },
     {
         key: 'techBase', label: 'Tech', type: AdvFilterType.DROPDOWN,
         sortOptions: ['Inner Sphere', 'Clan', 'Mixed']
     },
-    { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN, game: 'cbt' },
+    { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN, game: GameSystem.CBT },
     {
-        key: 'weightClass', label: 'Weight Class', type: AdvFilterType.DROPDOWN, game: 'cbt',
+        key: 'weightClass', label: 'Weight Class', type: AdvFilterType.DROPDOWN, game: GameSystem.CBT,
         sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*']
     },
     {
-        key: 'level', label: 'Rules', type: AdvFilterType.DROPDOWN, game: 'cbt',
+        key: 'level', label: 'Rules', type: AdvFilterType.DROPDOWN, game: GameSystem.CBT,
         sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial']
     },
-    { key: 'c3', label: 'Network', type: AdvFilterType.DROPDOWN, game: 'cbt' },
-    { key: 'moveType', label: 'Motive', type: AdvFilterType.DROPDOWN, game: 'cbt' },
-    { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: 'cbt' },
-    { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: 'cbt' },
-    { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN, game: 'cbt' },
+    { key: 'c3', label: 'Network', type: AdvFilterType.DROPDOWN, game: GameSystem.CBT },
+    { key: 'moveType', label: 'Motive', type: AdvFilterType.DROPDOWN, game: GameSystem.CBT },
+    { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: GameSystem.CBT },
+    { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CBT },
+    { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN, game: GameSystem.CBT },
     { key: '_tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
-    { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'as' },
-    { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: 'cbt' },
-    { key: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'armorPer', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'internal', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: '_mdSumNoPhysical', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'cbt' },
-    { key: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'cbt' },
-    { key: '_dissipationEfficiency', label: 'Heat Efficiency', type: AdvFilterType.RANGE, curve: 1, game: 'cbt' },
-    { key: '_maxRange', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
-    { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
-    { key: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
-    { key: 'umu', label: 'UMU MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
+    { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CBT },
+    { key: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.AS },
+    { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: GameSystem.CBT },
+    { key: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CBT },
+    { key: 'armorPer', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CBT },
+    { key: 'internal', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CBT },
+    { key: '_mdSumNoPhysical', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CBT },
+    { key: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CBT },
+    { key: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CBT },
+    { key: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CBT },
+    { key: '_dissipationEfficiency', label: 'Heat Efficiency', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.CBT },
+    { key: '_maxRange', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CBT },
+    { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CBT },
+    { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CBT },
+    { key: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CBT },
+    { key: 'umu', label: 'UMU MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CBT },
     { key: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
-    { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
+    { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CBT },
 
     /* Alpha Strike specific filters (but some are above) */
-    { key: 'as.MV', label: 'Move', type: AdvFilterType.DROPDOWN, game: 'as' },
-    { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: 'as' },
-    { key: 'as.SZ', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.TMM', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.OV', label: 'Overheat Value', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.Th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, ignoreValues: [-1], game: 'as' },
-    { key: 'as.dmg._dmgS', label: 'Damage (Short)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.dmg._dmgM', label: 'Damage (Medium)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.dmg._dmgL', label: 'Damage (Long)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.dmg._dmgE', label: 'Damage (Extreme)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.Arm', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'as' },
-    { key: 'as.Str', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'as' },
+    { key: 'as.MV', label: 'Move', type: AdvFilterType.DROPDOWN, game: GameSystem.AS },
+    { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.AS },
+    { key: 'as.SZ', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.AS },
+    { key: 'as.TMM', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.AS },
+    { key: 'as.OV', label: 'Overheat Value', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.AS },
+    { key: 'as.Th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, ignoreValues: [-1], game: GameSystem.AS },
+    { key: 'as.dmg._dmgS', label: 'Damage (Short)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.AS },
+    { key: 'as.dmg._dmgM', label: 'Damage (Medium)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.AS },
+    { key: 'as.dmg._dmgL', label: 'Damage (Long)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.AS },
+    { key: 'as.dmg._dmgE', label: 'Damage (Extreme)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.AS },
+    { key: 'as.Arm', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.AS },
+    { key: 'as.Str', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.AS },
 ];
 
 export const SORT_OPTIONS: SortOption[] = [
@@ -348,6 +350,7 @@ export class UnitSearchFiltersService {
     optionsService = inject(OptionsService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
+    gameService = inject(GameService);
     logger = inject(LoggerService);
 
     ADVANCED_FILTERS = ADVANCED_FILTERS;
@@ -385,8 +388,6 @@ export class UnitSearchFiltersService {
         this.loadFiltersFromUrlOnStartup();
         this.updateUrlOnFiltersChange();
     }
-
-    gameSystem = computed(() => this.optionsService.options().gameSystem);
 
     dynamicInternalLabel = computed(() => {
         const units = this.filteredUnits();
@@ -576,7 +577,7 @@ export class UnitSearchFiltersService {
             .filter(([, s]) => s.interactedWith)
             .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
 
-        const currentGame = this.gameSystem();
+        const currentGame = this.gameService.currentGameSystem();
 
         // Handle external (ID-based) filters first
         const selectedEraNames = activeFilters['era'] as string[] || [];
@@ -976,6 +977,7 @@ export class UnitSearchFiltersService {
             if (isDataReady && !this.urlStateInitialized) {
                 const params = this.route.snapshot.queryParamMap;
                 let hasFilters = false;
+                
                 // Load search query
                 const searchParam = params.get('q');
                 if (searchParam) {
@@ -1069,6 +1071,13 @@ export class UnitSearchFiltersService {
                     }
                 }
 
+                const gameSystemParam = params.get('gs');
+                
+                // If URL has filters and a game system specified, override the user's default
+                // This allows viewing AS filters from shared links even if user's default is CBT
+                if (hasFilters && gameSystemParam && (gameSystemParam === GameSystem.AS || gameSystemParam === GameSystem.CBT)) {
+                    this.gameService.setOverride(gameSystemParam as GameSystem);
+                }
                 this.urlStateInitialized = true;
             }
         });
@@ -1118,16 +1127,19 @@ export class UnitSearchFiltersService {
 
         // Add search query if present
         queryParams.q = search.trim() ? encodeURIComponent(search.trim()) : null;
+        // Add filters if any are active
+        const filtersParam = this.generateCompactFiltersParam(filterState);
+        queryParams.filters = filtersParam ? filtersParam : null;
 
         // Add sort if not default
         queryParams.sort = (selectedSort !== 'name') ? selectedSort : null;
         queryParams.sortDir = (selectedSortDirection !== 'asc') ? selectedSortDirection : null;
 
-        // Add filters if any are active
-        const filtersParam = this.generateCompactFiltersParam(filterState);
-        queryParams.filters = filtersParam ? filtersParam : null;
+        
+        // Add pilot skills if not default
         queryParams.gunnery = (gunnery !== 4) ? gunnery : null;
         queryParams.piloting = (piloting !== 5) ? piloting : null;
+
         queryParams.expanded = (expanded ? 'true' : null);
         return queryParams;
     });
@@ -1321,7 +1333,7 @@ export class UnitSearchFiltersService {
         }));
     }
 
-    clearFilters() {
+    public clearFilters() {
         this.searchText.set('');
         this.filterState.set({});
         this.selectedSort.set('name');

@@ -6,7 +6,7 @@
         @if (activeTab() === 'General') {
         <div class="tab-content">
             <div class="option-row">
-                <label for="gameSystem">Game system:</label>
+                <label for="gameSystem">Default Game system:</label>
                 <select id="gameSystem" class="bt-select" [value]="optionsService.options().gameSystem"
                     (change)="onGameSystemChange($event)">
                     <option value="cbt">BattleTech Classic (default)</option>
@@ -178,7 +178,7 @@
             </div>
         </div>
         }
-        @if (activeTab() === 'Debug') {
+        @if (activeTab() === 'Logs') {
         <div class="tab-content debug">
             <div class="logs-list allow-select">
                 @for (log of logger.logs().slice().reverse(); let i = $index; track i) {

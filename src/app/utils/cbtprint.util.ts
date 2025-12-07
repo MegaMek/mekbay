@@ -35,20 +35,21 @@ import { ForceUnit } from '../models/force-unit.model';
 import { HeatProfile } from '../models/force-serialization';
 import { DataService } from '../services/data.service';
 import { OptionsService } from '../services/options.service';
+import { CBTForceUnit } from '../models/cbt-force-unit.model';
 
 /*
  * Author: Drake
  */
-export class PrintUtil {
+export class CBTPrintUtil {
 
-    public static async multipagePrint(dataService: DataService, optionsService: OptionsService, forceUnits: ForceUnit[], clean: boolean = false, triggerPrint: boolean = true): Promise<void> {
+    public static async multipagePrint(dataService: DataService, optionsService: OptionsService, forceUnits: CBTForceUnit[], clean: boolean = false, triggerPrint: boolean = true): Promise<void> {
         if (forceUnits.length === 0) {
             console.warn('No units to export.');
             return;
         }
 
         // Store original heat values and set to 0 for printing
-        const originalHeats = new Map<ForceUnit, HeatProfile>();
+        const originalHeats = new Map<CBTForceUnit, HeatProfile>();
         if (!clean) {
             for (const unit of forceUnits) {
                 unit.disabledSaving = true;
@@ -73,7 +74,7 @@ export class PrintUtil {
             if (!svg) {
                 svg = await dataService.getSheet(unit.getUnit().sheets[0]);
             }
-            
+
             await this.nextAnimationFrames(2);
 
             // Turn on/off fluff image
@@ -118,10 +119,10 @@ export class PrintUtil {
                 /^<svg([^>]*)>/,
                 (match, attrs) => {
                     let cleanedAttrs = attrs;
-                        // .replace(/\sclass="[^"]*"/g, '')
-                        // .replace(/\sstyle="[^"]*"/g, '')
-                        // .replace(/\s(width|height|preserveAspectRatio)="[^"]*"/g, '')
-                        // .replace(/\s+$/, '');
+                    // .replace(/\sclass="[^"]*"/g, '')
+                    // .replace(/\sstyle="[^"]*"/g, '')
+                    // .replace(/\s(width|height|preserveAspectRatio)="[^"]*"/g, '')
+                    // .replace(/\s+$/, '');
                     if (!/viewBox=/.test(cleanedAttrs)) {
                         cleanedAttrs += ' viewBox="0 0 612 792"';
                     }
@@ -183,7 +184,7 @@ export class PrintUtil {
 
     private static getImageHref(img: SVGImageElement): string | null {
         return img.getAttribute('href') ??
-               img.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+            img.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
     }
 
     private static setImageHref(img: SVGImageElement, value: string): void {
@@ -195,8 +196,8 @@ export class PrintUtil {
      * Generates a multipage print container and waits for images to load before printing.
      */
     private static async generateMultipagePrintContainer(svgStrings: string[],
-        forceUnits: ForceUnit[],
-        originalHeats: Map<ForceUnit, HeatProfile>, triggerPrint: boolean = true): Promise<void> {
+        forceUnits: CBTForceUnit[],
+        originalHeats: Map<CBTForceUnit, HeatProfile>, triggerPrint: boolean = true): Promise<void> {
         let bodyContent = '';
         for (let i = 0; i < svgStrings.length; i++) {
             if (i === svgStrings.length - 1) {
@@ -265,7 +266,7 @@ export class PrintUtil {
 
         // Wait for fonts and all <image> elements in the SVGs
         if ((document as any).fonts?.ready) {
-            try { await (document as any).fonts.ready; } catch {}
+            try { await (document as any).fonts.ready; } catch { }
         }
         await this.waitForSvgImagesToLoad(overlay);
         await this.nextAnimationFrames(2);
@@ -279,7 +280,7 @@ export class PrintUtil {
         const removeOverlay = (evt: Event) => {
             overlay.remove();
             document.body.classList.remove('multipage-container-active');
-            
+
             if (originalHeats.size > 0) {
                 for (const unit of forceUnits) {
                     const heat = originalHeats.get(unit);

@@ -99,6 +99,11 @@
     letter-spacing: 0.2cqw;
     text-transform: uppercase;
     font-family: 'Roboto Condensed', sans-serif;
+    
+    &.long-chassis {
+        font-size: 6cqw;
+        line-height: 6cqw;
+    }
 }
 
 // PV Box
@@ -193,6 +198,7 @@
 .as-caption {
     font-size: 2.5cqw;
     font-weight: bold;
+    min-width: 2.5cqw;
 }
 
 .as-value {
@@ -362,25 +368,32 @@
     font-size: 3.5cqw;
     cursor: pointer;
     transition: background-color 0.2s;
+    border-right: .2cqw  solid #000;
 
-    &.heat-0.active {
-        background: rgb(0, 200, 0);
+    &:last-child {
+        border-right: none;
     }
 
-    &.heat-1.active {
-        background: rgb(255, 200, 0);
-    }
-
-    &.heat-2.active {
-        background: rgb(255, 150, 0);
-    }
-
-    &.heat-3.active {
-        background: rgb(255, 100, 0);
-    }
-
-    &.heat-s.active {
-        background: rgb(255, 0, 0);
+    @media screen {
+        &.heat-0.active {
+            background: rgb(0, 200, 0);
+        }
+    
+        &.heat-1.active {
+            background: rgb(255, 200, 0);
+        }
+    
+        &.heat-2.active {
+            background: rgb(255, 150, 0);
+        }
+    
+        &.heat-3.active {
+            background: rgb(255, 100, 0);
+        }
+    
+        &.heat-s.active {
+            background: rgb(255, 0, 0);
+        }
     }
 }
 
@@ -538,34 +551,29 @@
     clip-path: polygon(0 89%, 50% 89%, 58% 100%, 0 100%);
 }
 
-.alphastrike-footer {
+.alphastrike-logo {
     position: absolute;
-    left: 27%;
-    bottom: 0%;
-    font-size: 4.6cqw;
-    font-weight: 900;
-    font-family: 'Roboto Condensed', sans-serif;
-    letter-spacing: 0.36cqw;
-    transform: translateX(-50%);
+    left: 8.1%;
+    bottom: -8%;
+    width: 36cqw;
 
-    @media print {
-        bottom: -9%;
-        left: 25%;
-        color: #fff;
+    svg {
+        width: 100%;
+        height: 100%;
     }
 
-    @media screen {
-        &::before {
-            content: attr(data-text);
-            position: absolute;
-            left: 0.45cqw;
-            top: 0.45cqw;
-            width: 100%;
-            color: #000;
-            -webkit-text-stroke: 0.45cqw #000;
-            z-index: -1;
-            paint-order: stroke fill;
-            filter: blur(0.5cqw);
+    :host(.monochrome) & {
+        bottom: -20%;
+        svg path {
+            fill: #fff !important;
+            stroke-width: 0 !important;
+        }
+    }
+    @media print {
+        bottom: -20%;
+        svg path {
+            fill: #fff !important;
+            stroke-width: 0 !important;
         }
     }
 }
@@ -573,13 +581,27 @@
 .battletech-logo {
     position: absolute;
     right: 2.68%;
-    bottom: 5%;
-    width: 25%;
-    height: 100%;
+    bottom: 12%;
+    width: 30cqw;
 
     svg {
         width: 100%;
         height: 100%;
+    }
+
+    :host(.monochrome) & {
+        bottom: 10%;
+        svg path {
+            fill: #000 !important;
+            stroke-width: 0 !important;
+        }
+    }
+    @media print {
+        bottom: 10%;
+        svg path {
+            fill: #000 !important;
+            stroke-width: 0 !important;
+        }
     }
 }
 
@@ -596,7 +618,7 @@
         }
 
         .fluff-image {
-            filter: invert(1) contrast(5) brightness(5);
+            filter: saturate(0) invert(1) contrast(5) brightness(5);
             mix-blend-mode: lighten;
         }
 
@@ -617,7 +639,7 @@
         }
 
         .alphastrike-text {
-            color: #B63731;
+            color: #d22027;
             -webkit-text-stroke: 0.45cqw #ECD24B;
             paint-order: stroke fill;
             position: relative;

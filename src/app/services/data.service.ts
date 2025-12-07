@@ -50,6 +50,9 @@ import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
 import { firstValueFrom } from 'rxjs';
+import { GameSystem } from '../models/common.model';
+import { CBTForce } from '../models/cbt-force.model';
+import { ASForce } from '../models/as-force.model';
 
 /*
  * Author: Drake
@@ -819,18 +822,29 @@ export class DataService {
         } finally {
             this.isCloudForceLoading.set(false);
         }
-
         let local: Force | null = null;
         let cloud: Force | null = null;
         if (localRaw) {
             try {
-                local = Force.deserialize(localRaw, this, this.unitInitializer, this.injector);
-            } catch { }
+                if (localRaw.type === GameSystem.AS) {
+                    local = ASForce.deserialize(localRaw, this, this.unitInitializer, this.injector);
+                } else { // CBT
+                    local = CBTForce.deserialize(localRaw, this, this.unitInitializer, this.injector);
+                }
+            } catch (error) { 
+                this.logger.error((error as any)?.message ?? error);
+            }
         }
         if (cloudRaw) {
             try {
-                cloud = Force.deserialize(cloudRaw, this, this.unitInitializer, this.injector);
-            } catch { }
+                if (cloudRaw.type === GameSystem.AS) {
+                    cloud = ASForce.deserialize(cloudRaw, this, this.unitInitializer, this.injector);
+                } else { // CBT
+                    cloud = CBTForce.deserialize(cloudRaw, this, this.unitInitializer, this.injector);
+                }
+            } catch (error) { 
+                this.logger.error((error as any)?.message ?? error);
+            }
         }
 
         if (local && cloud) {

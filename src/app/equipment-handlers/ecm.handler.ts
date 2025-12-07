@@ -34,6 +34,7 @@
 import { EquipmentInteractionHandler, HandlerContext } from '../services/equipment-interaction-registry.service';
 import { MountedEquipment } from '../models/force-serialization';
 import { PickerChoice, PickerValue } from '../components/picker/picker.interface';
+import { ECMMode } from '../models/common.model';
 
 export class ECMHandler extends EquipmentInteractionHandler {
     readonly id = 'ecm-handler';
@@ -43,29 +44,29 @@ export class ECMHandler extends EquipmentInteractionHandler {
     private readonly stateKey = 'ecm_mode';
 
     private getDefaultMode(): string {
-        return 'ecm';
+        return ECMMode.ECM;
     }
 
     private getModes(equipment: MountedEquipment) {
         const modes = [
-            { value: 'ecm', label: 'ECM' },
-            { value: 'eccm', label: 'ECCM' },
-            { value: 'ghost', label: 'Ghost' },
-            { value: 'off', label: 'Off' }
+            { value: ECMMode.ECM, label: 'ECM' },
+            { value: ECMMode.ECCM, label: 'ECCM' },
+            { value: ECMMode.GHOST, label: 'Ghost' },
+            { value: ECMMode.OFF, label: 'Off' }
         ];
         if (equipment.equipment?.flags.has('F_ANGEL_ECM')) {
             modes.splice(modes.length - 1, 0, // Insert before "Off"
                 {
                     label: 'ECM+ECCM',
-                    value: 'ecm-eccm',
+                    value: ECMMode.ECM_ECCM,
                 },
                 {
                     label: 'ECM+Ghost',
-                    value: 'ecm-ghost',
+                    value: ECMMode.ECM_GHOST,
                 },
                 {
                     label: 'ECCM+Ghost',
-                    value: 'eccm-ghost',
+                    value: ECMMode.ECCM_GHOST,
                 }
             );
         }
@@ -100,6 +101,6 @@ export class ECMHandler extends EquipmentInteractionHandler {
 
     isActive(equipment: MountedEquipment): boolean {
         const ecmMode = equipment.states?.get(this.stateKey);
-        return (ecmMode || 'ecm') !== 'off';
+        return (ecmMode || ECMMode.ECM) !== ECMMode.OFF;
     }
 }

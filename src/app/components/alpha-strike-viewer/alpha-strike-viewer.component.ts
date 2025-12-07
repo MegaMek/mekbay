@@ -35,6 +35,8 @@ import { Component, ChangeDetectionStrategy, input, inject, computed } from '@an
 import { Force } from '../../models/force.model';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { OptionsService } from '../../services/options.service';
+import { ASForceUnit } from '../../models/as-force-unit.model';
+import { ASForce } from '../../models/as-force.model';
 
 /*
  * Author: Drake
@@ -51,7 +53,8 @@ import { OptionsService } from '../../services/options.service';
 export class AlphaStrikeViewerComponent {
     private optionsService = inject(OptionsService);
     
-    force = input.required<Force>();
+    unit = input<ASForceUnit | null>(null);
+    force = input<ASForce | null>(null);
     
     useHex = computed(() => this.optionsService.options().ASUseHex);
     cardStyle = computed(() => this.optionsService.options().ASCardStyle);

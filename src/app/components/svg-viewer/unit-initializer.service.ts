@@ -36,6 +36,7 @@ import { ForceUnit } from '../../models/force-unit.model';
 import { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
 import { DataService } from '../../services/data.service';
 import { Equipment } from '../../models/equipment.model';
+import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 
 /*
  * Author: Drake
@@ -62,7 +63,7 @@ export class UnitInitializerService {
      * @param unit The ForceUnit to initialize.
      * @param svg The corresponding SVGSVGElement for the unit.
      */
-    initializeUnitIfNeeded(unit: ForceUnit, svg: SVGSVGElement): void {
+    initializeUnitIfNeeded(unit: CBTForceUnit, svg: SVGSVGElement): void {
         if (unit.initialized) {
             return;
         }
@@ -85,7 +86,7 @@ export class UnitInitializerService {
      * @param unit The ForceUnit to update.
      * @param svg The SVGSVGElement to extract locations from.
      */
-    private extractLocations(unit: ForceUnit, svg: SVGSVGElement): void {
+    private extractLocations(unit: CBTForceUnit, svg: SVGSVGElement): void {
         const armorLocs = new Map<string, { loc: string; rear: boolean; points: number }>();
         const structureLocs = new Map<string, { loc: string; points: number }>();
 
@@ -152,7 +153,7 @@ export class UnitInitializerService {
      * @param unit The ForceUnit to populate.
      * @param svg The SVGSVGElement containing the crit slot definitions.
      */
-    private initCritSlots(unit: ForceUnit, svg: SVGSVGElement): void {
+    private initCritSlots(unit: CBTForceUnit, svg: SVGSVGElement): void {
         const critSlotsEl = svg.querySelectorAll(`.critSlot`) as NodeListOf<SVGElement>;
         if (critSlotsEl.length === 0) return;
 
@@ -218,7 +219,7 @@ export class UnitInitializerService {
      * @param unit The ForceUnit to populate.
      * @param svg The SVGSVGElement containing the crit loc definitions.
      */
-    private initCritLocs(unit: ForceUnit, svg: SVGSVGElement): void {
+    private initCritLocs(unit: CBTForceUnit, svg: SVGSVGElement): void {
         const critLocEls = svg.querySelectorAll(`.critLoc`) as NodeListOf<SVGElement>;
         if (critLocEls.length === 0) return;
 
@@ -253,7 +254,7 @@ export class UnitInitializerService {
         }
     }
 
-    private getInventoryElements(unit: ForceUnit, svg: SVGSVGElement, inventoryEntryEls: NodeListOf<SVGElement>): MountedEquipment[] {
+    private getInventoryElements(unit: CBTForceUnit, svg: SVGSVGElement, inventoryEntryEls: NodeListOf<SVGElement>): MountedEquipment[] {
         const inventoryEntries: MountedEquipment[] = [];
         const allCritSlots = unit.getCritSlots();
         const currentInventory = unit.getInventory();
@@ -340,7 +341,7 @@ export class UnitInitializerService {
         return inventoryEntries;
     }
 
-    private initInventory(unit: ForceUnit, svg: SVGSVGElement): void {
+    private initInventory(unit: CBTForceUnit, svg: SVGSVGElement): void {
         const inventoryEntryEls = svg.querySelectorAll(`.inventoryEntry:not(.inventoryEntry .inventoryEntry)`) as NodeListOf<SVGElement>;
         if (inventoryEntryEls.length === 0) return;
         const inventory = this.getInventoryElements(unit, svg, inventoryEntryEls);
