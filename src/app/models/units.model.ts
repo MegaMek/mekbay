@@ -169,10 +169,10 @@ export interface AlphaStrikeUnitStats {
     TP: string;
     Arm: number;
     dmg: {
+        dmgS: string;
         dmgM: string;
         dmgL: string;
         dmgE: string;
-        dmgS: string;
         _dmgS?: number; // Precomputed numeric values for filtering
         _dmgM?: number;
         _dmgL?: number;
@@ -198,7 +198,6 @@ export interface AlphaStrikeArcStats {
         dmgE: string;
         dmgS: string;
     };
-    specials: string;
     MSL: {
         dmgM: string;
         dmgL: string;
@@ -211,4 +210,5 @@ export interface AlphaStrikeArcStats {
         dmgE: string;
         dmgS: string;
     };
+    specials: string;
 }
