@@ -62,7 +62,7 @@ export abstract class ForceUnit {
 
     readOnly = computed(() => this.force.owned() === false);
 
-    abstract alias: Signal<string | undefined>;
+    abstract readonly alias: Signal<string | undefined>;
 
     constructor(unit: Unit,
         force: Force,

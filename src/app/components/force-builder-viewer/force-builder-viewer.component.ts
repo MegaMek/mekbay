@@ -184,8 +184,7 @@ export class ForceBuilderViewerComponent {
         if (unit.readOnly()) return;
         event.stopPropagation();
         const crew = unit.getCrewMembers();
-        const pilot = crew.length > 0 ? crew[0] : null;
-        if (!pilot) return;
+        const pilot = crew.length > 0 ? crew[0] : undefined;
         await this.forceBuilderService.editPilotOfUnit(unit, pilot);
     }
 

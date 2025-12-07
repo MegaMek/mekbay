@@ -53,10 +53,12 @@ import { ForceLoadDialogComponent } from '../components/force-load-dialog/force-
 import { ForcePackDialogComponent } from '../components/force-pack-dialog/force-pack-dialog.component';
 import { SerializedForce } from '../models/force-serialization';
 import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
+import { EditASPilotDialogComponent, EditASPilotDialogData, EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
 import { CrewMember } from '../models/crew-member.model';
 import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
+import { ASForceUnit } from '../models/as-force-unit.model';
 import { OptionsService } from './options.service';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
@@ -1046,14 +1048,25 @@ export class ForceBuilderService {
     }
 
 
-    public async editPilotOfUnit(unit: ForceUnit, pilot: CrewMember): Promise<void> {
+    public async editPilotOfUnit(unit: ForceUnit, pilot?: CrewMember): Promise<void> {
         if (unit.readOnly()) return;
         const baseUnit = unit.getUnit();
         if (!baseUnit) return;
-        const crewMembers = unit.getCrewMembers();
-        if (crewMembers.length === 0) {
-            this.toastService.show('This unit has no crew to edit.', 'error');
+
+        // Handle Alpha Strike units
+        if (unit instanceof ASForceUnit) {
+            await this.editASPilot(unit);
             return;
+        }
+
+        // Handle Classic BattleTech units
+        if (!pilot) {
+            const crewMembers = unit.getCrewMembers();
+            if (crewMembers.length === 0) {
+                this.toastService.show('This unit has no crew to edit.', 'error');
+                return;
+            }
+            pilot = crewMembers[0];
         }
         const disablePiloting = baseUnit.type === 'ProtoMek';
         let labelPiloting;
@@ -1091,5 +1104,42 @@ export class ForceBuilderService {
             pilot.setSkill('piloting', result.piloting);
         }
     };
+
+    /**
+     * Opens the edit dialog for an Alpha Strike unit's pilot.
+     */
+    private async editASPilot(unit: ASForceUnit): Promise<void> {
+        const ref = this.dialogsService.createDialog<EditASPilotResult | null, EditASPilotDialogComponent, EditASPilotDialogData>(
+            EditASPilotDialogComponent,
+            {
+                data: {
+                    name: unit.alias() || '',
+                    skill: unit.pilotSkill(),
+                    abilities: unit.pilotAbilities(),
+                }
+            }
+        );
+
+        const result = await firstValueFrom(ref.closed);
+        if (!result) return;
+
+        if (result.name !== undefined) {
+            const newName = result.name.trim() || undefined;
+            if (newName !== unit.alias()) {
+                unit.setPilotName(newName);
+            }
+        }
+        if (result.skill !== undefined && result.skill !== unit.pilotSkill()) {
+            unit.setPilotSkill(result.skill);
+        }
+        if (result.abilities !== undefined) {
+            const currentAbilities = unit.pilotAbilities();
+            const abilitiesChanged = result.abilities.length !== currentAbilities.length ||
+                result.abilities.some((a, i) => a !== currentAbilities[i]);
+            if (abilitiesChanged) {
+                unit.setPilotAbilities(result.abilities);
+            }
+        }
+    }
 
 }

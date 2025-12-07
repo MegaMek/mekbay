@@ -48,10 +48,14 @@ export class ASForceUnit extends ForceUnit {
     declare force: ASForce;
     protected override state: ASForceUnitState;
 
-    pilotName = signal<string | undefined>(undefined);    
+    private readonly _pilotName = signal<string | undefined>(undefined);
+    private readonly _pilotSkill = signal<number>(4);
+    private readonly _pilotAbilities = signal<string[]>([]);
     public adjustedPv = signal<number | null>(null);
 
-    alias = this.pilotName;
+    readonly alias = this._pilotName.asReadonly();
+    readonly pilotSkill = this._pilotSkill.asReadonly();
+    readonly pilotAbilities = this._pilotAbilities.asReadonly();
 
     constructor(unit: Unit,
         force: ASForce,
@@ -76,7 +80,7 @@ export class ASForceUnit extends ForceUnit {
     }
 
     override getBv = computed<number>(() => {
-        const adjustedPv = this.state.adjustedPv();
+        const adjustedPv = this.adjustedPv();
         if (adjustedPv !== null) {
             return adjustedPv;
         }
@@ -110,7 +114,7 @@ export class ASForceUnit extends ForceUnit {
     }
     
     recalculatePv() {
-        const skillLevel = this.state.skill();
+        const skillLevel = this._pilotSkill();
         let bv = this.unit.as.PV;
         const adjustedPv = this.calculateAdjustedPV(bv, skillLevel);
         
@@ -129,12 +133,31 @@ export class ASForceUnit extends ForceUnit {
         this.setModified();
     }
 
+    setPilotName(name: string | undefined): void {
+        this._pilotName.set(name);
+        this.setModified();
+        this.force.emitChanged();
+    }
+
+    setPilotSkill(skill: number): void {
+        this._pilotSkill.set(skill);
+        this.recalculatePv();
+        this.setModified();
+        this.force.emitChanged();
+    }
+
+    setPilotAbilities(abilities: string[]): void {
+        this._pilotAbilities.set(abilities);
+        this.setModified();
+        this.force.emitChanged();
+    }
+
     public getPilotSkill = computed<number>(() => {
-        return this.state.skill();
+        return this._pilotSkill();
     });
 
     public getPilotStats = computed<number>(() => {
-        return this.state.skill();
+        return this._pilotSkill();
     });
 
     public override update(data: ASSerializedUnit) {
@@ -151,16 +174,17 @@ export class ASForceUnit extends ForceUnit {
             destroyed: this.state.destroyed(),
             shutdown: this.state.shutdown(),
             c3Linked: this.state.c3Linked(),
-            skill: 5,
-            heat: 0,
-            armor: 0,
-            internal: 0
+            heat: this.state.heat(),
+            armor: this.state.armor(),
+            internal: this.state.internal()
         };
         const data = {
             id: this.id,
             state: stateObj,
+            unit: this.getUnit().name, // Serialize only the name,
             alias: this.alias(),
-            unit: this.getUnit().name // Serialize only the name
+            skill: this._pilotSkill(),
+            abilities: this._pilotAbilities()
         };
         return data;
     }
@@ -170,6 +194,9 @@ export class ASForceUnit extends ForceUnit {
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
         this.state.shutdown.set(typeof state.shutdown === 'boolean' ? state.shutdown : false);
         this.state.c3Linked.set(typeof state.c3Linked === 'boolean' ? state.c3Linked : false);
+        this.state.heat.set(typeof state.heat === 'number' ? state.heat : 0);
+        this.state.armor.set(typeof state.armor === 'number' ? state.armor : 0);
+        this.state.internal.set(typeof state.internal === 'number' ? state.internal : 0);
         this.recalculatePv();
     }
 
@@ -186,7 +213,18 @@ export class ASForceUnit extends ForceUnit {
         }
         const fu = new ASForceUnit(unit, force, dataService, unitInitializer, injector);
         fu.id = data.id;
+        
+        if (data.alias !== undefined) {
+            fu._pilotName.set(data.alias);
+        }
+        if (data.skill !== undefined) {
+            fu._pilotSkill.set(data.skill);
+        }
+        if (data.abilities !== undefined) {
+            fu._pilotAbilities.set(data.abilities);
+        }
         fu.deserializeState(data.state);
+        fu.recalculatePv();
         return fu;
     }
 

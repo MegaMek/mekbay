@@ -69,7 +69,7 @@ export class CBTForceUnit extends ForceUnit {
     /** Adjusted Battle Value, if any */
     public adjustedBv = signal<number | null>(null);
 
-    alias = computed<string | undefined>(() => {
+    readonly alias = computed<string | undefined>(() => {
         const pilot = this.getCrewMember(0);
         return pilot?.getName() ?? undefined;
     });

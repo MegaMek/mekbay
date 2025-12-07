@@ -81,6 +81,8 @@ export interface SerializedUnit {
 }
 export interface ASSerializedUnit extends SerializedUnit {
     state: ASSerializedState;
+    skill: number;
+    abilities: string[]; // Array of ability IDs from AS_PILOT_ABILITIES
 }
 
 export interface CBTSerializedUnit extends SerializedUnit {
@@ -94,7 +96,6 @@ export interface SerializedState {
 }
 
 export interface ASSerializedState extends SerializedState {
-    skill: number;
     heat: number;
     armor: number;
     internal: number;
