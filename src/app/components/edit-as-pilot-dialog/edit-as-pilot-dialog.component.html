@@ -1,0 +1,74 @@
+<div class="content">
+    <h2 dialog-title>Warrior Data</h2>
+    <div dialog-content>
+        <div class="group">
+            <div class="name-wrapper">
+                <p>Name</p>
+                <div class="input-wrapper">
+                    <input #nameInput type="text" class="input" [value]="data.name || ''" (keydown.enter)="submit()" />
+                </div>
+            </div>
+            <div class="skill-wrapper">
+                <p>Skill</p>
+                <div class="input-wrapper">
+                    <input #skillInput type="number" class="input" [value]="data.skill" [placeholder]="data.skill"
+                        min="0" max="8" (keydown.enter)="submit()" />
+                </div>
+            </div>
+        </div>
+
+        <div class="abilities-section">
+            <p>Pilot Abilities</p>
+
+            @for (slot of [0, 1]; track slot) {
+            <div class="ability-slot">
+                @if (selectedAbilities()[slot]) {
+                @let ability = getAbilityById(selectedAbilities()[slot]);
+                @if (ability) {
+                <div class="selected-ability-info corner-borders">
+                    <div class="ability-detail-header">
+                        <div class="group">
+                            <span class="ability-detail-name">{{ ability.name }}</span>
+                            <span class="ability-detail-cost">Cost: {{ ability.cost }}</span>
+                        </div>
+
+                        <button class="remove-btn" (click)="removeAbility(slot)" title="Remove ability">
+                            <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                        L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="ability-detail-rules">{{ ability.rulesBook }}, p.{{ ability.rulesPage }}</div>
+                    <div class="ability-detail-summary">{{ ability.summary[0] }}</div>
+                </div>
+                }
+                } @else {
+                <div class="ability-dropdown">
+                    @if (slot === 0) {
+                    <button #dropdownTrigger0 class="dropdown-trigger bt-select" (click)="toggleDropdown(slot)">
+                        <span class="placeholder">Select ability...</span>
+                    </button>
+                    } @else {
+                    <button #dropdownTrigger1 class="dropdown-trigger bt-select" (click)="toggleDropdown(slot)">
+                        <span class="placeholder">Select ability...</span>
+                    </button>
+                    }
+                </div>
+                }
+            </div>
+            }
+
+            @if (totalCost() > 0) {
+            <div class="total-cost">
+                <span>Total Ability Cost: {{ totalCost() }}</span>
+            </div>
+            }
+        </div>
+    </div>
+    <div dialog-actions>
+        <button (click)="submit()" class="bt-button">CONFIRM</button>
+        <button (click)="close()" class="bt-button">DISMISS</button>
+    </div>
+</div>

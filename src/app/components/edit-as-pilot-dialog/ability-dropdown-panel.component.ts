@@ -98,7 +98,7 @@ import { ASPilotAbility } from '../../models/as-abilities.model';
 
         .ability-name {
             font-weight: 600;
-            color: #fff;
+            color: var(--text-color);
         }
 
         .ability-cost {
@@ -114,12 +114,12 @@ import { ASPilotAbility } from '../../models/as-abilities.model';
 
         .ability-rules {
             font-size: 0.8em;
-            color: #888;
+            color: var(--text-color-tertiary);
         }
 
         .ability-summary {
             font-size: 0.85em;
-            color: #aaa;
+            color: var(--text-color-secondary);
             line-height: 1.3;
         }
     `]

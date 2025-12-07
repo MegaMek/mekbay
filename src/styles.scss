@@ -151,10 +151,7 @@ hr {
     width: 100vw;
     pointer-events: auto;
     padding: 16px;
-}
-
-.cdk-overlay-pane .fullscreen-dialog-host {
-    transform: translateY(-10vh);
+    max-height: 100%;
 }
 
 .cdk-overlay-pane {
