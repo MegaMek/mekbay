@@ -59,6 +59,7 @@ import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
 import { OptionsService } from './options.service';
 import { GameService } from './game.service';
+import { UrlStateService } from './url-state.service';
 
 /*
  * Author: Drake
@@ -78,6 +79,7 @@ export class ForceBuilderService {
     private unitInitializer = inject(UnitInitializerService);
     private injector = inject(Injector);
     private optionsService = inject(OptionsService);
+    private urlStateService = inject(UrlStateService);
 
     public currentForce = signal<Force | null>(null);
     public selectedUnit = signal<ForceUnit | null>(null);
@@ -86,6 +88,9 @@ export class ForceBuilderService {
     private conflictDialogRef: any;
 
     constructor() {
+        // Register as a URL state consumer - must call markConsumerReady when done reading URL
+        this.urlStateService.registerConsumer('force-builder');
+        
         this.loadUnitsFromUrlOnStartup();
         this.updateUrlOnForceChange();
         this.setForce(this.currentForce());
@@ -735,8 +740,8 @@ export class ForceBuilderService {
             const isDataReady = this.dataService.isDataReady();
             // This effect runs when data is ready, but we only execute the logic once.
             if (isDataReady && !this.urlStateInitialized) {
-                const params = this.route.snapshot.queryParamMap;
-                const instanceParam = params.get('instance');
+                // Use UrlStateService to get initial URL params (captured before any routing effects)
+                const instanceParam = this.urlStateService.getInitialParam('instance');
                 let loadedInstance = null;
                 if (instanceParam) {
                     // Try to find an existing force with this instance ID in the storage.
@@ -747,7 +752,7 @@ export class ForceBuilderService {
                                 this.dialogsService.showNotice('Reports indicate another commander owns this force. Clone to adopt it for yourself.', 'Captured Intel');
                             }
                             this.setForce(loadedInstance);
-                            this.selectUnit(loadedInstance.units()[0] || null);
+                            this.selectUnit(loadedInstance.units()[0]);
                         }
                         return loadedInstance;
                     });
@@ -755,8 +760,7 @@ export class ForceBuilderService {
                 if (!loadedInstance) {
                     // If no instance ID or not found, create a new force.
                     if (instanceParam) {
-
-                        //We remove the fail instance ID from the URL
+                        //We remove the failed instance ID from the URL
                         this.router.navigate([], {
                             relativeTo: this.route,
                             queryParams: { instance: null },
@@ -764,9 +768,9 @@ export class ForceBuilderService {
                             replaceUrl: true
                         });
                     }
-                    const unitsParam = params.get('units');
-                    const forceNameParam = params.get('name');
-                    const gameSystemParam = params.get('gs') ?? GameSystem.CBT;
+                    const unitsParam = this.urlStateService.getInitialParam('units');
+                    const forceNameParam = this.urlStateService.getInitialParam('name');
+                    const gameSystemParam = this.urlStateService.getInitialParam('gs') ?? GameSystem.CBT;
                     let newForce: Force;
                     if (gameSystemParam === GameSystem.AS) {
                         newForce = new ASForce('New Force', this.dataService, this.unitInitializer, this.injector);
@@ -787,7 +791,6 @@ export class ForceBuilderService {
                                 this.logger.info(`ForceBuilderService: Loaded ${forceUnits.length} units from URL on startup.`);
                                 // Remove empty groups that may have been created during parsing
                                 newForce.removeEmptyGroups();
-                                this.selectUnit(forceUnits[0]);
                                 if (this.layoutService.isMobile()) {
                                     this.layoutService.openMenu();
                                 }
@@ -798,10 +801,13 @@ export class ForceBuilderService {
                     }
                     if (newForce.units().length > 0) {
                         this.setForce(newForce);
+                        this.selectUnit(newForce.units()[0]);
                     }
                 }
                 // Mark as initialized so the update effect can start running.
                 this.urlStateInitialized = true;
+                // Signal that we're done reading URL state
+                this.urlStateService.markConsumerReady('force-builder');
             }
         });
     }

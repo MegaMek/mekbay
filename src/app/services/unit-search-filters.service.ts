@@ -44,6 +44,7 @@ import { LoggerService } from './logger.service';
 import { matchesSearch } from '../utils/search.util';
 import { GameSystem } from '../models/common.model';
 import { GameService } from './game.service';
+import { UrlStateService } from './url-state.service';
 
 /*
  * Author: Drake
@@ -352,6 +353,7 @@ export class UnitSearchFiltersService {
     private route = inject(ActivatedRoute);
     gameService = inject(GameService);
     logger = inject(LoggerService);
+    private urlStateService = inject(UrlStateService);
 
     ADVANCED_FILTERS = ADVANCED_FILTERS;
     pilotGunnerySkill = signal(4);
@@ -368,6 +370,9 @@ export class UnitSearchFiltersService {
     private tagsCacheKey = signal('');
 
     constructor() {
+        // Register as a URL state consumer - must call markConsumerReady when done reading URL
+        this.urlStateService.registerConsumer('unit-search-filters');
+        
         effect(() => {
             if (this.isDataReady()) {
                 this.calculateTotalRanges();
@@ -975,29 +980,29 @@ export class UnitSearchFiltersService {
         effect(() => {
             const isDataReady = this.dataService.isDataReady();
             if (isDataReady && !this.urlStateInitialized) {
-                const params = this.route.snapshot.queryParamMap;
+                // Use UrlStateService to get initial URL params (captured before any routing effects)
                 let hasFilters = false;
                 
                 // Load search query
-                const searchParam = params.get('q');
+                const searchParam = this.urlStateService.getInitialParam('q');
                 if (searchParam) {
                     this.searchText.set(decodeURIComponent(searchParam));
                     hasFilters = true;
                 }
 
                 // Load sort settings
-                const sortParam = params.get('sort');
+                const sortParam = this.urlStateService.getInitialParam('sort');
                 if (sortParam && SORT_OPTIONS.some(opt => opt.key === sortParam)) {
                     this.selectedSort.set(sortParam);
                 }
 
-                const sortDirParam = params.get('sortDir');
+                const sortDirParam = this.urlStateService.getInitialParam('sortDir');
                 if (sortDirParam === 'desc' || sortDirParam === 'asc') {
                     this.selectedSortDirection.set(sortDirParam);
                 }
 
                 // Load filters
-                const filtersParam = params.get('filters');
+                const filtersParam = this.urlStateService.getInitialParam('filters');
                 if (filtersParam) {
                     hasFilters = true;
                     try {
@@ -1045,14 +1050,14 @@ export class UnitSearchFiltersService {
                     }
                 }
 
-                const expandedParam = params.get('expanded');
-                const suggestExpanded = !params.has('instance') && !params.has('units') && hasFilters;
+                const expandedParam = this.urlStateService.getInitialParam('expanded');
+                const suggestExpanded = !this.urlStateService.hasInitialParam('instance') && !this.urlStateService.hasInitialParam('units') && hasFilters;
                 if (expandedParam === 'true' || suggestExpanded) {
                     this.expandedView.set(true);
                 }
 
-                if (params.has('gunnery')) {
-                    const gunneryParam = params.get('gunnery');
+                if (this.urlStateService.hasInitialParam('gunnery')) {
+                    const gunneryParam = this.urlStateService.getInitialParam('gunnery');
                     if (gunneryParam) {
                         const gunnery = parseInt(gunneryParam);
                         if (!isNaN(gunnery) && gunnery >= 0 && gunnery <= 8) {
@@ -1061,8 +1066,8 @@ export class UnitSearchFiltersService {
                     }
                 }
 
-                if (params.has('piloting')) {
-                    const pilotingParam = params.get('piloting');
+                if (this.urlStateService.hasInitialParam('piloting')) {
+                    const pilotingParam = this.urlStateService.getInitialParam('piloting');
                     if (pilotingParam) {
                         const piloting = parseInt(pilotingParam);
                         if (!isNaN(piloting) && piloting >= 0 && piloting <= 8) {
@@ -1070,15 +1075,9 @@ export class UnitSearchFiltersService {
                         }
                     }
                 }
-
-                const gameSystemParam = params.get('gs');
-                
-                // If URL has filters and a game system specified, override the user's default
-                // This allows viewing AS filters from shared links even if user's default is CBT
-                if (hasFilters && gameSystemParam && (gameSystemParam === GameSystem.AS || gameSystemParam === GameSystem.CBT)) {
-                    this.gameService.setOverride(gameSystemParam as GameSystem);
-                }
                 this.urlStateInitialized = true;
+                // Signal that we're done reading URL state
+                this.urlStateService.markConsumerReady('unit-search-filters');
             }
         });
     }

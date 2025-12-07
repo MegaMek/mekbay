@@ -36,6 +36,7 @@ import { OptionsService } from './options.service';
 import { ForceBuilderService } from './force-builder.service';
 import { GameSystem } from '../models/common.model';
 import { ActivatedRoute, Router } from '@angular/router';
+import { UrlStateService } from './url-state.service';
 
 /*
  * Author: Drake
@@ -43,11 +44,16 @@ import { ActivatedRoute, Router } from '@angular/router';
  * 
  * Priority order for determining the active game system:
  * 1. Current force's game system (if a force is loaded)
- * 2. Temporary override
- * 3. Options
+ * 2. Temporary override (only set when URL has meaningful content)
+ * 3. Options (user's default preference)
  * 
  * The override allows viewing game-specific filters from shared links
  * without permanently changing the user's preferred game system.
+ * 
+ * IMPORTANT: The override is only set when the URL contains meaningful parameters
+ * (units, search filters, shared unit, etc.) - not just a bare `gs` parameter.
+ * This prevents the override from being incorrectly applied when navigating
+ * to a URL that only has `gs` from a previous session's URL update.
  */
 @Injectable({
     providedIn: 'root'
@@ -57,17 +63,25 @@ export class GameService {
     private route = inject(ActivatedRoute);
     private readonly optionsService = inject(OptionsService);
     private readonly forceBuilderService = inject(ForceBuilderService);
-
+    private readonly urlStateService = inject(UrlStateService);
 
     public readonly currentGameSystem = signal<GameSystem>(this.optionsService.options().gameSystem);
 
     /**
      * Temporary game system override. Used when URL parameters specify a game system
-     * but no force is loaded. This does NOT persist to user options.
+     * AND the URL contains meaningful content (units, search, etc.).
+     * This does NOT persist to user options.
      */
     private readonly gameSystemOverride = signal<GameSystem | null>(null);
 
     constructor() {
+        // Read initial game system from URL state service (captured before routing)
+        // Only apply override if the URL has meaningful content, not just `gs`
+        const initialOverride = this.urlStateService.getGameSystemOverride();
+        if (initialOverride) {
+            this.gameSystemOverride.set(initialOverride);
+        }
+
         // Auto-clear override when a force is loaded, since the force's game system takes precedence
         effect(() => {
             const currentForce = this.forceBuilderService.currentForce();
@@ -75,10 +89,11 @@ export class GameService {
                 this.setOverride(null);
             }
         });
+
         /**
          * Computes the effective game system based on priority:
          * 1. Force game system (highest priority - explicit user action)
-         * 2. Override (from URL filters when no force exists)
+         * 2. Override (from URL when it has meaningful content)
          * 3. User options (default fallback)
          */
         effect(() => {
@@ -101,12 +116,17 @@ export class GameService {
             }
             this.currentGameSystem.set(gameSystem);
         });
+
+        // Update URL with current game system, but only after initial URL state is consumed
         effect(() => {
+            const gs = this.currentGameSystem();
+            const canUpdate = this.urlStateService.initialStateConsumed();
+            if (!canUpdate) {
+                return; // Don't update URL until initial state is read by all consumers
+            }
             this.router.navigate([], {
                 relativeTo: this.route,
-                queryParams: {
-                    gs: this.currentGameSystem()
-                },
+                queryParams: { gs },
                 queryParamsHandling: 'merge',
                 replaceUrl: true
             });

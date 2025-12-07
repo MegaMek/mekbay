@@ -65,6 +65,7 @@ import { CBTForce } from './models/cbt-force.model';
 import { ASForceUnit } from './models/as-force-unit.model';
 import { ASForce } from './models/as-force.model';
 import { GameSystem } from './models/common.model';
+import { UrlStateService } from './services/url-state.service';
 
 /*
  * Author: Drake
@@ -100,6 +101,7 @@ export class App {
     public unitSearchFiltersService = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
     public gameService = inject(GameService);
+    private urlStateService = inject(UrlStateService);
 
     protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
@@ -120,6 +122,9 @@ export class App {
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
 
     constructor() {
+        // Register as a URL state consumer - must call markConsumerReady when done reading URL
+        this.urlStateService.registerConsumer('app');
+        
         // if ("virtualKeyboard" in navigator) {
         //     (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
         // }
@@ -168,9 +173,9 @@ export class App {
         effect(() => {
             if (this.dataService.isDataReady() && !initialShareHandled) {
                 initialShareHandled = true;
-                const params = new URLSearchParams(window.location.search);
-                const sharedUnitName = params.get('shareUnit');
-                const tab = params.get('tab') ?? undefined;
+                // Use UrlStateService to get initial URL params (captured before any routing effects)
+                const sharedUnitName = this.urlStateService.getInitialParam('shareUnit');
+                const tab = this.urlStateService.getInitialParam('tab') ?? undefined;
                 if (sharedUnitName) {
                     // Find the unit by model name (decode first)
                     const unitNameDecoded = decodeURIComponent(sharedUnitName);
@@ -180,11 +185,13 @@ export class App {
                     }
                 } else {
                     afterNextRender(() => {
-                        const params = new URLSearchParams(window.location.search);
-                        if (params.has('instanceId') || params.has('units')) return; // Don't focus if loading a force
+                        // Don't focus if loading a force
+                        if (this.urlStateService.hasInitialParam('instance') || this.urlStateService.hasInitialParam('units')) return;
                         this.unitSearchComponentRef()?.focusInput();
                     }, { injector: this.injector });
                 }
+                // Signal that we're done reading URL state
+                this.urlStateService.markConsumerReady('app');
             }
         });
         inject(DestroyRef).onDestroy(() => {
