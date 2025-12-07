@@ -52,6 +52,8 @@ type ManagedEntry = {
     pointerStart?: { id: number | null; x: number; y: number } | null;
     closeAreaElement?: HTMLElement | null;
     closeBlockUntil?: number;
+    matchTriggerWidth?: boolean;
+    fullHeight?: boolean;
 };
 // Movement threshold (px) to consider a pointer interaction a "click"
 const CLICK_MOVE_THRESHOLD = 10;
@@ -106,27 +108,40 @@ export class OverlayManagerService {
             closeOnOutsideClick?: boolean,
             closeOnOutsideClickOnly?: boolean,
             sensitiveAreaReferenceElement?: HTMLElement,
-            disableCloseForMs?: number
+            disableCloseForMs?: number,
+            matchTriggerWidth?: boolean,
+            fullHeight?: boolean,
         }
     ) {
         // close existing with same key first
         this.closeManagedOverlay(key);
         const el = target ? ((target as ElementRef<HTMLElement>)?.nativeElement ?? (target as HTMLElement)) : null;
     
-        const positionStrategy = el ? this.overlay.position()
-            .flexibleConnectedTo(el)
-            .withPositions(opts?.positions ?? [
-                { originX: 'end', originY: 'bottom', overlayX: 'end',   overlayY: 'top',    offsetY: 4 },
-                { originX: 'end', originY: 'top',    overlayX: 'end',   overlayY: 'bottom', offsetY: -4 },
-                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top',  offsetY: 4 },
-                { originX: 'start', originY: 'top',    overlayX: 'start', overlayY: 'bottom',offsetY: -4 }
-            ])
-            .withPush(true)
-            .withViewportMargin(4)
-        : this.overlay.position()
-            .global()
-            .centerHorizontally()
-            .centerVertically();
+        let positionStrategy;
+        
+        if (opts?.fullHeight && el) {
+            // Full height mode: use global positioning but align horizontally to trigger
+            const rect = el.getBoundingClientRect();
+            positionStrategy = this.overlay.position()
+                .global()
+                .left(`${rect.left}px`);
+        } else if (el) {
+            positionStrategy = this.overlay.position()
+                .flexibleConnectedTo(el)
+                .withPositions(opts?.positions ?? [
+                    { originX: 'end', originY: 'bottom', overlayX: 'end',   overlayY: 'top',    offsetY: 4 },
+                    { originX: 'end', originY: 'top',    overlayX: 'end',   overlayY: 'bottom', offsetY: -4 },
+                    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top',  offsetY: 4 },
+                    { originX: 'start', originY: 'top',    overlayX: 'start', overlayY: 'bottom',offsetY: -4 }
+                ])
+                .withPush(true)
+                .withViewportMargin(4);
+        } else {
+            positionStrategy = this.overlay.position()
+                .global()
+                .centerHorizontally()
+                .centerVertically();
+        }
 
         const overlayRef = this.overlay.create({
             positionStrategy,
@@ -150,6 +165,20 @@ export class OverlayManagerService {
         };
 
         entry.closeAreaElement = resolveEl(opts?.sensitiveAreaReferenceElement);
+        entry.triggerElement = el ?? undefined;
+        entry.matchTriggerWidth = opts?.matchTriggerWidth ?? false;
+        entry.fullHeight = opts?.fullHeight ?? false;
+        
+        // Apply initial width if matchTriggerWidth is enabled
+        if (entry.matchTriggerWidth && el) {
+            this.updateOverlayWidth(entry);
+        }
+        
+        // Apply full height styling if enabled
+        if (entry.fullHeight) {
+            this.applyFullHeightStyles(entry);
+        }
+        
         const blockMs = opts?.disableCloseForMs ?? 100;
         if (blockMs > 0) {
             entry.closeBlockUntil = performance.now() + blockMs;
@@ -313,7 +342,46 @@ export class OverlayManagerService {
     /** Invoke updatePosition() on every managed overlayRef. */
     private updateAllPositions() {
         for (const entry of this.managed.values()) {
-            try { entry.overlayRef.updatePosition(); } catch { /* ignore */ }
+            try {
+                // For fullHeight overlays, we need to update the position strategy
+                if (entry.fullHeight && entry.triggerElement) {
+                    this.updateFullHeightPosition(entry);
+                } else {
+                    entry.overlayRef.updatePosition();
+                }
+                if (entry.matchTriggerWidth) {
+                    this.updateOverlayWidth(entry);
+                }
+            } catch { /* ignore */ }
+        }
+    }
+
+    /** Update overlay width to match trigger element width */
+    private updateOverlayWidth(entry: ManagedEntry) {
+        if (!entry.triggerElement) return;
+        const width = entry.triggerElement.getBoundingClientRect().width;
+        entry.overlayRef.updateSize({ width: `${width}px` });
+    }
+
+    /** Update full-height overlay position to stay aligned with trigger horizontally */
+    private updateFullHeightPosition(entry: ManagedEntry) {
+        if (!entry.triggerElement) return;
+        const rect = entry.triggerElement.getBoundingClientRect();
+        
+        // Update the position strategy
+        const positionStrategy = this.overlay.position()
+            .global()
+            .left(`${rect.left}px`);
+        
+        entry.overlayRef.updatePositionStrategy(positionStrategy);
+        this.applyFullHeightStyles(entry);
+    }
+    
+    /** Apply full height styles to overlay pane element */
+    private applyFullHeightStyles(entry: ManagedEntry) {
+        const paneElement = entry.overlayRef.overlayElement;
+        if (paneElement) {
+            paneElement.style.maxHeight = `100vh`;
         }
     }
     /** Add global listeners while overlays exist */
