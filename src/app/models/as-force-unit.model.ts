@@ -40,6 +40,10 @@ import { ASForce } from './as-force.model';
 import { ForceUnit } from './force-unit.model';
 import { ASForceUnitState } from './as-force-unit-state.model';
 import { CrewMember } from './crew-member.model';
+import { ASCustomPilotAbility } from './as-abilities.model';
+
+/** Represents either a standard ability (by ID) or a custom ability (object) */
+export type AbilitySelection = string | ASCustomPilotAbility;
 
 /*
  * Author: Drake
@@ -50,7 +54,7 @@ export class ASForceUnit extends ForceUnit {
 
     private readonly _pilotName = signal<string | undefined>(undefined);
     private readonly _pilotSkill = signal<number>(4);
-    private readonly _pilotAbilities = signal<string[]>([]);
+    private readonly _pilotAbilities = signal<AbilitySelection[]>([]);
     public adjustedPv = signal<number | null>(null);
 
     readonly alias = this._pilotName.asReadonly();
@@ -146,7 +150,7 @@ export class ASForceUnit extends ForceUnit {
         this.force.emitChanged();
     }
 
-    setPilotAbilities(abilities: string[]): void {
+    setPilotAbilities(abilities: AbilitySelection[]): void {
         this._pilotAbilities.set(abilities);
         this.setModified();
         this.force.emitChanged();

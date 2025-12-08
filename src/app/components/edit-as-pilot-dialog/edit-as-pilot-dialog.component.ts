@@ -34,24 +34,28 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { AS_PILOT_ABILITIES, ASPilotAbility } from '../../models/as-abilities.model';
+import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility } from '../../models/as-abilities.model';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
+import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
 
 /*
  * Author: Drake
  */
 
+/** Represents either a standard ability (by ID) or a custom ability (object) */
+export type AbilitySelection = string | ASCustomPilotAbility;
+
 export interface EditASPilotDialogData {
     name: string;
     skill: number;
-    abilities: string[]; // Array of ability IDs
+    abilities: AbilitySelection[]; // Array of ability IDs or custom abilities
 }
 
 export interface EditASPilotResult {
     name: string;
     skill: number;
-    abilities: string[]; // Array of ability IDs
+    abilities: AbilitySelection[]; // Array of ability IDs or custom abilities
 }
 
 @Component({
@@ -77,20 +81,23 @@ export class EditASPilotDialogComponent {
     private destroyRef = inject(DestroyRef);
 
     availableAbilities = signal<ASPilotAbility[]>(AS_PILOT_ABILITIES);
-    selectedAbilities = signal<(string | null)[]>([null, null]);
+    selectedAbilities = signal<(AbilitySelection | null)[]>([null, null]);
     openDropdown = signal<number | null>(null);
 
     totalCost = computed(() => {
-        return this.selectedAbilities().reduce((sum, id) => {
-            if (!id) return sum;
-            const ability = this.getAbilityById(id);
-            return sum + (ability?.cost || 0);
+        return this.selectedAbilities().reduce((sum, ability) => {
+            if (!ability) return sum;
+            if (this.isCustomAbility(ability)) {
+                return sum + ability.cost;
+            }
+            const standardAbility = this.getAbilityById(ability);
+            return sum + (standardAbility?.cost || 0);
         }, 0);
     });
 
     constructor() {
         // Initialize with existing abilities from data
-        const initialAbilities: (string | null)[] = [null, null];
+        const initialAbilities: (AbilitySelection | null)[] = [null, null];
         if (this.data.abilities && this.data.abilities.length > 0) {
             initialAbilities[0] = this.data.abilities[0] || null;
             if (this.data.abilities.length > 1) {
@@ -102,7 +109,38 @@ export class EditASPilotDialogComponent {
         // Cleanup overlays when dialog is destroyed
         this.destroyRef.onDestroy(() => {
             this.closeDropdownOverlay();
+            this.closeCustomAbilityOverlay();
         });
+    }
+
+    /** Type guard: check if an ability selection is a custom ability */
+    isCustomAbility(ability: AbilitySelection | null): ability is ASCustomPilotAbility {
+        return ability !== null && typeof ability === 'object';
+    }
+
+    /** Get display info for any ability selection */
+    getAbilityDisplayInfo(ability: AbilitySelection | null): { name: string; cost: number; summary: string; isCustom: boolean; rulesInfo?: string } | null {
+        if (!ability) return null;
+        
+        if (this.isCustomAbility(ability)) {
+            return {
+                name: ability.name,
+                cost: ability.cost,
+                summary: ability.summary,
+                isCustom: true
+            };
+        }
+        
+        const standardAbility = this.getAbilityById(ability);
+        if (!standardAbility) return null;
+        
+        return {
+            name: standardAbility.name,
+            cost: standardAbility.cost,
+            summary: standardAbility.summary[0],
+            isCustom: false,
+            rulesInfo: `${standardAbility.rulesBook}, p.${standardAbility.rulesPage}`
+        };
     }
 
     private getDropdownTrigger(slot: number): ElementRef<HTMLButtonElement> | undefined {
@@ -114,13 +152,17 @@ export class EditASPilotDialogComponent {
         this.openDropdown.set(null);
     }
 
+    private closeCustomAbilityOverlay(): void {
+        this.overlayManager.closeManagedOverlay('custom-ability-dialog');
+    }
+
     getAbilityById(id: string | null): ASPilotAbility | undefined {
         if (!id) return undefined;
         return AS_PILOT_ABILITIES.find(a => a.id === id);
     }
 
     isAbilitySelected(id: string): boolean {
-        return this.selectedAbilities().includes(id);
+        return this.selectedAbilities().some(ability => ability === id);
     }
 
     toggleDropdown(slot: number): void {
@@ -135,9 +177,11 @@ export class EditASPilotDialogComponent {
         const trigger = this.getDropdownTrigger(slot);
         if (!trigger) return;
 
-        // Get disabled ability IDs (abilities already selected in other slots)
+        // Get disabled ability IDs (standard abilities already selected in other slots)
         const disabledIds = this.selectedAbilities()
-            .filter((id, idx) => id !== null && idx !== slot) as string[];
+            .filter((ability, idx): ability is string => 
+                ability !== null && typeof ability === 'string' && idx !== slot
+            );
 
         const portal = new ComponentPortal(AbilityDropdownPanelComponent, null, this.injector);
         
@@ -156,23 +200,66 @@ export class EditASPilotDialogComponent {
         compRef.setInput('abilities', this.availableAbilities());
         compRef.setInput('disabledIds', disabledIds);
 
-        // Handle selection
+        // Handle standard ability selection
         compRef.instance.selected.subscribe((abilityId: string) => {
             this.selectAbility(slot, abilityId);
             this.closeDropdownOverlay();
         });
 
+        // Handle custom ability request
+        compRef.instance.addCustom.subscribe(() => {
+            this.closeDropdownOverlay();
+            this.openCustomAbilityDialog(slot);
+        });
+
         this.openDropdown.set(slot);
     }
 
-    selectAbility(slot: number, abilityId: string | null): void {
-        // Don't allow selecting an already selected ability (unless it's the same slot)
-        if (abilityId && this.isAbilitySelected(abilityId) && this.selectedAbilities()[slot] !== abilityId) {
+    private openCustomAbilityDialog(slot: number, existingAbility?: ASCustomPilotAbility): void {
+        const portal = new ComponentPortal(CustomAbilityDialogComponent, null, this.injector);
+        
+        const compRef = this.overlayManager.createManagedOverlay(
+            'custom-ability-dialog',
+            null, // centered
+            portal,
+            {
+                hasBackdrop: true,
+                backdropClass: 'cdk-overlay-dark-backdrop',
+                closeOnOutsideClick: true
+            }
+        );
+
+        // Set initial ability if editing
+        if (existingAbility) {
+            compRef.setInput('initialAbility', existingAbility);
+        }
+
+        compRef.instance.submitted.subscribe((customAbility: ASCustomPilotAbility) => {
+            this.selectAbility(slot, customAbility);
+            this.closeCustomAbilityOverlay();
+        });
+
+        compRef.instance.cancelled.subscribe(() => {
+            this.closeCustomAbilityOverlay();
+        });
+    }
+
+    /** Opens the edit dialog for a custom ability in the specified slot */
+    editCustomAbility(slot: number): void {
+        const ability = this.selectedAbilities()[slot];
+        if (this.isCustomAbility(ability)) {
+            this.openCustomAbilityDialog(slot, ability);
+        }
+    }
+
+    selectAbility(slot: number, ability: AbilitySelection | null): void {
+        // For standard abilities, don't allow selecting an already selected one
+        if (typeof ability === 'string' && this.isAbilitySelected(ability) && this.selectedAbilities()[slot] !== ability) {
             return;
         }
 
         const abilities = [...this.selectedAbilities()];
-        abilities[slot] = abilityId;
+        abilities[slot] = ability;
         this.selectedAbilities.set(abilities);
     }
 
@@ -186,7 +273,7 @@ export class EditASPilotDialogComponent {
         const name = this.nameInput().nativeElement.value.trim();
         const skillValue = this.skillInput().nativeElement.value;
         const skill = Number(skillValue === '' ? this.data.skill : skillValue);
-        const abilities = this.selectedAbilities().filter((a): a is string => a !== null);
+        const abilities = this.selectedAbilities().filter((a): a is AbilitySelection => a !== null);
         this.dialogRef.close({ name, skill, abilities });
     }
 

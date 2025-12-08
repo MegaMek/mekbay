@@ -79,6 +79,7 @@ body {
     -moz-osx-font-smoothing: grayscale;
     user-select: none;
     box-sizing: border-box;
+    cursor: default;
 }
 
 a {
@@ -529,12 +530,16 @@ span {
         }
 
     }
+}
 
-    hr {
-        border: none;
-        border-top: 1px solid #444;
-        margin: 6px 28px;
-    }
+hr.divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #888, transparent);
+    margin: 0;
+    margin-left: 6px;
+    margin-right: 6px;
+    padding: 0;
+    border: 0;
 }
 
 /* Unit Card */

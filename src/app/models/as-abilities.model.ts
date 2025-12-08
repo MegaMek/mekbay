@@ -53,6 +53,12 @@ export interface ASPilotAbility {
     rulesPage: number;
 }
 
+export interface ASCustomPilotAbility {
+    name: string;
+    cost: number;
+    summary: string;
+}
+
 enum ASRulebook {
     ASCE = "Alpha Strike: Commander's Edition",
     ASC = "Alpha Strike: Companion",
@@ -1828,6 +1834,30 @@ export const AS_PILOT_ABILITIES: ASPilotAbility[] = [
         summary: ["Unit may force an opponent to reroll an attack with this unit as the target"],
     },
     {
+        id: "float_like_a_butterfly2",
+        name: "Float Like a Butterfly",
+        cost: 2,
+        rulesBook: ASRulebook.ASCE,
+        rulesPage: 96,
+        summary: ["Unit may force an opponent to reroll an attack with this unit as the target"],
+    },
+    {
+        id: "float_like_a_butterfly3",
+        name: "Float Like a Butterfly",
+        cost: 3,
+        rulesBook: ASRulebook.ASCE,
+        rulesPage: 96,
+        summary: ["Unit may force an opponent to reroll an attack with this unit as the target"],
+    },
+    {
+        id: "float_like_a_butterfly4",
+        name: "Float Like a Butterfly",
+        cost: 4,
+        rulesBook: ASRulebook.ASCE,
+        rulesPage: 96,
+        summary: ["Unit may force an opponent to reroll an attack with this unit as the target"],
+    },
+    {
         id: "forward_observer",
         name: "Forward Observer",
         cost: 1,
@@ -1911,6 +1941,30 @@ export const AS_PILOT_ABILITIES: ASPilotAbility[] = [
         id: "lucky",
         name: "Lucky",
         cost: 1,
+        rulesBook: ASRulebook.ASCE,
+        rulesPage: 97,
+        summary: ["Unit may reroll a limited number of failed attacks and Control Rolls per scenario"],
+    },
+    {
+        id: "lucky2",
+        name: "Lucky",
+        cost: 2,
+        rulesBook: ASRulebook.ASCE,
+        rulesPage: 97,
+        summary: ["Unit may reroll a limited number of failed attacks and Control Rolls per scenario"],
+    },
+    {
+        id: "lucky3",
+        name: "Lucky",
+        cost: 3,
+        rulesBook: ASRulebook.ASCE,
+        rulesPage: 97,
+        summary: ["Unit may reroll a limited number of failed attacks and Control Rolls per scenario"],
+    },
+    {
+        id: "lucky4",
+        name: "Lucky",
+        cost: 4,
         rulesBook: ASRulebook.ASCE,
         rulesPage: 97,
         summary: ["Unit may reroll a limited number of failed attacks and Control Rolls per scenario"],

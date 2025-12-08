@@ -1135,7 +1135,19 @@ export class ForceBuilderService {
         if (result.abilities !== undefined) {
             const currentAbilities = unit.pilotAbilities();
             const abilitiesChanged = result.abilities.length !== currentAbilities.length ||
-                result.abilities.some((a, i) => a !== currentAbilities[i]);
+                result.abilities.some((a, i) => {
+                    const current = currentAbilities[i];
+                    // Both are strings (standard abilities)
+                    if (typeof a === 'string' && typeof current === 'string') {
+                        return a !== current;
+                    }
+                    // Both are objects (custom abilities)
+                    if (typeof a === 'object' && typeof current === 'object') {
+                        return a.name !== current.name || a.cost !== current.cost || a.summary !== current.summary;
+                    }
+                    // Different types
+                    return true;
+                });
             if (abilitiesChanged) {
                 unit.setPilotAbilities(result.abilities);
             }

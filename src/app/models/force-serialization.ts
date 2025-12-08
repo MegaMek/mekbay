@@ -36,6 +36,7 @@ import { Sanitizer } from '../utils/sanitizer.util';
 import { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
+import { ASCustomPilotAbility } from './as-abilities.model';
 
 export interface LocationData {
     armor?: number;
@@ -82,7 +83,7 @@ export interface SerializedUnit {
 export interface ASSerializedUnit extends SerializedUnit {
     state: ASSerializedState;
     skill: number;
-    abilities: string[]; // Array of ability IDs from AS_PILOT_ABILITIES
+    abilities: (string | ASCustomPilotAbility)[]; // Array of ability IDs or custom abilities
 }
 
 export interface CBTSerializedUnit extends SerializedUnit {

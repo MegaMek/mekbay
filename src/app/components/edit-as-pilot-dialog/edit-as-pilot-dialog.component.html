@@ -22,17 +22,25 @@
 
             @for (slot of [0, 1]; track slot) {
             <div class="ability-slot">
-                @if (selectedAbilities()[slot]) {
-                @let ability = getAbilityById(selectedAbilities()[slot]);
-                @if (ability) {
-                <div class="selected-ability-info corner-borders">
+                @if (selectedAbilities()[slot]; as selectedAbility) {
+                @let displayInfo = getAbilityDisplayInfo(selectedAbility);
+                @if (displayInfo) {
+                <div class="selected-ability-info corner-borders" 
+                     [class.custom-ability]="displayInfo.isCustom"
+                     [class.clickable]="displayInfo.isCustom"
+                     (click)="displayInfo.isCustom ? editCustomAbility(slot) : null">
                     <div class="ability-detail-header">
                         <div class="group">
-                            <span class="ability-detail-name">{{ ability.name }}</span>
-                            <span class="ability-detail-cost">Cost: {{ ability.cost }}</span>
+                            <span class="ability-detail-name">
+                                @if (displayInfo.isCustom) {
+                                    <span class="custom-badge">Custom</span>
+                                }
+                                {{ displayInfo.name }}
+                            </span>
+                            <span class="ability-detail-cost">Cost: {{ displayInfo.cost }}</span>
                         </div>
 
-                        <button class="remove-btn" (click)="removeAbility(slot)" title="Remove ability">
+                        <button class="remove-btn" (click)="removeAbility(slot); $event.stopPropagation()" title="Remove ability">
                             <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
                                 xmlns="http://www.w3.org/2000/svg">
                                 <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
@@ -40,8 +48,10 @@
                             </svg>
                         </button>
                     </div>
-                    <div class="ability-detail-rules">{{ ability.rulesBook }}, p.{{ ability.rulesPage }}</div>
-                    <div class="ability-detail-summary">{{ ability.summary[0] }}</div>
+                    @if (displayInfo.rulesInfo) {
+                        <div class="ability-detail-rules">{{ displayInfo.rulesInfo }}</div>
+                    }
+                    <div class="ability-detail-summary">{{ displayInfo.summary }}</div>
                 </div>
                 }
                 } @else {

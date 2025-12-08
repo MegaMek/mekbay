@@ -39,6 +39,15 @@ import { ASPilotAbility } from '../../models/as-abilities.model';
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="dropdown-panel glass has-shadow framed-borders">
+            <div 
+                class="dropdown-option custom-ability-option"
+                (click)="onAddCustom()">
+                <div class="ability-header">
+                    <span class="ability-name">+ Add Custom Ability</span>
+                </div>
+                <div class="ability-summary">Create a custom ability with your own name, cost, and description</div>
+            </div>
+            <hr class="divider"/>
             @for (ability of abilities(); track ability.id) {
                 <div 
                     class="dropdown-option"
@@ -122,6 +131,18 @@ import { ASPilotAbility } from '../../models/as-abilities.model';
             color: var(--text-color-secondary);
             line-height: 1.3;
         }
+
+        .custom-ability-option {
+            background: rgba(234, 174, 63, 0.08);
+        }
+
+        .custom-ability-option:hover {
+            background: rgba(234, 174, 63, 0.15);
+        }
+
+        .custom-ability-option .ability-name {
+            color: var(--bt-yellow);
+        }
     `]
 })
 export class AbilityDropdownPanelComponent {
@@ -129,10 +150,15 @@ export class AbilityDropdownPanelComponent {
     disabledIds = input<string[]>([]);
     
     selected = output<string>();
+    addCustom = output<void>();
 
     onSelect(abilityId: string) {
         if (!this.disabledIds().includes(abilityId)) {
             this.selected.emit(abilityId);
         }
+    }
+
+    onAddCustom(): void {
+        this.addCustom.emit();
     }
 }

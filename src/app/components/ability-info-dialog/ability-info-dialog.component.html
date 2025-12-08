@@ -36,6 +36,7 @@
         }
 
         @if (hasSubAbilities()) {
+            <hr class="divider"/>
             <div class="sub-abilities">
                 <div class="sub-abilities-header">Sub-Abilities:</div>
                 @for (sub of subAbilities(); track sub.originalText) {

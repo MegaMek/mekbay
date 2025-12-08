@@ -235,6 +235,26 @@ p {
     font-weight: 600;
 }
 
+.custom-badge {
+    font-size: 0.7em;
+    padding: 2px 5px;
+    background: var(--bt-yellow);
+    color: #000;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.clickable {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.clickable:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
 @container (max-width: 400px) {
     .stats {
         flex-direction: column;
