@@ -33,12 +33,20 @@
 
 import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
-import { ForceUnit } from '../../models/force-unit.model';
 import { AlphaStrikeUnitStats, Unit } from '../../models/units.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
+import { CardConfig, CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
+import { 
+    AsCriticalHitsMekComponent, 
+    AsCriticalHitsVehicleComponent,
+    AsCriticalHitsAerospace1Component,
+    AsCriticalHitsDropship1Component,
+    AsCriticalHitsProtomekComponent,
+    AsCriticalHitsAerofighterComponent,
+} from './critical-hits';
 
 /*
  * Author: Drake
@@ -46,9 +54,16 @@ import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-in
 
 @Component({
     selector: 'alpha-strike-card',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [UpperCasePipe],
+    imports: [
+        UpperCasePipe,
+        AsCriticalHitsMekComponent,
+        AsCriticalHitsProtomekComponent,
+        AsCriticalHitsVehicleComponent,
+        AsCriticalHitsAerospace1Component,
+        AsCriticalHitsDropship1Component,
+        AsCriticalHitsAerofighterComponent
+    ],
     templateUrl: './alpha-strike-card.component.html',
     styleUrl: './alpha-strike-card.component.scss',
     host: {
@@ -65,6 +80,8 @@ export class AlphaStrikeCardComponent {
     useHex = input<boolean>(false);
     cardStyle = input<'colored' | 'monochrome'>('colored');
     isSelected = input<boolean>(false);
+    /** Which card index to render (0 for first/only card, 1 for second card) */
+    cardIndex = input<number>(0);
     
     selected = output<ASForceUnit>();
     
@@ -76,6 +93,25 @@ export class AlphaStrikeCardComponent {
     
     unit = computed<Unit>(() => this.forceUnit().getUnit());
     asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
+    
+    /** Get the Alpha Strike unit type (BM, IM, CV, CI, WS, etc.) */
+    unitType = computed<string>(() => this.asStats().TP);
+    
+    /** Get the layout configuration for this unit type */
+    layoutConfig = computed(() => getLayoutForUnitType(this.unitType()));
+    
+    /** Get the card config for the current card index */
+    currentCardConfig = computed<CardConfig>(() => {
+        const config = this.layoutConfig();
+        const index = this.cardIndex();
+        return config.cards[index] ?? config.cards[0];
+    });
+    
+    /** Get the critical hits variant for the current card */
+    criticalHitsVariant = computed<CriticalHitsVariant>(() => this.currentCardConfig().criticalHits);
+    
+    /** Check if this card should show critical hits */
+    showCriticalHits = computed<boolean>(() => this.criticalHitsVariant() !== 'none');
     
     chassis = computed<string>(() => this.unit().chassis);
     model = computed<string>(() => this.unit().model);
@@ -115,12 +151,6 @@ export class AlphaStrikeCardComponent {
     readonly pipThreshold = 30;
     showArmorAsNumber = computed<boolean>(() => this.armorPips() > this.pipThreshold);
     showStructureAsNumber = computed<boolean>(() => this.structurePips() > this.pipThreshold);
-    
-    // Critical hits (simplified for now)
-    engineHits = 2;
-    fireControlHits = 4;
-    mpHits = 4;
-    weaponsHits = 4;
     
     // Heat level
     heatLevel = computed<number>(() => this.forceUnit().getHeat());

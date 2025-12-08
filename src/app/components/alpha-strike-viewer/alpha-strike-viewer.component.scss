@@ -73,6 +73,25 @@
         width: 100%;
         height: auto;
     }
+    
+    // Multi-card unit styling - cards with same unit-id should appear grouped
+    &[data-card-index="1"],
+    &[data-card-index="2"] {
+        // Subsequent cards in a multi-card unit have a small visual indicator
+        position: relative;
+        
+        &::before {
+            content: '';
+            position: absolute;
+            left: -4px;
+            top: 10%;
+            bottom: 10%;
+            width: 2px;
+            background: var(--text-color);
+            opacity: 0.3;
+            border-radius: 1px;
+        }
+    }
 }
 
 @media (max-width: 600px) {

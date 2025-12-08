@@ -38,6 +38,18 @@ import { ASForceUnit } from '../../models/as-force-unit.model';
 import { ASForce } from '../../models/as-force.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
+import { getLayoutForUnitType } from '../alpha-strike-card/card-layout.config';
+
+/**
+ * Represents a renderable card item (a single card for a unit).
+ * Multi-card units will produce multiple CardRenderItem entries.
+ */
+export interface CardRenderItem {
+    forceUnit: ASForceUnit;
+    cardIndex: number;
+    /** Unique key for tracking in @for loops */
+    trackKey: string;
+}
 
 /*
  * Author: Drake
@@ -84,6 +96,30 @@ export class AlphaStrikeViewerComponent {
     readonly zoom = signal(1);
     private currentColumnCount = 1;
     private isInitialized = false;
+    
+    /**
+     * Get the number of cards for a given unit type.
+     */
+    getCardCount(forceUnit: ASForceUnit): number {
+        const unitType = forceUnit.getUnit().as.TP;
+        return getLayoutForUnitType(unitType).cards.length;
+    }
+    
+    /**
+     * Generate card render items for a unit (handles multi-card units).
+     */
+    getCardRenderItems(forceUnit: ASForceUnit): CardRenderItem[] {
+        const cardCount = this.getCardCount(forceUnit);
+        const items: CardRenderItem[] = [];
+        for (let i = 0; i < cardCount; i++) {
+            items.push({
+                forceUnit,
+                cardIndex: i,
+                trackKey: `${forceUnit.id}-card-${i}`
+            });
+        }
+        return items;
+    }
     
     // Computed card width
     readonly cardWidth = computed(() => Math.max(MIN_CARD_WIDTH, BASE_CARD_WIDTH * this.zoom()));
