@@ -2,66 +2,68 @@
     <div class="dialog-header">
         <span class="ability-tag">{{ originalText() }}</span>
         @if (abilityName()) {
-            <span class="ability-name">{{ abilityName() }}</span>
+        <span class="ability-name">{{ abilityName() }}</span>
         }
-        <button class="close-button" (click)="close()">✕</button>
     </div>
-    
+
     <div class="dialog-content">
         @if (mainAbility()) {
-            <div class="ability-section main-ability">
-                @if (turretDamage()) {
-                    <div class="turret-damage">
-                        <span class="label">Turret Damage:</span>
-                        <span class="value">{{ turretDamage() }}</span>
-                    </div>
-                }
-                
-                <div class="summary">
-                    @for (line of mainAbility()!.summary; track line) {
-                        <p>{{ line }}</p>
-                    }
-                </div>
-                
-                @if (mainAbility()!.rulesPage) {
-                    <div class="rules-reference">
-                        <span>{{ mainAbility()!.rulesBook }}, page {{ mainAbility()!.rulesPage }}</span>
-                    </div>
+        <div class="ability-section main-ability">
+            @if (turretDamage()) {
+            <div class="turret-damage">
+                <span class="label">Turret Damage:</span>
+                <span class="value">{{ turretDamage() }}</span>
+            </div>
+            }
+
+            <div class="summary">
+                @for (line of mainAbility()!.summary; track line) {
+                <p>{{ line }}</p>
                 }
             </div>
+
+            @if (mainAbility()!.rulesPage) {
+            <div class="rules-reference">
+                <span>{{ mainAbility()!.rulesBook }}, page {{ mainAbility()!.rulesPage }}</span>
+            </div>
+            }
+        </div>
         } @else {
-            <div class="no-ability-found">
-                <p>No ability information found for "{{ originalText() }}"</p>
-            </div>
+        <div class="no-ability-found">
+            <p>No ability information found for "{{ originalText() }}"</p>
+        </div>
         }
 
         @if (hasSubAbilities()) {
-            <hr class="divider"/>
-            <div class="sub-abilities">
-                <div class="sub-abilities-header">Sub-Abilities:</div>
-                @for (sub of subAbilities(); track sub.originalText) {
-                    <div class="sub-ability">
-                        <div class="sub-ability-header">
-                            <span class="sub-tag">{{ sub.originalText }}</span>
-                            @if (sub.ability) {
-                                <span class="sub-name">{{ sub.ability.name }}</span>
-                            }
-                        </div>
-                        @if (sub.ability) {
-                            <div class="sub-summary">
-                                @for (line of sub.ability.summary; track line) {
-                                    <p>{{ line }}</p>
-                                }
-                            </div>
-                            @if (sub.ability.rulesPage) {
-                                <div class="rules-reference">
-                                    <span>{{ sub.ability.rulesBook }}, page {{ sub.ability.rulesPage }}</span>
-                                </div>
-                            }
-                        }
-                    </div>
+        <hr class="divider" />
+        <div class="sub-abilities">
+            <div class="sub-abilities-header">Sub-Abilities:</div>
+            @for (sub of subAbilities(); track sub.originalText) {
+            <div class="sub-ability">
+                <div class="sub-ability-header">
+                    <span class="sub-tag">{{ sub.originalText }}</span>
+                    @if (sub.ability) {
+                    <span class="sub-name">{{ sub.ability.name }}</span>
+                    }
+                </div>
+                @if (sub.ability) {
+                <div class="sub-summary">
+                    @for (line of sub.ability.summary; track line) {
+                    <p>{{ line }}</p>
+                    }
+                </div>
+                @if (sub.ability.rulesPage) {
+                <div class="rules-reference">
+                    <span>{{ sub.ability.rulesBook }}, page {{ sub.ability.rulesPage }}</span>
+                </div>
+                }
                 }
             </div>
+            }
+        </div>
         }
+    </div>
+    <div class="dialog-buttons">
+        <button type="button" class="bt-button" (click)="close()">DISMISS</button>
     </div>
 </div>
