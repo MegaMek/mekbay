@@ -1,0 +1,91 @@
+<div class="vessel-card-2">
+    <!-- Header with unit name -->
+    <div class="vessel-header">
+        <span class="vessel-name">{{ unit().chassis }}</span>
+        <span class="vessel-model">{{ unit().model }}</span>
+    </div>
+
+    <!-- Arc Damage Tables Grid -->
+    <div class="arc-damage-grid">
+        @for (arc of arcDamageData(); track arc.label) {
+        <div class="arc-damage-table frame">
+            <div class="frame-background"></div>
+            <div class="frame-content">
+                <!-- Arc Label (vertical) -->
+                <div class="arc-label-container">
+                    <span class="arc-label">{{ arc.label }}</span>
+                </div>
+
+                <!-- Damage Table -->
+                <div class="damage-table">
+                    <!-- Header Row -->
+                    <div class="table-header">
+                        <div class="range-col"></div>
+                        <div class="dmg-col">STD</div>
+                        <div class="dmg-col">SCAP</div>
+                        <div class="dmg-col">MSL</div>
+                    </div>
+
+                    <!-- S Row -->
+                    <div class="table-row">
+                        <div class="range-col">S (+0)</div>
+                        <div class="dmg-col">{{ arc.dmgS }}</div>
+                        <div class="dmg-col">{{ arc.scapS }}</div>
+                        <div class="dmg-col">{{ arc.mslS }}</div>
+                    </div>
+
+                    <!-- M Row -->
+                    <div class="table-row">
+                        <div class="range-col">M(+2)</div>
+                        <div class="dmg-col">{{ arc.dmgM }}</div>
+                        <div class="dmg-col">{{ arc.scapM }}</div>
+                        <div class="dmg-col">{{ arc.mslM }}</div>
+                    </div>
+
+                    <!-- L Row -->
+                    <div class="table-row">
+                        <div class="range-col">L (+4)</div>
+                        <div class="dmg-col">{{ arc.dmgL }}</div>
+                        <div class="dmg-col">{{ arc.scapL }}</div>
+                        <div class="dmg-col">{{ arc.mslL }}</div>
+                    </div>
+
+                    <!-- E Row -->
+                    <div class="table-row">
+                        <div class="range-col">E (+6)</div>
+                        <div class="dmg-col">{{ arc.dmgE }}</div>
+                        <div class="dmg-col">{{ arc.scapE }}</div>
+                        <div class="dmg-col">{{ arc.mslE }}</div>
+                    </div>
+
+                    <!-- SPE Row -->
+                    <div class="table-row spe-row">
+                        <div class="range-col">SPE</div>
+                        <div class="dmg-col spe-value" [attr.colspan]="3">{{ arc.spe ?? '' }}</div>
+                    </div>
+
+                    <!-- CRIT Row -->
+                    <div class="table-row crit-row">
+                        <div class="range-col">CRIT</div>
+                        <div class="crit-pips-container">
+                            @for (col of [0, 1, 2]; track col) {
+                            <div class="crit-pip-group">
+                                @for (i of range(4); track i) {
+                                <div class="pip"></div>
+                                }
+                            </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        }
+    </div>
+
+    <!-- Weapon Criticals Note -->
+    <div class="weapon-criticals-note">
+        <span class="note-title">WEAPON CRITICALS</span>
+        <span class="note-text">Damage Value Reduced by 25% per hit. — Randomly determine an appropriate STD/SCAP/MSL column.</span>
+    </div>
+</div>

@@ -32,21 +32,18 @@
  */
 
 import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output } from '@angular/core';
-import { UpperCasePipe } from '@angular/common';
 import { AlphaStrikeUnitStats, Unit } from '../../models/units.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
-import { CardConfig, CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
-import { 
-    AsCriticalHitsMekComponent, 
-    AsCriticalHitsVehicleComponent,
-    AsCriticalHitsAerospace1Component,
-    AsCriticalHitsDropship1Component,
-    AsCriticalHitsProtomekComponent,
-    AsCriticalHitsAerofighterComponent,
-} from './critical-hits';
+import { CardConfig, CardLayoutDesign, CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
+import {
+    AsLayoutStandardComponent,
+    AsLayoutLargeVessel1Component,
+    AsLayoutLargeVessel2AerospaceComponent,
+    AsLayoutLargeVessel2DropshipComponent,
+} from './layouts';
 
 /*
  * Author: Drake
@@ -56,13 +53,10 @@ import {
     selector: 'alpha-strike-card',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        UpperCasePipe,
-        AsCriticalHitsMekComponent,
-        AsCriticalHitsProtomekComponent,
-        AsCriticalHitsVehicleComponent,
-        AsCriticalHitsAerospace1Component,
-        AsCriticalHitsDropship1Component,
-        AsCriticalHitsAerofighterComponent
+        AsLayoutStandardComponent,
+        AsLayoutLargeVessel1Component,
+        AsLayoutLargeVessel2AerospaceComponent,
+        AsLayoutLargeVessel2DropshipComponent,
     ],
     templateUrl: './alpha-strike-card.component.html',
     styleUrl: './alpha-strike-card.component.scss',
@@ -92,10 +86,9 @@ export class AlphaStrikeCardComponent {
     imageUrl = signal<string>('');
     
     unit = computed<Unit>(() => this.forceUnit().getUnit());
-    asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
     
     /** Get the Alpha Strike unit type (BM, IM, CV, CI, WS, etc.) */
-    unitType = computed<string>(() => this.asStats().TP);
+    unitType = computed<string>(() => this.unit().as.TP);
     
     /** Get the layout configuration for this unit type */
     layoutConfig = computed(() => getLayoutForUnitType(this.unitType()));
@@ -107,53 +100,9 @@ export class AlphaStrikeCardComponent {
         return config.cards[index] ?? config.cards[0];
     });
     
-    /** Get the critical hits variant for the current card */
-    criticalHitsVariant = computed<CriticalHitsVariant>(() => this.currentCardConfig().criticalHits);
+    /** Get the layout design for the current card */
+    currentDesign = computed<CardLayoutDesign>(() => this.currentCardConfig().design);
     
-    /** Check if this card should show critical hits */
-    showCriticalHits = computed<boolean>(() => this.criticalHitsVariant() !== 'none');
-    
-    chassis = computed<string>(() => this.unit().chassis);
-    model = computed<string>(() => this.unit().model);
-    
-    // Flag for long chassis names that need smaller font
-    isLongChassis = computed<boolean>(() => this.chassis().length > 20);
-    
-    // Crew and skill
-    skill = computed<number>(() => {
-        return this.forceUnit().getPilotStats();
-    });
-    
-    // PV calculations
-    basePV = computed<number>(() => this.asStats().PV);
-    adjustedPV = computed<number>(() => this.calculateAdjustedPV(this.basePV(), this.skill()));
-    
-    // Sprint movement
-    sprintMove = computed<number>(() => {
-        const walkMove = this.parseMovement(this.asStats().MV);
-        const sprintInches = Math.ceil(walkMove * 1.5);
-        if (this.useHex()) {
-            return Math.floor(sprintInches / 2);
-        }
-        return sprintInches;
-    });
-    
-    // Range distances based on hex mode
-    rangeShort = computed<string>(() => this.useHex() ? '0-3' : '0-6"');
-    rangeMedium = computed<string>(() => this.useHex() ? '3-12' : '6"-24"');
-    rangeLong = computed<string>(() => this.useHex() ? '12-21' : '24"-42"');
-    
-    // Armor and structure pips
-    armorPips = computed<number>(() => this.asStats().Arm);
-    structurePips = computed<number>(() => this.asStats().Str);
-    
-    // Threshold for showing numeric values instead of pips
-    readonly pipThreshold = 30;
-    showArmorAsNumber = computed<boolean>(() => this.armorPips() > this.pipThreshold);
-    showStructureAsNumber = computed<boolean>(() => this.structurePips() > this.pipThreshold);
-    
-    // Heat level
-    heatLevel = computed<number>(() => this.forceUnit().getHeat());
     
     constructor() {
         // Effect to load image when forceUnit changes
@@ -168,12 +117,6 @@ export class AlphaStrikeCardComponent {
         });
     }
 
-    private parseMovement(mv: string): number {
-        // Parse movement string like "6"" or "12"j" to get the base number
-        const match = mv.match(/^(\d+)/);
-        return match ? parseInt(match[1], 10) : 0;
-    }
-    
     private calculateAdjustedPV(basePV: number, skill: number): number {
         // PV adjustment based on skill (skill 4 is baseline)
         const skillModifiers: Record<number, number> = {
@@ -205,16 +148,6 @@ export class AlphaStrikeCardComponent {
         }
     }
     
-    // Generate array of numbers for ngFor
-    range(count: number): number[] {
-        return Array.from({ length: count }, (_, i) => i);
-    }
-    
-    // Get special items
-    getSpecialItems(): string[] {
-        return this.asStats().specials;
-    }
-    
     // Handle special ability click
     onSpecialClick(special: string): void {
         const parsedAbility = this.abilityLookup.parseAbility(special);
@@ -222,52 +155,5 @@ export class AlphaStrikeCardComponent {
         this.dialogs.createDialog<void>(AbilityInfoDialogComponent, {
             data: { parsedAbility } as AbilityInfoDialogData
         });
-    }
-    
-    // Convert inches to hex
-    private inchesToHex(inches: number): number {
-        return Math.floor(inches / 2);
-    }
-    
-    // Format movement value based on hex mode
-    private formatMovement(inches: number, suffix: string = ''): string {
-        if (this.useHex()) {
-            return this.inchesToHex(inches) + suffix;
-        }
-        return inches + '"' + suffix;
-    }
-    
-    // Get movement modes display
-    getMovementDisplay(): string {
-        const stats = this.asStats();
-        const mvx = stats.MVx;
-        const baseMove = this.parseMovement(stats.MV);
-        
-        if (!mvx || Object.keys(mvx).length === 0) {
-            return this.formatMovement(baseMove);
-        }
-        
-        // Build movement string with modes
-        let display = this.formatMovement(baseMove);
-        for (const [mode, value] of Object.entries(mvx)) {
-            if (mode === 'j' && value > 0) {
-                display += '/' + this.formatMovement(value as number, 'j');
-            }
-        }
-        return display;
-    }
-    
-    // Get TMM display with jump modifier
-    getTMMDisplay(): string {
-        const stats = this.asStats();
-        const tmm = stats.TMM;
-        const mvx = stats.MVx;
-        
-        if (mvx?.['j'] && mvx['j'] > 0) {
-            // Calculate jump TMM (simplified)
-            const jumpTMM = Math.max(0, tmm - 1);
-            return `${tmm}/${jumpTMM}j`;
-        }
-        return `${tmm}`;
     }
 }

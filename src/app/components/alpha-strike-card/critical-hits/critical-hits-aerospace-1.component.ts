@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input } from '@angular/core';
 import { ASForceUnit } from '../../../models/as-force-unit.model';
 
 /*
@@ -43,6 +43,9 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
 @Component({
     selector: 'as-critical-hits-aerospace-1',
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: {
+        '[class.monochrome]': 'cardStyle() === "monochrome"',
+    },
     template: `
         <div class="critical-hits-box compact frame">
             <div class="frame-background"></div>
@@ -103,6 +106,7 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
 })
 export class AsCriticalHitsAerospace1Component {
     forceUnit = input<ASForceUnit>();
+    cardStyle = input<'colored' | 'monochrome'>('colored');
     
     range(count: number): number[] {
         return Array.from({ length: count }, (_, i) => i);

@@ -1,8 +1,5 @@
-@import './common.scss';
-
 :host {
     display: contents;
-    --as-red: #893735;
 }
 
 .card-container {
@@ -39,7 +36,6 @@
 }
 
 @media screen {
-
     :host(.selected) .card-background-image,
     :host(.selected) .card-background {
         border-color: var(--bt-yellow);
@@ -68,368 +64,94 @@
     background-position: center;
     clip-path: polygon(0 0, 100% 0, 100% 100%, 8cqw 100%, 0 calc(100% - 8cqw));
 
+    &.secondary-card {
+        background-image: url('/images/ascard_background2.jpg');
+    }
+
     @media print {
         display: none;
     }
 }
 
-// Fluff Image
-.fluff-image-container {
+
+// Footer Section
+.footer-section {
     position: absolute;
-    top: 14%;
-    left: 57.14%;
-    width: 40.36%;
-    height: 58.75%;
-    overflow: hidden;
-
-    &.center-vertical {
-        top: 18%;
-    }
-}
-
-.fluff-image {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    object-position: center top;
-
-    .center-vertical & {
-        object-position: center center;
-    }
-}
-
-// Header Section
-.header-section {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 16.25%;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-}
-
-.unit-name {
-    position: absolute;
-    top: 2.8cqw;
-    left: 2.8cqw;
-    width: 75%;
-    color: #000;
-}
-
-.model-text {
-    font-size: 4cqw;
-    line-height: 4cqw;
-    // min-height: 4cqw;
-}
-
-.chassis-text {
-    font-weight: bold;
-    font-size: 7.2cqw;
-    line-height: 7.2cqw;
-    letter-spacing: 0.2cqw;
-    text-transform: uppercase;
-    font-family: 'Roboto Condensed', sans-serif;
-
-    &.long-chassis {
-        font-size: 6cqw;
-        line-height: 6cqw;
-    }
-}
-
-// PV Box
-.pv-box {
-    position: absolute;
-    top: 16%;
-    right: 1.8cqw;
-    width: 17%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.pv-box-background {
-    position: absolute;
-    inset: 0;
-    background: #000;
-    clip-path: polygon(74% 0, 100% 0, 100% 9cqw, 82% 9cqw);
-
-    @media screen {
-        :host:not(.monochrome) & {
-            display: none;
-        }
-    }
-}
-
-.pv-text {
-    font-size: 5.36cqw;
-    font-weight: 900;
-    text-align: center;
-    letter-spacing: 0.36cqw;
-    z-index: 1;
-}
-
-.base-pv-text {
-    font-size: 2.5cqw;
-    font-weight: bold;
-    text-align: center;
-    margin-top: 1.2cqw;
-    z-index: 1;
-}
-.stats-container {
-    position: absolute;
-    bottom: 12%;
+    bottom: 2.5%;
     left: 2.5%;
     right: 2.5%;
-    height: 73%;
+    height: 9%;
     display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    gap: 0.5cqw;
-}
-
-.stats-container-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.5cqw;
-}
-
-.stats-container-column {
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    gap: 0.5cqw;
-
-    &.stats-left {
-        flex: 0 0 57.5%;
-    }
-
-    &.stats-right {
-        flex: 0 0 42%;
-    }
-    
-    // When stats-right is empty (no critical hits), expand stats-left
-    &.stats-left:only-child {
-        flex: 1 1 100%;
-    }
-    
-    // Hide empty stats-right column
-    &.stats-right:empty {
-        display: none;
-    }
-}
-
-
-.stats-box {
-    display: flex;
-
-    .frame-content {
-        display: flex;
-        flex-direction: column;
-        justify-content: space-around;
-    }
-}
-
-.stats-row {
-    display: flex;
-    justify-content: flex-start;
     align-items: center;
-    gap: 3cqw;
-    font-size: 2.5cqw; // 28px / 1120
+    font-size: 1cqw;
 }
 
-.stat-item {
-    white-space: nowrap;
-}
 
-.stat-right {
-    margin-left: auto;
-    text-align: right;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-}
-
-.sprint-text {
-    font-size: 1.52cqw; // 17px / 1120
-    margin-top: -0.25cqw;
-}
-
-// Damage Box
-.damage-box {
-    display: flex;
-
-    .frame-content {
-        display: flex;
-        align-items: center;
-    }
-}
-
-.damage-label {
+.alphastrike-logo {
     position: absolute;
-    height: 92%;
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    font-size: 1.52cqw;
-    text-align: center;
-    margin-right: 1.5cqw;
-    font-weight: 600;
-}
+    left: 8.1%;
+    bottom: 0%;
+    width: 36cqw;
 
-.damage-ranges {
-    display: flex;
-    flex: 1;
-    justify-content: space-around;
-}
-
-.damage-range {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-}
-
-.range-header {
-    font-size: 1.96cqw; // 22px / 1120
-}
-
-.range-value {
-    font-size: 3.48cqw; // 39px / 1120
-    font-weight: 500;
-    line-height: 1.4;
-}
-
-.range-distance {
-    font-size: 1.96cqw; // 22px / 1120
-}
-
-// Heat Box
-.heat-box {
-    display: flex;
-
-    .frame-content {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-}
-
-.ov-value {
-    display: flex;
-    flex-direction: row;
-}
-
-.heat-track {
-    display: flex;
-    border-radius: 1.5cqw;
-    border: 0.25cqw solid #000;
-    background-color: rgba(0, 0, 0, .4);
-    overflow: hidden;
-}
-
-.heat-level {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 4cqw;
-    height: 100%;
-    color: #fff;
-    font-size: 3.5cqw;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    border-right: .2cqw solid #000;
-
-    &:last-child {
-        border-right: none;
+    svg {
+        width: 100%;
+        height: 100%;
     }
 
-    @media screen {
-        &.heat-0.active {
-            background: rgb(0, 200, 0);
-        }
+    :host(.monochrome) & {
+        bottom: -15%;
 
-        &.heat-1.active {
-            background: rgb(255, 200, 0);
+        svg path {
+            fill: #fff !important;
+            stroke-width: 0 !important;
         }
+    }
 
-        &.heat-2.active {
-            background: rgb(255, 150, 0);
-        }
+    @media print {
+        bottom: -15%;
 
-        &.heat-3.active {
-            background: rgb(255, 100, 0);
-        }
-
-        &.heat-s.active {
-            background: rgb(255, 0, 0);
+        svg path {
+            fill: #fff !important;
+            stroke-width: 0 !important;
         }
     }
 }
 
-// Armor/Structure Box
-.armor-box {
-    display: flex;
+.battletech-logo {
+    position: absolute;
+    right: 2.68%;
+    bottom: 20%;
+    width: 30cqw;
+    .logo-text {
+            fill: #fff;
+    }
+    svg {
+        width: 100%;
+        height: 100%;
+    }
 
-    .frame-content {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        position: relative;
-        align-items: center;
-        gap: 1cqw;
+    :host(.monochrome) & {
+        bottom: 15%;
 
-        .pips-wrapper {
-            display: flex;
-            flex-direction: column;
-            justify-content: space-around;
-            position: relative;
+        svg path {
+            fill: #000 !important;
+            stroke-width: 0 !important;
+        }
+        
+        .logo-text {
+                fill: #000;
         }
     }
 
-}
+    @media print {
+        bottom: 15%;
 
-.thrust-display {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    
-    .as-caption {
-        line-height: 2.5cqw;
-    }
-    .as-value {
-        font-size: 3.5cqw;
-        line-height: 3.5cqw;
-    }
-}
-
-// Specials Box
-.specials-box {
-    display: flex;
-
-    .frame-content {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-start;
-        align-content: flex-start;
-        font-size: 2.5cqw;
-    }
-}
-
-.special-ability {
-    cursor: pointer;
-    transition: text-decoration 0.15s ease;
-
-    &:hover {
-        text-decoration: underline;
-    }
-}
-
-.special-separator {
-    @media screen {
-        font-weight: 900;
-        color: var(--as-red);
+        svg path {
+            fill: #000 !important;
+            stroke-width: 0 !important;
+        }
+        .logo-text {
+                fill: #000;
+        }
     }
 }

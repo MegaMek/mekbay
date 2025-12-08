@@ -43,6 +43,9 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
 @Component({
     selector: 'as-critical-hits-vehicle',
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: {
+        '[class.monochrome]': 'cardStyle() === "monochrome"',
+    },
     template: `
         <div class="critical-hits-box frame">
             <div class="frame-background"></div>
@@ -107,6 +110,7 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
 })
 export class AsCriticalHitsVehicleComponent {
     forceUnit = input<ASForceUnit>();
+    cardStyle = input<'colored' | 'monochrome'>('colored');
     
     range(count: number): number[] {
         return Array.from({ length: count }, (_, i) => i);
