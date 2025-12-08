@@ -37,6 +37,7 @@ import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card
 import { OptionsService } from '../../services/options.service';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { ASForce } from '../../models/as-force.model';
+import { ForceBuilderService } from '../../services/force-builder.service';
 
 /*
  * Author: Drake
@@ -52,6 +53,7 @@ import { ASForce } from '../../models/as-force.model';
 })
 export class AlphaStrikeViewerComponent {
     private optionsService = inject(OptionsService);
+    private forceBuilderService = inject(ForceBuilderService);
     
     unit = input<ASForceUnit | null>(null);
     force = input<ASForce | null>(null);
@@ -60,6 +62,10 @@ export class AlphaStrikeViewerComponent {
     
     useHex = computed(() => this.optionsService.options().ASUseHex);
     cardStyle = computed(() => this.optionsService.options().ASCardStyle);
+    
+    onUnitSelected(unit: ASForceUnit): void {
+        this.forceBuilderService.selectUnit(unit);
+    }
     
     constructor() {
         effect(() => {

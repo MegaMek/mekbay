@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
 import { ForceUnit } from '../../models/force-unit.model';
 import { AlphaStrikeUnitStats, Unit } from '../../models/units.model';
@@ -53,7 +53,8 @@ import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-in
     styleUrl: './alpha-strike-card.component.scss',
     host: {
         '[class.monochrome]': 'cardStyle() === "monochrome"',
-        '[class.selected]': 'isSelected()'
+        '[class.selected]': 'isSelected()',
+        '(click)': 'onCardClick()'
     }
 })
 export class AlphaStrikeCardComponent {
@@ -64,6 +65,12 @@ export class AlphaStrikeCardComponent {
     useHex = input<boolean>(false);
     cardStyle = input<'colored' | 'monochrome'>('colored');
     isSelected = input<boolean>(false);
+    
+    selected = output<ASForceUnit>();
+    
+    onCardClick(): void {
+        this.selected.emit(this.forceUnit());
+    }
     
     imageUrl = signal<string>('');
     
