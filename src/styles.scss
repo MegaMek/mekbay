@@ -1784,3 +1784,14 @@ hr.divider {
     }
 
 }
+
+@media screen {
+    .print-only {
+        display: none !important;
+    }
+}
+@media print {
+    .screen-only {
+        display: none !important;
+    }
+}
