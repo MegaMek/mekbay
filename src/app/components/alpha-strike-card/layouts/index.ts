@@ -33,5 +33,4 @@
 
 export { AsLayoutStandardComponent } from './layout-standard.component';
 export { AsLayoutLargeVessel1Component } from './layout-large-vessel-1.component';
-export { AsLayoutLargeVessel2AerospaceComponent } from './layout-large-vessel-2-aerospace.component';
-export { AsLayoutLargeVessel2DropshipComponent } from './layout-large-vessel-2-dropship.component';
+export { AsLayoutLargeVessel2Component } from './layout-large-vessel-2.component';

@@ -41,8 +41,7 @@ import { CardConfig, CardLayoutDesign, CriticalHitsVariant, getLayoutForUnitType
 import {
     AsLayoutStandardComponent,
     AsLayoutLargeVessel1Component,
-    AsLayoutLargeVessel2AerospaceComponent,
-    AsLayoutLargeVessel2DropshipComponent,
+        AsLayoutLargeVessel2Component,
 } from './layouts';
 
 /*
@@ -55,8 +54,7 @@ import {
     imports: [
         AsLayoutStandardComponent,
         AsLayoutLargeVessel1Component,
-        AsLayoutLargeVessel2AerospaceComponent,
-        AsLayoutLargeVessel2DropshipComponent,
+        AsLayoutLargeVessel2Component,
     ],
     templateUrl: './alpha-strike-card.component.html',
     styleUrl: './alpha-strike-card.component.scss',

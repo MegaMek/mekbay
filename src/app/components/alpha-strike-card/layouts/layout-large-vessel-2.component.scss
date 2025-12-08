@@ -72,20 +72,28 @@
 
 .damage-table {
     flex: 1;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
     font-size: 2cqw;
+
+    &.has-cap {
+        grid-template-columns: repeat(5, 1fr);
+    }
 }
 
 .table-header {
-    display: flex;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     font-weight: 900;
     border-bottom: 0.2cqw solid #000;
     padding: 0.3cqw 0;
 }
 
 .table-row {
-    display: flex;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     align-items: center;
     padding: 0.2cqw 0;
     border-bottom: 0.1cqw solid #ccc;
@@ -96,13 +104,11 @@
 }
 
 .range-col {
-    width: 25%;
     font-weight: 700;
     padding-left: 0.5cqw;
 }
 
 .dmg-col {
-    width: 25%;
     text-align: center;
     font-weight: 600;
 
@@ -112,7 +118,7 @@
 }
 
 .spe-row .spe-value {
-    width: 75%;
+    grid-column: 2 / -1;
     text-align: left;
     font-size: 1.6cqw;
 }
@@ -123,15 +129,23 @@
 }
 
 .crit-pips-container {
+    grid-column: 2 / -1;
     display: flex;
-    flex: 1;
     justify-content: space-around;
 }
 
 .crit-pip-group {
     display: flex;
-    gap: 0.3cqw;
+    gap: 0.2cqw;
+    flex: 1;
+    justify-content: center;
+    min-height: 2.2cqw;
+
+    &:not(:last-child) {
+        border-right: 0.2cqw solid #000;
+    }
 }
+
 
 // Override pip size for vessel card
 .vessel-card-2 .pip {

@@ -59,8 +59,7 @@ export type CriticalHitsVariant =
 export type CardLayoutDesign = 
     | 'standard'    // Most common single card layout.
     | 'large-vessel-1' // WS, SS, JS, DA, SC - first card (common to all large vessels)
-    | 'large-vessel-2-aerospace' // WS, SS, JS - second card
-    | 'large-vessel-2-dropship'; // DA, SC - second card
+    | 'large-vessel-2' // WS, SS, JS, DA, SC - second card for aerospace vessels
 
 /**
  * Configuration for a single card in the unit's card set.
@@ -176,7 +175,7 @@ export const UNIT_TYPE_LAYOUTS: Record<string, UnitTypeLayoutConfig> = {
                 cardLabel: 'Card 1'
             },
             {
-                design: 'large-vessel-2-dropship',
+                design: 'large-vessel-2',
                 criticalHits: 'dropship-2',
                 cardLabel: 'Card 2'
             }
@@ -190,7 +189,7 @@ export const UNIT_TYPE_LAYOUTS: Record<string, UnitTypeLayoutConfig> = {
                 cardLabel: 'Card 1'
             },
             {
-                design: 'large-vessel-2-dropship',
+                design: 'large-vessel-2',
                 criticalHits: 'dropship-2',
                 cardLabel: 'Card 2'
             }
@@ -204,7 +203,7 @@ export const UNIT_TYPE_LAYOUTS: Record<string, UnitTypeLayoutConfig> = {
                 cardLabel: 'Card 1'
             },
             {
-                design: 'large-vessel-2-dropship',
+                design: 'large-vessel-2',
                 criticalHits: 'dropship-2',
                 cardLabel: 'Card 2'
             }
@@ -220,7 +219,7 @@ export const UNIT_TYPE_LAYOUTS: Record<string, UnitTypeLayoutConfig> = {
                 cardLabel: 'Card 1'
             },
             {
-                design: 'large-vessel-2-aerospace',
+                design: 'large-vessel-2',
                 criticalHits: 'aerospace-2',
                 cardLabel: 'Card 2'
             }
@@ -234,7 +233,7 @@ export const UNIT_TYPE_LAYOUTS: Record<string, UnitTypeLayoutConfig> = {
                 cardLabel: 'Card 1'
             },
             {
-                design: 'large-vessel-2-aerospace',
+                design: 'large-vessel-2',
                 criticalHits: 'aerospace-2',
                 cardLabel: 'Card 2'
             }
@@ -248,7 +247,7 @@ export const UNIT_TYPE_LAYOUTS: Record<string, UnitTypeLayoutConfig> = {
                 cardLabel: 'Card 1'
             },
             {
-                design: 'large-vessel-2-aerospace',
+                design: 'large-vessel-2',
                 criticalHits: 'aerospace-2',
                 cardLabel: 'Card 2'
             }

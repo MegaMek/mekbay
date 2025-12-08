@@ -64,16 +64,8 @@
                 (specialClick)="onSpecialClick($event)"
             />
         }
-        @case ('large-vessel-2-aerospace') {
-            <as-layout-large-vessel-2-aerospace
-                [forceUnit]="forceUnit()"
-                [unit]="unit()"
-                [useHex]="useHex()"
-                [cardStyle]="cardStyle()"
-            />
-        }
-        @case ('large-vessel-2-dropship') {
-            <as-layout-large-vessel-2-dropship
+        @case ('large-vessel-2') {
+            <as-layout-large-vessel-2
                 [forceUnit]="forceUnit()"
                 [unit]="unit()"
                 [useHex]="useHex()"

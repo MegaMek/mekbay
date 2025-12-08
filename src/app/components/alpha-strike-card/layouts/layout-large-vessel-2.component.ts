@@ -38,8 +38,8 @@ import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
 /*
  * Author: Drake
  *
- * Large Vessel Card 2 (Aerospace) layout component for Alpha Strike cards.
- * Used for: WS, SS, JS (second card)
+ * Large Vessel Card 2 (DropShip) layout component for Alpha Strike cards.
+ * Used for: DA, DS, SC (second card)
  */
 
 interface ArcDamage {
@@ -49,6 +49,10 @@ interface ArcDamage {
     dmgM: number | string;
     dmgL: number | string;
     dmgE: number | string;
+    capS?: number | string;
+    capM?: number | string;
+    capL?: number | string;
+    capE?: number | string;
     scapS?: number | string;
     scapM?: number | string;
     scapL?: number | string;
@@ -61,15 +65,15 @@ interface ArcDamage {
 }
 
 @Component({
-    selector: 'as-layout-large-vessel-2-aerospace',
+    selector: 'as-layout-large-vessel-2',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    templateUrl: './layout-large-vessel-2-aerospace.component.html',
+    templateUrl: './layout-large-vessel-2.component.html',
     styleUrls: ['./layout-large-vessel-2.component.scss'],
     host: {
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     }
 })
-export class AsLayoutLargeVessel2AerospaceComponent {
+export class AsLayoutLargeVessel2Component {
     forceUnit = input.required<ASForceUnit>();
     unit = input.required<Unit>();
     useHex = input<boolean>(false);
@@ -77,12 +81,17 @@ export class AsLayoutLargeVessel2AerospaceComponent {
 
     asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
 
+    hasCap = computed<boolean>(() => {
+        const stats = this.asStats();
+        return stats.TP == 'WS' || stats.TP == 'SS' || stats.TP == 'JS';
+    });
     /**
      * Get arc damage data from unit stats.
-     * Large aerospace vessels have arc-based damage (Front/Nose, Rear/Aft, Left, Right).
+     * DropShips have arc-based damage (Nose, Aft, Left Side, Right Side).
      */
     arcDamageData = computed<ArcDamage[]>(() => {
         const stats = this.asStats();
+
         const d = this.dmgValue.bind(this);
 
         // Default damage values if no arc data
@@ -90,8 +99,8 @@ export class AsLayoutLargeVessel2AerospaceComponent {
             return [
                 { label: 'NOSE ARC DAMAGE', shortLabel: 'NOSE', dmgS: '—', dmgM: '—', dmgL: '—', dmgE: '—' },
                 { label: 'AFT ARC DAMAGE', shortLabel: 'AFT', dmgS: '—', dmgM: '—', dmgL: '—', dmgE: '—' },
-                { label: 'LEFT WING DAMAGE', shortLabel: 'LW', dmgS: '—', dmgM: '—', dmgL: '—', dmgE: '—' },
-                { label: 'RIGHT WING DAMAGE', shortLabel: 'RW', dmgS: '—', dmgM: '—', dmgL: '—', dmgE: '—' },
+                { label: 'LEFT SIDE DAMAGE', shortLabel: 'LS', dmgS: '—', dmgM: '—', dmgL: '—', dmgE: '—' },
+                { label: 'RIGHT SIDE DAMAGE', shortLabel: 'RS', dmgS: '—', dmgM: '—', dmgL: '—', dmgE: '—' },
             ];
         }
 
@@ -103,6 +112,10 @@ export class AsLayoutLargeVessel2AerospaceComponent {
                 dmgM: d(stats.frontArc?.STD.dmgM),
                 dmgL: d(stats.frontArc?.STD.dmgL),
                 dmgE: d(stats.frontArc?.STD.dmgE),
+                capS: d(stats.frontArc?.CAP.dmgS),
+                capM: d(stats.frontArc?.CAP.dmgM),
+                capL: d(stats.frontArc?.CAP.dmgL),
+                capE: d(stats.frontArc?.CAP.dmgE),
                 scapS: d(stats.frontArc?.SCAP.dmgS),
                 scapM: d(stats.frontArc?.SCAP.dmgM),
                 scapL: d(stats.frontArc?.SCAP.dmgL),
@@ -120,6 +133,10 @@ export class AsLayoutLargeVessel2AerospaceComponent {
                 dmgM: d(stats.rearArc?.STD.dmgM),
                 dmgL: d(stats.rearArc?.STD.dmgL),
                 dmgE: d(stats.rearArc?.STD.dmgE),
+                capS: d(stats.rearArc?.CAP.dmgS),
+                capM: d(stats.rearArc?.CAP.dmgM),
+                capL: d(stats.rearArc?.CAP.dmgL),
+                capE: d(stats.rearArc?.CAP.dmgE),
                 scapS: d(stats.rearArc?.SCAP.dmgS),
                 scapM: d(stats.rearArc?.SCAP.dmgM),
                 scapL: d(stats.rearArc?.SCAP.dmgL),
@@ -131,12 +148,16 @@ export class AsLayoutLargeVessel2AerospaceComponent {
                 spe: stats.rearArc?.specials,
             },
             {
-                label: 'LEFT WING DAMAGE',
-                shortLabel: 'LW',
+                label: 'LEFT SIDE DAMAGE',
+                shortLabel: 'LS',
                 dmgS: d(stats.leftArc?.STD.dmgS),
                 dmgM: d(stats.leftArc?.STD.dmgM),
                 dmgL: d(stats.leftArc?.STD.dmgL),
                 dmgE: d(stats.leftArc?.STD.dmgE),
+                capS: d(stats.leftArc?.CAP.dmgS),
+                capM: d(stats.leftArc?.CAP.dmgM),
+                capL: d(stats.leftArc?.CAP.dmgL),
+                capE: d(stats.leftArc?.CAP.dmgE),
                 scapS: d(stats.leftArc?.SCAP.dmgS),
                 scapM: d(stats.leftArc?.SCAP.dmgM),
                 scapL: d(stats.leftArc?.SCAP.dmgL),
@@ -148,12 +169,16 @@ export class AsLayoutLargeVessel2AerospaceComponent {
                 spe: stats.leftArc?.specials,
             },
             {
-                label: 'RIGHT WING DAMAGE',
-                shortLabel: 'RW',
+                label: 'RIGHT SIDE DAMAGE',
+                shortLabel: 'RS',
                 dmgS: d(stats.rightArc?.STD.dmgS),
                 dmgM: d(stats.rightArc?.STD.dmgM),
                 dmgL: d(stats.rightArc?.STD.dmgL),
                 dmgE: d(stats.rightArc?.STD.dmgE),
+                capS: d(stats.rightArc?.CAP.dmgS),
+                capM: d(stats.rightArc?.CAP.dmgM),
+                capL: d(stats.rightArc?.CAP.dmgL),
+                capE: d(stats.rightArc?.CAP.dmgE),
                 scapS: d(stats.rightArc?.SCAP.dmgS),
                 scapM: d(stats.rightArc?.SCAP.dmgM),
                 scapL: d(stats.rightArc?.SCAP.dmgL),

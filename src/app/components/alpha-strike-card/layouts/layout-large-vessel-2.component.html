@@ -17,11 +17,12 @@
                 </div>
 
                 <!-- Damage Table -->
-                <div class="damage-table">
+                <div class="damage-table" [class.has-cap]="hasCap()">
                     <!-- Header Row -->
                     <div class="table-header">
                         <div class="range-col"></div>
                         <div class="dmg-col">STD</div>
+                        @if (hasCap()) {<div class="dmg-col">CAP</div>}
                         <div class="dmg-col">SCAP</div>
                         <div class="dmg-col">MSL</div>
                     </div>
@@ -30,6 +31,7 @@
                     <div class="table-row">
                         <div class="range-col">S (+0)</div>
                         <div class="dmg-col">{{ arc.dmgS }}</div>
+                        @if (hasCap()) {<div class="dmg-col">{{ arc.capS }}</div>}
                         <div class="dmg-col">{{ arc.scapS }}</div>
                         <div class="dmg-col">{{ arc.mslS }}</div>
                     </div>
@@ -38,6 +40,7 @@
                     <div class="table-row">
                         <div class="range-col">M(+2)</div>
                         <div class="dmg-col">{{ arc.dmgM }}</div>
+                        @if (hasCap()) {<div class="dmg-col">{{ arc.capM }}</div>}
                         <div class="dmg-col">{{ arc.scapM }}</div>
                         <div class="dmg-col">{{ arc.mslM }}</div>
                     </div>
@@ -46,6 +49,7 @@
                     <div class="table-row">
                         <div class="range-col">L (+4)</div>
                         <div class="dmg-col">{{ arc.dmgL }}</div>
+                        @if (hasCap()) {<div class="dmg-col">{{ arc.capL }}</div>}
                         <div class="dmg-col">{{ arc.scapL }}</div>
                         <div class="dmg-col">{{ arc.mslL }}</div>
                     </div>
@@ -54,21 +58,23 @@
                     <div class="table-row">
                         <div class="range-col">E (+6)</div>
                         <div class="dmg-col">{{ arc.dmgE }}</div>
+                        @if (hasCap()) {<div class="dmg-col">{{ arc.capE }}</div>}
                         <div class="dmg-col">{{ arc.scapE }}</div>
                         <div class="dmg-col">{{ arc.mslE }}</div>
                     </div>
 
+                    @let columns = hasCap() ? 4 : 3;
                     <!-- SPE Row -->
                     <div class="table-row spe-row">
                         <div class="range-col">SPE</div>
-                        <div class="dmg-col spe-value" [attr.colspan]="3">{{ arc.spe ?? '' }}</div>
+                        <div class="dmg-col spe-value" [attr.colspan]="columns">{{ arc.spe ?? '' }}</div>
                     </div>
 
                     <!-- CRIT Row -->
                     <div class="table-row crit-row">
                         <div class="range-col">CRIT</div>
                         <div class="crit-pips-container">
-                            @for (col of [0, 1, 2]; track col) {
+                            @for (col of range(columns); track col) {
                             <div class="crit-pip-group">
                                 @for (i of range(4); track i) {
                                 <div class="pip"></div>
