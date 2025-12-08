@@ -37,9 +37,23 @@
 }
 
 @media screen {
+
     :host(.selected) .card-background-image,
     :host(.selected) .card-background {
         border-color: var(--bt-yellow);
+    }
+}
+
+.alphastrike-footer-background {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    clip-path: polygon(0 89%, 50% 89%, 58% 100%, 0 100%);
+
+    @media screen {
+        :host:not(.monochrome) & {
+            display: none;
+        }
     }
 }
 
@@ -107,7 +121,7 @@
     letter-spacing: 0.2cqw;
     text-transform: uppercase;
     font-family: 'Roboto Condensed', sans-serif;
-    
+
     &.long-chassis {
         font-size: 6cqw;
         line-height: 6cqw;
@@ -130,6 +144,12 @@
     inset: 0;
     background: #000;
     clip-path: polygon(74% 0, 100% 0, 100% 9cqw, 82% 9cqw);
+
+    @media screen {
+        :host:not(.monochrome) & {
+            display: none;
+        }
+    }
 }
 
 .pv-text {
@@ -376,7 +396,7 @@
     font-size: 3.5cqw;
     cursor: pointer;
     transition: background-color 0.2s;
-    border-right: .2cqw  solid #000;
+    border-right: .2cqw solid #000;
 
     &:last-child {
         border-right: none;
@@ -386,19 +406,19 @@
         &.heat-0.active {
             background: rgb(0, 200, 0);
         }
-    
+
         &.heat-1.active {
             background: rgb(255, 200, 0);
         }
-    
+
         &.heat-2.active {
             background: rgb(255, 150, 0);
         }
-    
+
         &.heat-3.active {
             background: rgb(255, 100, 0);
         }
-    
+
         &.heat-s.active {
             background: rgb(255, 0, 0);
         }
@@ -548,21 +568,14 @@
     height: 9%;
     display: flex;
     align-items: center;
+    font-size: 1cqw;
 }
 
-
-
-.alphastrike-footer-background {
-    position: absolute;
-    inset: 0;
-    background: #000;
-    clip-path: polygon(0 89%, 50% 89%, 58% 100%, 0 100%);
-}
 
 .alphastrike-logo {
     position: absolute;
     left: 8.1%;
-    bottom: -8%;
+    bottom: 0%;
     width: 36cqw;
 
     svg {
@@ -571,14 +584,17 @@
     }
 
     :host(.monochrome) & {
-        bottom: -20%;
+        bottom: -15%;
+
         svg path {
             fill: #fff !important;
             stroke-width: 0 !important;
         }
     }
+
     @media print {
-        bottom: -20%;
+        bottom: -15%;
+
         svg path {
             fill: #fff !important;
             stroke-width: 0 !important;
@@ -589,7 +605,7 @@
 .battletech-logo {
     position: absolute;
     right: 2.68%;
-    bottom: 12%;
+    bottom: 20%;
     width: 30cqw;
 
     svg {
@@ -598,14 +614,17 @@
     }
 
     :host(.monochrome) & {
-        bottom: 10%;
+        bottom: 15%;
+
         svg path {
             fill: #000 !important;
             stroke-width: 0 !important;
         }
     }
+
     @media print {
-        bottom: 10%;
+        bottom: 15%;
+
         svg path {
             fill: #000 !important;
             stroke-width: 0 !important;

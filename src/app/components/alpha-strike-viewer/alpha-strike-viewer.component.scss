@@ -2,9 +2,15 @@
     width: 100%;
     height: 100%;
     overflow-y: auto;
-    overflow-x: hidden;
+    overflow-x: auto;
     background: var(--background-color);
     box-sizing: border-box;
+    touch-action: pan-x pan-y; // Allow native scroll, handle pinch in JS
+    user-select: none;
+    // iOS Safari fix: ensure proper scrolling behavior
+    -webkit-overflow-scrolling: touch;
+    // Prevent flex parent from constraining height
+    min-height: 0;
 }
 
 .group-header {
@@ -13,39 +19,54 @@
     font-weight: 700;
     text-align: center;
     width: 100%;
+    flex-basis: 100%;
 }
 
 .group-separator {
     height: 2px;
     margin: 0;
     width: 100%;
+    flex-basis: 100%;
 }
 
 .section-content {
-    width: 100%;
     box-sizing: border-box;
     padding: 8px;
+    // Allow content to expand beyond viewport for horizontal scroll
+    display: inline-block;
+    min-width: 100%;
 }
 
 .flex-grid {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    justify-content: center;
+    justify-content: flex-start;
+    align-items: flex-start; // Prevent last row cards from stretching
 }
 
-.flex-2 {
-    > .as-unit-card {
-        flex: 1 1 calc(50% - 0.5rem);
-        min-width: 300px;
-        max-width: 600px;
-        display: flex;
-        background-color: transparent;
+.alpha-strike-viewer {
+    text-align: center;
+    
+    .section-content {
+        text-align: left; // Reset for content inside
     }
 }
 
 .as-unit-card {
-    background: #fff;
+    // Width is set dynamically via [style.width.px]
+    flex: 0 0 auto;
+    display: block;
+    background-color: transparent;
+    // Prevent iOS from shrinking cards to fit viewport height
+    min-height: 0;
+    height: auto;
+    
+    alpha-strike-card {
+        display: block;
+        width: 100%;
+        height: auto;
+    }
     
     svg {
         display: block;
@@ -54,12 +75,9 @@
     }
 }
 
-@media (max-width: 768px) {
-    .flex-2 {
-        > .as-unit-card {
-            flex: 1 1 100%;
-            max-width: none;
-        }
+@media (max-width: 600px) {
+    .as-unit-card {
+        max-width: 100%;
     }
 }
 
@@ -71,7 +89,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    z-index: 100;
+    z-index: 1;
 }
 
 .toggle-btn {
@@ -113,9 +131,5 @@
         break-inside: avoid;
         page-break-inside: avoid;
         box-shadow: none;
-    }
-    
-    .screen-only {
-        display: none !important;
     }
 }
