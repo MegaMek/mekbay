@@ -52,7 +52,8 @@ import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-in
     templateUrl: './alpha-strike-card.component.html',
     styleUrl: './alpha-strike-card.component.scss',
     host: {
-        '[class.monochrome]': 'cardStyle() === "monochrome"'
+        '[class.monochrome]': 'cardStyle() === "monochrome"',
+        '[class.selected]': 'isSelected()'
     }
 })
 export class AlphaStrikeCardComponent {
@@ -62,6 +63,7 @@ export class AlphaStrikeCardComponent {
     forceUnit = input.required<ASForceUnit>();
     useHex = input<boolean>(false);
     cardStyle = input<'colored' | 'monochrome'>('colored');
+    isSelected = input<boolean>(false);
     
     imageUrl = signal<string>('');
     

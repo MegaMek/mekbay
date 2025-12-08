@@ -36,6 +36,14 @@
     }
 }
 
+@media screen {
+    :host(.selected) .card-background-image,
+    :host(.selected) .card-background {
+        border-color: var(--bt-yellow);
+    }
+}
+
+
 :host:not(.monochrome) .card-background-image {
     position: absolute;
     inset: 1.8cqw;

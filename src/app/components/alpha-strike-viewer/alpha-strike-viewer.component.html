@@ -14,8 +14,8 @@
                     </div>
                     }
                     @for (forceUnit of group.units(); track forceUnit.id) {
-                    <div class="as-unit-card">
-                        <alpha-strike-card [forceUnit]="forceUnit" [useHex]="useHex()" [cardStyle]="cardStyle()" />
+                    <div class="as-unit-card" #cardWrapper [attr.data-unit-id]="forceUnit.id">
+                        <alpha-strike-card [forceUnit]="forceUnit" [useHex]="useHex()" [cardStyle]="cardStyle()" [isSelected]="unit()?.id === forceUnit.id" />
                     </div>
                     }
                     @if (groups.length > 1) {

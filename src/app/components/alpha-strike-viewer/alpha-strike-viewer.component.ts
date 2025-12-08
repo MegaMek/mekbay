@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, inject, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, computed, effect, ElementRef, viewChildren } from '@angular/core';
 import { Force } from '../../models/force.model';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { OptionsService } from '../../services/options.service';
@@ -56,8 +56,34 @@ export class AlphaStrikeViewerComponent {
     unit = input<ASForceUnit | null>(null);
     force = input<ASForce | null>(null);
     
+    private cardWrappers = viewChildren<ElementRef<HTMLElement>>('cardWrapper');
+    
     useHex = computed(() => this.optionsService.options().ASUseHex);
     cardStyle = computed(() => this.optionsService.options().ASCardStyle);
+    
+    constructor() {
+        effect(() => {
+            const selectedUnit = this.unit();
+            if (selectedUnit) {
+                // Defer scroll to next tick to ensure DOM is updated
+                setTimeout(() => this.scrollToSelectedUnit(selectedUnit), 0);
+            }
+        });
+    }
+    
+    private scrollToSelectedUnit(selectedUnit: ASForceUnit): void {
+        const wrappers = this.cardWrappers();
+        if (wrappers.length === 0) return;
+        
+        // Find the wrapper with matching data-unit-id
+        const targetWrapper = wrappers.find(
+            wrapper => wrapper.nativeElement.getAttribute('data-unit-id') === selectedUnit.id
+        );
+        
+        if (targetWrapper) {
+            targetWrapper.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
     
     toggleHexMode(): void {
         this.optionsService.setOption('ASUseHex', !this.useHex());
