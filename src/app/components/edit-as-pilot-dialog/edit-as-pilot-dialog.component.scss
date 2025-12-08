@@ -235,6 +235,37 @@ p {
     font-weight: 600;
 }
 
+.ability-limits-info {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    font-size: 0.9em;
+    color: var(--text-color-secondary);
+    
+    .separator {
+        color: var(--text-color-tertiary);
+    }
+    
+    .over-limit {
+        color: red;
+        font-weight: 600;
+    }
+    
+    &.disabled-message {
+        color: var(--text-color-tertiary);
+        font-style: italic;
+    }
+}
+
+.dropdown-trigger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .custom-badge {
     font-size: 0.7em;
     padding: 2px 5px;

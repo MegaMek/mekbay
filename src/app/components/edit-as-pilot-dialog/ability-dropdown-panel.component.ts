@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { ASPilotAbility } from '../../models/as-abilities.model';
 
 @Component({
@@ -49,13 +49,15 @@ import { ASPilotAbility } from '../../models/as-abilities.model';
             </div>
             <hr class="divider"/>
             @for (ability of abilities(); track ability.id) {
+                @let isDisabled = isAbilityDisabled(ability);
                 <div 
                     class="dropdown-option"
-                    [class.disabled]="disabledIds().includes(ability.id)"
+                    [class.disabled]="isDisabled"
+                    [class.over-budget]="!disabledIds().includes(ability.id) && ability.cost > remainingCost()"
                     (click)="onSelect(ability.id)">
                     <div class="ability-header">
                         <span class="ability-name">{{ ability.name }}</span>
-                        <span class="ability-cost">Cost: {{ ability.cost }}</span>
+                        <span class="ability-cost" [class.exceeds-budget]="ability.cost > remainingCost()">Cost: {{ ability.cost }}</span>
                     </div>
                     <div class="ability-meta">
                         <span class="ability-rules">{{ ability.rulesBook }}, p.{{ ability.rulesPage }}</span>
@@ -96,6 +98,15 @@ import { ASPilotAbility } from '../../models/as-abilities.model';
         .dropdown-option.disabled {
             opacity: 0.4;
             pointer-events: none;
+        }
+
+        .dropdown-option.over-budget {
+            opacity: 0.6;
+        }
+
+        .ability-cost.exceeds-budget {
+            color: red;
+            background: rgba(255, 107, 107, 0.15);
         }
 
         .ability-header {
@@ -148,14 +159,22 @@ import { ASPilotAbility } from '../../models/as-abilities.model';
 export class AbilityDropdownPanelComponent {
     abilities = input.required<ASPilotAbility[]>();
     disabledIds = input<string[]>([]);
+    remainingCost = input<number>(999); // Default high value if not set
     
     selected = output<string>();
     addCustom = output<void>();
 
+    /** Check if an ability should be disabled (already selected or exceeds budget) */
+    isAbilityDisabled(ability: ASPilotAbility): boolean {
+        return this.disabledIds().includes(ability.id) || ability.cost > this.remainingCost();
+    }
+
     onSelect(abilityId: string) {
-        if (!this.disabledIds().includes(abilityId)) {
-            this.selected.emit(abilityId);
+        const ability = this.abilities().find(a => a.id === abilityId);
+        if (!ability || this.isAbilityDisabled(ability)) {
+            return;
         }
+        this.selected.emit(abilityId);
     }
 
     onAddCustom(): void {

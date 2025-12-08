@@ -59,6 +59,38 @@ export interface ASCustomPilotAbility {
     summary: string;
 }
 
+/** Skill-based limits for pilot abilities */
+export interface ASPilotAbilityLimits {
+    maxAbilities: number;
+    maxCost: number;
+}
+
+/** Get ability limits based on pilot skill level */
+export function getAbilityLimitsForSkill(skill: number): ASPilotAbilityLimits {
+    // Green or lower (5+): 0 abilities, 0 cost
+    if (skill >= 5) {
+        return { maxAbilities: 0, maxCost: 0 };
+    }
+    // Regular (4): 1 ability, 2 cost
+    if (skill === 4) {
+        return { maxAbilities: 1, maxCost: 2 };
+    }
+    // Veteran (3): 2 abilities, 4 cost
+    if (skill === 3) {
+        return { maxAbilities: 2, maxCost: 4 };
+    }
+    // Elite (2): 2 abilities, 4 cost
+    if (skill === 2) {
+        return { maxAbilities: 2, maxCost: 4 };
+    }
+    // Heroic (1): 3 abilities, 6 cost
+    if (skill === 1) {
+        return { maxAbilities: 3, maxCost: 6 };
+    }
+    // Legendary (0): 3 abilities, 6 cost
+    return { maxAbilities: 3, maxCost: 6 };
+}
+
 enum ASRulebook {
     ASCE = "Alpha Strike: Commander's Edition",
     ASC = "Alpha Strike: Companion",

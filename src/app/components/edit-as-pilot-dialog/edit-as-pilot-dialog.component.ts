@@ -34,7 +34,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility } from '../../models/as-abilities.model';
+import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, ASPilotAbilityLimits } from '../../models/as-abilities.model';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
@@ -73,6 +73,7 @@ export class EditASPilotDialogComponent {
     skillInput = viewChild.required<ElementRef<HTMLInputElement>>('skillInput');
     dropdownTrigger0 = viewChild<ElementRef<HTMLButtonElement>>('dropdownTrigger0');
     dropdownTrigger1 = viewChild<ElementRef<HTMLButtonElement>>('dropdownTrigger1');
+    dropdownTrigger2 = viewChild<ElementRef<HTMLButtonElement>>('dropdownTrigger2');
 
     public dialogRef = inject(DialogRef<EditASPilotResult | null, EditASPilotDialogComponent>);
     readonly data: EditASPilotDialogData = inject(DIALOG_DATA) as EditASPilotDialogData;
@@ -81,8 +82,21 @@ export class EditASPilotDialogComponent {
     private destroyRef = inject(DestroyRef);
 
     availableAbilities = signal<ASPilotAbility[]>(AS_PILOT_ABILITIES);
-    selectedAbilities = signal<(AbilitySelection | null)[]>([null, null]);
+    selectedAbilities = signal<(AbilitySelection | null)[]>([null, null, null]);
     openDropdown = signal<number | null>(null);
+    currentSkill = signal<number>(4);
+
+    abilityLimits = computed<ASPilotAbilityLimits>(() => {
+        return getAbilityLimitsForSkill(this.currentSkill());
+    });
+
+    currentAbilityCount = computed(() => {
+        return this.selectedAbilities().filter(a => a !== null).length;
+    });
+
+    remainingCost = computed(() => {
+        return this.abilityLimits().maxCost - this.totalCost();
+    });
 
     totalCost = computed(() => {
         return this.selectedAbilities().reduce((sum, ability) => {
@@ -96,12 +110,14 @@ export class EditASPilotDialogComponent {
     });
 
     constructor() {
-        // Initialize with existing abilities from data
-        const initialAbilities: (AbilitySelection | null)[] = [null, null];
+        // Initialize skill first (needed for limits calculation)
+        this.currentSkill.set(this.data.skill);
+
+        // Initialize with existing abilities from data (max 3 slots)
+        const initialAbilities: (AbilitySelection | null)[] = [null, null, null];
         if (this.data.abilities && this.data.abilities.length > 0) {
-            initialAbilities[0] = this.data.abilities[0] || null;
-            if (this.data.abilities.length > 1) {
-                initialAbilities[1] = this.data.abilities[1] || null;
+            for (let i = 0; i < Math.min(this.data.abilities.length, 3); i++) {
+                initialAbilities[i] = this.data.abilities[i] || null;
             }
         }
         this.selectedAbilities.set(initialAbilities);
@@ -144,7 +160,12 @@ export class EditASPilotDialogComponent {
     }
 
     private getDropdownTrigger(slot: number): ElementRef<HTMLButtonElement> | undefined {
-        return slot === 0 ? this.dropdownTrigger0() : this.dropdownTrigger1();
+        switch (slot) {
+            case 0: return this.dropdownTrigger0();
+            case 1: return this.dropdownTrigger1();
+            case 2: return this.dropdownTrigger2();
+            default: return undefined;
+        }
     }
 
     private closeDropdownOverlay(): void {
@@ -163,6 +184,75 @@ export class EditASPilotDialogComponent {
 
     isAbilitySelected(id: string): boolean {
         return this.selectedAbilities().some(ability => ability === id);
+    }
+
+    /** Check if an ability can be afforded within remaining cost budget */
+    canAffordAbility(cost: number): boolean {
+        return cost <= this.remainingCost();
+    }
+
+    /** Check if another ability slot can be used */
+    canAddMoreAbilities(): boolean {
+        return this.currentAbilityCount() < this.abilityLimits().maxAbilities;
+    }
+
+    /** Handle skill input change to update limits */
+    onSkillChange(event: Event): void {
+        const input = event.target as HTMLInputElement;
+        const newSkill = Number(input.value);
+        if (!isNaN(newSkill) && newSkill >= 0 && newSkill <= 8) {
+            this.currentSkill.set(newSkill);
+            // Clear abilities that exceed new limits
+            this.enforceAbilityLimits();
+        }
+    }
+
+    /** Remove abilities that exceed current skill limits */
+    private enforceAbilityLimits(): void {
+        const limits = this.abilityLimits();
+        const abilities = [...this.selectedAbilities()];
+        let changed = false;
+
+        // Remove abilities beyond max count (from the end)
+        const activeAbilities = abilities.filter(a => a !== null);
+        if (activeAbilities.length > limits.maxAbilities) {
+            let removed = 0;
+            for (let i = abilities.length - 1; i >= 0 && removed < activeAbilities.length - limits.maxAbilities; i--) {
+                if (abilities[i] !== null) {
+                    abilities[i] = null;
+                    removed++;
+                    changed = true;
+                }
+            }
+        }
+
+        // Check if total cost exceeds limit and remove from end
+        let totalCost = this.calculateTotalCost(abilities);
+        while (totalCost > limits.maxCost) {
+            for (let i = abilities.length - 1; i >= 0; i--) {
+                if (abilities[i] !== null) {
+                    abilities[i] = null;
+                    changed = true;
+                    break;
+                }
+            }
+            totalCost = this.calculateTotalCost(abilities);
+        }
+
+        if (changed) {
+            this.selectedAbilities.set(abilities);
+        }
+    }
+
+    private calculateTotalCost(abilities: (AbilitySelection | null)[]): number {
+        return abilities.reduce((sum, ability) => {
+            if (!ability) return sum;
+            if (this.isCustomAbility(ability)) {
+                return sum + ability.cost;
+            }
+            const standardAbility = this.getAbilityById(ability);
+            return sum + (standardAbility?.cost || 0);
+        }, 0);
     }
 
     toggleDropdown(slot: number): void {
@@ -199,6 +289,7 @@ export class EditASPilotDialogComponent {
 
         compRef.setInput('abilities', this.availableAbilities());
         compRef.setInput('disabledIds', disabledIds);
+        compRef.setInput('remainingCost', this.remainingCost());
 
         // Handle standard ability selection
         compRef.instance.selected.subscribe((abilityId: string) => {
