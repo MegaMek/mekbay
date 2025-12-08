@@ -148,9 +148,6 @@ export class AsLayoutStandardComponent {
     // Heat level
     heatLevel = computed<number>(() => this.forceUnit().getHeat());
 
-    // Special items
-    specialItems = computed<string[]>(() => this.asStats().specials);
-
     // Helper methods
     private parseMovement(mv: string): number {
         const match = mv.match(/^(\d+)/);

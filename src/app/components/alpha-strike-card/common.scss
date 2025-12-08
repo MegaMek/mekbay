@@ -110,11 +110,14 @@
         gap: 0.8cqw;
     }
 
-    &.compact {
+    &.autoheight {
+        height: 100%;
         .frame-content {
-            gap: 0.3cqw;
+            gap: 0.1cqw;
+            justify-content: space-between;
         }
     }
+
 
     :host(.monochrome) & {
         border-style: solid;

@@ -1,18 +1,10 @@
-<!-- Unit Image -->
-@if (imageUrl()) {
-<div class="fluff-image-container"
-    [class.center-vertical]="criticalHitsVariant() === 'none'">
-    <img class="fluff-image" [src]="imageUrl()" alt="Unit image" />
-</div>
-}
-
 <!-- Header Section -->
-<div class="header-section">
-    <div class="unit-name">
-        <div class="model-text">{{ model() }}</div>
-        <div class="chassis-text alphastrike-text" [class.long-chassis]="isLongChassis()">{{ chassis() }}</div>
-    </div>
 
+<div class="header-section">
+    <div class="vessel-header">
+        <span class="alphastrike-text vessel-name">{{ unit().chassis }}</span>
+        <span class="vessel-model">{{ unit().model }}</span>
+    </div>
     <!-- PV Box -->
     <div class="pv-box-background"></div>
     <div class="pv-box">
@@ -23,169 +15,101 @@
     </div>
 </div>
 
+<!-- Main Content Area -->
 <div class="stats-container">
     <div class="stats-container-row">
-        <div class="stats-container-column stats-left">
-            <!-- Stats Box 1 - Type, Size, TMM, Movement -->
-            <div class="stats-box frame">
-                <div class="frame-background"></div>
+        <!-- Row 1 Left: Stats Row - Type, Size, Thrust, Skill -->
+        <div class="stats-row-container frame">
+            <div class="frame-background"></div>
+            <div class="frame-content">
+                <div class="stats-row">
+                    <span class="stat-item"><span class="stat-label">TP:</span> <span class="stat-value">{{
+                            asStats().TP }}</span></span>
+                    <span class="stat-item"><span class="stat-label">SZ:</span> <span class="stat-value">{{
+                            asStats().SZ }}</span></span>
+                    <span class="stat-item"><span class="stat-label">THR:</span> <span class="stat-value">{{
+                            asStats().Th }}</span></span>
+                    <span class="stat-item"><span class="stat-label">SKILL:</span> <span
+                            class="stat-value skill-box"></span></span>
+                </div>
+            </div>
+        </div>
 
-                <div class="frame-content">
-                    <div class="stats-row">
-                        <span class="stat-item">TP: {{ asStats().TP }}</span>
-                        <span class="stat-item">SZ: {{ asStats().SZ }}</span>
-                        <span class="stat-item">TMM: {{ tmmDisplay() }}</span>
-                        <span class="stat-item stat-right">
-                            <span>MV: {{ movementDisplay() }}</span>
-                            <span class="sprint-text">Sprint: {{ sprintMove() }}</span>
-                        </span>
-                    </div>
-                    <div class="stats-row">
-                        <span class="stat-item">ROLE: {{ unit().role | uppercase }}</span>
-                        <span class="stat-item stat-right">SKILL: {{ skill() }}</span>
-                    </div>
+        <!-- Row 1 Right: Era Icons -->
+        <div class="era-icons">
+        </div>
+
+        <!-- Row 2 Left: Armor Row -->
+        <div class="armor-damage-row frame">
+            <div class="frame-background"></div>
+            <div class="frame-content">
+                <div class="armor-section">
+                    <div class="section-label">ARMOR</div>
+                    <div class="section-value">{{ armorPips() }}</div>
+                </div>
+                <div class="damage-section">
+                    <div class="section-label">DAMAGE</div>
+                    <div class="damage-track"></div>
                 </div>
             </div>
 
-            <!-- Damage Box -->
-            <div class="damage-box frame">
-                <div class="frame-background"></div>
-                <div class="frame-content">
-                    <div class="damage-label">DAMAGE</div>
-                    <div class="damage-ranges">
-                        <!-- Short Range -->
-                        <div class="damage-range">
-                            <div class="range-header">S (0 | 3+)</div>
-                            <div class="range-value">{{ asStats().dmg.dmgS }}</div>
-                            <div class="range-distance">{{ rangeShort() }}</div>
-                        </div>
-
-                        <!-- Medium Range -->
-                        <div class="damage-range">
-                            <div class="range-header">M (+2 | 5+)</div>
-                            <div class="range-value">{{ asStats().dmg.dmgM }}</div>
-                            <div class="range-distance">{{ rangeMedium() }}</div>
-                        </div>
-
-                        <!-- Long Range -->
-                        <div class="damage-range">
-                            <div class="range-header">L (+4 | 7+)</div>
-                            <div class="range-value">{{ asStats().dmg.dmgL }}</div>
-                            <div class="range-distance">{{ rangeLong() }}</div>
-                        </div>
-                    </div>
+            <!-- Structure Row -->
+            <div class="frame-content">
+                <div class="armor-section">
+                    <div class="section-label">STRUCTURE</div>
+                    <div class="section-value">{{ structurePips() }}</div>
+                </div>
+                <div class="damage-section">
+                    <div class="section-label">DAMAGE</div>
+                    <div class="damage-track"></div>
                 </div>
             </div>
+        </div>
 
-            <!-- Heat/OV Box -->
-            @if (asStats().usesOV) {
-            <div class="heat-box frame">
-                <div class="frame-background"></div>
-
-                <div class="frame-content">
-                    <div class="ov-value">
-                        <div class="as-caption">OV:&nbsp;</div>
-                        <div class="as-value">{{ asStats().OV }}</div>
-                    </div>
-                    <div class="frame-title-background heat-label">HEAT SCALE</div>
-                    <div class="heat-track">
-                        <!-- Heat 0 -->
-                        <div class="heat-level heat-0" [class.active]="heatLevel() === 0">
-                            <span>0</span>
-                        </div>
-                        <!-- Heat 1 -->
-                        <div class="heat-level heat-1" [class.active]="heatLevel() === 1">
-                            <span>1</span>
-                        </div>
-                        <!-- Heat 2 -->
-                        <div class="heat-level heat-2" [class.active]="heatLevel() === 2">
-                            <span>2</span>
-                        </div>
-                        <!-- Heat 3 -->
-                        <div class="heat-level heat-3" [class.active]="heatLevel() === 3">
-                            <span>3</span>
-                        </div>
-                        <!-- Shutdown -->
-                        <div class="heat-level heat-s" [class.active]="heatLevel() >= 4">
-                            <span>S</span>
-                        </div>
-                    </div>
+        <!-- Row 2 Right: Damage Threshold -->
+        <div class="damage-threshold-row-container frame">
+            <div class="frame-background"></div>
+            <div class="frame-content">
+                <div class="stats-row">
+                    <span class="stat-item">
+                        <span class="stat-label">DAMAGE THRESHOLD</span>
+                        <span class="stat-value">{{ asStats().Th }}</span>
+                    </span>
                 </div>
             </div>
+        </div>
+
+        <!-- Row 3-4 Left: Critical Hits Box -->
+        <div class="critical-hits-container">
+            @switch (criticalHitsVariant()) {
+            @case ('aerospace-1') {
+            <as-critical-hits-aerospace-1 [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" />
             }
+            @case ('dropship-1') {
+            <as-critical-hits-dropship-1 [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" />
+            }
+            }
+        </div>
 
-            <!-- Armor/Structure Box -->
-            <div class="armor-box frame">
+        <!-- Row 3 Right: Unit Image -->
+        <div class="fluff-image-container">
+            @if (imageUrl()) {
+            <img class="fluff-image" [src]="imageUrl()" alt="Unit image" />
+            }
+        </div>
+
+        <!-- Row 4 Right: Specials Box -->
+        @if (asStats().specials.length > 0) {
+            <div class="specials-box frame">
                 <div class="frame-background"></div>
                 <div class="frame-content">
-                    <div class="pips-wrapper">
-                        <!-- Armor Pips -->
-                        <div class="pip-row">
-                            <span class="as-caption">A:</span>
-                            @if (showArmorAsNumber()) {
-                            <span class="pip-value"><span class="current-value">0</span>/{{ armorPips() }}</span>
-                            } @else {
-                            <div class="pips">
-                                @for (i of range(armorPips()); track i) {
-                                <div class="pip"></div>
-                                }
-                            </div>
-                            }
-                        </div>
-
-                        <!-- Structure Pips -->
-                        <div class="pip-row">
-                            <span class="as-caption">S:</span>
-                            @if (showStructureAsNumber()) {
-                            <span class="pip-value">{{ structurePips() }}/{{ structurePips() }}</span>
-                            } @else {
-                            <div class="pips">
-                                @for (i of range(structurePips()); track i) {
-                                <div class="pip structure"></div>
-                                }
-                            </div>
-                            }
-                        </div>
-                    </div>
-
-                    <!-- Thrust (for aerospace units) -->
-                    @if (asStats().usesTh) {
-                    <div class="thrust-display">
-                        <span class="as-caption">TH</span>
-                        <span class="as-value">{{ asStats().Th }}</span>
-                    </div>
+                    <span class="as-caption">SPECIAL:&nbsp;</span>
+                    @for (item of asStats().specials; track item; let isLast = $last) {
+                    <span class="special-ability as-value" (click)="onSpecialClick(item)">{{ item }}</span>
+                    @if (!isLast) {<span class="special-separator">,&nbsp;</span>}
                     }
                 </div>
             </div>
-        </div>
-        <div class="stats-container-column stats-right">
-
-            <!-- Critical Hits Box - Rendered based on unit type -->
-            @switch (criticalHitsVariant()) {
-                @case ('aerospace-1') {
-                    <as-critical-hits-aerospace-1 [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" />
-                }
-                @case ('dropship-1') {
-                    <as-critical-hits-dropship-1 [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" />
-                }
-            }
-        </div>
+        }
     </div>
-
-
-    <!-- Specials Box -->
-    @if (specialItems().length > 0) {
-    <div class="stats-container-row">
-        <div class="specials-box frame">
-            <div class="frame-background"></div>
-            <div class="frame-content">
-                <span class="as-caption">SPECIAL:&nbsp;</span>
-                @for (item of specialItems(); track item; let isLast = $last) {
-                <span class="special-ability as-value" (click)="onSpecialClick(item)">{{ item }}</span>
-                @if (!isLast) {<span class="special-separator">,&nbsp;</span>}
-                }
-            </div>
-        </div>
-    </div>
-    }
 </div>

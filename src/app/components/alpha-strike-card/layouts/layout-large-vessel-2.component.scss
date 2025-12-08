@@ -29,9 +29,11 @@
     font-size: 4cqw;
     :host(.monochrome) & {
         color: #000;
+        font-weight: 700;
     }
     @media print {
         color: #000;
+        font-weight: 700;
     }
 }
 

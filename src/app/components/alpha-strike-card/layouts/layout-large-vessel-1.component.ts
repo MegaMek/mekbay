@@ -32,7 +32,6 @@
  */
 
 import { Component, ChangeDetectionStrategy, input, output, computed } from '@angular/core';
-import { UpperCasePipe } from '@angular/common';
 import { ASForceUnit } from '../../../models/as-force-unit.model';
 import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
@@ -51,7 +50,6 @@ import {
     selector: 'as-layout-large-vessel-1',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        UpperCasePipe,
         AsCriticalHitsAerospace1Component,
         AsCriticalHitsDropship1Component
     ],
@@ -75,7 +73,6 @@ export class AsLayoutLargeVessel1Component {
     asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
     model = computed<string>(() => this.unit().model);
     chassis = computed<string>(() => this.unit().chassis);
-    isLongChassis = computed<boolean>(() => this.chassis().length > 20);
 
     // Critical hits variant from layout config (first card for large vessels)
     criticalHitsVariant = computed<CriticalHitsVariant>(() => {
@@ -94,77 +91,9 @@ export class AsLayoutLargeVessel1Component {
         return Math.round(this.basePV() * modifier);
     });
 
-    // Movement
-    sprintMove = computed<number>(() => {
-        const walkMove = this.parseMovement(this.asStats().MV);
-        const sprintInches = Math.ceil(walkMove * 1.5);
-        return this.useHex() ? Math.floor(sprintInches / 2) : sprintInches;
-    });
-
-    movementDisplay = computed<string>(() => {
-        const stats = this.asStats();
-        const mvx = stats.MVx;
-        const baseMove = this.parseMovement(stats.MV);
-
-        if (!mvx || Object.keys(mvx).length === 0) {
-            return this.formatMovement(baseMove);
-        }
-
-        let display = this.formatMovement(baseMove);
-        for (const [mode, value] of Object.entries(mvx)) {
-            if (mode === 'j' && value > 0) {
-                display += '/' + this.formatMovement(value as number, 'j');
-            }
-        }
-        return display;
-    });
-
-    tmmDisplay = computed<string>(() => {
-        const stats = this.asStats();
-        const tmm = stats.TMM;
-        const mvx = stats.MVx;
-
-        if (mvx?.['j'] && mvx['j'] > 0) {
-            const jumpTMM = Math.max(0, tmm - 1);
-            return `${tmm}/${jumpTMM}j`;
-        }
-        return `${tmm}`;
-    });
-
-    // Range distances
-    rangeShort = computed<string>(() => this.useHex() ? '0-3' : '0-6"');
-    rangeMedium = computed<string>(() => this.useHex() ? '3-12' : '6"-24"');
-    rangeLong = computed<string>(() => this.useHex() ? '12-21' : '24"-42"');
-
     // Armor and structure
     armorPips = computed<number>(() => this.asStats().Arm);
     structurePips = computed<number>(() => this.asStats().Str);
-    readonly pipThreshold = 30;
-    showArmorAsNumber = computed<boolean>(() => this.armorPips() > this.pipThreshold);
-    showStructureAsNumber = computed<boolean>(() => this.structurePips() > this.pipThreshold);
-
-    // Heat level
-    heatLevel = computed<number>(() => this.forceUnit().getHeat());
-
-    // Special items
-    specialItems = computed<string[]>(() => this.asStats().specials);
-
-    // Helper methods
-    private parseMovement(mv: string): number {
-        const match = mv.match(/^(\d+)/);
-        return match ? parseInt(match[1], 10) : 0;
-    }
-
-    private formatMovement(inches: number, suffix: string = ''): string {
-        if (this.useHex()) {
-            return Math.floor(inches / 2) + suffix;
-        }
-        return inches + '"' + suffix;
-    }
-
-    range(count: number): number[] {
-        return Array.from({ length: count }, (_, i) => i);
-    }
 
     onSpecialClick(special: string): void {
         this.specialClick.emit(special);

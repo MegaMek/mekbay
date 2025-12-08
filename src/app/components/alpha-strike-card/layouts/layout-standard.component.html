@@ -180,13 +180,13 @@
 
 
     <!-- Specials Box -->
-    @if (specialItems().length > 0) {
+    @if (asStats().specials.length > 0) {
     <div class="stats-container-row">
         <div class="specials-box frame">
             <div class="frame-background"></div>
             <div class="frame-content">
                 <span class="as-caption">SPECIAL:&nbsp;</span>
-                @for (item of specialItems(); track item; let isLast = $last) {
+                @for (item of asStats().specials; track item; let isLast = $last) {
                 <span class="special-ability as-value" (click)="onSpecialClick(item)">{{ item }}</span>
                 @if (!isLast) {<span class="special-separator">,&nbsp;</span>}
                 }

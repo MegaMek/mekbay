@@ -1,37 +1,5 @@
 @use '../common.scss';
 
-// Fluff Image
-.fluff-image-container {
-    position: absolute;
-    top: 14%;
-    left: 57.14%;
-    width: 40.36%;
-    height: 58.75%;
-    overflow: hidden;
-
-    &.center-vertical {
-        top: 18%;
-    }
-}
-
-.fluff-image {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    object-position: center top;
-
-    .center-vertical & {
-        object-position: center center;
-    }
-
-    @media screen {
-        :host:not(.monochrome) & {
-            filter: saturate(0) invert(1) brightness(1.25);
-            mix-blend-mode: lighten;
-        }
-    }
-}
-
 // Header Section
 .header-section {
     position: absolute;
@@ -44,27 +12,32 @@
     align-items: flex-start;
 }
 
-.unit-name {
+.vessel-header {
     position: absolute;
-    top: 2.8cqw;
+    display: flex;
+    flex-direction: row;
+    gap: 1.5cqw;
+    align-items: baseline;
+    top: 24%;
     left: 2.8cqw;
-    width: 75%;
-    color: #000;
+}
 
-    &.vessel {
-        display: flex;
-        flex-direction: column;
-        position: relative;
-        top: 0;
-        left: 0;
-        width: 100%;
-        padding: 1cqw;
+.vessel-name {
+    font-size: 4cqw;
+    :host(.monochrome) & {
+        color: #000;
+        font-weight: 700;
+    }
+    @media print {
+        color: #000;
+        font-weight: 700;
     }
 }
 
-.model-text {
-    font-size: 4cqw;
-    line-height: 4cqw;
+.vessel-model {
+    font-size: 3cqw;
+    line-height: 3cqw;
+    color: #000;
 
     @media screen {
         :host:not(.monochrome) & {
@@ -73,19 +46,6 @@
     }
 }
 
-.chassis-text {
-    font-weight: bold;
-    font-size: 7.2cqw;
-    line-height: 7.2cqw;
-    letter-spacing: 0.2cqw;
-    text-transform: uppercase;
-    font-family: 'Roboto Condensed', sans-serif;
-
-    &.long-chassis {
-        font-size: 6cqw;
-        line-height: 6cqw;
-    }
-}
 
 // PV Box
 .pv-box {
@@ -125,4 +85,265 @@
     text-align: center;
     margin-top: 1.2cqw;
     z-index: 1;
+}
+
+// Stats Row Container
+.stats-row-container,
+.damage-threshold-row-container {
+    display: flex;
+    align-items: center;
+    height: 5cqw;
+
+    .frame-content {
+        flex: 1;
+    }
+}
+
+.stats-row {
+    display: flex;
+    gap: 2cqw;
+    align-items: center;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    font-size: 2.5cqw;
+}
+
+.stat-label {
+    font-weight: bold;
+    margin-right: 0.5cqw;
+}
+
+.stat-value {
+    font-weight: 900;
+    text-decoration: underline;
+    text-underline-offset: 0.3cqw;
+
+    @media screen {
+        :host:not(.monochrome) & {
+            color: var(--as-red);
+        }
+    }
+}
+
+.skill-box {
+    display: inline-block;
+    width: 4cqw;
+    border-bottom: 0.3cqw solid #000;
+}
+
+// Era Icons
+.era-icons {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 1cqw;
+}
+
+// Main Content Area
+
+// Stats Container
+.stats-container {
+    position: absolute;
+    bottom: 12%;
+    left: 2.5%;
+    right: 2.5%;
+    height: 75%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.5cqw;
+}
+
+.stats-container-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto 1fr auto;
+    gap: 0.5cqw;
+    align-content: end;
+    height: 100%;
+}
+
+// Row 1: stats-row-container aligned with era-icons
+.stats-row-container {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.era-icons {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+}
+
+// Row 2: armor-damage-row, damage-threshold (top-aligned)
+.armor-damage-row {
+    grid-column: 1;
+    grid-row: 2;
+}
+
+.damage-threshold-row-container {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+}
+
+// Row 2-3: fluff-image starts after damage-threshold, spans down
+.fluff-image-container {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    min-height: 0;
+    overflow: hidden;
+    padding: 2cqw;
+    padding-top: 6cqw; // offset to start below damage-threshold
+}
+
+// Row 3: critical-hits stretches to fill remaining space
+.critical-hits-container {
+    grid-column: 1;
+    grid-row: 3 / 5;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+// Row 4: specials-box on right
+.specials-box {
+    grid-column: 2;
+    grid-row: 4;
+}
+
+// Stats Box
+.stats-box {
+    display: flex;
+
+    .frame-content {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+    }
+}
+
+.stats-row {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 3cqw;
+    font-size: 2.5cqw;
+}
+
+.stat-item {
+    white-space: nowrap;
+}
+
+.stat-right {
+    margin-left: auto;
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+// Armor/Damage Row
+.armor-damage-row {
+    display: flex;
+    flex-direction: column;
+
+    .frame-content {
+        display: flex;
+        width: 100%;
+        gap: 1cqw;
+    }
+}
+
+.armor-section {
+    flex: 0 0 30%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border-right: 0.2cqw solid #000;
+    padding-right: 1cqw;
+}
+
+.section-label {
+    font-size: 2cqw;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.section-value {
+    font-size: 5cqw;
+    font-weight: 900;
+
+    @media screen {
+        :host:not(.monochrome) & {
+            color: var(--as-red);
+        }
+    }
+}
+
+.damage-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.damage-track {
+    flex: 1;
+    border-bottom: 0.2cqw solid #000;
+    margin-top: 0.5cqw;
+}
+
+
+// Specials Box
+.specials-box {
+    display: flex;
+
+    .frame-content {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        align-content: flex-start;
+        font-size: 2.5cqw;
+    }
+}
+
+.special-ability {
+    cursor: pointer;
+    transition: text-decoration 0.15s ease;
+
+    &:hover {
+        text-decoration: underline;
+    }
+}
+
+.special-separator {
+    @media screen {
+        font-weight: 900;
+        color: var(--as-red);
+    }
+}
+
+// Fluff Image
+.fluff-image-container {
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.fluff-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
+
+    @media screen {
+        :host:not(.monochrome) & {
+            filter: saturate(0) invert(1) brightness(1.25);
+            mix-blend-mode: lighten;
+        }
+    }
 }

@@ -47,7 +47,7 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     },
     template: `
-        <div class="critical-hits-box compact frame">
+        <div class="critical-hits-box autoheight frame">
             <div class="frame-background"></div>
             <div class="frame-content">
                 <div class="critical-title frame-title-background">CRITICAL HITS</div>
@@ -122,7 +122,13 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
             </div>
         </div>
     `,
-    styleUrl: './../common.scss'
+    styleUrl: './../common.scss',
+    styles: [`
+        :host {
+            flex: 1;
+        }
+    `],
+
 })
 export class AsCriticalHitsDropship1Component {
     forceUnit = input<ASForceUnit>();
