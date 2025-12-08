@@ -1,7 +1,7 @@
 <div class="vessel-card-2">
     <!-- Header with unit name -->
     <div class="vessel-header">
-        <span class="vessel-name">{{ unit().chassis }}</span>
+        <span class="alphastrike-text vessel-name">{{ unit().chassis }}</span>
         <span class="vessel-model">{{ unit().model }}</span>
     </div>
 
@@ -92,6 +92,6 @@
     <!-- Weapon Criticals Note -->
     <div class="weapon-criticals-note">
         <span class="note-title">WEAPON CRITICALS</span>
-        <span class="note-text">Damage Value Reduced by 25% per hit. — Randomly determine an appropriate STD/SCAP/MSL column.</span>
+        <span class="note-text">Damage Value Reduced by 25% per hit. — Randomly determine an appropriate STD/@if(hasCap()){CAP/}SCAP/MSL column.</span>
     </div>
 </div>

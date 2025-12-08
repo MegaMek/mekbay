@@ -1,6 +1,7 @@
 @use '../common.scss';
 
 .vessel-card-2 {
+    position: relative;
     width: 100%;
     height: 100%;
     display: flex;
@@ -17,19 +18,33 @@
 
 .vessel-header {
     display: flex;
-    flex-direction: column;
-    padding: 1cqw;
+    flex-direction: row;
+    padding: 0.5cqw;
+    gap: 1.5cqw;
+    align-items: baseline;
+    height: 4cqw;
 }
 
 .vessel-name {
-    font-size: 2cqw;
-    font-weight: 900;
-    text-transform: uppercase;
-    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 4cqw;
+    :host(.monochrome) & {
+        color: #000;
+    }
+    @media print {
+        color: #000;
+    }
 }
 
 .vessel-model {
-    font-size: 2cqw;
+    font-size: 3cqw;
+    line-height: 3cqw;
+    color: #000;
+
+    @media screen {
+        :host:not(.monochrome) & {
+            color: #ECD24B;
+        }
+    }
 }
 
 .arc-damage-grid {
@@ -160,7 +175,6 @@
     flex-direction: row;
     gap: 0.5cqw;
     align-items: baseline;
-    z-index: 1;
     @media screen {
         :host(:not(.monochrome)) & {
             color: #fff;
@@ -175,5 +189,5 @@
 }
 
 .note-text {
-    font-size: 1.65cqw;
+    font-size: 1.6cqw;
 }
