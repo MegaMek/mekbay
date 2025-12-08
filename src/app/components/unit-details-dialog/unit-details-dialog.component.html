@@ -218,15 +218,18 @@ unit.moveType }}</strong></div>
 }
 <div class="spanner"></div>
 <div class="bottom-info">
+  <div class="bottom-left">
   @if (unit.source) {
-    <div class="bottom-left"><span class="label muted">Source: </span><strong>{{
-  unit.source }}</strong></div>
-}
-@if (unit.id && unit.id > 0) {
-  <div class="bottom-right"><span class="label muted">MUL ID: </span><a
-  class="mul-link" target=_BLANK href="http://masterunitlist.info/Unit/Details/{{unit.id}}">{{
-unit.id }}</a></div>
-}
+    <span class="label muted">Source: </span><strong>{{ unit.source }}</strong>
+  }
+  </div>
+  <div class="bottom-right">
+    @if (unit.id && unit.id > 0) {
+      <span class="label muted">MUL ID: </span><a
+      class="mul-link" target=_BLANK href="http://masterunitlist.info/Unit/Details/{{unit.id}}">{{
+    unit.id }}</a>
+    }
+  </div>
 </div>
 </div>
 }
