@@ -61,10 +61,16 @@ import {
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import { LayoutService } from '../../services/layout.service';
+import { DbService } from '../../services/db.service';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { CBTForce } from '../../models/cbt-force.model';
 import { SvgInteractionService } from '../svg-viewer/svg-interaction.service';
 import { HeatDiffMarkerComponent, HeatDiffMarkerData } from '../heat-diff-marker/heat-diff-marker.component';
+import {
+    PageViewerCanvasService,
+    PageCanvasOverlayComponent,
+    PageViewerCanvasControlsComponent
+} from './canvas';
 
 /*
  * Author: Drake
@@ -86,8 +92,8 @@ const SWIPE_VELOCITY_THRESHOLD = 300; // px/s for flick gesture
 @Component({
     selector: 'page-viewer',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    providers: [PageViewerZoomPanService],
-    imports: [HeatDiffMarkerComponent],
+    providers: [PageViewerZoomPanService, PageViewerCanvasService],
+    imports: [HeatDiffMarkerComponent, PageCanvasOverlayComponent, PageViewerCanvasControlsComponent],
     templateUrl: './page-viewer.component.html',
     styleUrls: ['./page-viewer.component.css']
 })
@@ -97,6 +103,8 @@ export class PageViewerComponent implements AfterViewInit {
     private zoomPanService = inject(PageViewerZoomPanService);
     private forceBuilder = inject(ForceBuilderService);
     private optionsService = inject(OptionsService);
+    private dbService = inject(DbService);
+    canvasService = inject(PageViewerCanvasService);
     layoutService = inject(LayoutService);
 
     // Inputs
@@ -150,7 +158,8 @@ export class PageViewerComponent implements AfterViewInit {
     private resizeObserver: ResizeObserver | null = null;
     private lastViewState: ViewportTransform | null = null;
 
-    // Current displayed units for multi-page view
+    // Current displayed units for multi-page view (exposed as signal for canvas overlays)
+    displayedUnitsSignal = signal<CBTForceUnit[]>([]);
     private displayedUnits: CBTForceUnit[] = [];
     private pageElements: HTMLDivElement[] = [];
 
@@ -604,6 +613,9 @@ export class PageViewerComponent implements AfterViewInit {
             }
         });
 
+        // Update the displayed units signal for canvas overlays
+        this.displayedUnitsSignal.set([...this.displayedUnits]);
+
         // Tell the service how many pages we're actually displaying
         this.zoomPanService.setDisplayedPages(this.pageElements.length);
 
@@ -718,6 +730,25 @@ export class PageViewerComponent implements AfterViewInit {
             currentUnit.load().then(() => {
                 this.displayUnit();
             });
+        }
+    }
+
+    /**
+     * Get the X position for a page at the given index.
+     * Used by canvas overlays to position themselves over the corresponding page.
+     */
+    getPagePosition(index: number): number {
+        const positions = this.zoomPanService.getPagePositions(this.displayedUnits.length);
+        return positions[index] ?? (index * (PAGE_WIDTH + PAGE_GAP));
+    }
+
+    /**
+     * Handle canvas clear request from controls - delete all canvas data
+     */
+    onCanvasClearRequested(): void {
+        // Delete canvas data for all displayed units
+        for (const unit of this.displayedUnits) {
+            this.dbService.deleteCanvasData(unit.id);
         }
     }
 

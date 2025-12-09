@@ -180,3 +180,16 @@
 .neighbor-page {
     pointer-events: none;
 }
+
+/* Canvas overlay wrapper - positioned absolutely within page-content */
+.page-canvas-overlay-wrapper {
+    position: absolute;
+    width: 612px;
+    height: 792px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.page-canvas-overlay-wrapper.active {
+    pointer-events: auto;
+}

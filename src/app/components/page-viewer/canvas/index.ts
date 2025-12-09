@@ -18,8 +18,19 @@
  *
  * NOTICE: The MegaMek organization is a non-profit group of volunteers
  * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 
-export * from './page-viewer.component';
-export * from './page-viewer-zoom-pan.service';
-export * from './canvas';
+export { PageViewerCanvasService } from './page-viewer-canvas.service';
+export { PageCanvasOverlayComponent } from './page-canvas-overlay.component';
+export { PageViewerCanvasControlsComponent } from './page-viewer-canvas-controls.component';
