@@ -77,7 +77,6 @@ import { UrlStateService } from './services/url-state.service';
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
     ToastsComponent,
-    SvgViewerComponent,
     PageViewerComponent,
     AlphaStrikeViewerComponent,
     LayoutModule,
