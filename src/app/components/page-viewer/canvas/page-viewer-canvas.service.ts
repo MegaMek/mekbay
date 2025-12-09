@@ -148,16 +148,6 @@ export class PageViewerCanvasService {
     }
 
     /**
-     * Request to clear a specific canvas (called from controls, delegated to canvas)
-     */
-    requestClearCanvas(id: string): void {
-        const callback = this.registeredCanvases.get(id);
-        if (callback) {
-            callback();
-        }
-    }
-
-    /**
      * Clear all registered canvases
      */
     clearAllCanvases(): void {

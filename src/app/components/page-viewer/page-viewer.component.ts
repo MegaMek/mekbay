@@ -166,13 +166,9 @@ export class PageViewerComponent implements AfterViewInit {
     private resizeObserver: ResizeObserver | null = null;
     private lastViewState: ViewportTransform | null = null;
 
-    // Current displayed units for multi-page view (exposed as signal for canvas overlays)
-    displayedUnitsSignal = signal<CBTForceUnit[]>([]);
+    // Current displayed units for multi-page view
     private displayedUnits: CBTForceUnit[] = [];
     private pageElements: HTMLDivElement[] = [];
-
-    // Current page index (first visible page in the view)
-    private currentPageIndex = signal(0);
 
     // Interaction services - one per visible page
     private interactionServices = new Map<number, SvgInteractionService>();
@@ -282,7 +278,7 @@ export class PageViewerComponent implements AfterViewInit {
 
     // ========== Continuous Swipe Navigation ==========
 
-    private onSwipeStart(): void {
+    private async onSwipeStart(): Promise<void> {
         if (!this.swipeAllowed()) return;
         
         // Store the current display state as the base for swipe calculations
@@ -296,11 +292,11 @@ export class PageViewerComponent implements AfterViewInit {
         // Clear swipe indices to force a re-render on first move
         this.swipeDisplayedIndices = [];
         
+        // Pre-load immediate neighbors BEFORE rendering so they're available
+        await this.preloadImmediateNeighbors();
+        
         // Immediately render current pages with swipe positioning
         this.updateSwipeVisiblePages(0);
-        
-        // Pre-load neighbor units that might become visible during swipe
-        this.preloadSwipeNeighbors();
     }
 
     private onSwipeMove(totalDx: number): void {
@@ -393,7 +389,37 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     /**
-     * Pre-load units that might become visible during swipe
+     * Pre-load immediate neighbors that will be visible at swipe start.
+     * Uses baseDisplayStartIndex directly since swipeDisplayedIndices isn't populated yet.
+     */
+    private async preloadImmediateNeighbors(): Promise<void> {
+        const force = this.forceBuilder.currentForce();
+        const allUnits = force?.units() ?? [];
+        const totalUnits = allUnits.length;
+        if (totalUnits <= 1) return;
+
+        const visiblePages = this.visiblePageCount();
+        const indicesToLoad: number[] = [];
+        
+        // Load 1 unit before and 1 unit after the visible range
+        const firstIdx = this.baseDisplayStartIndex;
+        const lastIdx = (this.baseDisplayStartIndex + visiblePages - 1) % totalUnits;
+        
+        const prevIdx = (firstIdx - 1 + totalUnits) % totalUnits;
+        const nextIdx = (lastIdx + 1) % totalUnits;
+        
+        indicesToLoad.push(prevIdx);
+        if (nextIdx !== prevIdx) {
+            indicesToLoad.push(nextIdx);
+        }
+
+        // Load the neighbor units
+        await Promise.all(indicesToLoad.map(idx => (allUnits[idx] as CBTForceUnit).load()));
+    }
+
+    /**
+     * Pre-load additional neighbor units during swipe for smoother transitions.
+     * Called during swipe to preload units that might come into view with further swiping.
      */
     private async preloadSwipeNeighbors(): Promise<void> {
         const force = this.forceBuilder.currentForce();
@@ -430,7 +456,7 @@ export class PageViewerComponent implements AfterViewInit {
         const force = this.forceBuilder.currentForce();
         const allUnits = force?.units() ?? [];
         const totalUnits = allUnits.length;
-        if (totalUnits === 0) return;
+        if (totalUnits <= 1) return;
 
         const scale = this.zoomPanService.scale();
         const scaledPageWidth = PAGE_WIDTH * scale;
@@ -488,6 +514,9 @@ export class PageViewerComponent implements AfterViewInit {
         if (needsUpdate) {
             this.swipeDisplayedIndices = newIndices;
             this.updateDisplayedUnitsForSwipe(newIndices, totalDx);
+            
+            // Pre-load additional neighbors for smoother transitions
+            this.preloadSwipeNeighbors();
         }
     }
 
@@ -503,7 +532,6 @@ export class PageViewerComponent implements AfterViewInit {
         
         // Update displayed units
         this.displayedUnits = newUnits;
-        this.displayedUnitsSignal.set([...newUnits]);
         
         // Re-render pages with new positions
         this.renderPagesForSwipe(indices, totalDx);
@@ -590,9 +618,6 @@ export class PageViewerComponent implements AfterViewInit {
 
         // Clean up canvas overlays for units no longer displayed
         this.cleanupUnusedCanvasOverlays(displayedUnitIds);
-
-        // Update the displayed units signal (for compatibility)
-        this.displayedUnitsSignal.set([...this.displayedUnits]);
     }
 
     /**
@@ -785,9 +810,6 @@ export class PageViewerComponent implements AfterViewInit {
         const totalUnits = allUnits.length;
         const currentIndex = allUnits.indexOf(currentUnit);
 
-        // Update current page index
-        this.currentPageIndex.set(currentIndex);
-
         // Build list of units to display
         // If we have fewer units than visible pages, show all units (no swipe)
         if (totalUnits <= visiblePages) {
@@ -879,9 +901,6 @@ export class PageViewerComponent implements AfterViewInit {
         // Clean up canvas overlays for units no longer displayed
         this.cleanupUnusedCanvasOverlays(displayedUnitIds);
 
-        // Update the displayed units signal (no longer used for canvas but kept for compatibility)
-        this.displayedUnitsSignal.set([...this.displayedUnits]);
-
         // Tell the service how many pages we're actually displaying
         this.zoomPanService.setDisplayedPages(this.pageElements.length);
 
@@ -929,32 +948,6 @@ export class PageViewerComponent implements AfterViewInit {
 
         const viewState = this.unit()?.viewState ?? null;
         this.zoomPanService.restoreViewState(viewState);
-    }
-
-    private navigateToPrevious(): void {
-        const currentUnit = this.unit();
-        if (!currentUnit) return;
-
-        // Save view state before navigating
-        this.saveViewState(currentUnit);
-
-        // Navigate (with wraparound)
-        this.forceBuilder.selectPreviousUnit();
-
-        // The effect will handle displaying the new unit
-    }
-
-    private navigateToNext(): void {
-        const currentUnit = this.unit();
-        if (!currentUnit) return;
-
-        // Save view state before navigating
-        this.saveViewState(currentUnit);
-
-        // Navigate (with wraparound)
-        this.forceBuilder.selectNextUnit();
-
-        // The effect will handle displaying the new unit
     }
 
     /**
