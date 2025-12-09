@@ -17,80 +17,38 @@
     user-select: none;
 }
 
-/* Swipe wrapper - handles swipe offset during gesture */
+/* Swipe wrapper - handles X translation during swipe (separate from zoom) */
 .swipe-wrapper {
-    position: absolute;
-    inset: 0;
-    will-change: transform;
-}
-
-/* Content wrapper that gets transformed (zoom/pan) */
-.page-content {
     position: absolute;
     top: 0;
     left: 0;
+    width: 100%;
+    height: 100%;
+    will-change: transform;
+}
+
+/* Content wrapper - contains all pages and receives zoom/pan transforms */
+.page-content {
+    position: absolute;
+    top: 0;
+    display: flex;
+    flex-direction: row;
+    gap: 0; /* Gap is handled via page translateX */
     will-change: transform;
     transform-origin: top left;
 }
 
-/* Slides container for swipe transitions */
-.page-slides {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-}
-
 /* Page wrapper for individual pages */
 .page-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
     background: #fff;
     box-sizing: border-box;
-}
-
-/* Individual slide (page) */
-.page-slide {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
     will-change: transform;
-}
-
-/* Swipe slide during gesture */
-.swipe-slide {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    will-change: transform;
-}
-
-/* Swipe overlay - contains the prev/next slides during swipe */
-.swipe-overlay {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    pointer-events: none;
-    z-index: 5;
-}
-
-.swipe-overlay.active {
-    pointer-events: auto;
-}
-
-.swipe-overlay .swipe-slide {
-    opacity: 0;
-    transition: opacity 0.1s;
-}
-
-.swipe-overlay.active .swipe-slide {
-    opacity: 1;
 }
 
 /* SVG styling */
-.page-slide svg,
-.swipe-slide svg,
 .page-content svg {
     background: #fff;
     display: block;
@@ -149,20 +107,7 @@
     line-height: 1;
 }
 
-/* Multi-page layout container */
-.multi-page-container {
-    display: flex;
-    flex-direction: row;
-    gap: 20px;
-    align-items: flex-start;
-}
-
-.multi-page-container .page-wrapper {
-    flex: 0 0 auto;
-    position: relative;
-}
-
-/* Page indicators (for multi-page view) */
+/* Page indicators (for navigation feedback) */
 .page-indicators {
     position: absolute;
     bottom: 10px;
@@ -229,4 +174,9 @@
     to {
         transform: rotate(360deg);
     }
+}
+
+/* Neighbor pages during swipe - non-interactive clones */
+.neighbor-page {
+    pointer-events: none;
 }

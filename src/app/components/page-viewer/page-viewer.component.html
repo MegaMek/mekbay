@@ -2,18 +2,12 @@
      class="page-viewer-container" 
      [class.at-min-zoom]="isFullyVisible()">
     
-    <!-- Swipe wrapper - handles swipe offset during gesture -->
+    <!-- Swipe wrapper handles X translation during swipe (separate from zoom) -->
     <div #swipeWrapper class="swipe-wrapper">
         <!-- Content wrapper receives zoom/pan transforms, contains all pages -->
         <div #content class="page-content">
-            <!-- Pages are rendered here by the component -->
+            <!-- Pages are rendered here by the component (including off-screen neighbors) -->
         </div>
-    </div>
-    
-    <!-- Swipe overlay - positioned absolutely, only visible during swipe -->
-    <div #swipeOverlay class="swipe-overlay" [class.active]="swipeActive()">
-        <div #prevSlide class="swipe-slide prev"></div>
-        <div #nextSlide class="swipe-slide next"></div>
     </div>
 </div>
 

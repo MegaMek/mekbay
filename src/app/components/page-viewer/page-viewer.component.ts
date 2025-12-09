@@ -69,18 +69,19 @@ import { HeatDiffMarkerComponent, HeatDiffMarkerData } from '../heat-diff-marker
 /*
  * Author: Drake
  * 
- * PageViewerComponent - A multi-page SVG viewer with zoom/pan and swipe navigation.
+ * PageViewerComponent - A multi-page SVG viewer with zoom/pan and continuous swipe navigation.
  * 
  * Features:
  * - Auto-fit content on load
  * - Zoom/pan with mouse wheel and touch pinch
- * - Swipe between pages when at minimum zoom
+ * - Continuous swipe between pages (one page at a time with loop support)
  * - Multi-page side-by-side view when viewport allows
- * - Lazy loading of neighbor pages during swipe
+ * - Pre-caching of neighbor pages for smooth transitions
+ * - Per-page interaction services for full interactivity on all visible pages
  */
 
-const SWIPE_COMMIT_THRESHOLD = 0.3; // 30% of page width
-const SWIPE_VELOCITY_THRESHOLD = 500; // px/s for flick gesture
+const SWIPE_COMMIT_THRESHOLD = 0.15; // 15% of page width
+const SWIPE_VELOCITY_THRESHOLD = 300; // px/s for flick gesture
 
 @Component({
     selector: 'page-viewer',
@@ -109,34 +110,32 @@ export class PageViewerComponent implements AfterViewInit {
 
     // View children
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
-    contentRef = viewChild.required<ElementRef<HTMLDivElement>>('content');
     swipeWrapperRef = viewChild.required<ElementRef<HTMLDivElement>>('swipeWrapper');
-    swipeOverlayRef = viewChild.required<ElementRef<HTMLDivElement>>('swipeOverlay');
-    prevSlideRef = viewChild.required<ElementRef<HTMLDivElement>>('prevSlide');
-    nextSlideRef = viewChild.required<ElementRef<HTMLDivElement>>('nextSlide');
+    contentRef = viewChild.required<ElementRef<HTMLDivElement>>('content');
 
     // State
     loadError = signal<string | null>(null);
     currentSvg = signal<SVGSVGElement | null>(null);
-    swipeActive = signal(false);
     isPickerOpen = signal(false);
-    
+
     // Heat diff marker data for each interaction service
     heatDiffMarkers = signal<Map<number, { data: HeatDiffMarkerData | null; visible: boolean }>>(new Map());
 
     // Computed properties
+    isFullyVisible = computed(() => this.zoomPanService.isFullyVisible());
+    visiblePageCount = computed(() => this.zoomPanService.visiblePageCount());
+
+    // Swipe is allowed only when total pages > visible pages
     swipeAllowed = computed(() => {
         if (this.optionsService.options().swipeToNextSheet === 'disabled') {
             return false;
         }
-        const currentForce = this.forceBuilder.currentForce();
-        if (!currentForce) return false;
-        return currentForce.units().length >= 2;
+        const totalPages = this.getTotalPageCount();
+        const visiblePages = this.visiblePageCount();
+        // Only allow swipe if we have more pages than can be shown at once
+        return totalPages > visiblePages;
     });
 
-    isFullyVisible = computed(() => this.zoomPanService.isFullyVisible());
-    visiblePageCount = computed(() => this.zoomPanService.visiblePageCount());
-    
     // Computed array of heat markers for template iteration
     heatDiffMarkerArray = computed(() => {
         const markers = this.heatDiffMarkers();
@@ -155,21 +154,20 @@ export class PageViewerComponent implements AfterViewInit {
     private displayedUnits: CBTForceUnit[] = [];
     private pageElements: HTMLDivElement[] = [];
 
-    // Neighbor units for swipe
-    private prevUnit: CBTForceUnit | null = null;
-    private nextUnit: CBTForceUnit | null = null;
+    // Current page index (first visible page in the view)
+    private currentPageIndex = signal(0);
 
     // Interaction services - one per visible page
     private interactionServices = new Map<number, SvgInteractionService>();
 
-    // Track if we're in the middle of a swipe navigation
-    private swipeNavigating = false;
-    
+    // Pre-cached neighbor units (for smooth transitions)
+    private cachedPrevUnit: CBTForceUnit | null = null;
+    private cachedNextUnit: CBTForceUnit | null = null;
+
     // Track if view is initialized
     private viewInitialized = false;
-    
-    // Track if we're in the middle of loading/displaying
-    private displayInProgress = false;
+
+    // Track display version to handle async loads
     private displayVersion = 0;
 
     constructor() {
@@ -179,8 +177,8 @@ export class PageViewerComponent implements AfterViewInit {
         effect(async () => {
             const currentUnit = this.unit();
 
-            // Skip if view isn't ready yet or we're navigating via swipe
-            if (!this.viewInitialized || this.swipeNavigating) {
+            // Skip if view isn't ready yet
+            if (!this.viewInitialized) {
                 return;
             }
 
@@ -209,7 +207,7 @@ export class PageViewerComponent implements AfterViewInit {
         this.initializeZoomPan();
         this.initializePickerMonitoring();
         this.updateDimensions();
-        
+
         // Initial display after view is ready - load unit first if needed
         const currentUnit = this.unit();
         if (currentUnit) {
@@ -231,6 +229,7 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     private initializeZoomPan(): void {
+        // Swipe callbacks for continuous scroll behavior
         const swipeCallbacks: SwipeCallbacks = {
             onSwipeStart: () => this.onSwipeStart(),
             onSwipeMove: (dx) => this.onSwipeMove(dx),
@@ -260,6 +259,158 @@ export class PageViewerComponent implements AfterViewInit {
         );
     }
 
+    // ========== Continuous Swipe Navigation ==========
+
+    private onSwipeStart(): void {
+        if (!this.swipeAllowed()) return;
+        
+        // Render neighbor pages off-screen so they're visible during swipe
+        this.renderNeighborPages();
+    }
+
+    private onSwipeMove(totalDx: number): void {
+        if (!this.swipeAllowed()) return;
+        
+        // Apply swipe transform to the wrapper (NOT content - that has zoom)
+        const swipeWrapper = this.swipeWrapperRef().nativeElement;
+        swipeWrapper.style.transition = 'none';
+        swipeWrapper.style.transform = `translateX(${totalDx}px)`;
+    }
+
+    private onSwipeEnd(totalDx: number, velocity: number): void {
+        if (!this.swipeAllowed()) {
+            this.resetSwipeTransform();
+            return;
+        }
+
+        const swipeWrapper = this.swipeWrapperRef().nativeElement;
+        const scaledPageWidth = PAGE_WIDTH * this.zoomPanService.scale() + PAGE_GAP * this.zoomPanService.scale();
+        const threshold = scaledPageWidth * SWIPE_COMMIT_THRESHOLD;
+
+        // Determine if swipe should commit
+        const flickPrev = velocity > SWIPE_VELOCITY_THRESHOLD;
+        const flickNext = velocity < -SWIPE_VELOCITY_THRESHOLD;
+        const commitPrev = totalDx > threshold || flickPrev;
+        const commitNext = totalDx < -threshold || flickNext;
+
+        if (commitPrev) {
+            // Animate to show previous page sliding in
+            swipeWrapper.style.transition = 'transform 0.25s ease-out';
+            swipeWrapper.style.transform = `translateX(${scaledPageWidth}px)`;
+
+            setTimeout(() => {
+                this.resetSwipeTransform();
+                this.removeNeighborPages();
+                this.navigateToPrevious();
+            }, 250);
+        } else if (commitNext) {
+            // Animate to show next page sliding in
+            swipeWrapper.style.transition = 'transform 0.25s ease-out';
+            swipeWrapper.style.transform = `translateX(${-scaledPageWidth}px)`;
+
+            setTimeout(() => {
+                this.resetSwipeTransform();
+                this.removeNeighborPages();
+                this.navigateToNext();
+            }, 250);
+        } else {
+            // Snap back
+            swipeWrapper.style.transition = 'transform 0.2s ease-out';
+            swipeWrapper.style.transform = '';
+
+            setTimeout(() => {
+                this.resetSwipeTransform();
+                this.removeNeighborPages();
+            }, 200);
+        }
+    }
+
+    private resetSwipeTransform(): void {
+        const swipeWrapper = this.swipeWrapperRef().nativeElement;
+        swipeWrapper.style.transition = '';
+        swipeWrapper.style.transform = '';
+    }
+
+    // Neighbor page elements rendered during swipe (positioned off-screen)
+    private neighborPageElements: HTMLDivElement[] = [];
+
+    /**
+     * Render neighbor pages off-screen so they're visible during swipe.
+     * Previous page is positioned to the left, next page to the right.
+     */
+    private renderNeighborPages(): void {
+        // Remove any existing neighbor pages first
+        this.removeNeighborPages();
+
+        const content = this.contentRef().nativeElement;
+
+        // Get the actual positions used by current pages
+        const positions = this.zoomPanService.getPagePositions(this.displayedUnits.length);
+        const firstPageLeft = positions[0] ?? 0;
+        const lastPageLeft = positions[positions.length - 1] ?? 0;
+
+        // Render previous page to the left of the first visible page
+        if (this.cachedPrevUnit) {
+            const prevSvg = this.cachedPrevUnit.svg();
+            if (prevSvg) {
+                const prevWrapper = this.renderer.createElement('div') as HTMLDivElement;
+                this.renderer.addClass(prevWrapper, 'page-wrapper');
+                this.renderer.addClass(prevWrapper, 'neighbor-page');
+
+                prevWrapper.style.width = `${PAGE_WIDTH}px`;
+                prevWrapper.style.height = `${PAGE_HEIGHT}px`;
+                prevWrapper.style.position = 'absolute';
+                prevWrapper.style.top = '0';
+                // Position to the left of the first page (firstPageLeft - gap - pageWidth)
+                prevWrapper.style.left = `${firstPageLeft - PAGE_GAP - PAGE_WIDTH}px`;
+
+                // Clone the SVG so we don't steal it from the original unit
+                const clonedSvg = prevSvg.cloneNode(true) as SVGSVGElement;
+                prevWrapper.appendChild(clonedSvg);
+
+                content.appendChild(prevWrapper);
+                this.neighborPageElements.push(prevWrapper);
+            }
+        }
+
+        // Render next page to the right of the last visible page
+        if (this.cachedNextUnit) {
+            const nextSvg = this.cachedNextUnit.svg();
+            if (nextSvg) {
+                const nextWrapper = this.renderer.createElement('div') as HTMLDivElement;
+                this.renderer.addClass(nextWrapper, 'page-wrapper');
+                this.renderer.addClass(nextWrapper, 'neighbor-page');
+
+                nextWrapper.style.width = `${PAGE_WIDTH}px`;
+                nextWrapper.style.height = `${PAGE_HEIGHT}px`;
+                nextWrapper.style.position = 'absolute';
+                nextWrapper.style.top = '0';
+                // Position to the right of the last page (lastPageLeft + pageWidth + gap)
+                nextWrapper.style.left = `${lastPageLeft + PAGE_WIDTH + PAGE_GAP}px`;
+
+                // Clone the SVG so we don't steal it from the original unit
+                const clonedSvg = nextSvg.cloneNode(true) as SVGSVGElement;
+                nextWrapper.appendChild(clonedSvg);
+
+                content.appendChild(nextWrapper);
+                this.neighborPageElements.push(nextWrapper);
+            }
+        }
+    }
+
+    /**
+     * Remove neighbor pages after swipe completes.
+     */
+    private removeNeighborPages(): void {
+        const content = this.contentRef().nativeElement;
+        this.neighborPageElements.forEach(el => {
+            if (el.parentElement === content) {
+                content.removeChild(el);
+            }
+        });
+        this.neighborPageElements = [];
+    }
+
     /**
      * Creates an interaction service for a specific page.
      * Uses runInInjectionContext to properly create the service with DI.
@@ -267,18 +418,18 @@ export class PageViewerComponent implements AfterViewInit {
     private createInteractionService(pageIndex: number): SvgInteractionService {
         // Create the service within an injection context so inject() calls work
         const service = runInInjectionContext(this.injector, () => new SvgInteractionService());
-        
+
         service.initialize(
             this.containerRef(),
             this.injector,
             this.zoomPanService
         );
-        
+
         // Monitor heat marker state for this service
         effect(() => {
             const markerData = service.getHeatDiffMarkerData();
             const visible = service.getState().diffHeatMarkerVisible();
-            
+
             // Update the markers map using untracked to avoid reading the signal
             untracked(() => {
                 this.heatDiffMarkers.update(markers => {
@@ -288,7 +439,7 @@ export class PageViewerComponent implements AfterViewInit {
                 });
             });
         }, { injector: this.injector });
-        
+
         return service;
     }
 
@@ -303,7 +454,7 @@ export class PageViewerComponent implements AfterViewInit {
 
     private initializePickerMonitoring(): void {
         if (this.readOnly()) return;
-        
+
         // Monitor picker open state from primary service
         effect(() => {
             const primaryService = this.interactionServices.get(0);
@@ -327,7 +478,7 @@ export class PageViewerComponent implements AfterViewInit {
         const previousVisibleCount = this.visiblePageCount();
         this.updateDimensions();
         this.zoomPanService.handleResize();
-        
+
         // If visible page count changed, re-render pages
         const newVisibleCount = this.visiblePageCount();
         if (newVisibleCount !== previousVisibleCount && this.unit()) {
@@ -349,7 +500,7 @@ export class PageViewerComponent implements AfterViewInit {
         });
         this.pageElements = [];
         this.displayedUnits = [];
-        
+
         this.loadError.set(null);
         this.currentSvg.set(null);
 
@@ -365,16 +516,28 @@ export class PageViewerComponent implements AfterViewInit {
         const visiblePages = this.visiblePageCount();
         const force = this.forceBuilder.currentForce();
         const allUnits = force?.units() ?? [];
+        const totalUnits = allUnits.length;
         const currentIndex = allUnits.indexOf(currentUnit);
 
-        // Build list of units to display - always include current unit first
-        this.displayedUnits.push(currentUnit);
-        
-        // Add additional units if space allows and they exist
-        if (visiblePages > 1 && currentIndex >= 0) {
-            for (let i = 1; i < visiblePages && currentIndex + i < allUnits.length; i++) {
-                const additionalUnit = allUnits[currentIndex + i] as CBTForceUnit;
-                if (additionalUnit) {
+        // Update current page index
+        this.currentPageIndex.set(currentIndex);
+
+        // Build list of units to display
+        // If we have fewer units than visible pages, show all units (no swipe)
+        if (totalUnits <= visiblePages) {
+            // Show all units, no swipe needed
+            for (const unit of allUnits) {
+                this.displayedUnits.push(unit as CBTForceUnit);
+            }
+        } else {
+            // Show visible pages starting from current unit
+            this.displayedUnits.push(currentUnit);
+
+            // Add additional units if space allows (with wraparound)
+            for (let i = 1; i < visiblePages; i++) {
+                const nextIndex = (currentIndex + i) % totalUnits;
+                const additionalUnit = allUnits[nextIndex] as CBTForceUnit;
+                if (additionalUnit && !this.displayedUnits.includes(additionalUnit)) {
                     this.displayedUnits.push(additionalUnit);
                 }
             }
@@ -383,20 +546,18 @@ export class PageViewerComponent implements AfterViewInit {
         // Capture version to detect stale callbacks
         const currentVersion = ++this.displayVersion;
 
-        // If we have additional units to load, load them first
-        if (this.displayedUnits.length > 1) {
-            const additionalUnits = this.displayedUnits.slice(1);
-            Promise.all(additionalUnits.map(u => u.load())).then(() => {
-                // Check if this call is still valid (not superseded by another displayUnit call)
-                if (this.displayVersion !== currentVersion) {
-                    return;
-                }
-                this.renderPages();
-            });
-        } else {
-            // Single page, render immediately
+        // Load all displayed units first
+        const loadPromises = this.displayedUnits.map(u => u.load());
+
+        Promise.all(loadPromises).then(() => {
+            // Check if this call is still valid
+            if (this.displayVersion !== currentVersion) {
+                return;
+            }
             this.renderPages();
-        }
+            // Pre-cache neighbors after rendering
+            this.precacheNeighbors();
+        });
     }
 
     private renderPages(): void {
@@ -414,22 +575,22 @@ export class PageViewerComponent implements AfterViewInit {
             if (svg) {
                 const pageWrapper = this.renderer.createElement('div') as HTMLDivElement;
                 this.renderer.addClass(pageWrapper, 'page-wrapper');
-                
+
                 // Set page dimensions
                 pageWrapper.style.width = `${PAGE_WIDTH}px`;
                 pageWrapper.style.height = `${PAGE_HEIGHT}px`;
                 pageWrapper.style.position = 'absolute';
                 pageWrapper.style.left = `${positions[index] ?? (index * (PAGE_WIDTH + PAGE_GAP))}px`;
                 pageWrapper.style.top = '0';
-                
+
                 // Use original SVG for all pages (allows interaction on all)
                 pageWrapper.appendChild(svg);
-                
+
                 // Set the first page as the "current" SVG
                 if (index === 0) {
                     this.currentSvg.set(svg);
                 }
-                
+
                 // Create a dedicated interaction service for this page
                 if (!this.readOnly()) {
                     const interactionService = this.createInteractionService(index);
@@ -437,7 +598,7 @@ export class PageViewerComponent implements AfterViewInit {
                     interactionService.setupInteractions(svg);
                     this.interactionServices.set(index, interactionService);
                 }
-                
+
                 content.appendChild(pageWrapper);
                 this.pageElements.push(pageWrapper);
             }
@@ -449,6 +610,37 @@ export class PageViewerComponent implements AfterViewInit {
         // Update dimensions and restore view state
         this.updateDimensions();
         this.restoreViewState();
+    }
+
+    /**
+     * Pre-cache the next non-visible units for smooth swipe transitions.
+     */
+    private async precacheNeighbors(): Promise<void> {
+        if (!this.swipeAllowed()) return;
+
+        const currentUnit = this.unit();
+        if (!currentUnit) return;
+
+        const force = this.forceBuilder.currentForce();
+        const allUnits = force?.units() ?? [];
+        const totalUnits = allUnits.length;
+        const currentIndex = allUnits.indexOf(currentUnit);
+
+        // Calculate prev and next indices with wraparound
+        const prevIndex = (currentIndex - 1 + totalUnits) % totalUnits;
+        const nextEndIndex = (currentIndex + this.visiblePageCount()) % totalUnits;
+
+        // Cache prev unit (the one that would slide in from left)
+        if (prevIndex !== currentIndex) {
+            this.cachedPrevUnit = allUnits[prevIndex] as CBTForceUnit;
+            await this.cachedPrevUnit?.load();
+        }
+
+        // Cache next unit (the one that would slide in from right)
+        if (nextEndIndex !== currentIndex && !this.displayedUnits.includes(allUnits[nextEndIndex] as CBTForceUnit)) {
+            this.cachedNextUnit = allUnits[nextEndIndex] as CBTForceUnit;
+            await this.cachedNextUnit?.load();
+        }
     }
 
     private clearPages(): void {
@@ -492,233 +684,30 @@ export class PageViewerComponent implements AfterViewInit {
         this.zoomPanService.restoreViewState(viewState);
     }
 
-    // ========== Swipe Navigation ==========
-
-    private async onSwipeStart(): Promise<void> {
-        if (!this.swipeAllowed()) return;
-
-        this.swipeActive.set(true);
-
-        // Preload neighbors
-        await this.preloadNeighbors();
-
-        // Setup swipe slides
-        this.setupSwipeSlides();
-    }
-
-    private onSwipeMove(totalDx: number): void {
-        if (!this.swipeActive()) return;
-
-        const containerWidth = this.containerRef().nativeElement.clientWidth;
-        const swipeWrapper = this.swipeWrapperRef().nativeElement;
-        const prevSlide = this.prevSlideRef().nativeElement;
-        const nextSlide = this.nextSlideRef().nativeElement;
-
-        // Move the swipe wrapper (which contains the content)
-        swipeWrapper.style.transform = `translateX(${totalDx}px)`;
-
-        // Position neighbor slides
-        if (this.prevUnit) {
-            prevSlide.style.transform = `translateX(${-containerWidth + totalDx}px)`;
-        }
-        if (this.nextUnit) {
-            nextSlide.style.transform = `translateX(${containerWidth + totalDx}px)`;
-        }
-    }
-
-    private onSwipeEnd(totalDx: number, velocity: number): void {
-        if (!this.swipeActive()) return;
-
-        const containerWidth = this.containerRef().nativeElement.clientWidth;
-        const threshold = containerWidth * SWIPE_COMMIT_THRESHOLD;
-
-        // Determine if swipe should commit
-        const flickPrev = velocity > SWIPE_VELOCITY_THRESHOLD;
-        const flickNext = velocity < -SWIPE_VELOCITY_THRESHOLD;
-        const commitPrev = (totalDx > threshold || flickPrev) && this.prevUnit;
-        const commitNext = (totalDx < -threshold || flickNext) && this.nextUnit;
-
-        if (commitPrev && this.prevUnit) {
-            this.commitSwipe('prev');
-        } else if (commitNext && this.nextUnit) {
-            this.commitSwipe('next');
-        } else {
-            this.cancelSwipe();
-        }
-    }
-
-    private commitSwipe(direction: 'prev' | 'next'): void {
-        const containerWidth = this.containerRef().nativeElement.clientWidth;
-        const swipeWrapper = this.swipeWrapperRef().nativeElement;
-        const targetSlide = direction === 'prev' 
-            ? this.prevSlideRef().nativeElement 
-            : this.nextSlideRef().nativeElement;
-
-        // Save current view state
+    private navigateToPrevious(): void {
         const currentUnit = this.unit();
-        if (currentUnit) {
-            this.saveViewState(currentUnit);
-        }
+        if (!currentUnit) return;
 
-        // Set flag to prevent effect from triggering during navigation
-        this.swipeNavigating = true;
+        // Save view state before navigating
+        this.saveViewState(currentUnit);
 
-        // Animate transition
-        swipeWrapper.style.transition = 'transform 250ms ease-out';
-        targetSlide.style.transition = 'transform 250ms ease-out';
+        // Navigate (with wraparound)
+        this.forceBuilder.selectPreviousUnit();
 
-        const contentOffset = direction === 'prev' ? containerWidth : -containerWidth;
-        swipeWrapper.style.transform = `translateX(${contentOffset}px)`;
-        targetSlide.style.transform = 'translateX(0)';
-
-        // Wait for animation, then navigate
-        this.awaitTransitionEnd(swipeWrapper, () => {
-            // Clean up
-            swipeWrapper.style.transition = '';
-            swipeWrapper.style.transform = '';
-            targetSlide.style.transition = '';
-            
-            this.swipeActive.set(false);
-            this.cleanupSwipeSlides();
-
-            // Navigate to new unit - this will trigger the parent to update the unit input
-            if (direction === 'prev') {
-                this.forceBuilder.selectPreviousUnit();
-            } else {
-                this.forceBuilder.selectNextUnit();
-            }
-
-            // Allow the effect to run for the newly selected unit
-            // Use a longer timeout to ensure Angular change detection has run
-            setTimeout(async () => {
-                this.swipeNavigating = false;
-                // Ensure the new unit is loaded before displaying
-                const newUnit = this.unit();
-                if (newUnit) {
-                    await newUnit.load();
-                }
-                this.displayUnit();
-            }, 50);
-        });
+        // The effect will handle displaying the new unit
     }
 
-    private cancelSwipe(): void {
-        const containerWidth = this.containerRef().nativeElement.clientWidth;
-        const swipeWrapper = this.swipeWrapperRef().nativeElement;
-        const prevSlide = this.prevSlideRef().nativeElement;
-        const nextSlide = this.nextSlideRef().nativeElement;
+    private navigateToNext(): void {
+        const currentUnit = this.unit();
+        if (!currentUnit) return;
 
-        // Animate back to original positions
-        swipeWrapper.style.transition = 'transform 250ms ease-out';
-        prevSlide.style.transition = 'transform 250ms ease-out';
-        nextSlide.style.transition = 'transform 250ms ease-out';
+        // Save view state before navigating
+        this.saveViewState(currentUnit);
 
-        swipeWrapper.style.transform = 'translateX(0)';
-        prevSlide.style.transform = `translateX(${-containerWidth}px)`;
-        nextSlide.style.transform = `translateX(${containerWidth}px)`;
+        // Navigate (with wraparound)
+        this.forceBuilder.selectNextUnit();
 
-        // Wait for animation then cleanup
-        this.awaitTransitionEnd(swipeWrapper, () => {
-            swipeWrapper.style.transition = '';
-            prevSlide.style.transition = '';
-            nextSlide.style.transition = '';
-            
-            this.swipeActive.set(false);
-            this.cleanupSwipeSlides();
-        });
-    }
-
-    private async preloadNeighbors(): Promise<void> {
-        const current = this.unit();
-        if (!current) return;
-
-        this.prevUnit = this.forceBuilder.getPreviousUnit(current) as CBTForceUnit | null;
-        this.nextUnit = this.forceBuilder.getNextUnit(current) as CBTForceUnit | null;
-
-        // Load SVGs
-        const loadPromises: Promise<void>[] = [];
-        if (this.prevUnit) {
-            loadPromises.push(this.prevUnit.load());
-        }
-        if (this.nextUnit) {
-            loadPromises.push(this.nextUnit.load());
-        }
-
-        await Promise.all(loadPromises);
-    }
-
-    private setupSwipeSlides(): void {
-        const containerWidth = this.containerRef().nativeElement.clientWidth;
-        const containerHeight = this.containerRef().nativeElement.clientHeight;
-        const minScale = this.zoomPanService.minScale();
-        const prevSlide = this.prevSlideRef().nativeElement;
-        const nextSlide = this.nextSlideRef().nativeElement;
-
-        // Clear existing content
-        prevSlide.innerHTML = '';
-        nextSlide.innerHTML = '';
-
-        // Setup prev slide
-        if (this.prevUnit) {
-            const svg = this.prevUnit.svg();
-            if (svg) {
-                const clone = svg.cloneNode(true) as SVGSVGElement;
-                this.applyFitTransform(clone, minScale, containerWidth, containerHeight);
-                prevSlide.appendChild(clone);
-            }
-            prevSlide.style.transform = `translateX(${-containerWidth}px)`;
-        }
-
-        // Setup next slide
-        if (this.nextUnit) {
-            const svg = this.nextUnit.svg();
-            if (svg) {
-                const clone = svg.cloneNode(true) as SVGSVGElement;
-                this.applyFitTransform(clone, minScale, containerWidth, containerHeight);
-                nextSlide.appendChild(clone);
-            }
-            nextSlide.style.transform = `translateX(${containerWidth}px)`;
-        }
-    }
-
-    private applyFitTransform(
-        svg: SVGSVGElement, 
-        scale: number, 
-        containerWidth: number, 
-        containerHeight: number
-    ): void {
-        const scaledWidth = PAGE_WIDTH * scale;
-        const scaledHeight = PAGE_HEIGHT * scale;
-        const x = Math.max(0, (containerWidth - scaledWidth) / 2);
-        const y = Math.max(0, (containerHeight - scaledHeight) / 2);
-
-        svg.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
-        svg.style.transformOrigin = 'top left';
-    }
-
-    private cleanupSwipeSlides(): void {
-        const prevSlide = this.prevSlideRef().nativeElement;
-        const nextSlide = this.nextSlideRef().nativeElement;
-        
-        prevSlide.innerHTML = '';
-        nextSlide.innerHTML = '';
-        
-        this.prevUnit = null;
-        this.nextUnit = null;
-    }
-
-    private awaitTransitionEnd(element: HTMLElement, callback: () => void): void {
-        const handler = () => {
-            element.removeEventListener('transitionend', handler);
-            requestAnimationFrame(callback);
-        };
-        element.addEventListener('transitionend', handler, { once: true });
-
-        // Fallback timeout in case transitionend doesn't fire
-        setTimeout(() => {
-            element.removeEventListener('transitionend', handler);
-            callback();
-        }, 300);
+        // The effect will handle displaying the new unit
     }
 
     // ========== Public Methods ==========
