@@ -2,11 +2,11 @@
      #viewerContainer
      [class.monochrome]="cardStyle() === 'monochrome'"
      [style.--columns]="columnCount()"
-     [style.--card-width.px]="cardWidth()"
+     [style.--cell-width.px]="cellWidth()"
      (pointerdown)="onPointerDown($event)"
      (pointermove)="onPointerMove($event)"
      (pointerup)="onPointerUp($event)"
-     (pointercancel)="onPointerCancel($event)"
+     (pointercancel)="onPointerUp($event)"
      (pointerleave)="onPointerUp($event)">
     <div class="groups-container">
         @let groups = force()?.groups();
@@ -25,16 +25,16 @@
                     <div class="units-grid">
                         @for (forceUnit of group.units(); track forceUnit.id) {
                             @for (cardItem of getCardRenderItems(forceUnit); track cardItem.trackKey) {
-                                <div class="as-unit-card" #cardWrapper 
+                                <div class="card-cell" #cardWrapper 
                                      [attr.data-unit-id]="forceUnit.id"
-                                     [attr.data-card-index]="cardItem.cardIndex">
+                                     [attr.data-card-index]="cardItem.cardIndex"
+                                     (click)="onCardCellClick($event, cardItem.forceUnit)">
                                     <alpha-strike-card 
                                         [forceUnit]="cardItem.forceUnit" 
                                         [cardIndex]="cardItem.cardIndex"
                                         [useHex]="useHex()" 
                                         [cardStyle]="cardStyle()" 
-                                        [isSelected]="unit()?.id === forceUnit.id" 
-                                        (selected)="onUnitSelected($event)" />
+                                        [isSelected]="unit()?.id === forceUnit.id" />
                                 </div>
                             }
                         }

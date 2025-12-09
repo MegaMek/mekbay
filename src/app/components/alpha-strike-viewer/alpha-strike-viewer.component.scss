@@ -1,16 +1,9 @@
 .alpha-strike-viewer {
     width: 100%;
     height: 100%;
-    overflow-y: auto;
-    overflow-x: auto;
+    overflow: auto;
     background: var(--background-color);
     box-sizing: border-box;
-    touch-action: pan-x pan-y;
-    user-select: none;
-    -webkit-overflow-scrolling: touch;
-    min-height: 0;
-    --columns: 1;
-    --card-width: 350px;
 }
 
 .groups-container {
@@ -18,10 +11,6 @@
     flex-direction: column;
     gap: 16px;
     padding: 8px;
-    box-sizing: border-box;
-    min-width: 100%;
-    // Allow content to expand for horizontal scroll when zoomed in
-    width: fit-content;
 }
 
 .group-container {
@@ -35,13 +24,11 @@
     font-size: 1.5rem;
     font-weight: 700;
     text-align: center;
-    width: 100%;
 }
 
 .group-separator {
     height: 2px;
     margin: 0;
-    width: 100%;
     border: none;
     background: var(--text-color);
     opacity: 0.3;
@@ -49,9 +36,8 @@
 
 .units-grid {
     display: grid;
-    grid-template-columns: repeat(var(--columns), var(--card-width));
+    grid-template-columns: repeat(var(--columns), var(--cell-width));
     gap: 8px;
-    justify-content: start;
 }
 
 .no-units-message {
@@ -62,47 +48,11 @@
     opacity: 0.7;
 }
 
-.as-unit-card {
-    // Width is controlled by grid, not individual card
-    display: block;
-    background-color: transparent;
-    min-height: 0;
-    height: auto;
-    
+.card-cell {
     alpha-strike-card {
         display: block;
         width: 100%;
         height: auto;
-    }
-    
-    svg {
-        display: block;
-        width: 100%;
-        height: auto;
-    }
-    
-    // Multi-card unit styling - cards with same unit-id should appear grouped
-    &[data-card-index="1"],
-    &[data-card-index="2"] {
-        position: relative;
-        
-        &::before {
-            content: '';
-            position: absolute;
-            left: -4px;
-            top: 10%;
-            bottom: 10%;
-            width: 2px;
-            background: var(--text-color);
-            opacity: 0.3;
-            border-radius: 1px;
-        }
-    }
-}
-
-@media (max-width: 600px) {
-    .as-unit-card {
-        max-width: 100%;
     }
 }
 
@@ -128,7 +78,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s ease;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     
     &:hover {
@@ -139,22 +88,19 @@
         background: var(--text-color);
         color: var(--background-color);
     }
-    
-    svg {
-        display: block;
-    }
 }
 
-// Print styles
 @media print {
     .alpha-strike-viewer {
         background: white;
-        padding: 0;
     }
     
-    .as-unit-card {
+    .card-cell {
         break-inside: avoid;
         page-break-inside: avoid;
-        box-shadow: none;
+    }
+    
+    .toggle-buttons {
+        display: none;
     }
 }
