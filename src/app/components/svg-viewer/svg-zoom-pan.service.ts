@@ -39,6 +39,7 @@ import { SvgInteractionService } from './svg-interaction.service';
  * Author: Drake
  */
 const MIN_SCALE_LIMIT = 0.2;
+const MAX_SCALE_LIMIT = 5;
 const MARGIN_TOP = 0;
 const MARGIN_LEFT = 0;
 const MARGIN_BOTTOM = 0;
@@ -47,6 +48,8 @@ const MARGIN_H = MARGIN_LEFT + MARGIN_RIGHT;
 const MARGIN_V = MARGIN_TOP + MARGIN_BOTTOM;
 const POINTER_MOVE_SENSIBILITY = 5;
 const INITIAL_THRESHOLD = 10;
+// Tolerance for floating-point comparisons (0.1% margin)
+const SCALE_EPSILON = 1.001;
 
 export interface ViewState {
     scale: number;
@@ -116,13 +119,20 @@ export class SvgZoomPanService {
     private containerRef!: ElementRef<HTMLDivElement>;
     private svgDimensions = { width: 0, height: 0 };
     private containerDimensions = { width: 0, height: 0 };
+    // Cache the computed minScale to avoid recalculating during gestures
+    private cachedMinScale = MIN_SCALE_LIMIT;
     private lastMove = 0;
     private _rafPending = false;
+    // Store pending scale for RAF to avoid race conditions
+    private _pendingScale: number | null = null;
+    private _pendingTouchCenter: { x: number; y: number } | null = null;
     private isPickerOpen: WritableSignal<boolean> = signal(false);
     private interactionService!: SvgInteractionService;
     private swipeCallbacks?: SwipeCallbacks;
     private swipeTotalDx = 0;
     private capturePointerId: number | null = null;
+    // Flag to prevent state corruption during active gestures
+    private isGestureActive = false;
 
     // Track active pointers
     private pointers = new Map<number, { x: number; y: number; pointerType?: string }>();
@@ -154,6 +164,10 @@ export class SvgZoomPanService {
         containerWidth: number,
         containerHeight: number
     ) {
+        // Validate dimensions to prevent invalid minScale calculations
+        if (svgWidth <= 0 || svgHeight <= 0 || containerWidth <= 0 || containerHeight <= 0) {
+            return;
+        }
         this.svgDimensions = { width: svgWidth, height: svgHeight };
         this.containerDimensions = { width: containerWidth, height: containerHeight };
         this.calculateMinScale();
@@ -174,7 +188,9 @@ export class SvgZoomPanService {
 
     restoreViewState(viewState: ViewState | null) {
         if (viewState && viewState.scale > 0) {
-            this.state.scale.set(viewState.scale);
+            // Ensure restored scale is within valid bounds
+            const clampedScale = Math.max(this.state.minScale, Math.min(this.state.maxScale, viewState.scale));
+            this.state.scale.set(clampedScale);
             this.state.translate.set({ x: viewState.translateX, y: viewState.translateY });
             this.clampPan();
         } else {
@@ -202,16 +218,38 @@ export class SvgZoomPanService {
     }
 
     private calculateMinScale() {
+        // Guard against invalid dimensions
+        if (this.svgDimensions.width <= 0 || this.svgDimensions.height <= 0 ||
+            this.containerDimensions.width <= 0 || this.containerDimensions.height <= 0) {
+            return;
+        }
         const scaleToFitWidth = this.containerDimensions.width / (this.svgDimensions.width + MARGIN_H);
         const scaleToFitHeight = this.containerDimensions.height / (this.svgDimensions.height + MARGIN_V);
         const scale = Math.min(scaleToFitWidth, scaleToFitHeight);
-        this.state.minScale = Math.max(MIN_SCALE_LIMIT, scale);
+        // Ensure minScale is always within valid bounds
+        const newMinScale = Math.max(MIN_SCALE_LIMIT, Math.min(MAX_SCALE_LIMIT, scale));
+        
+        // Only update if not during an active gesture to prevent race conditions
+        if (!this.isGestureActive) {
+            this.state.minScale = newMinScale;
+        }
+        // Always cache the computed value for reference
+        this.cachedMinScale = newMinScale;
     }
 
+    /**
+     * Check if the SVG is fully visible (not zoomed in beyond fit)
+     */
     private fullyVisible(): boolean {
-        const scaleToFitWidth = this.containerDimensions.width / (this.svgDimensions.width + MARGIN_H);
-        const scaleToFitHeight = this.containerDimensions.height / (this.svgDimensions.height + MARGIN_V);
-        return this.state.scale() <= Math.min(scaleToFitWidth, scaleToFitHeight);
+        // Use cached minScale to avoid inconsistencies during gestures
+        return this.state.scale() <= this.cachedMinScale * SCALE_EPSILON;
+    }
+
+    /**
+     * Check if at minimum zoom (for swipe detection)
+     */
+    private isAtMinZoom(): boolean {
+        return this.state.scale() <= this.state.minScale * SCALE_EPSILON;
     }
 
     private centerSvg() {
@@ -229,8 +267,14 @@ export class SvgZoomPanService {
     }
 
     handleResize() {
+        // Don't recalculate during active gestures to prevent race conditions
+        if (this.isGestureActive) {
+            return;
+        }
+        
         // Recalculate minimum scale to fit
-        if (this.svgDimensions.width && this.svgDimensions.height) {
+        if (this.svgDimensions.width > 0 && this.svgDimensions.height > 0 &&
+            this.containerDimensions.width > 0 && this.containerDimensions.height > 0) {
             this.calculateMinScale();
             // If current scale is below new minimum, adjust it
             if (this.state.scale() < this.state.minScale) {
@@ -277,7 +321,8 @@ export class SvgZoomPanService {
     }
 
     private cleanup() {
-        if (this.capturePointerId) {
+        this.isGestureActive = false;
+        if (this.capturePointerId !== null) {
             try {
                 this.containerRef.nativeElement.releasePointerCapture(this.capturePointerId);
             } catch (e) { /* ignore */ }
@@ -285,16 +330,43 @@ export class SvgZoomPanService {
         }
         this.cleanupEventListeners();
         this.pointers.clear();
-        if (this.state.isSwiping) {
+        if (this.state.isSwiping && this.state.swipeStarted) {
             this.swipeCallbacks?.onSwipeEnd(this.swipeTotalDx);
-            this.state.swipeStarted = false;
-            this.swipeTotalDx = 0;
         }
+        this.state.swipeStarted = false;
+        this.swipeTotalDx = 0;
         this.state.isPanning = false;
         this.state.isSwiping = false;
         this.state.pointerMoved = false;
         this.state.waitingForFirstEvent = true;
         this.state.touchStartDistance = 0;
+        this.state.touchStartScale = this.state.scale();
+        this._pendingScale = null;
+        this._pendingTouchCenter = null;
+        
+        // Sync minScale with cached value after gesture ends
+        if (this.cachedMinScale > 0) {
+            this.state.minScale = this.cachedMinScale;
+        }
+        
+        // Ensure scale is valid after gesture ends
+        this.validateAndClampScale();
+    }
+
+    /**
+     * Validate current scale and clamp if necessary
+     */
+    private validateAndClampScale() {
+        const currentScale = this.state.scale();
+        if (!Number.isFinite(currentScale) || currentScale <= 0) {
+            this.state.scale.set(this.state.minScale);
+        } else if (currentScale < this.state.minScale) {
+            this.state.scale.set(this.state.minScale);
+        } else if (currentScale > this.state.maxScale) {
+            this.state.scale.set(this.state.maxScale);
+        }
+        this.clampPan();
+        this.applyTransform();
     }
 
     private onPointerDown = (event: PointerEvent) => {
@@ -308,34 +380,47 @@ export class SvgZoomPanService {
         // Track pointer
         this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, pointerType: event.pointerType });
 
-        // If this produces two active pointers, initialize pinch baseline so a
-        // re-added pointer doesn't reset scale back to the old touchStartScale.
+        // If this produces two active pointers, initialize pinch baseline
         if (this.pointers.size === 2) {
-            if (!this.state.waitingForFirstEvent) { // We are already interacting, we need to reset pinch state
-                const entries = Array.from(this.pointers.values());
-                const p1 = entries[0];
-                const p2 = entries[1];
-                this.state.touchStartDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-                this.state.touchStartScale = this.state.scale();
-                const rect = this.containerRef.nativeElement.getBoundingClientRect();
-                this.state.touchCenter = {
-                    x: ((p1.x + p2.x) / 2) - rect.left,
-                    y: ((p1.y + p2.y) / 2) - rect.top
-                };
-                this.state.prevTouchCenter = { ...this.state.touchCenter };
+            this.isGestureActive = true;
+            const entries = Array.from(this.pointers.values());
+            const p1 = entries[0];
+            const p2 = entries[1];
+            
+            // Always reinitialize pinch state when second pointer is added
+            this.state.touchStartDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            // Capture current scale, ensuring it's valid
+            const currentScale = this.state.scale();
+            this.state.touchStartScale = Number.isFinite(currentScale) && currentScale > 0 
+                ? currentScale 
+                : this.state.minScale;
+            
+            const rect = this.containerRef.nativeElement.getBoundingClientRect();
+            this.state.touchCenter = {
+                x: ((p1.x + p2.x) / 2) - rect.left,
+                y: ((p1.y + p2.y) / 2) - rect.top
+            };
+            this.state.prevTouchCenter = { ...this.state.touchCenter };
+            
+            // End any swipe state when transitioning to pinch
+            if (this.state.isSwiping && this.state.swipeStarted) {
+                this.swipeCallbacks?.onSwipeEnd(0);
             }
-        } else
-            if (this.pointers.size === 1) {
-                const container = this.containerRef.nativeElement;
-                container.addEventListener('pointermove', this.onPointerMove);
-                container.addEventListener('pointerup', this.onPointerUp);
-                container.addEventListener('pointerleave', this.onPointerUp);
-                container.addEventListener('pointercancel', this.onPointerUp);
-                this.state.pointerStart = { x: event.clientX, y: event.clientY };
-                this.state.last = { x: event.clientX, y: event.clientY };
-                this.state.pointerMoved = false;
-                this.state.waitingForFirstEvent = true;
-            }
+            this.state.isPanning = false;
+            this.state.isSwiping = false;
+            this.state.swipeStarted = false;
+            this.swipeTotalDx = 0;
+        } else if (this.pointers.size === 1) {
+            const container = this.containerRef.nativeElement;
+            container.addEventListener('pointermove', this.onPointerMove);
+            container.addEventListener('pointerup', this.onPointerUp);
+            container.addEventListener('pointerleave', this.onPointerUp);
+            container.addEventListener('pointercancel', this.onPointerUp);
+            this.state.pointerStart = { x: event.clientX, y: event.clientY };
+            this.state.last = { x: event.clientX, y: event.clientY };
+            this.state.pointerMoved = false;
+            this.state.waitingForFirstEvent = true;
+        }
     }
 
     private onPointerMove = (event: PointerEvent) => {
@@ -366,39 +451,24 @@ export class SvgZoomPanService {
             }
 
             this.state.waitingForFirstEvent = false;
+            this.isGestureActive = true;
+            
             try {
                 this.containerRef.nativeElement.setPointerCapture(event.pointerId);
                 this.capturePointerId = event.pointerId;
             } catch (e) { /* ignore */ }
 
-            // If two active pointers: start pinch
+            // If two active pointers: start pinch (state already initialized in onPointerDown)
             if (this.pointers.size === 2) {
-                // End any swipe state
-                if (this.state.isSwiping) {
-                    this.swipeTotalDx = 0;
-                    this.swipeCallbacks?.onSwipeEnd(this.swipeTotalDx);
-                }
+                // Pinch state should already be initialized from onPointerDown
+                // Just ensure we're not in swipe/pan mode
                 this.state.isPanning = false;
                 this.state.isSwiping = false;
-
-                const entries = Array.from(this.pointers.values());
-                const p1 = entries[0];
-                const p2 = entries[1];
-                this.state.touchStartDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-                this.state.touchStartScale = this.state.scale();
-
-                const container = this.containerRef.nativeElement;
-                const rect = container.getBoundingClientRect();
-                this.state.touchCenter = {
-                    x: ((p1.x + p2.x) / 2) - rect.left,
-                    y: ((p1.y + p2.y) / 2) - rect.top
-                };
-                this.state.prevTouchCenter = { ...this.state.touchCenter };
                 return;
             }
 
             // Single pointer behavior (mouse or single touch)
-            this.state.isSwiping = this.state.scale() <= this.state.minScale * 1.01;
+            this.state.isSwiping = this.isAtMinZoom();
             this.state.isPanning = !this.fullyVisible();
 
             this.state.last = { x: event.clientX, y: event.clientY };
@@ -411,99 +481,149 @@ export class SvgZoomPanService {
 
         // If two pointers active -> pinch zoom handling
         if (this.pointers.size === 2) {
-            const entries = Array.from(this.pointers.values());
-            const p1 = entries[0];
-            const p2 = entries[1];
-
-            // compute current distance and center
-            const currentDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-            const scaleChange = this.state.touchStartDistance > 0 ? (currentDistance / this.state.touchStartDistance) : 1;
-            let newScale = this.state.touchStartScale * scaleChange;
-            newScale = Math.max(this.state.minScale, Math.min(this.state.maxScale, newScale));
-
-            const container = this.containerRef.nativeElement;
-            const rect = container.getBoundingClientRect();
-            const newTouchCenter = {
-                x: ((p1.x + p2.x) / 2) - rect.left,
-                y: ((p1.y + p2.y) / 2) - rect.top
-            };
-
-            const translate = this.state.translate();
-            const dx = newTouchCenter.x - this.state.prevTouchCenter.x;
-            const dy = newTouchCenter.y - this.state.prevTouchCenter.y;
-            this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
-            this.state.prevTouchCenter = { ...newTouchCenter };
-
-            // smooth update via rAF
-            if (!this._rafPending) {
-                this._rafPending = true;
-                requestAnimationFrame(() => {
-                    if (newScale !== this.state.scale()) {
-                        const translateInner = this.state.translate();
-                        const newX = newTouchCenter.x - ((newTouchCenter.x - translateInner.x) * (newScale / this.state.scale()));
-                        const newY = newTouchCenter.y - ((newTouchCenter.y - translateInner.y) * (newScale / this.state.scale()));
-                        this.state.translate.set({ x: newX, y: newY });
-                        this.state.scale.set(newScale);
-                    }
-                    this.clampPan();
-                    this.applyTransform();
-                    this._rafPending = false;
-                });
-            }
-
-            this.state.pointerMoved = true;
+            this.handlePinchMove();
             return;
         }
 
         // Single pointer behavior: panning or swiping
         if (this.pointers.size === 1 && (this.state.isPanning || this.state.isSwiping)) {
-            const p = Array.from(this.pointers.values())[0];
+            this.handleSinglePointerMove();
+        }
+    }
 
-            if (this.state.isSwiping) {
-                if (!this.state.swipeStarted) {
-                    // don't start swipe until threshold passed
-                    if (Math.abs(p.x - this.state.pointerStart.x) >= this.SWIPE_THRESHOLD) {
-                        this.state.swipeStarted = true;
-                        this.swipeCallbacks?.onSwipeStart();
-                        return; 
-                    }
-                }
-                if (this.state.swipeStarted) {
-                    // Single pointer swipe
-                    this.swipeTotalDx = p.x - this.state.pointerStart.x;
-                    this.state.last = { x: p.x, y: p.y };
-    
-                    if (!this.state.pointerMoved) {
-                        const totalDx = this.swipeTotalDx;
-                        const totalDy = p.y - this.state.pointerStart.y;
-                        if (Math.abs(totalDx) > POINTER_MOVE_SENSIBILITY || Math.abs(totalDy) > POINTER_MOVE_SENSIBILITY) {
-                            this.state.pointerMoved = true;
-                        }
-                    }
-    
-                    this.swipeCallbacks?.onSwipeMove(this.swipeTotalDx);
-                    return;
-                }
-            }
+    /**
+     * Handle pinch zoom gesture
+     */
+    private handlePinchMove() {
+        const entries = Array.from(this.pointers.values());
+        if (entries.length !== 2) return;
+        
+        const p1 = entries[0];
+        const p2 = entries[1];
 
-            // Panning path
-            if (this.state.isPanning) {
-                const dx = p.x - this.state.last.x;
-                const dy = p.y - this.state.last.y;
-                this.state.last = { x: p.x, y: p.y };
-    
-                const translate = this.state.translate();
-                this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
-    
+        // Compute current distance and center
+        const currentDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        
+        // Guard against invalid touchStartDistance
+        if (this.state.touchStartDistance <= 0) {
+            this.state.touchStartDistance = currentDistance;
+            this.state.touchStartScale = this.state.scale();
+        }
+        
+        const scaleChange = currentDistance / this.state.touchStartDistance;
+        
+        // Guard against invalid scale calculations
+        if (!Number.isFinite(scaleChange) || scaleChange <= 0) {
+            return;
+        }
+        
+        let newScale = this.state.touchStartScale * scaleChange;
+        
+        // Clamp to valid range
+        newScale = Math.max(this.state.minScale, Math.min(this.state.maxScale, newScale));
+        
+        // Validate the computed scale
+        if (!Number.isFinite(newScale) || newScale <= 0) {
+            newScale = this.state.minScale;
+        }
+
+        const container = this.containerRef.nativeElement;
+        const rect = container.getBoundingClientRect();
+        const newTouchCenter = {
+            x: ((p1.x + p2.x) / 2) - rect.left,
+            y: ((p1.y + p2.y) / 2) - rect.top
+        };
+
+        // Update translation for panning during pinch
+        const translate = this.state.translate();
+        const dx = newTouchCenter.x - this.state.prevTouchCenter.x;
+        const dy = newTouchCenter.y - this.state.prevTouchCenter.y;
+        this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
+        this.state.prevTouchCenter = { ...newTouchCenter };
+
+        // Store pending values for RAF to avoid race conditions
+        this._pendingScale = newScale;
+        this._pendingTouchCenter = { ...newTouchCenter };
+
+        // Smooth update via rAF
+        if (!this._rafPending) {
+            this._rafPending = true;
+            requestAnimationFrame(() => {
+                const pendingScale = this._pendingScale;
+                const pendingCenter = this._pendingTouchCenter;
+                
+                if (pendingScale !== null && pendingCenter !== null && pendingScale !== this.state.scale()) {
+                    const currentScale = this.state.scale();
+                    // Guard against division by zero
+                    if (currentScale > 0) {
+                        const translateInner = this.state.translate();
+                        const scaleRatio = pendingScale / currentScale;
+                        const newX = pendingCenter.x - ((pendingCenter.x - translateInner.x) * scaleRatio);
+                        const newY = pendingCenter.y - ((pendingCenter.y - translateInner.y) * scaleRatio);
+                        this.state.translate.set({ x: newX, y: newY });
+                    }
+                    this.state.scale.set(pendingScale);
+                }
                 this.clampPan();
                 this.applyTransform();
-    
+                this._rafPending = false;
+            });
+        }
+
+        this.state.pointerMoved = true;
+    }
+
+    /**
+     * Handle single pointer pan/swipe
+     */
+    private handleSinglePointerMove() {
+        const p = Array.from(this.pointers.values())[0];
+        if (!p) return;
+
+        if (this.state.isSwiping) {
+            if (!this.state.swipeStarted) {
+                // Don't start swipe until threshold passed
+                if (Math.abs(p.x - this.state.pointerStart.x) >= this.SWIPE_THRESHOLD) {
+                    this.state.swipeStarted = true;
+                    this.swipeCallbacks?.onSwipeStart();
+                    return; 
+                }
+            }
+            if (this.state.swipeStarted) {
+                // Single pointer swipe
+                this.swipeTotalDx = p.x - this.state.pointerStart.x;
+                this.state.last = { x: p.x, y: p.y };
+
                 if (!this.state.pointerMoved) {
-                    const totalDx = p.x - this.state.pointerStart.x;
+                    const totalDx = this.swipeTotalDx;
                     const totalDy = p.y - this.state.pointerStart.y;
                     if (Math.abs(totalDx) > POINTER_MOVE_SENSIBILITY || Math.abs(totalDy) > POINTER_MOVE_SENSIBILITY) {
                         this.state.pointerMoved = true;
                     }
+                }
+
+                this.swipeCallbacks?.onSwipeMove(this.swipeTotalDx);
+                return;
+            }
+        }
+
+        // Panning path
+        if (this.state.isPanning) {
+            const dx = p.x - this.state.last.x;
+            const dy = p.y - this.state.last.y;
+            this.state.last = { x: p.x, y: p.y };
+
+            const translate = this.state.translate();
+            this.state.translate.set({ x: translate.x + dx, y: translate.y + dy });
+
+            this.clampPan();
+            this.applyTransform();
+
+            if (!this.state.pointerMoved) {
+                const totalDx = p.x - this.state.pointerStart.x;
+                const totalDy = p.y - this.state.pointerStart.y;
+                if (Math.abs(totalDx) > POINTER_MOVE_SENSIBILITY || Math.abs(totalDy) > POINTER_MOVE_SENSIBILITY) {
+                    this.state.pointerMoved = true;
                 }
             }
         }
@@ -518,21 +638,21 @@ export class SvgZoomPanService {
         if (this.pointerMoved || this.pointers.size > 0) {
             this.lastTapPoint = null;
             return;
-        };
+        }
 
         const target = document.elementFromPoint(event.clientX, event.clientY) as Element;
         if (!target) {
             this.lastTapPoint = null;
             return;
-        };
+        }
         const isInteractiveElement = SvgZoomPanService.NON_INTERACTIVE_SELECTORS.some(selector =>
             target.closest(selector)
         );
 
         if (isInteractiveElement) {
             this.lastTapPoint = null;
-            return
-        };
+            return;
+        }
 
         const now = Date.now();
         const timeSinceLastTap = now - this.lastTapTime;
@@ -545,7 +665,7 @@ export class SvgZoomPanService {
             event.preventDefault();
             event.stopPropagation();
 
-            const isZoomedOut = this.state.scale() <= this.state.minScale * 1.01;
+            const isZoomedOut = this.isAtMinZoom();
 
             if (isZoomedOut) {
                 // Zoom in centered on the tap/click point
@@ -554,13 +674,18 @@ export class SvgZoomPanService {
                 const clickY = event.clientY - rect.top;
 
                 const newScale = Math.min(this.state.maxScale, this.state.minScale * 2);
+                const currentScale = this.state.scale();
                 const translate = this.state.translate();
 
-                // Calculate new translation to keep the clicked point stationary
-                const newX = clickX - ((clickX - translate.x) * (newScale / this.state.scale()));
-                const newY = clickY - ((clickY - translate.y) * (newScale / this.state.scale()));
+                // Guard against division by zero
+                if (currentScale > 0) {
+                    // Calculate new translation to keep the clicked point stationary
+                    const scaleRatio = newScale / currentScale;
+                    const newX = clickX - ((clickX - translate.x) * scaleRatio);
+                    const newY = clickY - ((clickY - translate.y) * scaleRatio);
 
-                this.state.translate.set({ x: newX, y: newY });
+                    this.state.translate.set({ x: newX, y: newY });
+                }
                 this.state.scale.set(newScale);
                 this.clampPan();
                 this.applyTransform();
@@ -586,11 +711,17 @@ export class SvgZoomPanService {
         // If we had two pointers and now one remains: transition from pinch to single-pointer pan/swipe
         if (hadPointer && this.pointers.size === 1) {
             const remaining = Array.from(this.pointers.values())[0];
-            this.state.isSwiping = this.state.scale() <= this.state.minScale * 1.01;
+            
+            // Properly reinitialize for single-pointer mode
+            this.state.isSwiping = this.isAtMinZoom();
             this.state.isPanning = !this.fullyVisible();
             this.state.last = { x: remaining.x, y: remaining.y };
             this.state.pointerStart = { x: remaining.x, y: remaining.y };
             this.state.touchStartDistance = 0;
+            // Reset touchStartScale to current valid scale for potential future pinch
+            this.state.touchStartScale = this.state.scale();
+            this.swipeTotalDx = 0;
+            this.state.swipeStarted = false;
             return;
         }
 
@@ -602,7 +733,19 @@ export class SvgZoomPanService {
 
     // Prevent panning out of bounds
     private clampPan() {
+        // Guard against invalid dimensions
+        if (this.svgDimensions.width <= 0 || this.svgDimensions.height <= 0 ||
+            this.containerDimensions.width <= 0 || this.containerDimensions.height <= 0) {
+            return;
+        }
+        
         const scale = this.state.scale();
+        
+        // Guard against invalid scale
+        if (!Number.isFinite(scale) || scale <= 0) {
+            return;
+        }
+        
         const scaledWidth = (this.svgDimensions.width + MARGIN_H) * scale;
         const scaledHeight = (this.svgDimensions.height + MARGIN_V) * scale;
         const maxX = Math.max(0, (this.containerDimensions.width - scaledWidth) / 2);
@@ -613,7 +756,11 @@ export class SvgZoomPanService {
         const translate = this.state.translate();
         const clampedX = Math.max(minX, Math.min(maxX, translate.x));
         const clampedY = Math.max(minY, Math.min(maxY, translate.y));
-        this.state.translate.set({ x: clampedX, y: clampedY });
+        
+        // Only update if values are finite
+        if (Number.isFinite(clampedX) && Number.isFinite(clampedY)) {
+            this.state.translate.set({ x: clampedX, y: clampedY });
+        }
     }
 
     private applyTransform() {
