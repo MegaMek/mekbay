@@ -74,6 +74,7 @@ import {
     PageCanvasOverlayComponent,
     PageViewerCanvasControlsComponent
 } from './canvas';
+import { PageInteractionOverlayComponent } from './overlay';
 
 /*
  * Author: Drake
@@ -172,6 +173,9 @@ export class PageViewerComponent implements AfterViewInit {
 
     // Canvas overlay component refs - keyed by unit ID for reuse during swipe transitions
     private canvasOverlayRefs = new Map<string, ComponentRef<PageCanvasOverlayComponent>>();
+
+    // Interaction overlay component refs - keyed by unit ID for reuse during swipe transitions
+    private interactionOverlayRefs = new Map<string, ComponentRef<PageInteractionOverlayComponent>>();
 
     // Swipe state - track which units are displayed during swipe
     private baseDisplayStartIndex = 0; // The starting index before swipe began
@@ -644,6 +648,9 @@ export class PageViewerComponent implements AfterViewInit {
 
                 // Get or create canvas overlay (reuses existing if available)
                 this.getOrCreateCanvasOverlay(pageWrapper, unit);
+
+                // Get or create interaction overlay (reuses existing if available)
+                this.getOrCreateInteractionOverlay(pageWrapper, unit);
             }
 
             content.appendChild(pageWrapper);
@@ -652,6 +659,9 @@ export class PageViewerComponent implements AfterViewInit {
 
         // Clean up canvas overlays for units no longer displayed
         this.cleanupUnusedCanvasOverlays(displayedUnitIds);
+
+        // Clean up interaction overlays for units no longer displayed
+        this.cleanupUnusedInteractionOverlays(displayedUnitIds);
     }
 
     /**
@@ -771,6 +781,79 @@ export class PageViewerComponent implements AfterViewInit {
             ref.destroy();
         });
         this.canvasOverlayRefs.clear();
+    }
+
+    /**
+     * Gets or creates an interaction overlay component for the given unit.
+     * Reuses existing overlay if one already exists for the unit to prevent flickering.
+     */
+    private getOrCreateInteractionOverlay(pageWrapper: HTMLDivElement, unit: CBTForceUnit): ComponentRef<PageInteractionOverlayComponent> {
+        const unitId = unit.id;
+        
+        // Check if we already have an overlay for this unit
+        const existingRef = this.interactionOverlayRefs.get(unitId);
+        if (existingRef) {
+            // Reuse existing overlay - just move it to the new page wrapper
+            const overlayElement = existingRef.location.nativeElement as HTMLElement;
+            pageWrapper.appendChild(overlayElement);
+            return existingRef;
+        }
+        
+        // Create new interaction overlay
+        const componentRef = createComponent(PageInteractionOverlayComponent, {
+            environmentInjector: this.appRef.injector,
+            elementInjector: this.injector
+        });
+
+        // Set inputs
+        componentRef.setInput('unit', unit);
+        componentRef.setInput('force', this.forceBuilder.currentForce());
+
+        // Attach to Angular's change detection
+        this.appRef.attachView(componentRef.hostView);
+
+        // Add the component's DOM element to the page wrapper
+        const overlayElement = componentRef.location.nativeElement as HTMLElement;
+        overlayElement.style.position = 'absolute';
+        overlayElement.style.top = '0';
+        overlayElement.style.left = '0';
+        overlayElement.style.width = '100%';
+        overlayElement.style.height = '100%';
+        pageWrapper.appendChild(overlayElement);
+
+        // Store in map
+        this.interactionOverlayRefs.set(unitId, componentRef);
+
+        return componentRef;
+    }
+
+    /**
+     * Cleans up interaction overlays that are no longer displayed.
+     * Keeps interaction overlays for currently displayed units to prevent flickering.
+     */
+    private cleanupUnusedInteractionOverlays(keepUnitIds: Set<string>): void {
+        const toRemove: string[] = [];
+        
+        this.interactionOverlayRefs.forEach((ref, unitId) => {
+            if (!keepUnitIds.has(unitId)) {
+                this.appRef.detachView(ref.hostView);
+                ref.destroy();
+                toRemove.push(unitId);
+            }
+        });
+        
+        toRemove.forEach(id => this.interactionOverlayRefs.delete(id));
+    }
+
+    /**
+     * Cleans up all interaction overlay component refs.
+     */
+    private cleanupInteractionOverlays(): void {
+        this.interactionOverlayRefs.forEach(ref => {
+            this.appRef.detachView(ref.hostView);
+            ref.destroy();
+        });
+        this.interactionOverlayRefs.clear();
     }
 
     /**
@@ -941,6 +1024,9 @@ export class PageViewerComponent implements AfterViewInit {
 
                     // Get or create canvas overlay (reuses existing if available)
                     this.getOrCreateCanvasOverlay(pageWrapper, unit);
+
+                    // Get or create interaction overlay (reuses existing if available)
+                    this.getOrCreateInteractionOverlay(pageWrapper, unit);
                 }
 
                 content.appendChild(pageWrapper);
@@ -950,6 +1036,9 @@ export class PageViewerComponent implements AfterViewInit {
 
         // Clean up canvas overlays for units no longer displayed
         this.cleanupUnusedCanvasOverlays(displayedUnitIds);
+
+        // Clean up interaction overlays for units no longer displayed
+        this.cleanupUnusedInteractionOverlays(displayedUnitIds);
 
         // Tell the service how many pages we're actually displaying
         this.zoomPanService.setDisplayedPages(this.pageElements.length);
@@ -1149,6 +1238,7 @@ export class PageViewerComponent implements AfterViewInit {
         }
         this.cleanupInteractionServices();
         this.cleanupCanvasOverlays();
+        this.cleanupInteractionOverlays();
         this.clearPages();
     }
 }
