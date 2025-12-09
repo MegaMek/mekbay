@@ -598,9 +598,10 @@ export class PageViewerComponent implements AfterViewInit {
             // Store unit ID for click handling and selection
             pageWrapper.dataset['unitId'] = unit.id;
             
-            // Add selected class if this is the current unit and multiple pages visible
+            // Add selected class if this is the current unit and multiple pages will be visible at rest
+            // Use visiblePageCount() instead of displayedUnits.length since during swipe we show extra pages
             const isSelected = unit.id === this.unit()?.id;
-            const multipleVisible = this.displayedUnits.length > 1;
+            const multipleVisible = this.visiblePageCount() > 1;
             if (isSelected && multipleVisible) {
                 this.renderer.addClass(pageWrapper, 'selected');
             }
@@ -909,9 +910,9 @@ export class PageViewerComponent implements AfterViewInit {
                 // Store unit ID for click handling and selection
                 pageWrapper.dataset['unitId'] = unit.id;
                 
-                // Add selected class if this is the current unit and multiple pages visible
+                // Add selected class if this is the current unit and multiple pages visible at rest
                 const isSelected = unit.id === this.unit()?.id;
-                const multipleVisible = this.displayedUnits.length > 1;
+                const multipleVisible = this.visiblePageCount() > 1;
                 if (isSelected && multipleVisible) {
                     this.renderer.addClass(pageWrapper, 'selected');
                 }
@@ -1019,7 +1020,7 @@ export class PageViewerComponent implements AfterViewInit {
      */
     private updateSelectedPageHighlight(): void {
         const currentUnitId = this.unit()?.id;
-        const multipleVisible = this.displayedUnits.length > 1;
+        const multipleVisible = this.visiblePageCount() > 1;
         
         this.pageElements.forEach((wrapper) => {
             const unitId = wrapper.dataset['unitId'];
