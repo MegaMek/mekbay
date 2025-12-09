@@ -45,13 +45,13 @@
     left: 0;
     background: #fff;
     box-sizing: border-box;
-    will-change: transform;
 }
 
 /* SVG styling */
 .page-content svg {
     background: #fff;
     display: block;
+    transform-origin: top left;
 }
 
 /* Placeholder while loading */

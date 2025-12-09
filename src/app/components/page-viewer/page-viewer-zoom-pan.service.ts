@@ -862,14 +862,62 @@ export class PageViewerZoomPanService {
 
     /**
      * Apply the current transform to the content element
+     * Scale is applied directly to each SVG element to prevent iOS Safari
+     * from rendering SVGs blurry when scaling a parent container.
+     * Translation is applied to the content container.
      */
     private applyTransform(): void {
         const content = this.contentRef?.nativeElement;
         if (!content) return;
 
         const translate = this.translate();
-        content.style.transform = `translate(${translate.x}px, ${translate.y}px) scale(${this.scale()})`;
+        const scale = this.scale();
+
+        // Apply only translation to content container (no scale)
+        content.style.transform = `translate(${translate.x}px, ${translate.y}px)`;
         content.style.transformOrigin = 'top left';
+
+        // Apply scale directly to each SVG element (fixes iOS blurry rendering)
+        const svgs = content.querySelectorAll('svg');
+        svgs.forEach((svg: SVGSVGElement) => {
+            svg.style.transform = `scale(${scale})`;
+            svg.style.transformOrigin = 'top left';
+        });
+
+        // Scale the page wrappers to match SVG scaling
+        const pageWrappers = content.querySelectorAll('.page-wrapper') as NodeListOf<HTMLElement>;
+        pageWrappers.forEach((wrapper: HTMLElement) => {
+            // Get the original left position (unscaled)
+            const originalLeft = parseFloat(wrapper.dataset['originalLeft'] || wrapper.style.left) || 0;
+            // Store original left if not already stored
+            if (!wrapper.dataset['originalLeft']) {
+                wrapper.dataset['originalLeft'] = String(originalLeft);
+            }
+            // Apply scaled position
+            wrapper.style.left = `${originalLeft * scale}px`;
+            wrapper.style.width = `${PAGE_WIDTH * scale}px`;
+            wrapper.style.height = `${PAGE_HEIGHT * scale}px`;
+        });
+
+        // Also scale canvas overlays if present
+        const canvasOverlays = content.querySelectorAll('page-canvas-overlay') as NodeListOf<HTMLElement>;
+        canvasOverlays.forEach((overlay: HTMLElement) => {
+            const originalLeft = parseFloat(overlay.dataset['originalLeft'] || overlay.style.left) || 0;
+            if (!overlay.dataset['originalLeft']) {
+                overlay.dataset['originalLeft'] = String(originalLeft);
+            }
+            overlay.style.left = `${originalLeft * scale}px`;
+            overlay.style.width = `${PAGE_WIDTH * scale}px`;
+            overlay.style.height = `${PAGE_HEIGHT * scale}px`;
+        });
+    }
+
+    /**
+     * Public method to apply the current transform.
+     * Used after dynamically adding elements that need to be scaled.
+     */
+    applyCurrentTransform(): void {
+        this.applyTransform();
     }
 
     // ========== Public Getters ==========

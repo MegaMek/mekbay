@@ -6,21 +6,7 @@
     <div #swipeWrapper class="swipe-wrapper">
         <!-- Content wrapper receives zoom/pan transforms, contains all pages -->
         <div #content class="page-content">
-            <!-- Pages are rendered here by the component (including off-screen neighbors) -->
-            
-            <!-- Canvas overlays for each displayed page -->
-            @if (!readOnly()) {
-                @for (unit of displayedUnitsSignal(); let i = $index; track unit.id) {
-                    <page-canvas-overlay 
-                        class="page-canvas-overlay-wrapper"
-                        [unit]="unit"
-                        [width]="612"
-                        [height]="792"
-                        [style.left.px]="getPagePosition(i)"
-                        [style.top.px]="0">
-                    </page-canvas-overlay>
-                }
-            }
+            <!-- Pages (with canvas overlays) are rendered programmatically by the component -->
         </div>
     </div>
 </div>

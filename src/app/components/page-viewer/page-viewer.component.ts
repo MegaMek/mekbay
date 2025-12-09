@@ -47,7 +47,10 @@ import {
     computed,
     DestroyRef,
     untracked,
-    runInInjectionContext
+    runInInjectionContext,
+    createComponent,
+    ApplicationRef,
+    ComponentRef
 } from '@angular/core';
 
 import { ViewportTransform } from '../../models/force-serialization';
@@ -93,13 +96,14 @@ const SWIPE_VELOCITY_THRESHOLD = 300; // px/s for flick gesture
     selector: 'page-viewer',
     changeDetection: ChangeDetectionStrategy.OnPush,
     providers: [PageViewerZoomPanService, PageViewerCanvasService],
-    imports: [HeatDiffMarkerComponent, PageCanvasOverlayComponent, PageViewerCanvasControlsComponent],
+    imports: [HeatDiffMarkerComponent, PageViewerCanvasControlsComponent],
     templateUrl: './page-viewer.component.html',
     styleUrls: ['./page-viewer.component.css']
 })
 export class PageViewerComponent implements AfterViewInit {
     private injector = inject(Injector);
     private renderer = inject(Renderer2);
+    private appRef = inject(ApplicationRef);
     private zoomPanService = inject(PageViewerZoomPanService);
     private forceBuilder = inject(ForceBuilderService);
     private optionsService = inject(OptionsService);
@@ -169,9 +173,13 @@ export class PageViewerComponent implements AfterViewInit {
     // Interaction services - one per visible page
     private interactionServices = new Map<number, SvgInteractionService>();
 
-    // Pre-cached neighbor units (for smooth transitions)
-    private cachedPrevUnit: CBTForceUnit | null = null;
-    private cachedNextUnit: CBTForceUnit | null = null;
+    // Canvas overlay component refs - one per visible page
+    private canvasOverlayRefs: ComponentRef<PageCanvasOverlayComponent>[] = [];
+
+    // Swipe state - track which units are displayed during swipe
+    private baseDisplayStartIndex = 0; // The starting index before swipe began
+    private swipeDisplayedIndices: number[] = []; // Indices of units shown during swipe
+    private isSwiping = false; // Whether we're currently in a swipe gesture
 
     // Track if view is initialized
     private viewInitialized = false;
@@ -273,17 +281,34 @@ export class PageViewerComponent implements AfterViewInit {
     private onSwipeStart(): void {
         if (!this.swipeAllowed()) return;
         
-        // Render neighbor pages off-screen so they're visible during swipe
-        this.renderNeighborPages();
+        // Store the current display state as the base for swipe calculations
+        const force = this.forceBuilder.currentForce();
+        const allUnits = force?.units() ?? [];
+        const currentUnit = this.unit();
+        if (!currentUnit) return;
+        
+        this.isSwiping = true;
+        this.baseDisplayStartIndex = allUnits.indexOf(currentUnit);
+        // Clear swipe indices to force a re-render on first move
+        this.swipeDisplayedIndices = [];
+        
+        // Immediately render current pages with swipe positioning
+        this.updateSwipeVisiblePages(0);
+        
+        // Pre-load neighbor units that might become visible during swipe
+        this.preloadSwipeNeighbors();
     }
 
     private onSwipeMove(totalDx: number): void {
         if (!this.swipeAllowed()) return;
         
-        // Apply swipe transform to the wrapper (NOT content - that has zoom)
+        // Apply swipe transform to the wrapper
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
         swipeWrapper.style.transition = 'none';
         swipeWrapper.style.transform = `translateX(${totalDx}px)`;
+        
+        // Calculate which additional pages should be visible based on swipe offset
+        this.updateSwipeVisiblePages(totalDx);
     }
 
     private onSwipeEnd(totalDx: number, velocity: number): void {
@@ -293,43 +318,65 @@ export class PageViewerComponent implements AfterViewInit {
         }
 
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
-        const scaledPageWidth = PAGE_WIDTH * this.zoomPanService.scale() + PAGE_GAP * this.zoomPanService.scale();
+        const scale = this.zoomPanService.scale();
+        const scaledPageWidth = PAGE_WIDTH * scale + PAGE_GAP * scale;
         const threshold = scaledPageWidth * SWIPE_COMMIT_THRESHOLD;
 
-        // Determine if swipe should commit
+        // Determine if swipe should commit based on velocity (flick)
         const flickPrev = velocity > SWIPE_VELOCITY_THRESHOLD;
         const flickNext = velocity < -SWIPE_VELOCITY_THRESHOLD;
-        const commitPrev = totalDx > threshold || flickPrev;
-        const commitNext = totalDx < -threshold || flickNext;
+        
+        // Calculate how many pages we've swiped past
+        // For a flick, only move 1 page; for a drag, move based on distance
+        let pagesToMove = 0;
+        
+        if (flickPrev) {
+            // Quick flick to go to previous - only move 1
+            pagesToMove = -1;
+        } else if (flickNext) {
+            // Quick flick to go to next - only move 1
+            pagesToMove = 1;
+        } else if (Math.abs(totalDx) > threshold) {
+            // Slow drag - calculate based on distance
+            // Use 50% of page width as the point where we commit to the next page
+            const halfPageWidth = scaledPageWidth * 0.5;
+            if (totalDx > 0) {
+                // Swiping right (going to previous pages)
+                pagesToMove = -Math.round(totalDx / scaledPageWidth);
+            } else {
+                // Swiping left (going to next pages)
+                pagesToMove = -Math.round(totalDx / scaledPageWidth);
+            }
+        }
+        
+        // Clamp pagesToMove to avoid going past available units
+        const force = this.forceBuilder.currentForce();
+        const totalUnits = force?.units().length ?? 0;
+        if (totalUnits > 0) {
+            // Allow wraparound, so no clamping needed, but limit to reasonable range
+            pagesToMove = Math.max(-totalUnits + 1, Math.min(totalUnits - 1, pagesToMove));
+        }
 
-        if (commitPrev) {
-            // Animate to show previous page sliding in
+        if (pagesToMove !== 0) {
+            // Calculate the final position to animate to
+            const targetOffset = -pagesToMove * scaledPageWidth;
+            
+            // Animate to the target position
             swipeWrapper.style.transition = 'transform 0.25s ease-out';
-            swipeWrapper.style.transform = `translateX(${scaledPageWidth}px)`;
+            swipeWrapper.style.transform = `translateX(${targetOffset}px)`;
 
             setTimeout(() => {
                 this.resetSwipeTransform();
-                this.removeNeighborPages();
-                this.navigateToPrevious();
-            }, 250);
-        } else if (commitNext) {
-            // Animate to show next page sliding in
-            swipeWrapper.style.transition = 'transform 0.25s ease-out';
-            swipeWrapper.style.transform = `translateX(${-scaledPageWidth}px)`;
-
-            setTimeout(() => {
-                this.resetSwipeTransform();
-                this.removeNeighborPages();
-                this.navigateToNext();
+                this.navigateByPages(pagesToMove);
             }, 250);
         } else {
-            // Snap back
+            // Snap back - restore original state
             swipeWrapper.style.transition = 'transform 0.2s ease-out';
             swipeWrapper.style.transform = '';
 
             setTimeout(() => {
                 this.resetSwipeTransform();
-                this.removeNeighborPages();
+                this.restoreBaseDisplay();
             }, 200);
         }
     }
@@ -338,86 +385,212 @@ export class PageViewerComponent implements AfterViewInit {
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
         swipeWrapper.style.transition = '';
         swipeWrapper.style.transform = '';
-    }
-
-    // Neighbor page elements rendered during swipe (positioned off-screen)
-    private neighborPageElements: HTMLDivElement[] = [];
-
-    /**
-     * Render neighbor pages off-screen so they're visible during swipe.
-     * Previous page is positioned to the left, next page to the right.
-     */
-    private renderNeighborPages(): void {
-        // Remove any existing neighbor pages first
-        this.removeNeighborPages();
-
-        const content = this.contentRef().nativeElement;
-
-        // Get the actual positions used by current pages
-        const positions = this.zoomPanService.getPagePositions(this.displayedUnits.length);
-        const firstPageLeft = positions[0] ?? 0;
-        const lastPageLeft = positions[positions.length - 1] ?? 0;
-
-        // Render previous page to the left of the first visible page
-        if (this.cachedPrevUnit) {
-            const prevSvg = this.cachedPrevUnit.svg();
-            if (prevSvg) {
-                const prevWrapper = this.renderer.createElement('div') as HTMLDivElement;
-                this.renderer.addClass(prevWrapper, 'page-wrapper');
-                this.renderer.addClass(prevWrapper, 'neighbor-page');
-
-                prevWrapper.style.width = `${PAGE_WIDTH}px`;
-                prevWrapper.style.height = `${PAGE_HEIGHT}px`;
-                prevWrapper.style.position = 'absolute';
-                prevWrapper.style.top = '0';
-                // Position to the left of the first page (firstPageLeft - gap - pageWidth)
-                prevWrapper.style.left = `${firstPageLeft - PAGE_GAP - PAGE_WIDTH}px`;
-
-                // Clone the SVG so we don't steal it from the original unit
-                const clonedSvg = prevSvg.cloneNode(true) as SVGSVGElement;
-                prevWrapper.appendChild(clonedSvg);
-
-                content.appendChild(prevWrapper);
-                this.neighborPageElements.push(prevWrapper);
-            }
-        }
-
-        // Render next page to the right of the last visible page
-        if (this.cachedNextUnit) {
-            const nextSvg = this.cachedNextUnit.svg();
-            if (nextSvg) {
-                const nextWrapper = this.renderer.createElement('div') as HTMLDivElement;
-                this.renderer.addClass(nextWrapper, 'page-wrapper');
-                this.renderer.addClass(nextWrapper, 'neighbor-page');
-
-                nextWrapper.style.width = `${PAGE_WIDTH}px`;
-                nextWrapper.style.height = `${PAGE_HEIGHT}px`;
-                nextWrapper.style.position = 'absolute';
-                nextWrapper.style.top = '0';
-                // Position to the right of the last page (lastPageLeft + pageWidth + gap)
-                nextWrapper.style.left = `${lastPageLeft + PAGE_WIDTH + PAGE_GAP}px`;
-
-                // Clone the SVG so we don't steal it from the original unit
-                const clonedSvg = nextSvg.cloneNode(true) as SVGSVGElement;
-                nextWrapper.appendChild(clonedSvg);
-
-                content.appendChild(nextWrapper);
-                this.neighborPageElements.push(nextWrapper);
-            }
-        }
+        this.isSwiping = false;
     }
 
     /**
-     * Remove neighbor pages after swipe completes.
+     * Pre-load units that might become visible during swipe
      */
-    private removeNeighborPages(): void {
+    private async preloadSwipeNeighbors(): Promise<void> {
+        const force = this.forceBuilder.currentForce();
+        const allUnits = force?.units() ?? [];
+        const totalUnits = allUnits.length;
+        if (totalUnits === 0) return;
+
+        // Load a few units on each side
+        const indicesToLoad: number[] = [];
+        const currentIndices = this.swipeDisplayedIndices;
+        
+        if (currentIndices.length > 0) {
+            const firstIdx = currentIndices[0];
+            const lastIdx = currentIndices[currentIndices.length - 1];
+            
+            // Add 2 units before and after
+            for (let i = 1; i <= 2; i++) {
+                const prevIdx = (firstIdx - i + totalUnits) % totalUnits;
+                const nextIdx = (lastIdx + i) % totalUnits;
+                if (!currentIndices.includes(prevIdx)) indicesToLoad.push(prevIdx);
+                if (!currentIndices.includes(nextIdx)) indicesToLoad.push(nextIdx);
+            }
+        }
+
+        // Load all neighbor units
+        await Promise.all(indicesToLoad.map(idx => (allUnits[idx] as CBTForceUnit).load()));
+    }
+
+    /**
+     * Update which pages are visible during swipe based on the swipe offset.
+     * Adds/removes pages dynamically as they come into view.
+     */
+    private updateSwipeVisiblePages(totalDx: number): void {
+        const force = this.forceBuilder.currentForce();
+        const allUnits = force?.units() ?? [];
+        const totalUnits = allUnits.length;
+        if (totalUnits === 0) return;
+
+        const scale = this.zoomPanService.scale();
+        const scaledPageWidth = PAGE_WIDTH * scale;
+        const scaledGap = PAGE_GAP * scale;
+        const containerWidth = this.containerRef().nativeElement.clientWidth;
+
+        // Calculate the visible range in "page space" 
+        // totalDx > 0 means swiping right (revealing left pages)
+        // totalDx < 0 means swiping left (revealing right pages)
+        
+        const basePositions = this.zoomPanService.getPagePositions(this.visiblePageCount());
+        const firstBasePosition = (basePositions[0] ?? 0) * scale;
+        
+        // Calculate how many extra pages we need on each side
+        let pagesNeededLeft = 1;
+        let pagesNeededRight = 1;
+        
+        if (totalDx > 0) {
+            // Swiping right - need pages on the left
+            pagesNeededLeft = Math.max(1, Math.ceil((totalDx) / (scaledPageWidth + scaledGap)));
+        } else if (totalDx < 0) {
+            // Swiping left - need pages on the right
+            pagesNeededRight = Math.max(1, Math.ceil((-totalDx) / (scaledPageWidth + scaledGap)));
+        }
+
+        // Build the list of indices that should be visible
+        const visiblePages = this.visiblePageCount();
+        const newIndices: number[] = [];
+        
+        // Add pages to the left
+        for (let i = pagesNeededLeft; i >= 1; i--) {
+            const idx = (this.baseDisplayStartIndex - i + totalUnits) % totalUnits;
+            if (!newIndices.includes(idx)) newIndices.push(idx);
+        }
+        
+        // Add base visible pages
+        for (let i = 0; i < visiblePages; i++) {
+            const idx = (this.baseDisplayStartIndex + i) % totalUnits;
+            if (!newIndices.includes(idx)) newIndices.push(idx);
+        }
+        
+        // Add pages to the right
+        for (let i = 1; i <= pagesNeededRight; i++) {
+            const idx = (this.baseDisplayStartIndex + visiblePages - 1 + i) % totalUnits;
+            if (!newIndices.includes(idx)) newIndices.push(idx);
+        }
+
+        // Check if we need to update the display
+        const currentIndicesSet = new Set(this.swipeDisplayedIndices);
+        const newIndicesSet = new Set(newIndices);
+        
+        const needsUpdate = newIndices.length !== this.swipeDisplayedIndices.length ||
+            newIndices.some(idx => !currentIndicesSet.has(idx));
+
+        if (needsUpdate) {
+            this.swipeDisplayedIndices = newIndices;
+            this.updateDisplayedUnitsForSwipe(newIndices, totalDx);
+        }
+    }
+
+    /**
+     * Update the displayed units and re-render pages for swipe state
+     */
+    private updateDisplayedUnitsForSwipe(indices: number[], totalDx: number): void {
+        const force = this.forceBuilder.currentForce();
+        const allUnits = force?.units() ?? [];
+        
+        // Map indices to units
+        const newUnits = indices.map(idx => allUnits[idx] as CBTForceUnit).filter(u => u);
+        
+        // Update displayed units
+        this.displayedUnits = newUnits;
+        this.displayedUnitsSignal.set([...newUnits]);
+        
+        // Re-render pages with new positions
+        this.renderPagesForSwipe(indices, totalDx);
+    }
+
+    /**
+     * Render pages during swipe with adjusted positions
+     */
+    private renderPagesForSwipe(indices: number[], totalDx: number): void {
         const content = this.contentRef().nativeElement;
-        this.neighborPageElements.forEach(el => {
+        const scale = this.zoomPanService.scale();
+        
+        // Clean up existing pages, services, and canvas overlays
+        this.cleanupInteractionServices();
+        this.cleanupCanvasOverlays();
+        this.pageElements.forEach(el => {
             if (el.parentElement === content) {
                 content.removeChild(el);
             }
         });
-        this.neighborPageElements = [];
+        this.pageElements = [];
+
+        // Calculate positions relative to the base display
+        // The base pages should be at their normal positions
+        const basePositions = this.zoomPanService.getPagePositions(this.visiblePageCount());
+        
+        // Find where the base start index is in our new indices array
+        const baseIndexPosition = indices.indexOf(this.baseDisplayStartIndex);
+        
+        this.displayedUnits.forEach((unit, arrayIndex) => {
+            const svg = unit.svg();
+            if (!svg) return;
+
+            const pageWrapper = this.renderer.createElement('div') as HTMLDivElement;
+            this.renderer.addClass(pageWrapper, 'page-wrapper');
+
+            // Calculate position relative to where base pages would be
+            const offsetFromBase = arrayIndex - baseIndexPosition;
+            let unscaledLeft: number;
+            
+            if (offsetFromBase >= 0 && offsetFromBase < basePositions.length) {
+                // This is one of the base visible pages
+                unscaledLeft = basePositions[offsetFromBase];
+            } else if (offsetFromBase < 0) {
+                // This page is to the left of the base
+                unscaledLeft = basePositions[0] - ((-offsetFromBase) * (PAGE_WIDTH + PAGE_GAP));
+            } else {
+                // This page is to the right of the base
+                const lastBasePos = basePositions[basePositions.length - 1] ?? basePositions[0];
+                unscaledLeft = lastBasePos + ((offsetFromBase - basePositions.length + 1) * (PAGE_WIDTH + PAGE_GAP));
+            }
+
+            // Store original position and apply scaled position
+            pageWrapper.dataset['originalLeft'] = String(unscaledLeft);
+            pageWrapper.style.width = `${PAGE_WIDTH * scale}px`;
+            pageWrapper.style.height = `${PAGE_HEIGHT * scale}px`;
+            pageWrapper.style.position = 'absolute';
+            pageWrapper.style.left = `${unscaledLeft * scale}px`;
+            pageWrapper.style.top = '0';
+
+            // Apply scale to SVG
+            svg.style.transform = `scale(${scale})`;
+            svg.style.transformOrigin = 'top left';
+            pageWrapper.appendChild(svg);
+
+            // Create interaction service for this page
+            if (!this.readOnly()) {
+                const interactionService = this.createInteractionService(arrayIndex);
+                interactionService.updateUnit(unit);
+                interactionService.setupInteractions(svg);
+                this.interactionServices.set(arrayIndex, interactionService);
+
+                // Create canvas overlay inside the page wrapper
+                const canvasRef = this.createCanvasOverlay(pageWrapper, unit);
+                this.canvasOverlayRefs.push(canvasRef);
+            }
+
+            content.appendChild(pageWrapper);
+            this.pageElements.push(pageWrapper);
+        });
+
+        // Update the displayed units signal (for compatibility)
+        this.displayedUnitsSignal.set([...this.displayedUnits]);
+    }
+
+    /**
+     * Restore the display to the base state (before swipe started)
+     */
+    private restoreBaseDisplay(): void {
+        // Re-display the original pages
+        this.displayUnit();
     }
 
     /**
@@ -450,6 +623,46 @@ export class PageViewerComponent implements AfterViewInit {
         }, { injector: this.injector });
 
         return service;
+    }
+
+    /**
+     * Creates a canvas overlay component and attaches it to the given page wrapper.
+     */
+    private createCanvasOverlay(pageWrapper: HTMLDivElement, unit: CBTForceUnit): ComponentRef<PageCanvasOverlayComponent> {
+        const componentRef = createComponent(PageCanvasOverlayComponent, {
+            environmentInjector: this.appRef.injector,
+            elementInjector: this.injector
+        });
+
+        // Set inputs
+        componentRef.setInput('unit', unit);
+        componentRef.setInput('width', PAGE_WIDTH);
+        componentRef.setInput('height', PAGE_HEIGHT);
+
+        // Attach to Angular's change detection
+        this.appRef.attachView(componentRef.hostView);
+
+        // Add the component's DOM element to the page wrapper
+        const canvasElement = componentRef.location.nativeElement as HTMLElement;
+        canvasElement.style.position = 'absolute';
+        canvasElement.style.top = '0';
+        canvasElement.style.left = '0';
+        canvasElement.style.width = '100%';
+        canvasElement.style.height = '100%';
+        pageWrapper.appendChild(canvasElement);
+
+        return componentRef;
+    }
+
+    /**
+     * Cleans up all canvas overlay component refs.
+     */
+    private cleanupCanvasOverlays(): void {
+        this.canvasOverlayRefs.forEach(ref => {
+            this.appRef.detachView(ref.hostView);
+            ref.destroy();
+        });
+        this.canvasOverlayRefs = [];
     }
 
     /**
@@ -564,16 +777,15 @@ export class PageViewerComponent implements AfterViewInit {
                 return;
             }
             this.renderPages();
-            // Pre-cache neighbors after rendering
-            this.precacheNeighbors();
         });
     }
 
     private renderPages(): void {
         const content = this.contentRef().nativeElement;
 
-        // Clean up existing interaction services before creating new ones
+        // Clean up existing interaction services and canvas overlays before creating new ones
         this.cleanupInteractionServices();
+        this.cleanupCanvasOverlays();
 
         // Get page positions based on spaceEvenly setting
         const positions = this.zoomPanService.getPagePositions(this.displayedUnits.length);
@@ -606,6 +818,10 @@ export class PageViewerComponent implements AfterViewInit {
                     interactionService.updateUnit(unit);
                     interactionService.setupInteractions(svg);
                     this.interactionServices.set(index, interactionService);
+
+                    // Create canvas overlay inside the page wrapper
+                    const canvasRef = this.createCanvasOverlay(pageWrapper, unit);
+                    this.canvasOverlayRefs.push(canvasRef);
                 }
 
                 content.appendChild(pageWrapper);
@@ -613,7 +829,7 @@ export class PageViewerComponent implements AfterViewInit {
             }
         });
 
-        // Update the displayed units signal for canvas overlays
+        // Update the displayed units signal (no longer used for canvas but kept for compatibility)
         this.displayedUnitsSignal.set([...this.displayedUnits]);
 
         // Tell the service how many pages we're actually displaying
@@ -622,37 +838,6 @@ export class PageViewerComponent implements AfterViewInit {
         // Update dimensions and restore view state
         this.updateDimensions();
         this.restoreViewState();
-    }
-
-    /**
-     * Pre-cache the next non-visible units for smooth swipe transitions.
-     */
-    private async precacheNeighbors(): Promise<void> {
-        if (!this.swipeAllowed()) return;
-
-        const currentUnit = this.unit();
-        if (!currentUnit) return;
-
-        const force = this.forceBuilder.currentForce();
-        const allUnits = force?.units() ?? [];
-        const totalUnits = allUnits.length;
-        const currentIndex = allUnits.indexOf(currentUnit);
-
-        // Calculate prev and next indices with wraparound
-        const prevIndex = (currentIndex - 1 + totalUnits) % totalUnits;
-        const nextEndIndex = (currentIndex + this.visiblePageCount()) % totalUnits;
-
-        // Cache prev unit (the one that would slide in from left)
-        if (prevIndex !== currentIndex) {
-            this.cachedPrevUnit = allUnits[prevIndex] as CBTForceUnit;
-            await this.cachedPrevUnit?.load();
-        }
-
-        // Cache next unit (the one that would slide in from right)
-        if (nextEndIndex !== currentIndex && !this.displayedUnits.includes(allUnits[nextEndIndex] as CBTForceUnit)) {
-            this.cachedNextUnit = allUnits[nextEndIndex] as CBTForceUnit;
-            await this.cachedNextUnit?.load();
-        }
     }
 
     private clearPages(): void {
@@ -722,6 +907,32 @@ export class PageViewerComponent implements AfterViewInit {
         // The effect will handle displaying the new unit
     }
 
+    /**
+     * Navigate by a specified number of pages (positive = forward, negative = backward).
+     * Handles wraparound.
+     */
+    private navigateByPages(count: number): void {
+        const currentUnit = this.unit();
+        if (!currentUnit) return;
+
+        // Save view state before navigating
+        this.saveViewState(currentUnit);
+
+        // Navigate by count
+        const force = this.forceBuilder.currentForce();
+        const allUnits = force?.units() ?? [];
+        const totalUnits = allUnits.length;
+        if (totalUnits === 0) return;
+
+        const currentIndex = allUnits.indexOf(currentUnit);
+        const newIndex = ((currentIndex + count) % totalUnits + totalUnits) % totalUnits;
+        const newUnit = allUnits[newIndex];
+        
+        if (newUnit) {
+            this.forceBuilder.selectUnit(newUnit);
+        }
+    }
+
     // ========== Public Methods ==========
 
     retryLoad(): void {
@@ -731,15 +942,6 @@ export class PageViewerComponent implements AfterViewInit {
                 this.displayUnit();
             });
         }
-    }
-
-    /**
-     * Get the X position for a page at the given index.
-     * Used by canvas overlays to position themselves over the corresponding page.
-     */
-    getPagePosition(index: number): number {
-        const positions = this.zoomPanService.getPagePositions(this.displayedUnits.length);
-        return positions[index] ?? (index * (PAGE_WIDTH + PAGE_GAP));
     }
 
     /**
@@ -760,6 +962,7 @@ export class PageViewerComponent implements AfterViewInit {
             this.resizeObserver = null;
         }
         this.cleanupInteractionServices();
+        this.cleanupCanvasOverlays();
         this.clearPages();
     }
 }
