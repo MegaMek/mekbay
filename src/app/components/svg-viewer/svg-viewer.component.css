@@ -55,61 +55,6 @@ svg {
     color: #aaa;
 }
 
-/* Styles for the heat difference marker (touch input) */
-.heat-diff-marker {
-    position: absolute;
-    display: flex;
-    align-items: center;
-    pointer-events: none;
-    z-index: 10;
-    width: 150px;
-    /* 122px for text box + 28px for arrow */
-    height: 44px;
-}
-
-.heat-diff-marker[hidden] {
-    display: none;
-}
-
-.heat-diff-text {
-    width: 122px;
-    height: 44px;
-    color: white;
-    font-weight: bold;
-    font-size: 24px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    border-radius: 2px;
-}
-
-.heat-diff-arrow {
-    width: 0;
-    height: 0;
-    margin-left: -1px;
-    border-top: 22px solid transparent;
-    border-bottom: 22px solid transparent;
-    border-left: 28px solid;
-}
-
-/* Styles for small marker (mouse input) */
-.heat-diff-marker.small {
-    width: 50px;
-    height: 22px;
-}
-
-.heat-diff-marker.small .heat-diff-text {
-    width: 41px;
-    height: 22px;
-    font-size: 14px;
-}
-
-.heat-diff-marker.small .heat-diff-arrow {
-    border-top-width: 11px;
-    border-bottom-width: 11px;
-    border-left-width: 14px;
-}
-
 .error-container {
     position: absolute;
     top: 0;

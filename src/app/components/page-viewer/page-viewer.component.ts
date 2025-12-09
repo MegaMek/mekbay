@@ -46,7 +46,8 @@ import {
     viewChild,
     computed,
     DestroyRef,
-    untracked
+    untracked,
+    runInInjectionContext
 } from '@angular/core';
 
 import { ViewportTransform } from '../../models/force-serialization';
@@ -63,6 +64,7 @@ import { LayoutService } from '../../services/layout.service';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { CBTForce } from '../../models/cbt-force.model';
 import { SvgInteractionService } from '../svg-viewer/svg-interaction.service';
+import { HeatDiffMarkerComponent, HeatDiffMarkerData } from '../heat-diff-marker/heat-diff-marker.component';
 
 /*
  * Author: Drake
@@ -83,7 +85,8 @@ const SWIPE_VELOCITY_THRESHOLD = 500; // px/s for flick gesture
 @Component({
     selector: 'page-viewer',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    providers: [PageViewerZoomPanService, SvgInteractionService],
+    providers: [PageViewerZoomPanService],
+    imports: [HeatDiffMarkerComponent],
     templateUrl: './page-viewer.component.html',
     styleUrls: ['./page-viewer.component.css']
 })
@@ -91,7 +94,6 @@ export class PageViewerComponent implements AfterViewInit {
     private injector = inject(Injector);
     private renderer = inject(Renderer2);
     private zoomPanService = inject(PageViewerZoomPanService);
-    private interactionService = inject(SvgInteractionService);
     private forceBuilder = inject(ForceBuilderService);
     private optionsService = inject(OptionsService);
     layoutService = inject(LayoutService);
@@ -112,15 +114,15 @@ export class PageViewerComponent implements AfterViewInit {
     swipeOverlayRef = viewChild.required<ElementRef<HTMLDivElement>>('swipeOverlay');
     prevSlideRef = viewChild.required<ElementRef<HTMLDivElement>>('prevSlide');
     nextSlideRef = viewChild.required<ElementRef<HTMLDivElement>>('nextSlide');
-    diffHeatMarkerRef = viewChild<ElementRef<HTMLDivElement>>('diffHeatMarker');
-    diffHeatArrowRef = viewChild<ElementRef<HTMLDivElement>>('diffHeatArrow');
-    diffHeatTextRef = viewChild<ElementRef<HTMLDivElement>>('diffHeatText');
 
     // State
     loadError = signal<string | null>(null);
     currentSvg = signal<SVGSVGElement | null>(null);
     swipeActive = signal(false);
     isPickerOpen = signal(false);
+    
+    // Heat diff marker data for each interaction service
+    heatDiffMarkers = signal<Map<number, { data: HeatDiffMarkerData | null; visible: boolean }>>(new Map());
 
     // Computed properties
     swipeAllowed = computed(() => {
@@ -134,7 +136,16 @@ export class PageViewerComponent implements AfterViewInit {
 
     isFullyVisible = computed(() => this.zoomPanService.isFullyVisible());
     visiblePageCount = computed(() => this.zoomPanService.visiblePageCount());
-    diffHeatMarkerVisible = computed(() => this.interactionService.getState().diffHeatMarkerVisible());
+    
+    // Computed array of heat markers for template iteration
+    heatDiffMarkerArray = computed(() => {
+        const markers = this.heatDiffMarkers();
+        return Array.from(markers.entries()).map(([index, state]) => ({
+            index,
+            data: state.data,
+            visible: state.visible
+        }));
+    });
 
     // Private state
     private resizeObserver: ResizeObserver | null = null;
@@ -147,6 +158,9 @@ export class PageViewerComponent implements AfterViewInit {
     // Neighbor units for swipe
     private prevUnit: CBTForceUnit | null = null;
     private nextUnit: CBTForceUnit | null = null;
+
+    // Interaction services - one per visible page
+    private interactionServices = new Map<number, SvgInteractionService>();
 
     // Track if we're in the middle of a swipe navigation
     private swipeNavigating = false;
@@ -193,7 +207,7 @@ export class PageViewerComponent implements AfterViewInit {
         this.viewInitialized = true;
         this.setupResizeObserver();
         this.initializeZoomPan();
-        this.initializeInteractionService();
+        this.initializePickerMonitoring();
         this.updateDimensions();
         
         // Initial display after view is ready - load unit first if needed
@@ -246,21 +260,54 @@ export class PageViewerComponent implements AfterViewInit {
         );
     }
 
-    private initializeInteractionService(): void {
-        if (this.readOnly()) return;
+    /**
+     * Creates an interaction service for a specific page.
+     * Uses runInInjectionContext to properly create the service with DI.
+     */
+    private createInteractionService(pageIndex: number): SvgInteractionService {
+        // Create the service within an injection context so inject() calls work
+        const service = runInInjectionContext(this.injector, () => new SvgInteractionService());
         
-        this.interactionService.initialize(
+        service.initialize(
             this.containerRef(),
             this.injector,
-            this.zoomPanService,
-            this.diffHeatMarkerRef(),
-            this.diffHeatArrowRef(),
-            this.diffHeatTextRef()
+            this.zoomPanService
         );
-
-        // Monitor picker open state
+        
+        // Monitor heat marker state for this service
         effect(() => {
-            const pickerOpen = this.interactionService.isAnyPickerOpen();
+            const markerData = service.getHeatDiffMarkerData();
+            const visible = service.getState().diffHeatMarkerVisible();
+            
+            // Update the markers map using untracked to avoid reading the signal
+            untracked(() => {
+                this.heatDiffMarkers.update(markers => {
+                    const newMarkers = new Map(markers);
+                    newMarkers.set(pageIndex, { data: markerData, visible });
+                    return newMarkers;
+                });
+            });
+        }, { injector: this.injector });
+        
+        return service;
+    }
+
+    /**
+     * Cleans up all interaction services.
+     */
+    private cleanupInteractionServices(): void {
+        this.interactionServices.forEach(service => service.cleanup());
+        this.interactionServices.clear();
+        this.heatDiffMarkers.set(new Map());
+    }
+
+    private initializePickerMonitoring(): void {
+        if (this.readOnly()) return;
+        
+        // Monitor picker open state from primary service
+        effect(() => {
+            const primaryService = this.interactionServices.get(0);
+            const pickerOpen = primaryService?.isAnyPickerOpen() ?? false;
             this.isPickerOpen.set(pickerOpen);
         }, { injector: this.injector });
     }
@@ -355,6 +402,9 @@ export class PageViewerComponent implements AfterViewInit {
     private renderPages(): void {
         const content = this.contentRef().nativeElement;
 
+        // Clean up existing interaction services before creating new ones
+        this.cleanupInteractionServices();
+
         // Get page positions based on spaceEvenly setting
         const positions = this.zoomPanService.getPagePositions(this.displayedUnits.length);
 
@@ -372,20 +422,20 @@ export class PageViewerComponent implements AfterViewInit {
                 pageWrapper.style.left = `${positions[index] ?? (index * (PAGE_WIDTH + PAGE_GAP))}px`;
                 pageWrapper.style.top = '0';
                 
-                // For the first unit (current), use the original SVG for interactivity
-                // For additional units, use clones (they're display-only in multi-page view)
+                // Use original SVG for all pages (allows interaction on all)
+                pageWrapper.appendChild(svg);
+                
+                // Set the first page as the "current" SVG
                 if (index === 0) {
-                    pageWrapper.appendChild(svg);
                     this.currentSvg.set(svg);
-                    
-                    // Setup interactions on the primary SVG
-                    if (!this.readOnly()) {
-                        this.interactionService.updateUnit(unit);
-                        this.interactionService.setupInteractions(svg);
-                    }
-                } else {
-                    const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
-                    pageWrapper.appendChild(clonedSvg);
+                }
+                
+                // Create a dedicated interaction service for this page
+                if (!this.readOnly()) {
+                    const interactionService = this.createInteractionService(index);
+                    interactionService.updateUnit(unit);
+                    interactionService.setupInteractions(svg);
+                    this.interactionServices.set(index, interactionService);
                 }
                 
                 content.appendChild(pageWrapper);
@@ -689,6 +739,7 @@ export class PageViewerComponent implements AfterViewInit {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
         }
+        this.cleanupInteractionServices();
         this.clearPages();
     }
 }

@@ -17,14 +17,14 @@
     </div>
 </div>
 
-<!-- Diff heat marker for heat drag interaction -->
+<!-- Heat diff markers for each interaction service -->
 @if (!readOnly()) {
-    <div #diffHeatMarker class="heat-diff-marker" 
-         [class.small]="!layoutService.isTouchInput()"
-         [hidden]="!diffHeatMarkerVisible()">
-        <div #diffHeatText class="heat-diff-text"></div>
-        <div #diffHeatArrow class="heat-diff-arrow"></div>
-    </div>
+    @for (marker of heatDiffMarkerArray(); track marker.index) {
+        <heat-diff-marker 
+            [data]="marker.data"
+            [visible]="marker.visible">
+        </heat-diff-marker>
+    }
 }
 
 <!-- Error state -->

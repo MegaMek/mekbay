@@ -46,6 +46,7 @@ import { LayoutService } from '../../services/layout.service';
 import { Force } from '../../models/force.model';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { CBTForce } from '../../models/cbt-force.model';
+import { HeatDiffMarkerComponent, HeatDiffMarkerData } from '../heat-diff-marker/heat-diff-marker.component';
 
 /*
  * Author: Drake
@@ -54,7 +55,7 @@ import { CBTForce } from '../../models/cbt-force.model';
     selector: 'svg-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [SvgCanvasOverlayComponent, SvgInteractionOverlayComponent],
+    imports: [SvgCanvasOverlayComponent, SvgInteractionOverlayComponent, HeatDiffMarkerComponent],
     providers: [SvgZoomPanService, SvgInteractionService],
     templateUrl: './svg-viewer.component.html',
     styleUrls: ['./svg-viewer.component.css']
@@ -72,12 +73,11 @@ export class SvgViewerComponent implements AfterViewInit {
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     slidesRef = viewChild.required<ElementRef<HTMLDivElement>>('slides');
-    diffHeatMarkerRef = viewChild<ElementRef<HTMLDivElement>>('diffHeatMarker');
-    diffHeatArrowRef = viewChild<ElementRef<HTMLDivElement>>('diffHeatArrow');
-    diffHeatTextRef = viewChild<ElementRef<HTMLDivElement>>('diffHeatText');
     canvasOverlay = viewChild<SvgCanvasOverlayComponent>('canvasOverlay');
 
     loadError = signal<string | null>(null);
+    heatDiffMarkerData = signal<HeatDiffMarkerData | null>(null);
+    heatDiffMarkerVisible = signal(false);
     svgWidth = 0;
     svgHeight = 0;
     containerWidth = 0;
@@ -125,10 +125,6 @@ export class SvgViewerComponent implements AfterViewInit {
 
     // Signals for picker state
     private isPickerOpen = signal(false);
-
-    get diffHeatMarkerVisible() {
-        return this.interactionService.getState().diffHeatMarkerVisible;
-    }
 
     private resizeTimeout: any = null;
 
@@ -184,10 +180,7 @@ export class SvgViewerComponent implements AfterViewInit {
             this.interactionService.initialize(
                 this.containerRef(),
                 this.injector,
-                this.zoomPanService,
-                this.diffHeatMarkerRef(),
-                this.diffHeatArrowRef(),
-                this.diffHeatTextRef()
+                this.zoomPanService
             );
         }
 
@@ -195,6 +188,14 @@ export class SvgViewerComponent implements AfterViewInit {
         effect(() => {
             const pickerOpen = this.interactionService.isAnyPickerOpen();
             this.isPickerOpen.set(pickerOpen);
+        }, { injector: this.injector });
+
+        // Monitor heat marker state
+        effect(() => {
+            const markerData = this.interactionService.getHeatDiffMarkerData();
+            const visible = this.interactionService.getState().diffHeatMarkerVisible();
+            this.heatDiffMarkerData.set(markerData);
+            this.heatDiffMarkerVisible.set(visible);
         }, { injector: this.injector });
     }
 

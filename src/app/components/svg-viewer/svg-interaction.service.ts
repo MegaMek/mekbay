@@ -65,9 +65,7 @@ export interface InteractionState {
     isPickerOpen: WritableSignal<boolean>;
 }
 
-@Injectable({
-    providedIn: 'root'
-})
+@Injectable()
 export class SvgInteractionService {
     private dataService = inject(DataService);
     private optionsService = inject(OptionsService);
@@ -94,9 +92,6 @@ export class SvgInteractionService {
 
     private pickerRef: PickerInstance | null = null;
     private heatMarkerEffectRef: EffectRef | null = null;
-    private diffHeatMarkerRef?: ElementRef<HTMLDivElement>;
-    private diffHeatArrowRef?: ElementRef<HTMLDivElement>;
-    private diffHeatTextRef?: ElementRef<HTMLDivElement>;
     private interactionAbortController: AbortController | null = null;
 
     private currentHighlightedElement: SVGElement | null = null;
@@ -110,24 +105,17 @@ export class SvgInteractionService {
     initialize(
         containerRef: ElementRef<HTMLDivElement>,
         injector: Injector,
-        zoomPanService: ZoomPanServiceInterface,
-        diffHeatMarkerRef?: ElementRef<HTMLDivElement>,
-        diffHeatArrowRef?: ElementRef<HTMLDivElement>,
-        diffHeatTextRef?: ElementRef<HTMLDivElement>
+        zoomPanService: ZoomPanServiceInterface
     ) {
         this.cleanup();
 
         this.containerRef = containerRef;
         this.injector = injector;
         this.zoomPanService = zoomPanService;
-        this.diffHeatMarkerRef = diffHeatMarkerRef;
-        this.diffHeatArrowRef = diffHeatArrowRef;
-        this.diffHeatTextRef = diffHeatTextRef;
 
         this.heatMarkerEffectRef = effect(() => {
             const currentUnit = this.unit();
             if (!currentUnit) return;
-            if (!this.diffHeatMarkerRef || !this.diffHeatArrowRef || !this.diffHeatTextRef) return;
 
             const data = this.state.heatMarkerData();
             const isVisible = !!data;
@@ -140,41 +128,36 @@ export class SvgInteractionService {
                 return;
             }
 
-            const diff = data.heat - currentHeat.current;
-            const container = this.containerRef.nativeElement;
-            const containerRect = container.getBoundingClientRect();
             const elRect = data.el?.getBoundingClientRect();
-
             if (!elRect) {
                 this.state.diffHeatMarkerVisible.set(false);
                 return;
             }
 
             this.updateHeatHighlight(data.heat);
-            const isMouse = !this.layoutService.isTouchInput();
-            const markerWidth = isMouse ? 50 : 150;
-            const markerHeight = isMouse ? 22 : 44;
-            const spacing = 4;
-
-            const x = elRect.left - containerRect.left - markerWidth - spacing;
-            const y = elRect.top - containerRect.top + (elRect.height / 2) - (markerHeight / 2);
-
-            const marker = this.diffHeatMarkerRef.nativeElement;
-            marker.style.transform = `translate(${x}px, ${y}px)`;
-
-            let color = '#666';
-            if (diff < 0) color = 'var(--cold-color)';
-            else if (diff > 0) color = 'var(--hot-color)';
-
-            this.diffHeatTextRef.nativeElement.style.backgroundColor = color;
-            this.diffHeatArrowRef.nativeElement.style.borderLeftColor = color;
-
-            let diffText = (diff >= 0 ? '+' : '') + diff.toString();
-            if (!isMouse) {
-                diffText = `${data.heat} (${diffText})`;
-            }
-            this.diffHeatTextRef.nativeElement.textContent = diffText;
         }, { injector: this.injector });
+    }
+
+    /**
+     * Gets the heat diff marker data for the HeatDiffMarkerComponent.
+     * Returns null if no marker should be shown.
+     */
+    getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; currentHeat: number; containerRect: DOMRect } | null {
+        const data = this.state.heatMarkerData();
+        if (!data?.el) return null;
+
+        const currentUnit = this.unit();
+        if (!currentUnit) return null;
+
+        const currentHeat = currentUnit.getHeat();
+        const containerRect = this.containerRef.nativeElement.getBoundingClientRect();
+
+        return {
+            el: data.el,
+            heat: data.heat,
+            currentHeat: currentHeat.current,
+            containerRect
+        };
     }
 
     getState(): Readonly<InteractionState> {

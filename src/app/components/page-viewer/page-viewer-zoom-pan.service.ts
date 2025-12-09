@@ -801,24 +801,26 @@ export class PageViewerZoomPanService {
         const displayedPages = this.actualDisplayedPages();
         const positions = this.getPagePositions(displayedPages);
         
-        // Calculate content bounds based on page positions
+        // Calculate content bounds based on page positions (in container/scaled coordinates)
         const firstPageLeft = positions.length > 0 ? positions[0] * scale : 0;
         const lastPageRight = positions.length > 0 
             ? (positions[positions.length - 1] + PAGE_WIDTH) * scale
             : PAGE_WIDTH * scale;
         
-        const contentWidth = lastPageRight - firstPageLeft;
         const contentHeight = PAGE_HEIGHT * scale;
 
         // Calculate pan bounds
-        // Content can be panned so that it doesn't go past container edges
+        // Page positions already include centering, so at min zoom x=0
+        // When zoomed in, allow panning to see content that extends beyond container
         let minX: number, maxX: number;
         
-        if (contentWidth <= containerWidth) {
-            // Content fits - keep it centered (x based on first page position)
-            minX = maxX = -firstPageLeft;
+        if (lastPageRight <= containerWidth) {
+            // Content fits - x stays at 0 (page positions handle centering)
+            minX = maxX = 0;
         } else {
             // Content wider than container - allow panning
+            // Can pan left until right edge of content aligns with right edge of container
+            // Can pan right until left edge of content aligns with left edge of container
             minX = containerWidth - lastPageRight;
             maxX = -firstPageLeft;
         }
@@ -848,15 +850,10 @@ export class PageViewerZoomPanService {
      */
     private centerContent(): void {
         const scale = this.scale();
-        const displayedPages = this.actualDisplayedPages();
-        const positions = this.getPagePositions(displayedPages);
-        
-        // Calculate content bounds
-        const firstPageLeft = positions.length > 0 ? positions[0] * scale : 0;
         const contentHeight = PAGE_HEIGHT * scale;
 
-        // Horizontal: align to page positions (negate firstPageLeft to place correctly)
-        const x = -firstPageLeft;
+        // Horizontal: x=0 because page positions already include centering offset
+        const x = 0;
         // Vertical centering
         const y = (this.containerDimensions.height - contentHeight) / 2;
 
