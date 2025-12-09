@@ -193,3 +193,14 @@
 .page-canvas-overlay-wrapper.active {
     pointer-events: auto;
 }
+
+/* Fixed overlay container - positioned at container level for single page mode */
+.fixed-overlay-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 10;
+}

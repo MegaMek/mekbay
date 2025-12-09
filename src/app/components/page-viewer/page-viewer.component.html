@@ -9,6 +9,10 @@
             <!-- Pages (with canvas overlays) are rendered programmatically by the component -->
         </div>
     </div>
+    
+    <!-- Fixed interaction overlay container for single-page mode -->
+    <!-- When only 1 page is visible, the overlay is placed here to stay fixed during zoom/pan -->
+    <div #fixedOverlayContainer class="fixed-overlay-container"></div>
 </div>
 
 <!-- Canvas controls (FAB) - global for all canvases -->

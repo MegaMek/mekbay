@@ -108,6 +108,9 @@ import { PageTurnSummaryPanelComponent } from './page-turn-summary.component';
             </button>
         </div>
     `,
+    host: {
+        '[class.fixed-mode]': 'isFixedMode()'
+    },
     styles: [`
         :host {
             display: block;
@@ -120,6 +123,11 @@ import { PageTurnSummaryPanelComponent } from './page-turn-summary.component';
             z-index: 2;
             box-sizing: border-box;
             overflow: hidden;
+        }
+        
+        /* Fixed mode: overlay is attached to container, not page-wrapper */
+        :host.fixed-mode {
+            /* Uses inset styling from inline styles set by page-viewer */
         }
 
         .container {
@@ -260,6 +268,16 @@ export class PageInteractionOverlayComponent {
     // Inputs
     unit = input<CBTForceUnit | null>(null);
     force = input<CBTForce | null>(null);
+    
+    /**
+     * When 'fixed', the overlay is bound to the container and stays stable during zoom/pan.
+     * When 'page', the overlay is bound to the page-wrapper and moves with zoom/pan.
+     * Default is 'page' for backwards compatibility and multi-page mode.
+     */
+    mode = input<'fixed' | 'page'>('page');
+    
+    // Host class binding for fixed mode styling
+    isFixedMode = computed(() => this.mode() === 'fixed');
 
     get nativeElement(): HTMLElement {
         return this.host.nativeElement;

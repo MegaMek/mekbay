@@ -121,6 +121,7 @@ export class PageViewerComponent implements AfterViewInit {
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     swipeWrapperRef = viewChild.required<ElementRef<HTMLDivElement>>('swipeWrapper');
     contentRef = viewChild.required<ElementRef<HTMLDivElement>>('content');
+    fixedOverlayContainerRef = viewChild.required<ElementRef<HTMLDivElement>>('fixedOverlayContainer');
 
     // State
     loadError = signal<string | null>(null);
@@ -181,6 +182,9 @@ export class PageViewerComponent implements AfterViewInit {
 
     // Interaction overlay component refs - keyed by unit ID for reuse during swipe transitions
     private interactionOverlayRefs = new Map<string, ComponentRef<PageInteractionOverlayComponent>>();
+    
+    // Track overlay mode for each unit - 'fixed' when attached to container, 'page' when attached to page-wrapper
+    private interactionOverlayModes = new Map<string, 'fixed' | 'page'>();
 
     // Event listener cleanup functions
     private eventListenerCleanups: (() => void)[] = [];
@@ -683,7 +687,8 @@ export class PageViewerComponent implements AfterViewInit {
                 this.getOrCreateCanvasOverlay(pageWrapper, unit);
 
                 // Get or create interaction overlay (reuses existing if available)
-                this.getOrCreateInteractionOverlay(pageWrapper, unit);
+                // During swipe, we always have 2+ pages visible, so use 'page' mode
+                this.getOrCreateInteractionOverlay(pageWrapper, unit, 'page');
             }
 
             content.appendChild(pageWrapper);
@@ -835,16 +840,51 @@ export class PageViewerComponent implements AfterViewInit {
     /**
      * Gets or creates an interaction overlay component for the given unit.
      * Reuses existing overlay if one already exists for the unit to prevent flickering.
+     * 
+     * @param pageWrapper The page wrapper element (used in 'page' mode)
+     * @param unit The unit to create the overlay for
+     * @param mode 'fixed' places overlay in container (stable during zoom), 'page' places in page-wrapper
      */
-    private getOrCreateInteractionOverlay(pageWrapper: HTMLDivElement, unit: CBTForceUnit): ComponentRef<PageInteractionOverlayComponent> {
+    private getOrCreateInteractionOverlay(
+        pageWrapper: HTMLDivElement, 
+        unit: CBTForceUnit,
+        mode: 'fixed' | 'page' = 'page'
+    ): ComponentRef<PageInteractionOverlayComponent> {
         const unitId = unit.id;
+        const targetContainer = mode === 'fixed' 
+            ? this.fixedOverlayContainerRef().nativeElement 
+            : pageWrapper;
         
         // Check if we already have an overlay for this unit
         const existingRef = this.interactionOverlayRefs.get(unitId);
+        const existingMode = this.interactionOverlayModes.get(unitId);
+        
         if (existingRef) {
-            // Reuse existing overlay - just move it to the new page wrapper
+            // Check if mode changed - if so, we need to update positioning and mode input
+            if (existingMode !== mode) {
+                existingRef.setInput('mode', mode);
+                this.interactionOverlayModes.set(unitId, mode);
+                
+                // Update positioning based on new mode
+                const overlayElement = existingRef.location.nativeElement as HTMLElement;
+                if (mode === 'fixed') {
+                    // Fixed mode: fill the container
+                    overlayElement.style.top = '0';
+                    overlayElement.style.left = '0';
+                    overlayElement.style.width = '100%';
+                    overlayElement.style.height = '100%';
+                } else {
+                    // Page mode: fill the page wrapper
+                    overlayElement.style.top = '0';
+                    overlayElement.style.left = '0';
+                    overlayElement.style.width = '100%';
+                    overlayElement.style.height = '100%';
+                }
+            }
+            
+            // Move overlay to the correct container
             const overlayElement = existingRef.location.nativeElement as HTMLElement;
-            pageWrapper.appendChild(overlayElement);
+            targetContainer.appendChild(overlayElement);
             return existingRef;
         }
         
@@ -857,21 +897,23 @@ export class PageViewerComponent implements AfterViewInit {
         // Set inputs
         componentRef.setInput('unit', unit);
         componentRef.setInput('force', this.forceBuilder.currentForce());
+        componentRef.setInput('mode', mode);
 
         // Attach to Angular's change detection
         this.appRef.attachView(componentRef.hostView);
 
-        // Add the component's DOM element to the page wrapper
+        // Add the component's DOM element to the appropriate container
         const overlayElement = componentRef.location.nativeElement as HTMLElement;
         overlayElement.style.position = 'absolute';
         overlayElement.style.top = '0';
         overlayElement.style.left = '0';
         overlayElement.style.width = '100%';
         overlayElement.style.height = '100%';
-        pageWrapper.appendChild(overlayElement);
+        targetContainer.appendChild(overlayElement);
 
-        // Store in map
+        // Store in maps
         this.interactionOverlayRefs.set(unitId, componentRef);
+        this.interactionOverlayModes.set(unitId, mode);
 
         return componentRef;
     }
@@ -891,7 +933,10 @@ export class PageViewerComponent implements AfterViewInit {
             }
         });
         
-        toRemove.forEach(id => this.interactionOverlayRefs.delete(id));
+        toRemove.forEach(id => {
+            this.interactionOverlayRefs.delete(id);
+            this.interactionOverlayModes.delete(id);
+        });
     }
 
     /**
@@ -903,6 +948,7 @@ export class PageViewerComponent implements AfterViewInit {
             ref.destroy();
         });
         this.interactionOverlayRefs.clear();
+        this.interactionOverlayModes.clear();
     }
 
     /**
@@ -1082,7 +1128,10 @@ export class PageViewerComponent implements AfterViewInit {
                     this.getOrCreateCanvasOverlay(pageWrapper, unit);
 
                     // Get or create interaction overlay (reuses existing if available)
-                    this.getOrCreateInteractionOverlay(pageWrapper, unit);
+                    // Use 'fixed' mode when only 1 page is visible (overlay stays fixed during zoom)
+                    // Use 'page' mode when 2+ pages are visible (overlay moves with page)
+                    const overlayMode = this.visiblePageCount() === 1 ? 'fixed' : 'page';
+                    this.getOrCreateInteractionOverlay(pageWrapper, unit, overlayMode);
                 }
 
                 content.appendChild(pageWrapper);
