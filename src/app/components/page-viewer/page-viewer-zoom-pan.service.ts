@@ -862,9 +862,10 @@ export class PageViewerZoomPanService {
 
     /**
      * Apply the current transform to the content element
-     * Scale is applied directly to each SVG element to prevent iOS Safari
+     * Scale is applied directly to each root SVG element to prevent iOS Safari
      * from rendering SVGs blurry when scaling a parent container.
      * Translation is applied to the content container.
+     * Note: Only root SVGs are scaled, not nested SVGs within them.
      */
     private applyTransform(): void {
         const content = this.contentRef?.nativeElement;
@@ -877,14 +878,8 @@ export class PageViewerZoomPanService {
         content.style.transform = `translate(${translate.x}px, ${translate.y}px)`;
         content.style.transformOrigin = 'top left';
 
-        // Apply scale directly to each SVG element (fixes iOS blurry rendering)
-        const svgs = content.querySelectorAll('svg');
-        svgs.forEach((svg: SVGSVGElement) => {
-            svg.style.transform = `scale(${scale})`;
-            svg.style.transformOrigin = 'top left';
-        });
-
-        // Scale the page wrappers to match SVG scaling
+        // Apply scale directly to each root SVG element (direct children of page-wrappers)
+        // This fixes iOS blurry rendering without double-scaling nested SVGs
         const pageWrappers = content.querySelectorAll('.page-wrapper') as NodeListOf<HTMLElement>;
         pageWrappers.forEach((wrapper: HTMLElement) => {
             // Get the original left position (unscaled)
@@ -897,6 +892,13 @@ export class PageViewerZoomPanService {
             wrapper.style.left = `${originalLeft * scale}px`;
             wrapper.style.width = `${PAGE_WIDTH * scale}px`;
             wrapper.style.height = `${PAGE_HEIGHT * scale}px`;
+            
+            // Scale only the direct SVG child (not nested SVGs)
+            const rootSvg = wrapper.querySelector(':scope > svg') as SVGSVGElement;
+            if (rootSvg) {
+                rootSvg.style.transform = `scale(${scale})`;
+                rootSvg.style.transformOrigin = 'top left';
+            }
         });
 
         // Also scale canvas overlays if present
