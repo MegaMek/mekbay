@@ -1,0 +1,39 @@
+<div #container 
+     class="page-viewer-container" 
+     [class.at-min-zoom]="isFullyVisible()">
+    
+    <!-- Swipe wrapper - handles swipe offset during gesture -->
+    <div #swipeWrapper class="swipe-wrapper">
+        <!-- Content wrapper receives zoom/pan transforms, contains all pages -->
+        <div #content class="page-content">
+            <!-- Pages are rendered here by the component -->
+        </div>
+    </div>
+    
+    <!-- Swipe overlay - positioned absolutely, only visible during swipe -->
+    <div #swipeOverlay class="swipe-overlay" [class.active]="swipeActive()">
+        <div #prevSlide class="swipe-slide prev"></div>
+        <div #nextSlide class="swipe-slide next"></div>
+    </div>
+</div>
+
+<!-- Diff heat marker for heat drag interaction -->
+@if (!readOnly()) {
+    <div #diffHeatMarker class="heat-diff-marker" 
+         [class.small]="!layoutService.isTouchInput()"
+         [hidden]="!diffHeatMarkerVisible()">
+        <div #diffHeatText class="heat-diff-text"></div>
+        <div #diffHeatArrow class="heat-diff-arrow"></div>
+    </div>
+}
+
+<!-- Error state -->
+@if (loadError()) {
+    <div class="error-container">
+        <div class="error-message">{{ loadError() }}</div>
+        <button (click)="retryLoad()" class="bt-button reload-button">
+            <span class="icon">&#x21bb;</span>
+            <span>Reload</span>
+        </button>
+    </div>
+}

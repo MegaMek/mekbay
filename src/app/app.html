@@ -13,7 +13,7 @@
             @if (gameService.isAlphaStrike()) {
             <alpha-strike-viewer [unit]="selectedASUnit()" [force]="currentASForce()"></alpha-strike-viewer>
             } @else {
-            <svg-viewer [unit]="selectedCBTUnit()" [force]="currentCBTForce()"></svg-viewer>
+            <page-viewer [unit]="selectedCBTUnit()" [force]="currentCBTForce()"></page-viewer>
             }
         </div>
         } @else {

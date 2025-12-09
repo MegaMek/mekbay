@@ -184,6 +184,7 @@ export class SvgViewerComponent implements AfterViewInit {
             this.interactionService.initialize(
                 this.containerRef(),
                 this.injector,
+                this.zoomPanService,
                 this.diffHeatMarkerRef(),
                 this.diffHeatArrowRef(),
                 this.diffHeatTextRef()

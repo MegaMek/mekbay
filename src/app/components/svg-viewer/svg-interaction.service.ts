@@ -39,7 +39,7 @@ import { SkillType } from '../../models/crew-member.model';
 import { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
 import { OptionsService } from '../../services/options.service';
 import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
-import { SvgZoomPanService } from './svg-zoom-pan.service';
+import { ZoomPanServiceInterface } from '../page-viewer/zoom-pan.interface';
 import { PickerChoice, PickerInstance, PickerPosition, PickerTargetType, PickerValue } from '../picker/picker.interface';
 import { RadialPickerComponent } from '../radial-picker/radial-picker.component';
 import { LinearPickerComponent } from '../linear-picker/linear-picker.component';
@@ -72,11 +72,13 @@ export class SvgInteractionService {
     private dataService = inject(DataService);
     private optionsService = inject(OptionsService);
     private dialogsService = inject(DialogsService);
-    private zoomPanService = inject(SvgZoomPanService);
     private toastService = inject(ToastService);
     private layoutService = inject(LayoutService);
     private forceBuilderService = inject(ForceBuilderService);
     private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
+
+    // Zoom-pan service passed via initialize()
+    private zoomPanService!: ZoomPanServiceInterface;
 
     private containerRef!: ElementRef<HTMLDivElement>;
     private unit = signal<CBTForceUnit | null>(null);
@@ -108,6 +110,7 @@ export class SvgInteractionService {
     initialize(
         containerRef: ElementRef<HTMLDivElement>,
         injector: Injector,
+        zoomPanService: ZoomPanServiceInterface,
         diffHeatMarkerRef?: ElementRef<HTMLDivElement>,
         diffHeatArrowRef?: ElementRef<HTMLDivElement>,
         diffHeatTextRef?: ElementRef<HTMLDivElement>
@@ -116,6 +119,7 @@ export class SvgInteractionService {
 
         this.containerRef = containerRef;
         this.injector = injector;
+        this.zoomPanService = zoomPanService;
         this.diffHeatMarkerRef = diffHeatMarkerRef;
         this.diffHeatArrowRef = diffHeatArrowRef;
         this.diffHeatTextRef = diffHeatTextRef;

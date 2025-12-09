@@ -36,6 +36,7 @@ import { Component, computed, signal, HostListener, inject, effect, ChangeDetect
 import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { SvgViewerComponent } from './components/svg-viewer/svg-viewer.component';
+import { PageViewerComponent } from './components/page-viewer/page-viewer.component';
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
 import { DataService } from './services/data.service';
 import { ForceBuilderService } from './services/force-builder.service';
@@ -77,6 +78,7 @@ import { UrlStateService } from './services/url-state.service';
     imports: [
     ToastsComponent,
     SvgViewerComponent,
+    PageViewerComponent,
     AlphaStrikeViewerComponent,
     LayoutModule,
     UpdateButtonComponent,
