@@ -137,9 +137,13 @@ export class PageViewerComponent implements AfterViewInit {
     isFullyVisible = computed(() => this.zoomPanService.isFullyVisible());
     visiblePageCount = computed(() => this.zoomPanService.visiblePageCount());
 
-    // Swipe is allowed only when total pages > visible pages
+    // Swipe is allowed only when total pages > visible pages and not in canvas paint mode
     swipeAllowed = computed(() => {
         if (this.optionsService.options().swipeToNextSheet === 'disabled') {
+            return false;
+        }
+        // Block swipe when canvas drawing is active
+        if (this.canvasService.isActive()) {
             return false;
         }
         const totalPages = this.getTotalPageCount();
@@ -173,8 +177,8 @@ export class PageViewerComponent implements AfterViewInit {
     // Interaction services - one per visible page
     private interactionServices = new Map<number, SvgInteractionService>();
 
-    // Canvas overlay component refs - one per visible page
-    private canvasOverlayRefs: ComponentRef<PageCanvasOverlayComponent>[] = [];
+    // Canvas overlay component refs - keyed by unit ID for reuse during swipe transitions
+    private canvasOverlayRefs = new Map<string, ComponentRef<PageCanvasOverlayComponent>>();
 
     // Swipe state - track which units are displayed during swipe
     private baseDisplayStartIndex = 0; // The starting index before swipe began
@@ -512,9 +516,8 @@ export class PageViewerComponent implements AfterViewInit {
         const content = this.contentRef().nativeElement;
         const scale = this.zoomPanService.scale();
         
-        // Clean up existing pages, services, and canvas overlays
+        // Clean up existing pages and services (but keep canvas overlays for reuse)
         this.cleanupInteractionServices();
-        this.cleanupCanvasOverlays();
         this.pageElements.forEach(el => {
             if (el.parentElement === content) {
                 content.removeChild(el);
@@ -529,9 +532,14 @@ export class PageViewerComponent implements AfterViewInit {
         // Find where the base start index is in our new indices array
         const baseIndexPosition = indices.indexOf(this.baseDisplayStartIndex);
         
+        // Track which units are being displayed for canvas cleanup
+        const displayedUnitIds = new Set<string>();
+        
         this.displayedUnits.forEach((unit, arrayIndex) => {
             const svg = unit.svg();
             if (!svg) return;
+
+            displayedUnitIds.add(unit.id);
 
             const pageWrapper = this.renderer.createElement('div') as HTMLDivElement;
             this.renderer.addClass(pageWrapper, 'page-wrapper');
@@ -572,14 +580,16 @@ export class PageViewerComponent implements AfterViewInit {
                 interactionService.setupInteractions(svg);
                 this.interactionServices.set(arrayIndex, interactionService);
 
-                // Create canvas overlay inside the page wrapper
-                const canvasRef = this.createCanvasOverlay(pageWrapper, unit);
-                this.canvasOverlayRefs.push(canvasRef);
+                // Get or create canvas overlay (reuses existing if available)
+                this.getOrCreateCanvasOverlay(pageWrapper, unit);
             }
 
             content.appendChild(pageWrapper);
             this.pageElements.push(pageWrapper);
         });
+
+        // Clean up canvas overlays for units no longer displayed
+        this.cleanupUnusedCanvasOverlays(displayedUnitIds);
 
         // Update the displayed units signal (for compatibility)
         this.displayedUnitsSignal.set([...this.displayedUnits]);
@@ -626,9 +636,22 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     /**
-     * Creates a canvas overlay component and attaches it to the given page wrapper.
+     * Gets or creates a canvas overlay component for the given unit.
+     * Reuses existing canvas if one already exists for the unit to prevent flickering.
      */
-    private createCanvasOverlay(pageWrapper: HTMLDivElement, unit: CBTForceUnit): ComponentRef<PageCanvasOverlayComponent> {
+    private getOrCreateCanvasOverlay(pageWrapper: HTMLDivElement, unit: CBTForceUnit): ComponentRef<PageCanvasOverlayComponent> {
+        const unitId = unit.id;
+        
+        // Check if we already have a canvas for this unit
+        const existingRef = this.canvasOverlayRefs.get(unitId);
+        if (existingRef) {
+            // Reuse existing canvas - just move it to the new page wrapper
+            const canvasElement = existingRef.location.nativeElement as HTMLElement;
+            pageWrapper.appendChild(canvasElement);
+            return existingRef;
+        }
+        
+        // Create new canvas overlay
         const componentRef = createComponent(PageCanvasOverlayComponent, {
             environmentInjector: this.appRef.injector,
             elementInjector: this.injector
@@ -651,7 +674,28 @@ export class PageViewerComponent implements AfterViewInit {
         canvasElement.style.height = '100%';
         pageWrapper.appendChild(canvasElement);
 
+        // Store in map
+        this.canvasOverlayRefs.set(unitId, componentRef);
+
         return componentRef;
+    }
+
+    /**
+     * Cleans up canvas overlays that are no longer displayed.
+     * Keeps canvas overlays for currently displayed units to prevent flickering.
+     */
+    private cleanupUnusedCanvasOverlays(keepUnitIds: Set<string>): void {
+        const toRemove: string[] = [];
+        
+        this.canvasOverlayRefs.forEach((ref, unitId) => {
+            if (!keepUnitIds.has(unitId)) {
+                this.appRef.detachView(ref.hostView);
+                ref.destroy();
+                toRemove.push(unitId);
+            }
+        });
+        
+        toRemove.forEach(id => this.canvasOverlayRefs.delete(id));
     }
 
     /**
@@ -662,7 +706,7 @@ export class PageViewerComponent implements AfterViewInit {
             this.appRef.detachView(ref.hostView);
             ref.destroy();
         });
-        this.canvasOverlayRefs = [];
+        this.canvasOverlayRefs.clear();
     }
 
     /**
@@ -783,17 +827,21 @@ export class PageViewerComponent implements AfterViewInit {
     private renderPages(): void {
         const content = this.contentRef().nativeElement;
 
-        // Clean up existing interaction services and canvas overlays before creating new ones
+        // Clean up existing interaction services before creating new ones
         this.cleanupInteractionServices();
-        this.cleanupCanvasOverlays();
 
         // Get page positions based on spaceEvenly setting
         const positions = this.zoomPanService.getPagePositions(this.displayedUnits.length);
+
+        // Track which units are being displayed for canvas cleanup
+        const displayedUnitIds = new Set<string>();
 
         // Create page elements for each displayed unit
         this.displayedUnits.forEach((unit, index) => {
             const svg = unit.svg();
             if (svg) {
+                displayedUnitIds.add(unit.id);
+
                 const pageWrapper = this.renderer.createElement('div') as HTMLDivElement;
                 this.renderer.addClass(pageWrapper, 'page-wrapper');
 
@@ -819,15 +867,17 @@ export class PageViewerComponent implements AfterViewInit {
                     interactionService.setupInteractions(svg);
                     this.interactionServices.set(index, interactionService);
 
-                    // Create canvas overlay inside the page wrapper
-                    const canvasRef = this.createCanvasOverlay(pageWrapper, unit);
-                    this.canvasOverlayRefs.push(canvasRef);
+                    // Get or create canvas overlay (reuses existing if available)
+                    this.getOrCreateCanvasOverlay(pageWrapper, unit);
                 }
 
                 content.appendChild(pageWrapper);
                 this.pageElements.push(pageWrapper);
             }
         });
+
+        // Clean up canvas overlays for units no longer displayed
+        this.cleanupUnusedCanvasOverlays(displayedUnitIds);
 
         // Update the displayed units signal (no longer used for canvas but kept for compatibility)
         this.displayedUnitsSignal.set([...this.displayedUnits]);
