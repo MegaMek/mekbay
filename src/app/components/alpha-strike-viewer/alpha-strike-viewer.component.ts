@@ -31,13 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, inject, computed, effect, ElementRef, viewChildren, signal, DestroyRef, viewChild, afterNextRender, untracked } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, computed, effect, ElementRef, viewChildren, signal, DestroyRef, viewChild, afterNextRender } from '@angular/core';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { OptionsService } from '../../services/options.service';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { ASForce } from '../../models/as-force.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { LayoutService } from '../../services/layout.service';
 import { getLayoutForUnitType } from '../alpha-strike-card/card-layout.config';
 
 /**
@@ -62,6 +61,9 @@ const MIN_CARD_WIDTH = 280;
 const CARD_GAP = 8;
 const CONTAINER_PADDING = 16;
 
+// Pinch distance change required to trigger a column change (in pixels)
+const PINCH_COLUMN_STEP_THRESHOLD = 40;
+
 interface Point {
     x: number;
     y: number;
@@ -74,13 +76,16 @@ interface Point {
     templateUrl: './alpha-strike-viewer.component.html',
     styleUrl: './alpha-strike-viewer.component.scss',
     host: {
-        '(wheel)': 'onWheel($event)'
+        '(wheel)': 'onWheel($event)',
+        // Prevent iOS Safari's native gesture handling (pinch-to-close)
+        '(gesturestart)': 'onGestureStart($event)',
+        '(gesturechange)': 'onGestureChange($event)',
+        '(gestureend)': 'onGestureEnd($event)'
     }
 })
 export class AlphaStrikeViewerComponent {
     private readonly optionsService = inject(OptionsService);
     private readonly forceBuilderService = inject(ForceBuilderService);
-    private readonly layoutService = inject(LayoutService);
     private readonly destroyRef = inject(DestroyRef);
     
     unit = input<ASForceUnit | null>(null);
@@ -92,10 +97,12 @@ export class AlphaStrikeViewerComponent {
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
     readonly cardStyle = computed(() => this.optionsService.options().ASCardStyle);
     
-    // Zoom state
+    // Zoom state - zoom controls card size, columnCount controls grid columns
     readonly zoom = signal(1);
-    private currentColumnCount = 1;
+    readonly columnCount = signal(1);
     private isInitialized = false;
+    private resizeObserver: ResizeObserver | null = null;
+    private lastObservedWidth = 0;
     
     /**
      * Get the number of cards for a given unit type.
@@ -121,17 +128,32 @@ export class AlphaStrikeViewerComponent {
         return items;
     }
     
-    // Computed card width
-    readonly cardWidth = computed(() => Math.max(MIN_CARD_WIDTH, BASE_CARD_WIDTH * this.zoom()));
+    // Computed card width - use floor to ensure consistent pixel widths that don't cause wrapping
+    readonly cardWidth = computed(() => Math.floor(Math.max(MIN_CARD_WIDTH, BASE_CARD_WIDTH * this.zoom())));
     
-    // Pointer tracking state
+    // Pointer tracking state for pinch gesture
     private readonly pointers = new Map<number, Point>();
-    private pinchState: { initialDistance: number; initialZoom: number; lastCenter: Point } | null = null;
-    private panState: { lastPosition: Point } | null = null;
+    private pinchState: {
+        /** Distance at the start of the pinch or after a column step */
+        baselineDistance: number;
+        /** Accumulated distance change since last column step (positive = zoom in, negative = zoom out) */
+        accumulatedDelta: number;
+        /** Whether we're in smooth zoom mode (at 1 column, zoomed in beyond optimal) */
+        smoothZoomMode: boolean;
+        /** Baseline zoom when smooth zoom mode started */
+        smoothZoomBaselineZoom: number;
+        /** Baseline distance when smooth zoom mode started */
+        smoothZoomBaselineDistance: number;
+    } | null = null;
+    private gestureStarted = false;
+    private pointerStartPosition: Point | null = null;
     
     constructor() {
         this.setupEffects();
-        this.destroyRef.onDestroy(() => this.pointers.clear());
+        this.destroyRef.onDestroy(() => {
+            this.pointers.clear();
+            this.resizeObserver?.disconnect();
+        });
     }
     
     private setupEffects(): void {
@@ -143,15 +165,58 @@ export class AlphaStrikeViewerComponent {
             }
         });
         
-        // React to window resize
+        // Setup touch event listener to intercept multi-touch early (iOS fix)
         effect(() => {
-            this.layoutService.windowWidth();
-            if (!this.layoutService.isPhone()) {
-                this.layoutService.isMenuOpen(); // We track this to handle menu compact/expand
-            }
-            if (this.isInitialized) {
-                untracked(() => this.adjustZoomForResize());
-            }
+            const container = this.viewerContainer()?.nativeElement;
+            if (!container) return;
+            
+            // Use native touchstart with passive: false to intercept multi-touch
+            const handleTouchStart = (e: TouchEvent) => {
+                if (e.touches.length >= 2) {
+                    // Prevent iOS from starting its gesture recognition
+                    e.preventDefault();
+                }
+            };
+            
+            const handleTouchMove = (e: TouchEvent) => {
+                if (e.touches.length >= 2) {
+                    // Prevent iOS pinch-to-close during multi-touch
+                    e.preventDefault();
+                }
+            };
+            
+            container.addEventListener('touchstart', handleTouchStart, { passive: false });
+            container.addEventListener('touchmove', handleTouchMove, { passive: false });
+            
+            this.destroyRef.onDestroy(() => {
+                container.removeEventListener('touchstart', handleTouchStart);
+                container.removeEventListener('touchmove', handleTouchMove);
+            });
+        });
+        
+        // Setup ResizeObserver for instant container width tracking
+        effect(() => {
+            const container = this.viewerContainer()?.nativeElement;
+            if (!container) return;
+            
+            // Clean up previous observer if container changed
+            this.resizeObserver?.disconnect();
+            
+            this.resizeObserver = new ResizeObserver((entries) => {
+                const entry = entries[0];
+                if (!entry) return;
+                
+                const newWidth = entry.contentRect.width;
+                // Only react if width actually changed (avoid height-only changes)
+                if (Math.abs(newWidth - this.lastObservedWidth) < 1) return;
+                this.lastObservedWidth = newWidth;
+                
+                if (this.isInitialized) {
+                    this.adjustZoomForResize();
+                }
+            });
+            
+            this.resizeObserver.observe(container);
         });
         
         // Auto-zoom on initial render
@@ -193,155 +258,110 @@ export class AlphaStrikeViewerComponent {
         const optimalZoom = this.calculateZoomForColumnCount(availableWidth, numColumns);
         
         this.zoom.set(optimalZoom);
-        this.currentColumnCount = numColumns;
+        this.columnCount.set(numColumns);
     }
     
     private calculateZoomForColumnCount(availableWidth: number, numColumns: number): number {
+        // Calculate the card width that fits numColumns exactly
+        // Formula: numColumns * cardWidth + (numColumns - 1) * gap = availableWidth
         const idealCardWidth = (availableWidth - (numColumns - 1) * CARD_GAP) / numColumns;
         const zoom = idealCardWidth / BASE_CARD_WIDTH;
         
         // Clamp and ensure minimum card width
         const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
-        return BASE_CARD_WIDTH * clampedZoom < MIN_CARD_WIDTH 
+        const resultingCardWidth = Math.floor(BASE_CARD_WIDTH * clampedZoom);
+        
+        return resultingCardWidth < MIN_CARD_WIDTH 
             ? MIN_CARD_WIDTH / BASE_CARD_WIDTH 
             : clampedZoom;
     }
     
+    /**
+     * Check if a given number of columns can fit at a valid zoom level.
+     */
     private isValidZoomForColumns(availableWidth: number, numColumns: number): boolean {
         const idealCardWidth = (availableWidth - (numColumns - 1) * CARD_GAP) / numColumns;
         const zoom = idealCardWidth / BASE_CARD_WIDTH;
-        const minZoomForColumns = MIN_CARD_WIDTH / BASE_CARD_WIDTH;
-        return zoom >= MIN_ZOOM && zoom >= minZoomForColumns && zoom <= MAX_ZOOM;
+        
+        // Check zoom bounds
+        if (zoom < MIN_ZOOM || zoom > MAX_ZOOM) return false;
+        
+        // Check resulting card width
+        const resultingCardWidth = Math.floor(BASE_CARD_WIDTH * zoom);
+        return resultingCardWidth >= MIN_CARD_WIDTH;
     }
     
     private adjustZoomForResize(): void {
         const availableWidth = this.getAvailableWidth();
         if (availableWidth <= 0) return;
         
+        const currentCols = this.columnCount();
+        
         // Try to maintain current column count
-        if (this.isValidZoomForColumns(availableWidth, this.currentColumnCount)) {
-            this.zoom.set(this.calculateZoomForColumnCount(availableWidth, this.currentColumnCount));
+        if (this.isValidZoomForColumns(availableWidth, currentCols)) {
+            this.zoom.set(this.calculateZoomForColumnCount(availableWidth, currentCols));
             return;
         }
         
         // Calculate unbounded zoom for current columns
-        const idealCardWidth = (availableWidth - (this.currentColumnCount - 1) * CARD_GAP) / this.currentColumnCount;
+        const idealCardWidth = (availableWidth - (currentCols - 1) * CARD_GAP) / currentCols;
         const unboundedZoom = idealCardWidth / BASE_CARD_WIDTH;
         
         // Adjust columns incrementally
         const searchDirection = unboundedZoom > MAX_ZOOM ? 1 : -1;
-        const startCols = this.currentColumnCount + searchDirection;
+        const startCols = currentCols + searchDirection;
         const endCols = searchDirection > 0 ? 10 : 1;
         
         for (let cols = startCols; searchDirection > 0 ? cols <= endCols : cols >= endCols; cols += searchDirection) {
             if (this.isValidZoomForColumns(availableWidth, cols)) {
                 this.zoom.set(this.calculateZoomForColumnCount(availableWidth, cols));
-                this.currentColumnCount = cols;
+                this.columnCount.set(cols);
                 return;
             }
         }
         
         // Fallback
         this.zoom.set(searchDirection > 0 ? MAX_ZOOM : Math.max(MIN_ZOOM, MIN_CARD_WIDTH / BASE_CARD_WIDTH));
-        if (searchDirection < 0) this.currentColumnCount = 1;
-    }
-    
-    private getMinZoomForCurrentLayout(): number {
-        const availableWidth = this.getAvailableWidth();
-        if (availableWidth <= 0) return MIN_ZOOM;
-        
-        // Check if another column can fit
-        const nextColumnCount = this.currentColumnCount + 1;
-        const cardWidthForNextColumn = (availableWidth - (nextColumnCount - 1) * CARD_GAP) / nextColumnCount;
-        
-        if (cardWidthForNextColumn >= MIN_CARD_WIDTH) {
-            return MIN_ZOOM; // Can fit another column, allow full zoom out
-        }
-        
-        // Can't fit another column - clamp to optimal zoom for current columns
-        const optimalCardWidth = (availableWidth - (this.currentColumnCount - 1) * CARD_GAP) / this.currentColumnCount;
-        return Math.max(MIN_ZOOM, optimalCardWidth / BASE_CARD_WIDTH);
+        if (searchDirection < 0) this.columnCount.set(1);
     }
     
     /**
-     * Calculate the optimal zoom level that would show the next column count.
-     * Returns null if the next column count isn't valid (e.g., cards would be too small).
+     * Get the optimal zoom level for a given column count.
+     * Returns null if the column count is invalid.
      */
-    private getZoomForNextColumn(): number | null {
+    private getOptimalZoomForColumns(columns: number): number | null {
         const availableWidth = this.getAvailableWidth();
-        if (availableWidth <= 0) return null;
+        if (availableWidth <= 0 || columns < 1) return null;
         
-        const nextColumnCount = this.currentColumnCount + 1;
-        const optimalZoom = this.calculateZoomForColumnCount(availableWidth, nextColumnCount);
-        
-        // Check if this zoom is valid (respects MIN_CARD_WIDTH and MIN_ZOOM)
-        const resultingCardWidth = BASE_CARD_WIDTH * optimalZoom;
-        if (resultingCardWidth < MIN_CARD_WIDTH || optimalZoom < MIN_ZOOM) {
+        if (!this.isValidZoomForColumns(availableWidth, columns)) {
             return null;
         }
         
-        return optimalZoom;
+        return this.calculateZoomForColumnCount(availableWidth, columns);
     }
     
     /**
-     * Clamp zoom value within valid range.
-     * Always applies layout-aware minimum to prevent over-zooming that leaves empty space.
+     * Calculate the maximum number of columns that can fit at MIN_ZOOM,
+     * and return both the column count and the optimal zoom for that count.
+     * This determines the "most zoomed out" state.
      */
-    private clampZoom(value: number): number {
-        const minZoom = this.getMinZoomForCurrentLayout();
-        return Math.max(minZoom, Math.min(MAX_ZOOM, value));
-    }
-    
-    private updateColumnCount(): void {
+    private getMaxZoomOutState(): { columns: number; zoom: number } {
         const availableWidth = this.getAvailableWidth();
-        if (availableWidth <= 0) return;
+        if (availableWidth <= 0) return { columns: 1, zoom: MIN_ZOOM };
         
-        const currentCardWidth = this.cardWidth();
-        this.currentColumnCount = Math.max(1, Math.floor((availableWidth + CARD_GAP) / (currentCardWidth + CARD_GAP)));
-    }
-    
-    // ==================== Zoom with Center Point ====================
-    
-    private applyZoomAtPoint(newZoom: number, centerX: number, centerY: number): void {
-        const container = this.viewerContainer()?.nativeElement;
-        if (!container) {
-            this.zoom.set(newZoom);
-            return;
-        }
+        // Calculate card width at MIN_ZOOM
+        const cardWidthAtMinZoom = Math.floor(BASE_CARD_WIDTH * MIN_ZOOM);
         
-        const oldZoom = this.zoom();
-        const oldColumnCount = this.currentColumnCount;
+        // If card at MIN_ZOOM is smaller than minimum, use minimum card width
+        const effectiveCardWidth = Math.max(MIN_CARD_WIDTH, cardWidthAtMinZoom);
         
-        // Get scroll position relative to the zoom center point
-        const rect = container.getBoundingClientRect();
-        const pointInContainer = {
-            x: centerX - rect.left,
-            y: centerY - rect.top
-        };
+        // How many columns fit at this card width?
+        const maxColumns = Math.max(1, Math.floor((availableWidth + CARD_GAP) / (effectiveCardWidth + CARD_GAP)));
         
-        // Calculate the content position at the zoom point before zoom
-        const contentXBefore = container.scrollLeft + pointInContainer.x;
-        const contentYBefore = container.scrollTop + pointInContainer.y;
+        // Calculate optimal zoom for that column count
+        const optimalZoom = this.calculateZoomForColumnCount(availableWidth, maxColumns);
         
-        // Apply new zoom
-        this.zoom.set(newZoom);
-        this.updateColumnCount();
-        
-        // If column count changed, don't try to maintain position (layout shifts too much)
-        if (this.currentColumnCount !== oldColumnCount) {
-            return;
-        }
-        
-        // Calculate scale ratio
-        const scaleRatio = newZoom / oldZoom;
-        
-        // Calculate new scroll position to keep the zoom point stationary
-        const newScrollLeft = contentXBefore * scaleRatio - pointInContainer.x;
-        const newScrollTop = contentYBefore * scaleRatio - pointInContainer.y;
-        
-        // Apply new scroll position (will be clamped by browser)
-        container.scrollLeft = Math.max(0, newScrollLeft);
-        container.scrollTop = Math.max(0, newScrollTop);
+        return { columns: maxColumns, zoom: optimalZoom };
     }
     
     // ==================== Event Handlers ====================
@@ -357,8 +377,8 @@ export class AlphaStrikeViewerComponent {
         // Wheel changes column count directly
         const isZoomingOut = event.deltaY > 0;
         const targetColumns = isZoomingOut 
-            ? this.currentColumnCount + 1 
-            : this.currentColumnCount - 1;
+            ? this.columnCount() + 1 
+            : this.columnCount() - 1;
         
         // Validate the target column count
         if (targetColumns < 1) return;
@@ -367,31 +387,46 @@ export class AlphaStrikeViewerComponent {
         // Apply optimal zoom for the new column count
         const newZoom = this.calculateZoomForColumnCount(availableWidth, targetColumns);
         this.zoom.set(newZoom);
-        this.currentColumnCount = targetColumns;
+        this.columnCount.set(targetColumns);
     }
     
     onPointerDown(event: PointerEvent): void {
+        // Only track touch pointers for pinch gesture
+        if (event.pointerType !== 'touch') return;
+        
+        // Ignore additional pointers beyond 2
+        if (this.pointers.size >= 2) return;
+        
         this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
         
         if (this.pointers.size === 2) {
+            // Two fingers - start pinch, prevent native scroll during pinch
+            event.preventDefault();
             this.initPinch();
         } else if (this.pointers.size === 1) {
-            this.initPan(event);
+            // Single finger - track start position for threshold check
+            this.pointerStartPosition = { x: event.clientX, y: event.clientY };
+            this.gestureStarted = false;
         }
     }
     
     onPointerMove(event: PointerEvent): void {
         if (!this.pointers.has(event.pointerId)) return;
         
-        const prevPosition = this.pointers.get(event.pointerId)!;
         const newPosition = { x: event.clientX, y: event.clientY };
         this.pointers.set(event.pointerId, newPosition);
         
-        if (this.pointers.size === 2 && this.pinchState) {
-            this.handlePinchMove(prevPosition, newPosition);
-        } else if (this.pointers.size === 1 && this.panState) {
-            this.handlePanMove(newPosition);
+        // Only handle pinch gesture (2 fingers)
+        if (this.pointers.size !== 2 || !this.pinchState) return;
+        
+        // Check if we've moved past threshold to start gesture
+        if (!this.gestureStarted && this.pointerStartPosition) {
+            this.gestureStarted = true;
         }
+        
+        // Prevent default to stop native pinch-zoom
+        event.preventDefault();
+        this.handlePinchMove();
     }
     
     onPointerUp(event: PointerEvent): void {
@@ -401,12 +436,8 @@ export class AlphaStrikeViewerComponent {
             this.pinchState = null;
         }
         if (this.pointers.size === 0) {
-            this.panState = null;
-        }
-        // If one pointer remains after pinch, start panning from that pointer
-        if (this.pointers.size === 1 && !this.panState) {
-            const [remainingPointer] = this.pointers.values();
-            this.panState = { lastPosition: { ...remainingPointer } };
+            this.gestureStarted = false;
+            this.pointerStartPosition = null;
         }
     }
     
@@ -414,101 +445,153 @@ export class AlphaStrikeViewerComponent {
         this.onPointerUp(event);
     }
     
-    // ==================== Pinch Handling ====================
+    // Prevent iOS Safari's native gesture events
+    onGestureStart(event: Event): void {
+        event.preventDefault();
+    }
     
+    onGestureChange(event: Event): void {
+        event.preventDefault();
+    }
+    
+    onGestureEnd(event: Event): void {
+        event.preventDefault();
+    }
+    
+    // ==================== Pinch Handling ====================
+
     private initPinch(): void {
         const points = Array.from(this.pointers.values());
         if (points.length < 2) return;
         
+        const distance = this.getDistance(points[0], points[1]);
+        const currentZoom = this.zoom();
+        const optimalZoomFor1Col = this.getOptimalZoomForColumns(1);
+        
+        // Check if we're in smooth zoom mode (at 1 column, zoomed in beyond optimal)
+        const inSmoothZoomMode = this.columnCount() === 1 && 
+            optimalZoomFor1Col !== null && 
+            currentZoom > optimalZoomFor1Col + 0.001;
+        
         this.pinchState = {
-            initialDistance: this.getDistance(points[0], points[1]),
-            initialZoom: this.zoom(),
-            lastCenter: this.getCenter(points[0], points[1])
+            baselineDistance: distance,
+            accumulatedDelta: 0,
+            smoothZoomMode: inSmoothZoomMode,
+            smoothZoomBaselineZoom: currentZoom,
+            smoothZoomBaselineDistance: distance
         };
-        this.panState = null; // Stop single-finger pan when pinch starts
+        this.gestureStarted = false;
     }
     
-    private handlePinchMove(_prevPosition: Point, _newPosition: Point): void {
+    private handlePinchMove(): void {
         if (!this.pinchState) return;
         
         const points = Array.from(this.pointers.values());
         if (points.length < 2) return;
         
         const currentDistance = this.getDistance(points[0], points[1]);
-        const currentCenter = this.getCenter(points[0], points[1]);
+        const currentCols = this.columnCount();
+        const availableWidth = this.getAvailableWidth();
+        if (availableWidth <= 0) return;
         
-        // Calculate target zoom from pinch scale
-        const scale = currentDistance / this.pinchState.initialDistance;
-        let targetZoom = this.pinchState.initialZoom * scale;
-        const currentZoom = this.zoom();
-        const isZoomingOut = targetZoom < currentZoom;
+        // Get zoom boundaries
+        const maxZoomOutState = this.getMaxZoomOutState();
+        const maxColumns = maxZoomOutState.columns;
+        const optimalZoomFor1Col = this.getOptimalZoomForColumns(1) ?? 1;
         
-        // Handle zoom clamping with column snapping
-        let newZoom: number;
-        if (isZoomingOut) {
-            const nextColumnZoom = this.getZoomForNextColumn();
-            if (nextColumnZoom !== null && targetZoom <= nextColumnZoom) {
-                // Snap to optimal zoom for the new column count
-                newZoom = nextColumnZoom;
-            } else {
-                newZoom = this.clampZoom(targetZoom);
-            }
-        } else {
-            newZoom = Math.min(MAX_ZOOM, targetZoom);
-        }
-        
-        // Handle simultaneous pan
-        const container = this.viewerContainer()?.nativeElement;
-        if (container) {
-            const panDeltaX = currentCenter.x - this.pinchState.lastCenter.x;
-            const panDeltaY = currentCenter.y - this.pinchState.lastCenter.y;
+        if (this.pinchState.smoothZoomMode) {
+            // In smooth zoom mode - apply continuous zoom scaling
+            // Don't accumulate delta in smooth zoom mode - we use direct scaling instead
+            const scale = currentDistance / this.pinchState.smoothZoomBaselineDistance;
+            let targetZoom = this.pinchState.smoothZoomBaselineZoom * scale;
             
-            // Apply pan before zoom to keep gesture feeling natural
-            container.scrollLeft -= panDeltaX;
-            container.scrollTop -= panDeltaY;
+            // Clamp between optimal 1-col zoom and MAX_ZOOM
+            targetZoom = Math.max(optimalZoomFor1Col, Math.min(MAX_ZOOM, targetZoom));
+            this.zoom.set(targetZoom);
+            
+            // Check if we should exit smooth zoom mode (zoomed out to optimal)
+            if (targetZoom <= optimalZoomFor1Col + 0.001) {
+                this.pinchState.smoothZoomMode = false;
+                // Reset baseline for step-based mode - important to prevent immediate column jump
+                this.pinchState.baselineDistance = currentDistance;
+                this.pinchState.accumulatedDelta = 0;
+            }
+            // Always return in smooth zoom mode - column changes handled separately
+            return;
         }
         
-        // Apply zoom centered on pinch midpoint
-        if (newZoom !== currentZoom) {
-            this.applyZoomAtPoint(newZoom, currentCenter.x, currentCenter.y);
+        // Step-based column changes
+        // Calculate distance delta from baseline (only for step mode)
+        const distanceDelta = currentDistance - this.pinchState.baselineDistance;
+        this.pinchState.accumulatedDelta += distanceDelta;
+        this.pinchState.baselineDistance = currentDistance;
+        
+        // Process one step at a time
+        if (Math.abs(this.pinchState.accumulatedDelta) >= PINCH_COLUMN_STEP_THRESHOLD) {
+            const isZoomingIn = this.pinchState.accumulatedDelta > 0;
+            
+            // Consume one step worth of delta
+            this.pinchState.accumulatedDelta = isZoomingIn 
+                ? this.pinchState.accumulatedDelta - PINCH_COLUMN_STEP_THRESHOLD
+                : this.pinchState.accumulatedDelta + PINCH_COLUMN_STEP_THRESHOLD;
+            
+            if (isZoomingIn) {
+                // Zooming in - decrease columns by 1
+                if (currentCols > 1) {
+                    const targetCols = currentCols - 1;
+                    const newZoom = this.getOptimalZoomForColumns(targetCols);
+                    if (newZoom !== null) {
+                        this.columnCount.set(targetCols);
+                        this.zoom.set(newZoom);
+                    }
+                } else {
+                    // Already at 1 column - enter smooth zoom mode
+                    this.pinchState.smoothZoomMode = true;
+                    this.pinchState.smoothZoomBaselineZoom = this.zoom();
+                    this.pinchState.smoothZoomBaselineDistance = currentDistance;
+                    this.pinchState.accumulatedDelta = 0;
+                }
+            } else {
+                // Zooming out - increase columns by 1
+                if (currentCols < maxColumns) {
+                    const targetCols = currentCols + 1;
+                    const newZoom = this.getOptimalZoomForColumns(targetCols);
+                    if (newZoom !== null) {
+                        this.columnCount.set(targetCols);
+                        this.zoom.set(newZoom);
+                        // Clamp scroll position after layout change to prevent content disappearing
+                        this.clampScrollPosition();
+                    }
+                }
+                // If at max columns already, delta will keep accumulating but no action taken
+            }
         }
-        
-        // Always reset baseline when zoom was clamped to prevent flickering
-        // This makes the pinch "stick" at the clamped value
-        if (newZoom !== targetZoom) {
-            this.pinchState.initialDistance = currentDistance;
-            this.pinchState.initialZoom = newZoom;
-        }
-        
-        // Update last center for next pan delta
-        this.pinchState.lastCenter = currentCenter;
-    }
-    
-    // ==================== Pan Handling ====================
-    
-    private initPan(event: PointerEvent): void {
-        // Only allow pan for touch or middle mouse button
-        if (event.pointerType === 'mouse' && event.button !== 1) return;
-        
-        this.panState = { lastPosition: { x: event.clientX, y: event.clientY } };
-    }
-    
-    private handlePanMove(newPosition: Point): void {
-        if (!this.panState) return;
-        
-        const container = this.viewerContainer()?.nativeElement;
-        if (!container) return;
-        
-        const dx = newPosition.x - this.panState.lastPosition.x;
-        const dy = newPosition.y - this.panState.lastPosition.y;
-        
-        container.scrollLeft -= dx;
-        container.scrollTop -= dy;
-        
-        this.panState.lastPosition = newPosition;
     }
     
     // ==================== Utilities ====================
+    
+    /**
+     * Clamp scroll position to valid range after layout changes.
+     * This prevents the view from being scrolled beyond content bounds
+     * when transitioning between column counts (which changes content height).
+     */
+    private clampScrollPosition(): void {
+        const container = this.viewerContainer()?.nativeElement;
+        if (!container) return;
+        
+        // Use requestAnimationFrame to wait for layout to update
+        requestAnimationFrame(() => {
+            const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+            const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+            
+            if (container.scrollTop > maxScrollTop) {
+                container.scrollTop = maxScrollTop;
+            }
+            if (container.scrollLeft > maxScrollLeft) {
+                container.scrollLeft = maxScrollLeft;
+            }
+        });
+    }
     
     private scrollToSelectedUnit(selectedUnit: ASForceUnit): void {
         const targetWrapper = this.cardWrappers().find(
@@ -521,12 +604,5 @@ export class AlphaStrikeViewerComponent {
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
         return Math.sqrt(dx * dx + dy * dy);
-    }
-    
-    private getCenter(p1: Point, p2: Point): Point {
-        return {
-            x: (p1.x + p2.x) / 2,
-            y: (p1.y + p2.y) / 2
-        };
     }
 }

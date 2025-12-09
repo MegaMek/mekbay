@@ -1,47 +1,50 @@
 <div class="alpha-strike-viewer" 
      #viewerContainer
      [class.monochrome]="cardStyle() === 'monochrome'"
+     [style.--columns]="columnCount()"
+     [style.--card-width.px]="cardWidth()"
      (pointerdown)="onPointerDown($event)"
      (pointermove)="onPointerMove($event)"
      (pointerup)="onPointerUp($event)"
      (pointercancel)="onPointerCancel($event)"
      (pointerleave)="onPointerUp($event)">
-    <div class="section-content">
-        <div class="flex-grid">
-            @let groups = force()?.groups();
-            @if (!groups || groups.length === 0) {
-                <div class="no-units-message">
-                    No units in this force.
-                </div>
-            } @else {
-                @for (group of groups; track group.id) {
+    <div class="groups-container">
+        @let groups = force()?.groups();
+        @if (!groups || groups.length === 0) {
+            <div class="no-units-message">
+                No units in this force.
+            </div>
+        } @else {
+            @for (group of groups; track group.id) {
+                <div class="group-container">
                     @if (groups.length > 1) {
-                    <div class="group-header">
-                        {{ group.name() }}
-                    </div>
-                    }
-                    @for (forceUnit of group.units(); track forceUnit.id) {
-                        @for (cardItem of getCardRenderItems(forceUnit); track cardItem.trackKey) {
-                        <div class="as-unit-card" #cardWrapper 
-                             [attr.data-unit-id]="forceUnit.id"
-                             [attr.data-card-index]="cardItem.cardIndex"
-                             [style.width.px]="cardWidth()">
-                            <alpha-strike-card 
-                                [forceUnit]="cardItem.forceUnit" 
-                                [cardIndex]="cardItem.cardIndex"
-                                [useHex]="useHex()" 
-                                [cardStyle]="cardStyle()" 
-                                [isSelected]="unit()?.id === forceUnit.id" 
-                                (selected)="onUnitSelected($event)" />
+                        <div class="group-header">
+                            {{ group.name() }}
                         </div>
+                    }
+                    <div class="units-grid">
+                        @for (forceUnit of group.units(); track forceUnit.id) {
+                            @for (cardItem of getCardRenderItems(forceUnit); track cardItem.trackKey) {
+                                <div class="as-unit-card" #cardWrapper 
+                                     [attr.data-unit-id]="forceUnit.id"
+                                     [attr.data-card-index]="cardItem.cardIndex">
+                                    <alpha-strike-card 
+                                        [forceUnit]="cardItem.forceUnit" 
+                                        [cardIndex]="cardItem.cardIndex"
+                                        [useHex]="useHex()" 
+                                        [cardStyle]="cardStyle()" 
+                                        [isSelected]="unit()?.id === forceUnit.id" 
+                                        (selected)="onUnitSelected($event)" />
+                                </div>
+                            }
                         }
-                    }
-                    @if (groups.length > 1) {
+                    </div>
+                </div>
+                @if (groups.length > 1) {
                     <hr class="group-separator" />
-                    }
                 }
             }
-        </div>
+        }
     </div>
 
     <!-- Toggle Buttons -->

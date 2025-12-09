@@ -5,12 +5,29 @@
     overflow-x: auto;
     background: var(--background-color);
     box-sizing: border-box;
-    touch-action: pan-x pan-y; // Allow native scroll, handle pinch in JS
+    touch-action: pan-x pan-y;
     user-select: none;
-    // iOS Safari fix: ensure proper scrolling behavior
     -webkit-overflow-scrolling: touch;
-    // Prevent flex parent from constraining height
     min-height: 0;
+    --columns: 1;
+    --card-width: 350px;
+}
+
+.groups-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 8px;
+    box-sizing: border-box;
+    min-width: 100%;
+    // Allow content to expand for horizontal scroll when zoomed in
+    width: fit-content;
+}
+
+.group-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .group-header {
@@ -19,46 +36,36 @@
     font-weight: 700;
     text-align: center;
     width: 100%;
-    flex-basis: 100%;
 }
 
 .group-separator {
     height: 2px;
     margin: 0;
     width: 100%;
-    flex-basis: 100%;
+    border: none;
+    background: var(--text-color);
+    opacity: 0.3;
 }
 
-.section-content {
-    box-sizing: border-box;
-    padding: 8px;
-    // Allow content to expand beyond viewport for horizontal scroll
-    display: inline-block;
-    min-width: 100%;
-}
-
-.flex-grid {
-    display: flex;
-    flex-wrap: wrap;
+.units-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--columns), var(--card-width));
     gap: 8px;
-    justify-content: flex-start;
-    align-items: flex-start; // Prevent last row cards from stretching
+    justify-content: start;
 }
 
-.alpha-strike-viewer {
+.no-units-message {
+    color: var(--text-color);
     text-align: center;
-    
-    .section-content {
-        text-align: left; // Reset for content inside
-    }
+    padding: 32px;
+    font-size: 1.2rem;
+    opacity: 0.7;
 }
 
 .as-unit-card {
-    // Width is set dynamically via [style.width.px]
-    flex: 0 0 auto;
+    // Width is controlled by grid, not individual card
     display: block;
     background-color: transparent;
-    // Prevent iOS from shrinking cards to fit viewport height
     min-height: 0;
     height: auto;
     
@@ -77,7 +84,6 @@
     // Multi-card unit styling - cards with same unit-id should appear grouped
     &[data-card-index="1"],
     &[data-card-index="2"] {
-        // Subsequent cards in a multi-card unit have a small visual indicator
         position: relative;
         
         &::before {
