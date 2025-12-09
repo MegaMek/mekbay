@@ -803,6 +803,10 @@ hr.divider {
 
 
 /* MekBay SVG Sheet Styles */
+.page-wrapper.selected > svg.mekbay-sheet {
+    outline: 4px solid var(--bt-yellow);
+    outline-offset: -4px;
+}
 
 .mekbay-sheet {
     background-color: #FFF;

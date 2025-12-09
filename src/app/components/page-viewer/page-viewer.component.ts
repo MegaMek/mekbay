@@ -117,9 +117,6 @@ export class PageViewerComponent implements AfterViewInit {
     spaceEvenly = input(false);
     readOnly = input(false);
 
-    // Outputs
-    unitSelected = output<CBTForceUnit>();
-
     // View children
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     swipeWrapperRef = viewChild.required<ElementRef<HTMLDivElement>>('swipeWrapper');
@@ -181,6 +178,10 @@ export class PageViewerComponent implements AfterViewInit {
     private swipeDisplayedIndices: number[] = []; // Indices of units shown during swipe
     private isSwiping = false; // Whether we're currently in a swipe gesture
 
+    // View start index - tracks the leftmost displayed unit, independent of selection
+    // This allows swiping without changing the selected unit
+    private viewStartIndex = signal(0);
+
     // Track if view is initialized
     private viewInitialized = false;
 
@@ -209,8 +210,26 @@ export class PageViewerComponent implements AfterViewInit {
                 this.saveViewState(previousUnit);
             }
 
-            // Display the new unit
-            untracked(() => this.displayUnit());
+            // Check if the new unit is already displayed (no need to scroll/redisplay)
+            const alreadyDisplayed = currentUnit && this.displayedUnits.some(u => u.id === currentUnit.id);
+            
+            if (alreadyDisplayed) {
+                // Just update the selected state visually without redisplaying
+                untracked(() => this.updateSelectedPageHighlight());
+            } else {
+                // Update viewStartIndex to show the selected unit and redisplay
+                untracked(() => {
+                    const force = this.forceBuilder.currentForce();
+                    const allUnits = force?.units() ?? [];
+                    if (currentUnit) {
+                        const newIndex = allUnits.indexOf(currentUnit);
+                        if (newIndex >= 0) {
+                            this.viewStartIndex.set(newIndex);
+                        }
+                    }
+                    this.displayUnit();
+                });
+            }
 
             previousUnit = currentUnit;
         }, { injector: this.injector });
@@ -221,6 +240,7 @@ export class PageViewerComponent implements AfterViewInit {
     ngAfterViewInit(): void {
         this.viewInitialized = true;
         this.setupResizeObserver();
+        this.setupPageClickCapture();
         this.initializeZoomPan();
         this.initializePickerMonitoring();
         this.updateDimensions();
@@ -282,13 +302,9 @@ export class PageViewerComponent implements AfterViewInit {
         if (!this.swipeAllowed()) return;
         
         // Store the current display state as the base for swipe calculations
-        const force = this.forceBuilder.currentForce();
-        const allUnits = force?.units() ?? [];
-        const currentUnit = this.unit();
-        if (!currentUnit) return;
-        
+        // Use viewStartIndex (the leftmost displayed unit) as the base
         this.isSwiping = true;
-        this.baseDisplayStartIndex = allUnits.indexOf(currentUnit);
+        this.baseDisplayStartIndex = this.viewStartIndex();
         // Clear swipe indices to force a re-render on first move
         this.swipeDisplayedIndices = [];
         
@@ -366,7 +382,7 @@ export class PageViewerComponent implements AfterViewInit {
             swipeWrapper.style.transform = `translateX(${targetOffset}px)`;
 
             setTimeout(() => {
-                this.resetSwipeTransform();
+                this.resetSwipeTransform(true); // Clear displayed units so effect triggers full redisplay
                 this.navigateByPages(pagesToMove);
             }, 250);
         } else {
@@ -375,17 +391,24 @@ export class PageViewerComponent implements AfterViewInit {
             swipeWrapper.style.transform = '';
 
             setTimeout(() => {
-                this.resetSwipeTransform();
+                this.resetSwipeTransform(false); // Don't clear displayed units - restoreBaseDisplay will handle it
                 this.restoreBaseDisplay();
             }, 200);
         }
     }
 
-    private resetSwipeTransform(): void {
+    private resetSwipeTransform(clearDisplayedUnits: boolean = false): void {
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
         swipeWrapper.style.transition = '';
         swipeWrapper.style.transform = '';
         this.isSwiping = false;
+        
+        // When navigating to a new unit, clear displayedUnits so the effect
+        // triggers a full redisplay rather than just updating highlights
+        if (clearDisplayedUnits) {
+            this.displayedUnits = [];
+            this.swipeDisplayedIndices = [];
+        }
     }
 
     /**
@@ -571,6 +594,16 @@ export class PageViewerComponent implements AfterViewInit {
 
             const pageWrapper = this.renderer.createElement('div') as HTMLDivElement;
             this.renderer.addClass(pageWrapper, 'page-wrapper');
+            
+            // Store unit ID for click handling and selection
+            pageWrapper.dataset['unitId'] = unit.id;
+            
+            // Add selected class if this is the current unit and multiple pages visible
+            const isSelected = unit.id === this.unit()?.id;
+            const multipleVisible = this.displayedUnits.length > 1;
+            if (isSelected && multipleVisible) {
+                this.renderer.addClass(pageWrapper, 'selected');
+            }
 
             // Calculate position relative to where base pages would be
             const offsetFromBase = arrayIndex - baseIndexPosition;
@@ -808,7 +841,9 @@ export class PageViewerComponent implements AfterViewInit {
         const force = this.forceBuilder.currentForce();
         const allUnits = force?.units() ?? [];
         const totalUnits = allUnits.length;
-        const currentIndex = allUnits.indexOf(currentUnit);
+        
+        // Use viewStartIndex for display positioning (independent of selected unit)
+        const startIndex = this.viewStartIndex();
 
         // Build list of units to display
         // If we have fewer units than visible pages, show all units (no swipe)
@@ -818,15 +853,12 @@ export class PageViewerComponent implements AfterViewInit {
                 this.displayedUnits.push(unit as CBTForceUnit);
             }
         } else {
-            // Show visible pages starting from current unit
-            this.displayedUnits.push(currentUnit);
-
-            // Add additional units if space allows (with wraparound)
-            for (let i = 1; i < visiblePages; i++) {
-                const nextIndex = (currentIndex + i) % totalUnits;
-                const additionalUnit = allUnits[nextIndex] as CBTForceUnit;
-                if (additionalUnit && !this.displayedUnits.includes(additionalUnit)) {
-                    this.displayedUnits.push(additionalUnit);
+            // Show visible pages starting from viewStartIndex
+            for (let i = 0; i < visiblePages; i++) {
+                const unitIndex = (startIndex + i) % totalUnits;
+                const unitToDisplay = allUnits[unitIndex] as CBTForceUnit;
+                if (unitToDisplay && !this.displayedUnits.includes(unitToDisplay)) {
+                    this.displayedUnits.push(unitToDisplay);
                 }
             }
         }
@@ -866,6 +898,16 @@ export class PageViewerComponent implements AfterViewInit {
 
                 const pageWrapper = this.renderer.createElement('div') as HTMLDivElement;
                 this.renderer.addClass(pageWrapper, 'page-wrapper');
+                
+                // Store unit ID for click handling and selection
+                pageWrapper.dataset['unitId'] = unit.id;
+                
+                // Add selected class if this is the current unit and multiple pages visible
+                const isSelected = unit.id === this.unit()?.id;
+                const multipleVisible = this.displayedUnits.length > 1;
+                if (isSelected && multipleVisible) {
+                    this.renderer.addClass(pageWrapper, 'selected');
+                }
 
                 // Set page dimensions
                 pageWrapper.style.width = `${PAGE_WIDTH}px`;
@@ -951,28 +993,100 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     /**
+     * Updates the visual highlight on page wrappers to show which unit is selected.
+     * Called when the selected unit changes but is already displayed.
+     */
+    private updateSelectedPageHighlight(): void {
+        const currentUnitId = this.unit()?.id;
+        const multipleVisible = this.displayedUnits.length > 1;
+        
+        this.pageElements.forEach((wrapper) => {
+            const unitId = wrapper.dataset['unitId'];
+            const isSelected = unitId === currentUnitId;
+            
+            // Update selected class
+            if (isSelected && multipleVisible) {
+                this.renderer.addClass(wrapper, 'selected');
+            } else {
+                this.renderer.removeClass(wrapper, 'selected');
+            }
+        });
+    }
+
+    /**
+     * Setup a capture-phase click listener to detect page clicks.
+     * Using capture phase ensures we see the click before any stopPropagation.
+     */
+    private setupPageClickCapture(): void {
+        if (this.readOnly()) return;
+        
+        const container = this.containerRef().nativeElement;
+        
+        // Use capture phase to intercept clicks before stopPropagation
+        container.addEventListener('click', (event: MouseEvent) => {
+            // Don't handle if we're in the middle of a gesture
+            if (this.zoomPanService.pointerMoved || this.zoomPanService.isPanning || this.isSwiping) {
+                return;
+            }
+            
+            // Only handle if multiple pages are visible
+            if (this.displayedUnits.length <= 1) {
+                return;
+            }
+            
+            // Find which page wrapper was clicked
+            const target = event.target as HTMLElement;
+            const pageWrapper = target.closest('.page-wrapper') as HTMLElement;
+            if (!pageWrapper) return;
+            
+            const clickedUnitId = pageWrapper.dataset['unitId'];
+            if (!clickedUnitId) return;
+            
+            // Find the unit and select it if different from current
+            const currentUnitId = this.unit()?.id;
+            if (clickedUnitId !== currentUnitId) {
+                const clickedUnit = this.displayedUnits.find(u => u.id === clickedUnitId);
+                if (clickedUnit) {
+                    this.forceBuilder.selectUnit(clickedUnit);
+                }
+            }
+        }, { capture: true });
+    }
+
+    /**
      * Navigate by a specified number of pages (positive = forward, negative = backward).
+     * Updates viewStartIndex without changing the selected unit.
      * Handles wraparound.
      */
     private navigateByPages(count: number): void {
-        const currentUnit = this.unit();
-        if (!currentUnit) return;
-
-        // Save view state before navigating
-        this.saveViewState(currentUnit);
-
-        // Navigate by count
         const force = this.forceBuilder.currentForce();
         const allUnits = force?.units() ?? [];
         const totalUnits = allUnits.length;
         if (totalUnits === 0) return;
 
-        const currentIndex = allUnits.indexOf(currentUnit);
-        const newIndex = ((currentIndex + count) % totalUnits + totalUnits) % totalUnits;
-        const newUnit = allUnits[newIndex];
+        // Calculate new view start index with wraparound
+        const currentStartIndex = this.viewStartIndex();
+        const newStartIndex = ((currentStartIndex + count) % totalUnits + totalUnits) % totalUnits;
         
-        if (newUnit) {
-            this.forceBuilder.selectUnit(newUnit);
+        // Update viewStartIndex and redisplay
+        this.viewStartIndex.set(newStartIndex);
+        this.displayUnit();
+        
+        // After display, check if currently selected unit is still visible
+        // If not, select the leftmost or rightmost unit based on swipe direction
+        const selectedUnit = this.unit();
+        const isSelectedVisible = selectedUnit && this.displayedUnits.some(u => u.id === selectedUnit.id);
+        
+        if (!isSelectedVisible && this.displayedUnits.length > 0) {
+            // count > 0 means swiping left (going forward) -> select leftmost
+            // count < 0 means swiping right (going backward) -> select rightmost
+            const unitToSelect = count > 0 
+                ? this.displayedUnits[0] 
+                : this.displayedUnits[this.displayedUnits.length - 1];
+            
+            if (unitToSelect) {
+                this.forceBuilder.selectUnit(unitToSelect);
+            }
         }
     }
 
