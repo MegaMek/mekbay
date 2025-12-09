@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { heatLevels } from "../components/svg-viewer/common";
+import { heatLevels } from "../models/common.model";
 import { Unit } from "../models/units.model";
 
 /*

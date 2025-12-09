@@ -32,7 +32,7 @@
  */
 
 import { computed } from "@angular/core";
-import { linkedLocs, uidTranslations } from "../components/svg-viewer/common";
+import { linkedLocs, uidTranslations } from "../models/common.model";
 import { CriticalSlot, MountedEquipment } from "../models/force-serialization";
 import { UnitSvgService } from "./unit-svg.service";
 

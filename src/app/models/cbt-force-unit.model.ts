@@ -47,7 +47,7 @@ import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { getMotiveModesOptionsByUnit, MotiveModeOption } from './motiveModes.model';
 import { PSRCheck, TurnState } from './turn-state.model';
-import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from '../components/svg-viewer/common';
+import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "../models/common.model";
 import { Sanitizer } from '../utils/sanitizer.util';
 
 /*

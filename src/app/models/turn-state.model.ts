@@ -3,7 +3,7 @@ import { ForceUnitState } from "./force-unit-state.model";
 import { getMotiveModeMaxDistance, MotiveModes } from "./motiveModes.model";
 import { CriticalSlot } from "./force-serialization";
 import { UnitSvgMekService } from "../services/unit-svg-mek.service";
-import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "../components/svg-viewer/common";
+import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "../models/common.model";
 import { CBTForceUnitState } from "./cbt-force-unit-state.model";
 
 export interface PSRCheck {
