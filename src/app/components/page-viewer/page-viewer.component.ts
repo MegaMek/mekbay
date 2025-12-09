@@ -812,9 +812,10 @@ export class PageViewerComponent implements AfterViewInit {
 
     // ========== Unit Display ==========
 
-    private displayUnit(): void {
+    private displayUnit(options: { fromSwipe?: boolean } = {}): void {
         const currentUnit = this.unit();
         const content = this.contentRef().nativeElement;
+        const fromSwipe = options.fromSwipe ?? false;
 
         // Clear existing page DOM elements
         this.pageElements.forEach(el => {
@@ -874,12 +875,13 @@ export class PageViewerComponent implements AfterViewInit {
             if (this.displayVersion !== currentVersion) {
                 return;
             }
-            this.renderPages();
+            this.renderPages({ fromSwipe });
         });
     }
 
-    private renderPages(): void {
+    private renderPages(options: { fromSwipe?: boolean } = {}): void {
         const content = this.contentRef().nativeElement;
+        const fromSwipe = options.fromSwipe ?? false;
 
         // Clean up existing interaction services before creating new ones
         this.cleanupInteractionServices();
@@ -948,7 +950,7 @@ export class PageViewerComponent implements AfterViewInit {
 
         // Update dimensions and restore view state
         this.updateDimensions();
-        this.restoreViewState();
+        this.restoreViewState({ fromSwipe });
     }
 
     private clearPages(): void {
@@ -980,16 +982,30 @@ export class PageViewerComponent implements AfterViewInit {
         unit.viewState = { ...this.lastViewState };
     }
 
-    private restoreViewState(): void {
+    private restoreViewState(options: { fromSwipe?: boolean } = {}): void {
         const syncZoom = this.optionsService.options().syncZoomBetweenSheets;
+        const isMultiPageMode = this.visiblePageCount() > 1;
+        const isSwipe = options.fromSwipe ?? false;
 
-        if (syncZoom && this.lastViewState) {
-            this.zoomPanService.restoreViewState(this.lastViewState);
+        // Conditions for restoring unit-specific view state:
+        // 1. syncZoomBetweenSheets must be false
+        // 2. Must be in single-page mode (multi-page always syncs zoom)
+        // 3. Must NOT be a swipe navigation (swipe always syncs zoom)
+        const shouldRestoreUnitViewState = !syncZoom && !isMultiPageMode && !isSwipe;
+
+        if (shouldRestoreUnitViewState) {
+            // Restore the unit's saved view state
+            const viewState = this.unit()?.viewState ?? null;
+            this.zoomPanService.restoreViewState(viewState);
             return;
         }
 
-        const viewState = this.unit()?.viewState ?? null;
-        this.zoomPanService.restoreViewState(viewState);
+        // In all other cases, use synced zoom (last view state or reset)
+        if (this.lastViewState) {
+            this.zoomPanService.restoreViewState(this.lastViewState);
+        } else {
+            this.zoomPanService.restoreViewState(null);
+        }
     }
 
     /**
@@ -1075,8 +1091,9 @@ export class PageViewerComponent implements AfterViewInit {
         const newStartIndex = ((currentStartIndex + count) % totalUnits + totalUnits) % totalUnits;
         
         // Update viewStartIndex and redisplay
+        // Pass fromSwipe flag to preserve zoom during view restore
         this.viewStartIndex.set(newStartIndex);
-        this.displayUnit();
+        this.displayUnit({ fromSwipe: true });
         
         // After display, check if currently selected unit is still visible
         // If not, select the leftmost or rightmost unit based on swipe direction
