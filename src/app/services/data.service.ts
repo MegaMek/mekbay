@@ -45,7 +45,7 @@ import { generateUUID, WsService } from './ws.service';
 import { ForceUnit } from '../models/force-unit.model';
 import { Force }    from '../models/force.model';
 import { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
-import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
+import { UnitInitializerService } from './unit-initializer.service';
 import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';

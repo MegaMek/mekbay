@@ -42,7 +42,7 @@ import { Force, UnitGroup } from '../models/force.model';
 import { ForceUnit } from '../models/force-unit.model';
 import { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
 import { DataService } from './data.service';
-import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
+import { UnitInitializerService } from './unit-initializer.service';
 import { Injector } from '@angular/core';
 import { DialogsService } from './dialogs.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
