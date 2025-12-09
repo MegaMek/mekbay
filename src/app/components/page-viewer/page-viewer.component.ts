@@ -64,7 +64,6 @@ import {
 } from './page-viewer-zoom-pan.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
-import { LayoutService } from '../../services/layout.service';
 import { DbService } from '../../services/db.service';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { CBTForce } from '../../models/cbt-force.model';
@@ -111,7 +110,6 @@ export class PageViewerComponent implements AfterViewInit {
     private optionsService = inject(OptionsService);
     private dbService = inject(DbService);
     canvasService = inject(PageViewerCanvasService);
-    layoutService = inject(LayoutService);
 
     // Inputs
     unit = input<CBTForceUnit | null>(null);
@@ -1055,11 +1053,14 @@ export class PageViewerComponent implements AfterViewInit {
                     this.renderer.addClass(pageWrapper, 'selected');
                 }
 
-                // Set page dimensions
+                // Set page dimensions and position
+                // Store original (unscaled) position for zoom calculations
+                const unscaledLeft = positions[index] ?? (index * (PAGE_WIDTH + PAGE_GAP));
+                pageWrapper.dataset['originalLeft'] = String(unscaledLeft);
                 pageWrapper.style.width = `${PAGE_WIDTH}px`;
                 pageWrapper.style.height = `${PAGE_HEIGHT}px`;
                 pageWrapper.style.position = 'absolute';
-                pageWrapper.style.left = `${positions[index] ?? (index * (PAGE_WIDTH + PAGE_GAP))}px`;
+                pageWrapper.style.left = `${unscaledLeft}px`;
                 pageWrapper.style.top = '0';
 
                 // Use original SVG for all pages (allows interaction on all)

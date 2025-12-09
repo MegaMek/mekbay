@@ -226,23 +226,22 @@ export class PageViewerZoomPanService {
      * Calculate page positions for rendering.
      * When spaceEvenly is true, distributes pages with equal gaps including edges.
      * When spaceEvenly is false (default), centers pages as a group with PAGE_GAP between them.
-     * Returns array of x positions for each page (in unscaled coordinates).
+     * Returns array of x positions for each page (in unscaled content coordinates, starting from 0).
+     * The centering is handled by the translate transform, not by the page positions.
      */
     getPagePositions(pageCount: number): number[] {
         if (pageCount <= 0) return [];
 
-        const scale = this.minScale();
-        const containerWidth = this.containerDimensions.width;
-        const scaledPageWidth = PAGE_WIDTH * scale;
-
         if (pageCount === 1) {
-            // Single page - always center it
-            const centerOffset = (containerWidth - scaledPageWidth) / 2;
-            return [centerOffset / scale];
+            // Single page starts at 0
+            return [0];
         }
 
         if (this.spaceEvenly) {
-            // Space-evenly: equal gaps between all pages and edges
+            // Space-evenly at min scale: calculate positions that will be evenly spaced
+            const scale = this.minScale();
+            const containerWidth = this.containerDimensions.width;
+            const scaledPageWidth = PAGE_WIDTH * scale;
             const totalPagesWidth = scaledPageWidth * pageCount;
             const remainingSpace = containerWidth - totalPagesWidth;
             const gapCount = pageCount + 1;
@@ -250,20 +249,19 @@ export class PageViewerZoomPanService {
 
             const positions: number[] = [];
             for (let i = 0; i < pageCount; i++) {
+                // Calculate position relative to where a centered group would start
                 const containerX = gapSize * (i + 1) + scaledPageWidth * i;
-                positions.push(containerX / scale);
+                // Convert to unscaled coordinates relative to content origin
+                const totalWidth = scaledPageWidth * pageCount + gapSize * (pageCount - 1);
+                const groupStartX = (containerWidth - totalWidth) / 2;
+                positions.push((containerX - groupStartX) / scale);
             }
             return positions;
         } else {
-            // Standard: pages in a row with PAGE_GAP, centered as a group
-            const scaledGap = PAGE_GAP * scale;
-            const totalWidth = scaledPageWidth * pageCount + scaledGap * (pageCount - 1);
-            const startX = (containerWidth - totalWidth) / 2;
-
+            // Standard: pages in a row with PAGE_GAP between them, starting from 0
             const positions: number[] = [];
             for (let i = 0; i < pageCount; i++) {
-                const containerX = startX + i * (scaledPageWidth + scaledGap);
-                positions.push(containerX / scale);
+                positions.push(i * (PAGE_WIDTH + PAGE_GAP));
             }
             return positions;
         }
@@ -799,35 +797,31 @@ export class PageViewerZoomPanService {
         if (containerWidth <= 0 || containerHeight <= 0) return;
 
         const displayedPages = this.actualDisplayedPages();
-        const positions = this.getPagePositions(displayedPages);
         
-        // Calculate content bounds based on page positions (in container/scaled coordinates)
-        const firstPageLeft = positions.length > 0 ? positions[0] * scale : 0;
-        const lastPageRight = positions.length > 0 
-            ? (positions[positions.length - 1] + PAGE_WIDTH) * scale
-            : PAGE_WIDTH * scale;
-        
+        // Calculate content dimensions (content starts at 0,0 in content space)
+        const contentWidth = displayedPages === 1 
+            ? PAGE_WIDTH * scale 
+            : (displayedPages * PAGE_WIDTH + (displayedPages - 1) * PAGE_GAP) * scale;
         const contentHeight = PAGE_HEIGHT * scale;
 
         // Calculate pan bounds
-        // Page positions already include centering, so at min zoom x=0
-        // When zoomed in, allow panning to see content that extends beyond container
         let minX: number, maxX: number;
         
-        if (lastPageRight <= containerWidth) {
-            // Content fits - x stays at 0 (page positions handle centering)
-            minX = maxX = 0;
+        if (contentWidth <= containerWidth) {
+            // Content fits horizontally - center it
+            const centerX = (containerWidth - contentWidth) / 2;
+            minX = maxX = centerX;
         } else {
             // Content wider than container - allow panning
-            // Can pan left until right edge of content aligns with right edge of container
-            // Can pan right until left edge of content aligns with left edge of container
-            minX = containerWidth - lastPageRight;
-            maxX = -firstPageLeft;
+            // maxX: left edge of content at left edge of container (content at x=0)
+            // minX: right edge of content at right edge of container
+            minX = containerWidth - contentWidth;
+            maxX = 0;
         }
         
         let minY: number, maxY: number;
         if (contentHeight <= containerHeight) {
-            // Content fits - center vertically
+            // Content fits vertically - center it
             const centerY = (containerHeight - contentHeight) / 2;
             minY = maxY = centerY;
         } else {
@@ -846,18 +840,28 @@ export class PageViewerZoomPanService {
     }
 
     /**
-     * Center the content within the container based on page positions.
+     * Center the content within the container.
+     * Content width is based on actual displayed pages.
      */
     private centerContent(): void {
         const scale = this.scale();
+        const displayedPages = this.actualDisplayedPages();
+        
+        // Calculate content dimensions
+        const contentWidth = displayedPages === 1 
+            ? PAGE_WIDTH * scale 
+            : (displayedPages * PAGE_WIDTH + (displayedPages - 1) * PAGE_GAP) * scale;
         const contentHeight = PAGE_HEIGHT * scale;
 
-        // Horizontal: x=0 because page positions already include centering offset
-        const x = 0;
-        // Vertical centering
+        // Center horizontally
+        const x = (this.containerDimensions.width - contentWidth) / 2;
+        // Center vertically
         const y = (this.containerDimensions.height - contentHeight) / 2;
 
-        this.translate.set({ x, y: Math.max(0, y) });
+        this.translate.set({ 
+            x: Math.max(0, x), 
+            y: Math.max(0, y) 
+        });
     }
 
     /**
