@@ -194,10 +194,9 @@ export class PageViewerComponent implements AfterViewInit {
     // Swipe state - track which units are displayed during swipe
     private baseDisplayStartIndex = 0; // The starting index before swipe began
     private isSwiping = false; // Whether we're currently in a swipe gesture
-    private lastSwipeDirection: 'left' | 'right' | 'none' = 'none'; // Track swipe direction to minimize DOM updates
 
     // Swipe page elements - created at swipe start and reused during swipe
-    // Maps position offset to its page wrapper element
+    // Maps unit index to its page wrapper element
     private swipePageElements = new Map<number, HTMLDivElement>();
     private swipeBasePositions: number[] = []; // Base page positions at swipe start
 
@@ -348,62 +347,63 @@ export class PageViewerComponent implements AfterViewInit {
 
     /**
      * Called when swipe gesture starts.
-     * Pre-creates page wrapper elements for all positions (visiblePageCount on each side).
-     * SVG content is placed dynamically based on swipe direction to avoid duplicate instances.
+     * Pre-creates all potentially needed page elements (visiblePageCount on each side).
+     * This allows smooth CSS-only transforms during swipe without DOM manipulation.
      */
     private async onSwipeStart(): Promise<void> {
         if (!this.swipeAllowed()) return;
         
         this.isSwiping = true;
         this.baseDisplayStartIndex = this.viewStartIndex();
-        this.lastSwipeDirection = 'none';
         
         const force = this.forceBuilder.currentForce();
         const allUnits = force?.units() ?? [];
         const totalUnits = allUnits.length;
         const visiblePages = this.visiblePageCount();
         
-        // Calculate all unit indices we might need during swipe
-        const indicesToLoad = new Set<number>();
+        // Calculate all indices we might need during swipe
+        // visiblePages on the left + base visible pages + visiblePages on the right
+        const indicesToPrepare: number[] = [];
         
-        // Left neighbors + base pages + right neighbors
-        for (let i = -visiblePages; i < visiblePages + visiblePages; i++) {
-            const idx = ((this.baseDisplayStartIndex + i) % totalUnits + totalUnits) % totalUnits;
-            indicesToLoad.add(idx);
+        // Add pages to the left (for swiping right)
+        for (let i = visiblePages; i >= 1; i--) {
+            const idx = (this.baseDisplayStartIndex - i + totalUnits) % totalUnits;
+            if (!indicesToPrepare.includes(idx)) indicesToPrepare.push(idx);
+        }
+        
+        // Add base visible pages
+        for (let i = 0; i < visiblePages; i++) {
+            const idx = (this.baseDisplayStartIndex + i) % totalUnits;
+            if (!indicesToPrepare.includes(idx)) indicesToPrepare.push(idx);
+        }
+        
+        // Add pages to the right (for swiping left)
+        for (let i = 1; i <= visiblePages; i++) {
+            const idx = (this.baseDisplayStartIndex + visiblePages - 1 + i) % totalUnits;
+            if (!indicesToPrepare.includes(idx)) indicesToPrepare.push(idx);
         }
         
         // Pre-load all these units
-        await Promise.all(Array.from(indicesToLoad).map(idx => (allUnits[idx] as CBTForceUnit).load()));
+        await Promise.all(indicesToPrepare.map(idx => (allUnits[idx] as CBTForceUnit).load()));
         
         // Store base positions for position calculations
         this.swipeBasePositions = this.zoomPanService.getPagePositions(visiblePages);
         
-        // Create page wrapper elements for all positions
-        this.setupSwipePageWrappers(allUnits as CBTForceUnit[], totalUnits, visiblePages);
-        
-        // Initially populate with SVGs (swipe offset = 0, so no direction yet)
-        this.updateSwipePageContent(0);
+        // Create all swipe page elements upfront
+        this.setupSwipePages(indicesToPrepare, allUnits as CBTForceUnit[]);
     }
 
     /**
      * Called during swipe movement.
-     * Updates CSS transform and updates SVG content only when direction changes.
+     * ONLY updates the CSS transform - no DOM manipulation for 60fps performance.
      */
     private onSwipeMove(totalDx: number): void {
         if (!this.swipeAllowed() || !this.isSwiping) return;
         
-        // Apply swipe transform to the wrapper
+        // Apply swipe transform to the wrapper - this is the ONLY operation during swipe move
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
         swipeWrapper.style.transition = 'none';
         swipeWrapper.style.transform = `translateX(${totalDx}px)`;
-        
-        // Only update SVG content when swipe direction changes significantly
-        // This avoids DOM manipulation on every frame
-        const newDirection = totalDx > 10 ? 'right' : totalDx < -10 ? 'left' : 'none';
-        if (newDirection !== this.lastSwipeDirection) {
-            this.lastSwipeDirection = newDirection;
-            this.updateSwipePageContent(totalDx);
-        }
     }
 
     /**
@@ -498,12 +498,14 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     /**
-     * Creates empty page wrapper elements for all swipe positions.
-     * Wrappers are positioned but initially empty - content added by updateSwipePageContent.
+     * Sets up all page elements needed for swipe at swipe start.
+     * Creates page wrappers for all potentially visible indices.
      */
-    private setupSwipePageWrappers(allUnits: CBTForceUnit[], totalUnits: number, visiblePages: number): void {
+    private setupSwipePages(indices: number[], allUnits: CBTForceUnit[]): void {
         const content = this.contentRef().nativeElement;
         const scale = this.zoomPanService.scale();
+        const visiblePages = this.visiblePageCount();
+        const totalUnits = allUnits.length;
         
         // Clear any existing swipe page elements
         this.swipePageElements.forEach(el => {
@@ -521,20 +523,25 @@ export class PageViewerComponent implements AfterViewInit {
         });
         this.pageElements = [];
         
-        // Create wrappers for: visiblePages left + visiblePages base + visiblePages right
-        // Position offset ranges from -visiblePages to (2*visiblePages - 1)
-        for (let posOffset = -visiblePages; posOffset < visiblePages + visiblePages; posOffset++) {
-            const unitIndex = ((this.baseDisplayStartIndex + posOffset) % totalUnits + totalUnits) % totalUnits;
+        // Track displayed units for canvas/overlay cleanup
+        const displayedUnitIds = new Set<string>();
+        
+        // Find where the base start index is in our indices array
+        const baseIndexPosition = indices.indexOf(this.baseDisplayStartIndex);
+        
+        indices.forEach((unitIndex, arrayIndex) => {
             const unit = allUnits[unitIndex];
-            if (!unit) continue;
+            if (!unit) return;
+            
+            const svg = unit.svg();
+            if (!svg) return;
+            
+            displayedUnitIds.add(unit.id);
             
             const pageWrapper = this.renderer.createElement('div') as HTMLDivElement;
             this.renderer.addClass(pageWrapper, 'page-wrapper');
-            
-            // Store position offset (not unit index) as the key for positioning
-            pageWrapper.dataset['posOffset'] = String(posOffset);
-            pageWrapper.dataset['unitIndex'] = String(unitIndex);
             pageWrapper.dataset['unitId'] = unit.id;
+            pageWrapper.dataset['unitIndex'] = String(unitIndex);
             
             // Add selected class if this is the current unit
             const isSelected = unit.id === this.unit()?.id;
@@ -543,15 +550,17 @@ export class PageViewerComponent implements AfterViewInit {
                 this.renderer.addClass(pageWrapper, 'selected');
             }
             
-            // Calculate position based on offset from base
+            // Calculate position relative to base display
+            const offsetFromBase = arrayIndex - baseIndexPosition;
             let unscaledLeft: number;
-            if (posOffset >= 0 && posOffset < this.swipeBasePositions.length) {
-                unscaledLeft = this.swipeBasePositions[posOffset];
-            } else if (posOffset < 0) {
-                unscaledLeft = this.swipeBasePositions[0] + (posOffset * (PAGE_WIDTH + PAGE_GAP));
+            
+            if (offsetFromBase >= 0 && offsetFromBase < this.swipeBasePositions.length) {
+                unscaledLeft = this.swipeBasePositions[offsetFromBase];
+            } else if (offsetFromBase < 0) {
+                unscaledLeft = this.swipeBasePositions[0] - ((-offsetFromBase) * (PAGE_WIDTH + PAGE_GAP));
             } else {
                 const lastBasePos = this.swipeBasePositions[this.swipeBasePositions.length - 1] ?? this.swipeBasePositions[0];
-                unscaledLeft = lastBasePos + ((posOffset - this.swipeBasePositions.length + 1) * (PAGE_WIDTH + PAGE_GAP));
+                unscaledLeft = lastBasePos + ((offsetFromBase - this.swipeBasePositions.length + 1) * (PAGE_WIDTH + PAGE_GAP));
             }
             
             pageWrapper.dataset['originalLeft'] = String(unscaledLeft);
@@ -561,108 +570,24 @@ export class PageViewerComponent implements AfterViewInit {
             pageWrapper.style.left = `${unscaledLeft * scale}px`;
             pageWrapper.style.top = '0';
             
+            // Apply scale to SVG
+            svg.style.transform = `scale(${scale})`;
+            svg.style.transformOrigin = 'top left';
+            pageWrapper.appendChild(svg);
+            
+            // Get or create interaction service for this unit (keyed by unit ID)
+            if (!this.readOnly()) {
+                this.getOrCreateInteractionService(unit, svg);
+                this.getOrCreateCanvasOverlay(pageWrapper, unit);
+                this.getOrCreateInteractionOverlay(pageWrapper, unit, 'page');
+            }
+            
             content.appendChild(pageWrapper);
-            // Key by position offset (not unit index) to support same unit at different positions
-            this.swipePageElements.set(posOffset, pageWrapper);
-        }
-    }
-
-    /**
-     * Updates which page wrappers have SVG content based on swipe direction.
-     * Only populates wrappers that are visible or becoming visible, avoiding duplicate SVG instances.
-     */
-    private updateSwipePageContent(totalDx: number): void {
-        const force = this.forceBuilder.currentForce();
-        const allUnits = force?.units() ?? [];
-        const totalUnits = allUnits.length;
-        const visiblePages = this.visiblePageCount();
-        const scale = this.zoomPanService.scale();
-        
-        // Determine swipe direction: positive = swiping right (showing left pages)
-        const swipingRight = totalDx > 0;
-        const swipingLeft = totalDx < 0;
-        
-        // Calculate how many extra pages are visible due to swipe
-        const scaledPageWidth = PAGE_WIDTH * scale + PAGE_GAP * scale;
-        const extraPagesVisible = Math.ceil(Math.abs(totalDx) / scaledPageWidth);
-        
-        // Determine which position offsets should have content
-        // Base visible pages are always 0 to (visiblePages - 1)
-        const positionsToPopulate = new Set<number>();
-        
-        // Always include base visible pages
-        for (let i = 0; i < visiblePages; i++) {
-            positionsToPopulate.add(i);
-        }
-        
-        // Add neighbor pages based on swipe direction
-        if (swipingRight) {
-            // Showing left neighbors (negative offsets)
-            for (let i = 1; i <= Math.min(extraPagesVisible + 1, visiblePages); i++) {
-                positionsToPopulate.add(-i);
-            }
-        } else if (swipingLeft) {
-            // Showing right neighbors (offsets >= visiblePages)
-            for (let i = 0; i < Math.min(extraPagesVisible + 1, visiblePages); i++) {
-                positionsToPopulate.add(visiblePages + i);
-            }
-        }
-        
-        // Track which unit IDs are being displayed to avoid duplicates
-        const displayedUnitIds = new Set<string>();
-        const displayedUnits: CBTForceUnit[] = [];
-        
-        // First pass: populate wrappers in order of priority (base pages first, then neighbors)
-        // Sort positions so base pages (0 to visiblePages-1) come first
-        const sortedPositions = Array.from(positionsToPopulate).sort((a, b) => {
-            const aIsBase = a >= 0 && a < visiblePages;
-            const bIsBase = b >= 0 && b < visiblePages;
-            if (aIsBase && !bIsBase) return -1;
-            if (!aIsBase && bIsBase) return 1;
-            return a - b;
-        });
-        
-        // Process each wrapper
-        this.swipePageElements.forEach((wrapper, posOffset) => {
-            const unitIndex = parseInt(wrapper.dataset['unitIndex'] ?? '0');
-            const unitId = wrapper.dataset['unitId'] ?? '';
-            const unit = allUnits[unitIndex] as CBTForceUnit;
-            
-            const shouldHaveContent = positionsToPopulate.has(posOffset);
-            const alreadyDisplayed = displayedUnitIds.has(unitId);
-            const currentlyHasContent = wrapper.children.length > 0;
-            
-            if (shouldHaveContent && !alreadyDisplayed && unit) {
-                // This wrapper should have content and the unit isn't displayed elsewhere
-                displayedUnitIds.add(unitId);
-                displayedUnits.push(unit);
-                
-                if (!currentlyHasContent) {
-                    // Add SVG content
-                    const svg = unit.svg();
-                    if (svg) {
-                        svg.style.transform = `scale(${scale})`;
-                        svg.style.transformOrigin = 'top left';
-                        wrapper.appendChild(svg);
-                        
-                        // Setup interaction service if needed
-                        if (!this.readOnly()) {
-                            this.getOrCreateInteractionService(unit, svg);
-                            this.getOrCreateCanvasOverlay(wrapper, unit);
-                            this.getOrCreateInteractionOverlay(wrapper, unit, 'page');
-                        }
-                    }
-                }
-            } else if (currentlyHasContent && (!shouldHaveContent || alreadyDisplayed)) {
-                // Remove content from this wrapper (it's not needed or unit is shown elsewhere)
-                while (wrapper.firstChild) {
-                    wrapper.removeChild(wrapper.firstChild);
-                }
-            }
+            this.swipePageElements.set(unitIndex, pageWrapper);
         });
         
         // Update displayed units list
-        this.displayedUnits = displayedUnits;
+        this.displayedUnits = indices.map(idx => allUnits[idx]).filter(u => u);
         
         // Clean up unused overlays
         this.cleanupUnusedCanvasOverlays(displayedUnitIds);
@@ -677,7 +602,6 @@ export class PageViewerComponent implements AfterViewInit {
         swipeWrapper.style.transition = '';
         swipeWrapper.style.transform = '';
         this.isSwiping = false;
-        this.lastSwipeDirection = 'none';
         
         // Clear swipe page elements (they'll be recreated by displayUnit)
         const content = this.contentRef().nativeElement;
