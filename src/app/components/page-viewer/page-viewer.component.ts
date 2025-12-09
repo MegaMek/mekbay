@@ -720,6 +720,11 @@ export class PageViewerComponent implements AfterViewInit {
         componentRef.setInput('width', PAGE_WIDTH);
         componentRef.setInput('height', PAGE_HEIGHT);
 
+        // Subscribe to drawingStarted output to select unit when drawing on its canvas
+        componentRef.instance.drawingStarted.subscribe((drawnUnit) => {
+            this.forceBuilder.selectUnit(drawnUnit as CBTForceUnit);
+        });
+
         // Attach to Angular's change detection
         this.appRef.attachView(componentRef.hostView);
 
@@ -1125,12 +1130,12 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     /**
-     * Handle canvas clear request from controls - delete all canvas data
+     * Handle canvas clear request from controls - delete canvas data for current unit
      */
     onCanvasClearRequested(): void {
-        // Delete canvas data for all displayed units
-        for (const unit of this.displayedUnits) {
-            this.dbService.deleteCanvasData(unit.id);
+        const currentUnit = this.unit();
+        if (currentUnit) {
+            this.dbService.deleteCanvasData(currentUnit.id);
         }
     }
 

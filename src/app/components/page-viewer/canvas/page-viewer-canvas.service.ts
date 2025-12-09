@@ -148,6 +148,16 @@ export class PageViewerCanvasService {
     }
 
     /**
+     * Clear a specific canvas by its ID (unit ID)
+     */
+    clearCanvas(id: string): void {
+        const callback = this.registeredCanvases.get(id);
+        if (callback) {
+            callback();
+        }
+    }
+
+    /**
      * Clear all registered canvases
      */
     clearAllCanvases(): void {

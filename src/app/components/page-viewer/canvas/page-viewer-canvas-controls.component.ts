@@ -36,10 +36,12 @@ import {
     ChangeDetectionStrategy,
     inject,
     computed,
-    output
+    output,
+    input
 } from '@angular/core';
 import { PageViewerCanvasService } from './page-viewer-canvas.service';
 import { DialogsService } from '../../../services/dialogs.service';
+import { ForceUnit } from '../../../models/force-unit.model';
 
 /*
  * Author: Drake
@@ -92,8 +94,8 @@ import { DialogsService } from '../../../services/dialogs.service';
                         <img src="/images/print.svg" alt="Print">
                     </button>
                     <button class="fab cornered-fab clear-fab" 
-                            (click)="requestClearAllCanvases()" 
-                            aria-label="Clear All Canvases">
+                            (click)="requestClearCurrentUnitCanvas()" 
+                            aria-label="Clear Current Unit Canvas">
                         <img src="/images/delete.svg" alt="Delete">
                     </button>
                     <button class="fab cornered-fab eraser-fab" 
@@ -142,6 +144,9 @@ export class PageViewerCanvasControlsComponent {
     canvasService = inject(PageViewerCanvasService);
     private dialogsService = inject(DialogsService);
 
+    // Input for current unit
+    unit = input<ForceUnit | null>(null);
+
     clearRequested = output<void>();
 
     mainFabStyle = computed(() => {
@@ -160,14 +165,19 @@ export class PageViewerCanvasControlsComponent {
         this.canvasService.setStrokeSize(value);
     }
 
-    async requestClearAllCanvases(): Promise<void> {
+    async requestClearCurrentUnitCanvas(): Promise<void> {
+        const currentUnit = this.unit();
+        if (!currentUnit) {
+            return;
+        }
+
         const confirmed = await this.dialogsService.requestConfirmation(
-            'Are you sure you want to clear all canvases? This cannot be undone.',
-            'Clear All Canvases',
+            `Are you sure you want to clear the canvas for ${currentUnit.getDisplayName()}? This cannot be undone.`,
+            'Clear Canvas',
             'info'
         );
         if (confirmed) {
-            this.canvasService.clearAllCanvases();
+            this.canvasService.clearCanvas(`canvas-${currentUnit.id}`);
             this.clearRequested.emit();
         }
     }

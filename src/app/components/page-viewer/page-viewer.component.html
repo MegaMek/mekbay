@@ -13,7 +13,7 @@
 
 <!-- Canvas controls (FAB) - global for all canvases -->
 @if (!readOnly()) {
-    <page-viewer-canvas-controls (clearRequested)="onCanvasClearRequested()"></page-viewer-canvas-controls>
+    <page-viewer-canvas-controls [unit]="unit()" (clearRequested)="onCanvasClearRequested()"></page-viewer-canvas-controls>
 }
 
 <!-- Heat diff markers for each interaction service -->

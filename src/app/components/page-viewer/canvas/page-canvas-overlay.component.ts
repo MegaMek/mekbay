@@ -36,6 +36,7 @@ import {
     ChangeDetectionStrategy,
     inject,
     input,
+    output,
     signal,
     viewChild,
     computed,
@@ -165,6 +166,9 @@ export class PageCanvasOverlayComponent {
     unit = input<ForceUnit | null>(null);
     width = input(612); // PAGE_WIDTH
     height = input(792); // PAGE_HEIGHT
+
+    // Outputs
+    drawingStarted = output<ForceUnit>();
 
     // Computed canvas dimensions (internal scale for higher resolution)
     canvasHeight = computed(() => this.height() * this.INTERNAL_SCALE);
@@ -375,6 +379,12 @@ export class PageCanvasOverlayComponent {
             window.addEventListener('pointermove', this.nativePointerMove);
             window.addEventListener('pointerup', this.nativePointerUp);
             window.addEventListener('pointercancel', this.nativePointerCancel);
+
+            // Emit drawing started to select this unit
+            const unit = this.unit();
+            if (unit) {
+                this.drawingStarted.emit(unit);
+            }
         }
 
         if (moved) {
