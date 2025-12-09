@@ -806,6 +806,10 @@ hr.divider {
 .page-wrapper.selected > svg.mekbay-sheet {
     outline: 4px solid var(--bt-yellow);
     outline-offset: -4px;
+
+    @media print {
+        outline: none;
+    }
 }
 
 .mekbay-sheet {

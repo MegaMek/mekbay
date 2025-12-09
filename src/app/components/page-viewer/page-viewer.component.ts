@@ -1022,8 +1022,7 @@ export class PageViewerComponent implements AfterViewInit {
         
         const container = this.containerRef().nativeElement;
         
-        // Use capture phase to intercept clicks before stopPropagation
-        container.addEventListener('click', (event: MouseEvent) => {
+        const handlePageSelection = (event: Event) => {
             // Don't handle if we're in the middle of a gesture
             if (this.zoomPanService.pointerMoved || this.zoomPanService.isPanning || this.isSwiping) {
                 return;
@@ -1050,7 +1049,14 @@ export class PageViewerComponent implements AfterViewInit {
                     this.forceBuilder.selectUnit(clickedUnit);
                 }
             }
-        }, { capture: true });
+        };
+
+        // Use capture phase to intercept clicks before stopPropagation
+        container.addEventListener('click', handlePageSelection, { capture: true });
+        
+        // Also listen for custom event from svg-interaction service
+        // This is needed because interactive elements prevent the native click event
+        container.addEventListener('svg-interaction-click', handlePageSelection);
     }
 
     /**

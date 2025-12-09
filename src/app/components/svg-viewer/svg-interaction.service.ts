@@ -212,6 +212,9 @@ export class SvgInteractionService {
                 upHandlerSecondary(evt);
             }, 300);
             pointerId = evt.pointerId;
+            // Dispatch a custom event for page selection to work
+            // Since we preventDefault on pointerdown, the click event won't fire naturally
+            el.dispatchEvent(new CustomEvent('svg-interaction-click', { bubbles: true }));
         }, eventOptions);
 
         const clearLongTouch = () => {
@@ -968,6 +971,9 @@ export class SvgInteractionService {
                 svg.addEventListener('pointermove', onPointerMove, { passive: false, signal });
                 svg.addEventListener('pointerup', onPointerUp, { passive: false, signal });
                 svg.addEventListener('pointercancel', onPointerCancel, { passive: false, signal });
+                // Dispatch a custom event for page selection to work
+                // Since we preventDefault on pointerdown, the click event won't fire naturally
+                el.dispatchEvent(new CustomEvent('svg-interaction-click', { bubbles: true }));
                 try {
                     this.state.clickTarget.setPointerCapture(evt.pointerId);
                 } catch (e) { /* Ignore */ }
