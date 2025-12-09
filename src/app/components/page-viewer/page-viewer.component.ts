@@ -45,6 +45,7 @@ import {
     ChangeDetectionStrategy,
     viewChild,
     computed,
+    EffectRef,
     DestroyRef,
     untracked,
     runInInjectionContext,
@@ -171,11 +172,20 @@ export class PageViewerComponent implements AfterViewInit {
     // Interaction services - one per visible page
     private interactionServices = new Map<number, SvgInteractionService>();
 
+    // Effect refs for interaction service heat markers - need to destroy when service is cleaned up
+    private interactionServiceEffectRefs = new Map<number, EffectRef>();
+
     // Canvas overlay component refs - keyed by unit ID for reuse during swipe transitions
     private canvasOverlayRefs = new Map<string, ComponentRef<PageCanvasOverlayComponent>>();
 
+    // Canvas overlay subscriptions - need to unsubscribe on cleanup
+    private canvasOverlaySubscriptions = new Map<string, { unsubscribe: () => void }>();
+
     // Interaction overlay component refs - keyed by unit ID for reuse during swipe transitions
     private interactionOverlayRefs = new Map<string, ComponentRef<PageInteractionOverlayComponent>>();
+
+    // Event listener cleanup functions
+    private eventListenerCleanups: (() => void)[] = [];
 
     // Swipe state - track which units are displayed during swipe
     private baseDisplayStartIndex = 0; // The starting index before swipe began
@@ -236,6 +246,31 @@ export class PageViewerComponent implements AfterViewInit {
             }
 
             previousUnit = currentUnit;
+        }, { injector: this.injector });
+
+        // Watch for force units changes (additions, removals, reordering)
+        let previousUnitIds: string[] = [];
+        effect(() => {
+            const force = this.force();
+            const allUnits = force?.units() ?? [];
+            const currentUnitIds = allUnits.map(u => u.id);
+
+            // Skip if view isn't ready yet
+            if (!this.viewInitialized) {
+                previousUnitIds = currentUnitIds;
+                return;
+            }
+
+            // Check if units have changed (different IDs or different order)
+            const unitsChanged = currentUnitIds.length !== previousUnitIds.length ||
+                currentUnitIds.some((id, idx) => id !== previousUnitIds[idx]);
+
+            if (unitsChanged && previousUnitIds.length > 0) {
+                // Units have changed - check if currently displayed units are still valid
+                untracked(() => this.handleForceUnitsChanged(currentUnitIds));
+            }
+
+            previousUnitIds = currentUnitIds;
         }, { injector: this.injector });
 
         inject(DestroyRef).onDestroy(() => this.cleanup());
@@ -687,7 +722,7 @@ export class PageViewerComponent implements AfterViewInit {
         );
 
         // Monitor heat marker state for this service
-        effect(() => {
+        const effectRef = effect(() => {
             const markerData = service.getHeatDiffMarkerData();
             const visible = service.getState().diffHeatMarkerVisible();
 
@@ -700,6 +735,9 @@ export class PageViewerComponent implements AfterViewInit {
                 });
             });
         }, { injector: this.injector });
+
+        // Store the effect ref so we can destroy it when the service is cleaned up
+        this.interactionServiceEffectRefs.set(pageIndex, effectRef);
 
         return service;
     }
@@ -732,9 +770,12 @@ export class PageViewerComponent implements AfterViewInit {
         componentRef.setInput('height', PAGE_HEIGHT);
 
         // Subscribe to drawingStarted output to select unit when drawing on its canvas
-        componentRef.instance.drawingStarted.subscribe((drawnUnit) => {
+        const subscription = componentRef.instance.drawingStarted.subscribe((drawnUnit) => {
             this.forceBuilder.selectUnit(drawnUnit as CBTForceUnit);
         });
+
+        // Store subscription for cleanup
+        this.canvasOverlaySubscriptions.set(unitId, subscription);
 
         // Attach to Angular's change detection
         this.appRef.attachView(componentRef.hostView);
@@ -763,6 +804,12 @@ export class PageViewerComponent implements AfterViewInit {
         
         this.canvasOverlayRefs.forEach((ref, unitId) => {
             if (!keepUnitIds.has(unitId)) {
+                // Clean up subscription first
+                const subscription = this.canvasOverlaySubscriptions.get(unitId);
+                if (subscription) {
+                    subscription.unsubscribe();
+                    this.canvasOverlaySubscriptions.delete(unitId);
+                }
                 this.appRef.detachView(ref.hostView);
                 ref.destroy();
                 toRemove.push(unitId);
@@ -776,6 +823,10 @@ export class PageViewerComponent implements AfterViewInit {
      * Cleans up all canvas overlay component refs.
      */
     private cleanupCanvasOverlays(): void {
+        // Clean up all subscriptions
+        this.canvasOverlaySubscriptions.forEach(sub => sub.unsubscribe());
+        this.canvasOverlaySubscriptions.clear();
+        
         this.canvasOverlayRefs.forEach(ref => {
             this.appRef.detachView(ref.hostView);
             ref.destroy();
@@ -860,6 +911,10 @@ export class PageViewerComponent implements AfterViewInit {
      * Cleans up all interaction services.
      */
     private cleanupInteractionServices(): void {
+        // Destroy effect refs first
+        this.interactionServiceEffectRefs.forEach(effectRef => effectRef.destroy());
+        this.interactionServiceEffectRefs.clear();
+        
         this.interactionServices.forEach(service => service.cleanup());
         this.interactionServices.clear();
         this.heatDiffMarkers.set(new Map());
@@ -1168,6 +1223,12 @@ export class PageViewerComponent implements AfterViewInit {
         // Also listen for custom event from svg-interaction service
         // This is needed because interactive elements prevent the native click event
         container.addEventListener('svg-interaction-click', handlePageSelection);
+        
+        // Store cleanup functions for event listeners
+        this.eventListenerCleanups.push(
+            () => container.removeEventListener('click', handlePageSelection, { capture: true }),
+            () => container.removeEventListener('svg-interaction-click', handlePageSelection)
+        );
     }
 
     /**
@@ -1229,6 +1290,56 @@ export class PageViewerComponent implements AfterViewInit {
         }
     }
 
+    // ========== Force Units Change Handling ==========
+
+    /**
+     * Handle changes to the force's units array (additions, removals, reordering).
+     * Updates the view if currently displayed units no longer match their expected positions.
+     */
+    private handleForceUnitsChanged(currentUnitIds: string[]): void {
+        const force = this.forceBuilder.currentForce();
+        const allUnits = force?.units() ?? [];
+        
+        if (allUnits.length === 0) {
+            // Force is empty, clear display
+            this.clearPages();
+            return;
+        }
+
+        // Check if any of our currently displayed units are no longer at the expected indices
+        const viewStart = this.viewStartIndex();
+        const visibleCount = this.visiblePageCount();
+        let needsRedisplay = false;
+
+        // Check each displayed unit against what should be at that index
+        for (let i = 0; i < this.displayedUnits.length; i++) {
+            const displayedUnit = this.displayedUnits[i];
+            const expectedIndex = (viewStart + i) % allUnits.length;
+            const expectedUnit = allUnits[expectedIndex];
+
+            if (!expectedUnit || displayedUnit.id !== expectedUnit.id) {
+                needsRedisplay = true;
+                break;
+            }
+        }
+
+        // Also check if we need to display more/fewer units now
+        const targetDisplayCount = Math.min(visibleCount, allUnits.length);
+        if (this.displayedUnits.length !== targetDisplayCount) {
+            needsRedisplay = true;
+        }
+
+        // If viewStartIndex is now out of bounds, adjust it
+        if (viewStart >= allUnits.length) {
+            this.viewStartIndex.set(Math.max(0, allUnits.length - 1));
+            needsRedisplay = true;
+        }
+
+        if (needsRedisplay) {
+            this.displayUnit();
+        }
+    }
+
     // ========== Cleanup ==========
 
     private cleanup(): void {
@@ -1236,6 +1347,11 @@ export class PageViewerComponent implements AfterViewInit {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
         }
+        
+        // Clean up event listeners
+        this.eventListenerCleanups.forEach(cleanup => cleanup());
+        this.eventListenerCleanups = [];
+        
         this.cleanupInteractionServices();
         this.cleanupCanvasOverlays();
         this.cleanupInteractionOverlays();
