@@ -114,14 +114,13 @@ export abstract class ForceUnit {
         this.state.shutdown.set(shutdown);
     }
 
-    get c3Linked(): boolean {
-        return this.state.c3Linked();
+    /** Get/set the C3 visual editor position for this unit */
+    get c3Position() {
+        return this.state.c3Position;
     }
 
-    setC3Linked(linked: boolean) {
-        this.state.c3Linked.set(linked);
-        this.setModified();
-        this.force.refreshUnits();
+    setC3Position(pos: { x: number; y: number } | null) {
+        this.state.c3Position.set(pos);
     }
 
     getUnit(): Unit {

@@ -62,6 +62,8 @@ export interface SerializedForce {
     owned?: boolean;
     groups?: SerializedGroup[];
     units?: SerializedUnit[]; // Deprecated, use groups instead
+    /** C3 network configurations stored at force level */
+    c3Networks?: SerializedC3NetworkGroup[];
 }
 
 export interface SerializedGroup {
@@ -93,7 +95,29 @@ export interface SerializedState {
     modified: boolean;
     destroyed: boolean;
     shutdown: boolean;
-    c3Linked: boolean;
+    /** Position in the C3 network visual editor */
+    c3Position?: { x: number; y: number };
+}
+
+/** 
+ * A C3 network group - either master/slave or peer-based 
+ * Stored at Force level, not per-unit
+ */
+export interface SerializedC3NetworkGroup {
+    /** Unique network ID */
+    id: string;
+    /** Network type */
+    type: 'c3' | 'c3i' | 'naval' | 'nova';
+    /** Assigned color for visualization */
+    color: string;
+    /** For master/slave networks: the master unit ID */
+    masterId?: string;
+    /** For master/slave networks: which C3 component on the master */
+    masterComponentIndex?: number;
+    /** For master/slave networks: slave unit IDs */
+    slaveIds?: string[];
+    /** For peer networks: all peer unit IDs (all equal) */
+    peerIds?: string[];
 }
 
 export interface ASSerializedState extends SerializedState {

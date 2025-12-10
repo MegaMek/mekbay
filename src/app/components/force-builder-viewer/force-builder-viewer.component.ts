@@ -44,6 +44,7 @@ import { ShareForceDialogComponent, ShareForceDialogData } from '../share-force-
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
+import { C3NetworkDialogComponent, C3NetworkDialogData, C3NetworkDialogResult } from '../c3-network-dialog/c3-network-dialog.component';
 
 /*
  * Author: Drake
@@ -172,10 +173,32 @@ export class ForceBuilderViewerComponent {
 
     }
 
-    toggleC3Link(event: MouseEvent, unit: ForceUnit) {
-        if (unit.readOnly()) return;
+    openC3Network(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
-        unit.setC3Linked(!unit.c3Linked);
+        const force = this.forceBuilderService.currentForce();
+        const allUnits = force?.units();
+        if (!allUnits || !force) return;
+
+        const ref = this.dialogsService.createDialog<C3NetworkDialogResult>(C3NetworkDialogComponent, {
+            data: <C3NetworkDialogData>{
+                units: allUnits,
+                networks: force.c3Networks(),
+                readOnly: unit.readOnly()
+            },
+            width: '100dvw',
+            height: '100dvh',
+            maxWidth: '100dvw',
+            maxHeight: '100dvh',
+            panelClass: 'c3-network-dialog-panel'
+        });
+
+        ref.closed.subscribe((result) => {
+            if (result?.updated) {
+                // Save networks back to force
+                force.c3Networks.set(result.networks);
+                this.toastService.show('C3 network configuration saved', 'success');
+            }
+        });
     }
 
 

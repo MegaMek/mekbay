@@ -112,8 +112,12 @@ export class CBTForceUnitState extends ForceUnitState {
         this.modified.set(data.modified);
         this.destroyed.set(data.destroyed);
         this.shutdown.set(data.shutdown);
-        this.c3Linked.set(data.c3Linked);
         this.heat.set(data.heat);
+        
+        // Handle C3 position data
+        if (data.c3Position) {
+            this.c3Position.set(data.c3Position);
+        }
 
         // We update it only if changed
         if (data.locations) {

@@ -177,7 +177,7 @@ export class ASForceUnit extends ForceUnit {
             modified: this.state.modified(),
             destroyed: this.state.destroyed(),
             shutdown: this.state.shutdown(),
-            c3Linked: this.state.c3Linked(),
+            c3Position: this.state.c3Position() ?? undefined,
             heat: this.state.heat(),
             armor: this.state.armor(),
             internal: this.state.internal()
@@ -197,7 +197,12 @@ export class ASForceUnit extends ForceUnit {
         this.state.modified.set(typeof state.modified === 'boolean' ? state.modified : false);
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
         this.state.shutdown.set(typeof state.shutdown === 'boolean' ? state.shutdown : false);
-        this.state.c3Linked.set(typeof state.c3Linked === 'boolean' ? state.c3Linked : false);
+        
+        // Handle C3 position data
+        if (state.c3Position) {
+            this.state.c3Position.set(state.c3Position);
+        }
+        
         this.state.heat.set(typeof state.heat === 'number' ? state.heat : 0);
         this.state.armor.set(typeof state.armor === 'number' ? state.armor : 0);
         this.state.internal.set(typeof state.internal === 'number' ? state.internal : 0);

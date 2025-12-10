@@ -37,9 +37,10 @@ import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
 import { LoggerService } from '../services/logger.service';
-import { SerializedForce, SerializedGroup, SerializedUnit } from './force-serialization';
+import { SerializedForce, SerializedGroup, SerializedUnit, SerializedC3NetworkGroup } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
+import { C3NetworkUtil } from '../utils/c3-network.util';
 
 /*
  * Author: Drake
@@ -84,6 +85,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     nameLock: boolean = false; // If true, the force name cannot be changed by the random generator
     timestamp: string | null = null;
     groups: WritableSignal<UnitGroup<TUnit>[]> = signal([]);
+    c3Networks: WritableSignal<SerializedC3NetworkGroup[]> = signal([]); // C3 network configurations
     loading: boolean = false;
     cloud?: boolean = false; // Indicates if this force is stored in the cloud
     owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
@@ -108,8 +110,19 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return this.groups().flatMap(g => g.units());
     });
 
-    totalBv = computed(() => {
+    /** Total BV of units without C3 tax */
+    baseBv = computed(() => {
         return this.units().reduce((sum, unit) => sum + (unit.getBv()), 0);
+    });
+
+    /** C3 network tax based on configured networks */
+    c3Tax = computed(() => {
+        return C3NetworkUtil.calculateForceC3Tax(this.units(), this.c3Networks());
+    });
+
+    /** Total BV including C3 tax */
+    totalBv = computed(() => {
+        return this.baseBv() + this.c3Tax();
     });
 
     get name(): string {
@@ -260,6 +273,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             bv: this.totalBv(),
             nameLock: this.nameLock || false,
             groups: serializedGroups,
+            c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
         } as SerializedForce & { groups?: any[] };
     }
 
@@ -338,6 +352,9 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             this.groups.set(updatedGroups);
             this.removeEmptyGroups();
             this.refreshUnits();
+            
+            // Update C3 networks
+            this.c3Networks.set(data.c3Networks || []);
         } finally {
             this.loading = false;
         }

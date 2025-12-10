@@ -54,7 +54,12 @@ export class ASForceUnitState extends ForceUnitState {
         this.modified.set(data.modified);
         this.destroyed.set(data.destroyed);
         this.shutdown.set(data.shutdown);
-        this.c3Linked.set(data.c3Linked);
+        
+        // Handle C3 position data
+        if (data.c3Position) {
+            this.c3Position.set(data.c3Position);
+        }
+        
         this.heat.set(data.heat);
         this.armor.set(data.armor);
         this.internal.set(data.internal);

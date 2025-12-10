@@ -1,5 +1,5 @@
 
-import { signal } from '@angular/core';
+import { signal, computed } from '@angular/core';
 import { ForceUnit } from './force-unit.model';
 import { SerializedState } from './force-serialization';
 
@@ -15,7 +15,9 @@ export class ForceUnitState {
     public skidding = signal(false);
     public destroyed = signal(false);
     public shutdown = signal(false);
-    public c3Linked = signal(false);
+    
+    /** Position in the C3 network visual editor */
+    public c3Position = signal<{ x: number; y: number } | null>(null);
 
     constructor(unit: ForceUnit) {
         this.unit = unit;
@@ -25,7 +27,10 @@ export class ForceUnitState {
         this.modified.set(data.modified);
         this.destroyed.set(data.destroyed);
         this.shutdown.set(data.shutdown);
-        this.c3Linked.set(data.c3Linked);
+        
+        // Handle C3 position
+        if (data.c3Position) {
+            this.c3Position.set(data.c3Position);
+        }
     }
 }
-

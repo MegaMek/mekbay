@@ -437,12 +437,7 @@ export class CBTForceUnit extends ForceUnit {
         let gunnery = pilot.getSkill('gunnery');
         let piloting = pilot.getSkill('piloting');
         let bv = this.unit.bv;
-        if (this.c3Linked) {
-            const c3Tax = C3NetworkUtil.calculateC3Tax(this, this.force.groups().flatMap(g => g.units()));
-            if (c3Tax > 0) {
-                bv += c3Tax;
-            }
-        }
+        // TODO: C3 tax calculation should be done at Force level with network groups
         if (this.unit.crewSize > 1) {
             gunnery = this.getCrewMember(1).getSkill('gunnery');
         }
@@ -716,7 +711,7 @@ export class CBTForceUnit extends ForceUnit {
             modified: this.state.modified(),
             destroyed: this.state.destroyed(),
             shutdown: this.state.shutdown(),
-            c3Linked: this.state.c3Linked(),
+            c3Position: this.state.c3Position() ?? undefined,
             inventory: this.state.inventoryForSerialization()
         };
         const data = {
@@ -735,7 +730,12 @@ export class CBTForceUnit extends ForceUnit {
         this.state.modified.set(typeof state.modified === 'boolean' ? state.modified : false);
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
         this.state.shutdown.set(typeof state.shutdown === 'boolean' ? state.shutdown : false);
-        this.state.c3Linked.set(typeof state.c3Linked === 'boolean' ? state.c3Linked : false);
+        
+        // Handle C3 position
+        if (state.c3Position) {
+            this.state.c3Position.set(state.c3Position);
+        }
+        
         if (state.inventory) {
             const inventoryData = Sanitizer.sanitizeArray(state.inventory, INVENTORY_SCHEMA);
             this.state.deserializeInventory(inventoryData);
