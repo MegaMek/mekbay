@@ -734,6 +734,30 @@ export class PageViewerComponent implements AfterViewInit {
         // Third pass: attach SVGs to winning visible slots that need them
         const displayedUnitIds = new Set<string>();
         
+        // In single-page mode, determine which slot is most visible for 'fixed' overlay mode
+        // Calculate visibility percentage for each winning slot
+        let mostVisibleSlotIdx: number | null = null;
+        if (visiblePages === 1) {
+            let maxVisibility = 0;
+            for (const [, slotIdx] of winningSlotForUnit) {
+                const slot = this.swipeSlots[slotIdx];
+                const slotLeft = parseFloat(slot.style.left);
+                const slotRight = slotLeft + PAGE_WIDTH * scale;
+                
+                // Calculate how much of the slot is within the visible area
+                const overlapLeft = Math.max(slotLeft, visibleLeft);
+                const overlapRight = Math.min(slotRight, visibleRight);
+                const overlapWidth = Math.max(0, overlapRight - overlapLeft);
+                const slotWidth = PAGE_WIDTH * scale;
+                const visibilityPercent = slotWidth > 0 ? overlapWidth / slotWidth : 0;
+                
+                if (visibilityPercent > maxVisibility) {
+                    maxVisibility = visibilityPercent;
+                    mostVisibleSlotIdx = slotIdx;
+                }
+            }
+        }
+        
         for (const [unitIndex, winningSlotIdx] of winningSlotForUnit) {
             const slot = this.swipeSlots[winningSlotIdx];
             const unit = allUnits[unitIndex] as CBTForceUnit;
@@ -747,7 +771,11 @@ export class PageViewerComponent implements AfterViewInit {
             // Check if this slot already has this SVG
             const existingSvg = slot.querySelector('svg');
             if (existingSvg === svg) {
-                // Already in place
+                // Already in place, but still need to update overlay mode in single-page mode
+                if (!this.readOnly() && visiblePages === 1) {
+                    const overlayMode = winningSlotIdx === mostVisibleSlotIdx ? 'fixed' : 'page';
+                    this.getOrCreateInteractionOverlay(slot, unit, overlayMode);
+                }
                 continue;
             }
             
@@ -789,7 +817,10 @@ export class PageViewerComponent implements AfterViewInit {
             if (!this.readOnly()) {
                 this.getOrCreateInteractionService(unit, svg);
                 this.getOrCreateCanvasOverlay(slot, unit);
-                this.getOrCreateInteractionOverlay(slot, unit, 'page');
+                // In single-page mode, use 'fixed' for most visible slot, 'page' for others
+                // In multi-page mode, always use 'page' (all pages are equally important)
+                const overlayMode = visiblePages === 1 && winningSlotIdx === mostVisibleSlotIdx ? 'fixed' : 'page';
+                this.getOrCreateInteractionOverlay(slot, unit, overlayMode);
             }
         }
         

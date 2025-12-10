@@ -65,7 +65,7 @@ import { PageTurnSummaryPanelComponent } from './page-turn-summary.component';
     imports: [CommonModule],
     templateUrl: './page-interaction-overlay.component.html',
     host: {
-        '[class.fixed-mode]': 'isFixedMode()'
+        '[class.fixed-mode]': 'mode() === "fixed"'
     },
     styleUrls: [`./page-interaction-overlay.component.scss`]
 })
@@ -89,9 +89,6 @@ export class PageInteractionOverlayComponent {
      */
     mode = input<'fixed' | 'page'>('page');
     
-    // Host class binding for fixed mode styling
-    isFixedMode = computed(() => this.mode() === 'fixed');
-
     get nativeElement(): HTMLElement {
         return this.host.nativeElement;
     }
