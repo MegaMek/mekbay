@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { heatLevels } from "../components/svg-viewer/common";
+import { heatLevels, REMOTE_HOST } from "../models/common.model";
 import { Unit } from "../models/units.model";
 
 /*
@@ -780,7 +780,7 @@ export class RsPolyfillUtil {
         const fluffImage = unit?.fluff?.img;
         if (!fluffImage) return; // no fluff image to inject
         if (fluffImage.endsWith('hud.png')) return; // default fluff image, we skip
-        const fluffImageUrl = `https://db.mekbay.com/images/fluff/${fluffImage}`;
+        const fluffImageUrl = `${REMOTE_HOST}/images/fluff/${fluffImage}`;
         const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
         if (referenceTables.length === 0) return; // We don't have a place where to put the fluff image
         // We calculate the width/height using all the reference tables and also the top/left most position

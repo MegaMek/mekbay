@@ -4,6 +4,7 @@ import { Unit } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { OptionsService } from '../../services/options.service';
 import { LoggerService } from '../../services/logger.service';
+import { REMOTE_HOST } from '../../models/common.model';
 
 @Component({
     selector: 'svg-viewer-lite',
@@ -63,7 +64,7 @@ export class SvgViewerLiteComponent {
                 if (svg.getElementById('fluffImage')) continue; // already present from the original sheet, we skip
                 if (centerContent === 'fluffImage') {
                     if (svg.getElementById('fluff-image-injected')) return; // already injected, we skip
-                    const fluffImageUrl = `https://db.mekbay.com/images/fluff/${fluffImage}`;
+                    const fluffImageUrl = `${REMOTE_HOST}/images/fluff/${fluffImage}`;
                     this.injectFluffToSvg(svg, fluffImageUrl);
                 } else {
                     svg.getElementById('fluff-image-injected')?.remove();

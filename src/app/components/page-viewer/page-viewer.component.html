@@ -1,0 +1,42 @@
+<div #container 
+     class="page-viewer-container" 
+     [class.at-min-zoom]="isFullyVisible()">
+    
+    <!-- Swipe wrapper handles X translation during swipe (separate from zoom) -->
+    <div #swipeWrapper class="swipe-wrapper">
+        <!-- Content wrapper receives zoom/pan transforms, contains all pages -->
+        <div #content class="page-content">
+            <!-- Pages (with canvas overlays) are rendered programmatically by the component -->
+        </div>
+    </div>
+    
+    <!-- Fixed interaction overlay container for single-page mode -->
+    <!-- When only 1 page is visible, the overlay is placed here to stay fixed during zoom/pan -->
+    <div #fixedOverlayContainer class="fixed-overlay-container"></div>
+</div>
+
+<!-- Canvas controls (FAB) - global for all canvases -->
+@if (!readOnly()) {
+    <page-viewer-canvas-controls [unit]="unit()" (clearRequested)="onCanvasClearRequested()"></page-viewer-canvas-controls>
+}
+
+<!-- Heat diff markers for each interaction service -->
+@if (!readOnly()) {
+    @for (marker of heatDiffMarkerArray(); track marker.index) {
+        <heat-diff-marker 
+            [data]="marker.data"
+            [visible]="marker.visible">
+        </heat-diff-marker>
+    }
+}
+
+<!-- Error state -->
+@if (loadError()) {
+    <div class="error-container">
+        <div class="error-message">{{ loadError() }}</div>
+        <button (click)="retryLoad()" class="bt-button reload-button">
+            <span class="icon">&#x21bb;</span>
+            <span>Reload</span>
+        </button>
+    </div>
+}

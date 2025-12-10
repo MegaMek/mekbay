@@ -43,7 +43,7 @@ import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm
 import { firstValueFrom } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData } from '../components/rename-force-dialog/rename-force-dialog.component';
 import { RenameGroupDialogComponent, RenameGroupDialogData } from '../components/rename-group-dialog/rename-group-dialog.component';
-import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
+import { UnitInitializerService } from './unit-initializer.service';
 import { DialogsService } from './dialogs.service';
 import { generateUUID, WsService } from './ws.service';
 import { ToastService } from './toast.service';

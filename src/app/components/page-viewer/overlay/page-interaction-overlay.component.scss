@@ -1,21 +1,25 @@
 :host {
+    display: block;
     position: absolute;
-    top: var(--safe-area-inset-top);
+    top: 0;
     left: 0;
-    right: var(--safe-area-inset-right);
-    bottom: var(--safe-area-inset-bottom);
+    right: 0;
+    bottom: 0;
     pointer-events: none;
     z-index: 2;
     box-sizing: border-box;
     overflow: hidden;
 }
 
+/* Fixed mode: overlay is attached to container, not page-wrapper */
+:host.fixed-mode {
+    /* Uses inset styling from inline styles set by page-viewer */
+}
+
 .container {
     display: block;
     position: absolute;
     box-sizing: border-box;
-    transform: translateZ(0);
-    will-change: transform, left, top;
     pointer-events: none;
     overflow: hidden;
     left: 0;
@@ -43,7 +47,7 @@
 }
 
 .phase-controls {
-    bottom: calc(8px + var(--safe-area-inset-bottom));
+    bottom: 8px;
     left: 0;
     right: 0;
     display: flex;
@@ -65,7 +69,7 @@
         text-align: center;
         font-weight: bold;
         transition: filter 0.2s;
-        font-size: 1.1em;
+        font-size: 0.9em;
 
         &.end-phase-button {
             background-color: #f00;
@@ -75,7 +79,6 @@
         &:hover {
             filter: brightness(1.2);
         }
-
     }
 }
 
@@ -103,18 +106,22 @@
         &.move .octagon {
             fill: var(--phase-move);
         }
+
         &.ranged .octagon {
             fill: var(--phase-ranged);
         }
+
         &.physical .octagon {
             fill: var(--phase-physical);
         }
+
         &.heat .octagon {
             fill: var(--phase-heat);
         }
 
         &.warning {
             color: var(--damage-color);
+
             text {
                 fill: #000;
             }
@@ -123,9 +130,11 @@
 
     :host-context(.night-mode) & {
         color: #fff;
+
         svg text {
             fill: #000;
         }
+
         svg .octagon {
             stroke-width: 0;
         }

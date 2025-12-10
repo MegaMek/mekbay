@@ -31,17 +31,37 @@
  * affiliated with Microsoft.
  */
 
-import { CommonModule } from '@angular/common';
-import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, DestroyRef, afterNextRender, ElementRef } from '@angular/core';
-import { SvgZoomPanService } from './svg-zoom-pan.service';
-import { OptionsService } from '../../services/options.service';
-import { DbService } from '../../services/db.service';
-import { DialogsService } from '../../services/dialogs.service';
-import { ForceUnit } from '../../models/force-unit.model';
-import { LoggerService } from '../../services/logger.service';
+import {
+    Component,
+    ChangeDetectionStrategy,
+    inject,
+    input,
+    output,
+    signal,
+    viewChild,
+    computed,
+    DestroyRef,
+    afterNextRender,
+    ElementRef,
+    effect,
+    Injector
+} from '@angular/core';
+import { PageViewerCanvasService } from './page-viewer-canvas.service';
+import { OptionsService } from '../../../services/options.service';
+import { DbService } from '../../../services/db.service';
+import { LoggerService } from '../../../services/logger.service';
+import { ForceUnit } from '../../../models/force-unit.model';
 
 /*
  * Author: Drake
+ * 
+ * PageCanvasOverlayComponent - Canvas overlay for a single page in the page viewer.
+ * 
+ * This component:
+ * - Renders a canvas overlay on top of a single page/SVG
+ * - Handles drawing interactions (pointer events)
+ * - Saves/loads canvas data to IndexedDB per unit
+ * - Receives global drawing state from PageViewerCanvasService
  */
 
 interface BrushLocation {
@@ -55,210 +75,189 @@ interface BrushLocation {
 }
 
 @Component({
-    selector: 'svg-canvas-overlay',
-    standalone: true,
+    selector: 'page-canvas-overlay',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
-    templateUrl: `./svg-canvas-overlay.component.html`,
-    styleUrls: [`./svg-canvas-overlay.component.scss`],
+    template: `
+        <div #canvasOverlay class="page-canvas-overlay" [class.active]="canvasService.isActive()">
+            <div #canvasContainer class="drawing-canvas">
+                <canvas #canvas [width]="canvasWidth()" [height]="canvasHeight()"></canvas>
+            </div>
+        </div>
+    `,
+    styles: [`
+        :host {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .page-canvas-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .drawing-canvas {
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: block;
+            background: transparent;
+            cursor: crosshair;
+            opacity: 0.95;
+            box-sizing: border-box;
+        }
+
+        .page-canvas-overlay.active .drawing-canvas {
+            pointer-events: auto;
+        }
+
+        .drawing-canvas canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            pointer-events: none;
+        }
+
+        @media print {
+            .page-canvas-overlay {
+                transform: none !important;
+            }
+
+            .drawing-canvas {
+                width: 100% !important;
+                height: 100% !important;
+                padding: 0 !important;
+                transform: none !important;
+            }
+
+            .drawing-canvas canvas {
+                transform: none !important;
+            }
+        }
+    `]
 })
-export class SvgCanvasOverlayComponent {
-    private readonly MULTITOUCH = false;
+export class PageCanvasOverlayComponent {
     private readonly INTERNAL_SCALE = 2;
-    private readonly MOVE_THRESHOLD = 4; // in pixels
-    private readonly INITIAL_BRUSH_SIZE = 4;
-    private readonly INITIAL_ERASER_SIZE = 4;
-    private readonly BRUSH_MULTIPLIER = 1.0;// * this.INTERNAL_SCALE;
-    private readonly ERASER_MULTIPLIER = 2.0;// * this.INTERNAL_SCALE;
-    MIN_STROKE_SIZE = 1;
-    MAX_STROKE_SIZE = 10;
-    logger = inject(LoggerService);
-    private zoomPanService = inject(SvgZoomPanService);
+    private readonly MOVE_THRESHOLD = 4;
+    private readonly BRUSH_MULTIPLIER = 1.0;
+    private readonly ERASER_MULTIPLIER = 2.0;
+    private readonly MULTITOUCH = false;
+
+    private logger = inject(LoggerService);
     private injector = inject(Injector);
-    private dialogsService = inject(DialogsService);
-    optionsService = inject(OptionsService);
-    dbService = inject(DbService);
+    private optionsService = inject(OptionsService);
+    private dbService = inject(DbService);
+    canvasService = inject(PageViewerCanvasService);
+
+    // View children
     canvasOverlay = viewChild.required<ElementRef<HTMLDivElement>>('canvasOverlay');
     canvasContainer = viewChild.required<ElementRef<HTMLDivElement>>('canvasContainer');
     canvasRef = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
-    width = input(200);
-    height = input(200);
 
-    activePointers = new Map<number, BrushLocation>();
-    primaryPointerId: number | null = null;
-
-    lastReducedIndex = 0;
+    // Inputs
     unit = input<ForceUnit | null>(null);
-    mode = signal<'brush' | 'eraser' | 'none'>('none');
-    brushColor = signal<string>('#f00');
-    colorOptions = ['#f00', '#00f', '#0f0', '#f0f', '#0ff', '#ff0'];
-    brushSize = signal<number>(this.optionsService.options().lastCanvasState?.brushSize ?? this.INITIAL_BRUSH_SIZE);
-    eraserSize = signal<number>(this.optionsService.options().lastCanvasState?.eraserSize ?? this.INITIAL_ERASER_SIZE);
-    strokeSize = computed(() => {
-        return this.mode() === 'brush' ? this.brushSize() : this.eraserSize();
-    });
+    width = input(612); // PAGE_WIDTH
+    height = input(792); // PAGE_HEIGHT
 
-    canvasHeight = computed(() => {
-        this.unit();
-        return this.height() * this.INTERNAL_SCALE;
-    });
-    canvasWidth = computed(() => {
-        this.unit();
-        return this.width() * this.INTERNAL_SCALE;
-    });
+    // Outputs
+    drawingStarted = output<ForceUnit>();
 
+    // Computed canvas dimensions (internal scale for higher resolution)
+    canvasHeight = computed(() => this.height() * this.INTERNAL_SCALE);
+    canvasWidth = computed(() => this.width() * this.INTERNAL_SCALE);
+
+    // Pointer tracking
+    private activePointers = new Map<number, BrushLocation>();
+    private primaryPointerId: number | null = null;
+
+    // Canvas ID for registration
+    private canvasId = signal<string>('');
+
+    // Bound event handlers
     private nativePointerDown = (event: PointerEvent) => this.onPointerDown(event);
     private nativePointerUp = (event: PointerEvent) => this.onPointerUp(event);
     private nativePointerCancel = (event: PointerEvent) => this.onPointerCancel(event);
     private nativePointerMove = (event: PointerEvent) => this.onPointerMove(event);
-
-    canvasTransformStyle = computed(() => {
-        const state = this.zoomPanService.getState();
-        const scale = state.scale();
-        const translate = state.translate();
-        return {
-            transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
-            transformOrigin: '0 0',
-            width: this.width() + 'px',
-            height: this.height() + 'px',
-        };
-    });
-
-    mainFabStyle = computed(() => {
-        if (this.mode() === 'brush') {
-            return { background: this.brushColor(), color: '#fff' };
-        }
-        if (this.mode() === 'eraser') {
-            return { background: '#fbc02d', color: '#222' };
-        }
-        // Default (inactive)
-        return { background: 'gray', color: '#fff' };
-    });
 
     get nativeElement(): HTMLElement {
         return this.canvasOverlay().nativeElement;
     }
 
     constructor() {
+        // Load canvas data when unit changes
         effect(() => {
             const unit = this.unit();
             afterNextRender(() => {
                 this.clearCanvas();
                 if (!unit) return;
+                
+                // Set canvas ID based on unit
+                this.canvasId.set(`canvas-${unit.id}`);
+                
+                // Register with service for clear functionality
+                this.canvasService.registerCanvas(this.canvasId(), () => this.clearCanvas());
+                
+                // Load saved canvas data
                 this.dbService.getCanvasData(unit.id).then(data => {
                     if (!data) return;
                     this.importImageData(data);
                 });
             }, { injector: this.injector });
         });
+
+        // Setup event listeners after render
         afterNextRender(() => {
             this.addEventListeners();
         });
+
+        // Cleanup on destroy
         inject(DestroyRef).onDestroy(() => {
-            const container = this.canvasContainer().nativeElement;
+            const container = this.canvasContainer()?.nativeElement;
             if (container) {
                 container.removeEventListener('pointerdown', this.nativePointerDown);
             }
             this.removeEventListeners();
+            
+            // Unregister from service
+            if (this.canvasId()) {
+                this.canvasService.unregisterCanvas(this.canvasId());
+            }
         });
     }
 
-    addEventListeners() {
-        const container = this.canvasContainer().nativeElement;
+    private addEventListeners(): void {
+        const container = this.canvasContainer()?.nativeElement;
         if (container) {
             container.addEventListener('pointerdown', this.nativePointerDown);
         }
     }
-    removeEventListeners() {
+
+    private removeEventListeners(): void {
         window.removeEventListener('pointermove', this.nativePointerMove);
         window.removeEventListener('pointerup', this.nativePointerUp);
         window.removeEventListener('pointercancel', this.nativePointerCancel);
-    }
-
-    bubbleInterceptor(event: Event) {
-        const inputFilter = this.optionsService.options().canvasInput;
-        if (event instanceof PointerEvent) {
-            if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
-            if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
-        }
-        event.stopPropagation();
-    }
-
-    onStrokeSizeChange(event: Event) {
-        const value = +(event.target as HTMLInputElement).value;
-        const canvasState = this.optionsService.options().lastCanvasState ?? {
-            brushSize: this.INITIAL_BRUSH_SIZE,
-            eraserSize: this.INITIAL_ERASER_SIZE
-        };
-        if (this.mode() === 'brush') {
-            this.brushSize.set(value);
-            canvasState.brushSize = value;
-        } else {
-            this.eraserSize.set(value);
-            canvasState.eraserSize = value;
-        }
-        this.optionsService.setOption('lastCanvasState', { ...canvasState });
-    }
-
-    toggleDrawMode() {
-        this.activePointers.clear();
-        if (this.mode() === 'none') {
-            this.mode.set('brush');
-        } else {
-            this.mode.set('none');
-        }
-    }
-
-    toggleEraser() {
-        this.activePointers.clear();
-        if (this.mode() === 'eraser') {
-            this.mode.set('brush');
-        } else {
-            this.mode.set('eraser');
-        }
-    }
-
-    setBrushColor(color: string) {
-        this.brushColor.set(color);
-        this.mode.set('brush');
-    }
-
-    async requestClearCanvas() {
-        const confirmed = await this.dialogsService.requestConfirmation(
-            'Are you sure you want to clear the canvas? This cannot be undone.',
-            'Clear Canvas',
-            'info'
-        );
-        if (confirmed) {
-            this.clearCanvas();
-            const unit = this.unit();
-            if (!unit) return;
-            this.dbService.deleteCanvasData(unit.id);
-        }
-    }
-
-    print() {
-        window.print();
-    }
-
-    private getStrokeSizeScaledByMode(mode: 'brush' | 'eraser'): number {
-        const paintMode = mode === 'brush';
-        const scaler = paintMode ? this.BRUSH_MULTIPLIER : this.ERASER_MULTIPLIER;
-        return this.strokeSize() * scaler;
     }
 
     private getCanvasContext(): CanvasRenderingContext2D | null {
         return this.canvasRef()?.nativeElement.getContext('2d') ?? null;
     }
 
-    clearCanvas() {
+    clearCanvas(): void {
         this.activePointers.clear();
         const ctx = this.getCanvasContext();
         if (!ctx) return;
         ctx.clearRect(0, 0, this.canvasWidth(), this.canvasHeight());
     }
 
-    private getPointerPosition(event: PointerEvent): { x: number, y: number } | null {
+    private getPointerPosition(event: PointerEvent): { x: number; y: number } | null {
         const el = this.canvasRef()?.nativeElement;
         if (!el) return null;
         const rect = el.getBoundingClientRect();
@@ -268,18 +267,29 @@ export class SvgCanvasOverlayComponent {
         };
     }
 
-    isEraseButton(button: number): boolean {
+    private isEraseButton(button: number): boolean {
         return button === 5 || button === 2; // X1 (back) button or right-click
     }
 
-    draw(ctx: CanvasRenderingContext2D, mode: 'brush' | 'eraser', fromPos: { x: number, y: number }, toPos: { x: number, y: number }) {
+    private getStrokeSizeScaledByMode(mode: 'brush' | 'eraser'): number {
+        const paintMode = mode === 'brush';
+        const scaler = paintMode ? this.BRUSH_MULTIPLIER : this.ERASER_MULTIPLIER;
+        return this.canvasService.strokeSize() * scaler;
+    }
+
+    private draw(
+        ctx: CanvasRenderingContext2D,
+        mode: 'brush' | 'eraser',
+        fromPos: { x: number; y: number },
+        toPos: { x: number; y: number }
+    ): void {
         ctx.save();
         if (mode === 'eraser') {
             ctx.globalCompositeOperation = 'destination-out';
             ctx.strokeStyle = 'rgba(0,0,0,1)';
         } else {
             ctx.globalCompositeOperation = 'source-over';
-            ctx.strokeStyle = this.brushColor();
+            ctx.strokeStyle = this.canvasService.brushColor();
         }
         ctx.lineWidth = this.getStrokeSizeScaledByMode(mode);
         ctx.lineCap = 'round';
@@ -291,27 +301,24 @@ export class SvgCanvasOverlayComponent {
         ctx.restore();
     }
 
-    startDraw(pointerId: number) {
+    private startDraw(pointerId: number): void {
         const pos = this.activePointers.get(pointerId);
         if (!pos) return;
-        // draw initial dot
         const ctx = this.getCanvasContext();
         if (ctx) {
             this.draw(ctx, pos.mode, { x: pos.startX, y: pos.startY }, { x: pos.x + 0.01, y: pos.y + 0.01 });
         }
     }
 
-    onPointerDown(event: PointerEvent) {
-        const mode = this.mode();
+    private onPointerDown(event: PointerEvent): void {
+        const mode = this.canvasService.mode();
         if (mode === 'none') return;
+
         const inputFilter = this.optionsService.options().canvasInput;
         if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
         if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
 
-        // single pointer mode handling: if there's already a primary pointer that hasn't moved
-        // and the incoming pointer has the same pointerType, propagate the saved primary
-        // pointerdown event (which was previously prevented/stopped) and then ignore this new pointer.
-        // The idea is to drop the current drawing and switch to a zoom/pan interaction instead if I see 2 fingers without the first having had a movement.
+        // Handle multitouch detection for switching to zoom/pan
         if (!this.MULTITOUCH && this.activePointers.size > 0) {
             const primaryId = this.primaryPointerId;
             const primary = primaryId !== null ? this.activePointers.get(primaryId) : undefined;
@@ -339,7 +346,6 @@ export class SvgCanvasOverlayComponent {
                     const target = (orig.target as EventTarget) || this.canvasContainer().nativeElement;
                     target.dispatchEvent(cloned);
                 } catch (err) {
-                    // fall through silently if re-dispatch fails
                     this.logger.error('Failed to re-dispatch primary pointer event: ' + err);
                 }
                 this.activePointers.clear();
@@ -348,53 +354,77 @@ export class SvgCanvasOverlayComponent {
                 return;
             }
             return;
-        };
+        }
+
         const pos = this.getPointerPosition(event);
         if (!pos) return;
+
         event.stopPropagation();
         event.preventDefault();
-        const interactionMode = this.isEraseButton(event.button) ? 'eraser' : this.mode() === 'brush' ? 'brush' : 'eraser';
-        const moved = event.pointerType !== 'touch'; // pen and mouse are precise enough to not need a movement threshold check
-        this.activePointers.set(event.pointerId, { ...pos, mode: interactionMode, startX: pos.x, startY: pos.y, moved, event });
+
+        const interactionMode = this.isEraseButton(event.button) ? 'eraser' : mode === 'brush' ? 'brush' : 'eraser';
+        const moved = event.pointerType !== 'touch';
+
+        this.activePointers.set(event.pointerId, {
+            ...pos,
+            mode: interactionMode,
+            startX: pos.x,
+            startY: pos.y,
+            moved,
+            event
+        });
+
         if (this.activePointers.size === 1) {
             this.primaryPointerId = event.pointerId;
-        }
-        if (this.activePointers.size === 1) {
             window.addEventListener('pointermove', this.nativePointerMove);
             window.addEventListener('pointerup', this.nativePointerUp);
             window.addEventListener('pointercancel', this.nativePointerCancel);
+
+            // Emit drawing started to select this unit
+            const unit = this.unit();
+            if (unit) {
+                this.drawingStarted.emit(unit);
+            }
         }
+
         if (moved) {
             this.startDraw(event.pointerId);
         }
     }
 
-    async onPointerUp(event: PointerEvent) {
+    private async onPointerUp(event: PointerEvent): Promise<void> {
         if (!this.activePointers.has(event.pointerId)) return;
+
         event.preventDefault();
         event.stopPropagation();
+
         const pointer = this.activePointers.get(event.pointerId);
         if (pointer && pointer.moved === false) {
-            // draw a dot if no movement
             this.startDraw(event.pointerId);
         }
+
         this.activePointers.delete(event.pointerId);
         if (this.activePointers.size === 0) {
             this.primaryPointerId = null;
             this.removeEventListeners();
         }
+
+        // Save canvas data
         const unit = this.unit();
         if (!unit) return;
+
         const blob = await this.exportImageData();
         if (!blob) return;
+
         this.dbService.saveCanvasData(unit.id, blob);
         if (!unit.modified) {
             unit.setModified();
         }
     }
 
-    async onPointerCancel(event: PointerEvent) {
+    private onPointerCancel(event: PointerEvent): void {
         if (!this.activePointers.has(event.pointerId)) return;
+
         this.activePointers.delete(event.pointerId);
         if (this.activePointers.size === 0) {
             this.primaryPointerId = null;
@@ -402,35 +432,41 @@ export class SvgCanvasOverlayComponent {
         }
     }
 
-    onPointerMove(event: PointerEvent) {
+    private onPointerMove(event: PointerEvent): void {
         if (!this.activePointers.has(event.pointerId)) return;
+
         event.preventDefault();
         event.stopPropagation();
+
         const pos = this.getPointerPosition(event);
         if (!pos) return;
+
         const ctx = this.getCanvasContext();
         if (!ctx) return;
+
         const fromPos = this.activePointers.get(event.pointerId);
         if (!fromPos) return;
+
         if (fromPos.moved === false) {
-            // detect moved after threshold
             const dx = pos.x - fromPos.startX;
             const dy = pos.y - fromPos.startY;
             const distSq = dx * dx + dy * dy;
             const threshold = this.MOVE_THRESHOLD * this.INTERNAL_SCALE;
-            if (distSq >= (threshold * threshold)) {
+            if (distSq >= threshold * threshold) {
                 fromPos.moved = true;
                 this.startDraw(event.pointerId);
             }
         }
+
         if (fromPos.moved) {
             this.draw(ctx, fromPos.mode, fromPos, pos);
         }
+
         const newPos = { ...fromPos, x: pos.x, y: pos.y };
         this.activePointers.set(event.pointerId, newPos);
     }
 
-    public async exportImageData(): Promise<Blob | null> {
+    async exportImageData(): Promise<Blob | null> {
         const canvas = this.canvasRef();
         if (!canvas) return null;
         return new Promise<Blob | null>((resolve) => {
@@ -440,11 +476,11 @@ export class SvgCanvasOverlayComponent {
         });
     }
 
-    public importImageData(blob: Blob) {
+    importImageData(blob: Blob): void {
         const ctx = this.getCanvasContext();
         if (!ctx) return;
-        const img = new window.Image();
 
+        const img = new window.Image();
         img.onload = () => {
             const canvasWidth = this.canvasWidth();
             const canvasHeight = this.canvasHeight();
@@ -456,5 +492,16 @@ export class SvgCanvasOverlayComponent {
             this.logger.error('Failed to load image for canvas import: ' + err);
         };
         img.src = URL.createObjectURL(blob);
+    }
+
+    /**
+     * Request to clear this canvas with confirmation
+     */
+    async requestClear(): Promise<void> {
+        this.clearCanvas();
+        const unit = this.unit();
+        if (unit) {
+            this.dbService.deleteCanvasData(unit.id);
+        }
     }
 }

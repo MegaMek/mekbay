@@ -34,7 +34,7 @@
 import { signal, computed, WritableSignal, EventEmitter, Injector } from '@angular/core';
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
-import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
+import { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
 import { LoggerService } from '../services/logger.service';
 import { SerializedForce, SerializedGroup, SerializedUnit } from './force-serialization';

@@ -31,42 +31,49 @@
  * affiliated with Microsoft.
  */
 
-
-import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, afterNextRender, ElementRef, output } from '@angular/core';
-import { SvgZoomPanService } from '../svg-viewer/svg-zoom-pan.service';
-import { OptionsService } from '../../services/options.service';
-import { DbService } from '../../services/db.service';
-import { DialogsService } from '../../services/dialogs.service';
-import { ForceUnit } from '../../models/force-unit.model';
-import { LoggerService } from '../../services/logger.service';
-import { OverlayManagerService } from '../../services/overlay-manager.service';
+import {
+    Component,
+    ChangeDetectionStrategy,
+    inject,
+    Injector,
+    input,
+    viewChild,
+    ElementRef,
+    output,
+    computed
+} from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { SvgInteractionOverlayComponent } from './svg-viewer-overlay.component';
-import { canChangeAirborneGround, MotiveModeOption, MotiveModes } from '../../models/motiveModes.model';
-import { CommonModule } from '@angular/common';
+import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
+import { canChangeAirborneGround, MotiveModeOption, MotiveModes } from '../../../models/motiveModes.model';
 
 /*
  * Author: Drake
+ * 
+ * PageTurnSummaryPanelComponent - Turn summary panel for page viewer.
+ * 
+ * This is a copy of TurnSummaryPanelComponent adapted to work with PageInteractionOverlayComponent.
  */
 
 @Component({
-    selector: 'turn-summary-panel',
-    standalone: true,
+    selector: 'page-turn-summary-panel',
     imports: [CommonModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    templateUrl: './turn-summary.component.html',
-    styleUrls: [`./turn-summary.component.scss`]
+    templateUrl: './page-turn-summary.component.html',
+    styleUrl: './page-turn-summary.component.scss'
 })
-export class TurnSummaryPanelComponent {
+export class PageTurnSummaryPanelComponent {
     readonly MOVE_MIN = 0;
     readonly MOVE_MAX = 25;
 
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private overlay = inject(Overlay);
-    unit = inject(SvgInteractionOverlayComponent).unit;
-    force = inject(SvgInteractionOverlayComponent).force;
+    private parent = inject(PageInteractionOverlayComponent);
+    unit = this.parent.unit;
+    force = this.parent.force;
     sliderContainer = viewChild<ElementRef<HTMLDivElement>>('sliderContainer');
     private activePointerId: number | null = null;
     endTurnForAllButtonVisible = input<boolean>(false);
@@ -150,7 +157,8 @@ export class TurnSummaryPanelComponent {
     });
 
     close() {
-        this.overlayManager.closeManagedOverlay('turnSummary');
+        const unitId = this.unit()?.id;
+        this.overlayManager.closeManagedOverlay(`turnSummary-${unitId}`);
     }
 
     endTurn() {
@@ -160,14 +168,25 @@ export class TurnSummaryPanelComponent {
     openPsrWarning(event: MouseEvent) {
         event.stopPropagation();
 
-        // toggle: close if already open
-        if (this.overlayManager.has('psrWarning')) {
-            this.overlayManager.closeManagedOverlay('psrWarning');
+        const unitId = this.unit()?.id;
+        const overlayKey = `psrWarning-${unitId}`;
+
+        // Toggle: close if already open
+        if (this.overlayManager.has(overlayKey)) {
+            this.overlayManager.closeManagedOverlay(overlayKey);
             return;
         }
 
-        const portal = new ComponentPortal(PsrWarningPanelComponent, null, this.injector);
-        const compRef = this.overlayManager.createManagedOverlay('psrWarning', null as any, portal, {
+        // Create a custom injector that provides this component as the parent
+        const customInjector = Injector.create({
+            providers: [
+                { provide: PageInteractionOverlayComponent, useValue: this.parent }
+            ],
+            parent: this.injector
+        });
+
+        const portal = new ComponentPortal(PagePsrWarningPanelComponent, null, customInjector);
+        this.overlayManager.createManagedOverlay(overlayKey, null as any, portal, {
             hasBackdrop: true,
             backdropClass: 'cdk-overlay-dark-backdrop',
             panelClass: 'psr-warning-overlay-panel',
@@ -332,7 +351,7 @@ export class TurnSummaryPanelComponent {
         window.removeEventListener('pointermove', this.onPointerMove);
     };
 
-    // keyboard support when the slider container is focused
+    // Keyboard support when the slider container is focused
     onKeyDown(event: KeyboardEvent) {
         const u = this.unit();
         if (!u) return;
@@ -346,11 +365,8 @@ export class TurnSummaryPanelComponent {
     }
 }
 
-
-
 @Component({
-    selector: 'psr-warning-panel',
-    standalone: true,
+    selector: 'page-psr-warning-panel',
     imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
@@ -457,15 +473,16 @@ export class TurnSummaryPanelComponent {
         }
     `]
 })
-class PsrWarningPanelComponent {
-    private parent = inject(SvgInteractionOverlayComponent);
+export class PagePsrWarningPanelComponent {
+    private parent = inject(PageInteractionOverlayComponent);
     private overlayManager = inject(OverlayManagerService);
     unit = this.parent.unit;
-    
+
     close() {
-        this.overlayManager.closeManagedOverlay('psrWarning');
+        const unitId = this.unit()?.id;
+        this.overlayManager.closeManagedOverlay(`psrWarning-${unitId}`);
     }
-    
+
     modifiersList = computed(() => {
         const unit = this.unit();
         if (!unit) return [];

@@ -45,12 +45,12 @@ import { generateUUID, WsService } from './ws.service';
 import { ForceUnit } from '../models/force-unit.model';
 import { Force }    from '../models/force.model';
 import { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
-import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
+import { UnitInitializerService } from './unit-initializer.service';
 import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
 import { firstValueFrom } from 'rxjs';
-import { GameSystem } from '../models/common.model';
+import { GameSystem, REMOTE_HOST } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
 
@@ -135,7 +135,7 @@ export class DataService {
     private readonly remoteStores: RemoteStore<any>[] = [
         {
             key: 'units',
-            url: 'https://db.mekbay.com/units.json',
+            url: `${REMOTE_HOST}/units.json`,
             getFromLocalStorage: async () => (await this.dbService.getUnits()) ?? null,
             putInLocalStorage: async (data: Units) => this.dbService.saveUnits(data),
             preprocess: (data: Units): Units => {
@@ -163,7 +163,7 @@ export class DataService {
         },
         {
             key: 'equipment',
-            url: 'https://db.mekbay.com/equipment.json',
+            url: `${REMOTE_HOST}/equipment.json`,
             getFromLocalStorage: async () => (await this.dbService.getEquipment()) ?? null,
             putInLocalStorage: async (data: EquipmentData) => this.dbService.saveEquipment(data),
             preprocess: (data: EquipmentData): EquipmentData => {
@@ -208,7 +208,7 @@ export class DataService {
         },
         {
             key: 'quirks',
-            url: 'https://db.mekbay.com/quirks.json',
+            url: `${REMOTE_HOST}/quirks.json`,
             getFromLocalStorage: async () => (await this.dbService.getQuirks()) ?? null,
             putInLocalStorage: async (data: Quirks) => this.dbService.saveQuirks(data),
             preprocess: (data: Quirks): Quirks => {
@@ -223,7 +223,7 @@ export class DataService {
         },
         {
             key: 'factions',
-            url: 'https://db.mekbay.com/factions.json',
+            url: `${REMOTE_HOST}/factions.json`,
             getFromLocalStorage: async () => (await this.dbService.getFactions()) ?? null,
             putInLocalStorage: async (data: Factions) => this.dbService.saveFactions(data),
             preprocess: (data: Factions): Factions => {
@@ -238,7 +238,7 @@ export class DataService {
             }
         }, {
             key: 'eras',
-            url: 'https://db.mekbay.com/eras.json',
+            url: `${REMOTE_HOST}/eras.json`,
             getFromLocalStorage: async () => (await this.dbService.getEras()) ?? null,
             putInLocalStorage: async (data: Eras) => this.dbService.saveEras(data),
             preprocess: (data: Eras): Eras => {
@@ -624,7 +624,7 @@ export class DataService {
     }
 
     private async getRemoteETag(filename: string): Promise<string> {
-        const src = `https://db.mekbay.com/${filename}`;
+        const src = `${REMOTE_HOST}/${filename}`;
         try {
             const resp = await firstValueFrom(
                 this.http.head(src, { observe: 'response' as const })
@@ -753,7 +753,7 @@ export class DataService {
 
     private async fetchAndCacheSheet(sheetFileName: string): Promise<SVGSVGElement> {
         this.logger.info(`Fetching sheet: ${sheetFileName}`);
-        const src = `https://db.mekbay.com/sheets/${sheetFileName}`;
+        const src = `${REMOTE_HOST}/sheets/${sheetFileName}`;
 
         return new Promise<SVGSVGElement>((resolve, reject) => {
             this.http.get(src, {

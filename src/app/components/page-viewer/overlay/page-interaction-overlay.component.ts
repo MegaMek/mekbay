@@ -31,52 +31,64 @@
  * affiliated with Microsoft.
  */
 
+import {
+    Component,
+    ChangeDetectionStrategy,
+    inject,
+    Injector,
+    input,
+    computed,
+    ElementRef
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Component, ChangeDetectionStrategy, inject, Injector, input, signal, viewChild, Signal, effect, computed, afterNextRender, ElementRef } from '@angular/core';
-import { SvgZoomPanService } from '../svg-viewer/svg-zoom-pan.service';
-import { OptionsService } from '../../services/options.service';
-import { DbService } from '../../services/db.service';
-import { DialogsService } from '../../services/dialogs.service';
-import { ForceUnit } from '../../models/force-unit.model';
-import { LoggerService } from '../../services/logger.service';
-import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { LayoutService } from '../../services/layout.service';
-import { TurnSummaryPanelComponent } from './turn-summary.component';
-import { Force } from '../../models/force.model';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import { CBTForce } from '../../models/cbt-force.model';
+import { OptionsService } from '../../../services/options.service';
+import { DialogsService } from '../../../services/dialogs.service';
+import { LoggerService } from '../../../services/logger.service';
+import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import { CBTForceUnit } from '../../../models/cbt-force-unit.model';
+import { CBTForce } from '../../../models/cbt-force.model';
+import { PageTurnSummaryPanelComponent } from './page-turn-summary.component';
 
 /*
  * Author: Drake
+ * 
+ * PageInteractionOverlayComponent - Interaction overlay for a single page in the page viewer.
+ * 
+ * This component provides turn tracking UI controls placed on each page/unit.
  */
+
 @Component({
-    selector: 'svg-interaction-overlay',
-    standalone: true,
+    selector: 'page-interaction-overlay',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule],
-    templateUrl: './svg-viewer-overlay.component.html',
-    styleUrls: ['./svg-viewer-overlay.component.scss']
+    templateUrl: './page-interaction-overlay.component.html',
+    host: {
+        '[class.fixed-mode]': 'mode() === "fixed"'
+    },
+    styleUrls: [`./page-interaction-overlay.component.scss`]
 })
-export class SvgInteractionOverlayComponent {
-    logger = inject(LoggerService);
+export class PageInteractionOverlayComponent {
+    private logger = inject(LoggerService);
     private injector = inject(Injector);
     private dialogsService = inject(DialogsService);
-    private layoutService = inject(LayoutService);
-    private zoomPanService = inject(SvgZoomPanService);
-    overlayManager = inject(OverlayManagerService);
-    optionsService = inject(OptionsService);
-    dbService = inject(DbService);
+    private overlayManager = inject(OverlayManagerService);
+    private optionsService = inject(OptionsService);
     private overlay = inject(Overlay);
     private host = inject(ElementRef<HTMLElement>);
-    turnSummary = viewChild.required(TurnSummaryPanelComponent);
 
+    // Inputs
     unit = input<CBTForceUnit | null>(null);
     force = input<CBTForce | null>(null);
-    width = input(200);
-    height = input(200);
-
+    
+    /**
+     * When 'fixed', the overlay is bound to the container and stays stable during zoom/pan.
+     * When 'page', the overlay is bound to the page-wrapper and moves with zoom/pan.
+     * Default is 'page' for backwards compatibility and multi-page mode.
+     */
+    mode = input<'fixed' | 'page'>('page');
+    
     get nativeElement(): HTMLElement {
         return this.host.nativeElement;
     }
@@ -124,64 +136,31 @@ export class SvgInteractionOverlayComponent {
         return units.some(u => u.turnState().dirty());
     });
 
-    containerStyle = computed(() => {
-        if (!this.layoutService.isDesktop()) {
-            return {};
-        }
-        const state = this.zoomPanService.getState();
-        const scale = state.scale();
-        const translate = state.translate();
-
-        const svgWidth = this.width() * scale;
-        const svgHeight = this.height() * scale;
-
-        // Get viewport dimensions
-        const hostEl = this.host.nativeElement;
-        const viewportWidth = hostEl.clientWidth;
-        const viewportHeight = hostEl.clientHeight;
-
-        // Calculate SVG bounds in viewport coordinates
-        const svgLeft = translate.x;
-        const svgTop = translate.y;
-        const svgRight = translate.x + svgWidth;
-        const svgBottom = translate.y + svgHeight;
-
-        // Clamp container to viewport while tracking SVG
-        const containerLeft = Math.max(0, svgLeft);
-        const containerTop = Math.max(0, svgTop);
-        const containerRight = Math.min(viewportWidth, svgRight);
-        const containerBottom = Math.min(viewportHeight, svgBottom);
-
-        const containerWidth = Math.max(0, containerRight - containerLeft);
-        const containerHeight = Math.max(0, containerBottom - containerTop);
-
-        // Trigger overlay manager reposition after DOM update
-        requestAnimationFrame(() => this.overlayManager.repositionAll());
-
-        return {
-            left: `${containerLeft}px`,
-            top: `${containerTop}px`,
-            width: `${containerWidth}px`,
-            height: `${containerHeight}px`
-        };
-    });
-
-    constructor() { }
-
-
     openTurnSummary(event: MouseEvent) {
         event.stopPropagation();
 
-        // toggle: close if already open
-        if (this.overlayManager.has('turnSummary')) {
-            this.overlayManager.closeManagedOverlay('turnSummary');
+        const unitId = this.unit()?.id;
+        const overlayKey = `turnSummary-${unitId}`;
+
+        // Toggle: close if already open
+        if (this.overlayManager.has(overlayKey)) {
+            this.overlayManager.closeManagedOverlay(overlayKey);
             return;
         }
 
         const target = event.currentTarget as HTMLElement || (event.target as HTMLElement);
-        const portal = new ComponentPortal(TurnSummaryPanelComponent, null, this.injector);
 
-        const compRef = this.overlayManager.createManagedOverlay('turnSummary', target, portal, {
+        // Create a custom injector that provides this component as the parent
+        const customInjector = Injector.create({
+            providers: [
+                { provide: PageInteractionOverlayComponent, useValue: this }
+            ],
+            parent: this.injector
+        });
+
+        const portal = new ComponentPortal(PageTurnSummaryPanelComponent, null, customInjector);
+
+        const compRef = this.overlayManager.createManagedOverlay<PageTurnSummaryPanelComponent>(overlayKey, target, portal, {
             hasBackdrop: false,
             panelClass: 'turn-summary-overlay-panel',
             closeOnOutsideClick: false,
@@ -191,10 +170,7 @@ export class SvgInteractionOverlayComponent {
         });
 
         if (compRef) {
-            const watcher = effect(() => {
-                compRef.setInput('endTurnForAllButtonVisible', this.endTurnButtonVisible());
-            }, { injector: this.injector });
-            compRef.onDestroy(() => watcher.destroy());
+            compRef.setInput('endTurnForAllButtonVisible', this.endTurnButtonVisible());
             compRef.instance.endTurnForAllClicked.subscribe(() => {
                 this.endTurnForAll();
             });
@@ -202,7 +178,11 @@ export class SvgInteractionOverlayComponent {
     }
 
     async endTurnForAll() {
-        const confirm = await this.dialogsService.requestConfirmation('Are you sure you want to end the turn for all units?', 'End Turn', 'info');
+        const confirm = await this.dialogsService.requestConfirmation(
+            'Are you sure you want to end the turn for all units?',
+            'End Turn',
+            'info'
+        );
         if (!confirm) return;
         const force = this.force();
         if (!force) return;
@@ -221,4 +201,16 @@ export class SvgInteractionOverlayComponent {
         this.unit()?.endTurn();
     }
 
+    /**
+     * Closes all overlays opened by this component (turn summary, PSR warning, etc.).
+     */
+    closeAllOverlays(): void {
+        const unitId = this.unit()?.id;
+        if (!unitId) return;
+        
+        // Close turn summary overlay
+        this.overlayManager.closeManagedOverlay(`turnSummary-${unitId}`);
+        // Close PSR warning overlay if any
+        this.overlayManager.closeManagedOverlay(`psrWarning-${unitId}`);
+    }
 }

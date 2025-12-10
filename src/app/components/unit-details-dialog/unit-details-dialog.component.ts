@@ -55,6 +55,7 @@ import { LayoutService } from '../../services/layout.service';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
+import { REMOTE_HOST } from '../../models/common.model';
 
 /*
  * Author: Drake
@@ -261,7 +262,7 @@ export class UnitDetailsDialogComponent {
 
         if (this.unit?.fluff?.img) {
             if (this.unit.fluff.img.endsWith('hud.png')) return; // Ignore HUD images
-            this.fluffImageUrl.set(`https://db.mekbay.com/images/fluff/${this.unit.fluff.img}`);
+            this.fluffImageUrl.set(`${REMOTE_HOST}/images/fluff/${this.unit.fluff.img}`);
         }
     }
 

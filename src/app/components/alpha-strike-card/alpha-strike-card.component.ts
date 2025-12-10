@@ -43,6 +43,7 @@ import {
     AsLayoutLargeVessel1Component,
         AsLayoutLargeVessel2Component,
 } from './layouts';
+import { REMOTE_HOST } from '../../models/common.model';
 
 /*
  * Author: Drake
@@ -138,7 +139,7 @@ export class AlphaStrikeCardComponent {
                 this.imageUrl.set('');
                 return;
             }
-            const fluffImageUrl = `https://db.mekbay.com/images/fluff/${imagePath}`;
+            const fluffImageUrl = `${REMOTE_HOST}/images/fluff/${imagePath}`;
             this.imageUrl.set(fluffImageUrl);
         } catch {
             // Ignore errors, image will just not display

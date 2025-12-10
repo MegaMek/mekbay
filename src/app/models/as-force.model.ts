@@ -34,7 +34,7 @@
 import { Injector } from '@angular/core';
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
-import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
+import { UnitInitializerService } from '../services/unit-initializer.service';
 import { LoggerService } from '../services/logger.service';
 import { ASSerializedUnit, SerializedForce, SerializedUnit } from './force-serialization';
 import { GameSystem } from './common.model';
