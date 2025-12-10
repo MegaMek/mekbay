@@ -81,7 +81,9 @@ export enum ECMMode {
 
 /*
  * Author: Drake
- */
+ */            
+export const REMOTE_HOST = 'https://db.mekbay.com';
+
 // BT heatscale colors configuration
 export const heatLevels = [
     { min: 0, max: 0, class: 'heat0', color: '#FFFFFF', nightColor: '#000000' },
