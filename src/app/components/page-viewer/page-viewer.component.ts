@@ -98,7 +98,7 @@ const SWIPE_VELOCITY_THRESHOLD = 300; // px/s for flick gesture
     providers: [PageViewerZoomPanService, PageViewerCanvasService],
     imports: [HeatDiffMarkerComponent, PageViewerCanvasControlsComponent],
     templateUrl: './page-viewer.component.html',
-    styleUrls: ['./page-viewer.component.css']
+    styleUrls: ['./page-viewer.component.scss']
 })
 export class PageViewerComponent implements AfterViewInit {
     private injector = inject(Injector);
@@ -578,10 +578,20 @@ export class PageViewerComponent implements AfterViewInit {
         this.swipeSlotUnitAssignments = assignments;
         
         // Create all slot wrapper elements
+        // Center slots are indices [visiblePages, 2*visiblePages-1]
+        const centerSlotStart = visiblePages;
+        const centerSlotEnd = visiblePages * 2 - 1;
+        
         for (let slotIdx = 0; slotIdx < this.swipeTotalSlots; slotIdx++) {
             const slotWrapper = this.renderer.createElement('div') as HTMLDivElement;
             this.renderer.addClass(slotWrapper, 'page-wrapper');
             slotWrapper.dataset['slotIndex'] = String(slotIdx);
+            
+            // Add neighbor-page class to all non-center slots
+            const isNeighborSlot = slotIdx < centerSlotStart || slotIdx > centerSlotEnd;
+            if (isNeighborSlot) {
+                this.renderer.addClass(slotWrapper, 'neighbor-page');
+            }
             
             const unscaledLeft = slotPositions[slotIdx];
             slotWrapper.dataset['originalLeft'] = String(unscaledLeft);
@@ -713,8 +723,8 @@ export class PageViewerComponent implements AfterViewInit {
             // Remove if not visible OR if visible but not the winning slot for this unit
             if (!isVisible || !isWinningSlot) {
                 slot.removeChild(svg);
-                // Remove neighbor-page class when removing
-                this.renderer.removeClass(slot, 'neighbor-page');
+                // Remove neighbor-visible class when removing
+                this.renderer.removeClass(slot, 'neighbor-visible');
                 if (unitIndex !== null) {
                     unitToSlotMap.delete(unitIndex);
                 }
@@ -762,11 +772,11 @@ export class PageViewerComponent implements AfterViewInit {
                 this.renderer.removeClass(slot, 'selected');
             }
             
-            // Add neighbor-page class for neighbor slots (non-center)
+            // Add neighbor-visible class for neighbor slots (non-center)
             if (isNeighborSlot) {
-                this.renderer.addClass(slot, 'neighbor-page');
+                this.renderer.addClass(slot, 'neighbor-visible');
             } else {
-                this.renderer.removeClass(slot, 'neighbor-page');
+                this.renderer.removeClass(slot, 'neighbor-visible');
             }
             
             // Apply scale to SVG and attach
