@@ -216,6 +216,9 @@ export class PageViewerComponent implements AfterViewInit {
     // Track display version to handle async loads
     private displayVersion = 0;
 
+    // Effect ref for fluff image visibility
+    private fluffImageInjectEffectRef: EffectRef | null = null;
+
     constructor() {
         // Watch for unit changes
         let previousUnit: CBTForceUnit | null = null;
@@ -286,6 +289,13 @@ export class PageViewerComponent implements AfterViewInit {
 
             previousUnitIds = currentUnitIds;
         }, { injector: this.injector });
+
+        // Watch for fluff image visibility option changes
+        this.fluffImageInjectEffectRef = effect(() => {
+            // Track the option - when it changes, update visibility on all displayed SVGs
+            this.optionsService.options().recordSheetCenterPanelContent;
+            this.setFluffImageVisibility();
+        });
 
         inject(DestroyRef).onDestroy(() => this.cleanup());
     }
@@ -1372,6 +1382,9 @@ export class PageViewerComponent implements AfterViewInit {
         // Update dimensions and restore view state
         this.updateDimensions();
         this.restoreViewState({ fromSwipe });
+        
+        // Apply fluff image visibility setting to newly rendered SVGs
+        this.setFluffImageVisibility();
     }
 
     private clearPages(): void {
@@ -1449,6 +1462,39 @@ export class PageViewerComponent implements AfterViewInit {
                 this.renderer.removeClass(wrapper, 'selected');
             }
         });
+    }
+
+    /**
+     * Sets the visibility of fluff images vs reference tables in all displayed SVGs.
+     * Controlled by the recordSheetCenterPanelContent option.
+     */
+    private setFluffImageVisibility(): void {
+        const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
+        const showFluff = centerContent === 'fluffImage';
+        
+        // Apply to all displayed units' SVGs
+        for (const unit of this.displayedUnits) {
+            const svg = unit.svg();
+            if (!svg) continue;
+            
+            const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
+            if (!injectedEl) continue; // this unit doesn't have a fluff image
+            
+            const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
+            if (referenceTables.length === 0) continue; // no reference tables to hide/show
+            
+            if (showFluff) {
+                injectedEl.style.setProperty('display', 'block');
+                referenceTables.forEach((rt) => {
+                    rt.style.display = 'none';
+                });
+            } else {
+                injectedEl.style.setProperty('display', 'none');
+                referenceTables.forEach((rt) => {
+                    rt.style.display = 'block';
+                });
+            }
+        }
     }
 
     /**
@@ -1580,6 +1626,12 @@ export class PageViewerComponent implements AfterViewInit {
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
+        }
+        
+        // Clean up fluff image effect
+        if (this.fluffImageInjectEffectRef) {
+            this.fluffImageInjectEffectRef.destroy();
+            this.fluffImageInjectEffectRef = null;
         }
         
         // Clean up event listeners
