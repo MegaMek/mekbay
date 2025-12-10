@@ -353,6 +353,9 @@ export class PageViewerComponent implements AfterViewInit {
     private async onSwipeStart(): Promise<void> {
         if (!this.swipeAllowed()) return;
         
+        // Close any open interaction overlays before swiping
+        this.closeInteractionOverlays();
+        
         this.isSwiping = true;
         this.baseDisplayStartIndex = this.viewStartIndex();
         
@@ -925,6 +928,15 @@ export class PageViewerComponent implements AfterViewInit {
         this.setupInteractionsSvgs = new WeakSet<SVGSVGElement>();
     }
 
+    /**
+     * Closes all overlays on interaction overlay components.
+     */
+    private closeInteractionOverlays(): void {
+        this.interactionOverlayRefs.forEach(ref => {
+            ref.instance.closeAllOverlays();
+        });
+    }
+
     private initializePickerMonitoring(): void {
         if (this.readOnly()) return;
 
@@ -960,6 +972,8 @@ export class PageViewerComponent implements AfterViewInit {
         // If visible page count changed, re-render pages
         const newVisibleCount = this.visiblePageCount();
         if (newVisibleCount !== previousVisibleCount && this.unit()) {
+            // Close interaction overlays before re-rendering
+            this.closeInteractionOverlays();
             this.displayUnit();
         }
     }
@@ -970,6 +984,9 @@ export class PageViewerComponent implements AfterViewInit {
         const currentUnit = this.unit();
         const content = this.contentRef().nativeElement;
         const fromSwipe = options.fromSwipe ?? false;
+
+        // Close any open interaction overlays when recreating pages
+        this.closeInteractionOverlays();
 
         // Clear existing page DOM elements
         this.pageElements.forEach(el => {

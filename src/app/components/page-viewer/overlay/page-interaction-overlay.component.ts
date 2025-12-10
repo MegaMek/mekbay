@@ -390,4 +390,17 @@ export class PageInteractionOverlayComponent {
         event.stopPropagation();
         this.unit()?.endTurn();
     }
+
+    /**
+     * Closes all overlays opened by this component (turn summary, PSR warning, etc.).
+     */
+    closeAllOverlays(): void {
+        const unitId = this.unit()?.id;
+        if (!unitId) return;
+        
+        // Close turn summary overlay
+        this.overlayManager.closeManagedOverlay(`turnSummary-${unitId}`);
+        // Close PSR warning overlay if any
+        this.overlayManager.closeManagedOverlay(`psrWarning-${unitId}`);
+    }
 }

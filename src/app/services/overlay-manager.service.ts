@@ -431,6 +431,17 @@ export class OverlayManagerService {
         return this.managed.has(key);
     }
 
+    /**
+     * Close all managed overlays whose key starts with the given prefix.
+     */
+    closeOverlaysByKeyPrefix(prefix: string) {
+        for (const key of Array.from(this.managed.keys())) {
+            if (key.startsWith(prefix)) {
+                this.closeManagedOverlay(key);
+            }
+        }
+    }
+
     closeAllManagedOverlays() {
         for (const key of Array.from(this.managed.keys())) {
             this.closeManagedOverlay(key);
