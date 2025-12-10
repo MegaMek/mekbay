@@ -66,7 +66,7 @@ import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { CBTForce } from '../../models/cbt-force.model';
-import { SvgInteractionService } from '../svg-viewer/svg-interaction.service';
+import { SvgInteractionService } from './svg-interaction.service';
 import { HeatDiffMarkerComponent, HeatDiffMarkerData } from '../heat-diff-marker/heat-diff-marker.component';
 import {
     PageViewerCanvasService,

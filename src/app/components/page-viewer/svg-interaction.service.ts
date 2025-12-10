@@ -39,7 +39,7 @@ import { SkillType } from '../../models/crew-member.model';
 import { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
 import { OptionsService } from '../../services/options.service';
 import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
-import { ZoomPanServiceInterface } from '../page-viewer/zoom-pan.interface';
+import { ZoomPanServiceInterface } from './zoom-pan.interface';
 import { PickerChoice, PickerInstance, PickerPosition, PickerTargetType, PickerValue } from '../picker/picker.interface';
 import { RadialPickerComponent } from '../radial-picker/radial-picker.component';
 import { LinearPickerComponent } from '../linear-picker/linear-picker.component';

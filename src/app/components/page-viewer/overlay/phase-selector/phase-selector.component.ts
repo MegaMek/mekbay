@@ -2,7 +2,7 @@ import { Component, ChangeDetectionStrategy, inject, input, output, TemplateRef,
 
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
-import { LayoutService } from '../../services/layout.service';
+import { LayoutService } from '../../../../services/layout.service';
 
 export type Phase = 'movement' | 'weapon' | 'physical' | 'heat';
 
