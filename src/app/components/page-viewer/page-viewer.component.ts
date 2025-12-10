@@ -195,10 +195,16 @@ export class PageViewerComponent implements AfterViewInit {
     private baseDisplayStartIndex = 0; // The starting index before swipe began
     private isSwiping = false; // Whether we're currently in a swipe gesture
 
-    // Swipe page elements - created at swipe start and reused during swipe
-    // Maps unit index to its page wrapper element
-    private swipePageElements = new Map<number, HTMLDivElement>();
-    private swipeBasePositions: number[] = []; // Base page positions at swipe start
+    // Swipe state - slot-based system for smooth transitions
+    // Slots are positional containers (left neighbors, visible, right neighbors)
+    // SVGs are only attached to slots when they become visible
+    private swipeSlots: HTMLDivElement[] = []; // Array of slot elements by position
+    private swipeSlotUnitAssignments: (number | null)[] = []; // Which unit index is assigned to each slot
+    private swipeTotalSlots = 0; // Total number of slots (visiblePages * 3 typically)
+    private swipeBasePositions: number[] = []; // Unscaled left position for each slot
+    private swipeUnitsToLoad: CBTForceUnit[] = []; // Units that are pre-loaded for swipe
+    private swipeDirection: 'left' | 'right' | 'none' = 'none'; // Current swipe direction for resolving conflicts
+    private lastSwipeTranslateX = 0; // Track last translateX to determine direction
 
     // View start index - tracks the leftmost displayed unit, independent of selection
     // This allows swiping without changing the selected unit
@@ -347,8 +353,8 @@ export class PageViewerComponent implements AfterViewInit {
 
     /**
      * Called when swipe gesture starts.
-     * Pre-creates all potentially needed page elements (visiblePageCount on each side).
-     * This allows smooth CSS-only transforms during swipe without DOM manipulation.
+     * Creates empty slot wrappers for all potential positions.
+     * SVGs are only attached when their slot becomes visible.
      */
     private async onSwipeStart(): Promise<void> {
         if (!this.swipeAllowed()) return;
@@ -364,49 +370,53 @@ export class PageViewerComponent implements AfterViewInit {
         const totalUnits = allUnits.length;
         const visiblePages = this.visiblePageCount();
         
-        // Calculate all indices we might need during swipe
-        // visiblePages on the left + base visible pages + visiblePages on the right
-        const indicesToPrepare: number[] = [];
+        // Calculate all unit indices we might need during swipe
+        // These are unique unit indices that could potentially be shown
+        const indicesToPrepare = new Set<number>();
         
         // Add pages to the left (for swiping right)
         for (let i = visiblePages; i >= 1; i--) {
             const idx = (this.baseDisplayStartIndex - i + totalUnits) % totalUnits;
-            if (!indicesToPrepare.includes(idx)) indicesToPrepare.push(idx);
+            indicesToPrepare.add(idx);
         }
         
         // Add base visible pages
         for (let i = 0; i < visiblePages; i++) {
             const idx = (this.baseDisplayStartIndex + i) % totalUnits;
-            if (!indicesToPrepare.includes(idx)) indicesToPrepare.push(idx);
+            indicesToPrepare.add(idx);
         }
         
         // Add pages to the right (for swiping left)
         for (let i = 1; i <= visiblePages; i++) {
             const idx = (this.baseDisplayStartIndex + visiblePages - 1 + i) % totalUnits;
-            if (!indicesToPrepare.includes(idx)) indicesToPrepare.push(idx);
+            indicesToPrepare.add(idx);
         }
         
         // Pre-load all these units
-        await Promise.all(indicesToPrepare.map(idx => (allUnits[idx] as CBTForceUnit).load()));
+        this.swipeUnitsToLoad = Array.from(indicesToPrepare).map(idx => allUnits[idx] as CBTForceUnit);
+        await Promise.all(this.swipeUnitsToLoad.map(u => u.load()));
         
-        // Store base positions for position calculations
+        // Store base positions for visible pages
         this.swipeBasePositions = this.zoomPanService.getPagePositions(visiblePages);
         
-        // Create all swipe page elements upfront
-        this.setupSwipePages(indicesToPrepare, allUnits as CBTForceUnit[]);
+        // Create slot-based swipe pages
+        this.setupSwipeSlots(allUnits as CBTForceUnit[]);
     }
 
     /**
      * Called during swipe movement.
-     * ONLY updates the CSS transform - no DOM manipulation for 60fps performance.
+     * Updates CSS transform and reassigns SVGs to visible slots.
      */
     private onSwipeMove(totalDx: number): void {
         if (!this.swipeAllowed() || !this.isSwiping) return;
         
-        // Apply swipe transform to the wrapper - this is the ONLY operation during swipe move
+        // Apply swipe transform to the wrapper
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
         swipeWrapper.style.transition = 'none';
         swipeWrapper.style.transform = `translateX(${totalDx}px)`;
+        
+        // Update SVG assignments based on current visibility
+        this.updateSwipeSlotVisibility(totalDx);
     }
 
     /**
@@ -501,22 +511,33 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     /**
-     * Sets up all page elements needed for swipe at swipe start.
-     * Creates page wrappers for all potentially visible indices.
+     * Sets up slot-based page wrappers for swipe.
+     * Creates empty slots for: left neighbors + visible pages + right neighbors.
+     * SVGs are only attached when their slot becomes visible.
+     * 
+     * Slot layout example with 2 visible pages and 4 units (A, B, C, D):
+     * Starting with B, C visible:
+     *   Slot: [0]  [1]  [2]  [3]  [4]  [5]
+     *   Unit:  _    A    B    C    D    _
+     *         ↑left     ↑visible↑      ↑right
+     * 
+     * Only slots 2 and 3 (visible area) will have SVGs attached initially.
+     * As user swipes, SVGs are dynamically moved to/from visible slots.
      */
-    private setupSwipePages(indices: number[], allUnits: CBTForceUnit[]): void {
+    private setupSwipeSlots(allUnits: CBTForceUnit[]): void {
         const content = this.contentRef().nativeElement;
         const scale = this.zoomPanService.scale();
         const visiblePages = this.visiblePageCount();
         const totalUnits = allUnits.length;
         
-        // Clear any existing swipe page elements
-        this.swipePageElements.forEach(el => {
+        // Clear any existing slot elements
+        this.swipeSlots.forEach(el => {
             if (el.parentElement === content) {
                 content.removeChild(el);
             }
         });
-        this.swipePageElements.clear();
+        this.swipeSlots = [];
+        this.swipeSlotUnitAssignments = [];
         
         // Also clear the normal page elements temporarily
         this.pageElements.forEach(el => {
@@ -526,73 +547,249 @@ export class PageViewerComponent implements AfterViewInit {
         });
         this.pageElements = [];
         
-        // Track displayed units for canvas/overlay cleanup
+        // Calculate total slots: visiblePages on left + visiblePages center + visiblePages on right
+        this.swipeTotalSlots = visiblePages * 3;
+        
+        // Calculate slot positions (unscaled)
+        // Center slots start at swipeBasePositions[0]
+        const baseLeft = this.swipeBasePositions[0] ?? 0;
+        const pageStep = PAGE_WIDTH + PAGE_GAP;
+        const slotPositions: number[] = [];
+        
+        for (let i = 0; i < this.swipeTotalSlots; i++) {
+            // Offset from center start: i - visiblePages
+            const offset = i - visiblePages;
+            slotPositions.push(baseLeft + offset * pageStep);
+        }
+        
+        // Determine which unit index goes to each slot
+        // Center slots (visiblePages to 2*visiblePages-1) show base displayed units
+        // Left slots show previous units, right slots show next units
+        const assignments: (number | null)[] = [];
+        
+        for (let slotIdx = 0; slotIdx < this.swipeTotalSlots; slotIdx++) {
+            // Calculate the offset from the center (slot visiblePages is offset 0)
+            const offsetFromCenter = slotIdx - visiblePages;
+            // Calculate which unit index this slot represents
+            const unitIndex = (this.baseDisplayStartIndex + offsetFromCenter + totalUnits) % totalUnits;
+            assignments.push(unitIndex);
+        }
+        
+        this.swipeSlotUnitAssignments = assignments;
+        
+        // Create all slot wrapper elements
+        for (let slotIdx = 0; slotIdx < this.swipeTotalSlots; slotIdx++) {
+            const slotWrapper = this.renderer.createElement('div') as HTMLDivElement;
+            this.renderer.addClass(slotWrapper, 'page-wrapper');
+            slotWrapper.dataset['slotIndex'] = String(slotIdx);
+            
+            const unscaledLeft = slotPositions[slotIdx];
+            slotWrapper.dataset['originalLeft'] = String(unscaledLeft);
+            slotWrapper.style.width = `${PAGE_WIDTH * scale}px`;
+            slotWrapper.style.height = `${PAGE_HEIGHT * scale}px`;
+            slotWrapper.style.position = 'absolute';
+            slotWrapper.style.left = `${unscaledLeft * scale}px`;
+            slotWrapper.style.top = '0';
+            
+            content.appendChild(slotWrapper);
+            this.swipeSlots.push(slotWrapper);
+        }
+        
+        // Initial SVG assignment - only for visible slots (center slots)
+        this.updateSwipeSlotVisibility(0);
+    }
+    
+    /**
+     * Updates which slots have SVGs attached based on current visibility.
+     * An SVG can only be in one place at a time, so we need to:
+     * 1. Determine which slots are currently visible (even partially)
+     * 2. For each visible slot, attach its assigned unit's SVG if not already attached elsewhere
+     * 3. Remove SVGs from slots that are no longer visible
+     * 4. When the same unit is assigned to multiple visible slots, prioritize based on swipe direction
+     */
+    private updateSwipeSlotVisibility(translateX: number): void {
+        const container = this.containerRef().nativeElement;
+        const scale = this.zoomPanService.scale();
+        const containerWidth = container.clientWidth;
+        const translate = this.zoomPanService.translate();
+        
+        // Update swipe direction based on movement
+        if (translateX > this.lastSwipeTranslateX + 1) {
+            this.swipeDirection = 'right'; // Swiping right (content moves right, showing left pages)
+        } else if (translateX < this.lastSwipeTranslateX - 1) {
+            this.swipeDirection = 'left'; // Swiping left (content moves left, showing right pages)
+        }
+        this.lastSwipeTranslateX = translateX;
+        
+        // Calculate the visible area in content coordinates (accounting for transform)
+        // The content is transformed by translateX (swipe) and the base translate
+        const totalTranslateX = translate.x + translateX;
+        
+        // Visible range in scaled coordinates
+        const visibleLeft = -totalTranslateX;
+        const visibleRight = visibleLeft + containerWidth;
+        
+        const force = this.forceBuilder.currentForce();
+        const allUnits = force?.units() ?? [];
+        const visiblePages = this.visiblePageCount();
+        const centerSlotStart = visiblePages; // Index of first center slot
+        const centerSlotEnd = visiblePages * 2 - 1; // Index of last center slot
+        
+        // Track which unit indices currently have their SVGs attached and in which slot
+        const unitToSlotMap = new Map<number, number>(); // unitIndex -> slotIndex where SVG is attached
+        
+        // First pass: find which units have SVGs attached and mark visible slots
+        const visibleSlotIndices: number[] = [];
+        
+        for (let slotIdx = 0; slotIdx < this.swipeSlots.length; slotIdx++) {
+            const slot = this.swipeSlots[slotIdx];
+            const slotLeft = parseFloat(slot.style.left);
+            const slotRight = slotLeft + PAGE_WIDTH * scale;
+            
+            // Check if this slot is visible (even partially)
+            const isVisible = slotRight > visibleLeft && slotLeft < visibleRight;
+            
+            if (isVisible) {
+                visibleSlotIndices.push(slotIdx);
+            }
+            
+            // Check if slot has an SVG
+            const svg = slot.querySelector('svg');
+            if (svg) {
+                const unitIndex = this.swipeSlotUnitAssignments[slotIdx];
+                if (unitIndex !== null) {
+                    unitToSlotMap.set(unitIndex, slotIdx);
+                }
+            }
+        }
+        
+        // Build a map of unitIndex -> list of visible slots that want this unit
+        const unitToVisibleSlots = new Map<number, number[]>();
+        for (const slotIdx of visibleSlotIndices) {
+            const unitIndex = this.swipeSlotUnitAssignments[slotIdx];
+            if (unitIndex === null) continue;
+            if (!unitToVisibleSlots.has(unitIndex)) {
+                unitToVisibleSlots.set(unitIndex, []);
+            }
+            unitToVisibleSlots.get(unitIndex)!.push(slotIdx);
+        }
+        
+        // Determine winning slot for each unit when there are conflicts
+        // Priority: center slots first, then direction-based (swipe left = prefer right slots)
+        const winningSlotForUnit = new Map<number, number>();
+        for (const [unitIndex, slots] of unitToVisibleSlots) {
+            if (slots.length === 1) {
+                winningSlotForUnit.set(unitIndex, slots[0]);
+            } else {
+                // Multiple visible slots want the same unit - resolve conflict
+                // First, check if any is a center slot (always wins)
+                const centerSlot = slots.find(s => s >= centerSlotStart && s <= centerSlotEnd);
+                if (centerSlot !== undefined) {
+                    winningSlotForUnit.set(unitIndex, centerSlot);
+                } else {
+                    // No center slot visible - use swipe direction
+                    // Swiping left = showing right pages = prefer higher slot index
+                    // Swiping right = showing left pages = prefer lower slot index
+                    if (this.swipeDirection === 'left') {
+                        winningSlotForUnit.set(unitIndex, Math.max(...slots));
+                    } else {
+                        winningSlotForUnit.set(unitIndex, Math.min(...slots));
+                    }
+                }
+            }
+        }
+        
+        // Second pass: remove SVGs from non-visible slots AND from non-winning visible slots
+        for (let slotIdx = 0; slotIdx < this.swipeSlots.length; slotIdx++) {
+            const slot = this.swipeSlots[slotIdx];
+            const unitIndex = this.swipeSlotUnitAssignments[slotIdx];
+            const svg = slot.querySelector('svg') as SVGSVGElement | null;
+            
+            if (!svg || svg.parentElement !== slot) continue;
+            
+            const isVisible = visibleSlotIndices.includes(slotIdx);
+            const isWinningSlot = unitIndex !== null && winningSlotForUnit.get(unitIndex) === slotIdx;
+            
+            // Remove if not visible OR if visible but not the winning slot for this unit
+            if (!isVisible || !isWinningSlot) {
+                slot.removeChild(svg);
+                // Remove neighbor-page class when removing
+                this.renderer.removeClass(slot, 'neighbor-page');
+                if (unitIndex !== null) {
+                    unitToSlotMap.delete(unitIndex);
+                }
+            }
+        }
+        
+        // Third pass: attach SVGs to winning visible slots that need them
         const displayedUnitIds = new Set<string>();
         
-        // Find where the base start index is in our indices array
-        const baseIndexPosition = indices.indexOf(this.baseDisplayStartIndex);
-        
-        indices.forEach((unitIndex, arrayIndex) => {
-            const unit = allUnits[unitIndex];
-            if (!unit) return;
+        for (const [unitIndex, winningSlotIdx] of winningSlotForUnit) {
+            const slot = this.swipeSlots[winningSlotIdx];
+            const unit = allUnits[unitIndex] as CBTForceUnit;
+            if (!unit) continue;
             
             const svg = unit.svg();
-            if (!svg) return;
+            if (!svg) continue;
             
             displayedUnitIds.add(unit.id);
             
-            const pageWrapper = this.renderer.createElement('div') as HTMLDivElement;
-            this.renderer.addClass(pageWrapper, 'page-wrapper');
-            pageWrapper.dataset['unitId'] = unit.id;
-            pageWrapper.dataset['unitIndex'] = String(unitIndex);
+            // Check if this slot already has this SVG
+            const existingSvg = slot.querySelector('svg');
+            if (existingSvg === svg) {
+                // Already in place
+                continue;
+            }
             
-            // Add selected class if this is the current unit
+            // Check if this unit's SVG is still attached elsewhere (shouldn't happen after cleanup)
+            if (unitToSlotMap.has(unitIndex)) {
+                continue;
+            }
+            
+            // Update slot data attributes
+            slot.dataset['unitId'] = unit.id;
+            slot.dataset['unitIndex'] = String(unitIndex);
+            
+            // Check if this is a neighbor slot (non-center)
+            const isNeighborSlot = winningSlotIdx < centerSlotStart || winningSlotIdx > centerSlotEnd;
+            
+            // Add selected class if this is the current unit (only for center slots)
             const isSelected = unit.id === this.unit()?.id;
             const multipleVisible = visiblePages > 1;
             if (isSelected && multipleVisible) {
-                this.renderer.addClass(pageWrapper, 'selected');
-            }
-            
-            // Calculate position relative to base display
-            const offsetFromBase = arrayIndex - baseIndexPosition;
-            let unscaledLeft: number;
-            
-            if (offsetFromBase >= 0 && offsetFromBase < this.swipeBasePositions.length) {
-                unscaledLeft = this.swipeBasePositions[offsetFromBase];
-            } else if (offsetFromBase < 0) {
-                unscaledLeft = this.swipeBasePositions[0] - ((-offsetFromBase) * (PAGE_WIDTH + PAGE_GAP));
+                this.renderer.addClass(slot, 'selected');
             } else {
-                const lastBasePos = this.swipeBasePositions[this.swipeBasePositions.length - 1] ?? this.swipeBasePositions[0];
-                unscaledLeft = lastBasePos + ((offsetFromBase - this.swipeBasePositions.length + 1) * (PAGE_WIDTH + PAGE_GAP));
+                this.renderer.removeClass(slot, 'selected');
             }
             
-            pageWrapper.dataset['originalLeft'] = String(unscaledLeft);
-            pageWrapper.style.width = `${PAGE_WIDTH * scale}px`;
-            pageWrapper.style.height = `${PAGE_HEIGHT * scale}px`;
-            pageWrapper.style.position = 'absolute';
-            pageWrapper.style.left = `${unscaledLeft * scale}px`;
-            pageWrapper.style.top = '0';
+            // Add neighbor-page class for neighbor slots (non-center)
+            if (isNeighborSlot) {
+                this.renderer.addClass(slot, 'neighbor-page');
+            } else {
+                this.renderer.removeClass(slot, 'neighbor-page');
+            }
             
-            // Apply scale to SVG
+            // Apply scale to SVG and attach
             svg.style.transform = `scale(${scale})`;
             svg.style.transformOrigin = 'top left';
-            pageWrapper.appendChild(svg);
+            slot.appendChild(svg);
+            unitToSlotMap.set(unitIndex, winningSlotIdx);
             
-            // Get or create interaction service for this unit (keyed by unit ID)
+            // Set up interactions if needed
             if (!this.readOnly()) {
                 this.getOrCreateInteractionService(unit, svg);
-                this.getOrCreateCanvasOverlay(pageWrapper, unit);
-                this.getOrCreateInteractionOverlay(pageWrapper, unit, 'page');
+                this.getOrCreateCanvasOverlay(slot, unit);
+                this.getOrCreateInteractionOverlay(slot, unit, 'page');
             }
-            
-            content.appendChild(pageWrapper);
-            this.swipePageElements.set(unitIndex, pageWrapper);
-        });
+        }
         
-        // Update displayed units list
-        this.displayedUnits = indices.map(idx => allUnits[idx]).filter(u => u);
+        // Update displayed units list (use unique units from winning slots)
+        const uniqueUnitIndices = new Set(winningSlotForUnit.keys());
+        this.displayedUnits = Array.from(uniqueUnitIndices)
+            .map(idx => allUnits[idx] as CBTForceUnit)
+            .filter(u => u);
         
-        // Clean up unused overlays
+        // Clean up unused overlays (keep only displayed ones)
         this.cleanupUnusedCanvasOverlays(displayedUnitIds);
         this.cleanupUnusedInteractionOverlays(displayedUnitIds);
     }
@@ -606,15 +803,20 @@ export class PageViewerComponent implements AfterViewInit {
         swipeWrapper.style.transform = '';
         this.isSwiping = false;
         
-        // Clear swipe page elements (they'll be recreated by displayUnit)
+        // Clear swipe slot elements (they'll be recreated by displayUnit)
         const content = this.contentRef().nativeElement;
-        this.swipePageElements.forEach(el => {
+        this.swipeSlots.forEach(el => {
             if (el.parentElement === content) {
                 content.removeChild(el);
             }
         });
-        this.swipePageElements.clear();
+        this.swipeSlots = [];
+        this.swipeSlotUnitAssignments = [];
+        this.swipeTotalSlots = 0;
         this.swipeBasePositions = [];
+        this.swipeUnitsToLoad = [];
+        this.swipeDirection = 'none';
+        this.lastSwipeTranslateX = 0;
     }
 
     /**
