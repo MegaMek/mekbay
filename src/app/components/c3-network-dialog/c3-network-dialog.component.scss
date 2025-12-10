@@ -18,6 +18,7 @@
   flex-direction: column;
   overflow: hidden;
   padding: 0;
+  background: var(--background-color);
 }
 
 .c3-dialog-header {
@@ -43,7 +44,6 @@
     cursor: pointer;
     padding: 4px 8px;
     line-height: 1;
-    border-radius: 4px;
     transition: background 0.2s, color 0.2s;
 
     &:hover {
@@ -63,11 +63,6 @@
   flex: 1;
   position: relative;
   overflow: hidden;
-  background: var(--canvas-bg, #1a1a1a);
-  background-image:
-    linear-gradient(var(--grid-color, #333) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-color, #333) 1px, transparent 1px);
-  background-size: 20px 20px;
   cursor: grab;
 
   &:active {
@@ -91,7 +86,6 @@
   min-width: 120px;
   background: var(--node-bg, #2a2a2a);
   border: 2px solid var(--node-border, #555);
-  border-radius: 8px;
   padding: 8px;
   cursor: move;
   user-select: none;
@@ -182,7 +176,7 @@
   .pin-label {
     font-size: 0.6rem;
     font-weight: 600;
-    color: var(--text-secondary, #888);
+    color: var(--text-color-secondary);
     margin-bottom: 2px;
     text-transform: uppercase;
   }
@@ -196,24 +190,32 @@
     transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
   }
 
-  // When pin has a network color (master with network, or connected unit)
-  &.has-network .pin-connector {
+  // Disconnected slave/peer pins - gray
+  &.slave:not(.has-network) .pin-connector,
+  &.peer:not(.has-network) .pin-connector {
+    border-color: #666;
+    background: #333;
+  }
+
+  // Master pins ALWAYS show their color on the border
+  &.master.has-network .pin-connector {
+    border-color: var(--pin-network-color);
+    background: #333; // Not filled by default
+  }
+
+  // Master pins that are connected (have slaves) - FILLED
+  &.master.has-network.connected .pin-connector {
     border-color: var(--pin-network-color);
     background: var(--pin-network-color);
-    box-shadow: 0 0 6px var(--pin-network-color);
+    // box-shadow: 0 0 6px var(--pin-network-color);
   }
 
-  // Base role colors for disconnected pins
-  &.master:not(.has-network) .pin-connector {
-    border-color: #9966ff;
-  }
-
-  &.slave:not(.has-network) .pin-connector {
-    border-color: #66ff66;
-  }
-
-  &.peer:not(.has-network) .pin-connector {
-    border-color: #ff9966;
+  // Connected slave/peer pins - FILLED
+  &.slave.has-network .pin-connector,
+  &.peer.has-network .pin-connector {
+    border-color: var(--pin-network-color);
+    background: var(--pin-network-color);
+    // box-shadow: 0 0 6px var(--pin-network-color);
   }
 }
 
@@ -229,7 +231,6 @@
     color: var(--text-tertiary, #666);
     background: var(--tag-bg, #333);
     padding: 2px 6px;
-    border-radius: 4px;
   }
 }
 
@@ -261,7 +262,6 @@
   background: var(--network-item-bg, #2a2a2a);
   border: 1px solid var(--network-color, var(--border-color, #444));
   border-left: 4px solid var(--network-color, var(--border-color, #444));
-  border-radius: 6px;
   padding: 8px 10px;
   margin-bottom: 8px;
 }
@@ -282,18 +282,17 @@
   .delete-network-btn {
     background: none;
     border: none;
-    color: var(--text-secondary, #888);
+    color: var(--text-color-secondary);
     font-size: 0.9rem;
     cursor: pointer;
     padding: 2px 6px;
-    border-radius: 4px;
     opacity: 0.5;
     transition: opacity 0.2s, background 0.2s;
 
     &:hover {
       opacity: 1;
-      background: var(--danger-bg, #ff4444);
-      color: var(--text-primary, #fff);
+      background: red;
+      color: var(--text-primary);
     }
   }
 }
@@ -314,7 +313,6 @@
     color: var(--text-secondary, #aaa);
     background: var(--tag-bg, #333);
     padding: 3px 8px;
-    border-radius: 4px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -335,19 +333,18 @@
   .remove-unit-btn {
     background: none;
     border: none;
-    color: var(--text-secondary, #666);
+    color: var(--text-color-secondary);
     font-size: 0.7rem;
     cursor: pointer;
     padding: 2px 4px;
-    border-radius: 3px;
     opacity: 0.5;
     transition: opacity 0.2s, background 0.2s, color 0.2s;
     flex-shrink: 0;
 
     &:hover {
       opacity: 1;
-      background: var(--danger-bg, #ff4444);
-      color: var(--text-primary, #fff);
+      background: red;
+      color: var(--text-primary);
     }
   }
 }
@@ -366,28 +363,12 @@
   background: var(--danger-bg, #662222);
   border: 1px solid var(--danger-border, #884444);
   color: var(--text-primary, #fff);
-  border-radius: 6px;
   cursor: pointer;
   font-size: 0.8rem;
   transition: background 0.2s;
 
   &:hover {
     background: var(--danger-hover-bg, #883333);
-  }
-}
-
-.zoom-controls {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px;
-  border-top: 1px solid var(--border-color, #444);
-  background: var(--controls-bg, #2a2a2a);
-
-  span {
-    font-size: 0.8rem;
-    color: var(--text-secondary, #aaa);
   }
 }
 
@@ -401,7 +382,6 @@
 
   button {
     padding: 8px 20px;
-    border-radius: 6px;
     font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;

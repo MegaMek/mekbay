@@ -144,6 +144,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     // Color tracking
     private nextColorIndex = 0;
+    
+    // Pre-assigned colors for master pins (unitId:compIndex -> color)
+    private masterPinColors = new Map<string, string>();
 
     // Valid targets for connection
     protected validTargets = computed(() => {
@@ -188,20 +191,75 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return validIds;
     });
 
-    // Get node border color based on network membership
-    protected getNodeBorderColor(node: C3Node): string {
-        // Find all networks this node belongs to
-        const nodeNetworks = this.networks().filter(net => {
-            if (net.peerIds?.includes(node.unit.id)) return true;
-            if (net.masterId === node.unit.id) return true;
-            if (net.slaveIds?.includes(node.unit.id)) return true;
-            return false;
-        });
+    /**
+     * Get all network colors for this node's border.
+     * For masters, each master pin contributes its color.
+     * For slaves/peers, returns the network color they're connected to.
+     */
+    protected getNodeBorderColors(node: C3Node): string[] {
+        const colors: string[] = [];
+        
+        // Check each component
+        for (let i = 0; i < node.c3Components.length; i++) {
+            const comp = node.c3Components[i];
+            
+            if (comp.role === C3Role.MASTER) {
+                // Masters only contribute their color if they have active connections (slaves)
+                const network = this.networks().find(n =>
+                    n.masterId === node.unit.id && 
+                    n.masterComponentIndex === i &&
+                    n.slaveIds && n.slaveIds.length > 0
+                );
+                if (network && !colors.includes(network.color)) {
+                    colors.push(network.color);
+                }
+            } else if (comp.role === C3Role.SLAVE) {
+                // Slaves only contribute if connected
+                const network = this.networks().find(n =>
+                    n.type === comp.networkType && n.slaveIds?.includes(node.unit.id)
+                );
+                if (network && !colors.includes(network.color)) {
+                    colors.push(network.color);
+                }
+            } else if (comp.role === C3Role.PEER) {
+                // Peers only contribute if connected
+                const network = this.networks().find(n =>
+                    n.type === comp.networkType && n.peerIds?.includes(node.unit.id)
+                );
+                if (network && !colors.includes(network.color)) {
+                    colors.push(network.color);
+                }
+            }
+        }
+        
+        return colors;
+    }
 
-        if (nodeNetworks.length === 0) return '#888'; // Unlinked
-        if (nodeNetworks.length === 1) return nodeNetworks[0].color;
-        // Multiple networks - return first one (or could blend)
-        return nodeNetworks[0].color;
+    /**
+     * Check if node is disconnected (no active connections, only masters with no slaves count as disconnected)
+     */
+    protected isNodeDisconnected(node: C3Node): boolean {
+        // Check if unit is a slave or peer in any network
+        const isSlaveOrPeer = this.networks().some(net =>
+            net.slaveIds?.includes(node.unit.id) ||
+            (net.peerIds?.includes(node.unit.id) && (net.peerIds?.length || 0) >= 2)
+        );
+        if (isSlaveOrPeer) return false;
+        
+        // Check if any master pin has slaves
+        for (let i = 0; i < node.c3Components.length; i++) {
+            const comp = node.c3Components[i];
+            if (comp.role === C3Role.MASTER) {
+                const network = this.networks().find(n =>
+                    n.masterId === node.unit.id && 
+                    n.masterComponentIndex === i &&
+                    n.slaveIds && n.slaveIds.length > 0
+                );
+                if (network) return false;
+            }
+        }
+        
+        return true;
     }
 
     // Computed: All connection lines to render
@@ -347,7 +405,39 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     ngAfterViewInit() {
         this.initializeNodes();
         this.networks.set([...(this.data.networks || [])]);
-        this.nextColorIndex = this.networks().length;
+        this.initializeMasterPinColors();
+    }
+
+    /**
+     * Pre-assign colors to all master pins.
+     * Each master pin gets its own unique color that persists for the session.
+     * If a network already exists for the pin, use that color.
+     */
+    private initializeMasterPinColors() {
+        const existingNetworks = this.networks();
+        
+        // First, assign colors from existing networks
+        for (const network of existingNetworks) {
+            if (network.masterId && network.masterComponentIndex !== undefined) {
+                const key = `${network.masterId}:${network.masterComponentIndex}`;
+                this.masterPinColors.set(key, network.color);
+            }
+        }
+        
+        // Count existing colors used
+        this.nextColorIndex = existingNetworks.length;
+        
+        // Then assign colors to any master pins that don't have networks yet
+        for (const node of this.nodes()) {
+            node.c3Components.forEach((comp, idx) => {
+                if (comp.role === C3Role.MASTER) {
+                    const key = `${node.unit.id}:${idx}`;
+                    if (!this.masterPinColors.has(key)) {
+                        this.masterPinColors.set(key, this.getNextColor());
+                    }
+                }
+            });
+        }
     }
 
     private initializeNodes() {
@@ -508,7 +598,16 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         // Masters keep their network when dragging
 
         this.connectingFrom.set({ node, compIndex, role: comp.role, existingNetworkId });
-        this.connectingEnd.set({ x: event.clientX, y: event.clientY });
+        
+        // Convert viewport coordinates to container-relative coordinates
+        const containerEl = this.container()?.nativeElement;
+        if (containerEl) {
+            const rect = containerEl.getBoundingClientRect();
+            this.connectingEnd.set({ 
+                x: event.clientX - rect.left, 
+                y: event.clientY - rect.top 
+            });
+        }
 
         document.addEventListener('pointermove', this.onGlobalPointerMove);
         document.addEventListener('pointerup', this.onGlobalPointerUp);
@@ -567,7 +666,15 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             this.nodes.set([...this.nodes()]);
             this.hasModifications.set(true);
         } else if (this.connectingFrom()) {
-            this.connectingEnd.set({ x: event.clientX, y: event.clientY });
+            // Update connecting end position
+            const containerEl = this.container()?.nativeElement;
+            if (containerEl) {
+                const rect = containerEl.getBoundingClientRect();
+                this.connectingEnd.set({ 
+                    x: event.clientX - rect.left, 
+                    y: event.clientY - rect.top 
+                });
+            }
 
             // Find hovered node
             const el = document.elementFromPoint(event.clientX, event.clientY);
@@ -746,10 +853,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         );
 
         if (!network) {
+            // Use the pre-assigned color for this master pin
+            const pinKey = `${masterNode.unit.id}:${compIndex}`;
+            const preAssignedColor = this.masterPinColors.get(pinKey) || this.getNextColor();
+            
             network = {
                 id: this.generateNetworkId(),
                 type: masterComp.networkType as 'c3' | 'c3i' | 'naval' | 'nova',
-                color: this.getNextColor(),
+                color: preAssignedColor,
                 masterId: masterNode.unit.id,
                 masterComponentIndex: compIndex,
                 slaveIds: []
@@ -834,15 +945,50 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         };
     }
 
-    protected getNodeStyle(node: C3Node) {
+    protected getNodeStyle(node: C3Node): Record<string, string> {
         const offset = this.viewOffset();
         const scale = this.zoom();
-        return {
+        const colors = this.getNodeBorderColors(node);
+        const isDisconnected = this.isNodeDisconnected(node);
+        
+        const style: Record<string, string> = {
             left: `${offset.x + node.x * scale}px`,
             top: `${offset.y + node.y * scale}px`,
-            transform: `translate(-50%, -50%) scale(${scale})`,
-            borderColor: this.getNodeBorderColor(node)
+            transform: `translate(-50%, -50%) scale(${scale})`
         };
+        
+        if (colors.length === 0) {
+            // No colors - gray border
+            style['borderColor'] = '#666';
+        } else if (colors.length === 1) {
+            // Single color
+            style['borderColor'] = colors[0];
+        } else {
+            // Multiple colors - use conic gradient for segmented border effect
+            // Start from 180deg (bottom) so left pin color appears on left border side
+            const segmentAngle = (360 / colors.length);
+            const gradientStops = colors.map((color, i) => {
+                const start = i * segmentAngle;
+                const end = (i + 1) * segmentAngle;
+                return `${color} ${start}deg ${end}deg`;
+            }).join(', ');
+            style['borderImage'] = `conic-gradient(from 180deg, ${gradientStops}) 1`;
+            style['borderImageSlice'] = '1';
+        }
+        
+        // Dashed border for disconnected units (but not for pure masters)
+        if (isDisconnected && !this.hasOnlyMasterPins(node)) {
+            style['borderStyle'] = 'dashed';
+        }
+        
+        return style;
+    }
+
+    /**
+     * Check if node only has master pins (no slave or peer pins)
+     */
+    private hasOnlyMasterPins(node: C3Node): boolean {
+        return node.c3Components.every(c => c.role === C3Role.MASTER);
     }
 
     protected isUnitLinked(unitId: string): boolean {
@@ -855,19 +1001,24 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     /**
      * Get the network color for a specific pin (component) on a node.
-     * Masters show their network color even without slaves.
-     * Each pin on a multi-master unit has its own independent network.
+     * Masters ALWAYS have a color (pre-assigned or from network).
+     * Slaves/peers only have color when connected.
      */
     protected getPinNetworkColor(node: C3Node, compIndex: number): string | null {
         const comp = node.c3Components[compIndex];
         if (!comp) return null;
 
-        // For masters: find network where this unit is master with this component index
+        // For masters: ALWAYS return a color (pre-assigned or from existing network)
         if (comp.role === C3Role.MASTER) {
+            // First check if there's an active network
             const network = this.networks().find(n =>
                 n.masterId === node.unit.id && n.masterComponentIndex === compIndex
             );
-            return network?.color || null;
+            if (network) return network.color;
+            
+            // Otherwise return pre-assigned color
+            const key = `${node.unit.id}:${compIndex}`;
+            return this.masterPinColors.get(key) || null;
         }
 
         // For slaves: find network where this unit is a slave
