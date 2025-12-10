@@ -11,11 +11,6 @@
     overflow: hidden;
 }
 
-/* Fixed mode: overlay is attached to container, not page-wrapper */
-:host.fixed-mode {
-    /* Uses inset styling from inline styles set by page-viewer */
-}
-
 .container {
     display: block;
     position: absolute;

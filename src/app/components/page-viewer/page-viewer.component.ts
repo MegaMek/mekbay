@@ -794,7 +794,8 @@ export class PageViewerComponent implements AfterViewInit {
             // Add selected class if this is the current unit (only for center slots)
             const isSelected = unit.id === this.unit()?.id;
             const multipleVisible = visiblePages > 1;
-            if (isSelected && multipleVisible) {
+            this.containerRef().nativeElement.classList.toggle('multiple-visible', multipleVisible);
+            if (isSelected) {
                 this.renderer.addClass(slot, 'selected');
             } else {
                 this.renderer.removeClass(slot, 'selected');
@@ -1318,7 +1319,8 @@ export class PageViewerComponent implements AfterViewInit {
                 // Add selected class if this is the current unit and multiple pages visible at rest
                 const isSelected = unit.id === this.unit()?.id;
                 const multipleVisible = this.visiblePageCount() > 1;
-                if (isSelected && multipleVisible) {
+                this.containerRef().nativeElement.classList.toggle('multiple-visible', multipleVisible);
+                if (isSelected) {
                     this.renderer.addClass(pageWrapper, 'selected');
                 }
 
@@ -1440,7 +1442,8 @@ export class PageViewerComponent implements AfterViewInit {
             const isSelected = unitId === currentUnitId;
             
             // Update selected class
-            if (isSelected && multipleVisible) {
+            this.containerRef().nativeElement.classList.toggle('multiple-visible', multipleVisible);
+            if (isSelected) {
                 this.renderer.addClass(wrapper, 'selected');
             } else {
                 this.renderer.removeClass(wrapper, 'selected');

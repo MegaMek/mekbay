@@ -803,12 +803,28 @@ hr.divider {
 
 
 /* MekBay SVG Sheet Styles */
-.page-wrapper.selected > svg.mekbay-sheet {
-    outline: 4px solid var(--bt-yellow);
-    outline-offset: -4px;
-
-    @media print {
-        outline: none;
+@media screen {
+    .multiple-visible .page-wrapper.selected > svg.mekbay-sheet {
+        outline: 4px solid var(--bt-yellow);
+        outline-offset: -4px;
+    }
+}
+@media print {
+    .page-viewer-container .page-wrapper.selected > svg.mekbay-sheet {
+        display: block;
+        box-sizing: border-box;
+        padding: 0;
+        margin: 0in 0.16in;
+        transform: none !important;
+        height: 100%;
+        width: auto;
+        max-width: 100%;
+        min-width: 0;
+        max-height: 100%;
+        page-break-inside: avoid;
+        page-break-after: auto !important;
+        break-after: auto !important;
+        transform: none !important;
     }
 }
 

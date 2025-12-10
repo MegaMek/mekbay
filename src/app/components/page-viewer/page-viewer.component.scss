@@ -25,6 +25,18 @@
     width: 100%;
     height: 100%;
     will-change: transform;
+
+    @media print {
+        transform: none !important;
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0;
+        margin: 0 !important;
+        left: 0;
+        top: 0;
+        display: block;
+        background: transparent !important;
+    }
 }
 
 /* Content wrapper - contains all pages and receives zoom/pan transforms */
@@ -37,6 +49,18 @@
     /* Gap is handled via page translateX */
     will-change: transform;
     transform-origin: top left;
+    
+    @media print {
+        transform: none !important;
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0;
+        margin: 0 !important;
+        left: 0;
+        top: 0;
+        display: block;
+        background: transparent !important;
+    }
 }
 
 /* Page wrapper for individual pages */
@@ -48,6 +72,34 @@
     /* Empty wrappers are transparent with a subtle border */
     background-color: transparent;
     transition: background-color 1.6s, outline 0.6s;
+
+    @media print {
+        position: relative;
+        outline: none;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: white !important;
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+        box-sizing: border-box;
+        page-break-after: always;
+        break-after: page;
+        overflow: hidden;
+        background: white !important;
+        transform: none !important;
+
+        &:not(.selected) {
+            display: none;
+        }
+
+        &.selected {
+            left: 0 !important;
+            top: 0 !important;
+        }
+    }
 }
 
 /* Empty page wrapper during swipe - subtle border to show position */
@@ -69,7 +121,7 @@
 }
 
 /* Neighbor pages during swipe */
-// .page-wrapper.neighbor-page {
+.page-wrapper.neighbor-page {
 //     pointer-events: none;
 //     transition: opacity 0.2s;
 
@@ -82,7 +134,10 @@
 //     &.neighbor-visible {
 //         opacity: 1;
 //     }
-// }
+    @media print {
+        display: none;
+    }
+}
 
 
 /* Error container */
@@ -140,4 +195,8 @@
     bottom: 0;
     pointer-events: none;
     z-index: 10;
+
+    @media print {
+        display: none;
+    }
 }
