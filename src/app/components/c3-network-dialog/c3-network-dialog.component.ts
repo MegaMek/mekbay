@@ -49,8 +49,7 @@ import {
     C3Component,
     C3NetworkType,
     C3Role,
-    C3_NETWORK_COLORS,
-    C3_NETWORK_LIMITS
+    C3_NETWORK_COLORS
 } from '../../models/c3-network.model';
 import { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { ToastService } from '../../services/toast.service';
