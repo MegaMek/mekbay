@@ -286,6 +286,24 @@ export class C3NetworkUtil {
     }
 
     /**
+     * Get the maximum depth of sub-networks below a network (0 if no sub-networks)
+     */
+    public static getSubTreeDepth(
+        network: SerializedC3NetworkGroup,
+        allNetworks: SerializedC3NetworkGroup[]
+    ): number {
+        const subNets = this.findSubNetworks(network, allNetworks);
+        if (subNets.length === 0) return 0;
+        
+        let maxSubDepth = 0;
+        for (const subNet of subNets) {
+            const subDepth = 1 + this.getSubTreeDepth(subNet, allNetworks);
+            if (subDepth > maxSubDepth) maxSubDepth = subDepth;
+        }
+        return maxSubDepth;
+    }
+
+    /**
      * Get top-level networks (networks that are not sub-networks of another)
      */
     public static getTopLevelNetworks(networks: SerializedC3NetworkGroup[]): SerializedC3NetworkGroup[] {
@@ -517,8 +535,38 @@ export class C3NetworkUtil {
             return { valid: false, reason: `Combined networks would exceed maximum of ${C3_MAX_NETWORK_TOTAL} units` };
         }
 
-        // Check capacity and mixing rules
-        return this.canAddChildToMaster(parentMasterId, parentCompIndex, true, networks);
+        // Check depth limit: parent's depth from root + 1 (new connection) + child's sub-tree depth
+        // Parent depth: how many levels above the parent master
+        let parentDepth = 0;
+        if (parentNet) {
+            parentDepth = this.getNetworkDepth(parentNet, networks);
+        } else {
+            // Parent doesn't have its own network yet, but might be a sub-master
+            const parentMemberStr = this.createMasterMember(parentMasterId, parentCompIndex);
+            const grandParentNet = networks.find(n => n.members?.includes(parentMemberStr));
+            if (grandParentNet) {
+                parentDepth = this.getNetworkDepth(grandParentNet, networks) + 1;
+            }
+        }
+        
+        // Child sub-tree depth: how many levels below the child master
+        const childSubTreeDepth = childNet ? this.getSubTreeDepth(childNet, networks) : 0;
+        
+        // The resulting depth would be: parentDepth + 1 (this connection) + childSubTreeDepth
+        const resultingMaxDepth = parentDepth + 1 + childSubTreeDepth;
+        
+        if (resultingMaxDepth >= C3_MAX_NETWORK_DEPTH) {
+            return { valid: false, reason: `Connection would exceed maximum network depth (${C3_MAX_NETWORK_DEPTH})` };
+        }
+
+        // Check capacity and mixing rules (skip depth check since we already did it)
+        const capacityCheck = this.canAddChildToMaster(parentMasterId, parentCompIndex, true, networks);
+        // Filter out depth-related errors since we've already checked depth more thoroughly
+        if (!capacityCheck.valid && !capacityCheck.reason?.includes('depth')) {
+            return capacityCheck;
+        }
+        
+        return { valid: true };
     }
 
     /**
