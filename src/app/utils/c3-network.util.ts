@@ -162,6 +162,32 @@ export class C3NetworkUtil {
     public static isUnitConnected(unitId: string, networks: SerializedC3NetworkGroup[]): boolean {
         return this.findNetworksContainingUnit(unitId, networks).length > 0;
     }
+    
+    /** Check if a unit's Master component is connected (is a master of a network or a sub-master) */
+    public static isUnitMasterConnected(unitId: string, networks: SerializedC3NetworkGroup[]): boolean {
+        // Check if unit is the master of any network
+        if (networks.some(n => n.masterId === unitId && (n.members?.length || 0) > 0)) {
+            return true;
+        }
+        // Check if unit is a sub-master (master connected as child to another master)
+        for (const net of networks) {
+            if (net.members?.some(m => this.isMasterMember(m) && this.parseMember(m).unitId === unitId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /** Check if a unit's Slave component is connected */
+    public static isUnitSlaveConnected(unitId: string, networks: SerializedC3NetworkGroup[]): boolean {
+        // Check if unit is a slave member (stored as just unitId, not unitId:compIndex)
+        for (const net of networks) {
+            if (net.members?.some(m => !this.isMasterMember(m) && m === unitId)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /** 
      * Parse a member string. Members can be:
@@ -297,6 +323,54 @@ export class C3NetworkUtil {
     }
 
     /**
+     * Validate if a specific source pin can connect to a specific target pin.
+     * This is the main validation entry point for pin-to-pin connections.
+     */
+    public static canConnectToPin(
+        sourceUnitId: string,
+        sourceCompIdx: number,
+        sourceRole: C3Role,
+        sourceNetworkType: C3NetworkType,
+        targetUnitId: string,
+        targetCompIdx: number,
+        targetRole: C3Role,
+        networks: SerializedC3NetworkGroup[]
+    ): { valid: boolean; reason?: string } {
+        // Same unit, same pin - not allowed
+        if (sourceUnitId === targetUnitId && sourceCompIdx === targetCompIdx) {
+            return { valid: false, reason: 'Cannot connect pin to itself' };
+        }
+
+        // Peer to Peer
+        if (sourceRole === C3Role.PEER && targetRole === C3Role.PEER) {
+            return this.canPeerConnectToPeer(sourceNetworkType, sourceUnitId, targetUnitId, networks);
+        }
+
+        // Master to Slave
+        if (sourceRole === C3Role.MASTER && targetRole === C3Role.SLAVE) {
+            return this.canSlaveConnectToMaster(sourceUnitId, sourceCompIdx, targetUnitId, networks);
+        }
+
+        // Master to Master
+        if (sourceRole === C3Role.MASTER && targetRole === C3Role.MASTER) {
+            // Check if reverse connection exists - if so, allow (will be replaced)
+            const targetNet = this.findMasterNetwork(targetUnitId, targetCompIdx, networks);
+            const sourceMemberStr = this.createMasterMember(sourceUnitId, sourceCompIdx);
+            if (targetNet?.members?.includes(sourceMemberStr)) {
+                return { valid: true }; // Allow - will replace reverse connection
+            }
+            return this.canMasterConnectToMaster(sourceUnitId, sourceCompIdx, targetUnitId, targetCompIdx, networks);
+        }
+
+        // Slave to Master
+        if (sourceRole === C3Role.SLAVE && targetRole === C3Role.MASTER) {
+            return this.canSlaveConnectToMaster(targetUnitId, targetCompIdx, sourceUnitId, networks);
+        }
+
+        return { valid: false, reason: 'Incompatible connection types' };
+    }
+
+    /**
      * Get the maximum children for a master component
      */
     public static getMaxChildren(networkType: C3NetworkType): number {
@@ -383,6 +457,12 @@ export class C3NetworkUtil {
         if (parentMasterId === childMasterId && parentCompIndex === childCompIndex) {
             return { valid: false, reason: 'Cannot connect component to itself' };
         }
+        
+        // Check if child master unit has a Slave component that is already connected
+        // (Master/Slave mutual exclusion on same unit)
+        if (this.isUnitSlaveConnected(childMasterId, networks)) {
+            return { valid: false, reason: 'Unit already has a Slave component connected' };
+        }
 
         const parentNet = this.findMasterNetwork(parentMasterId, parentCompIndex, networks);
         
@@ -415,10 +495,20 @@ export class C3NetworkUtil {
         slaveId: string,
         networks: SerializedC3NetworkGroup[]
     ): { valid: boolean; reason?: string } {
+        // Same unit, same component - not allowed
+        if (masterId === slaveId) {
+            return { valid: false, reason: 'Cannot connect same unit Master to Slave component' };
+        }
         // Check if slave is already connected somewhere
         const existingNets = this.findNetworksContainingUnit(slaveId, networks);
         if (existingNets.length > 0) {
             return { valid: false, reason: 'Unit already connected to a network' };
+        }
+        
+        // Check if slave unit has a Master component that is already connected
+        // (Master/Slave mutual exclusion on same unit)
+        if (this.isUnitMasterConnected(slaveId, networks)) {
+            return { valid: false, reason: 'Unit already has a Master component connected' };
         }
 
         const masterNet = this.findMasterNetwork(masterId, masterCompIndex, networks);

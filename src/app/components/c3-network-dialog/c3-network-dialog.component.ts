@@ -187,11 +187,12 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     // Find the appropriate pin on the member
                     let memberCompIdx = 0;
                     if (parsed.compIndex !== undefined) {
+                        // Master member - use the specified component index
                         memberCompIdx = parsed.compIndex;
                     } else {
-                        // Find slave pin
+                        // Slave member - find the slave pin specifically
                         memberCompIdx = memberNode.c3Components.findIndex(c => 
-                            c.role === C3Role.SLAVE || c.role === C3Role.MASTER
+                            c.role === C3Role.SLAVE
                         );
                         if (memberCompIdx < 0) memberCompIdx = 0;
                     }
@@ -341,42 +342,18 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const targetComp = targetNode.c3Components[i];
             if (!C3NetworkUtil.areComponentsCompatible(sourceComp, targetComp)) continue;
 
-            // Same unit, same pin - not allowed
-            if (sourceNode.unit.id === targetNode.unit.id && sourceCompIdx === i) continue;
-
-            // Check based on roles
-            if (sourceComp.role === C3Role.PEER && targetComp.role === C3Role.PEER) {
-                const result = C3NetworkUtil.canPeerConnectToPeer(sourceComp.networkType, sourceNode.unit.id, targetNode.unit.id, this.networks());
-                if (result.valid) return true;
-            }
-            if (sourceComp.role === C3Role.MASTER) {
-                if (targetComp.role === C3Role.SLAVE) {
-                    const result = C3NetworkUtil.canSlaveConnectToMaster(
-                        sourceNode.unit.id, sourceCompIdx, targetNode.unit.id, this.networks()
-                    );
-                    if (result.valid) return true;
-                }
-                if (targetComp.role === C3Role.MASTER) {
-                    // Check if reverse connection exists (target is parent of source)
-                    // If so, we can replace it with the new direction
-                    const targetNet = C3NetworkUtil.findMasterNetwork(targetNode.unit.id, i, this.networks());
-                    const sourceMemberStr = C3NetworkUtil.createMasterMember(sourceNode.unit.id, sourceCompIdx);
-                    const reverseExists = targetNet?.members?.includes(sourceMemberStr);
-                    
-                    if (reverseExists) return true; // Allow - will replace reverse connection
-                    
-                    const result = C3NetworkUtil.canMasterConnectToMaster(
-                        sourceNode.unit.id, sourceCompIdx, targetNode.unit.id, i, this.networks()
-                    );
-                    if (result.valid) return true;
-                }
-            }
-            if (sourceComp.role === C3Role.SLAVE && targetComp.role === C3Role.MASTER) {
-                const result = C3NetworkUtil.canSlaveConnectToMaster(
-                    targetNode.unit.id, i, sourceNode.unit.id, this.networks()
-                );
-                if (result.valid) return true;
-            }
+            // Use the utility method for proper pin-level validation
+            const result = C3NetworkUtil.canConnectToPin(
+                sourceNode.unit.id,
+                sourceCompIdx,
+                sourceComp.role,
+                sourceComp.networkType,
+                targetNode.unit.id,
+                i,
+                targetComp.role,
+                this.networks()
+            );
+            if (result.valid) return true;
         }
         return false;
     }
@@ -391,15 +368,19 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         for (let i = 0; i < targetNode.c3Components.length; i++) {
             const targetComp = targetNode.c3Components[i];
             if (!C3NetworkUtil.areComponentsCompatible(sourceComp, targetComp)) continue;
-            if (conn.node.unit.id === targetNode.unit.id && conn.compIndex === i) continue;
 
-            if (sourceComp.role === C3Role.PEER && targetComp.role === C3Role.PEER) {
-                validPins.push(i);
-            } else if (sourceComp.role === C3Role.MASTER) {
-                if (targetComp.role === C3Role.SLAVE || targetComp.role === C3Role.MASTER) {
-                    validPins.push(i);
-                }
-            } else if (sourceComp.role === C3Role.SLAVE && targetComp.role === C3Role.MASTER) {
+            // Use the utility method for proper pin-level validation
+            const result = C3NetworkUtil.canConnectToPin(
+                conn.node.unit.id,
+                conn.compIndex,
+                sourceComp.role,
+                sourceComp.networkType,
+                targetNode.unit.id,
+                i,
+                targetComp.role,
+                this.networks()
+            );
+            if (result.valid) {
                 validPins.push(i);
             }
         }
