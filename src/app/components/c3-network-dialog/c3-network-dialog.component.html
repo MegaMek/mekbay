@@ -69,6 +69,7 @@
                     [class.master]="comp.role === 'master'" [class.slave]="comp.role === 'slave'"
                     [class.peer]="comp.role === 'peer'" [class.connected]="isPinConnected(node, i)"
                     [class.has-network]="getPinNetworkColor(node, i)"
+                    [class.disabled]="isPinDisabled(node, i)"
                     [class.valid-pin-target]="connectingFrom() && isPinValidTarget(node, i) && hoveredNode() === node"
                     [class.invalid-pin-target]="connectingFrom() && !isPinValidTarget(node, i) && hoveredNode() === node && validTargets().has(node.unit.id)"
                     [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node"

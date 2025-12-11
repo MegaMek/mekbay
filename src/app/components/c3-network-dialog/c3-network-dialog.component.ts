@@ -865,6 +865,26 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return false;
     }
 
+    /**
+     * Check if a pin is disabled due to mutual exclusion (M/S on same unit)
+     */
+    protected isPinDisabled(node: C3Node, compIndex: number): boolean {
+        const comp = node.c3Components[compIndex];
+        if (!comp) return false;
+
+        // Master pin is disabled if unit's Slave is connected
+        if (comp.role === C3Role.MASTER) {
+            return C3NetworkUtil.isUnitSlaveConnected(node.unit.id, this.networks());
+        }
+
+        // Slave pin is disabled if unit's Master is connected
+        if (comp.role === C3Role.SLAVE) {
+            return C3NetworkUtil.isUnitMasterConnected(node.unit.id, this.networks());
+        }
+
+        return false;
+    }
+
     protected getRoleLabel(role: C3Role): string {
         return C3NetworkUtil.getRoleName(role);
     }
