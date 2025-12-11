@@ -202,9 +202,16 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     const sy = offset.y + (memberNode.y + memberPin.y) * scale;
                     const angle = Math.atan2(sy - my, sx - mx);
 
+                    // Shorten the line so arrow stops at pin edge (not center)
+                    const pinRadius = this.PIN_RADIUS * scale;
+                    const arrowMarkerDistanceFromTargetCenter = 4;
+                    const shortenBy = pinRadius + arrowMarkerDistanceFromTargetCenter;
+                    const endX = sx - Math.cos(angle) * shortenBy;
+                    const endY = sy - Math.sin(angle) * shortenBy;
+
                     lines.push({
                         id: `${network.id}-member-${member}`,
-                        x1: mx, y1: my, x2: sx, y2: sy,
+                        x1: mx, y1: my, x2: endX, y2: endY,
                         color: network.color,
                         hasArrow: true, arrowAngle: angle
                     });
@@ -323,12 +330,17 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return `net_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
+    // Pin visual constants (must match SCSS)
+    private readonly PIN_RADIUS = 7; // Half of 14px pin-connector width
+    private readonly PIN_SPACING = 30; // Pin width (~14px) + gap (8px) + some label space
+    private readonly PIN_Y_OFFSET = 20; // Distance from node center to pin connector center
+
     private getPinOffset(node: C3Node, compIndex: number): { x: number; y: number } {
         const numPins = node.c3Components.length;
-        if (numPins === 0) return { x: 0, y: 20 };
-        const spacing = 38;
-        const totalW = (numPins - 1) * spacing;
-        return { x: -totalW / 2 + compIndex * spacing, y: 18 };
+        if (numPins === 0) return { x: 0, y: this.PIN_Y_OFFSET };
+        // Center the pins horizontally relative to node center
+        const totalW = (numPins - 1) * this.PIN_SPACING;
+        return { x: -totalW / 2 + compIndex * this.PIN_SPACING, y: this.PIN_Y_OFFSET };
     }
 
     // ==================== Connection Logic ====================
@@ -760,8 +772,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             style['borderImageSlice'] = '1';
         }
 
-        if (!C3NetworkUtil.isUnitConnected(node.unit.id, this.networks()) && 
-            !node.c3Components.every(c => c.role === C3Role.MASTER)) {
+        if (!C3NetworkUtil.isUnitConnected(node.unit.id, this.networks())) {
             style['borderStyle'] = 'dashed';
         }
 
@@ -770,12 +781,41 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     private getNodeBorderColors(node: C3Node): string[] {
         const colors: string[] = [];
-        for (let i = 0; i < node.c3Components.length; i++) {
-            const color = this.getPinNetworkColor(node, i);
-            if (color && !colors.includes(color)) {
-                colors.push(color);
+        const networks = this.networks();
+        const unitId = node.unit.id;
+
+        // 1. Check if unit is a member (slave or sub-master) of any network → parent network color
+        for (const net of networks) {
+            if (!net.members) continue;
+            for (const member of net.members) {
+                const parsed = C3NetworkUtil.parseMember(member);
+                if (parsed.unitId === unitId) {
+                    if (!colors.includes(net.color)) {
+                        colors.push(net.color);
+                    }
+                    break;
+                }
             }
         }
+
+        // 2. Check if unit is a peer in any peer network
+        for (const net of networks) {
+            if (net.peerIds?.includes(unitId)) {
+                if (!colors.includes(net.color)) {
+                    colors.push(net.color);
+                }
+            }
+        }
+
+        // 3. Check if unit is a master with members → its own network color (sub-network)
+        for (const net of networks) {
+            if (net.masterId === unitId && net.members && net.members.length > 0) {
+                if (!colors.includes(net.color)) {
+                    colors.push(net.color);
+                }
+            }
+        }
+
         return colors;
     }
 
