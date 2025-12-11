@@ -102,8 +102,7 @@ export const ALL_C3_FLAGS = [
  */
 export const C3_MASTER_FLAGS = [
     C3_FLAGS.C3M,
-    C3_FLAGS.C3MBS,
-    C3_FLAGS.C3EM
+    C3_FLAGS.C3MBS
 ] as const;
 
 /**
