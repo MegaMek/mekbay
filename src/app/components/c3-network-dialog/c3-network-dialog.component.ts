@@ -117,21 +117,62 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private nextColorIndex = 0;
     private masterPinColors = new Map<string, string>();
 
-    // Valid targets for connection
-    protected validTargets = computed(() => {
+    /**
+     * Comprehensive connection state computed once when drag starts.
+     * Contains all valid target units and their valid pins.
+     */
+    protected connectionState = computed(() => {
         const conn = this.connectingFrom();
-        if (!conn) return new Set<string>();
+        if (!conn) {
+            return {
+                isConnecting: false,
+                validTargetIds: new Set<string>(),
+                validPinsByUnit: new Map<string, number[]>()
+            };
+        }
         
-        const validIds = new Set<string>();
         const sourceComp = conn.node.c3Components[conn.compIndex];
+        const validTargetIds = new Set<string>();
+        const validPinsByUnit = new Map<string, number[]>();
+        const networks = this.networks();
         
         for (const node of this.nodes()) {
-            if (this.canConnect(conn.node, conn.compIndex, node)) {
-                validIds.add(node.unit.id);
+            const validPins: number[] = [];
+            
+            for (let i = 0; i < node.c3Components.length; i++) {
+                const targetComp = node.c3Components[i];
+                if (!C3NetworkUtil.areComponentsCompatible(sourceComp, targetComp)) continue;
+
+                const result = C3NetworkUtil.canConnectToPin(
+                    conn.node.unit.id,
+                    conn.compIndex,
+                    sourceComp.role,
+                    sourceComp.networkType,
+                    node.unit.id,
+                    i,
+                    targetComp.role,
+                    networks
+                );
+                if (result.valid) {
+                    validPins.push(i);
+                }
+            }
+            
+            if (validPins.length > 0) {
+                validTargetIds.add(node.unit.id);
+                validPinsByUnit.set(node.unit.id, validPins);
             }
         }
-        return validIds;
+        
+        return {
+            isConnecting: true,
+            validTargetIds,
+            validPinsByUnit
+        };
     });
+
+    // Convenience accessor for valid target IDs
+    protected validTargets = computed(() => this.connectionState().validTargetIds);
 
     // Connection lines
     protected connectionLines = computed<ConnectionLine[]>(() => {
@@ -270,6 +311,198 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         };
     });
 
+    // ==================== Cached Sidebar Data ====================
+
+    /** Top-level networks (not sub-networks of another) */
+    protected topLevelNetworks = computed(() => 
+        C3NetworkUtil.getTopLevelNetworks(this.networks())
+    );
+
+    /** Map of network ID to its sub-networks */
+    protected subNetworksMap = computed(() => {
+        const map = new Map<string, SerializedC3NetworkGroup[]>();
+        const networks = this.networks();
+        for (const net of networks) {
+            map.set(net.id, C3NetworkUtil.findSubNetworks(net, networks));
+        }
+        return map;
+    });
+
+    /** Map of network ID to detailed member info */
+    protected networkMembersMap = computed(() => {
+        const map = new Map<string, { 
+            id: string; 
+            name: string; 
+            role: 'master' | 'slave' | 'peer' | 'sub-master'; 
+            canRemove: boolean; 
+            memberStr?: string 
+        }[]>();
+        
+        const nodes = this.nodes();
+        const networks = this.networks();
+        
+        for (const network of networks) {
+            const members: typeof map extends Map<string, infer V> ? V : never = [];
+            
+            if (network.peerIds) {
+                for (const id of network.peerIds) {
+                    const node = nodes.find(n => n.unit.id === id);
+                    members.push({ id, name: node?.unit.getUnit().chassis || 'Unknown', role: 'peer', canRemove: true });
+                }
+            } else if (network.masterId) {
+                const masterNode = nodes.find(n => n.unit.id === network.masterId);
+                if (masterNode) {
+                    members.push({ id: network.masterId, name: masterNode.unit.getUnit().chassis, role: 'master', canRemove: false });
+                }
+
+                for (const memberStr of network.members || []) {
+                    const parsed = C3NetworkUtil.parseMember(memberStr);
+                    const node = nodes.find(n => n.unit.id === parsed.unitId);
+                    const isMaster = parsed.compIndex !== undefined;
+                    
+                    let hasChildren = false;
+                    if (isMaster) {
+                        const subNet = C3NetworkUtil.findMasterNetwork(parsed.unitId, parsed.compIndex!, networks);
+                        hasChildren = !!(subNet?.members && subNet.members.length > 0);
+                    }
+
+                    members.push({
+                        id: parsed.unitId,
+                        name: node?.unit.getUnit().chassis || 'Unknown',
+                        role: hasChildren ? 'sub-master' : 'slave',
+                        canRemove: true,
+                        memberStr
+                    });
+                }
+            }
+            
+            map.set(network.id, members);
+        }
+        
+        return map;
+    });
+
+    /** Map of network ID to display name */
+    protected networkDisplayNames = computed(() => {
+        const map = new Map<string, string>();
+        const nodes = this.nodes();
+        
+        for (const network of this.networks()) {
+            let name: string;
+            if (network.peerIds) {
+                name = `${C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
+            } else if (network.masterId) {
+                const masterNode = nodes.find(n => n.unit.id === network.masterId);
+                const memberCount = network.members?.length || 0;
+                name = `${masterNode?.unit.getUnit().chassis || 'Unknown'} (${memberCount} ${memberCount === 1 ? 'member' : 'members'})`;
+            } else {
+                name = 'Unknown Network';
+            }
+            map.set(network.id, name);
+        }
+        
+        return map;
+    });
+
+    // ==================== Cached Pin State ====================
+
+    /** Map of "unitId:compIndex" to pin connection state */
+    protected pinConnectionState = computed(() => {
+        const state = new Map<string, { connected: boolean; disabled: boolean; color: string | null }>();
+        const nodes = this.nodes();
+        const networks = this.networks();
+        
+        for (const node of nodes) {
+            const unitId = node.unit.id;
+            
+            for (let compIndex = 0; compIndex < node.c3Components.length; compIndex++) {
+                const comp = node.c3Components[compIndex];
+                const key = `${unitId}:${compIndex}`;
+                
+                let connected = false;
+                let disabled = false;
+                let color: string | null = null;
+                
+                if (comp.role === C3Role.MASTER) {
+                    const net = C3NetworkUtil.findMasterNetwork(unitId, compIndex, networks);
+                    connected = !!(net?.members && net.members.length > 0);
+                    disabled = C3NetworkUtil.isUnitSlaveConnected(unitId, networks);
+                    color = net?.color || this.masterPinColors.get(key) || null;
+                } else if (comp.role === C3Role.SLAVE) {
+                    connected = networks.some(n => n.members?.includes(unitId));
+                    disabled = C3NetworkUtil.isUnitMasterConnected(unitId, networks);
+                    for (const net of networks) {
+                        if (net.members?.includes(unitId)) {
+                            color = net.color;
+                            break;
+                        }
+                    }
+                } else if (comp.role === C3Role.PEER) {
+                    const net = C3NetworkUtil.findPeerNetwork(unitId, networks);
+                    connected = !!(net?.peerIds && net.peerIds.length >= 2);
+                    color = net?.color || null;
+                }
+                
+                state.set(key, { connected, disabled, color });
+            }
+        }
+        
+        return state;
+    });
+
+    /** Map of unitId to node border colors */
+    protected nodeBorderColors = computed(() => {
+        const map = new Map<string, string[]>();
+        const networks = this.networks();
+        
+        for (const node of this.nodes()) {
+            const unitId = node.unit.id;
+            const colors: string[] = [];
+            
+            // 1. Check if unit is a member (slave or sub-master) of any network
+            for (const net of networks) {
+                if (!net.members) continue;
+                for (const member of net.members) {
+                    const parsed = C3NetworkUtil.parseMember(member);
+                    if (parsed.unitId === unitId && !colors.includes(net.color)) {
+                        colors.push(net.color);
+                        break;
+                    }
+                }
+            }
+            
+            // 2. Check if unit is a peer in any peer network
+            for (const net of networks) {
+                if (net.peerIds?.includes(unitId) && !colors.includes(net.color)) {
+                    colors.push(net.color);
+                }
+            }
+            
+            // 3. Check if unit is a master with members
+            for (const net of networks) {
+                if (net.masterId === unitId && net.members?.length && !colors.includes(net.color)) {
+                    colors.push(net.color);
+                }
+            }
+            
+            map.set(unitId, colors);
+        }
+        
+        return map;
+    });
+
+    /** Map of unitId to whether unit is connected to any network */
+    protected unitConnectionStatus = computed(() => {
+        const map = new Map<string, boolean>();
+        const networks = this.networks();
+        
+        for (const node of this.nodes()) {
+            map.set(node.unit.id, C3NetworkUtil.isUnitConnected(node.unit.id, networks));
+        }
+        
+        return map;
+    });
+
     ngAfterViewInit() {
         this.initializeNodes();
         this.networks.set([...(this.data.networks || [])]);
@@ -345,62 +578,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     // ==================== Connection Logic ====================
 
-    private canConnect(sourceNode: C3Node, sourceCompIdx: number, targetNode: C3Node): boolean {
-        const sourceComp = sourceNode.c3Components[sourceCompIdx];
-        if (!sourceComp) return false;
-
-        // Find compatible target pins
-        for (let i = 0; i < targetNode.c3Components.length; i++) {
-            const targetComp = targetNode.c3Components[i];
-            if (!C3NetworkUtil.areComponentsCompatible(sourceComp, targetComp)) continue;
-
-            // Use the utility method for proper pin-level validation
-            const result = C3NetworkUtil.canConnectToPin(
-                sourceNode.unit.id,
-                sourceCompIdx,
-                sourceComp.role,
-                sourceComp.networkType,
-                targetNode.unit.id,
-                i,
-                targetComp.role,
-                this.networks()
-            );
-            if (result.valid) return true;
-        }
-        return false;
-    }
-
+    /** Get valid pins for a target node from pre-computed connection state */
     protected getValidPinsForTarget(targetNode: C3Node): number[] {
-        const conn = this.connectingFrom();
-        if (!conn) return [];
-        const sourceComp = conn.node.c3Components[conn.compIndex];
-        if (!sourceComp) return [];
-
-        const validPins: number[] = [];
-        for (let i = 0; i < targetNode.c3Components.length; i++) {
-            const targetComp = targetNode.c3Components[i];
-            if (!C3NetworkUtil.areComponentsCompatible(sourceComp, targetComp)) continue;
-
-            // Use the utility method for proper pin-level validation
-            const result = C3NetworkUtil.canConnectToPin(
-                conn.node.unit.id,
-                conn.compIndex,
-                sourceComp.role,
-                sourceComp.networkType,
-                targetNode.unit.id,
-                i,
-                targetComp.role,
-                this.networks()
-            );
-            if (result.valid) {
-                validPins.push(i);
-            }
-        }
-        return validPins;
+        return this.connectionState().validPinsByUnit.get(targetNode.unit.id) || [];
     }
 
     protected isPinValidTarget(node: C3Node, compIndex: number): boolean {
-        return this.getValidPinsForTarget(node).includes(compIndex);
+        const validPins = this.connectionState().validPinsByUnit.get(node.unit.id);
+        return validPins?.includes(compIndex) ?? false;
     }
 
     // ==================== Event Handlers ====================
@@ -738,22 +923,24 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     // ==================== UI Helpers ====================
 
     protected getNodeClasses(node: C3Node) {
-        const isLinked = C3NetworkUtil.isUnitConnected(node.unit.id, this.networks());
-        const isConnecting = this.connectingFrom() !== null;
+        const isLinked = this.unitConnectionStatus().get(node.unit.id) ?? false;
+        const connState = this.connectionState();
+        const isConnecting = connState.isConnecting;
         return {
             linked: isLinked,
             disconnected: !isLinked,
             dragging: this.draggedNode() === node,
-            'valid-target': this.validTargets().has(node.unit.id) && isConnecting,
-            'invalid-target': !this.validTargets().has(node.unit.id) && isConnecting && this.connectingFrom()?.node !== node,
-            hovered: this.hoveredNode() === node && this.validTargets().has(node.unit.id)
+            'valid-target': connState.validTargetIds.has(node.unit.id) && isConnecting,
+            'invalid-target': !connState.validTargetIds.has(node.unit.id) && isConnecting && this.connectingFrom()?.node !== node,
+            hovered: this.hoveredNode() === node && connState.validTargetIds.has(node.unit.id)
         };
     }
 
     protected getNodeStyle(node: C3Node): Record<string, string> {
         const offset = this.viewOffset();
         const scale = this.zoom();
-        const colors = this.getNodeBorderColors(node);
+        const colors = this.nodeBorderColors().get(node.unit.id) || [];
+        const isConnected = this.unitConnectionStatus().get(node.unit.id) ?? false;
 
         const style: Record<string, string> = {
             left: `${offset.x + node.x * scale}px`,
@@ -772,117 +959,29 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             style['borderImageSlice'] = '1';
         }
 
-        if (!C3NetworkUtil.isUnitConnected(node.unit.id, this.networks())) {
+        if (!isConnected) {
             style['borderStyle'] = 'dashed';
         }
 
         return style;
     }
 
-    private getNodeBorderColors(node: C3Node): string[] {
-        const colors: string[] = [];
-        const networks = this.networks();
-        const unitId = node.unit.id;
-
-        // 1. Check if unit is a member (slave or sub-master) of any network → parent network color
-        for (const net of networks) {
-            if (!net.members) continue;
-            for (const member of net.members) {
-                const parsed = C3NetworkUtil.parseMember(member);
-                if (parsed.unitId === unitId) {
-                    if (!colors.includes(net.color)) {
-                        colors.push(net.color);
-                    }
-                    break;
-                }
-            }
-        }
-
-        // 2. Check if unit is a peer in any peer network
-        for (const net of networks) {
-            if (net.peerIds?.includes(unitId)) {
-                if (!colors.includes(net.color)) {
-                    colors.push(net.color);
-                }
-            }
-        }
-
-        // 3. Check if unit is a master with members → its own network color (sub-network)
-        for (const net of networks) {
-            if (net.masterId === unitId && net.members && net.members.length > 0) {
-                if (!colors.includes(net.color)) {
-                    colors.push(net.color);
-                }
-            }
-        }
-
-        return colors;
-    }
-
     protected getPinNetworkColor(node: C3Node, compIndex: number): string | null {
-        const comp = node.c3Components[compIndex];
-        if (!comp) return null;
-
-        if (comp.role === C3Role.MASTER) {
-            const net = C3NetworkUtil.findMasterNetwork(node.unit.id, compIndex, this.networks());
-            if (net) return net.color;
-            return this.masterPinColors.get(`${node.unit.id}:${compIndex}`) || null;
-        }
-
-        if (comp.role === C3Role.SLAVE) {
-            // Check if this unit is a member of any master network
-            for (const net of this.networks()) {
-                if (net.members?.includes(node.unit.id)) return net.color;
-            }
-        }
-
-        if (comp.role === C3Role.PEER) {
-            const net = C3NetworkUtil.findPeerNetwork(node.unit.id, this.networks());
-            return net?.color || null;
-        }
-
-        return null;
+        const state = this.pinConnectionState().get(`${node.unit.id}:${compIndex}`);
+        return state?.color ?? null;
     }
 
     protected isPinConnected(node: C3Node, compIndex: number): boolean {
-        const comp = node.c3Components[compIndex];
-        if (!comp) return false;
-
-        if (comp.role === C3Role.MASTER) {
-            const net = C3NetworkUtil.findMasterNetwork(node.unit.id, compIndex, this.networks());
-            return !!(net?.members && net.members.length > 0);
-        }
-
-        if (comp.role === C3Role.SLAVE) {
-            return this.networks().some(n => n.members?.includes(node.unit.id));
-        }
-
-        if (comp.role === C3Role.PEER) {
-            const net = C3NetworkUtil.findPeerNetwork(node.unit.id, this.networks());
-            return !!(net?.peerIds && net.peerIds.length >= 2);
-        }
-
-        return false;
+        const state = this.pinConnectionState().get(`${node.unit.id}:${compIndex}`);
+        return state?.connected ?? false;
     }
 
     /**
      * Check if a pin is disabled due to mutual exclusion (M/S on same unit)
      */
     protected isPinDisabled(node: C3Node, compIndex: number): boolean {
-        const comp = node.c3Components[compIndex];
-        if (!comp) return false;
-
-        // Master pin is disabled if unit's Slave is connected
-        if (comp.role === C3Role.MASTER) {
-            return C3NetworkUtil.isUnitSlaveConnected(node.unit.id, this.networks());
-        }
-
-        // Slave pin is disabled if unit's Master is connected
-        if (comp.role === C3Role.SLAVE) {
-            return C3NetworkUtil.isUnitMasterConnected(node.unit.id, this.networks());
-        }
-
-        return false;
+        const state = this.pinConnectionState().get(`${node.unit.id}:${compIndex}`);
+        return state?.disabled ?? false;
     }
 
     protected getRoleLabel(role: C3Role): string {
@@ -894,67 +993,15 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     protected getNetworkDisplayName(network: SerializedC3NetworkGroup): string {
-        if (network.peerIds) {
-            return `${this.getNetworkTypeLabel(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
-        } else if (network.masterId) {
-            const masterNode = this.nodes().find(n => n.unit.id === network.masterId);
-            const memberCount = network.members?.length || 0;
-            return `${masterNode?.unit.getUnit().chassis || 'Unknown'} (${memberCount} ${memberCount === 1 ? 'member' : 'members'})`;
-        }
-        return 'Unknown Network';
-    }
-
-    protected getTopLevelNetworks(): SerializedC3NetworkGroup[] {
-        return C3NetworkUtil.getTopLevelNetworks(this.networks());
+        return this.networkDisplayNames().get(network.id) || 'Unknown Network';
     }
 
     protected getSubNetworks(network: SerializedC3NetworkGroup): SerializedC3NetworkGroup[] {
-        return C3NetworkUtil.findSubNetworks(network, this.networks());
+        return this.subNetworksMap().get(network.id) || [];
     }
 
-    protected getNetworkMembersDetailed(network: SerializedC3NetworkGroup): { 
-        id: string; 
-        name: string; 
-        role: 'master' | 'slave' | 'peer' | 'sub-master'; 
-        canRemove: boolean; 
-        memberStr?: string 
-    }[] {
-        const members: { id: string; name: string; role: 'master' | 'slave' | 'peer' | 'sub-master'; canRemove: boolean; memberStr?: string }[] = [];
-
-        if (network.peerIds) {
-            for (const id of network.peerIds) {
-                const node = this.nodes().find(n => n.unit.id === id);
-                members.push({ id, name: node?.unit.getUnit().chassis || 'Unknown', role: 'peer', canRemove: true });
-            }
-        } else if (network.masterId) {
-            const masterNode = this.nodes().find(n => n.unit.id === network.masterId);
-            if (masterNode) {
-                members.push({ id: network.masterId, name: masterNode.unit.getUnit().chassis, role: 'master', canRemove: false });
-            }
-
-            for (const memberStr of network.members || []) {
-                const parsed = C3NetworkUtil.parseMember(memberStr);
-                const node = this.nodes().find(n => n.unit.id === parsed.unitId);
-                const isMaster = parsed.compIndex !== undefined;
-                
-                // Check if this master member has its own network with children
-                let hasChildren = false;
-                if (isMaster) {
-                    const subNet = C3NetworkUtil.findMasterNetwork(parsed.unitId, parsed.compIndex!, this.networks());
-                    hasChildren = !!(subNet?.members && subNet.members.length > 0);
-                }
-
-                members.push({
-                    id: parsed.unitId,
-                    name: node?.unit.getUnit().chassis || 'Unknown',
-                    role: hasChildren ? 'sub-master' : 'slave',
-                    canRemove: true,
-                    memberStr
-                });
-            }
-        }
-
-        return members;
+    protected getNetworkMembersDetailed(network: SerializedC3NetworkGroup) {
+        return this.networkMembersMap().get(network.id) || [];
     }
 
     protected removeUnitFromNetwork(network: SerializedC3NetworkGroup, unitId: string, memberStr?: string) {

@@ -505,7 +505,6 @@ export class C3NetworkUtil {
         if (this.isUnitSlaveConnected(childMasterId, networks)) {
             return { valid: false, reason: 'Unit already has a Slave component connected' };
         }
-
         const parentNet = this.findMasterNetwork(parentMasterId, parentCompIndex, networks);
         
         // Check if child master already has a parent

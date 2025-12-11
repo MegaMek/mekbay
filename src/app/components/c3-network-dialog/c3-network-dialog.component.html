@@ -96,7 +96,7 @@
 
         <div class="networks-list">
             <!-- Only show top-level networks, sub-networks are nested inside -->
-            @for (network of getTopLevelNetworks(); track network.id) {
+            @for (network of topLevelNetworks(); track network.id) {
             <ng-container *ngTemplateOutlet="networkTemplate; context: { network: network, depth: 0 }"></ng-container>
             }
 
