@@ -45,6 +45,7 @@ import {
     C3_COMPATIBLE_NETWORKS,
     C3_NETWORK_LIMITS,
     C3_MAX_NETWORK_DEPTH,
+    C3_MAX_NETWORK_TOTAL,
     C3_TAX_RATE,
     C3_BOOSTED_TAX_RATE
 } from "../models/c3-network.model";
@@ -405,14 +406,43 @@ export class C3NetworkUtil {
 
     /**
      * Check if a child can be added to a master's network
+     * @param masterId The master unit's ID
+     * @param masterCompIndex The master component index
      * @param childIsMaster Whether the child being added is a master component
      */
     public static canAddChildToMaster(
-        network: SerializedC3NetworkGroup | null,
+        masterId: string,
+        masterCompIndex: number,
         childIsMaster: boolean,
         networks: SerializedC3NetworkGroup[]
     ): { valid: boolean; reason?: string } {
-        // New network - always valid
+        // Check if master unit has a Slave component that is already connected
+        // (Master/Slave mutual exclusion on same unit)
+        if (this.isUnitSlaveConnected(masterId, networks)) {
+            return { valid: false, reason: 'Master unit already has a Slave component connected' };
+        }
+        
+        const network = this.findMasterNetwork(masterId, masterCompIndex, networks);
+        
+        // Calculate depth: check if master is already a sub-master of something
+        let depth = 0;
+        if (network) {
+            depth = this.getNetworkDepth(network, networks);
+        } else {
+            // Master doesn't have its own network yet, but might be a sub-master
+            const masterMemberStr = this.createMasterMember(masterId, masterCompIndex);
+            const parentNet = networks.find(n => n.members?.includes(masterMemberStr));
+            if (parentNet) {
+                depth = this.getNetworkDepth(parentNet, networks) + 1;
+            }
+        }
+        
+        // Check depth limit
+        if (depth >= C3_MAX_NETWORK_DEPTH) {
+            return { valid: false, reason: `Maximum network depth (${C3_MAX_NETWORK_DEPTH}) reached` };
+        }
+        
+        // New network with valid depth - no more checks needed
         if (!network) return { valid: true };
 
         const members = network.members || [];
@@ -432,12 +462,6 @@ export class C3NetworkUtil {
         }
         if (!childIsMaster && hasMasterMembers) {
             return { valid: false, reason: 'Cannot mix slaves and masters under same master component' };
-        }
-
-        // Check depth limit
-        const depth = this.getNetworkDepth(network, networks);
-        if (depth >= C3_MAX_NETWORK_DEPTH) {
-            return { valid: false, reason: `Maximum network depth (${C3_MAX_NETWORK_DEPTH}) reached` };
         }
 
         return { valid: true };
@@ -482,8 +506,19 @@ export class C3NetworkUtil {
             return { valid: false, reason: 'Master component already connected to another master' };
         }
 
+        // Check total unit count limit
+        // Parent's root network unit count + child's network tree unit count must not exceed limit
+        const parentRootNet = parentNet ? this.getRootNetwork(parentNet, networks) : null;
+        const parentTreeCount = parentRootNet ? this.countNetworkTreeUnits(parentRootNet, networks) : 1; // 1 for the parent master itself
+        
+        const childTreeCount = childNet ? this.countNetworkTreeUnits(childNet, networks) : 1; // 1 for the child master itself
+        
+        if (parentTreeCount + childTreeCount > C3_MAX_NETWORK_TOTAL) {
+            return { valid: false, reason: `Combined networks would exceed maximum of ${C3_MAX_NETWORK_TOTAL} units` };
+        }
+
         // Check capacity and mixing rules
-        return this.canAddChildToMaster(parentNet, true, networks);
+        return this.canAddChildToMaster(parentMasterId, parentCompIndex, true, networks);
     }
 
     /**
@@ -511,8 +546,27 @@ export class C3NetworkUtil {
             return { valid: false, reason: 'Unit already has a Master component connected' };
         }
 
+        // Check total unit count limit
         const masterNet = this.findMasterNetwork(masterId, masterCompIndex, networks);
-        return this.canAddChildToMaster(masterNet, false, networks);
+        const rootNet = masterNet ? this.getRootNetwork(masterNet, networks) : null;
+        const currentTreeCount = rootNet ? this.countNetworkTreeUnits(rootNet, networks) : 1; // 1 for the master itself
+        
+        // Also check if master is a sub-master without its own network yet
+        if (!rootNet) {
+            const masterMemberStr = this.createMasterMember(masterId, masterCompIndex);
+            const parentNet = networks.find(n => n.members?.includes(masterMemberStr));
+            if (parentNet) {
+                const parentRoot = this.getRootNetwork(parentNet, networks);
+                const parentTreeCount = this.countNetworkTreeUnits(parentRoot, networks);
+                if (parentTreeCount + 1 > C3_MAX_NETWORK_TOTAL) {
+                    return { valid: false, reason: `Adding unit would exceed maximum of ${C3_MAX_NETWORK_TOTAL} units in network` };
+                }
+            }
+        } else if (currentTreeCount + 1 > C3_MAX_NETWORK_TOTAL) {
+            return { valid: false, reason: `Adding unit would exceed maximum of ${C3_MAX_NETWORK_TOTAL} units in network` };
+        }
+
+        return this.canAddChildToMaster(masterId, masterCompIndex, false, networks);
     }
 
     // ==================== Display Helpers ====================
