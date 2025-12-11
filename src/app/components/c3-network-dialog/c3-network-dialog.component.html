@@ -113,6 +113,9 @@
               [class.peer]="comp.role === 'peer'"
               [class.connected]="isPinConnected(node, i)"
               [class.has-network]="getPinNetworkColor(node, i)"
+              [class.valid-pin-target]="connectingFrom() && isPinValidTarget(node, i) && hoveredNode() === node"
+              [class.invalid-pin-target]="connectingFrom() && !isPinValidTarget(node, i) && hoveredNode() === node && validTargets().has(node.unit.id)"
+              [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node"
               [style.--pin-network-color]="getPinNetworkColor(node, i)"
               (pointerdown)="onPinPointerDown($event, node, i)"
             >
@@ -136,36 +139,9 @@
     <h3>Networks</h3>
 
     <div class="networks-list">
-      @for (network of networks(); track network.id) {
-        <div
-          class="network-item"
-          [style.--network-color]="network.color"
-        >
-          <div class="network-header">
-            <span class="network-type">{{ getNetworkDisplayName(network) }}</span>
-            <button class="delete-network-btn" (click)="removeNetwork(network)" title="Delete entire network">✕</button>
-          </div>
-
-          <div class="network-units">
-            @for (member of getNetworkMembersDetailed(network); track member.id) {
-              <div class="network-unit-item">
-                <span class="network-unit" [class.master]="member.role === 'master'">
-                  {{ member.name }}
-                  @if (member.role === 'master') {
-                    <span class="role-badge">(M)</span>
-                  }
-                </span>
-                @if (member.canRemove) {
-                  <button 
-                    class="remove-unit-btn" 
-                    (click)="removeUnitFromNetwork(network, member.id)"
-                    title="Remove from network"
-                  >✕</button>
-                }
-              </div>
-            }
-          </div>
-        </div>
+      <!-- Only show top-level networks, sub-networks are nested inside -->
+      @for (network of getTopLevelNetworks(); track network.id) {
+        <ng-container *ngTemplateOutlet="networkTemplate; context: { network: network, depth: 0 }"></ng-container>
       }
 
       @if (networks().length === 0) {
@@ -181,6 +157,53 @@
     }
   </div>
 </div>
+
+<!-- Template for recursive network display -->
+<ng-template #networkTemplate let-network="network" let-depth="depth">
+  <div
+    class="network-item"
+    [class.sub-network]="depth > 0"
+    [style.--network-color]="network.color"
+    [style.margin-left.px]="depth * 16"
+  >
+    <div class="network-header">
+      <span class="network-type">
+        @if (depth > 0) {
+          <span class="sub-network-indicator">↳</span>
+        }
+        {{ getNetworkDisplayName(network) }}
+      </span>
+      <button class="delete-network-btn" (click)="removeNetwork(network)" title="Delete entire network">✕</button>
+    </div>
+
+    <div class="network-units">
+      @for (member of getNetworkMembersDetailed(network); track member.id) {
+        @if (member.role !== 'sub-master') {
+          <div class="network-unit-item">
+            <span class="network-unit" [class.master]="member.role === 'master'">
+              {{ member.name }}
+              @if (member.role === 'master') {
+                <span class="role-badge">(M)</span>
+              }
+            </span>
+            @if (member.canRemove) {
+              <button 
+                class="remove-unit-btn" 
+                (click)="removeUnitFromNetwork(network, member.id, member.memberStr)"
+                title="Remove from network"
+              >✕</button>
+            }
+          </div>
+        }
+      }
+    </div>
+
+    <!-- Nested sub-networks -->
+    @for (subNetwork of getSubNetworks(network); track subNetwork.id) {
+      <ng-container *ngTemplateOutlet="networkTemplate; context: { network: subNetwork, depth: depth + 1 }"></ng-container>
+    }
+  </div>
+</ng-template>
 
 <div class="c3-dialog-footer">
   <button class="modal-btn bt-button primary" (click)="saveAndClose()">COMMIT</button>

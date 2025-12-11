@@ -44,32 +44,37 @@ import {
     C3_BOOSTED_FLAGS,
     C3_COMPATIBLE_NETWORKS,
     C3_NETWORK_LIMITS,
+    C3_MAX_NETWORK_DEPTH,
     C3_TAX_RATE,
-    C3_BOOSTED_TAX_RATE,
-    C3NetworkLink
+    C3_BOOSTED_TAX_RATE
 } from "../models/c3-network.model";
 import { SerializedC3NetworkGroup } from "../models/force-serialization";
 
-/*
- * Author: Drake
+/**
+ * C3 Network Utility - Simplified implementation
+ * 
+ * Rules:
+ * a) Only same network type can connect (C3_COMPATIBLE_NETWORKS)
+ * b) Peers connect equally, limit is C3_NETWORK_LIMITS[type]
+ * c) C3: Master can have up to 3 children (all slaves OR all masters, not mixed per component)
+ * d) A sub-master with 0 children is NOT a sub-network (treated as slave in parent)
+ * e) Multi-master units can connect their components following same rules
+ * f) Max depth is C3_MAX_NETWORK_DEPTH (Master -> SubMaster -> children)
+ * g) Tax calculation at unit and force level
  */
-
 export class C3NetworkUtil {
 
-    /**
-     * Check if a component has any C3 equipment flag
-     */
+    // ==================== Component Detection ====================
+
+    /** Check if a component has any C3 equipment flag */
     public static hasC3Flag(component: UnitComponent): boolean {
         if (!component.eq?.flags) return false;
         return ALL_C3_FLAGS.some(flag => component.eq!.flags.has(flag));
     }
 
-    /**
-     * Get the C3 network type for a component
-     */
+    /** Get the C3 network type for a component */
     public static getNetworkType(component: UnitComponent): C3NetworkType | null {
         if (!component.eq?.flags) return null;
-        
         for (const network of C3_COMPATIBLE_NETWORKS) {
             if (network.flags.some(flag => component.eq!.flags.has(flag))) {
                 return network.type;
@@ -78,50 +83,29 @@ export class C3NetworkUtil {
         return null;
     }
 
-    /**
-     * Get the C3 role for a component
-     */
+    /** Get the C3 role for a component */
     public static getRole(component: UnitComponent): C3Role | null {
         if (!component.eq?.flags) return null;
-        
-        // Check for master flags
-        if (C3_MASTER_FLAGS.some(flag => component.eq!.flags.has(flag))) {
-            return C3Role.MASTER;
-        }
-        
-        // Check for slave flags
-        if (C3_SLAVE_FLAGS.some(flag => component.eq!.flags.has(flag))) {
-            return C3Role.SLAVE;
-        }
-        
-        // Check for peer flags (C3i, Nova, Naval)
-        if (C3_PEER_FLAGS.some(flag => component.eq!.flags.has(flag))) {
-            return C3Role.PEER;
-        }
-        
+        if (C3_MASTER_FLAGS.some(flag => component.eq!.flags.has(flag))) return C3Role.MASTER;
+        if (C3_SLAVE_FLAGS.some(flag => component.eq!.flags.has(flag))) return C3Role.SLAVE;
+        if (C3_PEER_FLAGS.some(flag => component.eq!.flags.has(flag))) return C3Role.PEER;
         return null;
     }
 
-    /**
-     * Check if a component is a boosted C3
-     */
+    /** Check if a component is boosted C3 */
     public static isBoosted(component: UnitComponent): boolean {
         if (!component.eq?.flags) return false;
         return C3_BOOSTED_FLAGS.some(flag => component.eq!.flags.has(flag));
     }
 
-    /**
-     * Get all C3 components from a unit
-     */
+    /** Get all C3 components from a unit */
     public static getC3Components(unit: Unit): C3Component[] {
         const components: C3Component[] = [];
         let index = 0;
-        
         for (const comp of unit.comp) {
             if (this.hasC3Flag(comp)) {
                 const networkType = this.getNetworkType(comp);
                 const role = this.getRole(comp);
-                
                 if (networkType && role) {
                     components.push({
                         component: comp,
@@ -133,325 +117,448 @@ export class C3NetworkUtil {
                 }
             }
         }
-        
         return components;
     }
 
-    /**
-     * Check if a unit has any C3 capability
-     */
+    /** Check if a unit has any C3 capability */
     public static hasC3(unit: Unit): boolean {
         return unit.comp.some(comp => this.hasC3Flag(comp));
     }
 
-    /**
-     * Check if a unit can act as a master (has master equipment or peer equipment)
-     */
-    public static canBeMaster(unit: Unit): boolean {
-        return unit.comp.some(comp => {
-            const role = this.getRole(comp);
-            return role === C3Role.MASTER || role === C3Role.PEER;
-        });
+    // ==================== Network Queries ====================
+
+    /** Find a peer network containing a unit */
+    public static findPeerNetwork(
+        unitId: string,
+        networks: SerializedC3NetworkGroup[]
+    ): SerializedC3NetworkGroup | null {
+        return networks.find(n => n.peerIds?.includes(unitId)) || null;
     }
 
-    /**
-     * Check if a unit can act as a slave (has slave equipment or peer equipment)
-     */
-    public static canBeSlave(unit: Unit): boolean {
-        return unit.comp.some(comp => {
-            const role = this.getRole(comp);
-            return role === C3Role.SLAVE || role === C3Role.PEER;
-        });
+    /** Find a master network by master unit and component */
+    public static findMasterNetwork(
+        masterId: string,
+        compIndex: number,
+        networks: SerializedC3NetworkGroup[]
+    ): SerializedC3NetworkGroup | null {
+        return networks.find(n => 
+            n.masterId === masterId && n.masterCompIndex === compIndex
+        ) || null;
     }
 
-    /**
-     * Get the master components from a unit (components that can have slaves)
-     */
-    public static getMasterComponents(unit: Unit): C3Component[] {
-        return this.getC3Components(unit).filter(c => 
-            c.role === C3Role.MASTER || c.role === C3Role.PEER
+    /** Find all networks containing a unit (as master, slave, or peer) */
+    public static findNetworksContainingUnit(
+        unitId: string,
+        networks: SerializedC3NetworkGroup[]
+    ): SerializedC3NetworkGroup[] {
+        return networks.filter(n =>
+            n.masterId === unitId ||
+            n.peerIds?.includes(unitId) ||
+            n.members?.some(m => m === unitId || m.startsWith(unitId + ':'))
         );
     }
 
-    /**
-     * Check if two units are compatible for C3 linking
+    /** Check if a unit is connected to any network */
+    public static isUnitConnected(unitId: string, networks: SerializedC3NetworkGroup[]): boolean {
+        return this.findNetworksContainingUnit(unitId, networks).length > 0;
+    }
+
+    /** 
+     * Parse a member string. Members can be:
+     * - "unitId" for slaves
+     * - "unitId:compIndex" for masters connected as children
      */
-    public static areCompatible(unit1: Unit, unit2: Unit): boolean {
-        const c3Comps1 = this.getC3Components(unit1);
-        const c3Comps2 = this.getC3Components(unit2);
-        
-        if (c3Comps1.length === 0 || c3Comps2.length === 0) return false;
-        
-        // Check if they share at least one compatible network type
-        const types1 = new Set(c3Comps1.map(c => c.networkType));
-        return c3Comps2.some(c => types1.has(c.networkType));
+    public static parseMember(member: string): { unitId: string; compIndex?: number } {
+        const parts = member.split(':');
+        return {
+            unitId: parts[0],
+            compIndex: parts.length > 1 ? parseInt(parts[1], 10) : undefined
+        };
+    }
+
+    /** Create a member string for a master component */
+    public static createMasterMember(unitId: string, compIndex: number): string {
+        return `${unitId}:${compIndex}`;
+    }
+
+    /** Get all unit IDs in a network (master + all members) */
+    public static getNetworkUnitIds(network: SerializedC3NetworkGroup): string[] {
+        const ids: string[] = [];
+        if (network.peerIds) {
+            ids.push(...network.peerIds);
+        } else if (network.masterId) {
+            ids.push(network.masterId);
+            if (network.members) {
+                for (const m of network.members) {
+                    ids.push(this.parseMember(m).unitId);
+                }
+            }
+        }
+        return [...new Set(ids)]; // Dedupe in case same unit appears twice (multi-master)
     }
 
     /**
-     * Get the maximum number of slaves for a network type
+     * Check if a member is a master (has compIndex in member string)
      */
-    public static getMaxSlaves(networkType: C3NetworkType): number {
+    public static isMasterMember(member: string): boolean {
+        return member.includes(':');
+    }
+
+    /**
+     * Find the parent network of a sub-network (if the master is a member of another network)
+     */
+    public static findParentNetwork(
+        network: SerializedC3NetworkGroup,
+        allNetworks: SerializedC3NetworkGroup[]
+    ): SerializedC3NetworkGroup | null {
+        if (!network.masterId || network.masterCompIndex === undefined) return null;
+        const masterMember = this.createMasterMember(network.masterId, network.masterCompIndex);
+        return allNetworks.find(n => 
+            n.id !== network.id && n.members?.includes(masterMember)
+        ) || null;
+    }
+
+    /**
+     * Find sub-networks of a network (networks whose masters are members of this network)
+     */
+    public static findSubNetworks(
+        network: SerializedC3NetworkGroup,
+        allNetworks: SerializedC3NetworkGroup[]
+    ): SerializedC3NetworkGroup[] {
+        if (!network.members) return [];
+        const subNets: SerializedC3NetworkGroup[] = [];
+        for (const member of network.members) {
+            if (this.isMasterMember(member)) {
+                const { unitId, compIndex } = this.parseMember(member);
+                const subNet = this.findMasterNetwork(unitId, compIndex!, allNetworks);
+                if (subNet) subNets.push(subNet);
+            }
+        }
+        return subNets;
+    }
+
+    /**
+     * Get the depth of a network in the hierarchy (0 = top-level, 1 = sub-network, 2 = sub-sub)
+     */
+    public static getNetworkDepth(
+        network: SerializedC3NetworkGroup,
+        allNetworks: SerializedC3NetworkGroup[]
+    ): number {
+        let depth = 0;
+        let current: SerializedC3NetworkGroup | null = network;
+        while (current) {
+            const parent = this.findParentNetwork(current, allNetworks);
+            if (parent) {
+                depth++;
+                current = parent;
+            } else {
+                break;
+            }
+        }
+        return depth;
+    }
+
+    /**
+     * Get top-level networks (networks that are not sub-networks of another)
+     */
+    public static getTopLevelNetworks(networks: SerializedC3NetworkGroup[]): SerializedC3NetworkGroup[] {
+        return networks.filter(n => !this.findParentNetwork(n, networks));
+    }
+
+    /**
+     * Count total units in a network tree (including sub-networks)
+     */
+    public static countNetworkTreeUnits(
+        network: SerializedC3NetworkGroup,
+        allNetworks: SerializedC3NetworkGroup[]
+    ): number {
+        const unitIds = new Set<string>();
+        
+        const collectUnits = (net: SerializedC3NetworkGroup) => {
+            for (const id of this.getNetworkUnitIds(net)) {
+                unitIds.add(id);
+            }
+            for (const subNet of this.findSubNetworks(net, allNetworks)) {
+                collectUnits(subNet);
+            }
+        };
+        
+        collectUnits(network);
+        return unitIds.size;
+    }
+
+    // ==================== Validation ====================
+
+    /**
+     * Check if two components are compatible (same network type)
+     */
+    public static areComponentsCompatible(comp1: C3Component, comp2: C3Component): boolean {
+        return comp1.networkType === comp2.networkType;
+    }
+
+    /**
+     * Get the maximum children for a master component
+     */
+    public static getMaxChildren(networkType: C3NetworkType): number {
         return C3_NETWORK_LIMITS[networkType];
     }
 
     /**
-     * Calculate C3 tax for a network based on linked units
+     * Check if a peer can join a network
      */
-    public static calculateNetworkC3Tax(
-        masterUnit: ForceUnit,
-        slaveUnits: ForceUnit[],
-        masterComponentIndex: number = 0
-    ): number {
-        if (slaveUnits.length === 0) return 0;
-        
-        const masterC3Comps = this.getC3Components(masterUnit.getUnit());
-        const masterComp = masterC3Comps[masterComponentIndex];
-        if (!masterComp) return 0;
-        
-        // Calculate total BV of all linked units (master + slaves)
-        const allUnits = [masterUnit, ...slaveUnits];
-        const totalBV = allUnits.reduce((sum, unit) => sum + unit.getUnit().bv, 0);
-        
-        // Check if any unit in the network has boosted C3
-        const hasBoosted = allUnits.some(unit => 
-            this.getC3Components(unit.getUnit()).some(c => c.boosted)
-        );
-        
-        const taxRate = hasBoosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
-        return Math.round(totalBV * taxRate);
+    public static canPeerJoinNetwork(
+        network: SerializedC3NetworkGroup | null,
+        networkType: C3NetworkType
+    ): boolean {
+        if (!network) return true; // New network
+        if (network.type !== networkType) return false;
+        const limit = C3_NETWORK_LIMITS[networkType as C3NetworkType];
+        return (network.peerIds?.length || 0) < limit;
     }
 
     /**
-     * Calculate total C3 tax for a unit based on its network connections
+     * Check if a child can be added to a master's network
+     * @param childIsMaster Whether the child being added is a master component
      */
-    public static calculateUnitC3Tax(
-        unit: ForceUnit,
-        allUnits: ForceUnit[],
-        networkLinks: C3NetworkLink[]
-    ): number {
-        let totalTax = 0;
-        const processedNetworks = new Set<string>();
-        
-        // Find all networks this unit is part of
-        for (const link of networkLinks) {
-            const networkKey = `${link.masterId}-${link.masterComponentIndex}`;
-            
-            // Skip if we've already processed this network
-            if (processedNetworks.has(networkKey)) continue;
-            
-            if (link.masterId === unit.id || link.slaveIds.includes(unit.id)) {
-                processedNetworks.add(networkKey);
-                
-                const master = allUnits.find(u => u.id === link.masterId);
-                if (master) {
-                    const slaves = allUnits.filter(u => link.slaveIds.includes(u.id));
-                    totalTax += this.calculateNetworkC3Tax(master, slaves, link.masterComponentIndex);
-                }
-            }
-        }
-        
-        return totalTax;
-    }
-
-    /**
-     * Check if a unit is linked to any network
-     */
-    public static isLinked(unitId: string, networkLinks: C3NetworkLink[]): boolean {
-        return networkLinks.some(link => 
-            link.masterId === unitId || link.slaveIds.includes(unitId)
-        );
-    }
-
-    /**
-     * Get all units linked to a specific unit
-     */
-    public static getLinkedUnits(unitId: string, networkLinks: C3NetworkLink[]): string[] {
-        const linkedIds = new Set<string>();
-        
-        for (const link of networkLinks) {
-            if (link.masterId === unitId) {
-                link.slaveIds.forEach(id => linkedIds.add(id));
-            } else if (link.slaveIds.includes(unitId)) {
-                linkedIds.add(link.masterId);
-                link.slaveIds.forEach(id => {
-                    if (id !== unitId) linkedIds.add(id);
-                });
-            }
-        }
-        
-        return Array.from(linkedIds);
-    }
-
-    /**
-     * Validate a proposed network link
-     */
-    public static validateLink(
-        masterUnit: ForceUnit,
-        slaveUnit: ForceUnit,
-        masterComponentIndex: number,
-        existingLinks: C3NetworkLink[]
+    public static canAddChildToMaster(
+        network: SerializedC3NetworkGroup | null,
+        childIsMaster: boolean,
+        networks: SerializedC3NetworkGroup[]
     ): { valid: boolean; reason?: string } {
-        // Can't link to self
-        if (masterUnit.id === slaveUnit.id) {
-            return { valid: false, reason: "Cannot link a unit to itself" };
+        // New network - always valid
+        if (!network) return { valid: true };
+
+        const members = network.members || [];
+        const limit = C3_NETWORK_LIMITS[network.type as C3NetworkType];
+
+        // Check capacity
+        if (members.length >= limit) {
+            return { valid: false, reason: `Master already has ${limit} children` };
         }
-        
-        const masterC3Comps = this.getMasterComponents(masterUnit.getUnit());
-        const masterComp = masterC3Comps[masterComponentIndex];
-        
-        if (!masterComp) {
-            return { valid: false, reason: "Master component not found" };
+
+        // Check mixing: can't mix slaves and masters on same component
+        const hasMasterMembers = members.some(m => this.isMasterMember(m));
+        const hasSlaveMembers = members.some(m => !this.isMasterMember(m));
+
+        if (childIsMaster && hasSlaveMembers) {
+            return { valid: false, reason: 'Cannot mix masters and slaves under same master component' };
         }
-        
-        const slaveC3Comps = this.getC3Components(slaveUnit.getUnit());
-        if (slaveC3Comps.length === 0) {
-            return { valid: false, reason: "Slave unit has no C3 equipment" };
+        if (!childIsMaster && hasMasterMembers) {
+            return { valid: false, reason: 'Cannot mix slaves and masters under same master component' };
         }
-        
-        // Check compatibility
-        const slaveHasCompatible = slaveC3Comps.some(c => c.networkType === masterComp.networkType);
-        if (!slaveHasCompatible) {
-            return { valid: false, reason: "Units are not compatible (different C3 network types)" };
+
+        // Check depth limit
+        const depth = this.getNetworkDepth(network, networks);
+        if (depth >= C3_MAX_NETWORK_DEPTH) {
+            return { valid: false, reason: `Maximum network depth (${C3_MAX_NETWORK_DEPTH}) reached` };
         }
-        
-        // Check if slave can be a slave (has slave or peer role)
-        const canBeSlave = slaveC3Comps.some(c => 
-            c.networkType === masterComp.networkType && 
-            (c.role === C3Role.SLAVE || c.role === C3Role.PEER)
-        );
-        if (!canBeSlave) {
-            return { valid: false, reason: "Unit cannot act as a slave in this network type" };
-        }
-        
-        // Check network size limit
-        const existingLink = existingLinks.find(
-            l => l.masterId === masterUnit.id && l.masterComponentIndex === masterComponentIndex
-        );
-        const currentSlaves = existingLink?.slaveIds.length || 0;
-        const maxSlaves = this.getMaxSlaves(masterComp.networkType);
-        
-        if (currentSlaves >= maxSlaves) {
-            return { valid: false, reason: `Network is full (max ${maxSlaves} units)` };
-        }
-        
-        // Check if slave is already linked to this master's component
-        if (existingLink?.slaveIds.includes(slaveUnit.id)) {
-            return { valid: false, reason: "Unit is already linked to this master" };
-        }
-        
+
         return { valid: true };
     }
 
     /**
-     * Get display name for a C3 network type
+     * Check if a master can connect as a child to another master
      */
-    public static getNetworkTypeName(type: C3NetworkType): string {
-        switch (type) {
-            case C3NetworkType.C3: return "C3 Network";
-            case C3NetworkType.C3I: return "C3i Network";
-            case C3NetworkType.NAVAL: return "Naval C3";
-            case C3NetworkType.NOVA: return "Nova CEWS";
+    public static canMasterConnectToMaster(
+        parentMasterId: string,
+        parentCompIndex: number,
+        childMasterId: string,
+        childCompIndex: number,
+        networks: SerializedC3NetworkGroup[]
+    ): { valid: boolean; reason?: string } {
+        // Same unit, same component - not allowed
+        if (parentMasterId === childMasterId && parentCompIndex === childCompIndex) {
+            return { valid: false, reason: 'Cannot connect component to itself' };
         }
-    }
 
-    /**
-     * Get display name for a C3 role
-     */
-    public static getRoleName(role: C3Role): string {
-        switch (role) {
-            case C3Role.MASTER: return "Master";
-            case C3Role.SLAVE: return "Slave";
-            case C3Role.PEER: return "Peer";
-        }
-    }
-
-    // ========== New methods for SerializedC3NetworkGroup ==========
-
-    /**
-     * Check if a unit is linked to any network group
-     */
-    public static isLinkedInGroups(unitId: string, networks: SerializedC3NetworkGroup[]): boolean {
-        return networks.some(net =>
-            net.peerIds?.includes(unitId) ||
-            net.masterId === unitId ||
-            net.slaveIds?.includes(unitId)
-        );
-    }
-
-    /**
-     * Get all unit IDs that are in the same networks as the given unit
-     */
-    public static getLinkedUnitsFromGroups(unitId: string, networks: SerializedC3NetworkGroup[]): string[] {
-        const linkedIds = new Set<string>();
-
-        for (const net of networks) {
-            const isInNetwork =
-                net.peerIds?.includes(unitId) ||
-                net.masterId === unitId ||
-                net.slaveIds?.includes(unitId);
-
-            if (isInNetwork) {
-                // Add all members from this network
-                if (net.peerIds) {
-                    net.peerIds.forEach(id => linkedIds.add(id));
-                }
-                if (net.masterId) {
-                    linkedIds.add(net.masterId);
-                }
-                if (net.slaveIds) {
-                    net.slaveIds.forEach(id => linkedIds.add(id));
-                }
+        const parentNet = this.findMasterNetwork(parentMasterId, parentCompIndex, networks);
+        
+        // Check if child master already has a parent
+        const childNet = this.findMasterNetwork(childMasterId, childCompIndex, networks);
+        if (childNet) {
+            const existingParent = this.findParentNetwork(childNet, networks);
+            if (existingParent) {
+                return { valid: false, reason: 'Master already connected to another master' };
             }
         }
 
-        // Remove self
-        linkedIds.delete(unitId);
-        return Array.from(linkedIds);
+        // Check if child is already a member somewhere (as a childless master)
+        const childMemberKey = this.createMasterMember(childMasterId, childCompIndex);
+        const existingParentNet = networks.find(n => n.members?.includes(childMemberKey));
+        if (existingParentNet && existingParentNet.id !== parentNet?.id) {
+            return { valid: false, reason: 'Master component already connected to another master' };
+        }
+
+        // Check capacity and mixing rules
+        return this.canAddChildToMaster(parentNet, true, networks);
     }
 
     /**
-     * Calculate total C3 tax for a Force based on SerializedC3NetworkGroup networks.
-     * Returns the total tax to be added to force BV.
+     * Check if a slave can connect to a master
+     */
+    public static canSlaveConnectToMaster(
+        masterId: string,
+        masterCompIndex: number,
+        slaveId: string,
+        networks: SerializedC3NetworkGroup[]
+    ): { valid: boolean; reason?: string } {
+        // Check if slave is already connected somewhere
+        const existingNets = this.findNetworksContainingUnit(slaveId, networks);
+        if (existingNets.length > 0) {
+            return { valid: false, reason: 'Unit already connected to a network' };
+        }
+
+        const masterNet = this.findMasterNetwork(masterId, masterCompIndex, networks);
+        return this.canAddChildToMaster(masterNet, false, networks);
+    }
+
+    // ==================== Display Helpers ====================
+
+    public static getNetworkTypeName(type: C3NetworkType): string {
+        switch (type) {
+            case C3NetworkType.C3: return 'C3';
+            case C3NetworkType.C3I: return 'C3i';
+            case C3NetworkType.NAVAL: return 'Naval C3';
+            case C3NetworkType.NOVA: return 'Nova';
+            default: return 'Unknown';
+        }
+    }
+
+    public static getRoleName(role: C3Role): string {
+        switch (role) {
+            case C3Role.MASTER: return 'M';
+            case C3Role.SLAVE: return 'S';
+            case C3Role.PEER: return 'P';
+            default: return '?';
+        }
+    }
+
+    // ==================== Tax Calculation ====================
+
+    /**
+     * Calculate C3 tax for a specific unit based on its network participation.
+     * Tax is distributed proportionally based on BV.
+     */
+    public static calculateUnitC3Tax(
+        unitId: string,
+        unitBv: number,
+        networks: SerializedC3NetworkGroup[],
+        allUnits: ForceUnit[]
+    ): number {
+        // Find all networks this unit participates in
+        const participatingNets = this.findNetworksContainingUnit(unitId, networks);
+        if (participatingNets.length === 0) return 0;
+
+        let totalTax = 0;
+
+        for (const network of participatingNets) {
+            // Get the root network to avoid double-counting in hierarchies
+            const rootNet = this.getRootNetwork(network, networks);
+            const networkUnitIds = new Set<string>();
+            this.collectAllUnitsInTree(rootNet, networks, networkUnitIds);
+
+            // Calculate total network BV and check for boosted equipment
+            let networkTotalBv = 0;
+            let hasBoosted = false;
+
+            for (const id of networkUnitIds) {
+                const forceUnit = allUnits.find(u => u.id === id);
+                if (forceUnit) {
+                    networkTotalBv += forceUnit.getUnit()?.bv || 0;
+                    const unit = forceUnit.getUnit();
+                    if (unit) {
+                        const c3Comps = this.getC3Components(unit);
+                        if (c3Comps.some(c => c.boosted)) {
+                            hasBoosted = true;
+                        }
+                    }
+                }
+            }
+
+            if (networkTotalBv <= 0) continue;
+
+            // Calculate tax rate and total tax
+            const taxRate = hasBoosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
+            const networkTax = networkTotalBv * taxRate;
+
+            // Distribute tax proportionally by BV
+            const unitShare = unitBv / networkTotalBv;
+            totalTax += networkTax * unitShare;
+        }
+
+        return Math.round(totalTax);
+    }
+
+    /**
+     * Calculate total C3 tax for all networks in a force.
      */
     public static calculateForceC3Tax(
         allUnits: ForceUnit[],
         networks: SerializedC3NetworkGroup[]
     ): number {
+        if (networks.length === 0) return 0;
+
+        // Only count top-level networks to avoid double counting
+        const topLevelNets = this.getTopLevelNetworks(networks);
         let totalTax = 0;
 
-        for (const network of networks) {
-            const networkUnits: ForceUnit[] = [];
+        for (const network of topLevelNets) {
+            const unitIds = new Set<string>();
+            this.collectAllUnitsInTree(network, networks, unitIds);
 
-            // Gather all units in this network
-            if (network.peerIds) {
-                for (const id of network.peerIds) {
-                    const unit = allUnits.find(u => u.id === id);
-                    if (unit) networkUnits.push(unit);
-                }
-            } else if (network.masterId && network.slaveIds) {
-                const master = allUnits.find(u => u.id === network.masterId);
-                if (master) networkUnits.push(master);
-                for (const id of network.slaveIds) {
-                    const unit = allUnits.find(u => u.id === id);
-                    if (unit) networkUnits.push(unit);
+            let networkBv = 0;
+            let hasBoosted = false;
+
+            for (const id of unitIds) {
+                const forceUnit = allUnits.find(u => u.id === id);
+                if (forceUnit) {
+                    networkBv += forceUnit.getUnit()?.bv || 0;
+                    const unit = forceUnit.getUnit();
+                    if (unit) {
+                        const c3Comps = this.getC3Components(unit);
+                        if (c3Comps.some(c => c.boosted)) {
+                            hasBoosted = true;
+                        }
+                    }
                 }
             }
 
-            // Need at least 2 units in network to have a tax
-            if (networkUnits.length < 2) continue;
-
-            // Calculate BV sum
-            const totalBV = networkUnits.reduce((sum, unit) => sum + unit.getUnit().bv, 0);
-
-            // Check if any unit has boosted C3
-            const hasBoosted = networkUnits.some(unit =>
-                this.getC3Components(unit.getUnit()).some(c => c.boosted)
-            );
-
             const taxRate = hasBoosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
-            totalTax += Math.round(totalBV * taxRate);
+            totalTax += networkBv * taxRate;
         }
 
-        return totalTax;
+        return Math.round(totalTax);
+    }
+
+    /**
+     * Get the root network of a hierarchy (traverse up to find top-level)
+     */
+    public static getRootNetwork(
+        network: SerializedC3NetworkGroup,
+        allNetworks: SerializedC3NetworkGroup[]
+    ): SerializedC3NetworkGroup {
+        let current = network;
+        let parent = this.findParentNetwork(current, allNetworks);
+        while (parent) {
+            current = parent;
+            parent = this.findParentNetwork(current, allNetworks);
+        }
+        return current;
+    }
+
+    /**
+     * Collect all unit IDs in a network tree (including sub-networks)
+     */
+    private static collectAllUnitsInTree(
+        network: SerializedC3NetworkGroup,
+        allNetworks: SerializedC3NetworkGroup[],
+        unitIds: Set<string>
+    ): void {
+        for (const id of this.getNetworkUnitIds(network)) {
+            unitIds.add(id);
+        }
+        for (const subNet of this.findSubNetworks(network, allNetworks)) {
+            this.collectAllUnitsInTree(subNet, allNetworks, unitIds);
+        }
     }
 }

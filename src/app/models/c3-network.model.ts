@@ -154,13 +154,22 @@ export const C3_COMPATIBLE_NETWORKS: { type: C3NetworkType; flags: string[] }[] 
 
 /**
  * Maximum units per network type
+ * For standard C3: 4 per master (1 master + 3 slaves/sub-masters)
+ * Total company-level C3 network: max 12 units
  */
 export const C3_NETWORK_LIMITS: Record<C3NetworkType, number> = {
-    [C3NetworkType.C3]: 4, // Master + 3 slaves (or 12 with lance)
+    [C3NetworkType.C3]: 3, // Master can have up to 3 slaves OR 3 sub-masters (not both)
     [C3NetworkType.C3I]: 6,
     [C3NetworkType.NAVAL]: 6,
     [C3NetworkType.NOVA]: 6
 };
+
+/**
+ * Maximum total units in a hierarchical C3 network (company-level)
+ * and maximum network depth (master -> sub-master -> slaves)
+ */
+export const C3_MAX_NETWORK_TOTAL = 12;
+export const C3_MAX_NETWORK_DEPTH = 2;
 
 /**
  * Tax rates for BV calculation
@@ -185,15 +194,16 @@ export interface C3Component {
 }
 
 /**
- * Represents a link in a C3 network
+ * Represents a C3 network link (internal model, not for serialization)
+ * @deprecated Use SerializedC3NetworkGroup from force-serialization.ts instead
  */
 export interface C3NetworkLink {
     /** Master unit ID */
     masterId: string;
     /** Master's C3 component index (for multi-master units) */
-    masterComponentIndex: number;
-    /** Slave unit IDs connected to this master */
-    slaveIds: string[];
+    masterCompIndex: number;
+    /** Member strings: "unitId" for slaves, "unitId:compIndex" for sub-masters */
+    members: string[];
 }
 
 /**

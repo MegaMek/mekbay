@@ -100,8 +100,13 @@ export interface SerializedState {
 }
 
 /** 
- * A C3 network group - either master/slave or peer-based 
- * Stored at Force level, not per-unit
+ * A C3 network group - either peer-based or master/slave hierarchy.
+ * 
+ * Rules:
+ * - Peers (C3i, Naval, Nova): Units connect equally, limit is C3_NETWORK_LIMITS[type]
+ * - C3 Master/Slave: Master component has up to 3 children (all slaves OR all masters, not mixed)
+ * - Max depth is 2: Master -> SubMaster -> children (those children can't have more)
+ * - A master with no children connected to another master is stored as a slave (not a sub-network)
  */
 export interface SerializedC3NetworkGroup {
     /** Unique network ID */
@@ -110,14 +115,22 @@ export interface SerializedC3NetworkGroup {
     type: 'c3' | 'c3i' | 'naval' | 'nova';
     /** Assigned color for visualization */
     color: string;
-    /** For master/slave networks: the master unit ID */
-    masterId?: string;
-    /** For master/slave networks: which C3 component on the master */
-    masterComponentIndex?: number;
-    /** For master/slave networks: slave unit IDs */
-    slaveIds?: string[];
-    /** For peer networks: all peer unit IDs (all equal) */
+    
+    // ===== For peer networks (C3i, Naval, Nova) =====
+    /** All peer unit IDs in this network */
     peerIds?: string[];
+    
+    // ===== For C3 master/slave networks =====
+    /** The master unit ID */
+    masterId?: string;
+    /** Which C3 master component on the unit (for multi-master units) */
+    masterCompIndex?: number;
+    /** 
+     * Child unit IDs directly under this master's component.
+     * Can be slaves or masters (acting as slaves if they have no children).
+     * For masters, includes "unitId:compIndex" format to identify which component.
+     */
+    members?: string[];
 }
 
 export interface ASSerializedState extends SerializedState {

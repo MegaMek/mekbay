@@ -437,15 +437,29 @@ export class CBTForceUnit extends ForceUnit {
         let gunnery = pilot.getSkill('gunnery');
         let piloting = pilot.getSkill('piloting');
         let bv = this.unit.bv;
-        // TODO: C3 tax calculation should be done at Force level with network groups
         if (this.unit.crewSize > 1) {
             gunnery = this.getCrewMember(1).getSkill('gunnery');
         }
-        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(
+        let adjustedBv = BVCalculatorUtil.calculateAdjustedBV(
             bv,
             gunnery,
             piloting
         );
+        
+        // Add C3 network tax share if this unit is in a C3 network
+        const c3Networks = this.force.c3Networks();
+        if (c3Networks.length > 0) {
+            const c3Tax = C3NetworkUtil.calculateUnitC3Tax(
+                this.id,
+                bv, // Use base BV for tax calculation
+                c3Networks,
+                this.force.units()
+            );
+            if (c3Tax > 0) {
+                adjustedBv += c3Tax;
+            }
+        }
+        
         if (adjustedBv !== this.unit.bv) {
             if (adjustedBv !== this.adjustedBv()) {
                 this.adjustedBv.set(adjustedBv);
