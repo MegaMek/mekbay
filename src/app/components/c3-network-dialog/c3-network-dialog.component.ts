@@ -96,6 +96,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected nodes = signal<C3Node[]>([]);
     protected networks = signal<SerializedC3NetworkGroup[]>([]);
     protected hasModifications = signal(false);
+    
+    // Trigger for recalculating pin positions (incremented when nodes move or zoom changes)
+    private pinPositionTrigger = signal(0);
 
     // Drag state
     protected draggedNode = signal<C3Node | null>(null);
@@ -179,8 +182,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const lines: ConnectionLine[] = [];
         const nodes = this.nodes();
         const networks = this.networks();
-        const offset = this.viewOffset();
-        const scale = this.zoom();
+        // Trigger dependency on pin positions for accurate line rendering
+        this.pinPositions();
 
         for (const network of networks) {
             if (network.peerIds && network.peerIds.length > 1) {
@@ -192,11 +195,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (peerNodes.length >= 2) {
                     const positions = peerNodes.map(node => {
                         const compIdx = node.c3Components.findIndex(c => c.role === C3Role.PEER);
-                        const pinOff = this.getPinOffset(node, Math.max(0, compIdx));
-                        return {
-                            x: offset.x + (node.x + pinOff.x) * scale,
-                            y: offset.y + (node.y + pinOff.y) * scale
-                        };
+                        return this.getPinCenter(node, Math.max(0, compIdx));
                     });
                     const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
                     const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
@@ -216,9 +215,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (!masterNode) continue;
 
                 const compIdx = network.masterCompIndex ?? 0;
-                const masterPin = this.getPinOffset(masterNode, compIdx);
-                const mx = offset.x + (masterNode.x + masterPin.x) * scale;
-                const my = offset.y + (masterNode.y + masterPin.y) * scale;
+                const masterPos = this.getPinCenter(masterNode, compIdx);
 
                 for (const member of network.members || []) {
                     const parsed = C3NetworkUtil.parseMember(member);
@@ -238,21 +235,19 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         if (memberCompIdx < 0) memberCompIdx = 0;
                     }
 
-                    const memberPin = this.getPinOffset(memberNode, memberCompIdx);
-                    const sx = offset.x + (memberNode.x + memberPin.x) * scale;
-                    const sy = offset.y + (memberNode.y + memberPin.y) * scale;
-                    const angle = Math.atan2(sy - my, sx - mx);
+                    const memberPos = this.getPinCenter(memberNode, memberCompIdx);
+                    const angle = Math.atan2(memberPos.y - masterPos.y, memberPos.x - masterPos.x);
 
                     // Shorten the line so arrow stops at pin edge (not center)
-                    const pinRadius = this.PIN_RADIUS * scale;
-                    const arrowMarkerDistanceFromTargetCenter = 4;
-                    const shortenBy = pinRadius + arrowMarkerDistanceFromTargetCenter;
-                    const endX = sx - Math.cos(angle) * shortenBy;
-                    const endY = sy - Math.sin(angle) * shortenBy;
+                    const pinRadius = this.PIN_CONNECTOR_SIZE / 2;
+                    const arrowMarkerLength = 10; // SVG marker refX is 10
+                    const shortenBy = pinRadius + arrowMarkerLength - 6;
+                    const endX = memberPos.x - Math.cos(angle) * shortenBy;
+                    const endY = memberPos.y - Math.sin(angle) * shortenBy;
 
                     lines.push({
                         id: `${network.id}-member-${member}`,
-                        x1: mx, y1: my, x2: endX, y2: endY,
+                        x1: masterPos.x, y1: masterPos.y, x2: endX, y2: endY,
                         color: network.color,
                         hasArrow: true, arrowAngle: angle
                     });
@@ -266,8 +261,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected hubPoints = computed<HubPoint[]>(() => {
         const hubs: HubPoint[] = [];
         const nodes = this.nodes();
-        const offset = this.viewOffset();
-        const scale = this.zoom();
+        // Trigger dependency on pin positions
+        this.pinPositions();
 
         for (const network of this.networks()) {
             if (network.peerIds && network.peerIds.length > 1) {
@@ -278,11 +273,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (peerNodes.length >= 2) {
                     const positions = peerNodes.map(node => {
                         const compIdx = node.c3Components.findIndex(c => c.role === C3Role.PEER);
-                        const pinOff = this.getPinOffset(node, Math.max(0, compIdx));
-                        return {
-                            x: offset.x + (node.x + pinOff.x) * scale,
-                            y: offset.y + (node.y + pinOff.y) * scale
-                        };
+                        return this.getPinCenter(node, Math.max(0, compIdx));
                     });
                     hubs.push({
                         id: `hub-${network.id}`,
@@ -300,12 +291,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected activeDragLine = computed(() => {
         const conn = this.connectingFrom();
         if (!conn) return null;
-        const offset = this.viewOffset();
-        const scale = this.zoom();
-        const pinOff = this.getPinOffset(conn.node, conn.compIndex);
+        const pinPos = this.getPinCenter(conn.node, conn.compIndex);
         return {
-            x1: offset.x + (conn.node.x + pinOff.x) * scale,
-            y1: offset.y + (conn.node.y + pinOff.y) * scale,
+            x1: pinPos.x,
+            y1: pinPos.y,
             x2: this.connectingEnd().x,
             y2: this.connectingEnd().y
         };
@@ -507,6 +496,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         this.initializeNodes();
         this.networks.set([...(this.data.networks || [])]);
         this.initializeMasterPinColors();
+        // Initialize pin positions after DOM is ready
+        requestAnimationFrame(() => this.invalidatePinPositions());
     }
 
     private initializeNodes() {
@@ -563,17 +554,91 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return `net_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
-    // Pin visual constants (must match SCSS)
-    private readonly PIN_RADIUS = 7; // Half of 14px pin-connector width
-    private readonly PIN_SPACING = 30; // Pin width (~14px) + gap (8px) + some label space
-    private readonly PIN_Y_OFFSET = 20; // Distance from node center to pin connector center
+    // Pin visual constants
+    private readonly PIN_CONNECTOR_SIZE = 14; // Width/height of .pin-connector in px
+    private readonly PIN_GAP = 13; // Gap between pins from SCSS
 
-    private getPinOffset(node: C3Node, compIndex: number): { x: number; y: number } {
+    /**
+     * Get the actual center position of a pin-connector element relative to the container.
+     * This reads directly from the DOM for pixel-perfect accuracy.
+     */
+    private getPinConnectorCenter(unitId: string, compIndex: number): { x: number; y: number } | null {
+        const containerEl = this.container()?.nativeElement;
+        if (!containerEl) return null;
+
+        const nodeEl = containerEl.querySelector(`.node[data-unit-id="${unitId}"]`);
+        if (!nodeEl) return null;
+
+        const pinEl = nodeEl.querySelector(`.pin[data-comp-index="${compIndex}"] .pin-connector`);
+        if (!pinEl) return null;
+
+        const containerRect = containerEl.getBoundingClientRect();
+        const pinRect = pinEl.getBoundingClientRect();
+
+        return {
+            x: pinRect.left + pinRect.width / 2 - containerRect.left,
+            y: pinRect.top + pinRect.height / 2 - containerRect.top
+        };
+    }
+
+    /**
+     * Computed map of all pin positions, recalculated when nodes/zoom/offset change.
+     * Key: "unitId:compIndex", Value: { x, y } center position in container coordinates
+     */
+    protected pinPositions = computed(() => {
+        // Dependencies that should trigger recalculation
+        this.nodes();
+        this.viewOffset();
+        this.zoom();
+        this.pinPositionTrigger();
+        
+        const positions = new Map<string, { x: number; y: number }>();
+        
+        // Need to defer to next frame to ensure DOM is updated
+        // For now, calculate based on node positions and measured offsets
+        const containerEl = this.container()?.nativeElement;
+        if (!containerEl) return positions;
+
+        for (const node of this.nodes()) {
+            for (let i = 0; i < node.c3Components.length; i++) {
+                const key = `${node.unit.id}:${i}`;
+                const center = this.getPinConnectorCenter(node.unit.id, i);
+                if (center) {
+                    positions.set(key, center);
+                }
+            }
+        }
+        
+        return positions;
+    });
+
+    /**
+     * Get pin center position, falling back to calculated position if DOM not ready
+     */
+    private getPinCenter(node: C3Node, compIndex: number): { x: number; y: number } {
+        const key = `${node.unit.id}:${compIndex}`;
+        const cached = this.pinPositions().get(key);
+        if (cached) return cached;
+        
+        // Fallback: calculate approximate position from node position
+        // This is used before first render or if DOM query fails
+        const offset = this.viewOffset();
+        const scale = this.zoom();
         const numPins = node.c3Components.length;
-        if (numPins === 0) return { x: 0, y: this.PIN_Y_OFFSET };
-        // Center the pins horizontally relative to node center
-        const totalW = (numPins - 1) * this.PIN_SPACING;
-        return { x: -totalW / 2 + compIndex * this.PIN_SPACING, y: this.PIN_Y_OFFSET };
+        const pinTotalWidth = (numPins - 1) * (this.PIN_CONNECTOR_SIZE + this.PIN_GAP);
+        const pinX = -pinTotalWidth / 2 + compIndex * (this.PIN_CONNECTOR_SIZE + this.PIN_GAP);
+        
+        return {
+            x: offset.x + (node.x + pinX) * scale,
+            y: offset.y + (node.y + 25) * scale // Approximate Y offset to pin area
+        };
+    }
+
+    /**
+     * Force recalculation of pin positions (call after DOM updates)
+     */
+    private invalidatePinPositions(): void {
+        this.pinPositionTrigger.update(v => v + 1);
     }
 
     // ==================== Connection Logic ====================
@@ -640,6 +705,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             node.y = (event.clientY - drag.y - offset.y) / scale;
             this.nodes.set([...this.nodes()]);
             this.hasModifications.set(true);
+            // Recalculate pin positions after node move
+            requestAnimationFrame(() => this.invalidatePinPositions());
         } else if (this.connectingFrom()) {
             const el = this.container()?.nativeElement;
             if (el) {
@@ -677,6 +744,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 y: current.y + event.clientY - start.y
             });
             this.panStart.set({ x: event.clientX, y: event.clientY });
+            // Recalculate pin positions after pan
+            requestAnimationFrame(() => this.invalidatePinPositions());
         }
     };
 
@@ -714,6 +783,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         event.preventDefault();
         const delta = event.deltaY > 0 ? 0.9 : 1.1;
         this.zoom.set(Math.max(0.3, Math.min(3, this.zoom() * delta)));
+        // Recalculate pin positions after zoom
+        requestAnimationFrame(() => this.invalidatePinPositions());
     }
 
     // ==================== Network Management ====================
