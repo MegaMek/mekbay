@@ -132,7 +132,7 @@
   </div>
 
   <!-- Networks sidebar -->
-  <div class="networks-sidebar">
+  <div class="networks-sidebar framed-borders">
     <h3>Networks</h3>
 
     <div class="networks-list">
@@ -177,12 +177,12 @@
     </div>
 
     @if (networks().length > 0) {
-      <button class="clear-all-btn" (click)="clearAllNetworks()">Clear All</button>
+      <button class="clear-all-btn bt-button danger" (click)="clearAllNetworks()">CLEAR ALL</button>
     }
   </div>
 </div>
 
 <div class="c3-dialog-footer">
-  <button class="btn-secondary" (click)="close()">Cancel</button>
-  <button class="btn-primary" (click)="saveAndClose()">Save</button>
+  <button class="modal-btn bt-button primary" (click)="saveAndClose()">COMMIT</button>
+  <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
 </div>
