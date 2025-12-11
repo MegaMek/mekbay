@@ -303,17 +303,30 @@ export class C3NetworkUtil {
         return C3_NETWORK_LIMITS[networkType];
     }
 
-    /**
-     * Check if a peer can join a network
-     */
-    public static canPeerJoinNetwork(
-        network: SerializedC3NetworkGroup | null,
-        networkType: C3NetworkType
-    ): boolean {
-        if (!network) return true; // New network
-        if (network.type !== networkType) return false;
-        const limit = C3_NETWORK_LIMITS[networkType as C3NetworkType];
-        return (network.peerIds?.length || 0) < limit;
+    public static canPeerConnectToPeer(
+        networkType: C3NetworkType,
+        unitId1: string,
+        unitId2: string,
+        networks: SerializedC3NetworkGroup[]
+    ): { valid: boolean; reason?: string } {
+        // Verify merging peer networks won't exceed the limit
+        const sourceNet = this.findPeerNetwork(unitId1, networks);
+        const targetNet = this.findPeerNetwork(unitId2, networks);
+        if (sourceNet && targetNet && sourceNet.type !== targetNet.type) {
+            return { valid: false, reason: 'Incompatible network types' };
+        }
+        const limit = C3_NETWORK_LIMITS[networkType];
+        const sourceCount = sourceNet?.peerIds?.length || 1;
+        const targetCount = targetNet?.peerIds?.length || 1;
+        // If same network, already connected
+        if (sourceNet && targetNet && sourceNet.id === targetNet.id) {
+            return { valid: false, reason: 'Units are already connected in the same network' };
+        }
+        // Check if merged count would exceed limit
+        if (sourceCount + targetCount > limit) {
+            return { valid: false, reason: `Merging networks would exceed limit of ${limit} units` };
+        }
+        return { valid: true };
     }
 
     /**

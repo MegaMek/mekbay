@@ -14,198 +14,147 @@
 -->
 
 <div class="c3-dialog-header">
-  <h2>C3 Network Configuration</h2>
-  <button class="close-button" (click)="close()">✕</button>
+    <h2>C3 Network Configuration</h2>
+    <button class="close-button" (click)="close()">✕</button>
 </div>
 
 <div class="c3-dialog-content">
-  <!-- Canvas area -->
-  <div
-    #container
-    class="canvas-container"
-    (wheel)="onWheel($event)"
-    (pointerdown)="onContainerPointerDown($event)"
-  >
-    <!-- SVG layer for connections - rendered ABOVE nodes via z-index -->
-    <svg class="connections-svg">
-      <defs>
-        <!-- Arrow marker definitions for each network color -->
-        @for (line of connectionLines(); track line.id) {
-          @if (line.hasArrow) {
-            <marker
-              [id]="'arrow-' + line.id"
-              markerWidth="12"
-              markerHeight="12"
-              refX="10"
-              refY="6"
-              orient="auto"
-              markerUnits="userSpaceOnUse"
-            >
-              <polygon
-                points="0,0 12,6 0,12"
-                [attr.fill]="line.color"
-              />
-            </marker>
-          }
-        }
-      </defs>
+    <!-- Canvas area -->
+    <div #container class="canvas-container" (wheel)="onWheel($event)" (pointerdown)="onContainerPointerDown($event)">
+        <!-- SVG layer for connections - rendered ABOVE nodes via z-index -->
+        <svg class="connections-svg">
+            <defs>
+                <!-- Arrow marker definitions for each network color -->
+                @for (line of connectionLines(); track line.id) {
+                @if (line.hasArrow) {
+                <marker [id]="'arrow-' + line.id" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"
+                    markerUnits="userSpaceOnUse">
+                    <polygon points="0,0 12,6 0,12" [attr.fill]="line.color" />
+                </marker>
+                }
+                }
+            </defs>
 
-      <!-- Connection lines -->
-      @for (line of connectionLines(); track line.id) {
-        <line
-          [attr.x1]="line.x1"
-          [attr.y1]="line.y1"
-          [attr.x2]="line.x2"
-          [attr.y2]="line.y2"
-          [attr.stroke]="line.color"
-          stroke-width="3"
-          [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null"
-        />
-      }
+            <!-- Connection lines -->
+            @for (line of connectionLines(); track line.id) {
+            <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
+                [attr.stroke]="line.color" stroke-width="3"
+                [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
+            }
 
-      <!-- Hub points for peer networks -->
-      @for (hub of hubPoints(); track hub.id) {
-        <circle
-          [attr.cx]="hub.x"
-          [attr.cy]="hub.y"
-          r="3"
-          [attr.fill]="hub.color"
-          stroke-width="0"
-        />
-      }
+            <!-- Hub points for peer networks -->
+            @for (hub of hubPoints(); track hub.id) {
+            <circle [attr.cx]="hub.x" [attr.cy]="hub.y" r="3" [attr.fill]="hub.color" stroke-width="0" />
+            }
 
-      <!-- Active drag line -->
-      @if (activeDragLine(); as dragLine) {
-        <line
-          [attr.x1]="dragLine.x1"
-          [attr.y1]="dragLine.y1"
-          [attr.x2]="dragLine.x2"
-          [attr.y2]="dragLine.y2"
-          stroke="#ffffff"
-          stroke-width="2"
-          stroke-dasharray="6,4"
-        />
-      }
-    </svg>
+            <!-- Active drag line -->
+            @if (activeDragLine(); as dragLine) {
+            <line [attr.x1]="dragLine.x1" [attr.y1]="dragLine.y1" [attr.x2]="dragLine.x2" [attr.y2]="dragLine.y2"
+                stroke="#ffffff" stroke-width="2" stroke-dasharray="6,4" />
+            }
+        </svg>
 
-    <!-- Nodes -->
-    @for (node of nodes(); track node.unit.id) {
-      <div
-        class="node"
-        [attr.data-unit-id]="node.unit.id"
-        [ngClass]="getNodeClasses(node)"
-        [ngStyle]="getNodeStyle(node)"
-        (pointerdown)="onNodePointerDown($event, node)"
-      >
-        <div class="node-header">
-          <unit-icon [unit]="node.unit.getUnit()" styleClass="node-unit-icon"></unit-icon>
-          <span class="node-name">{{ node.unit.getUnit().chassis }}</span>
-        </div>
-
-        <div class="node-pins">
-          @for (comp of node.c3Components; track $index; let i = $index) {
-            <div
-              class="pin"
-              [attr.data-comp-index]="i"
-              [attr.data-role]="comp.role"
-              [class.master]="comp.role === 'master'"
-              [class.slave]="comp.role === 'slave'"
-              [class.peer]="comp.role === 'peer'"
-              [class.connected]="isPinConnected(node, i)"
-              [class.has-network]="getPinNetworkColor(node, i)"
-              [class.valid-pin-target]="connectingFrom() && isPinValidTarget(node, i) && hoveredNode() === node"
-              [class.invalid-pin-target]="connectingFrom() && !isPinValidTarget(node, i) && hoveredNode() === node && validTargets().has(node.unit.id)"
-              [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node"
-              [style.--pin-network-color]="getPinNetworkColor(node, i)"
-              (pointerdown)="onPinPointerDown($event, node, i)"
-            >
-              <span class="pin-label">{{ getRoleLabel(comp.role) }}</span>
-              <div class="pin-connector"></div>
+        <!-- Nodes -->
+        @for (node of nodes(); track node.unit.id) {
+        <div class="node" [attr.data-unit-id]="node.unit.id" [ngClass]="getNodeClasses(node)"
+            [ngStyle]="getNodeStyle(node)" (pointerdown)="onNodePointerDown($event, node)">
+            <div class="node-header">
+                <unit-icon [unit]="node.unit.getUnit()" styleClass="node-unit-icon"></unit-icon>
+                <span class="node-name">{{ node.unit.getUnit().chassis }}</span>
             </div>
-          }
+
+            <div class="node-pins">
+                @for (comp of node.c3Components; track $index; let i = $index) {
+                <div class="pin" [attr.data-comp-index]="i" [attr.data-role]="comp.role"
+                    [class.master]="comp.role === 'master'" [class.slave]="comp.role === 'slave'"
+                    [class.peer]="comp.role === 'peer'" [class.connected]="isPinConnected(node, i)"
+                    [class.has-network]="getPinNetworkColor(node, i)"
+                    [class.valid-pin-target]="connectingFrom() && isPinValidTarget(node, i) && hoveredNode() === node"
+                    [class.invalid-pin-target]="connectingFrom() && !isPinValidTarget(node, i) && hoveredNode() === node && validTargets().has(node.unit.id)"
+                    [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node"
+                    [style.--pin-network-color]="getPinNetworkColor(node, i)"
+                    (pointerdown)="onPinPointerDown($event, node, i)">
+                    <span class="pin-label">{{ getRoleLabel(comp.role) }}</span>
+                    <div class="pin-connector"></div>
+                </div>
+                }
+            </div>
+
+            <div class="node-info">
+                @for (comp of node.c3Components; track $index) {
+                <span class="c3-type">{{ getNetworkTypeLabel(comp.networkType) }}</span>
+                }
+            </div>
         </div>
-
-        <div class="node-info">
-          @for (comp of node.c3Components; track $index) {
-            <span class="c3-type">{{ getNetworkTypeLabel(comp.networkType) }}</span>
-          }
-        </div>
-      </div>
-    }
-  </div>
-
-  <!-- Networks sidebar -->
-  <div class="networks-sidebar framed-borders">
-    <h3>Networks</h3>
-
-    <div class="networks-list">
-      <!-- Only show top-level networks, sub-networks are nested inside -->
-      @for (network of getTopLevelNetworks(); track network.id) {
-        <ng-container *ngTemplateOutlet="networkTemplate; context: { network: network, depth: 0 }"></ng-container>
-      }
-
-      @if (networks().length === 0) {
-        <div class="no-networks">
-          No networks configured.<br>
-          Drag from one pin to another to create a connection.
-        </div>
-      }
+        }
     </div>
 
-    @if (networks().length > 0) {
-      <button class="clear-all-btn bt-button danger" (click)="clearAllNetworks()">CLEAR ALL</button>
-    }
-  </div>
+    <!-- Networks sidebar -->
+    <div class="networks-sidebar framed-borders">
+        <h3>Networks</h3>
+
+        <div class="networks-list">
+            <!-- Only show top-level networks, sub-networks are nested inside -->
+            @for (network of getTopLevelNetworks(); track network.id) {
+            <ng-container *ngTemplateOutlet="networkTemplate; context: { network: network, depth: 0 }"></ng-container>
+            }
+
+            @if (networks().length === 0) {
+            <div class="no-networks">
+                No networks configured.<br>
+                Drag from one pin to another to create a connection.
+            </div>
+            }
+        </div>
+
+        @if (networks().length > 0) {
+        <button class="clear-all-btn bt-button danger" (click)="clearAllNetworks()">CLEAR ALL</button>
+        }
+    </div>
 </div>
 
 <!-- Template for recursive network display -->
 <ng-template #networkTemplate let-network="network" let-depth="depth">
-  <div
-    class="network-item"
-    [class.sub-network]="depth > 0"
-    [style.--network-color]="network.color"
-    [style.margin-left.px]="depth * 16"
-  >
-    <div class="network-header">
-      <span class="network-type">
-        @if (depth > 0) {
-          <span class="sub-network-indicator">↳</span>
-        }
-        {{ getNetworkDisplayName(network) }}
-      </span>
-      <button class="delete-network-btn" (click)="removeNetwork(network)" title="Delete entire network">✕</button>
-    </div>
-
-    <div class="network-units">
-      @for (member of getNetworkMembersDetailed(network); track member.id) {
-        @if (member.role !== 'sub-master') {
-          <div class="network-unit-item">
-            <span class="network-unit" [class.master]="member.role === 'master'">
-              {{ member.name }}
-              @if (member.role === 'master') {
-                <span class="role-badge">(M)</span>
-              }
+    <div class="network-item" [class.sub-network]="depth > 0" [style.--network-color]="network.color"
+        [style.margin-left.px]="depth * 16">
+        <div class="network-header">
+            <span class="network-type">
+                @if (depth > 0) {
+                <span class="sub-network-indicator">↳</span>
+                }
+                {{ getNetworkDisplayName(network) }}
             </span>
-            @if (member.canRemove) {
-              <button 
-                class="remove-unit-btn" 
-                (click)="removeUnitFromNetwork(network, member.id, member.memberStr)"
-                title="Remove from network"
-              >✕</button>
-            }
-          </div>
-        }
-      }
-    </div>
+            <button class="delete-network-btn" (click)="removeNetwork(network)" title="Delete entire network">✕</button>
+        </div>
 
-    <!-- Nested sub-networks -->
-    @for (subNetwork of getSubNetworks(network); track subNetwork.id) {
-      <ng-container *ngTemplateOutlet="networkTemplate; context: { network: subNetwork, depth: depth + 1 }"></ng-container>
-    }
-  </div>
+        <div class="network-units">
+            @for (member of getNetworkMembersDetailed(network); track member.memberStr ?? member.id) {
+            @if (member.role !== 'sub-master') {
+            <div class="network-unit-item">
+                <span class="network-unit" [class.master]="member.role === 'master'">
+                    {{ member.name }}
+                    @if (member.role === 'master') {
+                    <span class="role-badge">(M)</span>
+                    }
+                </span>
+                @if (member.canRemove) {
+                <button class="remove-unit-btn" (click)="removeUnitFromNetwork(network, member.id, member.memberStr)"
+                    title="Remove from network">✕</button>
+                }
+            </div>
+            }
+            }
+        </div>
+
+        <!-- Nested sub-networks -->
+        @for (subNetwork of getSubNetworks(network); track subNetwork.id) {
+        <ng-container
+            *ngTemplateOutlet="networkTemplate; context: { network: subNetwork, depth: depth + 1 }"></ng-container>
+        }
+    </div>
 </ng-template>
 
 <div class="c3-dialog-footer">
-  <button class="modal-btn bt-button primary" (click)="saveAndClose()">COMMIT</button>
-  <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
+    <button class="modal-btn bt-button primary" (click)="saveAndClose()">COMMIT</button>
+    <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
 </div>

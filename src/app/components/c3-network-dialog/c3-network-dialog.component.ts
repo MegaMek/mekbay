@@ -346,7 +346,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
             // Check based on roles
             if (sourceComp.role === C3Role.PEER && targetComp.role === C3Role.PEER) {
-                return true; // Peers can always connect to peers
+                const result = C3NetworkUtil.canPeerConnectToPeer(sourceComp.networkType, sourceNode.unit.id, targetNode.unit.id, this.networks());
+                if (result.valid) return true;
             }
             if (sourceComp.role === C3Role.MASTER) {
                 if (targetComp.role === C3Role.SLAVE) {
@@ -356,6 +357,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     if (result.valid) return true;
                 }
                 if (targetComp.role === C3Role.MASTER) {
+                    // Check if reverse connection exists (target is parent of source)
+                    // If so, we can replace it with the new direction
+                    const targetNet = C3NetworkUtil.findMasterNetwork(targetNode.unit.id, i, this.networks());
+                    const sourceMemberStr = C3NetworkUtil.createMasterMember(sourceNode.unit.id, sourceCompIdx);
+                    const reverseExists = targetNet?.members?.includes(sourceMemberStr);
+                    
+                    if (reverseExists) return true; // Allow - will replace reverse connection
+                    
                     const result = C3NetworkUtil.canMasterConnectToMaster(
                         sourceNode.unit.id, sourceCompIdx, targetNode.unit.id, i, this.networks()
                     );
@@ -548,6 +557,21 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             if (targetComp.role === C3Role.SLAVE) {
                 this.addMemberToMaster(from.node, from.compIndex, targetNode.unit.id);
             } else if (targetComp.role === C3Role.MASTER) {
+                // Check if reverse connection exists (target is parent of source)
+                const reverseExists = this.isChildOfMaster(
+                    from.node.unit.id, from.compIndex,
+                    targetNode.unit.id, targetPinIndex
+                );
+                
+                if (reverseExists) {
+                    // Remove the reverse connection first
+                    this.removeChildFromMaster(
+                        targetNode.unit.id, targetPinIndex,
+                        from.node.unit.id, from.compIndex
+                    );
+                }
+                
+                // Now add the new connection
                 this.addMemberToMaster(from.node, from.compIndex, targetNode.unit.id, targetPinIndex);
             }
         } else if (sourceComp.role === C3Role.SLAVE && targetComp.role === C3Role.MASTER) {
@@ -665,6 +689,45 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         this.networks.set(networks);
         this.hasModifications.set(true);
+    }
+
+    /**
+     * Check if a master component is a child of another master's network
+     */
+    private isChildOfMaster(
+        childId: string, childCompIdx: number,
+        parentId: string, parentCompIdx: number
+    ): boolean {
+        const parentNet = C3NetworkUtil.findMasterNetwork(parentId, parentCompIdx, this.networks());
+        if (!parentNet?.members) return false;
+        
+        const childMemberStr = C3NetworkUtil.createMasterMember(childId, childCompIdx);
+        return parentNet.members.includes(childMemberStr);
+    }
+
+    /**
+     * Remove a master child from another master's network
+     */
+    private removeChildFromMaster(
+        parentId: string, parentCompIdx: number,
+        childId: string, childCompIdx: number
+    ): void {
+        const networks = [...this.networks()];
+        const parentNet = networks.find(n => 
+            n.masterId === parentId && n.masterCompIndex === parentCompIdx
+        );
+        if (!parentNet?.members) return;
+
+        const childMemberStr = C3NetworkUtil.createMasterMember(childId, childCompIdx);
+        parentNet.members = parentNet.members.filter(m => m !== childMemberStr);
+
+        // Remove network if empty
+        if (parentNet.members.length === 0) {
+            const idx = networks.indexOf(parentNet);
+            networks.splice(idx, 1);
+        }
+
+        this.networks.set(networks);
     }
 
     protected removeNetwork(network: SerializedC3NetworkGroup) {
