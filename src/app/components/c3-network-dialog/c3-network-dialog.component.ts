@@ -83,13 +83,17 @@ interface ConnectionLine {
     id: string;
     x1: number; y1: number;
     x2: number; y2: number;
+    nodeX1: number; nodeY1: number;
+    nodeX2: number; nodeY2: number;
     color: string;
     hasArrow: boolean;
     arrowAngle: number;
+    selfConnection: boolean;
 }
 
 interface HubPoint {
     id: string;
+    nodeX: number; nodeY: number;
     x: number; y: number;
     color: string;
     nodesCount: number;
@@ -100,6 +104,11 @@ interface BorderSegment {
     color: string;
     dasharray: string;
     dashoffset: number;
+}
+
+interface Vec2 {
+    x: number;
+    y: number;
 }
 
 @Component({
@@ -124,10 +133,21 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected readonly FALLBACK_ICON = '/images/unknown.png';
 
     // Node layout constants (exposed for template)
-    protected readonly NODE_RADIUS = 150;
+    protected readonly NODE_RADIUS = 170;
     protected readonly PIN_RADIUS = 13;
     protected readonly PIN_GAP = 40; // Gap between pin centers
     protected readonly PIN_Y_OFFSET = 18; // Y offset from node center to pins
+
+    // Hex node geometry (flat-top hex)
+    protected readonly NODE_HEX_POINTS = C3NetworkDialogComponent.toSvgPoints(
+        C3NetworkDialogComponent.getHexRelativeVertices(this.NODE_RADIUS / 2)
+    );
+    protected readonly NODE_HEX_INNER_POINTS = C3NetworkDialogComponent.toSvgPoints(
+        C3NetworkDialogComponent.getHexRelativeVertices(this.NODE_RADIUS / 2 - 8)
+    );
+    protected readonly NODE_HEX_GLOW_POINTS = C3NetworkDialogComponent.toSvgPoints(
+        C3NetworkDialogComponent.getHexRelativeVertices(this.NODE_RADIUS / 2 + 4)
+    );
 
     // State
     protected nodes = signal<C3Node[]>([]);
@@ -135,6 +155,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected hasModifications = signal(false);
     protected sidebarOpen = signal(false);
     protected sidebarAnimated = signal(false);
+    protected connectionsAboveNodes = signal(true);
 
     /** Fast lookup to avoid repeated linear searches during computed layout. */
     protected nodesById = computed(() => {
@@ -314,12 +335,20 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
                     const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
 
+                    const nodeCx = peerNodes.reduce((s, n) => s + n.x, 0) / peerNodes.length;
+                    const nodeCy = peerNodes.reduce((s, n) => s + n.y, 0) / peerNodes.length;
+
                     positions.forEach((p, idx) => {
+                        const peerNode = peerNodes[idx];
                         lines.push({
                             id: `${network.id}-peer-${idx}`,
                             x1: cx, y1: cy, x2: p.x, y2: p.y,
+                            nodeX1: nodeCx, nodeY1: nodeCy,
+                            nodeX2: peerNode.x, nodeY2: peerNode.y,
                             color: network.color,
-                            hasArrow: false, arrowAngle: 0
+                            hasArrow: false,
+                            arrowAngle: 0,
+                            selfConnection: false
                         });
                     });
                 }
@@ -352,6 +381,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     const memberPos = this.getPinWorldPosition(memberNode, memberCompIdx);
                     const angle = Math.atan2(memberPos.y - masterPos.y, memberPos.x - masterPos.x);
 
+                    const isSelfConnection = parsed.unitId === network.masterId;
+
                     // Shorten the line so it ends before the arrow marker (refX=10 in marker)
                     // Arrow marker is 12px wide, refX=10 means arrow tip is 2px past the line end
                     // We want the line to stop before the pin, leaving room for the arrow
@@ -363,8 +394,12 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     lines.push({
                         id: `${network.id}-member-${member}`,
                         x1: masterPos.x, y1: masterPos.y, x2: endX, y2: endY,
+                        nodeX1: masterNode.x, nodeY1: masterNode.y,
+                        nodeX2: memberNode.x, nodeY2: memberNode.y,
                         color: network.color,
-                        hasArrow: true, arrowAngle: angle
+                        hasArrow: true,
+                        arrowAngle: angle,
+                        selfConnection: isSelfConnection
                     });
                 }
             }
@@ -388,8 +423,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         const compIdx = node.c3Components.findIndex(c => c.role === C3Role.PEER);
                         return this.getPinWorldPosition(node, Math.max(0, compIdx));
                     });
+
+                    const nodeX = peerNodes.reduce((s, n) => s + n.x, 0) / peerNodes.length;
+                    const nodeY = peerNodes.reduce((s, n) => s + n.y, 0) / peerNodes.length;
+
                     hubs.push({
                         id: `hub-${network.id}`,
+                        nodeX,
+                        nodeY,
                         x: positions.reduce((s, p) => s + p.x, 0) / positions.length,
                         y: positions.reduce((s, p) => s + p.y, 0) / positions.length,
                         color: network.color,
@@ -603,7 +644,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const colorsByNode = this.nodeBorderColors();
 
         const radius = this.NODE_RADIUS / 2;
-        const circumference = 2 * Math.PI * radius;
+        // For a regular hexagon with circumradius R, side length is R and perimeter is 6R.
+        const perimeter = 6 * radius;
 
         for (const node of this.nodes()) {
             const colors = colorsByNode.get(node.unit.id) || [];
@@ -612,8 +654,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 continue;
             }
 
-            const segmentLen = circumference / colors.length;
-            const gapLen = circumference - segmentLen;
+            const segmentLen = perimeter / colors.length;
+            const gapLen = perimeter - segmentLen;
             const dasharray = `${segmentLen} ${gapLen}`;
 
             map.set(
@@ -644,9 +686,40 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     ngAfterViewInit() {
         this.initializeNodes();
+        this.resolveAllNodeCollisions();
         this.networks.set([...(this.data.networks || [])]);
         this.initializeMasterPinColors();
         this.fitViewToNodes();
+    }
+
+    /**
+     * Resolve any initial overlaps after nodes are first laid out.
+     * Uses multiple passes to handle cascaded collisions.
+     */
+    private resolveAllNodeCollisions(): void {
+        const nodes = this.nodes();
+        if (nodes.length < 2) return;
+
+        const maxPasses = 10;
+        let changed = false;
+
+        for (let pass = 0; pass < maxPasses; pass++) {
+            let passChanged = false;
+            for (const node of nodes) {
+                if (this.resolveNodeCollisions(node)) {
+                    passChanged = true;
+                }
+            }
+
+            changed ||= passChanged;
+            if (!passChanged) break;
+        }
+
+        if (changed) {
+            // Force recomputation of computed geometry that depends on node positions.
+            this.nodes.set([...nodes]);
+            this.hasModifications.set(true);
+        }
     }
 
     private initializeNodes() {
@@ -849,11 +922,15 @@ export class C3NetworkDialogComponent implements AfterViewInit {
      * Resolve collisions between the dragged node and other nodes.
      * Pushes colliding nodes away from the dragged node, cascading to other nodes.
      */
-    private resolveNodeCollisions(draggedNode: C3Node): void {
+    private resolveNodeCollisions(draggedNode: C3Node): boolean {
         const nodes = this.nodes();
-        const padding = 4; // Minimum gap between nodes
-        const minDist = this.NODE_RADIUS + padding;
-        const maxIterations = 10; // Prevent infinite loops
+        const padding = 12; // Minimum gap between nodes
+        const maxIterations = 20; // Prevent infinite loops
+
+        let hadCollision = false;
+
+        // Expand collision hex slightly to preserve a visible gap
+        const collisionRadius = this.NODE_RADIUS / 2 + padding / 2;
         
         // Use a queue for cascade collision resolution
         const nodesToCheck = new Set<C3Node>([draggedNode]);
@@ -875,27 +952,118 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 
                 const dx = other.x - currentNode.x;
                 const dy = other.y - currentNode.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                
-                if (dist < minDist && dist > 0) {
-                    // Calculate push direction and amount
-                    const overlap = minDist - dist;
-                    const pushX = (dx / dist) * overlap;
-                    const pushY = (dy / dist) * overlap;
-                    
-                    // Push the other node away
-                    other.x += pushX;
-                    other.y += pushY;
-                    
-                    // Add pushed node to queue for cascade checking
-                    nodesToCheck.add(other);
-                } else if (dist === 0) {
-                    // Nodes are exactly overlapping - push in a random direction
-                    other.x += minDist;
-                    nodesToCheck.add(other);
-                }
+
+                const mtv = this.getHexOverlapMtv(currentNode, other, collisionRadius);
+                if (!mtv) continue;
+
+                // Ensure MTV pushes "other" away from current.
+                const dot = mtv.x * dx + mtv.y * dy;
+                const push = dot >= 0 ? mtv : { x: -mtv.x, y: -mtv.y };
+
+                other.x += push.x;
+                other.y += push.y;
+
+                hadCollision = true;
+
+                nodesToCheck.add(other);
             }
         }
+
+        return hadCollision;
+    }
+
+    // ==================== Hex Geometry / Collision ====================
+
+    private static getHexRelativeVertices(radius: number): Vec2[] {
+        // Flat-top hex: vertices at angles 0, 60, 120, 180, 240, 300 degrees.
+        const verts: Vec2[] = [];
+        for (let i = 0; i < 6; i++) {
+            const angle = (Math.PI / 3) * i;
+            verts.push({
+                x: radius * Math.cos(angle),
+                y: radius * Math.sin(angle)
+            });
+        }
+        return verts;
+    }
+
+    private static toSvgPoints(verts: Vec2[]): string {
+        return verts.map(v => `${v.x.toFixed(3)},${v.y.toFixed(3)}`).join(' ');
+    }
+
+    private getHexWorldVertices(node: C3Node, radius: number): Vec2[] {
+        const rel = C3NetworkDialogComponent.getHexRelativeVertices(radius);
+        return rel.map(v => ({ x: node.x + v.x, y: node.y + v.y }));
+    }
+
+    private static normalize(v: Vec2): Vec2 {
+        const len = Math.hypot(v.x, v.y);
+        if (len === 0) return { x: 1, y: 0 };
+        return { x: v.x / len, y: v.y / len };
+    }
+
+    private static dot(a: Vec2, b: Vec2): number {
+        return a.x * b.x + a.y * b.y;
+    }
+
+    private static getAxes(verts: Vec2[]): Vec2[] {
+        const axes: Vec2[] = [];
+        for (let i = 0; i < verts.length; i++) {
+            const p1 = verts[i];
+            const p2 = verts[(i + 1) % verts.length];
+            const edge = { x: p2.x - p1.x, y: p2.y - p1.y };
+            // Perpendicular axis
+            const axis = C3NetworkDialogComponent.normalize({ x: -edge.y, y: edge.x });
+            axes.push(axis);
+        }
+        return axes;
+    }
+
+    private static project(verts: Vec2[], axis: Vec2): { min: number; max: number } {
+        let min = Infinity;
+        let max = -Infinity;
+        for (const v of verts) {
+            const p = C3NetworkDialogComponent.dot(v, axis);
+            if (p < min) min = p;
+            if (p > max) max = p;
+        }
+        return { min, max };
+    }
+
+    /**
+     * Returns the minimum-translation vector (MTV) to separate `b` from `a`.
+     * If no overlap, returns null.
+     */
+    private getHexOverlapMtv(a: C3Node, b: C3Node, radius: number): Vec2 | null {
+        const aVerts = this.getHexWorldVertices(a, radius);
+        const bVerts = this.getHexWorldVertices(b, radius);
+
+        const axes = [
+            ...C3NetworkDialogComponent.getAxes(aVerts),
+            ...C3NetworkDialogComponent.getAxes(bVerts)
+        ];
+
+        let smallestOverlap = Infinity;
+        let smallestAxis: Vec2 | null = null;
+
+        for (const axis of axes) {
+            const p1 = C3NetworkDialogComponent.project(aVerts, axis);
+            const p2 = C3NetworkDialogComponent.project(bVerts, axis);
+            const overlap = Math.min(p1.max, p2.max) - Math.max(p1.min, p2.min);
+            if (overlap <= 0) return null;
+            if (overlap < smallestOverlap) {
+                smallestOverlap = overlap;
+                smallestAxis = axis;
+            }
+        }
+
+        if (!smallestAxis || !Number.isFinite(smallestOverlap)) return null;
+
+        // MTV = axis * overlap
+        return {
+            x: smallestAxis.x * smallestOverlap,
+            y: smallestAxis.y * smallestOverlap
+        };
     }
 
     // ==================== Connection Logic ====================
@@ -1067,9 +1235,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     };
 
     private processPointerMove(event: PointerEvent): void {
-        if (this.draggedNode()) {
+        const dragged = this.draggedNode()!;
+        if (dragged) {
             // Drag node - calculate new position in world coordinates
-            const dragged = this.draggedNode()!;
             const scale = this.zoom();
             const deltaX = (event.clientX - this.dragStartPos.x) / scale;
             const deltaY = (event.clientY - this.dragStartPos.y) / scale;
@@ -1080,9 +1248,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
                 node.x = this.nodeStartPos.x + deltaX;
                 node.y = this.nodeStartPos.y + deltaY;
-
-                // Push away colliding nodes
-                this.resolveNodeCollisions(node);
             });
 
             this.hasModifications.set(true);
@@ -1176,6 +1341,16 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             // Re-initialize pinch if still have 2 touches
             if (this.activeTouches.size === 2) {
                 this.startPinchGesture();
+            }
+        }
+
+        const dragged = this.draggedNode();
+        if (dragged) {
+            const hadCollision = this.resolveNodeCollisions(dragged);
+            if (hadCollision) {
+                // Collisions update node positions in-place; re-setting forces recomputation
+                // of computed geometry like connectionLines/hubPoints.
+                this.nodes.set([...this.nodes()]);
             }
         }
 

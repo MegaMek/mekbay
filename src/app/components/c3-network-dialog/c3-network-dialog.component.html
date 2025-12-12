@@ -15,14 +15,44 @@
 
 <div class="c3-dialog-header">
     <h2>Network Configuration</h2>
-    @if (layoutService.isMobile()) {
-    <button class="bt-button burger-menu-btn" (click)="sidebarAnimated.set(true); sidebarOpen.set(!sidebarOpen())"
-        [class.active]="sidebarOpen()" aria-label="Toggle networks sidebar">
-        <span class="burger-line"></span>
-        <span class="burger-line"></span>
-        <span class="burger-line"></span>
-    </button>
-    }
+    <div class="c3-dialog-header-actions">
+        <button
+            class="bt-button connections-layer-btn"
+            type="button"
+            (click)="connectionsAboveNodes.set(!connectionsAboveNodes())"
+            [class.active]="connectionsAboveNodes()"
+            [attr.aria-pressed]="connectionsAboveNodes()"
+            aria-label="Toggle whether connection lines render above nodes"
+            [attr.title]="connectionsAboveNodes() ? 'Connections above nodes' : 'Connections below nodes'">
+            <span class="icon" aria-hidden="true">
+                @if (connectionsAboveNodes()) {
+                    <!-- true: line with arrow pointing to a circle -->
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img">
+                        <circle cx="19" cy="12" r="4" stroke="currentColor" stroke-width="2" />
+                        <line x1="0" y1="12" x2="10" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        <path d="M8 8L12 12L8 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                } @else {
+                    <!-- false: line joining two circles -->
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img">
+                        <circle cx="5" cy="12" r="4" stroke="currentColor" stroke-width="2" />
+                        <circle cx="19" cy="12" r="4" stroke="currentColor" stroke-width="2" />
+                        <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                }
+            </span>
+        </button>
+
+        @if (layoutService.isMobile()) {
+        <button class="bt-button burger-menu-btn" type="button"
+            (click)="sidebarAnimated.set(true); sidebarOpen.set(!sidebarOpen())"
+            [class.active]="sidebarOpen()" aria-label="Toggle networks sidebar">
+            <span class="burger-line"></span>
+            <span class="burger-line"></span>
+            <span class="burger-line"></span>
+        </button>
+        }
+    </div>
 </div>
 <div class="c3-dialog-content">
     <!-- SVG Canvas area -->
@@ -77,6 +107,27 @@
 
         <!-- Main transform group for pan/zoom -->
         <g [attr.transform]="svgTransform()">
+
+            @if (!connectionsAboveNodes()) {
+                <!-- External connections layer (rendered before nodes, so it appears below) -->
+                <g class="connections-layer">
+                    <!-- Connection lines -->
+                    @for (line of connectionLines(); track line.id) {
+                    @if (!line.selfConnection) {
+                        <line [attr.x1]="line.nodeX1" [attr.y1]="line.nodeY1" [attr.x2]="line.nodeX2" [attr.y2]="line.nodeY2"
+                            [attr.stroke]="line.color" stroke-width="4"
+                            [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
+                    }
+                    }
+
+                    <!-- Hub points for peer networks -->
+                    @for (hub of hubPoints(); track hub.id) {
+                    <circle [attr.cx]="hub.nodeX" [attr.cy]="hub.nodeY" [attr.r]="hub.nodesCount <= 2 ? 2 : 5"
+                        [attr.fill]="hub.color" stroke-width="0" />
+                    }
+                </g>
+            }
+
             <!-- Nodes layer (rendered first, so connections appear above) -->
             <g class="nodes-layer">
                 @for (node of nodes(); track node.unit.id) {
@@ -90,29 +141,28 @@
 
                     <!-- Outer glow ring (for connected state) -->
                     @if (isNodeLinked(node)) {
-                    <circle class="node-glow" [attr.r]="NODE_RADIUS / 2 + 4" [attr.stroke]="getNodeBorderColor(node)" />
+                    <polygon class="node-glow" [attr.points]="NODE_HEX_GLOW_POINTS" [attr.stroke]="getNodeBorderColor(node)" />
                     }
 
                     <!-- Node background + border -->
                     @if (nodeBorderSegments().get(node.unit.id); as segments) {
                     @if (segments.length > 0) {
                     <!-- Fill only (border is drawn by segments below) -->
-                    <circle class="node-bg" [attr.r]="NODE_RADIUS / 2" stroke="none" />
+                    <polygon class="node-bg" [attr.points]="NODE_HEX_POINTS" stroke="none" />
 
                     <!-- Multi-network border: N colored arc segments -->
                     @for (seg of segments; track seg.id) {
-                    <circle class="node-border-segment" [attr.r]="NODE_RADIUS / 2" [attr.stroke]="seg.color"
-                        [attr.stroke-dasharray]="seg.dasharray" [attr.stroke-dashoffset]="seg.dashoffset"
-                        transform="rotate(-90)" />
+                    <polygon class="node-border-segment" [attr.points]="NODE_HEX_POINTS" [attr.stroke]="seg.color"
+                        [attr.stroke-dasharray]="seg.dasharray" [attr.stroke-dashoffset]="seg.dashoffset" />
                     }
                     } @else {
-                    <circle class="node-bg" [attr.r]="NODE_RADIUS / 2" [attr.stroke]="getNodeBorderColor(node)"
+                    <polygon class="node-bg" [attr.points]="NODE_HEX_POINTS" [attr.stroke]="getNodeBorderColor(node)"
                         [attr.stroke-dasharray]="isNodeLinked(node) ? 'none' : '6,3'" />
                     }
                     }
 
                     <!-- Inner decorative ring -->
-                    <circle class="node-inner-ring" [attr.r]="NODE_RADIUS / 2 - 8" />
+                    <polygon class="node-inner-ring" [attr.points]="NODE_HEX_INNER_POINTS" />
 
                     <!-- Unit icon centered at top (native SVG image for iOS compatibility) -->
                     <image class="node-icon" x="-48" y="-48" width="96" height="96" [attr.href]="node.iconUrl"
@@ -174,19 +224,29 @@
 
             <!-- Connections layer (rendered after nodes, so it appears above) -->
             <g class="connections-layer">
-                <!-- Connection lines -->
-                @for (line of connectionLines(); track line.id) {
-                <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
-                    [attr.stroke]="line.color" stroke-width="3"
-                    [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
-                }
+                @if (connectionsAboveNodes()) {
+                        <!-- Connection lines -->
+                        @for (line of connectionLines(); track line.id) {
+                        <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
+                            [attr.stroke]="line.color" stroke-width="3"
+                            [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
+                        }
 
-                <!-- Hub points for peer networks -->
-                @for (hub of hubPoints(); track hub.id) {
-                <circle [attr.cx]="hub.x" [attr.cy]="hub.y" [attr.r]="hub.nodesCount <= 2 ? 2 : 5"
-                    [attr.fill]="hub.color" stroke-width="0" />
+                        <!-- Hub points for peer networks -->
+                        @for (hub of hubPoints(); track hub.id) {
+                        <circle [attr.cx]="hub.x" [attr.cy]="hub.y" [attr.r]="hub.nodesCount <= 2 ? 2 : 5"
+                            [attr.fill]="hub.color" stroke-width="0" />
+                        }
+                } @else {
+                    <!-- Self-connections (same unit) are always above nodes -->
+                    @for (line of connectionLines(); track line.id) {
+                        @if (line.selfConnection) {
+                            <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
+                                [attr.stroke]="line.color" stroke-width="3"
+                                [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
+                        }
+                    }
                 }
-
                 <!-- Active drag line -->
                 @if (activeDragLine(); as dragLine) {
                 <line [attr.x1]="dragLine.x1" [attr.y1]="dragLine.y1" [attr.x2]="dragLine.x2" [attr.y2]="dragLine.y2"
