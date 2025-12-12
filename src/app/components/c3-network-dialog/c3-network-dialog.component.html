@@ -1,0 +1,270 @@
+<!--
+ * MekBay - A BattleTech MegaMek unit management system.
+ * Copyright (C) 2025 - present The MegaMek Team
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
+ * for more details.
+-->
+
+<div class="c3-dialog-header">
+    <h2>Network Configuration</h2>
+    @if (layoutService.isMobile()) {
+    <button class="bt-button burger-menu-btn" (click)="sidebarAnimated.set(true); sidebarOpen.set(!sidebarOpen())"
+        [class.active]="sidebarOpen()" aria-label="Toggle networks sidebar">
+        <span class="burger-line"></span>
+        <span class="burger-line"></span>
+        <span class="burger-line"></span>
+    </button>
+    }
+</div>
+<div class="c3-dialog-content">
+    <!-- SVG Canvas area -->
+    <svg #svgCanvas class="svg-canvas" (wheel)="onWheel($event)" (pointerdown)="onCanvasPointerDown($event)">
+        <defs>
+            <radialGradient id="node-bg-gradient" cx="35%" cy="30%" r="80%">
+                <stop offset="0%" stop-color="#3a3a3a" />
+                <stop offset="100%" stop-color="#252525" />
+            </radialGradient>
+
+            <!-- Arrow marker definitions for each network color -->
+            @for (line of connectionLines(); track line.id) {
+            @if (line.hasArrow) {
+            <marker [id]="'arrow-' + line.id" markerWidth="14" markerHeight="12" refX="5" refY="6" orient="auto"
+                markerUnits="userSpaceOnUse">
+                <polygon points="0,0 14,6 0,12" [attr.fill]="line.color" />
+            </marker>
+            }
+            }
+            <!-- SVG Filters (iOS compatible) -->
+            <filter id="node-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="rgba(0,0,0,0.4)" />
+            </filter>
+            <filter id="node-drag-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="rgba(0,0,0,0.5)" />
+            </filter>
+            <filter id="node-valid-glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="rgba(255,200,0,0.6)" />
+            </filter>
+            <filter id="node-hover-glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="rgba(255,200,0,0.8)" />
+            </filter>
+            <filter id="icon-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.6)" />
+            </filter>
+            <filter id="pin-shadow" x="-75%" y="-75%" width="250%" height="250%">
+                <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="rgba(0,0,0,0.8)" />
+            </filter>
+            <filter id="pin-valid-glow" x="-100%" y="-100%" width="300%" height="300%">
+                <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="rgba(255,200,0,0.8)" />
+            </filter>
+            <filter id="pin-hover-glow" x="-100%" y="-100%" width="300%" height="300%">
+                <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="rgba(255,200,0,1)" />
+            </filter>
+            <filter id="pin-active-glow" x="-100%" y="-100%" width="300%" height="300%">
+                <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="rgba(255,255,255,0.5)" />
+            </filter>
+            <filter id="glow-blur" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="4" />
+            </filter>
+        </defs>
+
+        <!-- Main transform group for pan/zoom -->
+        <g [attr.transform]="svgTransform()">
+            <!-- Nodes layer (rendered first, so connections appear above) -->
+            <g class="nodes-layer">
+                @for (node of nodes(); track node.unit.id) {
+                <g class="node-group" [attr.data-unit-id]="node.unit.id"
+                    [attr.transform]="'translate(' + node.x + ',' + node.y + ')'" [class.linked]="isNodeLinked(node)"
+                    [class.disconnected]="!isNodeLinked(node)" [class.dragging]="draggedNode() === node"
+                    [class.valid-target]="connectionState().isConnecting && connectionState().validTargetIds.has(node.unit.id)"
+                    [class.invalid-target]="connectionState().isConnecting && !connectionState().validTargetIds.has(node.unit.id) && connectingFrom()?.node !== node"
+                    [class.hovered]="hoveredNode() === node && connectionState().validTargetIds.has(node.unit.id)"
+                    (pointerdown)="onNodePointerDown($event, node)">
+
+                    <!-- Outer glow ring (for connected state) -->
+                    @if (isNodeLinked(node)) {
+                    <circle class="node-glow" [attr.r]="NODE_RADIUS / 2 + 4" [attr.stroke]="getNodeBorderColor(node)" />
+                    }
+
+                    <!-- Node background + border -->
+                    @if (nodeBorderSegments().get(node.unit.id); as segments) {
+                    @if (segments.length > 0) {
+                    <!-- Fill only (border is drawn by segments below) -->
+                    <circle class="node-bg" [attr.r]="NODE_RADIUS / 2" stroke="none" />
+
+                    <!-- Multi-network border: N colored arc segments -->
+                    @for (seg of segments; track seg.id) {
+                    <circle class="node-border-segment" [attr.r]="NODE_RADIUS / 2" [attr.stroke]="seg.color"
+                        [attr.stroke-dasharray]="seg.dasharray" [attr.stroke-dashoffset]="seg.dashoffset"
+                        transform="rotate(-90)" />
+                    }
+                    } @else {
+                    <circle class="node-bg" [attr.r]="NODE_RADIUS / 2" [attr.stroke]="getNodeBorderColor(node)"
+                        [attr.stroke-dasharray]="isNodeLinked(node) ? 'none' : '6,3'" />
+                    }
+                    }
+
+                    <!-- Inner decorative ring -->
+                    <circle class="node-inner-ring" [attr.r]="NODE_RADIUS / 2 - 8" />
+
+                    <!-- Unit icon centered at top (native SVG image for iOS compatibility) -->
+                    <image class="node-icon" x="-48" y="-48" width="96" height="96" [attr.href]="node.iconUrl"
+                        preserveAspectRatio="xMidYMid meet" filter="url(#icon-shadow)" style="opacity: 0.7;" />
+
+                    <!-- Unit label centered below icon -->
+                    <foreignObject [attr.x]="-NODE_RADIUS / 2 + 12" y="-60" [attr.width]="NODE_RADIUS - 24" height="40"
+                        style="overflow: visible;">
+                        <div xmlns="http://www.w3.org/1999/xhtml" class="node-label">
+
+                            @if (unitDisplayName() === 'chassisModel'
+                            || unitDisplayName() === 'both'
+                            || !node.unit.alias()) {
+                            <div class="unit-model">{{ node.unit.getUnit().model }}</div>
+                            <div class="unit-chassis">{{ node.unit.getUnit().chassis }}</div>
+                            }
+                            @if (unitDisplayName() === 'alias' || unitDisplayName() === 'both') {
+                            <div class="unit-alias">{{ node.unit.alias() }}</div>
+                            }
+                        </div>
+                    </foreignObject>
+
+                    <!-- Pins section at bottom -->
+                    <g class="pins-container" [attr.transform]="'translate(0,' + PIN_Y_OFFSET + ')'">
+                        @for (comp of node.c3Components; track $index; let i = $index) {
+                        <g class="pin" [attr.transform]="'translate(' + node.pinOffsetsX[i] + ', 0)'"
+                            [class.master]="comp.role === 'master'" [class.slave]="comp.role === 'slave'"
+                            [class.peer]="comp.role === 'peer'" [class.connected]="isPinConnected(node, i)"
+                            [class.has-network]="!!getPinNetworkColor(node, i)"
+                            [class.disabled]="isPinDisabled(node, i)"
+                            [class.connectingFromPin]="connectingFrom()?.node === node && connectingFrom()?.compIndex === i"
+                            [class.valid-pin-target]="connectingFrom() && isPinValidTarget(node, i)"
+                            [class.invalid-pin-target]="connectingFrom() && !isPinValidTarget(node, i) && validTargets().has(node.unit.id)"
+                            [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node"
+                            (pointerdown)="onPinPointerDown($event, node, i)">
+
+                            <!-- Pin outer ring -->
+                            <circle class="pin-ring" r="14" [attr.stroke]="getPinStrokeColor(node, i)" />
+
+                            <!-- Pin connector circle -->
+                            <circle class="pin-connector" r="10" [attr.stroke]="getPinStrokeColor(node, i)"
+                                [attr.fill]="getPinFillColor(node, i)" />
+
+                            <!-- Pin role label -->
+                            <text class="pin-role-label" y="28" text-anchor="middle" filter="url(#pin-shadow)">
+                                {{ getRoleLabel(comp.role) }}
+                            </text>
+
+                            <!-- Network type label -->
+                            <text class="pin-type-label" y="42" text-anchor="middle" filter="url(#pin-shadow)">
+                                {{ getNetworkTypeLabel(comp.networkType) }}
+                            </text>
+                        </g>
+                        }
+                    </g>
+                </g>
+                }
+            </g>
+
+            <!-- Connections layer (rendered after nodes, so it appears above) -->
+            <g class="connections-layer">
+                <!-- Connection lines -->
+                @for (line of connectionLines(); track line.id) {
+                <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
+                    [attr.stroke]="line.color" stroke-width="3"
+                    [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
+                }
+
+                <!-- Hub points for peer networks -->
+                @for (hub of hubPoints(); track hub.id) {
+                <circle [attr.cx]="hub.x" [attr.cy]="hub.y" [attr.r]="hub.nodesCount <= 2 ? 2 : 5"
+                    [attr.fill]="hub.color" stroke-width="0" />
+                }
+
+                <!-- Active drag line -->
+                @if (activeDragLine(); as dragLine) {
+                <line [attr.x1]="dragLine.x1" [attr.y1]="dragLine.y1" [attr.x2]="dragLine.x2" [attr.y2]="dragLine.y2"
+                    stroke="#ffffff" stroke-width="2" stroke-dasharray="6,4" />
+                }
+            </g>
+        </g>
+    </svg>
+
+    <!-- Networks sidebar -->
+    <div class="networks-sidebar framed-borders" 
+        [class.overlay]="layoutService.isMobile()"
+        [class.hidden]="layoutService.isMobile() && !sidebarOpen()"
+        [class.animate]="sidebarAnimated()">
+        <h3>Networks</h3>
+
+        <div class="networks-list">
+            <!-- Only show top-level networks, sub-networks are nested inside -->
+            @for (network of topLevelNetworks(); track network.id) {
+            <ng-container *ngTemplateOutlet="networkTemplate; context: { network: network, depth: 0 }"></ng-container>
+            }
+
+            @if (networks().length === 0) {
+            <div class="no-networks">
+                No networks configured.<br>
+                Drag from one pin to another to create a connection.
+            </div>
+            }
+        </div>
+
+        @if (networks().length > 0) {
+        <button class="clear-all-btn bt-button danger" (click)="clearAllNetworks()">CLEAR ALL</button>
+        }
+    </div>
+</div>
+
+<!-- Template for recursive network display -->
+<ng-template #networkTemplate let-network="network" let-depth="depth">
+    <div class="network-item" [class.sub-network]="depth > 0" [style.--network-color]="network.color"
+        [style.margin-left.px]="depth * 16">
+        <div class="network-header">
+            <span class="network-type">
+                @if (depth > 0) {
+                <span class="sub-network-indicator">↳</span>
+                }
+                {{ getNetworkDisplayName(network) }}
+            </span>
+            <button class="delete-network-btn" (click)="removeNetwork(network)" title="Delete entire network">✕</button>
+        </div>
+
+        <div class="network-units">
+            @for (member of getNetworkMembersDetailed(network); track member.memberStr ?? member.id) {
+            @if (member.role !== 'sub-master') {
+            <div class="network-unit-item">
+                <span class="network-unit" [class.master]="member.role === 'master'">
+                    {{ member.name }}
+                    @if (member.role === 'master') {
+                    <span class="role-badge">(M)</span>
+                    }
+                </span>
+                @if (member.canRemove) {
+                <button class="remove-unit-btn" (click)="removeUnitFromNetwork(network, member.id, member.memberStr)"
+                    title="Remove from network">✕</button>
+                }
+            </div>
+            }
+            }
+        </div>
+
+        <!-- Nested sub-networks -->
+        @for (subNetwork of getSubNetworks(network); track subNetwork.id) {
+        <ng-container
+            *ngTemplateOutlet="networkTemplate; context: { network: subNetwork, depth: depth + 1 }"></ng-container>
+        }
+    </div>
+</ng-template>
+
+<div class="c3-dialog-footer">
+    <button class="modal-btn bt-button primary" (click)="saveAndClose()">COMMIT</button>
+    <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
+</div>

@@ -10,6 +10,8 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ECMMode } from '../../models/common.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
+import { C3NetworkUtil } from '../../utils/c3-network.util';
+import { C3Component, C3Role } from '../../models/c3-network.model';
 
 @Component({
     selector: 'unit-block',
@@ -25,7 +27,7 @@ export class UnitBlockComponent {
     compactMode = input<boolean>(false);
     onInfo = output<MouseEvent>();
     onRemoveUnit = output<MouseEvent>();
-    onToggleC3 = output<MouseEvent>();
+    onOpenC3Network = output<MouseEvent>();
     onRepairUnit = output<MouseEvent>();
     onEditPilot = output<MouseEvent>();
 
@@ -102,6 +104,30 @@ export class UnitBlockComponent {
         return undefined;
     });
 
+    /** Check if unit has any C3 equipment using the new flag-based detection */
+    hasC3 = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return C3NetworkUtil.hasC3(unit);
+    });
+
+    /** Get the C3 components for this unit */
+    c3Components = computed<C3Component[]>(() => {
+        const unit = this.unit();
+        if (!unit) return [];
+        return C3NetworkUtil.getC3Components(unit);
+    });
+
+    /** Get a display label for the C3 equipment */
+    c3Label = computed<string>(() => {
+        const components = this.c3Components();
+        if (components.length === 0) return '';
+        
+        // Get unique network types
+        const types = [...new Set(components.map(c => C3NetworkUtil.getNetworkTypeName(c.networkType)))];
+        return types.join(', ');
+    });
+
     cleanedModel = computed(() => {
         const unit = this.unit();
         if (!unit || !unit.model) return '';
@@ -123,9 +149,9 @@ export class UnitBlockComponent {
         this.onRemoveUnit.emit(event);
     }
 
-    toggleC3Link(event: MouseEvent): void {
+    openC3Network(event: MouseEvent): void {
         event.stopPropagation();
-        this.onToggleC3.emit(event);
+        this.onOpenC3Network.emit(event);
     }
 
     editPilot(event: MouseEvent): void {

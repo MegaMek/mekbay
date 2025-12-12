@@ -1,13 +1,14 @@
 
-import { signal } from '@angular/core';
+import { signal, computed } from '@angular/core';
 import { ForceUnit } from './force-unit.model';
-import { SerializedState } from './force-serialization';
+import { SerializedState, C3_POSITION_SCHEMA } from './force-serialization';
+import { Sanitizer } from '../utils/sanitizer.util';
 
 /**
  * Base state class for ForceUnit instances.
  * Contains only common state shared between all game systems (CBT, AS)
  */
-export class ForceUnitState {
+export abstract class ForceUnitState {
     public unit: ForceUnit;
     public modified = signal(false);
     public immobile = signal(false);
@@ -15,17 +16,11 @@ export class ForceUnitState {
     public skidding = signal(false);
     public destroyed = signal(false);
     public shutdown = signal(false);
-    public c3Linked = signal(false);
+    public c3Position = signal<{ x: number; y: number } | null>(null);
 
     constructor(unit: ForceUnit) {
         this.unit = unit;
     }
 
-    update(data: SerializedState) {
-        this.modified.set(data.modified);
-        this.destroyed.set(data.destroyed);
-        this.shutdown.set(data.shutdown);
-        this.c3Linked.set(data.c3Linked);
-    }
+    abstract update(data: SerializedState): void;
 }
-

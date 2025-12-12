@@ -36,10 +36,12 @@ import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { LoggerService } from '../services/logger.service';
-import { ASSerializedUnit, SerializedForce, SerializedUnit } from './force-serialization';
+import { ASSerializedUnit, C3_NETWORK_GROUP_SCHEMA, ASSerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
 import { Force, UnitGroup } from './force.model';
+import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnit } from './as-force-unit.model';
+import { C3NetworkUtil } from '../utils/c3-network.util';
 
 /*
  * Author: Drake
@@ -67,7 +69,7 @@ export class ASForce extends Force<ASForceUnit> {
 
     /** Deserialize a plain object to an ASForce instance */
     public static override deserialize(
-        data: SerializedForce,
+        data: ASSerializedForce,
         dataService: DataService,
         unitInitializer: UnitInitializerService,
         injector: Injector
@@ -105,10 +107,24 @@ export class ASForce extends Force<ASForceUnit> {
             }
             force.groups.set(parsedGroups);
             force.timestamp = data.timestamp ?? null;
+            if (data.c3Networks) {
+                const sanitized = Sanitizer.sanitizeArray(data.c3Networks, C3_NETWORK_GROUP_SCHEMA);
+                // Build unit map for validation
+                const unitMap = new Map<string, Unit>();
+                for (const group of parsedGroups) {
+                    for (const forceUnit of group.units()) {
+                        unitMap.set(forceUnit.id, forceUnit.getUnit());
+                    }
+                }
+                force.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
+            }
             force.refreshUnits();
         } finally {
             force.loading = false;
         }
         return force;
+    }
+
+    public override update(data: ASSerializedForce) {
     }
 }

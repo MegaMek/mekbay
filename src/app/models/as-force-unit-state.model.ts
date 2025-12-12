@@ -34,7 +34,8 @@
 import { signal } from '@angular/core';
 import { ForceUnitState } from './force-unit-state.model';
 import { ASForceUnit } from './as-force-unit.model';
-import { ASSerializedState } from './force-serialization';
+import { ASSerializedState, C3_POSITION_SCHEMA } from './force-serialization';
+import { Sanitizer } from '../utils/sanitizer.util';
 
 /*
  * Author: Drake
@@ -54,9 +55,12 @@ export class ASForceUnitState extends ForceUnitState {
         this.modified.set(data.modified);
         this.destroyed.set(data.destroyed);
         this.shutdown.set(data.shutdown);
-        this.c3Linked.set(data.c3Linked);
         this.heat.set(data.heat);
         this.armor.set(data.armor);
         this.internal.set(data.internal);
+        if (data.c3Position) {
+            this.c3Position.set(Sanitizer.sanitize(data.c3Position, C3_POSITION_SCHEMA));
+        }
+
     }
 }

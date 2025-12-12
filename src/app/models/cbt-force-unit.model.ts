@@ -35,7 +35,7 @@ import { computed, createEnvironmentInjector, EnvironmentInjector, Injector, run
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
-import { CriticalSlot, HeatProfile, LocationData, MountedEquipment, SerializedState, SerializedUnit, ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, CBTSerializedState, CBTSerializedUnit } from './force-serialization';
+import { CriticalSlot, HeatProfile, LocationData, MountedEquipment, ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, CBTSerializedState, CBTSerializedUnit } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import { CBTForce } from './cbt-force.model';
 import { UnitSvgService } from '../services/unit-svg.service';
@@ -437,20 +437,29 @@ export class CBTForceUnit extends ForceUnit {
         let gunnery = pilot.getSkill('gunnery');
         let piloting = pilot.getSkill('piloting');
         let bv = this.unit.bv;
-        if (this.c3Linked) {
-            const c3Tax = C3NetworkUtil.calculateC3Tax(this, this.force.groups().flatMap(g => g.units()));
-            if (c3Tax > 0) {
-                bv += c3Tax;
-            }
-        }
         if (this.unit.crewSize > 1) {
             gunnery = this.getCrewMember(1).getSkill('gunnery');
         }
-        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(
+        let adjustedBv = BVCalculatorUtil.calculateAdjustedBV(
             bv,
             gunnery,
             piloting
         );
+        
+        // Add C3 network tax share if this unit is in a C3 network
+        const c3Networks = this.force.c3Networks();
+        if (c3Networks.length > 0) {
+            const c3Tax = C3NetworkUtil.calculateUnitC3Tax(
+                this.id,
+                bv, // Use base BV for tax calculation
+                c3Networks,
+                this.force.units()
+            );
+            if (c3Tax > 0) {
+                adjustedBv += c3Tax;
+            }
+        }
+        
         if (adjustedBv !== this.unit.bv) {
             if (adjustedBv !== this.adjustedBv()) {
                 this.adjustedBv.set(adjustedBv);
@@ -716,7 +725,7 @@ export class CBTForceUnit extends ForceUnit {
             modified: this.state.modified(),
             destroyed: this.state.destroyed(),
             shutdown: this.state.shutdown(),
-            c3Linked: this.state.c3Linked(),
+            c3Position: this.state.c3Position() ?? undefined,
             inventory: this.state.inventoryForSerialization()
         };
         const data = {
@@ -735,13 +744,16 @@ export class CBTForceUnit extends ForceUnit {
         this.state.modified.set(typeof state.modified === 'boolean' ? state.modified : false);
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
         this.state.shutdown.set(typeof state.shutdown === 'boolean' ? state.shutdown : false);
-        this.state.c3Linked.set(typeof state.c3Linked === 'boolean' ? state.c3Linked : false);
+        
         if (state.inventory) {
             const inventoryData = Sanitizer.sanitizeArray(state.inventory, INVENTORY_SCHEMA);
             this.state.deserializeInventory(inventoryData);
         }
         const crewArr = state.crew.map((crewData: any) => CrewMember.deserialize(crewData, this));
         this.state.crew.set(crewArr);
+        if (state.c3Position) {
+            this.state.c3Position.set(Sanitizer.sanitize(state.c3Position, C3_POSITION_SCHEMA));
+        }
         this.recalculateBv();
     }
 

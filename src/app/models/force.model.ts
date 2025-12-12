@@ -37,9 +37,10 @@ import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
 import { LoggerService } from '../services/logger.service';
-import { SerializedForce, SerializedGroup, SerializedUnit } from './force-serialization';
+import { SerializedForce, SerializedGroup, SerializedUnit, SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
+import { C3NetworkUtil } from '../utils/c3-network.util';
 
 /*
  * Author: Drake
@@ -84,9 +85,11 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     nameLock: boolean = false; // If true, the force name cannot be changed by the random generator
     timestamp: string | null = null;
     groups: WritableSignal<UnitGroup<TUnit>[]> = signal([]);
+    _c3Networks: WritableSignal<SerializedC3NetworkGroup[]> = signal([]); // C3 network configurations
     loading: boolean = false;
     cloud?: boolean = false; // Indicates if this force is stored in the cloud
     owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
+    c3Networks = this._c3Networks.asReadonly(); 
     public changed = new EventEmitter<void>();
     private _debounceTimer: any = null;
 
@@ -108,8 +111,19 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return this.groups().flatMap(g => g.units());
     });
 
-    totalBv = computed(() => {
+    /** Total BV of units without C3 tax */
+    baseBv = computed(() => {
         return this.units().reduce((sum, unit) => sum + (unit.getBv()), 0);
+    });
+
+    /** C3 network tax based on configured networks (kept for reference/display) */
+    c3Tax = computed(() => {
+        return C3NetworkUtil.calculateForceC3Tax(this.units(), this.c3Networks());
+    });
+
+    /** Total BV (C3 tax is applied at unit level via adjustedBv, not here) */
+    totalBv = computed(() => {
+        return this.baseBv();
     });
 
     get name(): string {
@@ -233,34 +247,18 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         });
     }
 
+    public setNetwork(networks: SerializedC3NetworkGroup[]) {
+        this._c3Networks.set(networks);
+        this.emitChanged();
+    }
+
     public loadAll() {
         this.units().forEach(unit => unit.load());
     }
 
     /** Serialize this Force instance to a plain object */
     public serialize(): SerializedForce {
-        let instanceId = this.instanceId();
-        if (!instanceId) {
-            instanceId = generateUUID();
-            this.instanceId.set(instanceId);
-        }
-        // Serialize groups (preserve per-group structure)
-        const serializedGroups: SerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => ({
-            id: g.id,
-            name: g.name(),
-            nameLock: g.nameLock,
-            color: g.color,
-            units: g.units().map(u => u.serialize())
-        })) as SerializedGroup[];
-        return {
-            version: 1,
-            timestamp: this.timestamp ?? new Date().toISOString(),
-            instanceId: instanceId,
-            name: this.name,
-            bv: this.totalBv(),
-            nameLock: this.nameLock || false,
-            groups: serializedGroups,
-        } as SerializedForce & { groups?: any[] };
+        throw new Error('Force.serialize must be implemented by subclass');
     }
 
     /** Deserialize a plain object to a Force instance - must be implemented by subclass */
@@ -280,66 +278,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }, 300); // debounce
     }
 
-    /**
-     * Updates the force in-place from serialized data.
-     */
-    public update(data: SerializedForce) {
-        this.loading = true;
-        try {
-            if (this.name !== data.name) this.setName(data.name, false);
-            this.nameLock = data.nameLock || false;
-            this.timestamp = data.timestamp ?? null;
+    public abstract update(data: SerializedForce): void;
 
-            const incomingGroupsData = data.groups || [];
-            const currentGroups = this.groups();
-            const currentGroupMap = new Map(currentGroups.map(g => [g.id, g]));
-            const allCurrentUnitsMap = new Map(this.units().map(u => [u.id, u]));
-            const allIncomingUnitIds = new Set(incomingGroupsData.flatMap(g => g.units.map(u => u.id)));
-
-            // Destroy units that are no longer in the force at all
-            for (const [unitId, unit] of allCurrentUnitsMap.entries()) {
-                if (!allIncomingUnitIds.has(unitId)) {
-                    unit.destroy();
-                    allCurrentUnitsMap.delete(unitId);
-                }
-            }
-
-            // Update existing groups and add new ones, and update/move units
-            const updatedGroups: UnitGroup<TUnit>[] = incomingGroupsData.map(groupData => {
-                let group = currentGroupMap.get(groupData.id);
-                if (group) {
-                    // Update existing group
-                    if (group.name() !== groupData.name) group.setName(groupData.name, false);
-                    group.nameLock = groupData.nameLock;
-                    group.color = groupData.color;
-                } else {
-                    // Add new group
-                    group = new UnitGroup<TUnit>(this, groupData.name);
-                    group.id = groupData.id;
-                    group.nameLock = groupData.nameLock;
-                    group.color = groupData.color;
-                }
-
-                const groupUnits = groupData.units.map(unitData => {
-                    let unit = allCurrentUnitsMap.get(unitData.id);
-                    if (unit) {
-                        // Unit exists, update it
-                        unit.update(unitData);
-                    } else {
-                        // Unit is new to the force, create it
-                        unit = this.deserializeForceUnit(unitData);
-                    }
-                    return unit;
-                });
-                group.units.set(groupUnits);
-                return group;
-            });
-
-            this.groups.set(updatedGroups);
-            this.removeEmptyGroups();
-            this.refreshUnits();
-        } finally {
-            this.loading = false;
-        }
-    }
 }

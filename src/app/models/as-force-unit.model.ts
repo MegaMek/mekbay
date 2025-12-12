@@ -35,9 +35,10 @@ import { computed, Injector, signal, Signal } from '@angular/core';
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
-import { ASSerializedState, ASSerializedUnit, SerializedUnit } from './force-serialization';
+import { ASSerializedState, ASSerializedUnit, C3_POSITION_SCHEMA } from './force-serialization';
 import { ASForce } from './as-force.model';
 import { ForceUnit } from './force-unit.model';
+import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnitState } from './as-force-unit-state.model';
 import { CrewMember } from './crew-member.model';
 import { ASCustomPilotAbility } from './as-abilities.model';
@@ -177,7 +178,7 @@ export class ASForceUnit extends ForceUnit {
             modified: this.state.modified(),
             destroyed: this.state.destroyed(),
             shutdown: this.state.shutdown(),
-            c3Linked: this.state.c3Linked(),
+            c3Position: this.state.c3Position() ?? undefined,
             heat: this.state.heat(),
             armor: this.state.armor(),
             internal: this.state.internal()
@@ -197,10 +198,12 @@ export class ASForceUnit extends ForceUnit {
         this.state.modified.set(typeof state.modified === 'boolean' ? state.modified : false);
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
         this.state.shutdown.set(typeof state.shutdown === 'boolean' ? state.shutdown : false);
-        this.state.c3Linked.set(typeof state.c3Linked === 'boolean' ? state.c3Linked : false);
         this.state.heat.set(typeof state.heat === 'number' ? state.heat : 0);
         this.state.armor.set(typeof state.armor === 'number' ? state.armor : 0);
         this.state.internal.set(typeof state.internal === 'number' ? state.internal : 0);
+        if (state.c3Position) {
+            this.state.c3Position.set(Sanitizer.sanitize(state.c3Position, C3_POSITION_SCHEMA));
+        }
         this.recalculatePv();
     }
 

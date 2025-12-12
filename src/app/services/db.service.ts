@@ -396,10 +396,6 @@ export class DbService {
                 const unitIds = group.units.map(unit => unit.id).filter(id => id);
                 await Promise.all(unitIds.map(id => this.deleteCanvasData(id)));
             }
-        } else if (force.units) {
-            //DEPRECATED: Backwards compatibility for forces without groups
-            const unitIds = force.units.map(unit => unit.id).filter(id => id);
-            await Promise.all(unitIds.map(id => this.deleteCanvasData(id)));
         }
     }
 

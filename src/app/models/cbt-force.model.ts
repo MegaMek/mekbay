@@ -36,10 +36,13 @@ import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { LoggerService } from '../services/logger.service';
-import { CBTSerializedUnit, SerializedForce, SerializedUnit } from './force-serialization';
+import { CBTSerializedUnit, C3_NETWORK_GROUP_SCHEMA, CBTSerializedForce, CBTSerializedGroup } from './force-serialization';
 import { GameSystem } from './common.model';
 import { Force, UnitGroup } from './force.model';
+import { Sanitizer } from '../utils/sanitizer.util';
 import { CBTForceUnit } from './cbt-force-unit.model';
+import { C3NetworkUtil } from '../utils/c3-network.util';
+import { generateUUID } from '../services/ws.service';
 
 /*
  * Author: Drake
@@ -66,7 +69,7 @@ export class CBTForce extends Force<CBTForceUnit> {
     }
 
     public static override deserialize(
-        data: SerializedForce,
+        data: CBTSerializedForce,
         dataService: DataService,
         unitInitializer: UnitInitializerService,
         injector: Injector
@@ -104,10 +107,126 @@ export class CBTForce extends Force<CBTForceUnit> {
             }
             force.groups.set(parsedGroups);
             force.timestamp = data.timestamp ?? null;
+            if (data.c3Networks) {
+                const sanitized = Sanitizer.sanitizeArray(data.c3Networks, C3_NETWORK_GROUP_SCHEMA);
+                // Build unit map for validation
+                const unitMap = new Map<string, Unit>();
+                for (const group of parsedGroups) {
+                    for (const forceUnit of group.units()) {
+                        unitMap.set(forceUnit.id, forceUnit.getUnit());
+                    }
+                }
+                force.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
+            }
             force.refreshUnits();
         } finally {
             force.loading = false;
         }
         return force;
+    }
+
+    /** Serialize this Force instance to a plain object */
+    public override serialize(): CBTSerializedForce {
+        let instanceId = this.instanceId();
+        if (!instanceId) {
+            instanceId = generateUUID();
+            this.instanceId.set(instanceId);
+        }
+        // Serialize groups (preserve per-group structure)
+        const serializedGroups: CBTSerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => ({
+            id: g.id,
+            name: g.name(),
+            nameLock: g.nameLock,
+            color: g.color,
+            units: g.units().map(u => u.serialize())
+        })) as CBTSerializedGroup[];
+        return {
+            version: 1,
+            timestamp: this.timestamp ?? new Date().toISOString(),
+            instanceId: instanceId,
+            name: this.name,
+            bv: this.totalBv(),
+            nameLock: this.nameLock || false,
+            groups: serializedGroups,
+            c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
+        } as CBTSerializedForce & { groups?: any[] };
+    }
+
+    /**
+     * Updates the force in-place from serialized data.
+     */
+    public override update(data: CBTSerializedForce) {
+        this.loading = true;
+        try {
+            if (this.name !== data.name) this.setName(data.name, false);
+            this.nameLock = data.nameLock || false;
+            this.timestamp = data.timestamp ?? null;
+
+            const incomingGroupsData = data.groups || [];
+            const currentGroups = this.groups();
+            const currentGroupMap = new Map(currentGroups.map(g => [g.id, g]));
+            const allCurrentUnitsMap = new Map(this.units().map(u => [u.id, u]));
+            const allIncomingUnitIds = new Set(incomingGroupsData.flatMap(g => g.units.map(u => u.id)));
+
+            // Destroy units that are no longer in the force at all
+            for (const [unitId, unit] of allCurrentUnitsMap.entries()) {
+                if (!allIncomingUnitIds.has(unitId)) {
+                    unit.destroy();
+                    allCurrentUnitsMap.delete(unitId);
+                }
+            }
+
+            // Update existing groups and add new ones, and update/move units
+            const updatedGroups: UnitGroup<CBTForceUnit>[] = incomingGroupsData.map(groupData => {
+                let group = currentGroupMap.get(groupData.id);
+                if (group) {
+                    // Update existing group
+                    if (group.name() !== groupData.name) group.setName(groupData.name, false);
+                    group.nameLock = groupData.nameLock;
+                    group.color = groupData.color;
+                } else {
+                    // Add new group
+                    group = new UnitGroup<CBTForceUnit>(this, groupData.name);
+                    group.id = groupData.id;
+                    group.nameLock = groupData.nameLock;
+                    group.color = groupData.color;
+                }
+
+                const groupUnits = groupData.units.map(unitData => {
+                    let unit = allCurrentUnitsMap.get(unitData.id);
+                    if (unit) {
+                        // Unit exists, update it
+                        unit.update(unitData);
+                    } else {
+                        // Unit is new to the force, create it
+                        unit = this.deserializeForceUnit(unitData);
+                    }
+                    return unit;
+                });
+                group.units.set(groupUnits);
+                return group;
+            });
+
+            this.groups.set(updatedGroups);
+            this.removeEmptyGroups();
+            this.refreshUnits();
+            
+            // Update C3 networks with sanitization and validation
+            if (data.c3Networks) {
+                const sanitized = Sanitizer.sanitizeArray(data.c3Networks, C3_NETWORK_GROUP_SCHEMA);
+                // Build unit map for validation from current groups
+                const unitMap = new Map<string, Unit>();
+                for (const group of this.groups()) {
+                    for (const forceUnit of group.units()) {
+                        unitMap.set(forceUnit.id, forceUnit.getUnit());
+                    }
+                }
+                this.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
+            } else {
+                this.setNetwork([]);
+            }
+        } finally {
+            this.loading = false;
+        }
     }
 }
