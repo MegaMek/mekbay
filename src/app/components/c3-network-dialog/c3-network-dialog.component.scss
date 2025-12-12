@@ -353,6 +353,17 @@
   background-color: var(--background-color-menu);
   overflow: hidden;
 
+  &.overlay {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 300px;
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.5);
+    z-index: 200;
+  }
+
   &.animate {
     transition: transform 0.2s ease-in-out;
   }
