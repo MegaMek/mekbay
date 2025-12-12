@@ -801,8 +801,68 @@ export class C3NetworkUtil {
             }
         }
 
-        // Sub-networks whose parent was removed become top-level networks automatically
-        return cleanedNetworks;
+        // Second pass: validate network depth and remove networks that exceed max depth
+        return this.validateNetworkDepth(cleanedNetworks);
+    }
+
+    /**
+     * Validate network depth constraints and remove networks/connections that exceed max depth.
+     * Max depth is 2: M -> M -> S (or M -> M -> M)
+     */
+    private static validateNetworkDepth(
+        networks: SerializedC3NetworkGroup[]
+    ): SerializedC3NetworkGroup[] {
+        // Build a map of all networks for quick lookup
+        const networkMap = new Map<string, SerializedC3NetworkGroup>();
+        for (const net of networks) {
+            networkMap.set(net.id, net);
+        }
+
+        // Find networks that exceed depth and need to be disconnected
+        const networksToRemove = new Set<string>();
+        const membersToRemove = new Map<string, Set<string>>(); // networkId -> members to remove
+
+        for (const network of networks) {
+            if (network.peerIds) continue; // Peer networks don't have depth
+
+            const depth = this.getNetworkDepth(network, networks);
+            
+            if (depth >= C3_MAX_NETWORK_DEPTH) {
+                // This network is too deep - it should become a top-level network
+                // Find and remove the connection from its parent
+                const parent = this.findParentNetwork(network, networks);
+                if (parent) {
+                    const masterMemberStr = this.createMasterMember(network.masterId!, network.masterCompIndex!);
+                    if (!membersToRemove.has(parent.id)) {
+                        membersToRemove.set(parent.id, new Set());
+                    }
+                    membersToRemove.get(parent.id)!.add(masterMemberStr);
+                }
+            }
+        }
+
+        // Apply member removals
+        const result: SerializedC3NetworkGroup[] = [];
+        for (const network of networks) {
+            if (networksToRemove.has(network.id)) continue;
+
+            const toRemove = membersToRemove.get(network.id);
+            if (toRemove && network.members) {
+                const filteredMembers = network.members.filter(m => !toRemove.has(m));
+                if (filteredMembers.length === 0) {
+                    // No members left - remove the network
+                    continue;
+                }
+                result.push({
+                    ...network,
+                    members: filteredMembers
+                });
+            } else {
+                result.push(network);
+            }
+        }
+
+        return result;
     }
 
     /**
