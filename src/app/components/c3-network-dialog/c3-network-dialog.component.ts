@@ -155,7 +155,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected hasModifications = signal(false);
     protected sidebarOpen = signal(false);
     protected sidebarAnimated = signal(false);
-    protected connectionsAboveNodes = signal(true);
+    protected connectionsAboveNodes = computed(() => this.optionsService.options().c3NetworkConnectionsAboveNodes);
 
     /** Fast lookup to avoid repeated linear searches during computed layout. */
     protected nodesById = computed(() => {
@@ -1411,6 +1411,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         }
         
         this.zoom.set(newZoom);
+    }
+
+    public toggleConnectionsAboveNodes() {
+        const current = this.optionsService.options().c3NetworkConnectionsAboveNodes;
+        this.optionsService.setOption('c3NetworkConnectionsAboveNodes', !current);
     }
 
     // ==================== Network Management ====================

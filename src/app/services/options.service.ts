@@ -53,6 +53,7 @@ const DEFAULT_OPTIONS: Options = {
     useAutomations: true,
     ASUseHex: false,
     ASCardStyle: 'colored',
+    c3NetworkConnectionsAboveNodes: false,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -72,6 +73,7 @@ export class OptionsService {
         useAutomations: DEFAULT_OPTIONS.useAutomations,
         ASUseHex: DEFAULT_OPTIONS.ASUseHex,
         ASCardStyle: DEFAULT_OPTIONS.ASCardStyle,
+        c3NetworkConnectionsAboveNodes: DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
     });
 
     constructor() {
@@ -95,6 +97,7 @@ export class OptionsService {
             useAutomations: saved?.useAutomations ?? DEFAULT_OPTIONS.useAutomations,
             ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
             ASCardStyle: saved?.ASCardStyle ?? DEFAULT_OPTIONS.ASCardStyle,
+            c3NetworkConnectionsAboveNodes: saved?.c3NetworkConnectionsAboveNodes ?? DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
         });
     }
 

@@ -19,7 +19,7 @@
         <button
             class="bt-button connections-layer-btn square"
             type="button"
-            (click)="connectionsAboveNodes.set(!connectionsAboveNodes())"
+            (click)="toggleConnectionsAboveNodes()"
             [class.active]="connectionsAboveNodes()"
             [attr.aria-pressed]="connectionsAboveNodes()"
             aria-label="Toggle whether connection lines render above nodes"
