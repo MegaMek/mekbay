@@ -179,7 +179,7 @@
   }
 
   .pin-role-label {
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 700;
     fill: var(--text-primary, #fff);
     text-transform: uppercase;
@@ -187,7 +187,7 @@
   }
 
   .pin-type-label {
-    font-size: 7px;
+    font-size: 10px;
     font-weight: 500;
     fill: var(--text-color-secondary, #666);
     text-transform: uppercase;
@@ -207,21 +207,21 @@
   // Master pin styling
   &.master {
     .pin-role-label {
-      fill: var(--text-primary, #fff);
+      fill: var(--text-color);
     }
   }
 
   // Slave pin styling
   &.slave {
     .pin-role-label {
-      fill: var(--text-color-secondary, #aaa);
+      fill: var(--text-color);
     }
   }
 
   // Peer pin styling
   &.peer {
     .pin-role-label {
-      fill: var(--text-color-secondary, #aaa);
+      fill: var(--text-color);
     }
   }
 

@@ -52,6 +52,9 @@
             <filter id="icon-shadow" x="-50%" y="-50%" width="200%" height="200%">
                 <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.6)" />
             </filter>
+            <filter id="pin-shadow" x="-75%" y="-75%" width="250%" height="250%">
+                <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="rgba(0,0,0,0.8)" />
+            </filter>
             <filter id="pin-valid-glow" x="-100%" y="-100%" width="300%" height="300%">
                 <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="rgba(255,200,0,0.8)" />
             </filter>
@@ -120,14 +123,14 @@
 
                         <!-- Unit icon centered at top (native SVG image for iOS compatibility) -->
                         <image class="node-icon"
-                               x="-24" [attr.y]="-NODE_RADIUS / 2 + 16" 
-                               width="48" height="48"
-                               [attr.href]="node.iconUrl"
-                               preserveAspectRatio="xMidYMid meet"
-                               filter="url(#icon-shadow)" />
+                            x="-48" y="-48"
+                            width="96" height="96"
+                            [attr.href]="node.iconUrl"
+                            preserveAspectRatio="xMidYMid meet"
+                            filter="url(#icon-shadow)" style="opacity: 0.7;" />
 
                         <!-- Unit label centered below icon -->
-                        <foreignObject [attr.x]="-NODE_RADIUS / 2 + 12" y="-8" 
+                        <foreignObject [attr.x]="-NODE_RADIUS / 2 + 12" y="-48" 
                                        [attr.width]="NODE_RADIUS - 24" height="40"
                                        style="overflow: visible;">
                             <div xmlns="http://www.w3.org/1999/xhtml" class="node-label">
@@ -162,12 +165,14 @@
                                             [attr.fill]="getPinFillColor(node, i)" />
                                     
                                     <!-- Pin role label -->
-                                    <text class="pin-role-label" y="24" text-anchor="middle">
+                                    <text class="pin-role-label" y="24" text-anchor="middle"
+                                          filter="url(#pin-shadow)">
                                         {{ getRoleLabel(comp.role) }}
                                     </text>
                                     
                                     <!-- Network type label -->
-                                    <text class="pin-type-label" y="34" text-anchor="middle">
+                                    <text class="pin-type-label" y="38" text-anchor="middle"
+                                          filter="url(#pin-shadow)">
                                         {{ getNetworkTypeLabel(comp.networkType) }}
                                     </text>
                                 </g>
