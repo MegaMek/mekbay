@@ -862,7 +862,94 @@ export class C3NetworkUtil {
             }
         }
 
+        // Third pass: validate total unit count per network tree
+        return this.validateNetworkTotalUnits(result);
+    }
+
+    /**
+     * Validate that each network tree doesn't exceed C3_MAX_NETWORK_TOTAL units.
+     * If exceeded, disconnect sub-networks until under the limit.
+     */
+    private static validateNetworkTotalUnits(
+        networks: SerializedC3NetworkGroup[]
+    ): SerializedC3NetworkGroup[] {
+        let result = [...networks];
+        let changed = true;
+
+        while (changed) {
+            changed = false;
+            const topLevelNets = this.getTopLevelNetworks(result);
+
+            for (const rootNet of topLevelNets) {
+                if (rootNet.peerIds) continue; // Peer networks already have limit enforced
+
+                const totalUnits = this.countNetworkTreeUnits(rootNet, result);
+
+                if (totalUnits > C3_MAX_NETWORK_TOTAL) {
+                    // Find a sub-network connection to remove (from any network in this tree)
+                    const removed = this.removeOneSubNetworkConnection(rootNet, result);
+                    if (removed) {
+                        result = removed;
+                        changed = true;
+                        break; // Restart the loop with updated networks
+                    }
+                }
+            }
+        }
+
         return result;
+    }
+
+    /**
+     * Find and remove one sub-network connection from a network tree.
+     * Returns the updated networks array, or null if nothing to remove.
+     */
+    private static removeOneSubNetworkConnection(
+        rootNet: SerializedC3NetworkGroup,
+        allNetworks: SerializedC3NetworkGroup[]
+    ): SerializedC3NetworkGroup[] | null {
+        // Find all master members (sub-network connections) in this tree
+        const findMasterMember = (net: SerializedC3NetworkGroup): { networkId: string; member: string } | null => {
+            if (!net.members) return null;
+            
+            // Check this network's members for master connections (reverse order = latest first)
+            for (let i = net.members.length - 1; i >= 0; i--) {
+                const member = net.members[i];
+                if (this.isMasterMember(member)) {
+                    return { networkId: net.id, member };
+                }
+            }
+            
+            // Recurse into sub-networks
+            for (const member of net.members) {
+                if (this.isMasterMember(member)) {
+                    const { unitId, compIndex } = this.parseMember(member);
+                    const subNet = this.findMasterNetwork(unitId, compIndex!, allNetworks);
+                    if (subNet) {
+                        const found = findMasterMember(subNet);
+                        if (found) return found;
+                    }
+                }
+            }
+            
+            return null;
+        };
+
+        const toRemove = findMasterMember(rootNet);
+        if (!toRemove) return null;
+
+        // Remove the member from the network
+        return allNetworks.map(net => {
+            if (net.id === toRemove.networkId && net.members) {
+                const filteredMembers = net.members.filter(m => m !== toRemove.member);
+                if (filteredMembers.length === 0) {
+                    // Return null to filter out this network later
+                    return { ...net, members: [] };
+                }
+                return { ...net, members: filteredMembers };
+            }
+            return net;
+        }).filter(net => !(net.members && net.members.length === 0 && !net.peerIds));
     }
 
     /**
