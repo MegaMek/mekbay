@@ -55,6 +55,7 @@ import {
 import { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { ToastService } from '../../services/toast.service';
 import { ImageStorageService } from '../../services/image-storage.service';
+import { OptionsService } from '../../services/options.service';
 
 export interface C3NetworkDialogData {
     units: ForceUnit[];
@@ -114,6 +115,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private toastService = inject(ToastService);
     private imageService = inject(ImageStorageService);
     private destroyRef = inject(DestroyRef);
+    private optionsService = inject(OptionsService);
     private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
 
     // Fallback icon for units without icons
@@ -123,7 +125,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected readonly NODE_RADIUS = 150;
     protected readonly PIN_RADIUS = 7;
     protected readonly PIN_GAP = 34; // Gap between pin centers
-    protected readonly PIN_Y_OFFSET = 16; // Y offset from node center to pins
+    protected readonly PIN_Y_OFFSET = 20; // Y offset from node center to pins
 
     // State
     protected nodes = signal<C3Node[]>([]);
@@ -220,6 +222,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         mutator(nodes);
         this.nodes.set([...nodes]);
     }
+
+    protected unitDisplayName = computed(() => this.optionsService.options().unitDisplayName);
 
     /** SVG transform string computed from pan/zoom state */
     protected svgTransform = computed(() => {

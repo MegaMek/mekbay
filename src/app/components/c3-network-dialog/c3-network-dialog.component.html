@@ -17,7 +17,6 @@
     <h2>C3 Network Configuration</h2>
     <button class="close-button" (click)="close()">✕</button>
 </div>
-
 <div class="c3-dialog-content">
     <!-- SVG Canvas area -->
     <svg #svgCanvas class="svg-canvas" (wheel)="onWheel($event)" (pointerdown)="onCanvasPointerDown($event)">
@@ -130,11 +129,20 @@
                             filter="url(#icon-shadow)" style="opacity: 0.7;" />
 
                         <!-- Unit label centered below icon -->
-                        <foreignObject [attr.x]="-NODE_RADIUS / 2 + 12" y="-48" 
+                        <foreignObject [attr.x]="-NODE_RADIUS / 2 + 12" y="-60" 
                                        [attr.width]="NODE_RADIUS - 24" height="40"
                                        style="overflow: visible;">
                             <div xmlns="http://www.w3.org/1999/xhtml" class="node-label">
-                                {{ node.unit.getUnit().chassis }}
+                                
+                                @if (unitDisplayName() === 'chassisModel'
+                                || unitDisplayName() === 'both'
+                                || !node.unit.alias()) {
+                                <div class="unit-model">{{ node.unit.getUnit().model }}</div>
+                                <div class="unit-chassis">{{ node.unit.getUnit().chassis }}</div>
+                                }
+                                @if (unitDisplayName() === 'alias' || unitDisplayName() === 'both') {
+                                <div class="unit-alias">{{ node.unit.alias() }}</div>
+                                }
                             </div>
                         </foreignObject>
 
