@@ -53,7 +53,7 @@ import {
 } from '../../models/c3-network.model';
 import { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { ToastService } from '../../services/toast.service';
-import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { ImageStorageService } from '../../services/image-storage.service';
 
 export interface C3NetworkDialogData {
     units: ForceUnit[];
@@ -72,6 +72,7 @@ interface C3Node {
     x: number;
     y: number;
     zIndex: number;
+    iconUrl: string;
 }
 
 interface ConnectionLine {
@@ -92,7 +93,7 @@ interface HubPoint {
 @Component({
     selector: 'c3-network-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [NgTemplateOutlet, UnitIconComponent],
+    imports: [NgTemplateOutlet],
     host: { class: 'fullscreen-dialog-host' },
     templateUrl: './c3-network-dialog.component.html',
     styleUrls: ['./c3-network-dialog.component.scss']
@@ -101,7 +102,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private dialogRef = inject(DialogRef<C3NetworkDialogResult>);
     protected data = inject<C3NetworkDialogData>(DIALOG_DATA);
     private toastService = inject(ToastService);
+    private imageService = inject(ImageStorageService);
     private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
+
+    // Fallback icon for units without icons
+    protected readonly FALLBACK_ICON = '/images/unknown.png';
 
     // Node layout constants (exposed for template)
     protected readonly NODE_WIDTH = 150;
@@ -539,14 +544,46 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         this.nodes.set(c3Units.map((unit, idx) => {
             const pos = unit.c3Position();
+            const iconPath = unit.getUnit().icon;
             return {
                 unit,
                 c3Components: C3NetworkUtil.getC3Components(unit.getUnit()),
                 x: pos?.x ?? startX + (idx % cols) * spacing,
                 y: pos?.y ?? startY + Math.floor(idx / cols) * spacing,
-                zIndex: idx
+                zIndex: idx,
+                iconUrl: iconPath ? (this.imageService.getCachedUrl(iconPath) || this.FALLBACK_ICON) : this.FALLBACK_ICON
             };
         }));
+
+        // Load icon URLs asynchronously for any that weren't cached
+        this.loadMissingIconUrls(c3Units);
+    }
+
+    private async loadMissingIconUrls(units: ForceUnit[]) {
+        const nodes = this.nodes();
+        let updated = false;
+        
+        for (const unit of units) {
+            const node = nodes.find(n => n.unit.id === unit.id);
+            if (!node || node.iconUrl !== this.FALLBACK_ICON) continue;
+            
+            const iconPath = unit.getUnit().icon;
+            if (!iconPath) continue;
+            
+            try {
+                const url = await this.imageService.getImage(iconPath);
+                if (url && url !== this.FALLBACK_ICON) {
+                    node.iconUrl = url;
+                    updated = true;
+                }
+            } catch {
+                // Keep fallback
+            }
+        }
+        
+        if (updated) {
+            this.nodes.set([...nodes]);
+        }
     }
 
     private initializeMasterPinColors() {

@@ -31,12 +31,33 @@
                     </marker>
                 }
             }
-            <!-- Drop shadow filter for nodes -->
-            <filter id="node-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <!-- SVG Filters (iOS compatible) -->
+            <filter id="node-shadow" x="-50%" y="-50%" width="200%" height="200%">
                 <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="rgba(0,0,0,0.4)" />
             </filter>
-            <filter id="node-hover-shadow" x="-30%" y="-30%" width="160%" height="160%">
-                <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="rgba(0,0,0,0.5)" />
+            <filter id="node-drag-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="rgba(0,0,0,0.5)" />
+            </filter>
+            <filter id="node-valid-glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="rgba(255,200,0,0.6)" />
+            </filter>
+            <filter id="node-hover-glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="rgba(255,200,0,0.8)" />
+            </filter>
+            <filter id="icon-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.6)" />
+            </filter>
+            <filter id="pin-valid-glow" x="-100%" y="-100%" width="300%" height="300%">
+                <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="rgba(255,200,0,0.8)" />
+            </filter>
+            <filter id="pin-hover-glow" x="-100%" y="-100%" width="300%" height="300%">
+                <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="rgba(255,200,0,1)" />
+            </filter>
+            <filter id="pin-active-glow" x="-100%" y="-100%" width="300%" height="300%">
+                <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="rgba(255,255,255,0.5)" />
+            </filter>
+            <filter id="glow-blur" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="4" />
             </filter>
         </defs>
 
@@ -73,23 +94,25 @@
                         <circle class="node-inner-ring" 
                               [attr.r]="NODE_WIDTH / 2 - 8" />
 
-                        <!-- Unit icon centered at top -->
-                        <foreignObject x="-24" [attr.y]="-NODE_WIDTH / 2 + 16" width="48" height="48">
-                            <unit-icon xmlns="http://www.w3.org/1999/xhtml" 
-                                       [unit]="node.unit.getUnit()" 
-                                       styleClass="node-unit-icon"></unit-icon>
-                        </foreignObject>
+                        <!-- Unit icon centered at top (native SVG image for iOS compatibility) -->
+                        <image class="node-icon"
+                               x="-24" [attr.y]="-NODE_WIDTH / 2 + 16" 
+                               width="48" height="48"
+                               [attr.href]="node.iconUrl"
+                               preserveAspectRatio="xMidYMid meet"
+                               filter="url(#icon-shadow)" />
 
                         <!-- Unit label centered below icon -->
                         <foreignObject [attr.x]="-NODE_WIDTH / 2 + 12" y="-8" 
-                                       [attr.width]="NODE_WIDTH - 24" height="40">
+                                       [attr.width]="NODE_WIDTH - 24" height="40"
+                                       style="overflow: visible;">
                             <div xmlns="http://www.w3.org/1999/xhtml" class="node-label">
                                 {{ node.unit.getUnit().chassis }}
                             </div>
                         </foreignObject>
 
                         <!-- Pins section at bottom -->
-                        <g class="pins-container" [attr.transform]="'translate(0,' + PIN_Y_OFFSET + ')'">
+                        <g class="pins-container" [attr.transform]="'translate(0,' + PIN_Y_OFFSET + ')'">>
                             @for (comp of node.c3Components; track $index; let i = $index) {
                                 <g class="pin" 
                                    [attr.transform]="'translate(' + getPinOffsetX(node, i) + ', 0)'"

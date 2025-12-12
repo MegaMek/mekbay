@@ -82,14 +82,14 @@
     opacity: 0.85;
     
     .node-bg {
-      filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));
+      filter: url(#node-drag-shadow);
     }
   }
 
   &.valid-target {
     .node-bg {
       stroke: var(--bt-yellow) !important;
-      filter: drop-shadow(0 0 12px rgba(255, 200, 0, 0.6));
+      filter: url(#node-valid-glow);
     }
     .node-glow {
       stroke: var(--bt-yellow) !important;
@@ -99,15 +99,11 @@
 
   &.invalid-target {
     opacity: 0.4;
-    
-    .node-bg {
-      filter: grayscale(0.5);
-    }
   }
 
   &.hovered {
     .node-bg {
-      filter: drop-shadow(0 0 20px rgba(255, 200, 0, 0.8));
+      filter: url(#node-hover-glow);
     }
   }
 
@@ -122,7 +118,7 @@
   fill: none;
   stroke-width: 2;
   opacity: 0.3;
-  filter: blur(4px);
+  filter: url(#glow-blur);
 }
 
 .node-bg {
@@ -152,10 +148,8 @@
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
-::ng-deep .node-unit-icon {
-  width: 48px;
-  height: 48px;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+.node-icon {
+  pointer-events: none;
 }
 
 // ==================== Pin Styles ====================
@@ -238,7 +232,7 @@
   &.valid-pin-target {
     .pin-connector {
       stroke: var(--bt-yellow) !important;
-      filter: drop-shadow(0 0 8px var(--bt-yellow));
+      filter: url(#pin-valid-glow);
     }
     .pin-ring {
       stroke: var(--bt-yellow) !important;
@@ -255,7 +249,7 @@
   &.hovered-pin {
     .pin-connector {
       transform: scale(1.4);
-      filter: drop-shadow(0 0 12px var(--bt-yellow));
+      filter: url(#pin-hover-glow);
     }
     .pin-ring {
       transform: scale(1.2);
@@ -267,7 +261,7 @@
   &.connectingFromPin {
     .pin-connector {
       transform: scale(1.25);
-      filter: drop-shadow(0 0 6px currentColor);
+      filter: url(#pin-active-glow);
     }
     .pin-ring {
       opacity: 0.8;
