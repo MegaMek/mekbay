@@ -22,6 +22,11 @@
     <!-- SVG Canvas area -->
     <svg #svgCanvas class="svg-canvas" (wheel)="onWheel($event)" (pointerdown)="onCanvasPointerDown($event)">
         <defs>
+            <radialGradient id="node-bg-gradient" cx="35%" cy="30%" r="80%">
+                <stop offset="0%" stop-color="#3a3a3a" />
+                <stop offset="100%" stop-color="#252525" />
+            </radialGradient>
+
             <!-- Arrow marker definitions for each network color -->
             @for (line of connectionLines(); track line.id) {
                 @if (line.hasArrow) {
@@ -80,31 +85,50 @@
                         <!-- Outer glow ring (for connected state) -->
                         @if (isNodeLinked(node)) {
                             <circle class="node-glow" 
-                                  [attr.r]="NODE_WIDTH / 2 + 4"
+                                  [attr.r]="NODE_RADIUS / 2 + 4"
                                   [attr.stroke]="getNodeBorderColor(node)" />
                         }
 
-                        <!-- Node background -->
-                        <circle class="node-bg" 
-                              [attr.r]="NODE_WIDTH / 2"
-                              [attr.stroke]="getNodeBorderColor(node)"
-                              [attr.stroke-dasharray]="isNodeLinked(node) ? 'none' : '6,3'" />
+                        <!-- Node background + border -->
+                        @if (nodeBorderSegments().get(node.unit.id); as segments) {
+                            @if (segments.length > 0) {
+                              <!-- Fill only (border is drawn by segments below) -->
+                              <circle class="node-bg"
+                                  [attr.r]="NODE_RADIUS / 2"
+                                  stroke="none" />
+
+                              <!-- Multi-network border: N colored arc segments -->
+                              @for (seg of segments; track seg.id) {
+                                <circle class="node-border-segment"
+                                    [attr.r]="NODE_RADIUS / 2"
+                                    [attr.stroke]="seg.color"
+                                    [attr.stroke-dasharray]="seg.dasharray"
+                                    [attr.stroke-dashoffset]="seg.dashoffset"
+                                    transform="rotate(-90)" />
+                              }
+                            } @else {
+                              <circle class="node-bg" 
+                                  [attr.r]="NODE_RADIUS / 2"
+                                  [attr.stroke]="getNodeBorderColor(node)"
+                                  [attr.stroke-dasharray]="isNodeLinked(node) ? 'none' : '6,3'" />
+                            }
+                        }
 
                         <!-- Inner decorative ring -->
                         <circle class="node-inner-ring" 
-                              [attr.r]="NODE_WIDTH / 2 - 8" />
+                              [attr.r]="NODE_RADIUS / 2 - 8" />
 
                         <!-- Unit icon centered at top (native SVG image for iOS compatibility) -->
                         <image class="node-icon"
-                               x="-24" [attr.y]="-NODE_WIDTH / 2 + 16" 
+                               x="-24" [attr.y]="-NODE_RADIUS / 2 + 16" 
                                width="48" height="48"
                                [attr.href]="node.iconUrl"
                                preserveAspectRatio="xMidYMid meet"
                                filter="url(#icon-shadow)" />
 
                         <!-- Unit label centered below icon -->
-                        <foreignObject [attr.x]="-NODE_WIDTH / 2 + 12" y="-8" 
-                                       [attr.width]="NODE_WIDTH - 24" height="40"
+                        <foreignObject [attr.x]="-NODE_RADIUS / 2 + 12" y="-8" 
+                                       [attr.width]="NODE_RADIUS - 24" height="40"
                                        style="overflow: visible;">
                             <div xmlns="http://www.w3.org/1999/xhtml" class="node-label">
                                 {{ node.unit.getUnit().chassis }}

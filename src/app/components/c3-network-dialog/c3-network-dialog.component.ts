@@ -35,6 +35,7 @@ import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    DestroyRef,
     ElementRef,
     inject,
     signal,
@@ -54,7 +55,6 @@ import {
 import { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { ToastService } from '../../services/toast.service';
 import { ImageStorageService } from '../../services/image-storage.service';
-import { RouterLinkActive } from "@angular/router";
 
 export interface C3NetworkDialogData {
     units: ForceUnit[];
@@ -93,10 +93,17 @@ interface HubPoint {
     nodesCount: number;
 }
 
+interface BorderSegment {
+    id: string;
+    color: string;
+    dasharray: string;
+    dashoffset: number;
+}
+
 @Component({
     selector: 'c3-network-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [NgTemplateOutlet, RouterLinkActive],
+    imports: [NgTemplateOutlet],
     host: { class: 'fullscreen-dialog-host' },
     templateUrl: './c3-network-dialog.component.html',
     styleUrls: ['./c3-network-dialog.component.scss']
@@ -106,14 +113,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected data = inject<C3NetworkDialogData>(DIALOG_DATA);
     private toastService = inject(ToastService);
     private imageService = inject(ImageStorageService);
+    private destroyRef = inject(DestroyRef);
     private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
 
     // Fallback icon for units without icons
     protected readonly FALLBACK_ICON = '/images/unknown.png';
 
     // Node layout constants (exposed for template)
-    protected readonly NODE_WIDTH = 150;
-    protected readonly NODE_HEIGHT = 150;
+    protected readonly NODE_RADIUS = 150;
     protected readonly PIN_RADIUS = 7;
     protected readonly PIN_GAP = 34; // Gap between pin centers
     protected readonly PIN_Y_OFFSET = 30; // Y offset from node center to pins
@@ -150,6 +157,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     // Unified pan tracking (works for both single-touch and pinch gestures)
     private lastPanPoint: { x: number; y: number } | null = null;
 
+    // Pointermove throttling (reduces jank on iOS)
+    private pendingMoveEvent: PointerEvent | null = null;
+    private moveRafId: number | null = null;
+    private hasGlobalPointerListeners = false;
+
     // Pinch zoom state
     private pinchStartDistance = 0;
     private pinchStartZoom = 1;
@@ -158,6 +170,56 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     // Color tracking
     private nextColorIndex = 0;
     private masterPinColors = new Map<string, string>();
+
+    constructor() {
+        this.destroyRef.onDestroy(() => {
+            this.cleanupGlobalPointerState();
+        });
+    }
+
+    private addGlobalPointerListeners(): void {
+        if (this.hasGlobalPointerListeners) return;
+        document.addEventListener('pointermove', this.onGlobalPointerMove);
+        document.addEventListener('pointerup', this.onGlobalPointerUp);
+        this.hasGlobalPointerListeners = true;
+    }
+
+    private cleanupGlobalPointerState(): void {
+        if (this.moveRafId !== null) {
+            cancelAnimationFrame(this.moveRafId);
+            this.moveRafId = null;
+        }
+        this.pendingMoveEvent = null;
+        this.activeTouches.clear();
+        this.lastPanPoint = null;
+        this.draggedNode.set(null);
+        this.connectingFrom.set(null);
+        this.hoveredNode.set(null);
+        this.hoveredPinIndex.set(null);
+
+        if (this.hasGlobalPointerListeners) {
+            document.removeEventListener('pointermove', this.onGlobalPointerMove);
+            document.removeEventListener('pointerup', this.onGlobalPointerUp);
+            this.hasGlobalPointerListeners = false;
+        }
+    }
+
+    private setPointerCaptureIfAvailable(event: PointerEvent): void {
+        const el = event.currentTarget as Element | null;
+        try {
+            (el as unknown as { setPointerCapture?: (pointerId: number) => void })?.setPointerCapture?.(
+                event.pointerId
+            );
+        } catch {
+            // best-effort; ignore
+        }
+    }
+
+    private updateNodes(mutator: (nodes: C3Node[]) => void): void {
+        const nodes = this.nodes();
+        mutator(nodes);
+        this.nodes.set([...nodes]);
+    }
 
     /** SVG transform string computed from pan/zoom state */
     protected svgTransform = computed(() => {
@@ -524,6 +586,42 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return map;
     });
 
+    /**
+     * Precomputed stroke segments for nodes in multiple networks.
+     * Each segment is rendered as its own dashed circle: one visible arc + one long gap.
+     */
+    protected nodeBorderSegments = computed(() => {
+        const map = new Map<string, BorderSegment[]>();
+        const colorsByNode = this.nodeBorderColors();
+
+        const radius = this.NODE_RADIUS / 2;
+        const circumference = 2 * Math.PI * radius;
+
+        for (const node of this.nodes()) {
+            const colors = colorsByNode.get(node.unit.id) || [];
+            if (colors.length <= 1) {
+                map.set(node.unit.id, []);
+                continue;
+            }
+
+            const segmentLen = circumference / colors.length;
+            const gapLen = circumference - segmentLen;
+            const dasharray = `${segmentLen} ${gapLen}`;
+
+            map.set(
+                node.unit.id,
+                colors.map((color, index) => ({
+                    id: `${node.unit.id}-seg-${index}`,
+                    color,
+                    dasharray,
+                    dashoffset: -segmentLen * index
+                }))
+            );
+        }
+
+        return map;
+    });
+
     /** Map of unitId to whether unit is connected to any network */
     protected unitConnectionStatus = computed(() => {
         const map = new Map<string, boolean>();
@@ -676,7 +774,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private resolveNodeCollisions(draggedNode: C3Node): void {
         const nodes = this.nodes();
         const padding = 4; // Minimum gap between nodes
-        const minDist = Math.max(this.NODE_WIDTH, this.NODE_HEIGHT) + padding;
+        const minDist = this.NODE_RADIUS + padding;
         const maxIterations = 10; // Prevent infinite loops
         
         // Use a queue for cascade collision resolution
@@ -739,6 +837,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected onPinPointerDown(event: PointerEvent, node: C3Node, compIndex: number) {
         event.preventDefault();
         event.stopPropagation();
+
+        this.setPointerCaptureIfAvailable(event);
+
         const comp = node.c3Components[compIndex];
         if (!comp) return;
 
@@ -749,14 +850,15 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         // Set initial connecting end in world coordinates
         const worldPos = this.screenToWorld(event.clientX, event.clientY);
         this.connectingEnd.set(worldPos);
-        
-        document.addEventListener('pointermove', this.onGlobalPointerMove);
-        document.addEventListener('pointerup', this.onGlobalPointerUp);
+
+        this.addGlobalPointerListeners();
     }
 
     protected onNodePointerDown(event: PointerEvent, node: C3Node) {
         event.preventDefault();
         event.stopPropagation();
+
+        this.setPointerCaptureIfAvailable(event);
         
         // Check if clicking on a pin
         const target = event.target as Element;
@@ -772,9 +874,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         this.dragStartPos = { x: event.clientX, y: event.clientY };
         this.nodeStartPos = { x: node.x, y: node.y };
         this.draggedNode.set(node);
-        
-        document.addEventListener('pointermove', this.onGlobalPointerMove);
-        document.addEventListener('pointerup', this.onGlobalPointerUp);
+
+        this.addGlobalPointerListeners();
     }
 
     /**
@@ -782,26 +883,29 @@ export class C3NetworkDialogComponent implements AfterViewInit {
      * Normalizes all z-indexes to stay within a compact range.
      */
     private bringNodeToFront(node: C3Node): void {
-        const nodes = this.nodes();
-        const currentZ = node.zIndex;
-        
-        // Shift down all nodes that were above this one
-        for (const n of nodes) {
-            if (n.zIndex > currentZ) {
-                n.zIndex--;
+        this.updateNodes(nodes => {
+            const currentZ = node.zIndex;
+
+            // Shift down all nodes that were above this one
+            for (const n of nodes) {
+                if (n.zIndex > currentZ) {
+                    n.zIndex--;
+                }
             }
-        }
-        
-        // Put this node at the top
-        node.zIndex = nodes.length - 1;
-        
-        // Trigger re-render
-        this.nodes.set([...nodes]);
+
+            // Put this node at the top
+            const target = nodes.find(n => n.unit.id === node.unit.id);
+            if (target) {
+                target.zIndex = nodes.length - 1;
+            }
+        });
     }
 
     protected onCanvasPointerDown(event: PointerEvent) {
         const target = event.target as Element;
         if (target.closest('.node-group')) return;
+
+        this.setPointerCaptureIfAvailable(event);
         
         // Track touch for pinch-to-zoom and pan
         this.activeTouches.set(event.pointerId, event);
@@ -813,9 +917,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             // Start pinch gesture - store initial distance for zoom calculation
             this.startPinchGesture();
         }
-        
-        document.addEventListener('pointermove', this.onGlobalPointerMove);
-        document.addEventListener('pointerup', this.onGlobalPointerUp);
+
+        this.addGlobalPointerListeners();
     }
 
     /**
@@ -860,91 +963,107 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     private onGlobalPointerMove = (event: PointerEvent) => {
-        // Track new touches that weren't registered in onCanvasPointerDown
-        // (e.g., second finger added during node/pin drag)
-        if (!this.activeTouches.has(event.pointerId)) {
-            this.activeTouches.set(event.pointerId, event);
-        } else {
-            // Update tracked touch position
-            this.activeTouches.set(event.pointerId, event);
+        // Always keep touch tracking up-to-date immediately (required for pinch correctness).
+        this.activeTouches.set(event.pointerId, event);
+
+        // If we now have 2+ touches, cancel any drag/connection and switch to pinch-zoom immediately.
+        if (this.activeTouches.size >= 2 && (this.draggedNode() || this.connectingFrom())) {
+            this.draggedNode.set(null);
+            this.connectingFrom.set(null);
+            this.hoveredNode.set(null);
+            this.hoveredPinIndex.set(null);
+            this.startPinchGesture();
+            this.lastPanPoint = this.getEffectivePanPoint();
         }
 
-        // If we now have 2+ touches, cancel any drag/connection and switch to pinch-zoom
-        if (this.activeTouches.size >= 2) {
-            if (this.draggedNode() || this.connectingFrom()) {
-                // Cancel node drag
-                this.draggedNode.set(null);
-                // Cancel connection drawing
-                this.connectingFrom.set(null);
-                this.hoveredNode.set(null);
-                this.hoveredPinIndex.set(null);
-                // Initialize pinch gesture and pan point
-                this.startPinchGesture();
-                this.lastPanPoint = this.getEffectivePanPoint();
-            }
-        }
+        // Throttle heavier processing to one run per animation frame.
+        this.pendingMoveEvent = event;
+        if (this.moveRafId !== null) return;
 
+        this.moveRafId = requestAnimationFrame(() => {
+            this.moveRafId = null;
+            const e = this.pendingMoveEvent;
+            if (!e) return;
+            this.processPointerMove(e);
+        });
+    };
+
+    private processPointerMove(event: PointerEvent): void {
         if (this.draggedNode()) {
             // Drag node - calculate new position in world coordinates
-            const node = this.draggedNode()!;
+            const dragged = this.draggedNode()!;
             const scale = this.zoom();
             const deltaX = (event.clientX - this.dragStartPos.x) / scale;
             const deltaY = (event.clientY - this.dragStartPos.y) / scale;
-            node.x = this.nodeStartPos.x + deltaX;
-            node.y = this.nodeStartPos.y + deltaY;
-            
-            // Push away colliding nodes
-            this.resolveNodeCollisions(node);
-            
-            this.nodes.set([...this.nodes()]);
+
+            this.updateNodes(nodes => {
+                const node = nodes.find(n => n.unit.id === dragged.unit.id);
+                if (!node) return;
+
+                node.x = this.nodeStartPos.x + deltaX;
+                node.y = this.nodeStartPos.y + deltaY;
+
+                // Push away colliding nodes
+                this.resolveNodeCollisions(node);
+            });
+
             this.hasModifications.set(true);
-        } else if (this.connectingFrom()) {
+            return;
+        }
+
+        if (this.connectingFrom()) {
             // Update connecting line end in world coordinates
             const worldPos = this.screenToWorld(event.clientX, event.clientY);
             this.connectingEnd.set(worldPos);
-            
+
             // Update hover state
             const target = document.elementFromPoint(event.clientX, event.clientY);
             const nodeEl = target?.closest('.node-group');
             const pinEl = target?.closest('.pin');
-            if (nodeEl) {
-                const unitId = nodeEl.getAttribute('data-unit-id');
-                const targetNode = this.nodes().find(n => n.unit.id === unitId);
-                if (targetNode && this.validTargets().has(targetNode.unit.id)) {
-                    this.hoveredNode.set(targetNode);
-                    if (pinEl) {
-                        // Find pin index from transform or position
-                        const pinGroup = pinEl as SVGGElement;
-                        const siblings = Array.from(pinGroup.parentElement?.querySelectorAll('.pin') || []);
-                        const idx = siblings.indexOf(pinGroup);
-                        this.hoveredPinIndex.set(this.isPinValidTarget(targetNode, idx) ? idx : null);
-                    } else {
-                        this.hoveredPinIndex.set(null);
-                    }
-                } else {
-                    this.hoveredNode.set(null);
-                    this.hoveredPinIndex.set(null);
-                }
-            } else {
+
+            if (!nodeEl) {
                 this.hoveredNode.set(null);
                 this.hoveredPinIndex.set(null);
+                return;
             }
-        } else if (this.activeTouches.size > 0 && this.lastPanPoint) {
+
+            const unitId = nodeEl.getAttribute('data-unit-id') || '';
+            const targetNode = this.nodesById().get(unitId);
+            if (!targetNode || !this.validTargets().has(targetNode.unit.id)) {
+                this.hoveredNode.set(null);
+                this.hoveredPinIndex.set(null);
+                return;
+            }
+
+            this.hoveredNode.set(targetNode);
+            if (!pinEl) {
+                this.hoveredPinIndex.set(null);
+                return;
+            }
+
+            const pinGroup = pinEl as SVGGElement;
+            const siblings = Array.from(pinGroup.parentElement?.querySelectorAll('.pin') || []);
+            const idx = siblings.indexOf(pinGroup);
+            this.hoveredPinIndex.set(this.isPinValidTarget(targetNode, idx) ? idx : null);
+            return;
+        }
+
+        if (this.activeTouches.size > 0 && this.lastPanPoint) {
             // Unified pan handling (works for both single-touch and pinch)
             const currentPanPoint = this.getEffectivePanPoint();
             const panDeltaX = currentPanPoint.x - this.lastPanPoint.x;
             const panDeltaY = currentPanPoint.y - this.lastPanPoint.y;
-            
+
             let newOffsetX = this.viewOffset().x + panDeltaX;
             let newOffsetY = this.viewOffset().y + panDeltaY;
-            
+
             // Handle pinch-to-zoom if two touches are active
             if (this.activeTouches.size === 2) {
                 const touches = Array.from(this.activeTouches.values());
                 const currentDistance = this.getTouchDistance(touches[0], touches[1]);
                 const scaleChange = currentDistance / this.pinchStartDistance;
                 const newZoom = Math.max(0.3, Math.min(3, this.pinchStartZoom * scaleChange));
-                
+
                 // Adjust offset to zoom towards pinch center
                 const oldZoom = this.zoom();
                 if (newZoom !== oldZoom) {
@@ -960,15 +1079,18 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 }
                 this.zoom.set(newZoom);
             }
-            
+
             this.viewOffset.set({ x: newOffsetX, y: newOffsetY });
             this.lastPanPoint = currentPanPoint;
         }
-    };
+    }
 
     private onGlobalPointerUp = (event: PointerEvent) => {
         // Remove touch from tracking
         this.activeTouches.delete(event.pointerId);
+
+        // If a move is queued, it may run after this up; clear to reduce stale work.
+        this.pendingMoveEvent = null;
         
         // Update pan point for remaining touches (smooth transition from pinch to single-touch pan)
         if (this.activeTouches.size > 0) {
@@ -985,7 +1107,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const pinEl = target?.closest('.pin');
             if (nodeEl) {
                 const unitId = nodeEl.getAttribute('data-unit-id');
-                const targetNode = this.nodes().find(n => n.unit.id === unitId);
+                const targetNode = this.nodesById().get(unitId || '');
                 const conn = this.connectingFrom()!;
                 if (targetNode && this.validTargets().has(targetNode.unit.id)) {
                     let targetPin = -1;
@@ -1011,9 +1133,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         
         // Clean up when no touches remain
         if (this.activeTouches.size === 0) {
-            this.lastPanPoint = null;
-            document.removeEventListener('pointermove', this.onGlobalPointerMove);
-            document.removeEventListener('pointerup', this.onGlobalPointerUp);
+            this.cleanupGlobalPointerState();
         }
     };
 
@@ -1169,7 +1289,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         this.networks.set(filtered);
         this.hasModifications.set(true);
         
-        const memberNode = this.nodes().find(n => n.unit.id === memberId);
+        const memberNode = this.nodesById().get(memberId);
         this.toastService.show(
             `Connected ${memberNode?.unit.getUnit().chassis || 'unit'} to ${masterNode.unit.getUnit().chassis}`,
             'success'

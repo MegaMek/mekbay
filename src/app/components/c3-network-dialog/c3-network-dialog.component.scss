@@ -122,10 +122,17 @@
 }
 
 .node-bg {
-  fill: radial-gradient(circle, #3a3a3a 0%, #252525 100%);
   fill: #2a2a2a;
+  fill: url(#node-bg-gradient);
   stroke-width: 3;
   transition: filter 0.2s, stroke 0.2s;
+}
+
+.node-border-segment {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: butt;
+  transition: filter 0.2s;
 }
 
 .node-inner-ring {
@@ -144,6 +151,7 @@
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
@@ -153,10 +161,6 @@
 }
 
 // ==================== Pin Styles ====================
-
-.pins-container {
-  // Container for pins at bottom of node
-}
 
 .pin {
   cursor: pointer;
