@@ -36,12 +36,13 @@ import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { LoggerService } from '../services/logger.service';
-import { CBTSerializedUnit, C3_NETWORK_GROUP_SCHEMA, CBTSerializedForce } from './force-serialization';
+import { CBTSerializedUnit, C3_NETWORK_GROUP_SCHEMA, CBTSerializedForce, CBTSerializedGroup } from './force-serialization';
 import { GameSystem } from './common.model';
 import { Force, UnitGroup } from './force.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { CBTForceUnit } from './cbt-force-unit.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
+import { generateUUID } from '../services/ws.service';
 
 /*
  * Author: Drake
@@ -124,7 +125,33 @@ export class CBTForce extends Force<CBTForceUnit> {
         return force;
     }
 
-    
+    /** Serialize this Force instance to a plain object */
+    public override serialize(): CBTSerializedForce {
+        let instanceId = this.instanceId();
+        if (!instanceId) {
+            instanceId = generateUUID();
+            this.instanceId.set(instanceId);
+        }
+        // Serialize groups (preserve per-group structure)
+        const serializedGroups: CBTSerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => ({
+            id: g.id,
+            name: g.name(),
+            nameLock: g.nameLock,
+            color: g.color,
+            units: g.units().map(u => u.serialize())
+        })) as CBTSerializedGroup[];
+        return {
+            version: 1,
+            timestamp: this.timestamp ?? new Date().toISOString(),
+            instanceId: instanceId,
+            name: this.name,
+            bv: this.totalBv(),
+            nameLock: this.nameLock || false,
+            groups: serializedGroups,
+            c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
+        } as CBTSerializedForce & { groups?: any[] };
+    }
+
     /**
      * Updates the force in-place from serialized data.
      */
