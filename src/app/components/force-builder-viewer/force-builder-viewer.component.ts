@@ -195,7 +195,7 @@ export class ForceBuilderViewerComponent {
         ref.closed.subscribe((result) => {
             if (result?.updated) {
                 // Save networks back to force
-                force.c3Networks.set(result.networks);
+                force.setNetwork(result.networks);
                 this.toastService.show('C3 network configuration saved', 'success');
             }
         });

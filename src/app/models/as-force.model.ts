@@ -116,7 +116,7 @@ export class ASForce extends Force<ASForceUnit> {
                         unitMap.set(forceUnit.id, forceUnit.getUnit());
                     }
                 }
-                force.c3Networks.set(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
+                force.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
             }
             force.refreshUnits();
         } finally {

@@ -85,10 +85,11 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     nameLock: boolean = false; // If true, the force name cannot be changed by the random generator
     timestamp: string | null = null;
     groups: WritableSignal<UnitGroup<TUnit>[]> = signal([]);
-    c3Networks: WritableSignal<SerializedC3NetworkGroup[]> = signal([]); // C3 network configurations
+    _c3Networks: WritableSignal<SerializedC3NetworkGroup[]> = signal([]); // C3 network configurations
     loading: boolean = false;
     cloud?: boolean = false; // Indicates if this force is stored in the cloud
     owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
+    c3Networks = this._c3Networks.asReadonly(); 
     public changed = new EventEmitter<void>();
     private _debounceTimer: any = null;
 
@@ -246,35 +247,18 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         });
     }
 
+    public setNetwork(networks: SerializedC3NetworkGroup[]) {
+        this._c3Networks.set(networks);
+        this.emitChanged();
+    }
+
     public loadAll() {
         this.units().forEach(unit => unit.load());
     }
 
     /** Serialize this Force instance to a plain object */
     public serialize(): SerializedForce {
-        let instanceId = this.instanceId();
-        if (!instanceId) {
-            instanceId = generateUUID();
-            this.instanceId.set(instanceId);
-        }
-        // Serialize groups (preserve per-group structure)
-        const serializedGroups: SerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => ({
-            id: g.id,
-            name: g.name(),
-            nameLock: g.nameLock,
-            color: g.color,
-            units: g.units().map(u => u.serialize())
-        })) as SerializedGroup[];
-        return {
-            version: 1,
-            timestamp: this.timestamp ?? new Date().toISOString(),
-            instanceId: instanceId,
-            name: this.name,
-            bv: this.totalBv(),
-            nameLock: this.nameLock || false,
-            groups: serializedGroups,
-            c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
-        } as SerializedForce & { groups?: any[] };
+        throw new Error('Force.serialize must be implemented by subclass');
     }
 
     /** Deserialize a plain object to a Force instance - must be implemented by subclass */

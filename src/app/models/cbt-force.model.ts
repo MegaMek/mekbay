@@ -115,7 +115,7 @@ export class CBTForce extends Force<CBTForceUnit> {
                         unitMap.set(forceUnit.id, forceUnit.getUnit());
                     }
                 }
-                force.c3Networks.set(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
+                force.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
             }
             force.refreshUnits();
         } finally {
@@ -194,9 +194,9 @@ export class CBTForce extends Force<CBTForceUnit> {
                         unitMap.set(forceUnit.id, forceUnit.getUnit());
                     }
                 }
-                this.c3Networks.set(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
+                this.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
             } else {
-                this.c3Networks.set([]);
+                this.setNetwork([]);
             }
         } finally {
             this.loading = false;
