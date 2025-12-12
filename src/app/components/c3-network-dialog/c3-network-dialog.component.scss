@@ -37,6 +37,31 @@
   }
 }
 
+.c3-dialog-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.connections-layer-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  line-height: 1;
+  min-width: 40px;
+
+  .icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  svg {
+    display: block;
+  }
+}
+
 // ==================== Burger Menu Button ====================
 
 .burger-menu-btn {
@@ -84,7 +109,6 @@
   transition: opacity 0.2s;
 
   &.dragging {
-    opacity: 0.85;
 
     .node-bg {
       filter: url(#node-drag-shadow);
