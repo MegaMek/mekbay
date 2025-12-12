@@ -646,20 +646,45 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         this.initializeNodes();
         this.networks.set([...(this.data.networks || [])]);
         this.initializeMasterPinColors();
+        this.fitViewToNodes();
     }
 
     private initializeNodes() {
         const c3Units = this.data.units.filter(u => C3NetworkUtil.hasC3(u.getUnit()));
+        if (c3Units.length === 0) return;
+
         const el = this.svgCanvas()?.nativeElement;
-        const w = el?.clientWidth || 800;
-        const h = el?.clientHeight || 600;
+        const canvasW = el?.clientWidth || 800;
+        const canvasH = el?.clientHeight || 600;
         const spacing = 180;
-        const cols = Math.max(1, Math.floor((w - 100) / spacing));
-        const rows = Math.ceil(c3Units.length / cols);
+
+        // Calculate optimal grid dimensions based on canvas aspect ratio
+        const aspectRatio = canvasW / canvasH;
+        const totalNodes = c3Units.length;
+        
+        // Find cols/rows that best match aspect ratio
+        // cols/rows ≈ aspectRatio, and cols * rows >= totalNodes
+        let bestCols = 1;
+        let bestRows = totalNodes;
+        let bestRatioDiff = Infinity;
+        
+        for (let cols = 1; cols <= totalNodes; cols++) {
+            const rows = Math.ceil(totalNodes / cols);
+            const gridRatio = cols / rows;
+            const ratioDiff = Math.abs(gridRatio - aspectRatio);
+            if (ratioDiff < bestRatioDiff) {
+                bestRatioDiff = ratioDiff;
+                bestCols = cols;
+                bestRows = rows;
+            }
+        }
+
+        const cols = bestCols;
+        const rows = bestRows;
         const gridW = (cols - 1) * spacing;
         const gridH = (rows - 1) * spacing;
-        const startX = (w - gridW) / 2;
-        const startY = Math.max(100, (h - gridH) / 2);
+        const startX = spacing; // Start with some margin
+        const startY = spacing;
 
         this.nodes.set(c3Units.map((unit, idx) => {
             const pos = unit.c3Position();
@@ -681,6 +706,51 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         // Load icon URLs asynchronously for any that weren't cached
         this.loadMissingIconUrls(c3Units);
+    }
+
+    /**
+     * Auto-adjust zoom and pan to fit all nodes within the visible canvas.
+     */
+    private fitViewToNodes(): void {
+        const nodes = this.nodes();
+        if (nodes.length === 0) return;
+
+        const el = this.svgCanvas()?.nativeElement;
+        if (!el) return;
+
+        const canvasW = el.clientWidth;
+        const canvasH = el.clientHeight;
+        const padding = 20; // Padding around the content
+
+        // Calculate bounding box of all nodes
+        const nodeRadius = this.NODE_RADIUS / 2;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        
+        for (const node of nodes) {
+            minX = Math.min(minX, node.x - nodeRadius);
+            minY = Math.min(minY, node.y - nodeRadius);
+            maxX = Math.max(maxX, node.x + nodeRadius);
+            maxY = Math.max(maxY, node.y + nodeRadius + 60); // Extra for pin labels
+        }
+
+        const contentW = maxX - minX;
+        const contentH = maxY - minY;
+
+        // Calculate zoom to fit content with padding
+        const availableW = canvasW - padding * 2;
+        const availableH = canvasH - padding * 2;
+        const scaleX = availableW / contentW;
+        const scaleY = availableH / contentH;
+        const newZoom = Math.min(1, Math.min(scaleX, scaleY)); // Don't zoom in past 1x
+
+        // Calculate offset to center the content
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        const offsetX = canvasW / 2 - centerX * newZoom;
+        const offsetY = canvasH / 2 - centerY * newZoom;
+
+        this.zoom.set(newZoom);
+        this.viewOffset.set({ x: offsetX, y: offsetY });
     }
 
     private async loadMissingIconUrls(units: ForceUnit[]) {
