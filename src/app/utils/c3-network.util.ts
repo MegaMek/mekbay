@@ -896,6 +896,8 @@ export class C3NetworkUtil {
 
         // Validate members
         const validMembers: string[] = [];
+        let firstMemberType: 'master' | 'slave' | null = null;
+        
         if (network.members) {
             for (const member of network.members) {
                 const { unitId, compIndex } = this.parseMember(member);
@@ -912,12 +914,26 @@ export class C3NetworkUtil {
                         c.index === compIndex && c.role === C3Role.MASTER
                     );
                     if (hasMasterComp) {
+                        // Check mixing rule: first member determines the type
+                        if (firstMemberType === null) {
+                            firstMemberType = 'master';
+                        } else if (firstMemberType !== 'master') {
+                            // Skip - can't mix masters with slaves
+                            continue;
+                        }
                         validMembers.push(member);
                     }
                 } else {
                     // This is a slave
                     const hasSlaveComp = memberC3Comps.some(c => c.role === C3Role.SLAVE);
                     if (hasSlaveComp) {
+                        // Check mixing rule: first member determines the type
+                        if (firstMemberType === null) {
+                            firstMemberType = 'slave';
+                        } else if (firstMemberType !== 'slave') {
+                            // Skip - can't mix slaves with masters
+                            continue;
+                        }
                         validMembers.push(member);
                     }
                 }
