@@ -166,6 +166,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return map;
     });
 
+    /**
+     * SVG layering is controlled by DOM order (not CSS z-index), so we render nodes
+     * sorted by zIndex to ensure bringNodeToFront() actually brings the node above.
+     */
+    protected sortedNodes = computed(() => {
+        return [...this.nodes()].sort((a, b) => a.zIndex - b.zIndex);
+    });
+
     // Drag state
     protected draggedNode = signal<C3Node | null>(null);
     private dragStartPos = { x: 0, y: 0 };

@@ -130,7 +130,7 @@
 
             <!-- Nodes layer (rendered first, so connections appear above) -->
             <g class="nodes-layer">
-                @for (node of nodes(); track node.unit.id) {
+                @for (node of sortedNodes(); track node.unit.id) {
                 <g class="node-group" [attr.data-unit-id]="node.unit.id"
                     [attr.transform]="'translate(' + node.x + ',' + node.y + ')'" [class.linked]="isNodeLinked(node)"
                     [class.disconnected]="!isNodeLinked(node)" [class.dragging]="draggedNode() === node"
