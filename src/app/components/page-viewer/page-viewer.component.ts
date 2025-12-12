@@ -125,10 +125,31 @@ export class PageViewerComponent implements AfterViewInit {
     // State
     loadError = signal<string | null>(null);
     currentSvg = signal<SVGSVGElement | null>(null);
-    isPickerOpen = signal(false);
 
-    // Heat diff marker data for each interaction service
-    heatDiffMarkers = signal<Map<number, { data: HeatDiffMarkerData | null; visible: boolean }>>(new Map());
+    // Track displayed units
+    private displayedUnitIds = signal<string[]>([]);
+
+    isPickerOpen = computed(() => {
+        if (this.readOnly()) {
+            return false;
+        }
+
+        const displayedIds = this.displayedUnitIds();
+        let anyPickerOpen = false;
+
+        for (const unitId of displayedIds) {
+            const service = this.interactionServices.get(unitId);
+            if (service?.isAnyPickerOpen()) {
+                anyPickerOpen = true;
+                break;
+            }
+        }
+
+        return anyPickerOpen;
+    });
+
+    // Heat diff marker data for each interaction service (keyed by unitId for stability)
+    heatDiffMarkers = signal<Map<string, { data: HeatDiffMarkerData | null; visible: boolean }>>(new Map());
 
     // Computed properties
     isFullyVisible = computed(() => this.zoomPanService.isFullyVisible());
@@ -152,11 +173,17 @@ export class PageViewerComponent implements AfterViewInit {
     // Computed array of heat markers for template iteration
     heatDiffMarkerArray = computed(() => {
         const markers = this.heatDiffMarkers();
-        return Array.from(markers.entries()).map(([index, state]) => ({
-            index,
-            data: state.data,
-            visible: state.visible
-        }));
+        const displayedIds = this.displayedUnitIds();
+
+        return displayedIds.map((unitId, index) => {
+            const state = markers.get(unitId);
+            return {
+                index,
+                unitId,
+                data: state?.data ?? null,
+                visible: state?.visible ?? false
+            };
+        });
     });
 
     // Private state
@@ -222,8 +249,16 @@ export class PageViewerComponent implements AfterViewInit {
     constructor() {
         // Watch for unit changes
         let previousUnit: CBTForceUnit | null = null;
+        let unitEffectRunId = 0;
 
-        effect(async () => {
+        effect((onCleanup) => {
+            const runId = ++unitEffectRunId;
+            let cancelled = false;
+
+            onCleanup(() => {
+                cancelled = true;
+            });
+
             const currentUnit = this.unit();
 
             // Skip if view isn't ready yet
@@ -231,38 +266,45 @@ export class PageViewerComponent implements AfterViewInit {
                 return;
             }
 
-            // Load unit if needed
-            if (currentUnit) {
-                await currentUnit.load();
-            }
+            void (async () => {
+                // Load unit if needed
+                if (currentUnit) {
+                    await currentUnit.load();
+                }
 
-            // Save previous unit's view state
-            if (previousUnit && previousUnit !== currentUnit) {
-                this.saveViewState(previousUnit);
-            }
+                // Ignore stale async continuations
+                if (cancelled || runId !== unitEffectRunId) {
+                    return;
+                }
 
-            // Check if the new unit is already displayed (no need to scroll/redisplay)
-            const alreadyDisplayed = currentUnit && this.displayedUnits.some(u => u.id === currentUnit.id);
-            
-            if (alreadyDisplayed) {
-                // Just update the selected state visually without redisplaying
-                untracked(() => this.updateSelectedPageHighlight());
-            } else {
-                // Update viewStartIndex to show the selected unit and redisplay
-                untracked(() => {
-                    const force = this.forceBuilder.currentForce();
-                    const allUnits = force?.units() ?? [];
-                    if (currentUnit) {
-                        const newIndex = allUnits.indexOf(currentUnit);
-                        if (newIndex >= 0) {
-                            this.viewStartIndex.set(newIndex);
+                // Save previous unit's view state
+                if (previousUnit && previousUnit !== currentUnit) {
+                    this.saveViewState(previousUnit);
+                }
+
+                // Check if the new unit is already displayed (no need to scroll/redisplay)
+                const alreadyDisplayed = currentUnit && this.displayedUnits.some(u => u.id === currentUnit.id);
+
+                if (alreadyDisplayed) {
+                    // Just update the selected state visually without redisplaying
+                    untracked(() => this.updateSelectedPageHighlight());
+                } else {
+                    // Update viewStartIndex to show the selected unit and redisplay
+                    untracked(() => {
+                        const force = this.forceBuilder.currentForce();
+                        const allUnits = force?.units() ?? [];
+                        if (currentUnit) {
+                            const newIndex = allUnits.indexOf(currentUnit);
+                            if (newIndex >= 0) {
+                                this.viewStartIndex.set(newIndex);
+                            }
                         }
-                    }
-                    this.displayUnit();
-                });
-            }
+                        this.displayUnit();
+                    });
+                }
 
-            previousUnit = currentUnit;
+                previousUnit = currentUnit;
+            })();
         }, { injector: this.injector });
 
         // Watch for force units changes (additions, removals, reordering)
@@ -305,7 +347,6 @@ export class PageViewerComponent implements AfterViewInit {
         this.setupResizeObserver();
         this.setupPageClickCapture();
         this.initializeZoomPan();
-        this.initializePickerMonitoring();
         this.updateDimensions();
 
         // Initial display after view is ready - load unit first if needed
@@ -840,6 +881,9 @@ export class PageViewerComponent implements AfterViewInit {
         this.displayedUnits = Array.from(uniqueUnitIndices)
             .map(idx => allUnits[idx] as CBTForceUnit)
             .filter(u => u);
+
+        // Keep reactive ordering in sync (for marker ordering & picker state)
+        this.displayedUnitIds.set(this.displayedUnits.map(u => u.id));
         
         // Clean up unused overlays (keep only displayed ones)
         this.cleanupUnusedCanvasOverlays(displayedUnitIds);
@@ -912,9 +956,7 @@ export class PageViewerComponent implements AfterViewInit {
             untracked(() => {
                 this.heatDiffMarkers.update(markers => {
                     const newMarkers = new Map(markers);
-                    // Use index-based key for heat markers to maintain compatibility
-                    const markerIndex = this.getMarkerIndexForUnit(unitId);
-                    newMarkers.set(markerIndex, { data: markerData, visible });
+                    newMarkers.set(unitId, { data: markerData, visible });
                     return newMarkers;
                 });
             });
@@ -924,15 +966,6 @@ export class PageViewerComponent implements AfterViewInit {
         this.interactionServices.set(unitId, service);
         
         return service;
-    }
-
-    /**
-     * Gets a stable marker index for a unit ID.
-     * This maintains compatibility with the heat diff marker array.
-     */
-    private getMarkerIndexForUnit(unitId: string): number {
-        const displayedIndex = this.displayedUnits.findIndex(u => u.id === unitId);
-        return displayedIndex >= 0 ? displayedIndex : 0;
     }
 
     /**
@@ -1191,22 +1224,6 @@ export class PageViewerComponent implements AfterViewInit {
         });
     }
 
-    private initializePickerMonitoring(): void {
-        if (this.readOnly()) return;
-
-        // Monitor picker open state from any service
-        effect(() => {
-            // Check all services for picker state
-            let anyPickerOpen = false;
-            this.interactionServices.forEach(service => {
-                if (service.isAnyPickerOpen()) {
-                    anyPickerOpen = true;
-                }
-            });
-            this.isPickerOpen.set(anyPickerOpen);
-        }, { injector: this.injector });
-    }
-
     private updateDimensions(): void {
         const container = this.containerRef().nativeElement;
         const pageCount = this.getTotalPageCount();
@@ -1222,6 +1239,15 @@ export class PageViewerComponent implements AfterViewInit {
         const previousVisibleCount = this.visiblePageCount();
         this.updateDimensions();
         this.zoomPanService.handleResize();
+
+        // Refresh the synced view state after resize adjustments (minScale/clamp/centering).
+        // This prevents restoring a stale lastViewState after a window resize.
+        const viewState = this.zoomPanService.viewState();
+        this.lastViewState = {
+            scale: viewState.scale,
+            translateX: viewState.translateX,
+            translateY: viewState.translateY
+        };
 
         // If visible page count changed, re-render pages
         const newVisibleCount = this.visiblePageCount();
@@ -1250,6 +1276,7 @@ export class PageViewerComponent implements AfterViewInit {
         });
         this.pageElements = [];
         this.displayedUnits = [];
+        this.displayedUnitIds.set([]);
 
         this.loadError.set(null);
         this.currentSvg.set(null);
@@ -1289,6 +1316,9 @@ export class PageViewerComponent implements AfterViewInit {
             }
         }
 
+        // Keep reactive ordering in sync (for marker ordering & picker state)
+        this.displayedUnitIds.set(this.displayedUnits.map(u => u.id));
+
         // Capture version to detect stale callbacks
         const currentVersion = ++this.displayVersion;
 
@@ -1301,6 +1331,140 @@ export class PageViewerComponent implements AfterViewInit {
                 return;
             }
             this.renderPages({ fromSwipe });
+        });
+    }
+
+    /**
+     * Update currently displayed pages without clearing/recreating wrappers.
+     * Used to avoid flicker when force units are reordered and the selected unit remains visible.
+     *
+     * Preserves the selected unit's existing wrapper/SVG and updates the other slots in-place.
+     */
+    private updateDisplayedPagesInPlace(options: { preserveSelectedUnitId: string } ): void {
+        const content = this.contentRef().nativeElement;
+        const preserveSelectedUnitId = options.preserveSelectedUnitId;
+
+        if (this.pageElements.length === 0) {
+            this.displayUnit();
+            return;
+        }
+
+        const force = this.forceBuilder.currentForce();
+        const allUnits = force?.units() ?? [];
+        const totalUnits = allUnits.length;
+        const visiblePages = this.visiblePageCount();
+        const startIndex = this.viewStartIndex();
+
+        if (totalUnits === 0) {
+            this.clearPages();
+            return;
+        }
+
+        // Compute expected units for each visible slot (same logic as displayUnit)
+        const expectedUnits: CBTForceUnit[] = [];
+        if (totalUnits <= visiblePages) {
+            for (const unit of allUnits) {
+                expectedUnits.push(unit as CBTForceUnit);
+            }
+        } else {
+            for (let i = 0; i < visiblePages; i++) {
+                const unitIndex = (startIndex + i) % totalUnits;
+                const unitToDisplay = allUnits[unitIndex] as CBTForceUnit;
+                if (unitToDisplay && !expectedUnits.includes(unitToDisplay)) {
+                    expectedUnits.push(unitToDisplay);
+                }
+            }
+        }
+
+        // If wrapper count doesn't match, fall back to full render
+        if (expectedUnits.length !== this.pageElements.length) {
+            this.displayUnit();
+            return;
+        }
+
+        const preservedSlotIndex = this.pageElements.findIndex(el => el.dataset['unitId'] === preserveSelectedUnitId);
+
+        // Capture version to avoid stale async updates
+        const currentVersion = ++this.displayVersion;
+        const loadPromises = expectedUnits.map(u => u.load());
+
+        Promise.all(loadPromises).then(() => {
+            if (this.displayVersion !== currentVersion) {
+                return;
+            }
+
+            const displayedUnitIds = new Set<string>();
+
+            for (let slotIndex = 0; slotIndex < expectedUnits.length; slotIndex++) {
+                const unit = expectedUnits[slotIndex];
+                const wrapper = this.pageElements[slotIndex];
+                if (!unit || !wrapper) continue;
+
+                displayedUnitIds.add(unit.id);
+
+                // Preserve the selected unit's existing wrapper/SVG to prevent flicker.
+                if (slotIndex === preservedSlotIndex && wrapper.dataset['unitId'] === preserveSelectedUnitId) {
+                    continue;
+                }
+
+                const svg = unit.svg();
+                if (!svg) {
+                    continue;
+                }
+
+                // Clear any stale per-SVG scaling (e.g., from swipe slot assignment).
+                // Normal rendering relies on PageViewerZoomPanService to apply scaling.
+                svg.style.transform = '';
+                svg.style.transformOrigin = '';
+
+                // Update wrapper metadata
+                wrapper.dataset['unitId'] = unit.id;
+
+                // Replace the root SVG in this wrapper (without disturbing overlays)
+                const existingSvg = wrapper.querySelector('svg');
+                if (existingSvg && existingSvg !== svg && existingSvg.parentElement === wrapper) {
+                    wrapper.removeChild(existingSvg);
+                }
+
+                // Ensure SVG is attached here and sits under overlays
+                if (svg.parentElement !== wrapper) {
+                    wrapper.insertBefore(svg, wrapper.firstChild);
+                }
+
+                // Maintain currentSvg semantics (first slot)
+                if (slotIndex === 0) {
+                    this.currentSvg.set(svg);
+                }
+
+                if (!this.readOnly()) {
+                    this.getOrCreateInteractionService(unit, svg);
+                    this.getOrCreateCanvasOverlay(wrapper, unit);
+                    const overlayMode = this.visiblePageCount() === 1 ? 'fixed' : 'page';
+                    this.getOrCreateInteractionOverlay(wrapper, unit, overlayMode);
+                }
+            }
+
+            // Replace displayed units (model) without rebuilding wrappers
+            this.displayedUnits = expectedUnits;
+            this.displayedUnitIds.set(expectedUnits.map(u => u.id));
+
+            // Update selected highlight (classes) in case unit IDs moved
+            this.updateSelectedPageHighlight();
+
+            // Clean up services/overlays for units no longer displayed
+            this.cleanupUnusedInteractionServices(displayedUnitIds);
+            this.cleanupUnusedCanvasOverlays(displayedUnitIds);
+            this.cleanupUnusedInteractionOverlays(displayedUnitIds);
+
+            // Keep zoom-pan centering aware of actual page count (unchanged)
+            this.zoomPanService.setDisplayedPages(this.pageElements.length);
+
+            // Ensure any newly attached SVGs receive the current transform.
+            // Without this, swapped-in SVGs can render at the wrong scale after reorder.
+            this.zoomPanService.applyCurrentTransform();
+
+            // Apply fluff image visibility setting to any newly attached SVGs
+            this.setFluffImageVisibility();
         });
     }
 
@@ -1396,6 +1560,7 @@ export class PageViewerComponent implements AfterViewInit {
         });
         this.pageElements = [];
         this.displayedUnits = [];
+        this.displayedUnitIds.set([]);
     }
 
     private getTotalPageCount(): number {
@@ -1587,9 +1752,31 @@ export class PageViewerComponent implements AfterViewInit {
         }
 
         // Check if any of our currently displayed units are no longer at the expected indices
-        const viewStart = this.viewStartIndex();
+        let viewStart = this.viewStartIndex();
         const visibleCount = this.visiblePageCount();
         let needsRedisplay = false;
+
+        // If the currently selected unit was visible, follow it and keep its relative slot.
+        // Example: if selected unit was in slot 1 of 3, keep it in slot 1 after reorder.
+        const selectedUnitId = this.unit()?.id;
+        let preserveSelectedSlot = false;
+        if (selectedUnitId && this.displayedUnits.length > 0 && allUnits.length > 0) {
+            const previousSlotIndex = this.displayedUnits.findIndex(u => u.id === selectedUnitId);
+            preserveSelectedSlot = previousSlotIndex >= 0;
+
+            if (previousSlotIndex >= 0 && allUnits.length > visibleCount) {
+                const newSelectedIndex = allUnits.findIndex(u => u.id === selectedUnitId);
+                if (newSelectedIndex >= 0) {
+                    const rawStartIndex = newSelectedIndex - previousSlotIndex;
+                    const normalizedStartIndex = ((rawStartIndex % allUnits.length) + allUnits.length) % allUnits.length;
+                    if (normalizedStartIndex !== viewStart) {
+                        this.viewStartIndex.set(normalizedStartIndex);
+                        viewStart = normalizedStartIndex;
+                        needsRedisplay = true;
+                    }
+                }
+            }
+        }
 
         // Check each displayed unit against what should be at that index
         for (let i = 0; i < this.displayedUnits.length; i++) {
@@ -1616,7 +1803,12 @@ export class PageViewerComponent implements AfterViewInit {
         }
 
         if (needsRedisplay) {
-            this.displayUnit();
+            // If the selected unit is already visible, update non-selected pages in-place to prevent flicker.
+            if (selectedUnitId && preserveSelectedSlot && this.pageElements.length > 0) {
+                this.updateDisplayedPagesInPlace({ preserveSelectedUnitId: selectedUnitId });
+            } else {
+                this.displayUnit();
+            }
         }
     }
 

@@ -22,7 +22,7 @@
 
 <!-- Heat diff markers for each interaction service -->
 @if (!readOnly()) {
-    @for (marker of heatDiffMarkerArray(); track marker.index) {
+    @for (marker of heatDiffMarkerArray(); track marker.unitId) {
         <heat-diff-marker 
             [data]="marker.data"
             [visible]="marker.visible">
