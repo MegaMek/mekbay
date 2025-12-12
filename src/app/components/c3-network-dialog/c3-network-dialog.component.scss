@@ -78,7 +78,7 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 20; /* ABOVE nodes (which are z-index: 5) */
+  z-index: 1000;
   overflow: visible;
 }
 
@@ -92,7 +92,6 @@
   user-select: none;
   touch-action: none; // Prevent browser handling for proper drag/pinch support
   transition: box-shadow 0.2s, border-color 0.2s;
-  // z-index is set dynamically via [ngStyle] for proper layering
 
   &:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);

@@ -133,9 +133,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private pinchStartZoom = 1;
     private activeTouches = new Map<number, PointerEvent>();
 
-    // Z-index counter for node layering
-    private maxZIndex = signal(0);
-
     // Color tracking
     private nextColorIndex = 0;
     private masterPinColors = new Map<string, string>();
@@ -618,7 +615,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 zIndex: idx
             };
         }));
-        this.maxZIndex.set(c3Units.length);
     }
 
     private initializeMasterPinColors() {
@@ -788,14 +784,25 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     /**
-     * Bring a node to the front by giving it the highest z-index
+     * Bring a node to the front by reordering z-indexes.
+     * Normalizes all z-indexes to stay within a compact range.
      */
     private bringNodeToFront(node: C3Node): void {
-        const newZ = this.maxZIndex() + 1;
-        this.maxZIndex.set(newZ);
-        node.zIndex = newZ;
-        // Trigger re-render by updating nodes signal
-        this.nodes.set([...this.nodes()]);
+        const nodes = this.nodes();
+        const currentZ = node.zIndex;
+        
+        // Shift down all nodes that were above this one
+        for (const n of nodes) {
+            if (n.zIndex > currentZ) {
+                n.zIndex--;
+            }
+        }
+        
+        // Put this node at the top
+        node.zIndex = nodes.length - 1;
+        
+        // Trigger re-render
+        this.nodes.set([...nodes]);
     }
 
     protected onContainerPointerDown(event: PointerEvent) {
