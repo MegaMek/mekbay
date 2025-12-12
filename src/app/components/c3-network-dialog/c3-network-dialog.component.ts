@@ -56,6 +56,7 @@ import { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { ToastService } from '../../services/toast.service';
 import { ImageStorageService } from '../../services/image-storage.service';
 import { OptionsService } from '../../services/options.service';
+import { LayoutService } from '../../services/layout.service';
 
 export interface C3NetworkDialogData {
     units: ForceUnit[];
@@ -116,6 +117,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private imageService = inject(ImageStorageService);
     private destroyRef = inject(DestroyRef);
     private optionsService = inject(OptionsService);
+    protected layoutService = inject(LayoutService);
     private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
 
     // Fallback icon for units without icons
@@ -131,6 +133,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected nodes = signal<C3Node[]>([]);
     protected networks = signal<SerializedC3NetworkGroup[]>([]);
     protected hasModifications = signal(false);
+    protected sidebarOpen = signal(false);
 
     /** Fast lookup to avoid repeated linear searches during computed layout. */
     protected nodesById = computed(() => {
