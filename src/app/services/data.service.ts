@@ -44,7 +44,7 @@ import { Quirk, Quirks } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
 import { ForceUnit } from '../models/force-unit.model';
 import { Force }    from '../models/force.model';
-import { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
+import { ASSerializedForce, CBTSerializedForce, SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
 import { UnitInitializerService } from './unit-initializer.service';
 import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
@@ -827,9 +827,9 @@ export class DataService {
         if (localRaw) {
             try {
                 if (localRaw.type === GameSystem.AS) {
-                    local = ASForce.deserialize(localRaw, this, this.unitInitializer, this.injector);
+                    local = ASForce.deserialize(localRaw as ASSerializedForce, this, this.unitInitializer, this.injector);
                 } else { // CBT
-                    local = CBTForce.deserialize(localRaw, this, this.unitInitializer, this.injector);
+                    local = CBTForce.deserialize(localRaw as CBTSerializedForce, this, this.unitInitializer, this.injector);
                 }
             } catch (error) { 
                 this.logger.error((error as any)?.message ?? error);
@@ -838,9 +838,9 @@ export class DataService {
         if (cloudRaw) {
             try {
                 if (cloudRaw.type === GameSystem.AS) {
-                    cloud = ASForce.deserialize(cloudRaw, this, this.unitInitializer, this.injector);
+                    cloud = ASForce.deserialize(cloudRaw as ASSerializedForce, this, this.unitInitializer, this.injector);
                 } else { // CBT
-                    cloud = CBTForce.deserialize(cloudRaw, this, this.unitInitializer, this.injector);
+                    cloud = CBTForce.deserialize(cloudRaw as CBTSerializedForce, this, this.unitInitializer, this.injector);
                 }
             } catch (error) { 
                 this.logger.error((error as any)?.message ?? error);
@@ -969,20 +969,6 @@ export class DataService {
                             }
                             groups.push(loadGroup);
                         }
-                    } else if (raw.units && Array.isArray(raw.units)) {
-                        const loadUnits: LoadForceUnit[] = [];
-                        for (const unit of raw.units as SerializedUnit[]) {
-                            const loadUnit: LoadForceUnit = {
-                                unit: this.getUnitByName(unit.unit),
-                                alias: unit.alias,
-                                destroyed: unit.state.destroyed ?? false
-                            }
-                            loadUnits.push(loadUnit);
-                        };
-                        groups.push({
-                            name: '',
-                            units: loadUnits
-                        });
                     }
                     const entry: LoadForceEntry = new LoadForceEntry({
                         cloud: true,

@@ -36,9 +36,10 @@ import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { LoggerService } from '../services/logger.service';
-import { ASSerializedUnit, SerializedForce, SerializedUnit } from './force-serialization';
+import { ASSerializedUnit, C3_NETWORK_GROUP_SCHEMA, ASSerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
 import { Force, UnitGroup } from './force.model';
+import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnit } from './as-force-unit.model';
 
 /*
@@ -67,7 +68,7 @@ export class ASForce extends Force<ASForceUnit> {
 
     /** Deserialize a plain object to an ASForce instance */
     public static override deserialize(
-        data: SerializedForce,
+        data: ASSerializedForce,
         dataService: DataService,
         unitInitializer: UnitInitializerService,
         injector: Injector
@@ -105,10 +106,16 @@ export class ASForce extends Force<ASForceUnit> {
             }
             force.groups.set(parsedGroups);
             force.timestamp = data.timestamp ?? null;
+            if (data.c3Networks) {
+                force.c3Networks.set(Sanitizer.sanitizeArray(data.c3Networks, C3_NETWORK_GROUP_SCHEMA));
+            }
             force.refreshUnits();
         } finally {
             force.loading = false;
         }
         return force;
+    }
+
+    public override update(data: ASSerializedForce) {
     }
 }

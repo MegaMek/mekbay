@@ -37,7 +37,7 @@ import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
 import { LoggerService } from '../services/logger.service';
-import { SerializedForce, SerializedGroup, SerializedUnit, SerializedC3NetworkGroup } from './force-serialization';
+import { SerializedForce, SerializedGroup, SerializedUnit, SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
@@ -294,69 +294,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }, 300); // debounce
     }
 
-    /**
-     * Updates the force in-place from serialized data.
-     */
-    public update(data: SerializedForce) {
-        this.loading = true;
-        try {
-            if (this.name !== data.name) this.setName(data.name, false);
-            this.nameLock = data.nameLock || false;
-            this.timestamp = data.timestamp ?? null;
+    public abstract update(data: SerializedForce): void;
 
-            const incomingGroupsData = data.groups || [];
-            const currentGroups = this.groups();
-            const currentGroupMap = new Map(currentGroups.map(g => [g.id, g]));
-            const allCurrentUnitsMap = new Map(this.units().map(u => [u.id, u]));
-            const allIncomingUnitIds = new Set(incomingGroupsData.flatMap(g => g.units.map(u => u.id)));
-
-            // Destroy units that are no longer in the force at all
-            for (const [unitId, unit] of allCurrentUnitsMap.entries()) {
-                if (!allIncomingUnitIds.has(unitId)) {
-                    unit.destroy();
-                    allCurrentUnitsMap.delete(unitId);
-                }
-            }
-
-            // Update existing groups and add new ones, and update/move units
-            const updatedGroups: UnitGroup<TUnit>[] = incomingGroupsData.map(groupData => {
-                let group = currentGroupMap.get(groupData.id);
-                if (group) {
-                    // Update existing group
-                    if (group.name() !== groupData.name) group.setName(groupData.name, false);
-                    group.nameLock = groupData.nameLock;
-                    group.color = groupData.color;
-                } else {
-                    // Add new group
-                    group = new UnitGroup<TUnit>(this, groupData.name);
-                    group.id = groupData.id;
-                    group.nameLock = groupData.nameLock;
-                    group.color = groupData.color;
-                }
-
-                const groupUnits = groupData.units.map(unitData => {
-                    let unit = allCurrentUnitsMap.get(unitData.id);
-                    if (unit) {
-                        // Unit exists, update it
-                        unit.update(unitData);
-                    } else {
-                        // Unit is new to the force, create it
-                        unit = this.deserializeForceUnit(unitData);
-                    }
-                    return unit;
-                });
-                group.units.set(groupUnits);
-                return group;
-            });
-
-            this.groups.set(updatedGroups);
-            this.removeEmptyGroups();
-            this.refreshUnits();
-            
-            // Update C3 networks
-            this.c3Networks.set(data.c3Networks || []);
-        } finally {
-            this.loading = false;
-        }
-    }
 }

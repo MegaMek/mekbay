@@ -61,9 +61,15 @@ export interface SerializedForce {
     pv?: number;
     owned?: boolean;
     groups?: SerializedGroup[];
-    units?: SerializedUnit[]; // Deprecated, use groups instead
-    /** C3 network configurations stored at force level */
     c3Networks?: SerializedC3NetworkGroup[];
+}
+
+export interface CBTSerializedForce extends SerializedForce {
+    groups?: CBTSerializedGroup[];
+}
+
+export interface ASSerializedForce extends SerializedForce {
+    groups?: ASSerializedGroup[];
 }
 
 export interface SerializedGroup {
@@ -74,6 +80,13 @@ export interface SerializedGroup {
     units: SerializedUnit[];
 }
 
+export interface CBTSerializedGroup extends SerializedGroup {
+    units: CBTSerializedUnit[];
+}
+
+export interface ASSerializedGroup extends SerializedGroup {
+    units: ASSerializedUnit[];
+}
 export interface SerializedUnit {
     id: string;
     unit: string; // Unit name
@@ -224,6 +237,33 @@ export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
         return undefined;
     })
     .boolean('destroyed')
+    .build();
+
+export const C3_POSITION_SCHEMA = Sanitizer.schema<{ x: number; y: number }>()
+    .number('x', { default: 0 })
+    .number('y', { default: 0 })
+    .build();
+
+export const C3_NETWORK_GROUP_SCHEMA = Sanitizer.schema<SerializedC3NetworkGroup>()
+    .string('id')
+    .string('type')
+    .string('color')
+    .custom('peerIds', (value: unknown) => {
+        if (!value) return undefined;
+        if (Array.isArray(value)) {
+            return value.filter(id => typeof id === 'string').map(String);
+        }
+        return undefined;
+    })
+    .string('masterId')
+    .number('masterCompIndex')
+    .custom('members', (value: unknown) => {
+        if (!value) return undefined;
+        if (Array.isArray(value)) {
+            return value.filter(id => typeof id === 'string').map(String);
+        }
+        return undefined;
+    })
     .build();
 
     

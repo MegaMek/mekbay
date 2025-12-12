@@ -33,11 +33,12 @@
 
 import { signal, computed } from '@angular/core';
 import { EquipmentUnitType } from './equipment.model';
-import { LocationData, HeatProfile, SerializedInventory, CriticalSlot, MountedEquipment, SerializedState, CBTSerializedState } from './force-serialization';
+import { LocationData, HeatProfile, SerializedInventory, CriticalSlot, MountedEquipment, SerializedState, CBTSerializedState, C3_POSITION_SCHEMA } from './force-serialization';
 import { CrewMember } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';
 import { TurnState } from './turn-state.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
+import { Sanitizer } from '../utils/sanitizer.util';
 
 /*
  * Author: Drake
@@ -113,10 +114,8 @@ export class CBTForceUnitState extends ForceUnitState {
         this.destroyed.set(data.destroyed);
         this.shutdown.set(data.shutdown);
         this.heat.set(data.heat);
-        
-        // Handle C3 position data
         if (data.c3Position) {
-            this.c3Position.set(data.c3Position);
+            this.c3Position.set(Sanitizer.sanitize(data.c3Position, C3_POSITION_SCHEMA));
         }
 
         // We update it only if changed
