@@ -765,4 +765,178 @@ export class C3NetworkUtil {
             this.collectAllUnitsInTree(subNet, allNetworks, unitIds);
         }
     }
+
+    // ==================== Network Validation & Cleanup ====================
+
+    /**
+     * Validate and clean C3 networks against available units.
+     * Removes references to units that don't exist or don't have the required C3 components.
+     * Returns a new array of cleaned networks (does not mutate input).
+     * 
+     * @param networks The networks to validate
+     * @param unitMap Map of unit ID to Unit object (containing C3 component info)
+     * @returns Cleaned networks with invalid references removed
+     */
+    public static validateAndCleanNetworks(
+        networks: SerializedC3NetworkGroup[],
+        unitMap: Map<string, Unit>
+    ): SerializedC3NetworkGroup[] {
+        if (!networks || networks.length === 0) return [];
+
+        // Build a map of unitId -> C3 components for quick lookup
+        const unitC3Map = new Map<string, C3Component[]>();
+        for (const [id, unit] of unitMap) {
+            const c3Comps = this.getC3Components(unit);
+            if (c3Comps.length > 0) {
+                unitC3Map.set(id, c3Comps);
+            }
+        }
+
+        const cleanedNetworks: SerializedC3NetworkGroup[] = [];
+
+        for (const network of networks) {
+            const cleaned = this.validateNetwork(network, unitMap, unitC3Map);
+            if (cleaned) {
+                cleanedNetworks.push(cleaned);
+            }
+        }
+
+        // Sub-networks whose parent was removed become top-level networks automatically
+        return cleanedNetworks;
+    }
+
+    /**
+     * Validate a single network and return a cleaned version or null if invalid.
+     */
+    private static validateNetwork(
+        network: SerializedC3NetworkGroup,
+        unitMap: Map<string, Unit>,
+        unitC3Map: Map<string, C3Component[]>
+    ): SerializedC3NetworkGroup | null {
+        // Validate peer network
+        if (network.peerIds && network.peerIds.length > 0) {
+            return this.validatePeerNetwork(network, unitMap, unitC3Map);
+        }
+
+        // Validate master/slave network
+        if (network.masterId !== undefined) {
+            return this.validateC3MasterNetwork(network, unitMap, unitC3Map);
+        }
+
+        // Invalid network structure
+        return null;
+    }
+
+    /**
+     * Validate a peer network (C3i, Naval, Nova)
+     */
+    private static validatePeerNetwork(
+        network: SerializedC3NetworkGroup,
+        unitMap: Map<string, Unit>,
+        unitC3Map: Map<string, C3Component[]>
+    ): SerializedC3NetworkGroup | null {
+        if (!network.peerIds) return null;
+
+        const validPeerIds: string[] = [];
+        const networkType = network.type as C3NetworkType;
+
+        for (const peerId of network.peerIds) {
+            // Check if unit exists
+            if (!unitMap.has(peerId)) continue;
+
+            // Check if unit has appropriate C3 component
+            const c3Comps = unitC3Map.get(peerId);
+            if (!c3Comps) continue;
+
+            // Check if unit has a peer component of the right type
+            const hasPeerComp = c3Comps.some(c => 
+                c.role === C3Role.PEER && c.networkType === networkType
+            );
+            if (hasPeerComp) {
+                validPeerIds.push(peerId);
+            }
+        }
+
+        // Need at least 2 peers for a valid network
+        if (validPeerIds.length < 2) return null;
+
+        // Enforce network limit - keep only up to the max allowed peers
+        const limit = C3_NETWORK_LIMITS[networkType];
+        const truncatedPeerIds = validPeerIds.slice(0, limit);
+
+        return {
+            ...network,
+            peerIds: truncatedPeerIds
+        };
+    }
+
+    /**
+     * Validate a master/slave network (C3)
+     */
+    private static validateC3MasterNetwork(
+        network: SerializedC3NetworkGroup,
+        unitMap: Map<string, Unit>,
+        unitC3Map: Map<string, C3Component[]>
+    ): SerializedC3NetworkGroup | null {
+        if (network.masterId === undefined || network.masterCompIndex === undefined) {
+            return null;
+        }
+
+        // Check if master unit exists
+        if (!unitMap.has(network.masterId)) return null;
+
+        // Check if master has appropriate C3 master component at the specified index
+        const masterC3Comps = unitC3Map.get(network.masterId);
+        if (!masterC3Comps) return null;
+
+        const masterComp = masterC3Comps.find(c => 
+            c.index === network.masterCompIndex && c.role === C3Role.MASTER
+        );
+        if (!masterComp) return null;
+
+        // Validate members
+        const validMembers: string[] = [];
+        if (network.members) {
+            for (const member of network.members) {
+                const { unitId, compIndex } = this.parseMember(member);
+                
+                // Check if unit exists
+                if (!unitMap.has(unitId)) continue;
+
+                const memberC3Comps = unitC3Map.get(unitId);
+                if (!memberC3Comps) continue;
+
+                if (compIndex !== undefined) {
+                    // This is a master component connected as a child
+                    const hasMasterComp = memberC3Comps.some(c => 
+                        c.index === compIndex && c.role === C3Role.MASTER
+                    );
+                    if (hasMasterComp) {
+                        validMembers.push(member);
+                    }
+                } else {
+                    // This is a slave
+                    const hasSlaveComp = memberC3Comps.some(c => c.role === C3Role.SLAVE);
+                    if (hasSlaveComp) {
+                        validMembers.push(member);
+                    }
+                }
+            }
+        }
+
+        if (validMembers.length === 0) {
+            // No members - no network
+            return null;
+        }
+
+        // Enforce network limit - master can have up to limit children
+        const limit = C3_NETWORK_LIMITS[network.type as C3NetworkType];
+        const truncatedMembers = validMembers.slice(0, limit);
+
+        // Return network with cleaned and truncated members
+        return {
+            ...network,
+            members: truncatedMembers
+        };
+    }
 }

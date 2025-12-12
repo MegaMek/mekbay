@@ -41,6 +41,7 @@ import { GameSystem } from './common.model';
 import { Force, UnitGroup } from './force.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { CBTForceUnit } from './cbt-force-unit.model';
+import { C3NetworkUtil } from '../utils/c3-network.util';
 
 /*
  * Author: Drake
@@ -106,7 +107,15 @@ export class CBTForce extends Force<CBTForceUnit> {
             force.groups.set(parsedGroups);
             force.timestamp = data.timestamp ?? null;
             if (data.c3Networks) {
-                force.c3Networks.set(Sanitizer.sanitizeArray(data.c3Networks, C3_NETWORK_GROUP_SCHEMA));
+                const sanitized = Sanitizer.sanitizeArray(data.c3Networks, C3_NETWORK_GROUP_SCHEMA);
+                // Build unit map for validation
+                const unitMap = new Map<string, Unit>();
+                for (const group of parsedGroups) {
+                    for (const forceUnit of group.units()) {
+                        unitMap.set(forceUnit.id, forceUnit.getUnit());
+                    }
+                }
+                force.c3Networks.set(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
             }
             force.refreshUnits();
         } finally {
@@ -175,9 +184,17 @@ export class CBTForce extends Force<CBTForceUnit> {
             this.removeEmptyGroups();
             this.refreshUnits();
             
-            // Update C3 networks with sanitization
+            // Update C3 networks with sanitization and validation
             if (data.c3Networks) {
-                this.c3Networks.set(Sanitizer.sanitizeArray(data.c3Networks, C3_NETWORK_GROUP_SCHEMA));
+                const sanitized = Sanitizer.sanitizeArray(data.c3Networks, C3_NETWORK_GROUP_SCHEMA);
+                // Build unit map for validation from current groups
+                const unitMap = new Map<string, Unit>();
+                for (const group of this.groups()) {
+                    for (const forceUnit of group.units()) {
+                        unitMap.set(forceUnit.id, forceUnit.getUnit());
+                    }
+                }
+                this.c3Networks.set(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
             } else {
                 this.c3Networks.set([]);
             }

@@ -194,27 +194,6 @@ export interface C3Component {
 }
 
 /**
- * Represents a C3 network link (internal model, not for serialization)
- * @deprecated Use SerializedC3NetworkGroup from force-serialization.ts instead
- */
-export interface C3NetworkLink {
-    /** Master unit ID */
-    masterId: string;
-    /** Master's C3 component index (for multi-master units) */
-    masterCompIndex: number;
-    /** Member strings: "unitId" for slaves, "unitId:compIndex" for sub-masters */
-    members: string[];
-}
-
-/**
- * Serialized C3 network data for persistence
- */
-export interface SerializedC3Network {
-    /** Links in the network */
-    links: C3NetworkLink[];
-}
-
-/**
  * Visual position for the network editor
  */
 export interface C3NodePosition {
