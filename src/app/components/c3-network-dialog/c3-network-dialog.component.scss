@@ -66,19 +66,15 @@
 
 .burger-menu-btn {
   display: flex;
-  flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 4px;
   padding: 8px;
   cursor: pointer;
 
-  .burger-line {
+  svg {
+    display: block;
     width: 22px;
-    height: 2px;
-    background-color: #fff;
-    border-radius: 1px;
-    transition: background-color 0.2s;
+    height: 22px;
   }
 }
 
