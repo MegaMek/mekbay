@@ -41,7 +41,7 @@ import {
     viewChild,
     AfterViewInit
 } from '@angular/core';
-import { NgClass, NgStyle, NgTemplateOutlet } from '@angular/common';
+import { NgTemplateOutlet } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceUnit } from '../../models/force-unit.model';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
@@ -92,7 +92,7 @@ interface HubPoint {
 @Component({
     selector: 'c3-network-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [NgClass, NgStyle, NgTemplateOutlet, UnitIconComponent],
+    imports: [NgTemplateOutlet, UnitIconComponent],
     host: { class: 'fullscreen-dialog-host' },
     templateUrl: './c3-network-dialog.component.html',
     styleUrls: ['./c3-network-dialog.component.scss']
@@ -101,19 +101,24 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private dialogRef = inject(DialogRef<C3NetworkDialogResult>);
     protected data = inject<C3NetworkDialogData>(DIALOG_DATA);
     private toastService = inject(ToastService);
-    private container = viewChild<ElementRef<HTMLDivElement>>('container');
+    private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
+
+    // Node layout constants (exposed for template)
+    protected readonly NODE_WIDTH = 150;
+    protected readonly NODE_HEIGHT = 150;
+    protected readonly PIN_RADIUS = 7;
+    protected readonly PIN_GAP = 34; // Gap between pin centers
+    protected readonly PIN_Y_OFFSET = 30; // Y offset from node center to pins
 
     // State
     protected nodes = signal<C3Node[]>([]);
     protected networks = signal<SerializedC3NetworkGroup[]>([]);
     protected hasModifications = signal(false);
-    
-    // Trigger for recalculating pin positions (incremented when nodes move or zoom changes)
-    private pinPositionTrigger = signal(0);
 
     // Drag state
     protected draggedNode = signal<C3Node | null>(null);
-    protected dragOffset = signal({ x: 0, y: 0 });
+    private dragStartPos = { x: 0, y: 0 };
+    private nodeStartPos = { x: 0, y: 0 };
 
     // Connection drawing state
     protected connectingFrom = signal<{ node: C3Node; compIndex: number; role: C3Role } | null>(null);
@@ -121,7 +126,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected hoveredNode = signal<C3Node | null>(null);
     protected hoveredPinIndex = signal<number | null>(null);
 
-    // Pan/zoom state
+    // Pan/zoom state - now using SVG viewBox/transform approach
     protected viewOffset = signal({ x: 0, y: 0 });
     protected zoom = signal(1);
 
@@ -136,6 +141,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     // Color tracking
     private nextColorIndex = 0;
     private masterPinColors = new Map<string, string>();
+
+    /** SVG transform string computed from pan/zoom state */
+    protected svgTransform = computed(() => {
+        const offset = this.viewOffset();
+        const scale = this.zoom();
+        return `translate(${offset.x}, ${offset.y}) scale(${scale})`;
+    });
 
     /**
      * Comprehensive connection state computed once when drag starts.
@@ -194,13 +206,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     // Convenience accessor for valid target IDs
     protected validTargets = computed(() => this.connectionState().validTargetIds);
 
-    // Connection lines
+    // Connection lines - now in SVG world coordinates (before transform)
     protected connectionLines = computed<ConnectionLine[]>(() => {
         const lines: ConnectionLine[] = [];
         const nodes = this.nodes();
         const networks = this.networks();
-        // Trigger dependency on pin positions for accurate line rendering
-        this.pinPositions();
 
         for (const network of networks) {
             if (network.peerIds && network.peerIds.length > 1) {
@@ -212,7 +222,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (peerNodes.length >= 2) {
                     const positions = peerNodes.map(node => {
                         const compIdx = node.c3Components.findIndex(c => c.role === C3Role.PEER);
-                        return this.getPinCenter(node, Math.max(0, compIdx));
+                        return this.getPinWorldPosition(node, Math.max(0, compIdx));
                     });
                     const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
                     const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
@@ -232,7 +242,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (!masterNode) continue;
 
                 const compIdx = network.masterCompIndex ?? 0;
-                const masterPos = this.getPinCenter(masterNode, compIdx);
+                const masterPos = this.getPinWorldPosition(masterNode, compIdx);
 
                 for (const member of network.members || []) {
                     const parsed = C3NetworkUtil.parseMember(member);
@@ -252,13 +262,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         if (memberCompIdx < 0) memberCompIdx = 0;
                     }
 
-                    const memberPos = this.getPinCenter(memberNode, memberCompIdx);
+                    const memberPos = this.getPinWorldPosition(memberNode, memberCompIdx);
                     const angle = Math.atan2(memberPos.y - masterPos.y, memberPos.x - masterPos.x);
 
-                    // Shorten the line so arrow stops at pin edge (not center)
-                    const pinRadius = this.PIN_CONNECTOR_SIZE / 2;
-                    const arrowMarkerLength = 10; // SVG marker refX is 10
-                    const shortenBy = pinRadius + arrowMarkerLength - 6;
+                    // Shorten the line so it ends before the arrow marker (refX=10 in marker)
+                    // Arrow marker is 12px wide, refX=10 means arrow tip is 2px past the line end
+                    // We want the line to stop before the pin, leaving room for the arrow
+                    const arrowMarkerRefX = 10;
+                    const shortenBy = this.PIN_RADIUS + arrowMarkerRefX;
                     const endX = memberPos.x - Math.cos(angle) * shortenBy;
                     const endY = memberPos.y - Math.sin(angle) * shortenBy;
 
@@ -274,12 +285,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return lines;
     });
 
-    // Hub points for peer networks
+    // Hub points for peer networks - in SVG world coordinates
     protected hubPoints = computed<HubPoint[]>(() => {
         const hubs: HubPoint[] = [];
         const nodes = this.nodes();
-        // Trigger dependency on pin positions
-        this.pinPositions();
 
         for (const network of this.networks()) {
             if (network.peerIds && network.peerIds.length > 1) {
@@ -290,7 +299,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (peerNodes.length >= 2) {
                     const positions = peerNodes.map(node => {
                         const compIdx = node.c3Components.findIndex(c => c.role === C3Role.PEER);
-                        return this.getPinCenter(node, Math.max(0, compIdx));
+                        return this.getPinWorldPosition(node, Math.max(0, compIdx));
                     });
                     hubs.push({
                         id: `hub-${network.id}`,
@@ -304,11 +313,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return hubs;
     });
 
-    // Active drag line
+    // Active drag line - in SVG world coordinates
     protected activeDragLine = computed(() => {
         const conn = this.connectingFrom();
         if (!conn) return null;
-        const pinPos = this.getPinCenter(conn.node, conn.compIndex);
+        const pinPos = this.getPinWorldPosition(conn.node, conn.compIndex);
         return {
             x1: pinPos.x,
             y1: pinPos.y,
@@ -509,92 +518,15 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return map;
     });
 
-    // ==================== Pre-computed Node UI State ====================
-    
-    /** 
-     * Pre-computed map of node classes for each unit.
-     * Reduces template function calls by caching results in a computed signal.
-     */
-    protected nodeClassesMap = computed(() => {
-        const map = new Map<string, Record<string, boolean>>();
-        const unitStatus = this.unitConnectionStatus();
-        const connState = this.connectionState();
-        const isConnecting = connState.isConnecting;
-        const draggedNode = this.draggedNode();
-        const hoveredNode = this.hoveredNode();
-        const connectingFromNode = this.connectingFrom()?.node;
-        
-        for (const node of this.nodes()) {
-            const unitId = node.unit.id;
-            const isLinked = unitStatus.get(unitId) ?? false;
-            map.set(unitId, {
-                linked: isLinked,
-                disconnected: !isLinked,
-                dragging: draggedNode === node,
-                'valid-target': connState.validTargetIds.has(unitId) && isConnecting,
-                'invalid-target': !connState.validTargetIds.has(unitId) && isConnecting && connectingFromNode !== node,
-                hovered: hoveredNode === node && connState.validTargetIds.has(unitId)
-            });
-        }
-        
-        return map;
-    });
-
-    /**
-     * Pre-computed map of node styles for each unit.
-     * Separates dynamic position from static styling to reduce recalculations.
-     */
-    protected nodeStylesMap = computed(() => {
-        const map = new Map<string, Record<string, string>>();
-        const offset = this.viewOffset();
-        const scale = this.zoom();
-        const borderColors = this.nodeBorderColors();
-        const unitStatus = this.unitConnectionStatus();
-        
-        for (const node of this.nodes()) {
-            const unitId = node.unit.id;
-            const colors = borderColors.get(unitId) || [];
-            const isConnected = unitStatus.get(unitId) ?? false;
-            
-            const style: Record<string, string> = {
-                left: `${offset.x + node.x * scale}px`,
-                top: `${offset.y + node.y * scale}px`,
-                transform: `translate(-50%, -50%) scale(${scale})`,
-                zIndex: `${node.zIndex}`
-            };
-
-            if (colors.length === 0) {
-                style['borderColor'] = '#666';
-            } else if (colors.length === 1) {
-                style['borderColor'] = colors[0];
-            } else {
-                const angle = 360 / colors.length;
-                const stops = colors.map((c, i) => `${c} ${i * angle}deg ${(i + 1) * angle}deg`).join(', ');
-                style['borderImage'] = `conic-gradient(from 180deg, ${stops}) 1`;
-                style['borderImageSlice'] = '1';
-            }
-
-            if (!isConnected) {
-                style['borderStyle'] = 'dashed';
-            }
-
-            map.set(unitId, style);
-        }
-        
-        return map;
-    });
-
     ngAfterViewInit() {
         this.initializeNodes();
         this.networks.set([...(this.data.networks || [])]);
         this.initializeMasterPinColors();
-        // Initialize pin positions after DOM is ready
-        requestAnimationFrame(() => this.invalidatePinPositions());
     }
 
     private initializeNodes() {
         const c3Units = this.data.units.filter(u => C3NetworkUtil.hasC3(u.getUnit()));
-        const el = this.container()?.nativeElement;
+        const el = this.svgCanvas()?.nativeElement;
         const w = el?.clientWidth || 800;
         const h = el?.clientHeight || 600;
         const spacing = 180;
@@ -647,91 +579,98 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return `net_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
-    // Pin visual constants
-    private readonly PIN_CONNECTOR_SIZE = 14; // Width/height of .pin-connector in px
-    private readonly PIN_GAP = 13; // Gap between pins from SCSS
+    // ==================== SVG Coordinate Helpers ====================
 
     /**
-     * Get the actual center position of a pin-connector element relative to the container.
-     * This reads directly from the DOM for pixel-perfect accuracy.
+     * Get the X offset for a pin relative to node center.
+     * Pins are centered horizontally within the node.
      */
-    private getPinConnectorCenter(unitId: string, compIndex: number): { x: number; y: number } | null {
-        const containerEl = this.container()?.nativeElement;
-        if (!containerEl) return null;
+    protected getPinOffsetX(node: C3Node, compIndex: number): number {
+        const numPins = node.c3Components.length;
+        const totalWidth = (numPins - 1) * this.PIN_GAP;
+        return -totalWidth / 2 + compIndex * this.PIN_GAP;
+    }
 
-        const nodeEl = containerEl.querySelector(`.node[data-unit-id="${unitId}"]`);
-        if (!nodeEl) return null;
-
-        const pinEl = nodeEl.querySelector(`.pin[data-comp-index="${compIndex}"] .pin-connector`);
-        if (!pinEl) return null;
-
-        const containerRect = containerEl.getBoundingClientRect();
-        const pinRect = pinEl.getBoundingClientRect();
-
+    /**
+     * Get pin position in SVG world coordinates (before any transforms).
+     * This is used for drawing connection lines.
+     */
+    private getPinWorldPosition(node: C3Node, compIndex: number): { x: number; y: number } {
         return {
-            x: pinRect.left + pinRect.width / 2 - containerRect.left,
-            y: pinRect.top + pinRect.height / 2 - containerRect.top
+            x: node.x + this.getPinOffsetX(node, compIndex),
+            y: node.y + this.PIN_Y_OFFSET
         };
     }
 
     /**
-     * Computed map of all pin positions, recalculated when nodes/zoom/offset change.
-     * Key: "unitId:compIndex", Value: { x, y } center position in container coordinates
+     * Convert screen coordinates to SVG world coordinates.
+     * Accounts for pan offset and zoom scale.
      */
-    protected pinPositions = computed(() => {
-        // Dependencies that should trigger recalculation
-        this.nodes();
-        this.viewOffset();
-        this.zoom();
-        this.pinPositionTrigger();
+    private screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
+        const svg = this.svgCanvas()?.nativeElement;
+        if (!svg) return { x: screenX, y: screenY };
         
-        const positions = new Map<string, { x: number; y: number }>();
+        const rect = svg.getBoundingClientRect();
+        const offset = this.viewOffset();
+        const scale = this.zoom();
         
-        // Need to defer to next frame to ensure DOM is updated
-        // For now, calculate based on node positions and measured offsets
-        const containerEl = this.container()?.nativeElement;
-        if (!containerEl) return positions;
+        return {
+            x: (screenX - rect.left - offset.x) / scale,
+            y: (screenY - rect.top - offset.y) / scale
+        };
+    }
 
-        for (const node of this.nodes()) {
-            for (let i = 0; i < node.c3Components.length; i++) {
-                const key = `${node.unit.id}:${i}`;
-                const center = this.getPinConnectorCenter(node.unit.id, i);
-                if (center) {
-                    positions.set(key, center);
+    /**
+     * Resolve collisions between the dragged node and other nodes.
+     * Pushes colliding nodes away from the dragged node, cascading to other nodes.
+     */
+    private resolveNodeCollisions(draggedNode: C3Node): void {
+        const nodes = this.nodes();
+        const padding = 4; // Minimum gap between nodes
+        const minDist = Math.max(this.NODE_WIDTH, this.NODE_HEIGHT) + padding;
+        const maxIterations = 10; // Prevent infinite loops
+        
+        // Use a queue for cascade collision resolution
+        const nodesToCheck = new Set<C3Node>([draggedNode]);
+        const checkedPairs = new Set<string>();
+        let iterations = 0;
+        
+        while (nodesToCheck.size > 0 && iterations < maxIterations) {
+            iterations++;
+            const currentNode = nodesToCheck.values().next().value as C3Node;
+            nodesToCheck.delete(currentNode);
+            
+            for (const other of nodes) {
+                if (other === currentNode) continue;
+                
+                // Create a unique pair key to avoid checking the same pair twice
+                const pairKey = [currentNode.unit.id, other.unit.id].sort().join('-');
+                if (checkedPairs.has(pairKey)) continue;
+                checkedPairs.add(pairKey);
+                
+                const dx = other.x - currentNode.x;
+                const dy = other.y - currentNode.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < minDist && dist > 0) {
+                    // Calculate push direction and amount
+                    const overlap = minDist - dist;
+                    const pushX = (dx / dist) * overlap;
+                    const pushY = (dy / dist) * overlap;
+                    
+                    // Push the other node away
+                    other.x += pushX;
+                    other.y += pushY;
+                    
+                    // Add pushed node to queue for cascade checking
+                    nodesToCheck.add(other);
+                } else if (dist === 0) {
+                    // Nodes are exactly overlapping - push in a random direction
+                    other.x += minDist;
+                    nodesToCheck.add(other);
                 }
             }
         }
-        
-        return positions;
-    });
-
-    /**
-     * Get pin center position, falling back to calculated position if DOM not ready
-     */
-    private getPinCenter(node: C3Node, compIndex: number): { x: number; y: number } {
-        const key = `${node.unit.id}:${compIndex}`;
-        const cached = this.pinPositions().get(key);
-        if (cached) return cached;
-        
-        // Fallback: calculate approximate position from node position
-        // This is used before first render or if DOM query fails
-        const offset = this.viewOffset();
-        const scale = this.zoom();
-        const numPins = node.c3Components.length;
-        const pinTotalWidth = (numPins - 1) * (this.PIN_CONNECTOR_SIZE + this.PIN_GAP);
-        const pinX = -pinTotalWidth / 2 + compIndex * (this.PIN_CONNECTOR_SIZE + this.PIN_GAP);
-        
-        return {
-            x: offset.x + (node.x + pinX) * scale,
-            y: offset.y + (node.y + 25) * scale // Approximate Y offset to pin area
-        };
-    }
-
-    /**
-     * Force recalculation of pin positions (call after DOM updates)
-     */
-    private invalidatePinPositions(): void {
-        this.pinPositionTrigger.update(v => v + 1);
     }
 
     // ==================== Connection Logic ====================
@@ -754,12 +693,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const comp = node.c3Components[compIndex];
         if (!comp) return;
 
+        // Track touch for potential pinch-zoom transition
+        this.activeTouches.set(event.pointerId, event);
+
         this.connectingFrom.set({ node, compIndex, role: comp.role });
-        const el = this.container()?.nativeElement;
-        if (el) {
-            const rect = el.getBoundingClientRect();
-            this.connectingEnd.set({ x: event.clientX - rect.left, y: event.clientY - rect.top });
-        }
+        // Set initial connecting end in world coordinates
+        const worldPos = this.screenToWorld(event.clientX, event.clientY);
+        this.connectingEnd.set(worldPos);
+        
         document.addEventListener('pointermove', this.onGlobalPointerMove);
         document.addEventListener('pointerup', this.onGlobalPointerUp);
     }
@@ -767,18 +708,22 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected onNodePointerDown(event: PointerEvent, node: C3Node) {
         event.preventDefault();
         event.stopPropagation();
-        if ((event.target as HTMLElement).closest('.pin')) return;
+        
+        // Check if clicking on a pin
+        const target = event.target as Element;
+        if (target.closest('.pin')) return;
+
+        // Track touch for potential pinch-zoom transition
+        this.activeTouches.set(event.pointerId, event);
 
         // Bring node to front (z-index layering)
         this.bringNodeToFront(node);
 
-        const scale = this.zoom();
-        const offset = this.viewOffset();
-        this.dragOffset.set({
-            x: event.clientX - (offset.x + node.x * scale),
-            y: event.clientY - (offset.y + node.y * scale)
-        });
+        // Store starting positions for drag
+        this.dragStartPos = { x: event.clientX, y: event.clientY };
+        this.nodeStartPos = { x: node.x, y: node.y };
         this.draggedNode.set(node);
+        
         document.addEventListener('pointermove', this.onGlobalPointerMove);
         document.addEventListener('pointerup', this.onGlobalPointerUp);
     }
@@ -805,8 +750,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         this.nodes.set([...nodes]);
     }
 
-    protected onContainerPointerDown(event: PointerEvent) {
-        if ((event.target as HTMLElement).closest('.node')) return;
+    protected onCanvasPointerDown(event: PointerEvent) {
+        const target = event.target as Element;
+        if (target.closest('.node-group')) return;
         
         // Track touch for pinch-to-zoom and pan
         this.activeTouches.set(event.pointerId, event);
@@ -865,31 +811,52 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     private onGlobalPointerMove = (event: PointerEvent) => {
-        // Update tracked touch position
-        if (this.activeTouches.has(event.pointerId)) {
+        // Track new touches that weren't registered in onCanvasPointerDown
+        // (e.g., second finger added during node/pin drag)
+        if (!this.activeTouches.has(event.pointerId)) {
+            this.activeTouches.set(event.pointerId, event);
+        } else {
+            // Update tracked touch position
             this.activeTouches.set(event.pointerId, event);
         }
 
+        // If we now have 2+ touches, cancel any drag/connection and switch to pinch-zoom
+        if (this.activeTouches.size >= 2) {
+            if (this.draggedNode() || this.connectingFrom()) {
+                // Cancel node drag
+                this.draggedNode.set(null);
+                // Cancel connection drawing
+                this.connectingFrom.set(null);
+                this.hoveredNode.set(null);
+                this.hoveredPinIndex.set(null);
+                // Initialize pinch gesture and pan point
+                this.startPinchGesture();
+                this.lastPanPoint = this.getEffectivePanPoint();
+            }
+        }
+
         if (this.draggedNode()) {
+            // Drag node - calculate new position in world coordinates
             const node = this.draggedNode()!;
-            const offset = this.viewOffset();
             const scale = this.zoom();
-            const drag = this.dragOffset();
-            node.x = (event.clientX - drag.x - offset.x) / scale;
-            node.y = (event.clientY - drag.y - offset.y) / scale;
+            const deltaX = (event.clientX - this.dragStartPos.x) / scale;
+            const deltaY = (event.clientY - this.dragStartPos.y) / scale;
+            node.x = this.nodeStartPos.x + deltaX;
+            node.y = this.nodeStartPos.y + deltaY;
+            
+            // Push away colliding nodes
+            this.resolveNodeCollisions(node);
+            
             this.nodes.set([...this.nodes()]);
             this.hasModifications.set(true);
-            // Recalculate pin positions after node move
-            requestAnimationFrame(() => this.invalidatePinPositions());
         } else if (this.connectingFrom()) {
-            const el = this.container()?.nativeElement;
-            if (el) {
-                const rect = el.getBoundingClientRect();
-                this.connectingEnd.set({ x: event.clientX - rect.left, y: event.clientY - rect.top });
-            }
+            // Update connecting line end in world coordinates
+            const worldPos = this.screenToWorld(event.clientX, event.clientY);
+            this.connectingEnd.set(worldPos);
+            
             // Update hover state
             const target = document.elementFromPoint(event.clientX, event.clientY);
-            const nodeEl = target?.closest('.node');
+            const nodeEl = target?.closest('.node-group');
             const pinEl = target?.closest('.pin');
             if (nodeEl) {
                 const unitId = nodeEl.getAttribute('data-unit-id');
@@ -897,7 +864,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (targetNode && this.validTargets().has(targetNode.unit.id)) {
                     this.hoveredNode.set(targetNode);
                     if (pinEl) {
-                        const idx = parseInt(pinEl.getAttribute('data-comp-index') || '-1', 10);
+                        // Find pin index from transform or position
+                        const pinGroup = pinEl as SVGGElement;
+                        const siblings = Array.from(pinGroup.parentElement?.querySelectorAll('.pin') || []);
+                        const idx = siblings.indexOf(pinGroup);
                         this.hoveredPinIndex.set(this.isPinValidTarget(targetNode, idx) ? idx : null);
                     } else {
                         this.hoveredPinIndex.set(null);
@@ -923,15 +893,15 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             if (this.activeTouches.size === 2) {
                 const touches = Array.from(this.activeTouches.values());
                 const currentDistance = this.getTouchDistance(touches[0], touches[1]);
-                const scale = currentDistance / this.pinchStartDistance;
-                const newZoom = Math.max(0.3, Math.min(3, this.pinchStartZoom * scale));
+                const scaleChange = currentDistance / this.pinchStartDistance;
+                const newZoom = Math.max(0.3, Math.min(3, this.pinchStartZoom * scaleChange));
                 
                 // Adjust offset to zoom towards pinch center
                 const oldZoom = this.zoom();
                 if (newZoom !== oldZoom) {
-                    const el = this.container()?.nativeElement;
-                    if (el) {
-                        const rect = el.getBoundingClientRect();
+                    const svg = this.svgCanvas()?.nativeElement;
+                    if (svg) {
+                        const rect = svg.getBoundingClientRect();
                         const centerX = currentPanPoint.x - rect.left;
                         const centerY = currentPanPoint.y - rect.top;
                         const zoomRatio = newZoom / oldZoom;
@@ -944,7 +914,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             
             this.viewOffset.set({ x: newOffsetX, y: newOffsetY });
             this.lastPanPoint = currentPanPoint;
-            requestAnimationFrame(() => this.invalidatePinPositions());
         }
     };
 
@@ -963,14 +932,19 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         if (this.connectingFrom()) {
             const target = document.elementFromPoint(event.clientX, event.clientY);
-            const nodeEl = target?.closest('.node');
+            const nodeEl = target?.closest('.node-group');
             const pinEl = target?.closest('.pin');
             if (nodeEl) {
                 const unitId = nodeEl.getAttribute('data-unit-id');
                 const targetNode = this.nodes().find(n => n.unit.id === unitId);
                 const conn = this.connectingFrom()!;
                 if (targetNode && this.validTargets().has(targetNode.unit.id)) {
-                    let targetPin = pinEl ? parseInt(pinEl.getAttribute('data-comp-index') || '-1', 10) : -1;
+                    let targetPin = -1;
+                    if (pinEl) {
+                        const pinGroup = pinEl as SVGGElement;
+                        const siblings = Array.from(pinGroup.parentElement?.querySelectorAll('.pin') || []);
+                        targetPin = siblings.indexOf(pinGroup);
+                    }
                     if (targetPin < 0 || !this.isPinValidTarget(targetNode, targetPin)) {
                         const validPins = this.getValidPinsForTarget(targetNode);
                         targetPin = validPins.length > 0 ? validPins[0] : -1;
@@ -997,9 +971,24 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected onWheel(event: WheelEvent) {
         event.preventDefault();
         const delta = event.deltaY > 0 ? 0.9 : 1.1;
-        this.zoom.set(Math.max(0.3, Math.min(3, this.zoom() * delta)));
-        // Recalculate pin positions after zoom
-        requestAnimationFrame(() => this.invalidatePinPositions());
+        const oldZoom = this.zoom();
+        const newZoom = Math.max(0.3, Math.min(3, oldZoom * delta));
+        
+        // Zoom towards mouse cursor
+        const svg = this.svgCanvas()?.nativeElement;
+        if (svg && newZoom !== oldZoom) {
+            const rect = svg.getBoundingClientRect();
+            const mouseX = event.clientX - rect.left;
+            const mouseY = event.clientY - rect.top;
+            const offset = this.viewOffset();
+            const zoomRatio = newZoom / oldZoom;
+            this.viewOffset.set({
+                x: mouseX - (mouseX - offset.x) * zoomRatio,
+                y: mouseY - (mouseY - offset.y) * zoomRatio
+            });
+        }
+        
+        this.zoom.set(newZoom);
     }
 
     // ==================== Network Management ====================
@@ -1208,12 +1197,54 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     // ==================== UI Helpers ====================
 
-    protected getNodeClasses(node: C3Node): Record<string, boolean> {
-        return this.nodeClassesMap().get(node.unit.id) ?? {};
+    /** Check if a node is linked to any network */
+    protected isNodeLinked(node: C3Node): boolean {
+        return this.unitConnectionStatus().get(node.unit.id) ?? false;
     }
 
-    protected getNodeStyle(node: C3Node): Record<string, string> {
-        return this.nodeStylesMap().get(node.unit.id) ?? {};
+    /** Get the border color for a node (first network color or default) */
+    protected getNodeBorderColor(node: C3Node): string {
+        const colors = this.nodeBorderColors().get(node.unit.id) || [];
+        return colors.length > 0 ? colors[0] : '#666';
+    }
+
+    /** Get pin stroke color (for the circle outline) */
+    protected getPinStrokeColor(node: C3Node, compIndex: number): string {
+        const state = this.pinConnectionState().get(`${node.unit.id}:${compIndex}`);
+        if (state?.disabled) return '#555';
+        if (state?.color) return state.color;
+        
+        // Master pins always show their assigned color on the border
+        const comp = node.c3Components[compIndex];
+        if (comp?.role === C3Role.MASTER) {
+            const key = `${node.unit.id}:${compIndex}`;
+            return this.masterPinColors.get(key) || '#666';
+        }
+        
+        return '#666';
+    }
+
+    /** Get pin fill color (for connected pins) */
+    protected getPinFillColor(node: C3Node, compIndex: number): string {
+        const state = this.pinConnectionState().get(`${node.unit.id}:${compIndex}`);
+        if (state?.disabled) return '#2a2a2a';
+        
+        const comp = node.c3Components[compIndex];
+        
+        // Master pins: fill when connected (has slaves)
+        if (comp?.role === C3Role.MASTER) {
+            if (state?.connected && state?.color) {
+                return state.color;
+            }
+            return '#333';
+        }
+        
+        // Slave/peer pins: fill when connected
+        if (state?.connected && state?.color) {
+            return state.color;
+        }
+        
+        return '#333';
     }
 
     protected getPinNetworkColor(node: C3Node, compIndex: number): string | null {

@@ -19,77 +19,140 @@
 </div>
 
 <div class="c3-dialog-content">
-    <!-- Canvas area -->
-    <div #container class="canvas-container" (wheel)="onWheel($event)" (pointerdown)="onContainerPointerDown($event)">
-        <!-- SVG layer for connections - rendered ABOVE nodes via z-index -->
-        <svg class="connections-svg">
-            <defs>
-                <!-- Arrow marker definitions for each network color -->
-                @for (line of connectionLines(); track line.id) {
-                @if (line.hasArrow) {
-                <marker [id]="'arrow-' + line.id" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"
-                    markerUnits="userSpaceOnUse">
-                    <polygon points="0,0 12,6 0,12" [attr.fill]="line.color" />
-                </marker>
-                }
-                }
-            </defs>
-
-            <!-- Connection lines -->
+    <!-- SVG Canvas area -->
+    <svg #svgCanvas class="svg-canvas" (wheel)="onWheel($event)" (pointerdown)="onCanvasPointerDown($event)">
+        <defs>
+            <!-- Arrow marker definitions for each network color -->
             @for (line of connectionLines(); track line.id) {
-            <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
-                [attr.stroke]="line.color" stroke-width="3"
-                [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
-            }
-
-            <!-- Hub points for peer networks -->
-            @for (hub of hubPoints(); track hub.id) {
-            <circle [attr.cx]="hub.x" [attr.cy]="hub.y" r="3" [attr.fill]="hub.color" stroke-width="0" />
-            }
-
-            <!-- Active drag line -->
-            @if (activeDragLine(); as dragLine) {
-            <line [attr.x1]="dragLine.x1" [attr.y1]="dragLine.y1" [attr.x2]="dragLine.x2" [attr.y2]="dragLine.y2"
-                stroke="#ffffff" stroke-width="2" stroke-dasharray="6,4" />
-            }
-        </svg>
-
-        <!-- Nodes -->
-        @for (node of nodes(); track node.unit.id) {
-        <div class="node" [attr.data-unit-id]="node.unit.id" [ngClass]="getNodeClasses(node)"
-            [ngStyle]="getNodeStyle(node)" (pointerdown)="onNodePointerDown($event, node)">
-            <div class="node-header">
-                <unit-icon [unit]="node.unit.getUnit()" styleClass="node-unit-icon"></unit-icon>
-                <span class="node-name">{{ node.unit.getUnit().chassis }}</span>
-            </div>
-
-            <div class="node-pins">
-                @for (comp of node.c3Components; track $index; let i = $index) {
-                <div class="pin" [attr.data-comp-index]="i" [attr.data-role]="comp.role"
-                    [class.master]="comp.role === 'master'" [class.slave]="comp.role === 'slave'"
-                    [class.peer]="comp.role === 'peer'" [class.connected]="isPinConnected(node, i)"
-                    [class.has-network]="getPinNetworkColor(node, i)"
-                    [class.disabled]="isPinDisabled(node, i)"
-                    [class.connectingFromPin]="connectingFrom()?.node === node && connectingFrom()?.compIndex === i"
-                    [class.valid-pin-target]="connectingFrom() && isPinValidTarget(node, i)"
-                    [class.invalid-pin-target]="connectingFrom() && !isPinValidTarget(node, i) && validTargets().has(node.unit.id)"
-                    [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node"
-                    [style.--pin-network-color]="getPinNetworkColor(node, i)"
-                    (pointerdown)="onPinPointerDown($event, node, i)">
-                    <span class="pin-label">{{ getRoleLabel(comp.role) }}</span>
-                    <div class="pin-connector"></div>
-                </div>
+                @if (line.hasArrow) {
+                    <marker [id]="'arrow-' + line.id" markerWidth="14" markerHeight="12" refX="5" refY="6" orient="auto"
+                        markerUnits="userSpaceOnUse">
+                        <polygon points="0,0 14,6 0,12" [attr.fill]="line.color" />
+                    </marker>
                 }
-            </div>
+            }
+            <!-- Drop shadow filter for nodes -->
+            <filter id="node-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="rgba(0,0,0,0.4)" />
+            </filter>
+            <filter id="node-hover-shadow" x="-30%" y="-30%" width="160%" height="160%">
+                <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="rgba(0,0,0,0.5)" />
+            </filter>
+        </defs>
 
-            <div class="node-info">
-                @for (comp of node.c3Components; track $index) {
-                <span class="c3-type">{{ getNetworkTypeLabel(comp.networkType) }}</span>
+        <!-- Main transform group for pan/zoom -->
+        <g [attr.transform]="svgTransform()">
+            <!-- Nodes layer (rendered first, so connections appear above) -->
+            <g class="nodes-layer">
+                @for (node of nodes(); track node.unit.id) {
+                    <g class="node-group" 
+                       [attr.data-unit-id]="node.unit.id"
+                       [attr.transform]="'translate(' + node.x + ',' + node.y + ')'"
+                       [class.linked]="isNodeLinked(node)"
+                       [class.disconnected]="!isNodeLinked(node)"
+                       [class.dragging]="draggedNode() === node"
+                       [class.valid-target]="connectionState().isConnecting && connectionState().validTargetIds.has(node.unit.id)"
+                       [class.invalid-target]="connectionState().isConnecting && !connectionState().validTargetIds.has(node.unit.id) && connectingFrom()?.node !== node"
+                       [class.hovered]="hoveredNode() === node && connectionState().validTargetIds.has(node.unit.id)"
+                       (pointerdown)="onNodePointerDown($event, node)">
+                        
+                        <!-- Outer glow ring (for connected state) -->
+                        @if (isNodeLinked(node)) {
+                            <circle class="node-glow" 
+                                  [attr.r]="NODE_WIDTH / 2 + 4"
+                                  [attr.stroke]="getNodeBorderColor(node)" />
+                        }
+
+                        <!-- Node background -->
+                        <circle class="node-bg" 
+                              [attr.r]="NODE_WIDTH / 2"
+                              [attr.stroke]="getNodeBorderColor(node)"
+                              [attr.stroke-dasharray]="isNodeLinked(node) ? 'none' : '6,3'" />
+
+                        <!-- Inner decorative ring -->
+                        <circle class="node-inner-ring" 
+                              [attr.r]="NODE_WIDTH / 2 - 8" />
+
+                        <!-- Unit icon centered at top -->
+                        <foreignObject x="-24" [attr.y]="-NODE_WIDTH / 2 + 16" width="48" height="48">
+                            <unit-icon xmlns="http://www.w3.org/1999/xhtml" 
+                                       [unit]="node.unit.getUnit()" 
+                                       styleClass="node-unit-icon"></unit-icon>
+                        </foreignObject>
+
+                        <!-- Unit label centered below icon -->
+                        <foreignObject [attr.x]="-NODE_WIDTH / 2 + 12" y="-8" 
+                                       [attr.width]="NODE_WIDTH - 24" height="40">
+                            <div xmlns="http://www.w3.org/1999/xhtml" class="node-label">
+                                {{ node.unit.getUnit().chassis }}
+                            </div>
+                        </foreignObject>
+
+                        <!-- Pins section at bottom -->
+                        <g class="pins-container" [attr.transform]="'translate(0,' + PIN_Y_OFFSET + ')'">
+                            @for (comp of node.c3Components; track $index; let i = $index) {
+                                <g class="pin" 
+                                   [attr.transform]="'translate(' + getPinOffsetX(node, i) + ', 0)'"
+                                   [class.master]="comp.role === 'master'" 
+                                   [class.slave]="comp.role === 'slave'"
+                                   [class.peer]="comp.role === 'peer'" 
+                                   [class.connected]="isPinConnected(node, i)"
+                                   [class.has-network]="!!getPinNetworkColor(node, i)"
+                                   [class.disabled]="isPinDisabled(node, i)"
+                                   [class.connectingFromPin]="connectingFrom()?.node === node && connectingFrom()?.compIndex === i"
+                                   [class.valid-pin-target]="connectingFrom() && isPinValidTarget(node, i)"
+                                   [class.invalid-pin-target]="connectingFrom() && !isPinValidTarget(node, i) && validTargets().has(node.unit.id)"
+                                   [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node"
+                                   (pointerdown)="onPinPointerDown($event, node, i)">
+                                    
+                                    <!-- Pin outer ring -->
+                                    <circle class="pin-ring" r="11"
+                                            [attr.stroke]="getPinStrokeColor(node, i)" />
+                                    
+                                    <!-- Pin connector circle -->
+                                    <circle class="pin-connector" r="7"
+                                            [attr.stroke]="getPinStrokeColor(node, i)"
+                                            [attr.fill]="getPinFillColor(node, i)" />
+                                    
+                                    <!-- Pin role label -->
+                                    <text class="pin-role-label" y="24" text-anchor="middle">
+                                        {{ getRoleLabel(comp.role) }}
+                                    </text>
+                                    
+                                    <!-- Network type label -->
+                                    <text class="pin-type-label" y="34" text-anchor="middle">
+                                        {{ getNetworkTypeLabel(comp.networkType) }}
+                                    </text>
+                                </g>
+                            }
+                        </g>
+                    </g>
                 }
-            </div>
-        </div>
-        }
-    </div>
+            </g>
+
+            <!-- Connections layer (rendered after nodes, so it appears above) -->
+            <g class="connections-layer">
+                <!-- Connection lines -->
+                @for (line of connectionLines(); track line.id) {
+                    <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
+                          [attr.stroke]="line.color" stroke-width="3"
+                          [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
+                }
+
+                <!-- Hub points for peer networks -->
+                @for (hub of hubPoints(); track hub.id) {
+                    <circle [attr.cx]="hub.x" [attr.cy]="hub.y" r="4" [attr.fill]="hub.color" stroke-width="0" />
+                }
+
+                <!-- Active drag line -->
+                @if (activeDragLine(); as dragLine) {
+                    <line [attr.x1]="dragLine.x1" [attr.y1]="dragLine.y1" 
+                          [attr.x2]="dragLine.x2" [attr.y2]="dragLine.y2"
+                          stroke="#ffffff" stroke-width="2" stroke-dasharray="6,4" />
+                }
+            </g>
+        </g>
+    </svg>
 
     <!-- Networks sidebar -->
     <div class="networks-sidebar framed-borders">
@@ -98,7 +161,7 @@
         <div class="networks-list">
             <!-- Only show top-level networks, sub-networks are nested inside -->
             @for (network of topLevelNetworks(); track network.id) {
-            <ng-container *ngTemplateOutlet="networkTemplate; context: { network: network, depth: 0 }"></ng-container>
+                <ng-container *ngTemplateOutlet="networkTemplate; context: { network: network, depth: 0 }"></ng-container>
             }
 
             @if (networks().length === 0) {
