@@ -112,10 +112,10 @@
                         </foreignObject>
 
                         <!-- Pins section at bottom -->
-                        <g class="pins-container" [attr.transform]="'translate(0,' + PIN_Y_OFFSET + ')'">>
+                        <g class="pins-container" [attr.transform]="'translate(0,' + PIN_Y_OFFSET + ')'">
                             @for (comp of node.c3Components; track $index; let i = $index) {
                                 <g class="pin" 
-                                   [attr.transform]="'translate(' + getPinOffsetX(node, i) + ', 0)'"
+                                              [attr.transform]="'translate(' + node.pinOffsetsX[i] + ', 0)'"
                                    [class.master]="comp.role === 'master'" 
                                    [class.slave]="comp.role === 'slave'"
                                    [class.peer]="comp.role === 'peer'" 
@@ -164,7 +164,7 @@
 
                 <!-- Hub points for peer networks -->
                 @for (hub of hubPoints(); track hub.id) {
-                    <circle [attr.cx]="hub.x" [attr.cy]="hub.y" r="4" [attr.fill]="hub.color" stroke-width="0" />
+                    <circle [attr.cx]="hub.x" [attr.cy]="hub.y" [attr.r]="hub.nodesCount <= 2 ? 2 : 5" [attr.fill]="hub.color" stroke-width="0" />
                 }
 
                 <!-- Active drag line -->

@@ -54,6 +54,7 @@ import {
 import { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { ToastService } from '../../services/toast.service';
 import { ImageStorageService } from '../../services/image-storage.service';
+import { RouterLinkActive } from "@angular/router";
 
 export interface C3NetworkDialogData {
     units: ForceUnit[];
@@ -73,6 +74,7 @@ interface C3Node {
     y: number;
     zIndex: number;
     iconUrl: string;
+    pinOffsetsX: number[];
 }
 
 interface ConnectionLine {
@@ -88,12 +90,13 @@ interface HubPoint {
     id: string;
     x: number; y: number;
     color: string;
+    nodesCount: number;
 }
 
 @Component({
     selector: 'c3-network-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [NgTemplateOutlet],
+    imports: [NgTemplateOutlet, RouterLinkActive],
     host: { class: 'fullscreen-dialog-host' },
     templateUrl: './c3-network-dialog.component.html',
     styleUrls: ['./c3-network-dialog.component.scss']
@@ -119,6 +122,15 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected nodes = signal<C3Node[]>([]);
     protected networks = signal<SerializedC3NetworkGroup[]>([]);
     protected hasModifications = signal(false);
+
+    /** Fast lookup to avoid repeated linear searches during computed layout. */
+    protected nodesById = computed(() => {
+        const map = new Map<string, C3Node>();
+        for (const node of this.nodes()) {
+            map.set(node.unit.id, node);
+        }
+        return map;
+    });
 
     // Drag state
     protected draggedNode = signal<C3Node | null>(null);
@@ -214,14 +226,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     // Connection lines - now in SVG world coordinates (before transform)
     protected connectionLines = computed<ConnectionLine[]>(() => {
         const lines: ConnectionLine[] = [];
-        const nodes = this.nodes();
+        const nodesById = this.nodesById();
         const networks = this.networks();
 
         for (const network of networks) {
             if (network.peerIds && network.peerIds.length > 1) {
                 // Peer network - lines from hub to each peer
                 const peerNodes = network.peerIds
-                    .map(id => nodes.find(n => n.unit.id === id))
+                    .map(id => nodesById.get(id))
                     .filter((n): n is C3Node => !!n);
 
                 if (peerNodes.length >= 2) {
@@ -243,7 +255,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 }
             } else if (network.masterId) {
                 // Master network - draw lines to members
-                const masterNode = nodes.find(n => n.unit.id === network.masterId);
+                const masterNode = nodesById.get(network.masterId);
                 if (!masterNode) continue;
 
                 const compIdx = network.masterCompIndex ?? 0;
@@ -251,7 +263,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
                 for (const member of network.members || []) {
                     const parsed = C3NetworkUtil.parseMember(member);
-                    const memberNode = nodes.find(n => n.unit.id === parsed.unitId);
+                    const memberNode = nodesById.get(parsed.unitId);
                     if (!memberNode) continue;
 
                     // Find the appropriate pin on the member
@@ -293,12 +305,12 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     // Hub points for peer networks - in SVG world coordinates
     protected hubPoints = computed<HubPoint[]>(() => {
         const hubs: HubPoint[] = [];
-        const nodes = this.nodes();
+        const nodesById = this.nodesById();
 
         for (const network of this.networks()) {
             if (network.peerIds && network.peerIds.length > 1) {
                 const peerNodes = network.peerIds
-                    .map(id => nodes.find(n => n.unit.id === id))
+                    .map(id => nodesById.get(id))
                     .filter((n): n is C3Node => !!n);
 
                 if (peerNodes.length >= 2) {
@@ -310,7 +322,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         id: `hub-${network.id}`,
                         x: positions.reduce((s, p) => s + p.x, 0) / positions.length,
                         y: positions.reduce((s, p) => s + p.y, 0) / positions.length,
-                        color: network.color
+                        color: network.color,
+                        nodesCount: peerNodes.length
                     });
                 }
             }
@@ -358,7 +371,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             memberStr?: string 
         }[]>();
         
-        const nodes = this.nodes();
+        const nodesById = this.nodesById();
         const networks = this.networks();
         
         for (const network of networks) {
@@ -366,18 +379,18 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             
             if (network.peerIds) {
                 for (const id of network.peerIds) {
-                    const node = nodes.find(n => n.unit.id === id);
+                    const node = nodesById.get(id);
                     members.push({ id, name: node?.unit.getUnit().chassis || 'Unknown', role: 'peer', canRemove: true });
                 }
             } else if (network.masterId) {
-                const masterNode = nodes.find(n => n.unit.id === network.masterId);
+                const masterNode = nodesById.get(network.masterId);
                 if (masterNode) {
                     members.push({ id: network.masterId, name: masterNode.unit.getUnit().chassis, role: 'master', canRemove: false });
                 }
 
                 for (const memberStr of network.members || []) {
                     const parsed = C3NetworkUtil.parseMember(memberStr);
-                    const node = nodes.find(n => n.unit.id === parsed.unitId);
+                    const node = nodesById.get(parsed.unitId);
                     const isMaster = parsed.compIndex !== undefined;
                     
                     let hasChildren = false;
@@ -405,14 +418,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     /** Map of network ID to display name */
     protected networkDisplayNames = computed(() => {
         const map = new Map<string, string>();
-        const nodes = this.nodes();
+        const nodesById = this.nodesById();
         
         for (const network of this.networks()) {
             let name: string;
             if (network.peerIds) {
                 name = `${C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
             } else if (network.masterId) {
-                const masterNode = nodes.find(n => n.unit.id === network.masterId);
+                const masterNode = nodesById.get(network.masterId);
                 const memberCount = network.members?.length || 0;
                 name = `${masterNode?.unit.getUnit().chassis || 'Unknown'} (${memberCount} ${memberCount === 1 ? 'member' : 'members'})`;
             } else {
@@ -545,13 +558,18 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         this.nodes.set(c3Units.map((unit, idx) => {
             const pos = unit.c3Position();
             const iconPath = unit.getUnit().icon;
+            const comps = C3NetworkUtil.getC3Components(unit.getUnit());
+            const numPins = Math.max(1, comps.length);
+            const totalWidth = (numPins - 1) * this.PIN_GAP;
+            const pinOffsetsX = Array.from({ length: numPins }, (_, i) => -totalWidth / 2 + i * this.PIN_GAP);
             return {
                 unit,
-                c3Components: C3NetworkUtil.getC3Components(unit.getUnit()),
+                c3Components: comps,
                 x: pos?.x ?? startX + (idx % cols) * spacing,
                 y: pos?.y ?? startY + Math.floor(idx / cols) * spacing,
                 zIndex: idx,
-                iconUrl: iconPath ? (this.imageService.getCachedUrl(iconPath) || this.FALLBACK_ICON) : this.FALLBACK_ICON
+                iconUrl: iconPath ? (this.imageService.getCachedUrl(iconPath) || this.FALLBACK_ICON) : this.FALLBACK_ICON,
+                pinOffsetsX
             };
         }));
 
@@ -561,10 +579,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     private async loadMissingIconUrls(units: ForceUnit[]) {
         const nodes = this.nodes();
+        const nodesById = new Map<string, C3Node>();
+        for (const node of nodes) {
+            nodesById.set(node.unit.id, node);
+        }
         let updated = false;
         
         for (const unit of units) {
-            const node = nodes.find(n => n.unit.id === unit.id);
+            const node = nodesById.get(unit.id);
             if (!node || node.iconUrl !== this.FALLBACK_ICON) continue;
             
             const iconPath = unit.getUnit().icon;
@@ -619,22 +641,12 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     // ==================== SVG Coordinate Helpers ====================
 
     /**
-     * Get the X offset for a pin relative to node center.
-     * Pins are centered horizontally within the node.
-     */
-    protected getPinOffsetX(node: C3Node, compIndex: number): number {
-        const numPins = node.c3Components.length;
-        const totalWidth = (numPins - 1) * this.PIN_GAP;
-        return -totalWidth / 2 + compIndex * this.PIN_GAP;
-    }
-
-    /**
      * Get pin position in SVG world coordinates (before any transforms).
      * This is used for drawing connection lines.
      */
     private getPinWorldPosition(node: C3Node, compIndex: number): { x: number; y: number } {
         return {
-            x: node.x + this.getPinOffsetX(node, compIndex),
+            x: node.x + (node.pinOffsetsX[compIndex] ?? 0),
             y: node.y + this.PIN_Y_OFFSET
         };
     }
