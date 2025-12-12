@@ -71,6 +71,7 @@ interface C3Node {
     c3Components: C3Component[];
     x: number;
     y: number;
+    zIndex: number;
 }
 
 interface ConnectionLine {
@@ -121,10 +122,19 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected hoveredPinIndex = signal<number | null>(null);
 
     // Pan/zoom state
-    protected isPanning = signal(false);
-    protected panStart = signal({ x: 0, y: 0 });
     protected viewOffset = signal({ x: 0, y: 0 });
     protected zoom = signal(1);
+
+    // Unified pan tracking (works for both single-touch and pinch gestures)
+    private lastPanPoint: { x: number; y: number } | null = null;
+
+    // Pinch zoom state
+    private pinchStartDistance = 0;
+    private pinchStartZoom = 1;
+    private activeTouches = new Map<number, PointerEvent>();
+
+    // Z-index counter for node layering
+    private maxZIndex = signal(0);
 
     // Color tracking
     private nextColorIndex = 0;
@@ -502,6 +512,81 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return map;
     });
 
+    // ==================== Pre-computed Node UI State ====================
+    
+    /** 
+     * Pre-computed map of node classes for each unit.
+     * Reduces template function calls by caching results in a computed signal.
+     */
+    protected nodeClassesMap = computed(() => {
+        const map = new Map<string, Record<string, boolean>>();
+        const unitStatus = this.unitConnectionStatus();
+        const connState = this.connectionState();
+        const isConnecting = connState.isConnecting;
+        const draggedNode = this.draggedNode();
+        const hoveredNode = this.hoveredNode();
+        const connectingFromNode = this.connectingFrom()?.node;
+        
+        for (const node of this.nodes()) {
+            const unitId = node.unit.id;
+            const isLinked = unitStatus.get(unitId) ?? false;
+            map.set(unitId, {
+                linked: isLinked,
+                disconnected: !isLinked,
+                dragging: draggedNode === node,
+                'valid-target': connState.validTargetIds.has(unitId) && isConnecting,
+                'invalid-target': !connState.validTargetIds.has(unitId) && isConnecting && connectingFromNode !== node,
+                hovered: hoveredNode === node && connState.validTargetIds.has(unitId)
+            });
+        }
+        
+        return map;
+    });
+
+    /**
+     * Pre-computed map of node styles for each unit.
+     * Separates dynamic position from static styling to reduce recalculations.
+     */
+    protected nodeStylesMap = computed(() => {
+        const map = new Map<string, Record<string, string>>();
+        const offset = this.viewOffset();
+        const scale = this.zoom();
+        const borderColors = this.nodeBorderColors();
+        const unitStatus = this.unitConnectionStatus();
+        
+        for (const node of this.nodes()) {
+            const unitId = node.unit.id;
+            const colors = borderColors.get(unitId) || [];
+            const isConnected = unitStatus.get(unitId) ?? false;
+            
+            const style: Record<string, string> = {
+                left: `${offset.x + node.x * scale}px`,
+                top: `${offset.y + node.y * scale}px`,
+                transform: `translate(-50%, -50%) scale(${scale})`,
+                zIndex: `${node.zIndex}`
+            };
+
+            if (colors.length === 0) {
+                style['borderColor'] = '#666';
+            } else if (colors.length === 1) {
+                style['borderColor'] = colors[0];
+            } else {
+                const angle = 360 / colors.length;
+                const stops = colors.map((c, i) => `${c} ${i * angle}deg ${(i + 1) * angle}deg`).join(', ');
+                style['borderImage'] = `conic-gradient(from 180deg, ${stops}) 1`;
+                style['borderImageSlice'] = '1';
+            }
+
+            if (!isConnected) {
+                style['borderStyle'] = 'dashed';
+            }
+
+            map.set(unitId, style);
+        }
+        
+        return map;
+    });
+
     ngAfterViewInit() {
         this.initializeNodes();
         this.networks.set([...(this.data.networks || [])]);
@@ -529,9 +614,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 unit,
                 c3Components: C3NetworkUtil.getC3Components(unit.getUnit()),
                 x: pos?.x ?? startX + (idx % cols) * spacing,
-                y: pos?.y ?? startY + Math.floor(idx / cols) * spacing
+                y: pos?.y ?? startY + Math.floor(idx / cols) * spacing,
+                zIndex: idx
             };
         }));
+        this.maxZIndex.set(c3Units.length);
     }
 
     private initializeMasterPinColors() {
@@ -686,6 +773,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         event.stopPropagation();
         if ((event.target as HTMLElement).closest('.pin')) return;
 
+        // Bring node to front (z-index layering)
+        this.bringNodeToFront(node);
+
         const scale = this.zoom();
         const offset = this.viewOffset();
         this.dragOffset.set({
@@ -697,15 +787,82 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         document.addEventListener('pointerup', this.onGlobalPointerUp);
     }
 
+    /**
+     * Bring a node to the front by giving it the highest z-index
+     */
+    private bringNodeToFront(node: C3Node): void {
+        const newZ = this.maxZIndex() + 1;
+        this.maxZIndex.set(newZ);
+        node.zIndex = newZ;
+        // Trigger re-render by updating nodes signal
+        this.nodes.set([...this.nodes()]);
+    }
+
     protected onContainerPointerDown(event: PointerEvent) {
         if ((event.target as HTMLElement).closest('.node')) return;
-        this.isPanning.set(true);
-        this.panStart.set({ x: event.clientX, y: event.clientY });
+        
+        // Track touch for pinch-to-zoom and pan
+        this.activeTouches.set(event.pointerId, event);
+        
+        // Initialize pan point (either single touch or center of two)
+        this.lastPanPoint = this.getEffectivePanPoint();
+        
+        if (this.activeTouches.size === 2) {
+            // Start pinch gesture - store initial distance for zoom calculation
+            this.startPinchGesture();
+        }
+        
         document.addEventListener('pointermove', this.onGlobalPointerMove);
         document.addEventListener('pointerup', this.onGlobalPointerUp);
     }
 
+    /**
+     * Get the effective pan point - single touch position or center of two touches
+     */
+    private getEffectivePanPoint(): { x: number; y: number } {
+        const touches = Array.from(this.activeTouches.values());
+        if (touches.length === 0) return { x: 0, y: 0 };
+        if (touches.length === 1) return { x: touches[0].clientX, y: touches[0].clientY };
+        // Two or more touches - use center
+        return this.getTouchCenter(touches[0], touches[1]);
+    }
+
+    /**
+     * Initialize pinch gesture state from current active touches
+     */
+    private startPinchGesture(): void {
+        const touches = Array.from(this.activeTouches.values());
+        if (touches.length !== 2) return;
+        
+        this.pinchStartDistance = this.getTouchDistance(touches[0], touches[1]);
+        this.pinchStartZoom = this.zoom();
+    }
+
+    /**
+     * Calculate distance between two touch points
+     */
+    private getTouchDistance(t1: PointerEvent, t2: PointerEvent): number {
+        const dx = t2.clientX - t1.clientX;
+        const dy = t2.clientY - t1.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    /**
+     * Calculate center point between two touches
+     */
+    private getTouchCenter(t1: PointerEvent, t2: PointerEvent): { x: number; y: number } {
+        return {
+            x: (t1.clientX + t2.clientX) / 2,
+            y: (t1.clientY + t2.clientY) / 2
+        };
+    }
+
     private onGlobalPointerMove = (event: PointerEvent) => {
+        // Update tracked touch position
+        if (this.activeTouches.has(event.pointerId)) {
+            this.activeTouches.set(event.pointerId, event);
+        }
+
         if (this.draggedNode()) {
             const node = this.draggedNode()!;
             const offset = this.viewOffset();
@@ -746,20 +903,57 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 this.hoveredNode.set(null);
                 this.hoveredPinIndex.set(null);
             }
-        } else if (this.isPanning()) {
-            const start = this.panStart();
-            const current = this.viewOffset();
-            this.viewOffset.set({
-                x: current.x + event.clientX - start.x,
-                y: current.y + event.clientY - start.y
-            });
-            this.panStart.set({ x: event.clientX, y: event.clientY });
-            // Recalculate pin positions after pan
+        } else if (this.activeTouches.size > 0 && this.lastPanPoint) {
+            // Unified pan handling (works for both single-touch and pinch)
+            const currentPanPoint = this.getEffectivePanPoint();
+            const panDeltaX = currentPanPoint.x - this.lastPanPoint.x;
+            const panDeltaY = currentPanPoint.y - this.lastPanPoint.y;
+            
+            let newOffsetX = this.viewOffset().x + panDeltaX;
+            let newOffsetY = this.viewOffset().y + panDeltaY;
+            
+            // Handle pinch-to-zoom if two touches are active
+            if (this.activeTouches.size === 2) {
+                const touches = Array.from(this.activeTouches.values());
+                const currentDistance = this.getTouchDistance(touches[0], touches[1]);
+                const scale = currentDistance / this.pinchStartDistance;
+                const newZoom = Math.max(0.3, Math.min(3, this.pinchStartZoom * scale));
+                
+                // Adjust offset to zoom towards pinch center
+                const oldZoom = this.zoom();
+                if (newZoom !== oldZoom) {
+                    const el = this.container()?.nativeElement;
+                    if (el) {
+                        const rect = el.getBoundingClientRect();
+                        const centerX = currentPanPoint.x - rect.left;
+                        const centerY = currentPanPoint.y - rect.top;
+                        const zoomRatio = newZoom / oldZoom;
+                        newOffsetX = centerX - (centerX - newOffsetX) * zoomRatio;
+                        newOffsetY = centerY - (centerY - newOffsetY) * zoomRatio;
+                    }
+                }
+                this.zoom.set(newZoom);
+            }
+            
+            this.viewOffset.set({ x: newOffsetX, y: newOffsetY });
+            this.lastPanPoint = currentPanPoint;
             requestAnimationFrame(() => this.invalidatePinPositions());
         }
     };
 
     private onGlobalPointerUp = (event: PointerEvent) => {
+        // Remove touch from tracking
+        this.activeTouches.delete(event.pointerId);
+        
+        // Update pan point for remaining touches (smooth transition from pinch to single-touch pan)
+        if (this.activeTouches.size > 0) {
+            this.lastPanPoint = this.getEffectivePanPoint();
+            // Re-initialize pinch if still have 2 touches
+            if (this.activeTouches.size === 2) {
+                this.startPinchGesture();
+            }
+        }
+
         if (this.connectingFrom()) {
             const target = document.elementFromPoint(event.clientX, event.clientY);
             const nodeEl = target?.closest('.node');
@@ -784,9 +978,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             this.hoveredPinIndex.set(null);
         }
         this.draggedNode.set(null);
-        this.isPanning.set(false);
-        document.removeEventListener('pointermove', this.onGlobalPointerMove);
-        document.removeEventListener('pointerup', this.onGlobalPointerUp);
+        
+        // Clean up when no touches remain
+        if (this.activeTouches.size === 0) {
+            this.lastPanPoint = null;
+            document.removeEventListener('pointermove', this.onGlobalPointerMove);
+            document.removeEventListener('pointerup', this.onGlobalPointerUp);
+        }
     };
 
     protected onWheel(event: WheelEvent) {
@@ -1003,48 +1201,12 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     // ==================== UI Helpers ====================
 
-    protected getNodeClasses(node: C3Node) {
-        const isLinked = this.unitConnectionStatus().get(node.unit.id) ?? false;
-        const connState = this.connectionState();
-        const isConnecting = connState.isConnecting;
-        return {
-            linked: isLinked,
-            disconnected: !isLinked,
-            dragging: this.draggedNode() === node,
-            'valid-target': connState.validTargetIds.has(node.unit.id) && isConnecting,
-            'invalid-target': !connState.validTargetIds.has(node.unit.id) && isConnecting && this.connectingFrom()?.node !== node,
-            hovered: this.hoveredNode() === node && connState.validTargetIds.has(node.unit.id)
-        };
+    protected getNodeClasses(node: C3Node): Record<string, boolean> {
+        return this.nodeClassesMap().get(node.unit.id) ?? {};
     }
 
     protected getNodeStyle(node: C3Node): Record<string, string> {
-        const offset = this.viewOffset();
-        const scale = this.zoom();
-        const colors = this.nodeBorderColors().get(node.unit.id) || [];
-        const isConnected = this.unitConnectionStatus().get(node.unit.id) ?? false;
-
-        const style: Record<string, string> = {
-            left: `${offset.x + node.x * scale}px`,
-            top: `${offset.y + node.y * scale}px`,
-            transform: `translate(-50%, -50%) scale(${scale})`
-        };
-
-        if (colors.length === 0) {
-            style['borderColor'] = '#666';
-        } else if (colors.length === 1) {
-            style['borderColor'] = colors[0];
-        } else {
-            const angle = 360 / colors.length;
-            const stops = colors.map((c, i) => `${c} ${i * angle}deg ${(i + 1) * angle}deg`).join(', ');
-            style['borderImage'] = `conic-gradient(from 180deg, ${stops}) 1`;
-            style['borderImageSlice'] = '1';
-        }
-
-        if (!isConnected) {
-            style['borderStyle'] = 'dashed';
-        }
-
-        return style;
+        return this.nodeStylesMap().get(node.unit.id) ?? {};
     }
 
     protected getPinNetworkColor(node: C3Node, compIndex: number): string | null {

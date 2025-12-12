@@ -373,11 +373,11 @@ export class C3NetworkUtil {
         // Master to Master
         if (sourceRole === C3Role.MASTER && targetRole === C3Role.MASTER) {
             // Check if reverse connection exists - if so, allow (will be replaced)
-            const targetNet = this.findMasterNetwork(targetUnitId, targetCompIdx, networks);
-            const sourceMemberStr = this.createMasterMember(sourceUnitId, sourceCompIdx);
-            if (targetNet?.members?.includes(sourceMemberStr)) {
-                return { valid: true }; // Allow - will replace reverse connection
-            }
+        //    const targetNet = this.findMasterNetwork(targetUnitId, targetCompIdx, networks);
+        //    const sourceMemberStr = this.createMasterMember(sourceUnitId, sourceCompIdx);
+        //    if (targetNet?.members?.includes(sourceMemberStr)) {
+        //        return { valid: true }; // Allow - will replace reverse connection
+        //    }
             return this.canMasterConnectToMaster(sourceUnitId, sourceCompIdx, targetUnitId, targetCompIdx, networks);
         }
 

@@ -228,7 +228,6 @@ export interface C3NodePosition {
 export const C3_NETWORK_COLORS = [
     '#4CAF50', // Green
     '#2196F3', // Blue
-    '#FF9800', // Orange
     '#9C27B0', // Purple
     '#00BCD4', // Cyan
     '#E91E63', // Pink
