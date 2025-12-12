@@ -396,14 +396,17 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     // We want the line to stop before the pin, leaving room for the arrow
                     const arrowMarkerRefX = 10;
                     const shortenBy = this.PIN_RADIUS + arrowMarkerRefX;
-                    const endX = memberPos.x - Math.cos(angle) * shortenBy;
-                    const endY = memberPos.y - Math.sin(angle) * shortenBy;
 
                     lines.push({
                         id: `${network.id}-member-${member}`,
-                        x1: masterPos.x, y1: masterPos.y, x2: endX, y2: endY,
-                        nodeX1: masterNode.x, nodeY1: masterNode.y,
-                        nodeX2: memberNode.x, nodeY2: memberNode.y,
+                        x1: masterPos.x, 
+                        y1: masterPos.y, 
+                        x2: memberPos.x - Math.cos(angle) * shortenBy, 
+                        y2: memberPos.y - Math.sin(angle) * shortenBy,
+                        nodeX1: masterNode.x, 
+                        nodeY1: masterNode.y,
+                        nodeX2: memberNode.x - Math.cos(angle) * arrowMarkerRefX, 
+                        nodeY2: memberNode.y - Math.sin(angle) * arrowMarkerRefX,
                         color: network.color,
                         hasArrow: true,
                         arrowAngle: angle,
