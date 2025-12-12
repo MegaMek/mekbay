@@ -17,7 +17,7 @@
     <h2>Network Configuration</h2>
     <div class="c3-dialog-header-actions">
         <button
-            class="bt-button connections-layer-btn"
+            class="bt-button connections-layer-btn square"
             type="button"
             (click)="connectionsAboveNodes.set(!connectionsAboveNodes())"
             [class.active]="connectionsAboveNodes()"
@@ -44,7 +44,7 @@
         </button>
 
         @if (layoutService.isMobile()) {
-        <button class="bt-button burger-menu-btn" type="button"
+        <button class="bt-button burger-menu-btn square" type="button"
             (click)="sidebarAnimated.set(true); sidebarOpen.set(!sidebarOpen())"
             [class.active]="sidebarOpen()" aria-label="Toggle networks sidebar">
             <span class="burger-line"></span>
