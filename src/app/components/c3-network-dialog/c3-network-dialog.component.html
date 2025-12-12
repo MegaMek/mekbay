@@ -14,9 +14,9 @@
 -->
 
 <div class="c3-dialog-header">
-    <h2>C3 Network Configuration</h2>
+    <h2>Network Configuration</h2>
     @if (layoutService.isTablet()) {
-        <button class="burger-menu-btn" (click)="sidebarOpen.set(!sidebarOpen())" 
+        <button class="bt-button burger-menu-btn" (click)="sidebarAnimated.set(true); sidebarOpen.set(!sidebarOpen())" 
                 [class.active]="sidebarOpen()" 
                 aria-label="Toggle networks sidebar">
             <span class="burger-line"></span>
@@ -224,7 +224,8 @@
 
     <!-- Networks sidebar -->
     <div class="networks-sidebar framed-borders" 
-         [class.phone-hidden]="layoutService.isTablet() && !sidebarOpen()">
+         [class.hidden]="layoutService.isTablet() && !sidebarOpen()"
+         [class.animate]="sidebarAnimated()">
         <h3>Networks</h3>
 
         <div class="networks-list">

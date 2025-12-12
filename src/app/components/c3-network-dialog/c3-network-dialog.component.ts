@@ -134,6 +134,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected networks = signal<SerializedC3NetworkGroup[]>([]);
     protected hasModifications = signal(false);
     protected sidebarOpen = signal(false);
+    protected sidebarAnimated = signal(false);
 
     /** Fast lookup to avoid repeated linear searches during computed layout. */
     protected nodesById = computed(() => {
