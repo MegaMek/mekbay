@@ -164,22 +164,22 @@
                                    (pointerdown)="onPinPointerDown($event, node, i)">
                                     
                                     <!-- Pin outer ring -->
-                                    <circle class="pin-ring" r="11"
+                                    <circle class="pin-ring" r="14"
                                             [attr.stroke]="getPinStrokeColor(node, i)" />
                                     
                                     <!-- Pin connector circle -->
-                                    <circle class="pin-connector" r="7"
+                                    <circle class="pin-connector" r="10"
                                             [attr.stroke]="getPinStrokeColor(node, i)"
                                             [attr.fill]="getPinFillColor(node, i)" />
                                     
                                     <!-- Pin role label -->
-                                    <text class="pin-role-label" y="24" text-anchor="middle"
+                                    <text class="pin-role-label" y="28" text-anchor="middle"
                                           filter="url(#pin-shadow)">
                                         {{ getRoleLabel(comp.role) }}
                                     </text>
                                     
                                     <!-- Network type label -->
-                                    <text class="pin-type-label" y="38" text-anchor="middle"
+                                    <text class="pin-type-label" y="42" text-anchor="middle"
                                           filter="url(#pin-shadow)">
                                         {{ getNetworkTypeLabel(comp.networkType) }}
                                     </text>

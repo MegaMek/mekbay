@@ -123,9 +123,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     // Node layout constants (exposed for template)
     protected readonly NODE_RADIUS = 150;
-    protected readonly PIN_RADIUS = 7;
-    protected readonly PIN_GAP = 34; // Gap between pin centers
-    protected readonly PIN_Y_OFFSET = 20; // Y offset from node center to pins
+    protected readonly PIN_RADIUS = 13;
+    protected readonly PIN_GAP = 40; // Gap between pin centers
+    protected readonly PIN_Y_OFFSET = 18; // Y offset from node center to pins
 
     // State
     protected nodes = signal<C3Node[]>([]);
