@@ -13,7 +13,7 @@ import { TooltipLine } from '../tooltip/tooltip.component';
 import { ECMMode } from '../../models/common.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
-import { C3Component, C3Role } from '../../models/c3-network.model';
+import { C3Component, C3NetworkType } from '../../models/c3-network.model';
 
 @Component({
     selector: 'unit-block',
@@ -106,28 +106,54 @@ export class UnitBlockComponent {
         return undefined;
     });
 
-    /** Check if unit has any C3 equipment using the new flag-based detection */
-    hasC3 = computed(() => {
-        const unit = this.unit();
-        if (!unit) return false;
-        return C3NetworkUtil.hasC3(unit);
-    });
-
-    /** Get the C3 components for this unit */
-    c3Components = computed<C3Component[]>(() => {
+    /** Get individual C3 network items for display */
+    c3NetworkItems = computed<{ label: string; networkType: C3NetworkType; enabled: boolean; color?: string }[]>(() => {
         const unit = this.unit();
         if (!unit) return [];
-        return C3NetworkUtil.getC3Components(unit);
-    });
-
-    /** Get a display label for the C3 equipment */
-    c3Label = computed<string>(() => {
-        const components = this.c3Components();
-        if (components.length === 0) return '';
+        const components = C3NetworkUtil.getC3Components(unit);
+        if (components.length === 0) return [];
         
-        // Get unique network types
-        const types = [...new Set(components.map(c => C3NetworkUtil.getNetworkTypeName(c.networkType)))];
-        return types.join(', ');
+        const forceUnit = this.forceUnit();
+        const networks = forceUnit instanceof CBTForceUnit ? forceUnit.force.c3Networks() : [];
+        const unitId = forceUnit?.id;
+        
+        // Group by network type to get unique types
+        const typeMap = new Map<C3NetworkType, C3Component[]>();
+        for (const comp of components) {
+            const existing = typeMap.get(comp.networkType) || [];
+            existing.push(comp);
+            typeMap.set(comp.networkType, existing);
+        }
+        
+        const items: { label: string; networkType: C3NetworkType; enabled: boolean; color?: string }[] = [];
+        for (const [networkType, comps] of typeMap) {
+            // Find the network this unit is connected to for this type
+            const connectedNetwork = unitId ? networks.find(n => 
+                n.type === networkType && (
+                    n.masterId === unitId ||
+                    n.peerIds?.includes(unitId) ||
+                    n.members?.some(m => m === unitId || m.startsWith(unitId + ':'))
+                )
+            ) : undefined;
+            
+            const enabled = !!connectedNetwork;
+            
+            // Get color from root network
+            let color: string | undefined;
+            if (connectedNetwork) {
+                const rootNetwork = C3NetworkUtil.getRootNetwork(connectedNetwork, networks);
+                color = rootNetwork.color;
+            }
+            
+            items.push({
+                label: C3NetworkUtil.getNetworkTypeName(networkType),
+                networkType,
+                enabled,
+                color
+            });
+        }
+        
+        return items;
     });
 
     cleanedModel = computed(() => {

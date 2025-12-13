@@ -197,11 +197,11 @@
     }
 
     .info-slot.c3link {
-        background-color: rgba(185, 16, 16, 0.5);
+        background-color: rgba(128, 128, 128, 0.5);
     }
 
     .info-slot.c3link.enabled {
-        background-color: rgba(27, 136, 199, 0.5);
+        background-color: color-mix(in srgb, var(--network-color) 100%, transparent 50%);
     }
 
     .info-slot.ecm {
