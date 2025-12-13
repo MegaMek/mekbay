@@ -548,8 +548,17 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 name = `${C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
             } else if (network.masterId) {
                 const masterNode = nodesById.get(network.masterId);
-                const memberCount = network.members?.length || 0;
-                name = `${masterNode?.unit.getUnit().chassis || 'Unknown'} (${memberCount} ${memberCount === 1 ? 'member' : 'members'})`;
+                const memberCount = (network.members?.length || 0) + 1; // include master
+                const subNetworks = C3NetworkUtil.findSubNetworks(network, this.networks());
+                let subNetMemberCount = 0;
+                if (subNetworks.length > 0) {
+                    // Include sub-network members in count
+                    for (const subNet of subNetworks) {
+                        subNetMemberCount += (subNet.members?.length || 0);
+                    }
+                }
+                const memberStr = (memberCount + subNetMemberCount) > 1 ? 'members' : 'member';
+                name = `${masterNode?.unit.getUnit().chassis || 'Unknown'} (${memberCount + subNetMemberCount} ${memberStr})`;
             } else {
                 name = 'Unknown Network';
             }
