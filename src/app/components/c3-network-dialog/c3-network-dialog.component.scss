@@ -463,20 +463,17 @@
     color: var(--text-secondary, #aaa);
     background: var(--tag-bg, #333);
     padding: 3px 8px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     flex: 1;
+    
+    .name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     &.master {
       color: var(--text-primary, #fff);
       font-weight: 500;
-    }
-
-    .role-badge {
-      font-size: 0.6rem;
-      opacity: 0.7;
-      margin-left: 4px;
     }
   }
 }

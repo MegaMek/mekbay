@@ -576,8 +576,17 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             if (network.peerIds) {
                 displayName = `${C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
             } else if (network.masterId) {
-                const memberCount = (network.members?.length || 0) + 1; // include master
-                const subNetMemberCount = subNetworks.reduce((sum, child) => sum + (child.network.members?.length || 0), 0);
+                const countNonSelfMembers = (net: SerializedC3NetworkGroup): number => {
+                    if (!net.masterId) return net.members?.length ?? 0;
+                    return (net.members ?? []).reduce((count, member) => {
+                        const parsed = C3NetworkUtil.parseMember(member);
+                        return parsed.unitId === net.masterId ? count : count + 1;
+                    }, 0);
+                };
+
+                // Include the master itself, but exclude any "self-connection" members.
+                const memberCount = countNonSelfMembers(network) + 1;
+                const subNetMemberCount = subNetworks.reduce((sum, child) => sum + countNonSelfMembers(child.network), 0);
                 const memberStr = (memberCount + subNetMemberCount) > 1 ? 'members' : 'member';
                 const networkTypeName = C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType);
                 displayName = `${networkTypeName} (${memberCount + subNetMemberCount} ${memberStr})`;

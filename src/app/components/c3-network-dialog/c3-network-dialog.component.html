@@ -312,10 +312,10 @@
             && (depth == 0 || member.role !== 'master')) {
             <div class="network-unit-item">
                 <div class="row network-unit" [class.master]="member.role === 'master'">
-                    <span>
-                        {{ member.name }}
-                        @if (member.role === 'master') {
-                        <span class="role-badge">(M)</span>
+                    <span class="name">
+                        {{ member.node.unit.getUnit().chassis }} 
+                        @if (member.node.unit.getUnit().model) {
+                            ({{ member.node.unit.getUnit().model }})
                         }
                     </span>
                     @if (member.canRemove) {
@@ -332,8 +332,11 @@
             @if (member.role == 'sub-master') {
             <div class="network-unit-item">
                 <div class="row network-unit">
-                    <span>
-                        {{ member.name }} (M)
+                    <span class="name">
+                        {{ member.node.unit.getUnit().chassis }} 
+                        @if (member.node.unit.getUnit().model) {
+                            ({{ member.node.unit.getUnit().model }})
+                        }
                     </span>
                     @if (member.canRemove) {
                     <button class="remove-btn"
