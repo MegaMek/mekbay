@@ -62,22 +62,6 @@
   }
 }
 
-// ==================== Burger Menu Button ====================
-
-.burger-menu-btn {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 8px;
-  cursor: pointer;
-
-  svg {
-    display: block;
-    width: 22px;
-    height: 22px;
-  }
-}
-
 .c3-dialog-content {
   display: flex;
   flex: 1;
@@ -418,7 +402,7 @@
   margin-bottom: 8px;
 
   &.sub-network {
-    border-left-width: 3px;
+    position: relative;
     background: rgba(0, 0, 0, 0.2);
     margin-top: 0px;
     margin-bottom: 4px;
@@ -434,10 +418,11 @@
   }
 }
 
-.sub-network-indicator {
-  color: var(--text-color-secondary);
-  margin-right: 4px;
-  font-size: 0.8em;
+.subnetwork-arrow {
+  position: absolute;
+  top: -14px;
+  left: 8px;
+  color: var(--network-color);
 }
 
 .network-header {

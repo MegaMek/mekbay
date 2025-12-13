@@ -45,7 +45,7 @@
         </button>
 
         @if (layoutService.isMobile()) {
-        <button class="bt-button burger-menu-btn square" type="button"
+        <button class="bt-button square" type="button"
             (click)="sidebarAnimated.set(true); sidebarOpen.set(!sidebarOpen())" [class.active]="sidebarOpen()"
             aria-label="Toggle networks sidebar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
@@ -289,11 +289,15 @@
 <!-- Template for recursive network display -->
 <ng-template #networkTemplate let-vm="vm" let-depth="depth">
     <div class="network-item" [class.sub-network]="depth > 0" [style.--network-color]="vm.network.color">
+        @if (depth > 0) {
+        <div class="subnetwork-arrow" aria-hidden="true">
+            <svg width="14" height="8" viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <polygon points="12,1 23,11 1,11" fill="currentColor" />
+            </svg>
+        </div>
+        }
         <div class="network-header">
             <span class="network-type">
-                @if (depth > 0) {
-                <span class="sub-network-indicator">↳</span>
-                }
                 {{ vm.displayName }}
             </span>
             <button class="remove-btn" (click)="removeNetwork(vm.network)"
