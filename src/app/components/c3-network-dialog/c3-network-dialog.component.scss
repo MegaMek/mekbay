@@ -205,8 +205,13 @@
 .pin-container {
 
   .pin {
+    pointer-events: all;
     cursor: pointer;
     transition: opacity 0.2s;
+
+    &.interaction-disabled {
+      pointer-events: none;
+    }
 
     .pin-ring {
       fill: none;

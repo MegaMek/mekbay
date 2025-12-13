@@ -195,14 +195,17 @@
                             [class.master]="comp.role === 'master'" [class.slave]="comp.role === 'slave'"
                             [class.peer]="comp.role === 'peer'" [class.connected]="isPinConnected(node, i)"
                             [class.has-network]="!!getPinNetworkColor(node, i)"
+                            
                             [class.disabled]="isPinDisabled(node, i)"
                             [class.connectingFromPin]="connectingFrom()?.node === node && connectingFrom()?.compIndex === i"
                             [class.valid-pin-target]="connectingFrom() && isPinValidTarget(node, i)"
                             [class.invalid-pin-target]="connectingFrom() && !isPinValidTarget(node, i) && validTargets().has(node.unit.id)">
-                            <g class="pin" [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node"
-                                (pointerdown)="onPinPointerDown($event, node, i)">
+                            <g class="pin" 
+                                [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node"
+                                (pointerdown)="onPinPointerDown($event, node, i)"
+                                (contextmenu)="onPinContextMenu($event, node, i)">
 
-                                <circle class="pin-hit-area" r="16" fill="transparent" pointer-events="all" />
+                                <circle class="pin-hit-area" r="16" fill="transparent" />
 
                                 <!-- Pin outer ring -->
                                 <circle class="pin-ring" r="14" [attr.stroke]="getPinStrokeColor(node, i)" />
@@ -319,7 +322,7 @@
                             <span class="name">
                                 {{ member.node.unit.getUnit().chassis }}
                                 @if (member.node.unit.getUnit().model) {
-                                    ({{ member.node.unit.getUnit().model }})
+                                    - {{ member.node.unit.getUnit().model }}
                                 }
                             </span>
                         }
@@ -345,7 +348,7 @@
                             <span class="name">
                                 {{ member.node.unit.getUnit().chassis }}
                                 @if (member.node.unit.getUnit().model) {
-                                    ({{ member.node.unit.getUnit().model }})
+                                    - {{ member.node.unit.getUnit().model }}
                                 }
                             </span>
                         }

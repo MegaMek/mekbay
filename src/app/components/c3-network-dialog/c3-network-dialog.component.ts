@@ -295,6 +295,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     /**
      * Comprehensive connection state computed once when drag starts.
      * Contains all valid target units and their valid pins.
+     * Also includes pins that are already connected (for drag-to-disconnect).
      */
     protected connectionState = computed(() => {
         const conn = this.connectingFrom();
@@ -302,21 +303,35 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             return {
                 isConnecting: false,
                 validTargetIds: new Set<string>(),
-                validPinsByUnit: new Map<string, number[]>()
+                validPinsByUnit: new Map<string, number[]>(),
+                alreadyConnectedPins: new Map<string, number[]>()
             };
         }
         
         const sourceComp = conn.node.c3Components[conn.compIndex];
         const validTargetIds = new Set<string>();
         const validPinsByUnit = new Map<string, number[]>();
+        const alreadyConnectedPins = new Map<string, number[]>();
         const networks = this.networks();
         
         for (const node of this.nodes()) {
             const validPins: number[] = [];
+            const connectedPins: number[] = [];
             
             for (let i = 0; i < node.c3Components.length; i++) {
                 const targetComp = node.c3Components[i];
                 if (!C3NetworkUtil.areComponentsCompatible(sourceComp, targetComp)) continue;
+
+                // Check if already connected (for drag-to-disconnect)
+                const existingConnection = this.findConnectionBetweenPins(
+                    conn.node.unit.id, conn.compIndex, sourceComp.role,
+                    node.unit.id, i, targetComp.role
+                );
+                if (existingConnection) {
+                    connectedPins.push(i);
+                    validPins.push(i); // Already-connected pins are valid targets for disconnection
+                    continue;
+                }
 
                 const result = C3NetworkUtil.canConnectToPin(
                     conn.node.unit.id,
@@ -337,12 +352,16 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 validTargetIds.add(node.unit.id);
                 validPinsByUnit.set(node.unit.id, validPins);
             }
+            if (connectedPins.length > 0) {
+                alreadyConnectedPins.set(node.unit.id, connectedPins);
+            }
         }
         
         return {
             isConnecting: true,
             validTargetIds,
-            validPinsByUnit
+            validPinsByUnit,
+            alreadyConnectedPins
         };
     });
 
@@ -1159,6 +1178,123 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         this.addGlobalPointerListeners();
     }
 
+    /**
+     * Removes the existing link for a pin (if any).
+     * This is used to support "redrawing" an existing link by dragging from it.
+     */
+    private cancelExistingConnectionForPin(node: C3Node, compIndex: number): void {
+        if (this.data.readOnly) return;
+
+        const comp = node.c3Components[compIndex];
+        if (!comp) return;
+
+        const unitId = node.unit.id;
+        const networks = this.networks();
+
+        // Slave pins are stored as plain unitId members on a master network.
+        if (comp.role === C3Role.SLAVE) {
+            const net = networks.find(n => n.members?.includes(unitId));
+            if (net) {
+                this.removeMemberFromNetwork(net.id, unitId);
+            }
+            return;
+        }
+
+        // Master pins can be connected as a child (sub-master) via "unitId:compIndex".
+        if (comp.role === C3Role.MASTER) {
+            const memberStr = C3NetworkUtil.createMasterMember(unitId, compIndex);
+            const net = networks.find(n => n.members?.includes(memberStr));
+            if (net) {
+                this.removeMemberFromNetwork(net.id, memberStr);
+            }
+            return;
+        }
+
+        // Peer pins participate via peerIds.
+        if (comp.role === C3Role.PEER) {
+            const net = C3NetworkUtil.findPeerNetwork(unitId, networks);
+            if (!net) return;
+
+            const updated = [...networks];
+            const target = updated.find(n => n.id === net.id);
+            if (!target?.peerIds) return;
+
+            target.peerIds = target.peerIds.filter(id => id !== unitId);
+            // Peer networks are only meaningful with 2+ peers.
+            if (target.peerIds.length < 2) {
+                const idx = updated.indexOf(target);
+                if (idx >= 0) updated.splice(idx, 1);
+            }
+
+            this.networks.set(updated);
+            this.hasModifications.set(true);
+        }
+    }
+
+    /**
+     * Checks if two pins are already connected to each other.
+     * Returns the connection info if found, null otherwise.
+     */
+    private findConnectionBetweenPins(
+        sourceUnitId: string, sourceCompIndex: number, sourceRole: C3Role,
+        targetUnitId: string, targetCompIndex: number, targetRole: C3Role
+    ): { networkId: string; memberStr?: string } | null {
+        const networks = this.networks();
+
+        // Master -> Slave connection
+        if (sourceRole === C3Role.MASTER && targetRole === C3Role.SLAVE) {
+            const net = C3NetworkUtil.findMasterNetwork(sourceUnitId, sourceCompIndex, networks);
+            if (net?.members?.includes(targetUnitId)) {
+                return { networkId: net.id, memberStr: targetUnitId };
+            }
+        }
+
+        // Slave -> Master connection (reverse check)
+        if (sourceRole === C3Role.SLAVE && targetRole === C3Role.MASTER) {
+            const net = C3NetworkUtil.findMasterNetwork(targetUnitId, targetCompIndex, networks);
+            if (net?.members?.includes(sourceUnitId)) {
+                return { networkId: net.id, memberStr: sourceUnitId };
+            }
+        }
+
+        // Master -> Master connection (sub-master)
+        if (sourceRole === C3Role.MASTER && targetRole === C3Role.MASTER) {
+            const memberStr = C3NetworkUtil.createMasterMember(targetUnitId, targetCompIndex);
+            const net = C3NetworkUtil.findMasterNetwork(sourceUnitId, sourceCompIndex, networks);
+            if (net?.members?.includes(memberStr)) {
+                return { networkId: net.id, memberStr };
+            }
+            // Also check reverse (target is parent of source)
+            const reverseMemberStr = C3NetworkUtil.createMasterMember(sourceUnitId, sourceCompIndex);
+            const reverseNet = C3NetworkUtil.findMasterNetwork(targetUnitId, targetCompIndex, networks);
+            if (reverseNet?.members?.includes(reverseMemberStr)) {
+                return { networkId: reverseNet.id, memberStr: reverseMemberStr };
+            }
+        }
+
+        // Peer -> Peer connection
+        if (sourceRole === C3Role.PEER && targetRole === C3Role.PEER) {
+            // we ignore ourselves from the peer network
+            if (sourceUnitId === targetUnitId) return null;
+            const net = C3NetworkUtil.findPeerNetwork(sourceUnitId, networks);
+            if (net?.peerIds?.includes(targetUnitId)) {
+                return { networkId: net.id };
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Right-click handler for pins to cancel existing connections.
+     */
+    protected onPinContextMenu(event: MouseEvent, node: C3Node, compIndex: number): void {
+        if (event.button !== 2) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.cancelExistingConnectionForPin(node, compIndex);
+    }
+
     protected onNodePointerDown(event: PointerEvent, node: C3Node) {
         event.preventDefault();
         event.stopPropagation();
@@ -1433,7 +1569,26 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         targetPin = validPins.length > 0 ? validPins[0] : -1;
                     }
                     if (targetPin >= 0) {
-                        this.createConnection(conn, targetNode, targetPin);
+                        // Check if this is an already-connected pin (drag-to-disconnect)
+                        const sourceComp = conn.node.c3Components[conn.compIndex];
+                        const targetComp = targetNode.c3Components[targetPin];
+                        const existingConnection = this.findConnectionBetweenPins(
+                            conn.node.unit.id, conn.compIndex, sourceComp.role,
+                            targetNode.unit.id, targetPin, targetComp.role
+                        );
+                        
+                        if (existingConnection) {
+                            // Remove the existing connection
+                            if (existingConnection.memberStr) {
+                                this.removeMemberFromNetwork(existingConnection.networkId, existingConnection.memberStr);
+                            } else {
+                                // Peer network - remove the target unit from the peer network
+                                this.cancelExistingConnectionForPin(targetNode, targetPin);
+                            }
+                            this.toastService.show('Connection removed', 'success');
+                        } else {
+                            this.createConnection(conn, targetNode, targetPin);
+                        }
                     }
                 }
             }
