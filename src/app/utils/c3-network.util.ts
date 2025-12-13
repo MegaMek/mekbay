@@ -54,16 +54,7 @@ import { SerializedC3NetworkGroup } from "../models/force-serialization";
 import { CBTForceUnit } from "../models/cbt-force-unit.model";
 
 /**
- * C3 Network Utility - Simplified implementation
- * 
- * Rules:
- * a) Only same network type can connect (C3_COMPATIBLE_NETWORKS)
- * b) Peers connect equally, limit is C3_NETWORK_LIMITS[type]
- * c) C3: Master can have up to 3 children (all slaves OR all masters, not mixed per component)
- * d) A sub-master with 0 children is NOT a sub-network (treated as slave in parent)
- * e) Multi-master units can connect their components following same rules
- * f) Max depth is C3_MAX_NETWORK_DEPTH (Master -> SubMaster -> children)
- * g) Tax calculation at unit and force level
+ * C3 Network Utility
  */
 export class C3NetworkUtil {
 
