@@ -8,6 +8,8 @@ import { OptionsService } from '../../services/options.service';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { TooltipDirective } from '../../directives/tooltip.directive';
+import { TooltipLine } from '../tooltip/tooltip.component';
 import { ECMMode } from '../../models/common.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
@@ -16,7 +18,7 @@ import { C3Component, C3Role } from '../../models/c3-network.model';
 @Component({
     selector: 'unit-block',
     standalone: true,
-    imports: [CdkMenuModule, FormatNumberPipe, FormatTonsPipe, UnitIconComponent],
+    imports: [CdkMenuModule, FormatNumberPipe, FormatTonsPipe, UnitIconComponent, TooltipDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
     styleUrls: ['./unit-block.component.scss'],
@@ -132,6 +134,32 @@ export class UnitBlockComponent {
         const unit = this.unit();
         if (!unit || !unit.model) return '';
         return unit.model.replace(/\s*\(.*?\)\s*/g, '').trim();
+    });
+
+    bvTooltip = computed<TooltipLine[] | null>(() => {
+        const forceUnit = this.forceUnit();
+        const unit = this.unit();
+        if (!forceUnit || !unit) return null;
+        if (!(forceUnit instanceof CBTForceUnit)) return null;
+
+        const baseBv = unit.bv;
+        const pilotAdjustedBv = forceUnit.baseBvPilotAdjusted();
+        const pilotDiff = pilotAdjustedBv - baseBv;
+        const c3Tax = forceUnit.c3Tax();
+
+        const lines: TooltipLine[] = [];
+        if (baseBv > 0) {
+            lines.push({ label: 'Base:', value: `${baseBv}` });
+        }
+        if (pilotDiff !== 0) {
+            const sign = pilotDiff > 0 ? '+' : '';
+            lines.push({ label: 'Pilot:', value: `${sign}${pilotDiff}` });
+        }
+        if (c3Tax > 0) {
+            lines.push({ label: 'C3:', value: `+${c3Tax}` });
+        }
+
+        return lines.length > 0 ? lines : null;
     });
 
     clickInfo(event: MouseEvent): void {

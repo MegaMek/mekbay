@@ -126,7 +126,7 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
         </div>
         <div class="third-info">
             <div class="info-area">
-                <div class="info-slot numeric">
+                <div class="info-slot numeric" [tooltip]="bvTooltip()">
                     <span class="value">BV: {{ forceUnit()?.getBv() | formatNumber:true }}</span>
                 </div>
                 <div class="info-slot numeric">

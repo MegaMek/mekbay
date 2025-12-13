@@ -34,14 +34,14 @@
 import { DestroyRef, Directive, ElementRef, Input, inject } from '@angular/core';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { TooltipComponent } from '../components/tooltip/tooltip.component';
+import { TooltipComponent, TooltipContent } from '../components/tooltip/tooltip.component';
 
 @Directive({
     selector: '[tooltip]',
     standalone: true,
 })
 export class TooltipDirective {
-    @Input('tooltip') tooltipText: string | null = null;
+    @Input('tooltip') tooltipContent: TooltipContent | null = null;
     @Input() tooltipDelay = 400; // ms
 
     private overlay = inject(Overlay);
@@ -114,7 +114,7 @@ export class TooltipDirective {
     }
 
     private show(ev: PointerEvent) {
-        if (!this.tooltipText) return;
+        if (!this.tooltipContent) return;
         if (this.isVisible) return;
 
         // create overlay positioned relative to host native element
@@ -149,7 +149,7 @@ export class TooltipDirective {
 
         const portal = new ComponentPortal(TooltipComponent);
         const compRef = this.overlayRef.attach(portal);
-        compRef.instance.text = this.tooltipText;
+        compRef.instance.content = this.tooltipContent;
         // ensure OnPush component renders immediately
         compRef.changeDetectorRef.detectChanges();
 
