@@ -206,8 +206,6 @@ export class CBTForceUnitState extends ForceUnitState {
             return CrewMember.deserialize(crewData, this.unit);
         });
         this.crew.set(updatedCrew);
-
-        this.unit.recalculateBv();
     }
 
     inventoryForSerialization(): SerializedInventory[] {

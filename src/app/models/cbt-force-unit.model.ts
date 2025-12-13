@@ -66,9 +66,6 @@ export class CBTForceUnit extends ForceUnit {
     };
     protected override state: CBTForceUnitState;
 
-    /** Adjusted Battle Value, if any */
-    public adjustedBv = signal<number | null>(null);
-
     readonly alias = computed<string | undefined>(() => {
         const pilot = this.getCrewMember(0);
         return pilot?.getName() ?? undefined;
@@ -428,11 +425,11 @@ export class CBTForceUnit extends ForceUnit {
             newCrew[crewId] = crewMember;
             return newCrew;
         });
-        this.recalculateBv();
         this.setModified();
     }
 
-    recalculateBv() {
+    public adjustedBv = computed<number | null>(() => {
+        this.state.crew(); // Track crew changes
         const pilot = this.getCrewMember(0);
         let gunnery = pilot.getSkill('gunnery');
         let piloting = pilot.getSkill('piloting');
@@ -459,15 +456,8 @@ export class CBTForceUnit extends ForceUnit {
                 adjustedBv += c3Tax;
             }
         }
-        
-        if (adjustedBv !== this.unit.bv) {
-            if (adjustedBv !== this.adjustedBv()) {
-                this.adjustedBv.set(adjustedBv);
-            }
-        } else {
-            this.adjustedBv.set(null);
-        }
-    };
+        return adjustedBv;
+    });
 
     public repairAll() {
         // Set crew members hits to 0
@@ -753,7 +743,6 @@ export class CBTForceUnit extends ForceUnit {
         if (state.c3Position) {
             this.state.c3Position.set(Sanitizer.sanitize(state.c3Position, C3_POSITION_SCHEMA));
         }
-        this.recalculateBv();
     }
 
     /** Deserialize a plain object to a CBTForceUnit instance */

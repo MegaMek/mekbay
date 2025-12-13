@@ -270,9 +270,6 @@ export class ForceBuilderService {
             }
 
             newForceUnit.disabledSaving = false;
-            if ('recalculateBv' in newForceUnit && typeof (newForceUnit as any).recalculateBv === 'function') {
-                (newForceUnit as any).recalculateBv();
-            }
         }
 
         this.selectUnit(newForceUnit);
@@ -916,11 +913,6 @@ export class ForceBuilderService {
                         crewMembers[crewIndex].setSkill('piloting', piloting);
                         forceUnit.disabledSaving = false;
                     }
-                }
-
-                // Recalculate BV after setting crew skills
-                if ('recalculateBv' in forceUnit && typeof (forceUnit as any).recalculateBv === 'function') {
-                    (forceUnit as any).recalculateBv();
                 }
             }
 

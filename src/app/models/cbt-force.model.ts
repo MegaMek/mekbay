@@ -118,7 +118,6 @@ export class CBTForce extends Force<CBTForceUnit> {
                 }
                 force.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
             }
-            force.refreshUnits();
         } finally {
             force.loading = false;
         }
@@ -209,7 +208,6 @@ export class CBTForce extends Force<CBTForceUnit> {
 
             this.groups.set(updatedGroups);
             this.removeEmptyGroups();
-            this.refreshUnits();
             
             // Update C3 networks with sanitization and validation
             if (data.c3Networks) {

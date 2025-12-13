@@ -214,7 +214,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
         unitToRemove.destroy();
         this.removeEmptyGroups();
-        this.refreshUnits();
         if (this.instanceId()) {
             this.emitChanged();
         }
@@ -237,14 +236,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         if (this.instanceId()) {
             this.emitChanged();
         }
-    }
-
-    public refreshUnits() {
-        this.units().forEach(unit => {
-            if ('recalculateBv' in unit && typeof (unit as any).recalculateBv === 'function') {
-                (unit as any).recalculateBv();
-            }
-        });
     }
 
     public setNetwork(networks: SerializedC3NetworkGroup[]) {

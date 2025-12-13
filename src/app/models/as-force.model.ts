@@ -118,7 +118,6 @@ export class ASForce extends Force<ASForceUnit> {
                 }
                 force.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
             }
-            force.refreshUnits();
         } finally {
             force.loading = false;
         }
