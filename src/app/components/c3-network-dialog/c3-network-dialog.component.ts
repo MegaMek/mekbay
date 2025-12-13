@@ -958,19 +958,29 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     private getNextColor(): string {
-        const usedColors = new Set(this.networks().map(n => n.color));
+        // Count how many times each color is used
+        const colorUsage = new Map<string, number>();
+        for (const color of C3_NETWORK_COLORS) {
+            colorUsage.set(color, 0);
+        }
+        for (const net of this.networks()) {
+            colorUsage.set(net.color, (colorUsage.get(net.color) || 0) + 1);
+        }
+        for (const color of this.masterPinColors.values()) {
+            colorUsage.set(color, (colorUsage.get(color) || 0) + 1);
+        }
         
-        // Try to find an unused color first
-        for (let i = 0; i < C3_NETWORK_COLORS.length; i++) {
-            const color = C3_NETWORK_COLORS[(this.nextColorIndex + i) % C3_NETWORK_COLORS.length];
-            if (!usedColors.has(color)) {
-                this.nextColorIndex = (this.nextColorIndex + i + 1) % C3_NETWORK_COLORS.length;
-                return color;
+        // Find the least used color
+        let leastUsedColor: string = C3_NETWORK_COLORS[0];
+        let leastUsedCount = Infinity;
+        for (const [color, count] of colorUsage) {
+            if (count < leastUsedCount) {
+                leastUsedCount = count;
+                leastUsedColor = color;
             }
         }
         
-        // All colors are used, just cycle through
-        return C3_NETWORK_COLORS[this.nextColorIndex++ % C3_NETWORK_COLORS.length];
+        return leastUsedColor;
     }
 
     private generateNetworkId(): string {

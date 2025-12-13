@@ -221,5 +221,4 @@ export const C3_NETWORK_COLORS = [
     '#EF6C00', // Amber
     '#0277BD', // Light Blue
     '#C2185B', // Pink
-    '#4E342E', // Dark Brown
 ] as const;
