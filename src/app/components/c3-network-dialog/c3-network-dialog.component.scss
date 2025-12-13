@@ -19,6 +19,7 @@
   overflow: hidden;
   padding: 0;
   background: var(--background-color);
+  --valid-highlight-color: rgb(242, 242, 255);
 }
 
 .c3-dialog-header {
@@ -97,12 +98,12 @@
 
   &.valid-target {
     .node-bg {
-      stroke: var(--bt-yellow) !important;
+      stroke: var(--valid-highlight-color) !important;
       filter: url(#node-valid-glow);
     }
 
     .node-glow {
-      stroke: var(--bt-yellow) !important;
+      stroke: var(--valid-highlight-color) !important;
       opacity: 0.8;
     }
   }
@@ -290,12 +291,12 @@
   // Valid target pin during drag
   &.valid-pin-target {
     .pin-connector {
-      stroke: var(--bt-yellow) !important;
+      stroke: var(--valid-highlight-color) !important;
       filter: url(#pin-valid-glow);
     }
 
     .pin-ring {
-      stroke: var(--bt-yellow) !important;
+      stroke: var(--valid-highlight-color) !important;
       opacity: 0.8;
     }
   }
