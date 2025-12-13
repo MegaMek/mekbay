@@ -312,10 +312,16 @@
             && (depth == 0 || member.role !== 'master')) {
             <div class="network-unit-item">
                 <div class="row network-unit" [class.master]="member.role === 'master'">
-                    <span class="name">
-                        {{ member.node.unit.getUnit().chassis }} 
-                        @if (member.node.unit.getUnit().model) {
-                            ({{ member.node.unit.getUnit().model }})
+                    <span class="member-label">
+                        @if (member.isSelfConnection) {
+                            <span class="internal-connection-badge" title="Internal connection">internal link</span>
+                        } @else {
+                            <span class="name">
+                                {{ member.node.unit.getUnit().chassis }}
+                                @if (member.node.unit.getUnit().model) {
+                                    ({{ member.node.unit.getUnit().model }})
+                                }
+                            </span>
                         }
                     </span>
                     @if (member.canRemove) {
@@ -332,10 +338,16 @@
             @if (member.role == 'sub-master') {
             <div class="network-unit-item">
                 <div class="row network-unit">
-                    <span class="name">
-                        {{ member.node.unit.getUnit().chassis }} 
-                        @if (member.node.unit.getUnit().model) {
-                            ({{ member.node.unit.getUnit().model }})
+                    <span class="member-label">
+                        @if (member.isSelfConnection) {
+                            <span class="internal-connection-badge" title="Internal connection">internal link</span>
+                        } @else {
+                            <span class="name">
+                                {{ member.node.unit.getUnit().chassis }}
+                                @if (member.node.unit.getUnit().model) {
+                                    ({{ member.node.unit.getUnit().model }})
+                                }
+                            </span>
                         }
                     </span>
                     @if (member.canRemove) {

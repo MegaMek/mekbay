@@ -464,11 +464,20 @@
     background: var(--tag-bg, #333);
     padding: 3px 8px;
     flex: 1;
-    
     .name {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .internal-connection-badge {
+      flex: none;
+      padding: 1px 6px;
+      border: 1px solid currentColor;
+      font-size: 0.72em;
+      line-height: 1.4;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
     }
 
     &.master {

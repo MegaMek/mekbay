@@ -123,6 +123,8 @@ interface SidebarMemberVm {
     name: string;
     role: SidebarMemberRole;
     canRemove: boolean;
+    /** True if this entry is a self/internal connection (member unitId equals the network's masterId). */
+    isSelfConnection?: boolean;
     memberStr?: string;
     node: C3Node | null;
     /** Present for members that are masters (including sub-masters). */
@@ -533,6 +535,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 for (const memberStr of network.members || []) {
                     const parsed = C3NetworkUtil.parseMember(memberStr);
                     const node = nodesById.get(parsed.unitId) ?? null;
+                    const isSelfConnection = parsed.unitId === network.masterId;
 
                     // A member with a compIndex is a master component attached to this network.
                     // We treat it as a sub-master only if that master has children of its own.
@@ -547,6 +550,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                                 name: node?.unit.getUnit().chassis || 'Unknown',
                                 role: 'sub-master' as const,
                                 canRemove: true,
+                                isSelfConnection,
                                 memberStr,
                                 node,
                                 network: childNet,
@@ -565,6 +569,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         name: node?.unit.getUnit().chassis || 'Unknown',
                         role: 'slave',
                         canRemove: true,
+                        isSelfConnection,
                         memberStr,
                         node
                     });
