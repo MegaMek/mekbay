@@ -50,6 +50,7 @@ import {
     C3_BOOSTED_TAX_RATE
 } from "../models/c3-network.model";
 import { SerializedC3NetworkGroup } from "../models/force-serialization";
+import { CBTForceUnit } from "../models/cbt-force-unit.model";
 
 /**
  * C3 Network Utility - Simplified implementation
@@ -222,6 +223,20 @@ export class C3NetworkUtil {
             }
         }
         return [...new Set(ids)]; // Dedupe in case same unit appears twice (multi-master)
+    }
+
+    /** Get all units in a network (master + all members) */
+    public static getNetworkUnits(network: SerializedC3NetworkGroup, allUnits: ForceUnit[]): ForceUnit[] {
+        const unitIds = this.getNetworkUnitIds(network);
+        const unitMap = new Map(allUnits.map(u => [u.id, u]));
+        const units: ForceUnit[] = [];
+        for (const id of unitIds) {
+            const unit = unitMap.get(id);
+            if (unit) {
+                units.push(unit);
+            }
+        }
+        return units;
     }
 
     /**
@@ -647,91 +662,28 @@ export class C3NetworkUtil {
         unitId: string,
         unitBv: number,
         networks: SerializedC3NetworkGroup[],
-        allUnits: ForceUnit[]
+        allUnits: CBTForceUnit[]
     ): number {
         // Find all networks this unit participates in
         const participatingNets = this.findNetworksContainingUnit(unitId, networks);
         if (participatingNets.length === 0) return 0;
 
-        let totalTax = 0;
+        const rootNet = this.getRootNetwork(participatingNets[0], networks);
+        // Get the root network to avoid double-counting in hierarchies
+        const networkedUnits = this.getNetworkUnits(rootNet, allUnits) as CBTForceUnit[];
+        // Calculate total network BV and check for boosted equipment
+        let networkTotalBv = 0;
 
-        for (const network of participatingNets) {
-            // Get the root network to avoid double-counting in hierarchies
-            const rootNet = this.getRootNetwork(network, networks);
-            const networkUnitIds = new Set<string>();
-            this.collectAllUnitsInTree(rootNet, networks, networkUnitIds);
-
-            // Calculate total network BV and check for boosted equipment
-            let networkTotalBv = 0;
-            let hasBoosted = false;
-
-            for (const id of networkUnitIds) {
-                const forceUnit = allUnits.find(u => u.id === id);
-                if (forceUnit) {
-                    networkTotalBv += forceUnit.getUnit()?.bv || 0;
-                    const unit = forceUnit.getUnit();
-                    if (unit) {
-                        const c3Comps = this.getC3Components(unit);
-                        if (c3Comps.some(c => c.boosted)) {
-                            hasBoosted = true;
-                        }
-                    }
-                }
+        for (const unit of networkedUnits) {
+            unitBv = unit.baseBvPilotAdjusted();
+            let taxRate = C3_TAX_RATE;
+            const c3Comps = this.getC3Components(unit.getUnit());
+            if (c3Comps.some(c => c.boosted)) {
+                taxRate = C3_BOOSTED_TAX_RATE;
             }
-
-            if (networkTotalBv <= 0) continue;
-
-            // Calculate tax rate and total tax
-            const taxRate = hasBoosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
-            const networkTax = networkTotalBv * taxRate;
-
-            // Distribute tax proportionally by BV
-            const unitShare = unitBv / networkTotalBv;
-            totalTax += networkTax * unitShare;
+            networkTotalBv += unitBv * taxRate;
         }
-
-        return Math.round(totalTax);
-    }
-
-    /**
-     * Calculate total C3 tax for all networks in a force.
-     */
-    public static calculateForceC3Tax(
-        allUnits: ForceUnit[],
-        networks: SerializedC3NetworkGroup[]
-    ): number {
-        if (networks.length === 0) return 0;
-
-        // Only count top-level networks to avoid double counting
-        const topLevelNets = this.getTopLevelNetworks(networks);
-        let totalTax = 0;
-
-        for (const network of topLevelNets) {
-            const unitIds = new Set<string>();
-            this.collectAllUnitsInTree(network, networks, unitIds);
-
-            let networkBv = 0;
-            let hasBoosted = false;
-
-            for (const id of unitIds) {
-                const forceUnit = allUnits.find(u => u.id === id);
-                if (forceUnit) {
-                    networkBv += forceUnit.getUnit()?.bv || 0;
-                    const unit = forceUnit.getUnit();
-                    if (unit) {
-                        const c3Comps = this.getC3Components(unit);
-                        if (c3Comps.some(c => c.boosted)) {
-                            hasBoosted = true;
-                        }
-                    }
-                }
-            }
-
-            const taxRate = hasBoosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
-            totalTax += networkBv * taxRate;
-        }
-
-        return Math.round(totalTax);
+        return Math.round(networkTotalBv);
     }
 
     /**
@@ -753,7 +705,7 @@ export class C3NetworkUtil {
     /**
      * Collect all unit IDs in a network tree (including sub-networks)
      */
-    private static collectAllUnitsInTree(
+    private static collectAllUnitIdsInTree(
         network: SerializedC3NetworkGroup,
         allNetworks: SerializedC3NetworkGroup[],
         unitIds: Set<string>
@@ -762,10 +714,10 @@ export class C3NetworkUtil {
             unitIds.add(id);
         }
         for (const subNet of this.findSubNetworks(network, allNetworks)) {
-            this.collectAllUnitsInTree(subNet, allNetworks, unitIds);
+            this.collectAllUnitIdsInTree(subNet, allNetworks, unitIds);
         }
     }
-
+    
     // ==================== Network Validation & Cleanup ====================
 
     /**

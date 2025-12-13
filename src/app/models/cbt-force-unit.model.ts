@@ -386,14 +386,6 @@ export class CBTForceUnit extends ForceUnit {
         return hits >= this.getInternalPoints(loc);
     }
 
-    override getBv = computed<number>(() => {
-        const adjustedBv = this.adjustedBv();
-        if (adjustedBv !== null) {
-            return adjustedBv;
-        }
-        return this.unit.bv;
-    })
-
     getCrewMembers = computed<CrewMember[]>(() => {
         return this.state.crew();
     });
@@ -428,7 +420,7 @@ export class CBTForceUnit extends ForceUnit {
         this.setModified();
     }
 
-    public adjustedBv = computed<number | null>(() => {
+    public baseBvPilotAdjusted = computed<number>(() => {
         this.state.crew(); // Track crew changes
         const pilot = this.getCrewMember(0);
         let gunnery = pilot.getSkill('gunnery');
@@ -442,13 +434,17 @@ export class CBTForceUnit extends ForceUnit {
             gunnery,
             piloting
         );
-        
+        return adjustedBv;
+    });
+
+    override getBv = computed<number>(() => {
+        let adjustedBv = this.baseBvPilotAdjusted();
         // Add C3 network tax share if this unit is in a C3 network
         const c3Networks = this.force.c3Networks();
         if (c3Networks.length > 0) {
             const c3Tax = C3NetworkUtil.calculateUnitC3Tax(
                 this.id,
-                bv, // Use base BV for tax calculation
+                adjustedBv,
                 c3Networks,
                 this.force.units()
             );
@@ -457,7 +453,7 @@ export class CBTForceUnit extends ForceUnit {
             }
         }
         return adjustedBv;
-    });
+    })
 
     public repairAll() {
         // Set crew members hits to 0

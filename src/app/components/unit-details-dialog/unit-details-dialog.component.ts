@@ -172,7 +172,11 @@ export class UnitDetailsDialogComponent {
         return currentUnit;
     }
 
-    getAdjustedBV = computed<number | null>(() => {
+    adjustedBV = computed<number | null>(() => {
+        const currentUnit = this.unitList[this.unitIndex()];
+        if (currentUnit instanceof CBTForceUnit) {
+            return currentUnit.getBv();
+        }
         const gunnery = this.gunnerySkill();
         const piloting = this.pilotingSkill();
         if (gunnery === undefined || piloting === undefined) {

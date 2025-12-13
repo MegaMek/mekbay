@@ -111,19 +111,9 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return this.groups().flatMap(g => g.units());
     });
 
-    /** Total BV of units without C3 tax */
-    baseBv = computed(() => {
-        return this.units().reduce((sum, unit) => sum + (unit.getBv()), 0);
-    });
-
-    /** C3 network tax based on configured networks (kept for reference/display) */
-    c3Tax = computed(() => {
-        return C3NetworkUtil.calculateForceC3Tax(this.units(), this.c3Networks());
-    });
-
     /** Total BV (C3 tax is applied at unit level via adjustedBv, not here) */
     totalBv = computed(() => {
-        return this.baseBv();
+        return this.units().reduce((sum, unit) => sum + (unit.getBv()), 0);
     });
 
     get name(): string {

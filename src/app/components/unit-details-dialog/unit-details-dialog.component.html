@@ -49,8 +49,8 @@
         unit.weightClass }}</strong></div>
         <div>
           <span class="muted">BV: </span>
-          @if (getAdjustedBV() != null && getAdjustedBV() != unit.bv) {
-            <strong>{{ formatThousands(getAdjustedBV()!) }}</strong>
+          @if (adjustedBV() != null && adjustedBV() != unit.bv) {
+            <strong>{{ formatThousands(adjustedBV()!) }}</strong>
             <span class="muted"> ({{ formatThousands(unit.bv) }})</span>
           } @else {
             <strong>{{ formatThousands(unit.bv) }}</strong>
