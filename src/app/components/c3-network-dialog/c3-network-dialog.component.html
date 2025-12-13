@@ -16,38 +16,40 @@
 <div class="c3-dialog-header">
     <h2>Network Configuration</h2>
     <div class="c3-dialog-header-actions">
-        <button
-            class="bt-button connections-layer-btn square"
-            type="button"
-            (click)="toggleConnectionsAboveNodes()"
-            [class.active]="connectionsAboveNodes()"
-            [attr.aria-pressed]="connectionsAboveNodes()"
+        <button class="bt-button connections-layer-btn square" type="button" (click)="toggleConnectionsAboveNodes()"
+            [class.active]="connectionsAboveNodes()" [attr.aria-pressed]="connectionsAboveNodes()"
             aria-label="Toggle whether connection lines render above nodes"
             [attr.title]="connectionsAboveNodes() ? 'Connections above nodes' : 'Connections below nodes'">
             <span class="icon" aria-hidden="true">
                 @if (connectionsAboveNodes()) {
-                    <!-- true: line with arrow pointing to a circle -->
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img">
-                        <circle cx="19" cy="12" r="4" stroke="currentColor" stroke-width="2" />
-                        <line x1="0" y1="12" x2="10" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-                        <path d="M8 8L12 12L8 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
+                <!-- true: line with arrow pointing to a circle -->
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                    role="img">
+                    <circle cx="19" cy="12" r="4" stroke="currentColor" stroke-width="2" />
+                    <line x1="0" y1="12" x2="10" y2="12" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" />
+                    <path d="M8 8L12 12L8 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
                 } @else {
-                    <!-- false: line joining two circles -->
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img">
-                        <circle cx="5" cy="12" r="4" stroke="currentColor" stroke-width="2" />
-                        <circle cx="19" cy="12" r="4" stroke="currentColor" stroke-width="2" />
-                        <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-                    </svg>
+                <!-- false: line joining two circles -->
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                    role="img">
+                    <circle cx="5" cy="12" r="4" stroke="currentColor" stroke-width="2" />
+                    <circle cx="19" cy="12" r="4" stroke="currentColor" stroke-width="2" />
+                    <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" />
+                </svg>
                 }
             </span>
         </button>
 
         @if (layoutService.isMobile()) {
         <button class="bt-button burger-menu-btn square" type="button"
-            (click)="sidebarAnimated.set(true); sidebarOpen.set(!sidebarOpen())"
-            [class.active]="sidebarOpen()" aria-label="Toggle networks sidebar">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            (click)="sidebarAnimated.set(true); sidebarOpen.set(!sidebarOpen())" [class.active]="sidebarOpen()"
+            aria-label="Toggle networks sidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true">
                 <path d="M4 6H20M4 12H20M4 18H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
             </svg>
         </button>
@@ -109,23 +111,23 @@
         <g [attr.transform]="svgTransform()">
 
             @if (!connectionsAboveNodes()) {
-                <!-- External connections layer (rendered before nodes, so it appears below) -->
-                <g class="connections-layer">
-                    <!-- Connection lines -->
-                    @for (line of connectionLines(); track line.id) {
-                    @if (!line.selfConnection) {
-                        <line [attr.x1]="line.nodeX1" [attr.y1]="line.nodeY1" [attr.x2]="line.nodeX2" [attr.y2]="line.nodeY2"
-                            [attr.stroke]="line.color" stroke-width="4"
-                            [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
-                    }
-                    }
+            <!-- External connections layer (rendered before nodes, so it appears below) -->
+            <g class="connections-layer">
+                <!-- Connection lines -->
+                @for (line of connectionLines(); track line.id) {
+                @if (!line.selfConnection) {
+                <line [attr.x1]="line.nodeX1" [attr.y1]="line.nodeY1" [attr.x2]="line.nodeX2" [attr.y2]="line.nodeY2"
+                    [attr.stroke]="line.color" stroke-width="4"
+                    [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
+                }
+                }
 
-                    <!-- Hub points for peer networks -->
-                    @for (hub of hubPoints(); track hub.id) {
-                    <circle [attr.cx]="hub.nodeX" [attr.cy]="hub.nodeY" [attr.r]="hub.nodesCount <= 2 ? 2 : 5"
-                        [attr.fill]="hub.color" stroke-width="0" />
-                    }
-                </g>
+                <!-- Hub points for peer networks -->
+                @for (hub of hubPoints(); track hub.id) {
+                <circle [attr.cx]="hub.nodeX" [attr.cy]="hub.nodeY" [attr.r]="hub.nodesCount <= 2 ? 2 : 5"
+                    [attr.fill]="hub.color" stroke-width="0" />
+                }
+            </g>
             }
 
             <!-- Nodes layer (rendered first, so connections appear above) -->
@@ -141,7 +143,8 @@
 
                     <!-- Outer glow ring (for connected state) -->
                     @if (isNodeLinked(node)) {
-                    <polygon class="node-glow" [attr.points]="NODE_HEX_GLOW_POINTS" [attr.stroke]="getNodeBorderColor(node)" />
+                    <polygon class="node-glow" [attr.points]="NODE_HEX_GLOW_POINTS"
+                        [attr.stroke]="getNodeBorderColor(node)" />
                     }
 
                     <!-- Node background + border -->
@@ -188,24 +191,26 @@
                     <!-- Pins section at bottom -->
                     <g class="pins-container" [attr.transform]="'translate(0,' + PIN_Y_OFFSET + ')'">
                         @for (comp of node.c3Components; track $index; let i = $index) {
-                        <g class="pin" [attr.transform]="'translate(' + node.pinOffsetsX[i] + ', 0)'"
+                        <g class="pin-container" [attr.transform]="'translate(' + node.pinOffsetsX[i] + ', 0)'"
                             [class.master]="comp.role === 'master'" [class.slave]="comp.role === 'slave'"
                             [class.peer]="comp.role === 'peer'" [class.connected]="isPinConnected(node, i)"
                             [class.has-network]="!!getPinNetworkColor(node, i)"
                             [class.disabled]="isPinDisabled(node, i)"
                             [class.connectingFromPin]="connectingFrom()?.node === node && connectingFrom()?.compIndex === i"
                             [class.valid-pin-target]="connectingFrom() && isPinValidTarget(node, i)"
-                            [class.invalid-pin-target]="connectingFrom() && !isPinValidTarget(node, i) && validTargets().has(node.unit.id)"
-                            [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node"
-                            (pointerdown)="onPinPointerDown($event, node, i)">
+                            [class.invalid-pin-target]="connectingFrom() && !isPinValidTarget(node, i) && validTargets().has(node.unit.id)">
+                            <g class="pin" [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node"
+                                (pointerdown)="onPinPointerDown($event, node, i)">
 
-                            <!-- Pin outer ring -->
-                            <circle class="pin-ring" r="14" [attr.stroke]="getPinStrokeColor(node, i)" />
+                                <circle class="pin-hit-area" r="16" fill="transparent" pointer-events="all" />
 
-                            <!-- Pin connector circle -->
-                            <circle class="pin-connector" r="10" [attr.stroke]="getPinStrokeColor(node, i)"
-                                [attr.fill]="getPinFillColor(node, i)" />
+                                <!-- Pin outer ring -->
+                                <circle class="pin-ring" r="14" [attr.stroke]="getPinStrokeColor(node, i)" />
 
+                                <!-- Pin connector circle -->
+                                <circle class="pin-connector" r="10" [attr.stroke]="getPinStrokeColor(node, i)"
+                                    [attr.fill]="getPinFillColor(node, i)" />
+                            </g>
                             <!-- Pin role label -->
                             <text class="pin-role-label" y="28" text-anchor="middle" filter="url(#pin-shadow)">
                                 {{ getRoleLabel(comp.role) }}
@@ -225,27 +230,27 @@
             <!-- Connections layer (rendered after nodes, so it appears above) -->
             <g class="connections-layer">
                 @if (connectionsAboveNodes()) {
-                        <!-- Connection lines -->
-                        @for (line of connectionLines(); track line.id) {
-                        <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
-                            [attr.stroke]="line.color" stroke-width="3"
-                            [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
-                        }
+                <!-- Connection lines -->
+                @for (line of connectionLines(); track line.id) {
+                <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
+                    [attr.stroke]="line.color" stroke-width="3"
+                    [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
+                }
 
-                        <!-- Hub points for peer networks -->
-                        @for (hub of hubPoints(); track hub.id) {
-                        <circle [attr.cx]="hub.x" [attr.cy]="hub.y" [attr.r]="hub.nodesCount <= 2 ? 2 : 5"
-                            [attr.fill]="hub.color" stroke-width="0" />
-                        }
+                <!-- Hub points for peer networks -->
+                @for (hub of hubPoints(); track hub.id) {
+                <circle [attr.cx]="hub.x" [attr.cy]="hub.y" [attr.r]="hub.nodesCount <= 2 ? 2 : 5"
+                    [attr.fill]="hub.color" stroke-width="0" />
+                }
                 } @else {
-                    <!-- Self-connections (same unit) are always above nodes -->
-                    @for (line of connectionLines(); track line.id) {
-                        @if (line.selfConnection) {
-                            <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
-                                [attr.stroke]="line.color" stroke-width="3"
-                                [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
-                        }
-                    }
+                <!-- Self-connections (same unit) are always above nodes -->
+                @for (line of connectionLines(); track line.id) {
+                @if (line.selfConnection) {
+                <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
+                    [attr.stroke]="line.color" stroke-width="3"
+                    [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
+                }
+                }
                 }
                 <!-- Active drag line -->
                 @if (activeDragLine(); as dragLine) {
@@ -257,16 +262,14 @@
     </svg>
 
     <!-- Networks sidebar -->
-    <div class="networks-sidebar framed-borders" 
-        [class.overlay]="layoutService.isMobile()"
-        [class.hidden]="layoutService.isMobile() && !sidebarOpen()"
-        [class.animate]="sidebarAnimated()">
+    <div class="networks-sidebar framed-borders" [class.overlay]="layoutService.isMobile()"
+        [class.hidden]="layoutService.isMobile() && !sidebarOpen()" [class.animate]="sidebarAnimated()">
         <h3>Networks</h3>
 
         <div class="networks-list">
             <!-- Only show top-level networks, sub-networks are nested inside -->
-            @for (network of topLevelNetworks(); track network.id) {
-            <ng-container *ngTemplateOutlet="networkTemplate; context: { network: network, depth: 0 }"></ng-container>
+            @for (vm of sidebarNetworks(); track vm.network.id) {
+            <ng-container *ngTemplateOutlet="networkTemplate; context: { vm: vm, depth: 0 }"></ng-container>
             }
 
             @if (networks().length === 0) {
@@ -284,43 +287,70 @@
 </div>
 
 <!-- Template for recursive network display -->
-<ng-template #networkTemplate let-network="network" let-depth="depth">
-    <div class="network-item" [class.sub-network]="depth > 0" [style.--network-color]="network.color"
-        [style.margin-left.px]="depth * 16">
+<ng-template #networkTemplate let-vm="vm" let-depth="depth">
+    <div class="network-item" [class.sub-network]="depth > 0" [style.--network-color]="vm.network.color">
         <div class="network-header">
             <span class="network-type">
                 @if (depth > 0) {
                 <span class="sub-network-indicator">↳</span>
                 }
-                {{ getNetworkDisplayName(network) }}
+                {{ vm.displayName }}
             </span>
-            <button class="delete-network-btn" (click)="removeNetwork(network)" title="Delete entire network">✕</button>
+            <button class="remove-btn" (click)="removeNetwork(vm.network)"
+                title="Delete entire network">
+            <svg _ngcontent-ng-c917707860="" width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c917707860="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                        L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg></button>
         </div>
 
         <div class="network-units">
-            @for (member of getNetworkMembersDetailed(network); track member.memberStr ?? member.id) {
-            @if (member.role !== 'sub-master') {
+            @for (member of vm.members; track member.memberStr ?? member.id) {
+            @if (member.role !== 'sub-master'
+            && (depth == 0 || member.role !== 'master')) {
             <div class="network-unit-item">
-                <span class="network-unit" [class.master]="member.role === 'master'">
-                    {{ member.name }}
-                    @if (member.role === 'master') {
-                    <span class="role-badge">(M)</span>
+                <div class="row network-unit" [class.master]="member.role === 'master'">
+                    <span>
+                        {{ member.name }}
+                        @if (member.role === 'master') {
+                        <span class="role-badge">(M)</span>
+                        }
+                    </span>
+                    @if (member.canRemove) {
+                    <button class="remove-btn"
+                        (click)="removeUnitFromNetwork(vm.network, member.id, member.memberStr)"
+                        title="Remove from network"><svg _ngcontent-ng-c917707860="" width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c917707860="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                        L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg></button>
                     }
-                </span>
-                @if (member.canRemove) {
-                <button class="remove-unit-btn" (click)="removeUnitFromNetwork(network, member.id, member.memberStr)"
-                    title="Remove from network">✕</button>
-                }
+                </div>
+            </div>
+            }
+            }
+            @for (member of vm.members; track member.memberStr ?? member.id) {
+            @if (member.role == 'sub-master') {
+            <div class="network-unit-item">
+                <div class="row network-unit">
+                    <span>
+                        {{ member.name }} (M)
+                    </span>
+                    @if (member.canRemove) {
+                    <button class="remove-btn"
+                        (click)="removeUnitFromNetwork(vm.network, member.id, member.memberStr)"
+                        title="Remove from network"><svg _ngcontent-ng-c917707860="" width="14px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c917707860="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                        L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg></button>
+                    }
+                </div>
+                <div>
+                    <!-- Nested sub-network for this sub-master (if any) -->
+                    @if (member.networkVm; as subVm) {
+                    <ng-container
+                        *ngTemplateOutlet="networkTemplate; context: { vm: subVm, depth: depth + 1 }"></ng-container>
+                    }
+
+                </div>
+
             </div>
             }
             }
         </div>
-
-        <!-- Nested sub-networks -->
-        @for (subNetwork of getSubNetworks(network); track subNetwork.id) {
-        <ng-container
-            *ngTemplateOutlet="networkTemplate; context: { network: subNetwork, depth: depth + 1 }"></ng-container>
-        }
     </div>
 </ng-template>
 

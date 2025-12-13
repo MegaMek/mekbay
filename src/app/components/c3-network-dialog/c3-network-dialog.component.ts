@@ -58,6 +58,9 @@ import { ImageStorageService } from '../../services/image-storage.service';
 import { OptionsService } from '../../services/options.service';
 import { LayoutService } from '../../services/layout.service';
 
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 3.0;
+
 export interface C3NetworkDialogData {
     units: ForceUnit[];
     networks: SerializedC3NetworkGroup[];
@@ -104,6 +107,28 @@ interface BorderSegment {
     color: string;
     dasharray: string;
     dashoffset: number;
+}
+
+type SidebarMemberRole = 'master' | 'slave' | 'peer' | 'sub-master';
+
+interface SidebarNetworkVm {
+    network: SerializedC3NetworkGroup;
+    displayName: string;
+    members: SidebarMemberVm[];
+    subNetworks: SidebarNetworkVm[];
+}
+
+interface SidebarMemberVm {
+    id: string;
+    name: string;
+    role: SidebarMemberRole;
+    canRemove: boolean;
+    memberStr?: string;
+    node: C3Node | null;
+    /** Present for members that are masters (including sub-masters). */
+    network?: SerializedC3NetworkGroup;
+    /** Present for sub-masters with children, used for nested rendering. */
+    networkVm?: SidebarNetworkVm;
 }
 
 interface Vec2 {
@@ -468,104 +493,107 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     // ==================== Cached Sidebar Data ====================
 
-    /** Top-level networks (not sub-networks of another) */
-    protected topLevelNetworks = computed(() => 
-        C3NetworkUtil.getTopLevelNetworks(this.networks())
-    );
-
-    /** Map of network ID to its sub-networks */
-    protected subNetworksMap = computed(() => {
-        const map = new Map<string, SerializedC3NetworkGroup[]>();
+    /** View-model for the Networks sidebar (single computed source of truth). */
+    protected sidebarNetworks = computed<SidebarNetworkVm[]>(() => {
         const networks = this.networks();
-        for (const net of networks) {
-            map.set(net.id, C3NetworkUtil.findSubNetworks(net, networks));
-        }
-        return map;
-    });
-
-    /** Map of network ID to detailed member info */
-    protected networkMembersMap = computed(() => {
-        const map = new Map<string, { 
-            id: string; 
-            name: string; 
-            role: 'master' | 'slave' | 'peer' | 'sub-master'; 
-            canRemove: boolean; 
-            memberStr?: string 
-        }[]>();
-        
         const nodesById = this.nodesById();
-        const networks = this.networks();
-        
-        for (const network of networks) {
-            const members: typeof map extends Map<string, infer V> ? V : never = [];
-            
+        const topLevel = C3NetworkUtil.getTopLevelNetworks(networks);
+
+        const visited = new Set<string>();
+
+        const buildNetworkVm = (network: SerializedC3NetworkGroup): SidebarNetworkVm | null => {
+            if (visited.has(network.id)) return null;
+            visited.add(network.id);
+
+            const members: SidebarMemberVm[] = [];
+            const subNetworks: SidebarNetworkVm[] = [];
+
             if (network.peerIds) {
                 for (const id of network.peerIds) {
-                    const node = nodesById.get(id);
-                    members.push({ id, name: node?.unit.getUnit().chassis || 'Unknown', role: 'peer', canRemove: true });
+                    const node = nodesById.get(id) ?? null;
+                    members.push({
+                        id,
+                        name: node?.unit.getUnit().chassis || 'Unknown',
+                        role: 'peer',
+                        canRemove: true,
+                        node
+                    });
                 }
             } else if (network.masterId) {
-                const masterNode = nodesById.get(network.masterId);
-                if (masterNode) {
-                    members.push({ id: network.masterId, name: masterNode.unit.getUnit().chassis, role: 'master', canRemove: false });
-                }
+                const masterNode = nodesById.get(network.masterId) ?? null;
+                members.push({
+                    id: network.masterId,
+                    name: masterNode?.unit.getUnit().chassis || 'Unknown',
+                    role: 'master',
+                    canRemove: false,
+                    node: masterNode,
+                    network
+                });
 
                 for (const memberStr of network.members || []) {
                     const parsed = C3NetworkUtil.parseMember(memberStr);
-                    const node = nodesById.get(parsed.unitId);
-                    const isMaster = parsed.compIndex !== undefined;
-                    
-                    let hasChildren = false;
-                    if (isMaster) {
-                        const subNet = C3NetworkUtil.findMasterNetwork(parsed.unitId, parsed.compIndex!, networks);
-                        hasChildren = !!(subNet?.members && subNet.members.length > 0);
+                    const node = nodesById.get(parsed.unitId) ?? null;
+
+                    // A member with a compIndex is a master component attached to this network.
+                    // We treat it as a sub-master only if that master has children of its own.
+                    if (parsed.compIndex !== undefined) {
+                        const childNet = C3NetworkUtil.findMasterNetwork(parsed.unitId, parsed.compIndex, networks);
+                        const hasChildren = !!(childNet?.members && childNet.members.length > 0);
+
+                        if (childNet && hasChildren) {
+                            const childVm = buildNetworkVm(childNet);
+                            const vm = {
+                                id: parsed.unitId,
+                                name: node?.unit.getUnit().chassis || 'Unknown',
+                                role: 'sub-master' as const,
+                                canRemove: true,
+                                memberStr,
+                                node,
+                                network: childNet,
+                                networkVm: childVm ?? undefined
+                            };
+                            members.push(vm);
+                            if (childVm) {
+                                subNetworks.push(childVm);
+                            }
+                            continue;
+                        }
                     }
 
                     members.push({
                         id: parsed.unitId,
                         name: node?.unit.getUnit().chassis || 'Unknown',
-                        role: hasChildren ? 'sub-master' : 'slave',
+                        role: 'slave',
                         canRemove: true,
-                        memberStr
+                        memberStr,
+                        node
                     });
                 }
             }
-            
-            map.set(network.id, members);
-        }
-        
-        return map;
-    });
 
-    /** Map of network ID to display name */
-    protected networkDisplayNames = computed(() => {
-        const map = new Map<string, string>();
-        const nodesById = this.nodesById();
-        
-        for (const network of this.networks()) {
-            let name: string;
+            // Display name
+            let displayName = 'Unknown Network';
             if (network.peerIds) {
-                name = `${C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
+                displayName = `${C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
             } else if (network.masterId) {
-                const masterNode = nodesById.get(network.masterId);
                 const memberCount = (network.members?.length || 0) + 1; // include master
-                const subNetworks = C3NetworkUtil.findSubNetworks(network, this.networks());
-                let subNetMemberCount = 0;
-                if (subNetworks.length > 0) {
-                    // Include sub-network members in count
-                    for (const subNet of subNetworks) {
-                        subNetMemberCount += (subNet.members?.length || 0);
-                    }
-                }
+                const subNetMemberCount = subNetworks.reduce((sum, child) => sum + (child.network.members?.length || 0), 0);
                 const memberStr = (memberCount + subNetMemberCount) > 1 ? 'members' : 'member';
-                name = `${masterNode?.unit.getUnit().chassis || 'Unknown'} (${memberCount + subNetMemberCount} ${memberStr})`;
-            } else {
-                name = 'Unknown Network';
+                const networkTypeName = C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType);
+                displayName = `${networkTypeName} (${memberCount + subNetMemberCount} ${memberStr})`;
             }
-            map.set(network.id, name);
-        }
-        
-        return map;
+
+            return {
+                network,
+                displayName,
+                members,
+                subNetworks
+            };
+        };
+
+        return topLevel
+            .map(net => buildNetworkVm(net))
+            .filter((vm): vm is SidebarNetworkVm => vm !== null);
     });
 
     // ==================== Cached Pin State ====================
@@ -773,9 +801,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         }
 
         const cols = bestCols;
-        const rows = bestRows;
-        const gridW = (cols - 1) * spacing;
-        const gridH = (rows - 1) * spacing;
         const startX = spacing; // Start with some margin
         const startY = spacing;
 
@@ -834,8 +859,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const availableH = canvasH - padding * 2;
         const scaleX = availableW / contentW;
         const scaleY = availableH / contentH;
-        const newZoom = Math.min(1, Math.min(scaleX, scaleY)); // Don't zoom in past 1x
-
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM / 2, Math.min(scaleX, scaleY)));
+        
         // Calculate offset to center the content
         const centerX = (minX + maxX) / 2;
         const centerY = (minY + maxY) / 2;
@@ -1325,7 +1350,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const touches = Array.from(this.activeTouches.values());
                 const currentDistance = this.getTouchDistance(touches[0], touches[1]);
                 const scaleChange = currentDistance / this.pinchStartDistance;
-                const newZoom = Math.max(0.3, Math.min(3, this.pinchStartZoom * scaleChange));
+                const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, this.pinchStartZoom * scaleChange));
 
                 // Adjust offset to zoom towards pinch center
                 const oldZoom = this.zoom();
@@ -1414,7 +1439,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         event.preventDefault();
         const delta = event.deltaY > 0 ? 0.9 : 1.1;
         const oldZoom = this.zoom();
-        const newZoom = Math.max(0.3, Math.min(3, oldZoom * delta));
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldZoom * delta));
         
         // Zoom towards mouse cursor
         const svg = this.svgCanvas()?.nativeElement;
@@ -1718,18 +1743,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     protected getNetworkTypeLabel(type: C3NetworkType): string {
         return C3NetworkUtil.getNetworkTypeName(type);
-    }
-
-    protected getNetworkDisplayName(network: SerializedC3NetworkGroup): string {
-        return this.networkDisplayNames().get(network.id) || 'Unknown Network';
-    }
-
-    protected getSubNetworks(network: SerializedC3NetworkGroup): SerializedC3NetworkGroup[] {
-        return this.subNetworksMap().get(network.id) || [];
-    }
-
-    protected getNetworkMembersDetailed(network: SerializedC3NetworkGroup) {
-        return this.networkMembersMap().get(network.id) || [];
     }
 
     protected removeUnitFromNetwork(network: SerializedC3NetworkGroup, unitId: string, memberStr?: string) {
