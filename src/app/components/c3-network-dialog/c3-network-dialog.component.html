@@ -87,6 +87,12 @@
             <filter id="node-hover-glow" x="-50%" y="-50%" width="200%" height="200%">
                 <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="rgba(255,200,0,0.8)" />
             </filter>
+            <filter id="node-valid-glow-danger" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="rgba(255,0,0,0.6)" />
+            </filter>
+            <filter id="node-hover-glow-danger" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="rgba(255,0,0,0.8)" />
+            </filter>
             <filter id="icon-shadow" x="-50%" y="-50%" width="200%" height="200%">
                 <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.6)" />
             </filter>
@@ -96,8 +102,14 @@
             <filter id="pin-valid-glow" x="-100%" y="-100%" width="300%" height="300%">
                 <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="rgba(255,200,0,0.8)" />
             </filter>
+            <filter id="pin-valid-glow-danger" x="-100%" y="-100%" width="300%" height="300%">
+                <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="rgba(255,0,0,0.8)" />
+            </filter>
             <filter id="pin-hover-glow" x="-100%" y="-100%" width="300%" height="300%">
                 <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="rgba(255,200,0,1)" />
+            </filter>
+            <filter id="pin-hover-glow-danger" x="-100%" y="-100%" width="300%" height="300%">
+                <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="rgba(255,0,0,1)" />
             </filter>
             <filter id="pin-active-glow" x="-100%" y="-100%" width="300%" height="300%">
                 <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="rgba(255,255,255,0.5)" />
@@ -136,9 +148,11 @@
                 <g class="node-group" [attr.data-unit-id]="node.unit.id"
                     [attr.transform]="'translate(' + node.x + ',' + node.y + ')'" [class.linked]="isNodeLinked(node)"
                     [class.disconnected]="!isNodeLinked(node)" [class.dragging]="draggedNode() === node"
-                    [class.valid-target]="connectionState().isConnecting && connectionState().validTargetIds.has(node.unit.id)"
+                    [class.valid-target]="connectionState().isConnecting && connectionState().validTargetIds.has(node.unit.id) && !isNodeDisconnectTarget(node)"
+                    [class.disconnect-target]="connectionState().isConnecting && isNodeDisconnectTarget(node)"
                     [class.invalid-target]="connectionState().isConnecting && !connectionState().validTargetIds.has(node.unit.id) && connectingFrom()?.node !== node"
-                    [class.hovered]="hoveredNode() === node && connectionState().validTargetIds.has(node.unit.id)"
+                    [class.hovered]="hoveredNode() === node && connectionState().validTargetIds.has(node.unit.id) && !isNodeDisconnectTarget(node)"
+                    [class.hovered-disconnect]="hoveredNode() === node && isNodeDisconnectTarget(node)"
                     (pointerdown)="onNodePointerDown($event, node)">
 
                     <!-- Outer glow ring (for connected state) -->
@@ -198,10 +212,12 @@
                             
                             [class.disabled]="isPinDisabled(node, i)"
                             [class.connectingFromPin]="connectingFrom()?.node === node && connectingFrom()?.compIndex === i"
-                            [class.valid-pin-target]="connectingFrom() && isPinValidTarget(node, i)"
+                            [class.valid-pin-target]="connectingFrom() && isPinValidTarget(node, i) && !isAlreadyConnectedPin(node, i)"
+                            [class.disconnect-pin-target]="connectingFrom() && isAlreadyConnectedPin(node, i)"
                             [class.invalid-pin-target]="connectingFrom() && !isPinValidTarget(node, i) && validTargets().has(node.unit.id)">
                             <g class="pin" 
-                                [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node"
+                                [class.hovered-pin]="hoveredPinIndex() === i && hoveredNode() === node && !isAlreadyConnectedPin(node, i)"
+                                [class.hovered-disconnect-pin]="hoveredPinIndex() === i && hoveredNode() === node && isAlreadyConnectedPin(node, i)"
                                 (pointerdown)="onPinPointerDown($event, node, i)"
                                 (contextmenu)="onPinContextMenu($event, node, i)">
 

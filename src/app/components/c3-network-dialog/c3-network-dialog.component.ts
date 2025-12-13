@@ -1156,6 +1156,18 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return validPins?.includes(compIndex) ?? false;
     }
 
+    /** Check if a pin is already connected to the source (would disconnect on drop) */
+    protected isAlreadyConnectedPin(node: C3Node, compIndex: number): boolean {
+        const connectedPins = this.connectionState().alreadyConnectedPins.get(node.unit.id);
+        return connectedPins?.includes(compIndex) ?? false;
+    }
+
+    /** Check if a node contains any pins that are already connected (disconnect target) */
+    protected isNodeDisconnectTarget(node: C3Node): boolean {
+        const connectedPins = this.connectionState().alreadyConnectedPins.get(node.unit.id);
+        return (connectedPins?.length ?? 0) > 0;
+    }
+
     // ==================== Event Handlers ====================
 
     protected onPinPointerDown(event: PointerEvent, node: C3Node, compIndex: number) {
@@ -1582,8 +1594,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                             if (existingConnection.memberStr) {
                                 this.removeMemberFromNetwork(existingConnection.networkId, existingConnection.memberStr);
                             } else {
-                                // Peer network - remove the target unit from the peer network
-                                this.cancelExistingConnectionForPin(targetNode, targetPin);
+                                // Peer network - remove the source unit from the peer network
+                                this.cancelExistingConnectionForPin(conn.node, conn.compIndex);
                             }
                             this.toastService.show('Connection removed', 'success');
                         } else {

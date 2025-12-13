@@ -107,6 +107,18 @@
     }
   }
 
+  &.disconnect-target {
+    .node-bg {
+      stroke: var(--danger) !important;
+      filter: url(#node-valid-glow-danger);
+    }
+
+    .node-glow {
+      stroke: var(--danger) !important;
+      opacity: 0.8;
+    }
+  }
+
   &.invalid-target {
     opacity: 0.4;
   }
@@ -114,6 +126,12 @@
   &.hovered {
     .node-bg {
       filter: url(#node-hover-glow);
+    }
+  }
+
+  &.hovered-disconnect {
+    .node-bg {
+      filter: url(#node-hover-glow-danger);
     }
   }
 
@@ -282,6 +300,19 @@
     }
   }
 
+  // Disconnect target pin during drag (already connected)
+  &.disconnect-pin-target {
+    .pin-connector {
+      stroke: var(--danger) !important;
+      filter: url(#pin-valid-glow-danger);
+    }
+
+    .pin-ring {
+      stroke: var(--danger) !important;
+      opacity: 0.8;
+    }
+  }
+
   // Invalid target pin during drag
   &.invalid-pin-target:not(.connectingFromPin) {
     opacity: 0.25;
@@ -298,6 +329,20 @@
       .pin-ring {
         transform: scale(1.2);
         opacity: 1;
+      }
+    }
+
+    &.hovered-disconnect-pin {
+      .pin-connector {
+        transform: scale(1.4);
+        filter: url(#pin-hover-glow-danger);
+        stroke: var(--danger) !important;
+      }
+
+      .pin-ring {
+        transform: scale(1.2);
+        opacity: 1;
+        stroke: var(--danger) !important;
       }
     }
 
