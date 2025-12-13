@@ -143,6 +143,8 @@ export class UnitBlockComponent {
         if (!(forceUnit instanceof CBTForceUnit)) return null;
 
         const baseBv = unit.bv;
+        const totalBv = forceUnit.getBv();
+        if (baseBv === totalBv) return null; // No adjustments
         const pilotAdjustedBv = forceUnit.baseBvPilotAdjusted();
         const pilotDiff = pilotAdjustedBv - baseBv;
         const c3Tax = forceUnit.c3Tax();
@@ -157,6 +159,9 @@ export class UnitBlockComponent {
         }
         if (c3Tax > 0) {
             lines.push({ label: 'C3:', value: `+${c3Tax}` });
+        }
+        if (c3Tax > 0) {
+            lines.push({ label: 'Total:', value: `=${totalBv}` });
         }
 
         return lines.length > 0 ? lines : null;
