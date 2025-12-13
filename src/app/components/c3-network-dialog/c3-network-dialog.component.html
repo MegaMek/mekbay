@@ -117,14 +117,14 @@
                 @for (line of connectionLines(); track line.id) {
                 @if (!line.selfConnection) {
                 <line [attr.x1]="line.nodeX1" [attr.y1]="line.nodeY1" [attr.x2]="line.nodeX2" [attr.y2]="line.nodeY2"
-                    [attr.stroke]="line.color" stroke-width="4"
+                    [attr.stroke]="line.color" stroke-width="5"
                     [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
                 }
                 }
 
                 <!-- Hub points for peer networks -->
                 @for (hub of hubPoints(); track hub.id) {
-                <circle [attr.cx]="hub.nodeX" [attr.cy]="hub.nodeY" [attr.r]="hub.nodesCount <= 2 ? 2 : 5"
+                <circle [attr.cx]="hub.nodeX" [attr.cy]="hub.nodeY" [attr.r]="hub.nodesCount <= 2 ? 2 : 10"
                     [attr.fill]="hub.color" stroke-width="0" />
                 }
             </g>
@@ -239,7 +239,7 @@
 
                 <!-- Hub points for peer networks -->
                 @for (hub of hubPoints(); track hub.id) {
-                <circle [attr.cx]="hub.x" [attr.cy]="hub.y" [attr.r]="hub.nodesCount <= 2 ? 2 : 5"
+                <circle [attr.cx]="hub.x" [attr.cy]="hub.y" [attr.r]="hub.nodesCount <= 2 ? 1 : 5"
                     [attr.fill]="hub.color" stroke-width="0" />
                 }
                 } @else {
