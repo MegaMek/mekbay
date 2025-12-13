@@ -161,7 +161,7 @@ export const C3_NETWORK_LIMITS: Record<C3NetworkType, number> = {
     [C3NetworkType.C3]: 3, // Master can have up to 3 slaves OR 3 sub-masters (not both)
     [C3NetworkType.C3I]: 6,
     [C3NetworkType.NAVAL]: 6,
-    [C3NetworkType.NOVA]: 6
+    [C3NetworkType.NOVA]: 3
 };
 
 /**
@@ -176,6 +176,7 @@ export const C3_MAX_NETWORK_DEPTH = 2;
  */
 export const C3_TAX_RATE = 0.05;
 export const C3_BOOSTED_TAX_RATE = 0.07;
+export const NOVA_MAX_TAX_RATE = 0.35;
 
 /**
  * Represents a C3 component on a unit

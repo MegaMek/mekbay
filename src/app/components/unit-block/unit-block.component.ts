@@ -151,17 +151,17 @@ export class UnitBlockComponent {
 
         const lines: TooltipLine[] = [];
         if (baseBv > 0) {
-            lines.push({ label: 'Base:', value: `${baseBv}` });
+            lines.push({ label: 'Base', value: `${baseBv}` });
         }
         if (pilotDiff !== 0) {
             const sign = pilotDiff > 0 ? '+' : '';
-            lines.push({ label: 'Pilot:', value: `${sign}${pilotDiff}` });
+            lines.push({ label: 'Pilot', value: `${sign}${pilotDiff}` });
         }
         if (c3Tax > 0) {
-            lines.push({ label: 'C3:', value: `+${c3Tax}` });
+            lines.push({ label: 'Network', value: `+${c3Tax}` });
         }
         if (c3Tax > 0) {
-            lines.push({ label: 'Total:', value: `=${totalBv}` });
+            lines.push({ label: 'Total', value: `=${totalBv}` });
         }
 
         return lines.length > 0 ? lines : null;

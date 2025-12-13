@@ -439,12 +439,9 @@ export class CBTForceUnit extends ForceUnit {
 
     public c3Tax = computed<number>(() => {
         const c3Networks = this.force.c3Networks();
-        if (!c3Networks) {
-            return 0;
-        }
         let adjustedBv = this.baseBvPilotAdjusted();
         const c3Tax = C3NetworkUtil.calculateUnitC3Tax(
-            this.id,
+            this,
             adjustedBv,
             c3Networks,
             this.force.units()

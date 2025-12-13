@@ -47,7 +47,8 @@ import {
     C3_MAX_NETWORK_DEPTH,
     C3_MAX_NETWORK_TOTAL,
     C3_TAX_RATE,
-    C3_BOOSTED_TAX_RATE
+    C3_BOOSTED_TAX_RATE,
+    NOVA_MAX_TAX_RATE
 } from "../models/c3-network.model";
 import { SerializedC3NetworkGroup } from "../models/force-serialization";
 import { CBTForceUnit } from "../models/cbt-force-unit.model";
@@ -659,15 +660,35 @@ export class C3NetworkUtil {
      * Tax is distributed proportionally based on BV.
      */
     public static calculateUnitC3Tax(
-        unitId: string,
+        unit: CBTForceUnit,
         unitBv: number,
         networks: SerializedC3NetworkGroup[],
         allUnits: CBTForceUnit[]
     ): number {
         // Find all networks this unit participates in
-        const participatingNets = this.findNetworksContainingUnit(unitId, networks);
-        if (participatingNets.length === 0) return 0;
+        const c3Comps = this.getC3Components(unit.getUnit());
+        if (c3Comps.some(c => c.networkType === C3NetworkType.NOVA)) {
+            let novaNetworkTotalBv = 0;
+            let unitsCount = 0;
+            for (const unit of allUnits) {
+                // Grab all units that have NOVA C3
+                const unitc3Comps = this.getC3Components(unit.getUnit());
+                if (!unitc3Comps.some(c => c.networkType === C3NetworkType.NOVA)) {
+                    continue;
+                }
+                novaNetworkTotalBv += unit.baseBvPilotAdjusted();
+                unitsCount += 1;
+            }
+            if (unitsCount < 2) return 0; // No tax if only one unit with NOVA C3
+            let taxRate = unitsCount * C3_TAX_RATE;
+            if (taxRate > NOVA_MAX_TAX_RATE) {
+                taxRate = NOVA_MAX_TAX_RATE;
+            }
+            return Math.round(novaNetworkTotalBv * taxRate);
+        }
 
+        const participatingNets = this.findNetworksContainingUnit(unit.id, networks);
+        if (participatingNets.length === 0) return 0;
         const rootNet = this.getRootNetwork(participatingNets[0], networks);
         // Get the root network to avoid double-counting in hierarchies
         const networkedUnits = this.getNetworkUnits(rootNet, allUnits) as CBTForceUnit[];
