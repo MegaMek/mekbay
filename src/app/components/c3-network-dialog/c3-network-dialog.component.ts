@@ -958,6 +958,18 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     private getNextColor(): string {
+        const usedColors = new Set(this.networks().map(n => n.color));
+        
+        // Try to find an unused color first
+        for (let i = 0; i < C3_NETWORK_COLORS.length; i++) {
+            const color = C3_NETWORK_COLORS[(this.nextColorIndex + i) % C3_NETWORK_COLORS.length];
+            if (!usedColors.has(color)) {
+                this.nextColorIndex = (this.nextColorIndex + i + 1) % C3_NETWORK_COLORS.length;
+                return color;
+            }
+        }
+        
+        // All colors are used, just cycle through
         return C3_NETWORK_COLORS[this.nextColorIndex++ % C3_NETWORK_COLORS.length];
     }
 
