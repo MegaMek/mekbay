@@ -437,23 +437,24 @@ export class CBTForceUnit extends ForceUnit {
         return adjustedBv;
     });
 
-    override getBv = computed<number>(() => {
-        let adjustedBv = this.baseBvPilotAdjusted();
-        // Add C3 network tax share if this unit is in a C3 network
+    public c3Tax = computed<number>(() => {
         const c3Networks = this.force.c3Networks();
-        if (c3Networks.length > 0) {
-            const c3Tax = C3NetworkUtil.calculateUnitC3Tax(
-                this.id,
-                adjustedBv,
-                c3Networks,
-                this.force.units()
-            );
-            if (c3Tax > 0) {
-                adjustedBv += c3Tax;
-            }
+        if (!c3Networks) {
+            return 0;
         }
-        return adjustedBv;
-    })
+        let adjustedBv = this.baseBvPilotAdjusted();
+        const c3Tax = C3NetworkUtil.calculateUnitC3Tax(
+            this.id,
+            adjustedBv,
+            c3Networks,
+            this.force.units()
+        );
+        return c3Tax;
+    });
+
+    override getBv = computed<number>(() => {
+        return this.baseBvPilotAdjusted() + this.c3Tax();
+    });
 
     public repairAll() {
         // Set crew members hits to 0
