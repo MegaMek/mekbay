@@ -508,6 +508,13 @@ export class PageViewerComponent implements AfterViewInit {
         }
 
         if (pagesToMove !== 0) {
+            // Store the last view state before animating so that we can restore it later
+            const viewState = this.zoomPanService.viewState();
+            this.lastViewState = {
+                scale: viewState.scale,
+                translateX: viewState.translateX,
+                translateY: viewState.translateY
+            };
             // Calculate final position to animate to
             const targetOffset = -pagesToMove * scaledPageWidth;
             
@@ -1239,15 +1246,6 @@ export class PageViewerComponent implements AfterViewInit {
         const previousVisibleCount = this.visiblePageCount();
         this.updateDimensions();
         this.zoomPanService.handleResize();
-
-        // Refresh the synced view state after resize adjustments (minScale/clamp/centering).
-        // This prevents restoring a stale lastViewState after a window resize.
-        const viewState = this.zoomPanService.viewState();
-        this.lastViewState = {
-            scale: viewState.scale,
-            translateX: viewState.translateX,
-            translateY: viewState.translateY
-        };
 
         // If visible page count changed, re-render pages
         const newVisibleCount = this.visiblePageCount();
