@@ -969,7 +969,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         for (const color of this.masterPinColors.values()) {
             colorUsage.set(color, (colorUsage.get(color) || 0) + 1);
         }
-        
         // Find the least used color
         let leastUsedColor: string = C3_NETWORK_COLORS[0];
         let leastUsedCount = Infinity;

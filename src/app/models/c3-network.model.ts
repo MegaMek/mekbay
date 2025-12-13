@@ -203,9 +203,10 @@ export interface C3NodePosition {
 }
 
 /**
- * Network colors for visualization
+ * Network colors for visualization (32 distinct colors with good white text contrast)
  */
 export const C3_NETWORK_COLORS = [
+    // Primary spectrum
     '#1565C0', // Blue
     '#C62828', // Red
     '#2E7D32', // Green
@@ -214,11 +215,30 @@ export const C3_NETWORK_COLORS = [
     '#00838F', // Teal
     '#AD1457', // Magenta
     '#5D4037', // Brown
+    // Secondary spectrum
     '#283593', // Indigo
-    '#558B2F', // Lime Green
+    '#558B2F', // Lime
     '#00695C', // Dark Cyan
     '#6A1B9A', // Violet
     '#EF6C00', // Amber
     '#0277BD', // Light Blue
     '#C2185B', // Pink
+    '#4E342E', // Dark Brown
+    // Extended palette
+    '#1B5E20', // Forest Green
+    '#4527A0', // Deep Indigo
+    '#BF360C', // Deep Orange
+    '#006064', // Dark Teal
+    '#880E4F', // Wine
+    '#33691E', // Olive
+    '#311B92', // Deep Purple
+    '#E53935', // Bright Red
+    '#00796B', // Sea Green
+    '#5E35B1', // Medium Purple
+    '#F57C00', // Light Orange
+    '#0288D1', // Sky Blue
+    '#8E24AA', // Orchid
+    '#3E2723', // Espresso
+    '#827717', // Dark Lime
+    '#01579B', // Navy Blue
 ] as const;
