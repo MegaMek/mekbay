@@ -812,43 +812,132 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const canvasH = el?.clientHeight || 600;
         const spacing = 180;
 
-        // Calculate optimal grid dimensions based on canvas aspect ratio
-        const aspectRatio = canvasW / canvasH;
-        const totalNodes = c3Units.length;
-        
-        // Find cols/rows that best match aspect ratio
-        // cols/rows ≈ aspectRatio, and cols * rows >= totalNodes
-        let bestCols = 1;
-        let bestRows = totalNodes;
-        let bestRatioDiff = Infinity;
-        
-        for (let cols = 1; cols <= totalNodes; cols++) {
-            const rows = Math.ceil(totalNodes / cols);
-            const gridRatio = cols / rows;
-            const ratioDiff = Math.abs(gridRatio - aspectRatio);
-            if (ratioDiff < bestRatioDiff) {
-                bestRatioDiff = ratioDiff;
-                bestCols = cols;
-                bestRows = rows;
-            }
+        // First, place all nodes that already have saved x/y positions.
+        const unitsWithPos: ForceUnit[] = [];
+        const unitsWithoutPos: ForceUnit[] = [];
+
+        for (const unit of c3Units) {
+            const pos = unit.c3Position();
+            const hasXY = !!pos && Number.isFinite(pos.x) && Number.isFinite(pos.y);
+            (hasXY ? unitsWithPos : unitsWithoutPos).push(unit);
         }
 
-        const cols = bestCols;
+        const positionsById = new Map<string, Vec2>();
+        const placed: Vec2[] = [];
+
+        for (const unit of unitsWithPos) {
+            const pos = unit.c3Position()!;
+            const p = { x: pos.x, y: pos.y };
+            positionsById.set(unit.id, p);
+            placed.push(p);
+        }
+
+        // Then, place remaining nodes into a grid that matches the canvas aspect ratio,
+        // while avoiding overlap with already placed nodes.
         const startX = spacing; // Start with some margin
         const startY = spacing;
 
+        const padding = 12;
+        const minCenterDistance = this.NODE_RADIUS + padding; // approx; consistent with collision padding
+        const wouldOverlap = (x: number, y: number) => {
+            for (const p of placed) {
+                if (Math.hypot(p.x - x, p.y - y) < minCenterDistance) return true;
+            }
+            return false;
+        };
+
+        const aspectRatio = canvasW / canvasH;
+        const autoCount = unitsWithoutPos.length;
+        if (autoCount > 0) {
+            // Find cols/rows that best match aspect ratio
+            // cols/rows ≈ aspectRatio, and cols * rows >= autoCount
+            let bestCols = 1;
+            let bestRows = autoCount;
+            let bestRatioDiff = Infinity;
+
+            for (let cols = 1; cols <= autoCount; cols++) {
+                const rows = Math.ceil(autoCount / cols);
+                const gridRatio = cols / rows;
+                const ratioDiff = Math.abs(gridRatio - aspectRatio);
+                if (ratioDiff < bestRatioDiff) {
+                    bestRatioDiff = ratioDiff;
+                    bestCols = cols;
+                    bestRows = rows;
+                }
+            }
+
+            const cols = bestCols;
+            const basePositions: Vec2[] = Array.from({ length: autoCount }, (_, idx) => ({
+                x: startX + (idx % cols) * spacing,
+                y: startY + Math.floor(idx / cols) * spacing
+            }));
+
+            const step = spacing / 2;
+            const maxRings = 12;
+            const ringOffsets = (ring: number): Vec2[] => {
+                if (ring === 0) return [{ x: 0, y: 0 }];
+                const d = ring * step;
+                return [
+                    { x:  d, y:  0 }, { x: -d, y:  0 },
+                    { x:  0, y:  d }, { x:  0, y: -d },
+                    { x:  d, y:  d }, { x:  d, y: -d },
+                    { x: -d, y:  d }, { x: -d, y: -d }
+                ];
+            };
+
+            for (const unit of unitsWithoutPos) {
+                let chosen: Vec2 | null = null;
+
+                for (let ring = 0; ring <= maxRings && !chosen; ring++) {
+                    const offsets = ringOffsets(ring);
+                    for (const base of basePositions) {
+                        for (const off of offsets) {
+                            const x = base.x + off.x;
+                            const y = base.y + off.y;
+                            if (!wouldOverlap(x, y)) {
+                                chosen = { x, y };
+                                break;
+                            }
+                        }
+                        if (chosen) break;
+                    }
+                }
+
+                // Last resort fallback: drop below current content, marching until free.
+                if (!chosen) {
+                    let x = startX;
+                    let y = startY + Math.max(1, bestRows) * spacing;
+                    let guard = 0;
+                    while (wouldOverlap(x, y) && guard < 200) {
+                        x += spacing;
+                        if (x > startX + 10 * spacing) {
+                            x = startX;
+                            y += spacing;
+                        }
+                        guard++;
+                    }
+                    chosen = { x, y };
+                }
+
+                positionsById.set(unit.id, chosen);
+                placed.push(chosen);
+            }
+        }
+
         this.nodes.set(c3Units.map((unit, idx) => {
-            const pos = unit.c3Position();
+            const pos = positionsById.get(unit.id);
             const iconPath = unit.getUnit().icon;
             const comps = C3NetworkUtil.getC3Components(unit.getUnit());
             const numPins = Math.max(1, comps.length);
             const totalWidth = (numPins - 1) * this.PIN_GAP;
             const pinOffsetsX = Array.from({ length: numPins }, (_, i) => -totalWidth / 2 + i * this.PIN_GAP);
+            const fallbackX = startX + (idx % Math.max(1, c3Units.length)) * spacing;
+            const fallbackY = startY + Math.floor(idx / Math.max(1, c3Units.length)) * spacing;
             return {
                 unit,
                 c3Components: comps,
-                x: pos?.x ?? startX + (idx % cols) * spacing,
-                y: pos?.y ?? startY + Math.floor(idx / cols) * spacing,
+                x: pos?.x ?? fallbackX,
+                y: pos?.y ?? fallbackY,
                 zIndex: idx,
                 iconUrl: iconPath ? (this.imageService.getCachedUrl(iconPath) || this.FALLBACK_ICON) : this.FALLBACK_ICON,
                 pinOffsetsX
