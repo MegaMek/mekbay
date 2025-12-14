@@ -85,8 +85,30 @@ a {
     }
 }
 
-:where(body, .searchbar-container, .adv-panel, .dropdown, .dropdown-item, .dropdown-viewport, .name, .year, .bv, .no-results) {
-    user-select: none;
+@keyframes tv-vertical-expand {
+    0% {
+        opacity: 0.5;
+        transform: scaleY(0.01) scaleX(0.1);
+        filter: brightness(3);
+    }
+    40% {
+        opacity: 1;
+        transform: scaleY(0.01) scaleX(1);
+        filter: brightness(4);
+    }
+
+    55% {
+        filter: none;
+    }
+
+    100% {
+        transform: scaleY(1) scaleX(1);
+    }
+}
+
+.tv-fade {
+    animation: tv-vertical-expand .38s cubic-bezier(0.23, 1.02, 0.35, 1) both;
+    transform-origin: center center;
 }
 
 /* Allow selection in input and textarea fields */

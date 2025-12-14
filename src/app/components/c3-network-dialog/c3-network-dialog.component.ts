@@ -142,7 +142,7 @@ interface Vec2 {
     selector: 'c3-network-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [NgTemplateOutlet],
-    host: { class: 'fullscreen-dialog-host' },
+    host: { class: 'fullscreen-dialog-host tv-fade' },
     templateUrl: './c3-network-dialog.component.html',
     styleUrls: ['./c3-network-dialog.component.scss']
 })

@@ -62,7 +62,7 @@ const OVERFLOW_OVERLAY_KEY = 'tab-overflow-menu';
     styleUrls: ['./base-dialog.component.css'],
     template: `
     <div class="modal-flex-center">
-      <div class="modal" [ngClass]="modalClassFromTab()">
+      <div class="modal tv-fade" [ngClass]="modalClassFromTab()">
         <div class="modal-header" [class.tabbed]="isTabbed()">
           <ng-content select="[dialog-header]"></ng-content>
           @if (isTabbed()) {

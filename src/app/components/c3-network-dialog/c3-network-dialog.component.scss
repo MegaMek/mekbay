@@ -26,9 +26,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 8px;
   background-color: var(--background-color-menu);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 2px solid var(--border-color);
 
   h2 {
     margin: 0;
@@ -578,8 +578,7 @@
 .c3-dialog-footer {
   display: flex;
   justify-content: space-around;
-  gap: 12px;
-  padding: 16px 20px;
+  padding: 8px;
   background-color: var(--background-color-menu);
-  border-top: 1px solid var(--border-color);
+  border-top: 2px solid var(--border-color);
 }
