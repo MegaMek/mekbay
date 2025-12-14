@@ -47,13 +47,22 @@ function tokenizeForNaturalCompare(s: string, isModel: boolean): CacheEntry {
     }
     s = s.trim();
 
-    // Make 'Prime' variants go first, but only if this is the entire model name
+    // Make 'Prime' and 'Standard' variants go first, but only if this is the entire model name
     if (isModel) {
         if (s == 'Prime') {
             const part: Part = {
                 raw: s,
                 normalized: '0',
                 isNum: false,
+                num: 0
+            };
+            return {parts: [part]};
+        }
+        if (s == '') {
+            const part: Part = {
+                raw: s,
+                normalized: '0',
+                isNum: true,
                 num: 0
             };
             return {parts: [part]};
