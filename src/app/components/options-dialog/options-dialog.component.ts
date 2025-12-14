@@ -43,6 +43,7 @@ import { isIOS } from '../../utils/platform.util';
 import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
 import { GameSystem } from '../../models/common.model';
+import { ImageStorageService } from '../../services/image-storage.service';
 
 /*
  * Author: Drake
@@ -63,6 +64,7 @@ export class OptionsDialogComponent {
     dialogRef = inject(DialogRef<OptionsDialogComponent>);
     userStateService = inject(UserStateService);
     dialogsService = inject(DialogsService);
+    imageStorageService = inject(ImageStorageService);
     isIOS = isIOS();
     
     tabs = computed(() => {
@@ -76,11 +78,13 @@ export class OptionsDialogComponent {
     sheetCacheSize = signal(0);
     sheetCacheCount = signal(0);
     canvasMemorySize = signal(0);
+    unitIconsCount = signal(0);
 
 
     constructor() {
         this.updateSheetCacheSize();
         this.updateCanvasMemorySize();
+        this.updateUnitIconsCount();
     }
 
     updateSheetCacheSize() {
@@ -94,6 +98,11 @@ export class OptionsDialogComponent {
         this.dbService.getCanvasStoreSize().then(size => {
             this.canvasMemorySize.set(size);
         });
+    }
+
+    async updateUnitIconsCount() {
+        const count = await this.imageStorageService.getCount();
+        this.unitIconsCount.set(count);
     }
 
     formatBytes(bytes: number, decimals = 2) {
@@ -202,6 +211,20 @@ export class OptionsDialogComponent {
         if (confirmed) {
             await this.dbService.clearCanvasStore();
             this.updateCanvasMemorySize();
+        }
+    }
+
+    async onPurgeIcons() {
+        const confirmed = await this.dialogsService.requestConfirmation(
+            'Are you sure you want to delete all stored unit icons? They will be re-downloaded as needed.',
+            'Confirm Purge Unit Icons',
+            'info'
+        );
+        if (confirmed) {
+            await this.imageStorageService.clearUnitIconsStore();
+            await this.updateUnitIconsCount();
+            await this.imageStorageService.checkAndHydrate();
+            await this.updateUnitIconsCount();
         }
     }
 

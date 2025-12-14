@@ -162,6 +162,10 @@
         @if (activeTab() === 'Advanced') {
         <div class="tab-content">
             <div class="option-row">
+                <span>Unit icons stored: <strong>{{ unitIconsCount() }}</strong></span>
+                <button class="bt-button" (click)="onPurgeIcons()">PURGE</button>
+            </div>
+            <div class="option-row">
                 <span>Drawings stored: <strong>{{ formatBytes(canvasMemorySize()) }}</strong></span>
                 <button class="bt-button" (click)="onPurgeCanvas()">PURGE</button>
             </div>
