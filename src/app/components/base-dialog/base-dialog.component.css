@@ -94,7 +94,6 @@
         flex-direction: row;
         align-items: center;
         margin-right: 0.5em;
-        container-type: inline-size;
     }
 
     ::ng-deep .tab-actions-button {
