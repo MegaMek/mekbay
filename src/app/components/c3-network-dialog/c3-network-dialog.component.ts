@@ -500,7 +500,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     });
 
     protected pinConnectionState = computed(() => {
-        const state = new Map<string, { connected: boolean; disabled: boolean; color: string | null }>();
+        const state = new Map<string, { connected: boolean; disabled: boolean; color: string | null, roleLabel: string }>();
         const networks = this.networks();
 
         for (const node of this.nodes()) {
@@ -509,12 +509,21 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const comp = node.c3Components[compIndex];
                 const key = `${unitId}:${compIndex}`;
                 let connected = false, disabled = false, color: string | null = null;
-
+                let roleLabel =  C3NetworkUtil.getRoleName(comp.role);
                 if (comp.role === C3Role.MASTER) {
                     const net = C3NetworkUtil.findMasterNetwork(unitId, compIndex, networks);
                     connected = !!(net?.members?.length);
                     disabled = C3NetworkUtil.isUnitSlaveConnected(unitId, networks);
                     color = net?.color || this.masterPinColors.get(key) || null;
+                    if (net && net.members) {
+                        let parent = C3NetworkUtil.findParentNetwork(net, networks);
+                        if (!parent) {
+                            const subnetworks = C3NetworkUtil.findSubNetworks(net, networks);
+                            if (subnetworks.length > 0) {
+                                roleLabel = 'GM';
+                            }
+                        }
+                    }
                 } else if (comp.role === C3Role.SLAVE) {
                     connected = networks.some(n => n.members?.includes(unitId));
                     disabled = C3NetworkUtil.isUnitMasterConnected(unitId, networks);
@@ -527,7 +536,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     color = net?.color || null;
                 }
 
-                state.set(key, { connected, disabled, color });
+                state.set(key, { connected, disabled, color, roleLabel });
             }
         }
         return state;
@@ -1203,8 +1212,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return this.pinConnectionState().get(`${node.unit.id}:${compIndex}`)?.disabled ?? false;
     }
 
-    protected getRoleLabel(role: C3Role): string {
-        return C3NetworkUtil.getRoleName(role);
+    protected getPinRoleLabel(node: C3Node, compIndex: number): string {
+        return this.pinConnectionState().get(`${node.unit.id}:${compIndex}`)?.roleLabel ?? '?';
     }
 
     protected getNetworkTypeLabel(type: C3NetworkType): string {
