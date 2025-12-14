@@ -49,6 +49,7 @@
 }
 
 html {
+    touch-action: pan-x pan-y;
     margin: 0;
     padding: 0;
     height: 100vh;
@@ -58,15 +59,8 @@ html {
     background-color: var(--background-color);
 }
 
-// @media all and (display-mode: standalone) {
-//     html {
-//         height: 100lvh;
-//     }
-// }
-
-
 body {
-    touch-action: manipulation;
+    touch-action: pan-x pan-y;
     margin: 0;
     padding: 0;
     width: 100%;
@@ -305,7 +299,7 @@ hr {
 }
 
 .bt-select {
-    touch-action: manipulation;
+    touch-action: none;
     cursor: pointer;
     padding: 8px 20px 8px 8px;
     border: 2px transparent;
@@ -366,7 +360,7 @@ hr {
 
 .bt-button {
     cursor: pointer;
-    touch-action: manipulation;
+    touch-action: none;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -891,7 +885,7 @@ hr.divider {
 
     .interactive {
         cursor: pointer;
-        touch-action: manipulation;
+        touch-action: none;
     }
 
     .critGroup.locationDestroyed text {
@@ -1052,7 +1046,7 @@ hr.divider {
         .selectable,
         .selectable>path {
             cursor: pointer;
-            touch-action: manipulation;
+            touch-action: none;
             transition: fill ease-out 0.2s;
         }
 

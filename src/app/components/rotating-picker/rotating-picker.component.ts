@@ -224,7 +224,7 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
             fill: #000A;
             cursor: grab;
             pointer-events: auto;
-            touch-action: manipulation;
+            touch-action: none;
         }
         .dial-notch {
             stroke: #fff;
