@@ -37,6 +37,7 @@ import { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
 import { ASCustomPilotAbility } from './as-abilities.model';
+import { C3NetworkType } from './c3-network.model';
 
 export interface LocationData {
     armor?: number;
@@ -125,7 +126,7 @@ export interface SerializedC3NetworkGroup {
     /** Unique network ID */
     id: string;
     /** Network type */
-    type: 'c3' | 'c3i' | 'naval' | 'nova';
+    type: C3NetworkType;
     /** Assigned color for visualization */
     color: string;
     

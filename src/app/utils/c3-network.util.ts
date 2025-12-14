@@ -443,7 +443,7 @@ export class C3NetworkUtil {
 
         // The parent has multiple Master components
         if (masterNode.c3Components.length > 1 && masterId !== slaveId) {
-            // Check if this component is already connected elsewhere
+            // Check if this node is already connected elsewhere
             const parentMemberStr = this.createMasterMember(masterId, masterCompIdx);
             const parentNetAsMaster = this.findMasterNetwork(masterId, masterCompIdx, networks);
             const parentNetAsMember = networks.find(n => n.members?.includes(parentMemberStr));
@@ -451,7 +451,17 @@ export class C3NetworkUtil {
                 // If is not connected, we check if there is another Master component connected
                 for (const comp of masterNode.c3Components) {
                     if (comp.role === C3Role.MASTER && comp.index !== masterCompIdx) {
-                        if (this.isUnitMasterConnected(masterId, networks)) {
+                        // We found another Master component
+                        const altMemberStr = this.createMasterMember(masterId, comp.index);
+                        const altNetAsMaster = this.findMasterNetwork(masterId, comp.index, networks);
+                        const altNetAsMember = networks.find(n => n.members?.includes(altMemberStr));
+                        if (altNetAsMaster && altNetAsMaster.members) {
+                            const canAutoInternalink = this.canMasterConnectToMaster(masterNode, comp.index, masterNode, masterCompIdx, networks);
+                            if (!canAutoInternalink.valid) {
+                                return { valid: false, reason: canAutoInternalink.reason };
+                            }
+                            return { valid: true, reason: 'Master has another Master component and we can auto-link internally' };
+                        } else if (altNetAsMember) {
                             return { valid: false, reason: 'Master has another Master component connected' };
                         }
                     }
@@ -462,7 +472,7 @@ export class C3NetworkUtil {
         const network = this.findMasterNetwork(masterId, masterCompIdx, networks);
         let parentNet: SerializedC3NetworkGroup | undefined;
         if (network) {
-            const limit = C3_NETWORK_LIMITS[network.type as C3NetworkType];
+            const limit = C3_NETWORK_LIMITS[network.type];
             if ((network.members?.length ?? 0) >= limit) {
                 return { valid: false, reason: `Master has max ${limit} children` };
             }
@@ -517,9 +527,21 @@ export class C3NetworkUtil {
             return { valid: false, reason: 'Parent Slave component is connected' };
         }
 
-        // The parent has multieple Master components
+        // Check capacity/mixing
+        const parentNet = this.findMasterNetwork(parentId, parentCompIdx, networks);
+        if (parentNet) {
+            const limit = C3_NETWORK_LIMITS[parentNet.type];
+            if ((parentNet.members?.length ?? 0) >= limit) {
+                return { valid: false, reason: `Parent has max ${limit} children` };
+            }
+            if (parentNet.members?.some(m => !this.isMasterMember(m))) {
+                return { valid: false, reason: 'Cannot mix sub-masters with slaves' };
+            }
+        }
+
+        // The parent has multiple Master components
         if (parentNode.c3Components.length > 1 && parentId !== childId) {
-            // Check if this component is already connected elsewhere
+            // Check if this node is already connected elsewhere
             const parentMemberStr = this.createMasterMember(parentId, parentCompIdx);
             const parentNetAsMaster = this.findMasterNetwork(parentId, parentCompIdx, networks);
             const parentNetAsMember = networks.find(n => n.members?.includes(parentMemberStr));
@@ -527,11 +549,28 @@ export class C3NetworkUtil {
                 // If is not connected, we check if there is another Master component connected
                 for (const comp of parentNode.c3Components) {
                     if (comp.role === C3Role.MASTER && comp.index !== parentCompIdx) {
-                        if (this.isUnitMasterConnected(parentId, networks)) {
-                            return { valid: false, reason: 'Parent has another Master component connected' };
+                        // We found another Master component
+                        const altMemberStr = this.createMasterMember(parentId, comp.index);
+                        const altNetAsMaster = this.findMasterNetwork(parentId, comp.index, networks);
+                        const altNetAsMember = networks.find(n => n.members?.includes(altMemberStr));
+                        if (altNetAsMaster && altNetAsMaster.members) {
+                            const canAutoInternalink = this.canMasterConnectToMaster(parentNode, comp.index, parentNode, parentCompIdx, networks);
+                            if (!canAutoInternalink.valid) {
+                                return { valid: false, reason: canAutoInternalink.reason };
+                            }
+                            return { valid: true, reason: 'Master has another Master component and we can auto-link internally' };
+                        } else if (altNetAsMember) {
+                            return { valid: false, reason: 'Master has another Master component connected' };
                         }
                     }
                 }
+            }
+        }
+        // The child has multiple Master components
+        if (childNode.c3Components.length > 1 && parentId !== childId) {
+            // Check if this node is already connected elsewhere
+            if (this.isUnitConnected(childId, networks)) {
+                return { valid: false, reason: 'Child unit already connected' };
             }
         }
 
@@ -545,18 +584,6 @@ export class C3NetworkUtil {
         const childNet = this.findMasterNetwork(childId, childCompIdx, networks);
         if (childNet && this.findParentNetwork(childNet, networks)) {
             return { valid: false, reason: 'Child already in hierarchy' };
-        }
-
-        // Check capacity/mixing
-        const parentNet = this.findMasterNetwork(parentId, parentCompIdx, networks);
-        if (parentNet) {
-            const limit = C3_NETWORK_LIMITS[parentNet.type as C3NetworkType];
-            if ((parentNet.members?.length ?? 0) >= limit) {
-                return { valid: false, reason: `Parent has max ${limit} children` };
-            }
-            if (parentNet.members?.some(m => !this.isMasterMember(m))) {
-                return { valid: false, reason: 'Cannot mix sub-masters with slaves' };
-            }
         }
 
         // Check depth
@@ -709,7 +736,7 @@ export class C3NetworkUtil {
         memberId: string,
         memberCompIdx?: number
     ): NetworkMutationResult {
-        const networks = [...ctx.networks];
+        let networks = [...ctx.networks];
         const masterComp = masterNode.c3Components[masterCompIdx];
         const memberStr = memberCompIdx !== undefined 
             ? this.createMasterMember(memberId, memberCompIdx)
@@ -718,6 +745,33 @@ export class C3NetworkUtil {
         // Find or create the network
         let network = this.findMasterNetwork(masterNode.unit.id, masterCompIdx, networks);
         let networkIdx = networks.findIndex(n => n.id === network?.id);
+
+        if (!network) {
+            // The parent has multiple Master components
+            if (masterNode.c3Components.length > 1 && masterNode.unit.id !== memberId) {
+                // It has no network and has multiple Master components
+                // We check if there is another Master component connected
+                for (const comp of masterNode.c3Components) {
+                    if (comp.role === C3Role.MASTER && comp.index !== masterCompIdx) {
+                        // We found another Master component
+                        const altMemberStr = this.createMasterMember(masterNode.unit.id, comp.index);
+                        const altNetAsMaster = this.findMasterNetwork(masterNode.unit.id, comp.index, networks);
+                        const altNetAsMember = networks.find(n => n.members?.includes(altMemberStr));
+                        if (altNetAsMaster && altNetAsMaster.members) {
+                            const canAutoInternalink = this.canMasterConnectToMaster(masterNode, masterCompIdx, masterNode, comp.index, networks);
+                            if (!canAutoInternalink.valid) {
+                                continue;
+                            }
+                            const result = this.addMemberToMaster(ctx, masterNode, comp.index, masterNode.unit.id, masterCompIdx);
+                            networks = result.networks;
+                            break;
+                        } else if (altNetAsMember) {
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
 
         if (!network) {
             const pinKey = `${masterNode.unit.id}:${masterCompIdx}`;
@@ -827,9 +881,18 @@ export class C3NetworkUtil {
             ...result[idx],
             members: result[idx].members!.filter(m => m !== memberStr)
         };
-
         if (result[idx].members!.length === 0) {
             result.splice(idx, 1);
+        }
+        if (this.isMasterMember(memberStr)) {
+            const { unitId, compIndex } = this.parseMember(memberStr);
+            if (compIndex !== undefined) {
+                // If it was an internal link, we have to dissolve also the subnetwork if any
+                const subnetwork = this.findMasterNetwork(unitId, compIndex, result);
+                if (subnetwork) {
+                    result.splice(result.findIndex(n => n.id === subnetwork.id), 1);
+                }
+            }
         }
 
         return { networks: result, success: true };
@@ -926,7 +989,6 @@ export class C3NetworkUtil {
                 return this.removeMemberFromNetwork(result, net.id, unitId);
             }
         }
-
         if (role === C3Role.MASTER) {
             const memberStr = this.createMasterMember(unitId, compIdx);
             const net = result.find(n => n.members?.includes(memberStr));
@@ -1079,7 +1141,7 @@ export class C3NetworkUtil {
         unitC3Map: Map<string, C3Component[]>
     ): SerializedC3NetworkGroup | null {
         if (!network.peerIds) return null;
-        const networkType = network.type as C3NetworkType;
+        const networkType = network.type;
         const validPeerIds: string[] = [];
 
         for (const peerId of network.peerIds) {
@@ -1132,7 +1194,7 @@ export class C3NetworkUtil {
         }
 
         if (validMembers.length === 0) return null;
-        const limit = C3_NETWORK_LIMITS[network.type as C3NetworkType];
+        const limit = C3_NETWORK_LIMITS[network.type];
         return { ...network, members: validMembers.slice(0, limit) };
     }
 
