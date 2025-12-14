@@ -45,21 +45,19 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceUnit } from '../../models/force-unit.model';
-import { C3NetworkUtil } from '../../utils/c3-network.util';
+import { C3NetworkUtil, C3NetworkContext } from '../../utils/c3-network.util';
 import {
     C3Component,
     C3NetworkType,
     C3Node,
     C3Role,
-    C3_NETWORK_COLORS,
-    C3_NETWORK_LIMITS
+    C3_NETWORK_COLORS
 } from '../../models/c3-network.model';
 import { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { ToastService } from '../../services/toast.service';
 import { ImageStorageService } from '../../services/image-storage.service';
 import { OptionsService } from '../../services/options.service';
 import { LayoutService } from '../../services/layout.service';
-import { generateUUID } from '../../services/ws.service';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
@@ -116,13 +114,10 @@ interface SidebarMemberVm {
     name: string;
     role: SidebarMemberRole;
     canRemove: boolean;
-    /** True if this entry is a self/internal connection (member unitId equals the network's masterId). */
     isSelfConnection?: boolean;
     memberStr?: string;
     node: C3Node | null;
-    /** Present for members that are masters (including sub-masters). */
     network?: SerializedC3NetworkGroup;
-    /** Present for sub-masters with children, used for nested rendering. */
     networkVm?: SidebarNetworkVm;
 }
 
@@ -149,16 +144,12 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected layoutService = inject(LayoutService);
     private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
 
-    // Fallback icon for units without icons
     protected readonly FALLBACK_ICON = '/images/unknown.png';
-
-    // Node layout constants (exposed for template)
     protected readonly NODE_RADIUS = 170;
     protected readonly PIN_RADIUS = 13;
-    protected readonly PIN_GAP = 40; // Gap between pin centers
-    protected readonly PIN_Y_OFFSET = 18; // Y offset from node center to pins
+    protected readonly PIN_GAP = 40;
+    protected readonly PIN_Y_OFFSET = 18;
 
-    // Hex node geometry (flat-top hex)
     protected readonly NODE_HEX_POINTS = C3NetworkDialogComponent.toSvgPoints(
         C3NetworkDialogComponent.getHexRelativeVertices(this.NODE_RADIUS / 2)
     );
@@ -177,22 +168,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected sidebarAnimated = signal(false);
     protected connectionsAboveNodes = computed(() => this.optionsService.options().c3NetworkConnectionsAboveNodes);
 
-    /** Fast lookup to avoid repeated linear searches during computed layout. */
     protected nodesById = computed(() => {
         const map = new Map<string, C3Node>();
-        for (const node of this.nodes()) {
-            map.set(node.unit.id, node);
-        }
+        for (const node of this.nodes()) map.set(node.unit.id, node);
         return map;
     });
 
-    /**
-     * SVG layering is controlled by DOM order (not CSS z-index), so we render nodes
-     * sorted by zIndex to ensure bringNodeToFront() actually brings the node above.
-     */
-    protected sortedNodes = computed(() => {
-        return [...this.nodes()].sort((a, b) => a.zIndex - b.zIndex);
-    });
+    protected sortedNodes = computed(() => [...this.nodes()].sort((a, b) => a.zIndex - b.zIndex));
 
     // Drag state
     protected draggedNode = signal<C3Node | null>(null);
@@ -205,31 +187,33 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected hoveredNode = signal<C3Node | null>(null);
     protected hoveredPinIndex = signal<number | null>(null);
 
-    // Pan/zoom state - now using SVG viewBox/transform approach
+    // Pan/zoom state
     protected viewOffset = signal({ x: 0, y: 0 });
     protected zoom = signal(1);
 
-    // Unified pan tracking (works for both single-touch and pinch gestures)
     private lastPanPoint: { x: number; y: number } | null = null;
-
-    // Pointermove throttling (reduces jank on iOS)
     private pendingMoveEvent: PointerEvent | null = null;
     private moveRafId: number | null = null;
     private hasGlobalPointerListeners = false;
-
-    // Pinch zoom state
     private pinchStartDistance = 0;
     private pinchStartZoom = 1;
     private activeTouches = new Map<number, PointerEvent>();
 
     // Color tracking
-    private nextColorIndex = 0;
     private masterPinColors = new Map<string, string>();
 
     constructor() {
-        this.destroyRef.onDestroy(() => {
-            this.cleanupGlobalPointerState();
-        });
+        this.destroyRef.onDestroy(() => this.cleanupGlobalPointerState());
+    }
+
+    /** Create the network context for mutations */
+    private getNetworkContext(): C3NetworkContext {
+        return {
+            networks: this.networks(),
+            nodesById: this.nodesById(),
+            getNextColor: () => C3NetworkUtil.getNextColor(this.networks(), this.masterPinColors),
+            masterPinColors: this.masterPinColors
+        };
     }
 
     private addGlobalPointerListeners(): void {
@@ -262,12 +246,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private setPointerCaptureIfAvailable(event: PointerEvent): void {
         const el = event.currentTarget as Element | null;
         try {
-            (el as unknown as { setPointerCapture?: (pointerId: number) => void })?.setPointerCapture?.(
-                event.pointerId
-            );
-        } catch {
-            // best-effort; ignore
-        }
+            (el as unknown as { setPointerCapture?: (pointerId: number) => void })?.setPointerCapture?.(event.pointerId);
+        } catch { /* best-effort */ }
     }
 
     private updateNodes(mutator: (nodes: C3Node[]) => void): void {
@@ -278,18 +258,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     protected unitDisplayName = computed(() => this.optionsService.options().unitDisplayName);
 
-    /** SVG transform string computed from pan/zoom state */
     protected svgTransform = computed(() => {
         const offset = this.viewOffset();
-        const scale = this.zoom();
-        return `translate(${offset.x}, ${offset.y}) scale(${scale})`;
+        return `translate(${offset.x}, ${offset.y}) scale(${this.zoom()})`;
     });
 
-    /**
-     * Comprehensive connection state computed once when drag starts.
-     * Contains all valid target units and their valid pins.
-     * Also includes pins that are already connected (for drag-to-disconnect).
-     */
     protected connectionState = computed(() => {
         const conn = this.connectingFrom();
         if (!conn) {
@@ -300,46 +273,35 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 alreadyConnectedPins: new Map<string, number[]>()
             };
         }
-        
+
         const sourceComp = conn.node.c3Components[conn.compIndex];
         const validTargetIds = new Set<string>();
         const validPinsByUnit = new Map<string, number[]>();
         const alreadyConnectedPins = new Map<string, number[]>();
         const networks = this.networks();
-        
+
         for (const node of this.nodes()) {
             const validPins: number[] = [];
             const connectedPins: number[] = [];
-            
+
             for (let i = 0; i < node.c3Components.length; i++) {
                 const targetComp = node.c3Components[i];
                 if (!C3NetworkUtil.areComponentsCompatible(sourceComp, targetComp)) continue;
 
-                // Check if already connected (for drag-to-disconnect)
-                const existingConnection = this.findConnectionBetweenPins(
-                    conn.node.unit.id, conn.compIndex, sourceComp.role,
+                const existingConnection = C3NetworkUtil.findConnectionBetweenPins(
+                    networks, conn.node.unit.id, conn.compIndex, sourceComp.role,
                     node.unit.id, i, targetComp.role
                 );
                 if (existingConnection) {
                     connectedPins.push(i);
-                    validPins.push(i); // Already-connected pins are valid targets for disconnection
+                    validPins.push(i);
                     continue;
                 }
-                const result = C3NetworkUtil.canConnectToPin(
-                    conn.node.unit.id,
-                    conn.compIndex,
-                    sourceComp.role,
-                    sourceComp.networkType,
-                    node.unit.id,
-                    i,
-                    targetComp.role,
-                    networks
-                );
-                if (result.valid) {
-                    validPins.push(i);
-                }
+
+                const result = C3NetworkUtil.canConnectToPin(conn.node, conn.compIndex, node, i, networks);
+                if (result.valid) validPins.push(i);
             }
-            
+
             if (validPins.length > 0) {
                 validTargetIds.add(node.unit.id);
                 validPinsByUnit.set(node.unit.id, validPins);
@@ -348,31 +310,19 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 alreadyConnectedPins.set(node.unit.id, connectedPins);
             }
         }
-        
-        return {
-            isConnecting: true,
-            validTargetIds,
-            validPinsByUnit,
-            alreadyConnectedPins
-        };
+
+        return { isConnecting: true, validTargetIds, validPinsByUnit, alreadyConnectedPins };
     });
 
-    // Convenience accessor for valid target IDs
     protected validTargets = computed(() => this.connectionState().validTargetIds);
 
-    // Connection lines - now in SVG world coordinates (before transform)
     protected connectionLines = computed<ConnectionLine[]>(() => {
         const lines: ConnectionLine[] = [];
         const nodesById = this.nodesById();
-        const networks = this.networks();
 
-        for (const network of networks) {
+        for (const network of this.networks()) {
             if (network.peerIds && network.peerIds.length > 1) {
-                // Peer network - lines from hub to each peer
-                const peerNodes = network.peerIds
-                    .map(id => nodesById.get(id))
-                    .filter((n): n is C3Node => !!n);
-
+                const peerNodes = network.peerIds.map(id => nodesById.get(id)).filter((n): n is C3Node => !!n);
                 if (peerNodes.length >= 2) {
                     const positions = peerNodes.map(node => {
                         const compIdx = node.c3Components.findIndex(c => c.role === C3Role.PEER);
@@ -380,17 +330,15 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     });
                     const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
                     const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
-
                     const nodeCx = peerNodes.reduce((s, n) => s + n.x, 0) / peerNodes.length;
                     const nodeCy = peerNodes.reduce((s, n) => s + n.y, 0) / peerNodes.length;
 
                     positions.forEach((p, idx) => {
-                        const peerNode = peerNodes[idx];
                         lines.push({
                             id: `${network.id}-peer-${idx}`,
                             x1: cx, y1: cy, x2: p.x, y2: p.y,
                             nodeX1: nodeCx, nodeY1: nodeCy,
-                            nodeX2: peerNode.x, nodeY2: peerNode.y,
+                            nodeX2: peerNodes[idx].x, nodeY2: peerNodes[idx].y,
                             color: network.color,
                             hasArrow: false,
                             arrowAngle: 0,
@@ -399,52 +347,37 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     });
                 }
             } else if (network.masterId) {
-                // Master network - draw lines to members
                 const masterNode = nodesById.get(network.masterId);
                 if (!masterNode) continue;
 
                 const compIdx = network.masterCompIndex ?? 0;
                 const masterPos = this.getPinWorldPosition(masterNode, compIdx);
 
-                for (const member of network.members || []) {
+                for (const member of network.members ?? []) {
                     const parsed = C3NetworkUtil.parseMember(member);
                     const memberNode = nodesById.get(parsed.unitId);
                     if (!memberNode) continue;
 
-                    // Find the appropriate pin on the member
-                    let memberCompIdx = 0;
-                    if (parsed.compIndex !== undefined) {
-                        // Master member - use the specified component index
-                        memberCompIdx = parsed.compIndex;
-                    } else {
-                        // Slave member - find the slave pin specifically
-                        memberCompIdx = memberNode.c3Components.findIndex(c => 
-                            c.role === C3Role.SLAVE
-                        );
-                        if (memberCompIdx < 0) memberCompIdx = 0;
-                    }
+                    let memberCompIdx = parsed.compIndex !== undefined
+                        ? parsed.compIndex
+                        : memberNode.c3Components.findIndex(c => c.role === C3Role.SLAVE);
+                    if (memberCompIdx < 0) memberCompIdx = 0;
 
                     const memberPos = this.getPinWorldPosition(memberNode, memberCompIdx);
                     const angle = Math.atan2(memberPos.y - masterPos.y, memberPos.x - masterPos.x);
-
                     const isSelfConnection = parsed.unitId === network.masterId;
-
-                    // Shorten the line so it ends before the arrow marker (refX=10 in marker)
-                    // Arrow marker is 12px wide, refX=10 means arrow tip is 2px past the line end
-                    // We want the line to stop before the pin, leaving room for the arrow
-                    const arrowMarkerRefX = 10;
-                    const shortenBy = this.PIN_RADIUS + arrowMarkerRefX;
+                    const shortenBy = this.PIN_RADIUS + 10;
 
                     lines.push({
                         id: `${network.id}-member-${member}`,
-                        x1: masterPos.x, 
-                        y1: masterPos.y, 
-                        x2: memberPos.x - Math.cos(angle) * shortenBy, 
+                        x1: masterPos.x,
+                        y1: masterPos.y,
+                        x2: memberPos.x - Math.cos(angle) * shortenBy,
                         y2: memberPos.y - Math.sin(angle) * shortenBy,
-                        nodeX1: masterNode.x, 
+                        nodeX1: masterNode.x,
                         nodeY1: masterNode.y,
-                        nodeX2: memberNode.x - Math.cos(angle) * arrowMarkerRefX, 
-                        nodeY2: memberNode.y - Math.sin(angle) * arrowMarkerRefX,
+                        nodeX2: memberNode.x - Math.cos(angle) * 10,
+                        nodeY2: memberNode.y - Math.sin(angle) * 10,
                         color: network.color,
                         hasArrow: true,
                         arrowAngle: angle,
@@ -456,30 +389,22 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return lines;
     });
 
-    // Hub points for peer networks - in SVG world coordinates
     protected hubPoints = computed<HubPoint[]>(() => {
         const hubs: HubPoint[] = [];
         const nodesById = this.nodesById();
 
         for (const network of this.networks()) {
             if (network.peerIds && network.peerIds.length > 1) {
-                const peerNodes = network.peerIds
-                    .map(id => nodesById.get(id))
-                    .filter((n): n is C3Node => !!n);
-
+                const peerNodes = network.peerIds.map(id => nodesById.get(id)).filter((n): n is C3Node => !!n);
                 if (peerNodes.length >= 2) {
                     const positions = peerNodes.map(node => {
                         const compIdx = node.c3Components.findIndex(c => c.role === C3Role.PEER);
                         return this.getPinWorldPosition(node, Math.max(0, compIdx));
                     });
-
-                    const nodeX = peerNodes.reduce((s, n) => s + n.x, 0) / peerNodes.length;
-                    const nodeY = peerNodes.reduce((s, n) => s + n.y, 0) / peerNodes.length;
-
                     hubs.push({
                         id: `hub-${network.id}`,
-                        nodeX,
-                        nodeY,
+                        nodeX: peerNodes.reduce((s, n) => s + n.x, 0) / peerNodes.length,
+                        nodeY: peerNodes.reduce((s, n) => s + n.y, 0) / peerNodes.length,
                         x: positions.reduce((s, p) => s + p.x, 0) / positions.length,
                         y: positions.reduce((s, p) => s + p.y, 0) / positions.length,
                         color: network.color,
@@ -491,27 +416,17 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return hubs;
     });
 
-    // Active drag line - in SVG world coordinates
     protected activeDragLine = computed(() => {
         const conn = this.connectingFrom();
         if (!conn) return null;
         const pinPos = this.getPinWorldPosition(conn.node, conn.compIndex);
-        return {
-            x1: pinPos.x,
-            y1: pinPos.y,
-            x2: this.connectingEnd().x,
-            y2: this.connectingEnd().y
-        };
+        return { x1: pinPos.x, y1: pinPos.y, x2: this.connectingEnd().x, y2: this.connectingEnd().y };
     });
 
-    // ==================== Cached Sidebar Data ====================
-
-    /** View-model for the Networks sidebar (single computed source of truth). */
     protected sidebarNetworks = computed<SidebarNetworkVm[]>(() => {
         const networks = this.networks();
         const nodesById = this.nodesById();
         const topLevel = C3NetworkUtil.getTopLevelNetworks(networks);
-
         const visited = new Set<string>();
 
         const buildNetworkVm = (network: SerializedC3NetworkGroup): SidebarNetworkVm | null => {
@@ -525,11 +440,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 for (const id of network.peerIds) {
                     const node = nodesById.get(id) ?? null;
                     members.push({
-                        id,
-                        name: node?.unit.getUnit().chassis || 'Unknown',
-                        role: 'peer',
-                        canRemove: true,
-                        node
+                        id, name: node?.unit.getUnit().chassis || 'Unknown',
+                        role: 'peer', canRemove: true, node
                     });
                 }
             } else if (network.masterId) {
@@ -537,40 +449,27 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 members.push({
                     id: network.masterId,
                     name: masterNode?.unit.getUnit().chassis || 'Unknown',
-                    role: 'master',
-                    canRemove: false,
-                    node: masterNode,
-                    network
+                    role: 'master', canRemove: false, node: masterNode, network
                 });
 
-                for (const memberStr of network.members || []) {
+                for (const memberStr of network.members ?? []) {
                     const parsed = C3NetworkUtil.parseMember(memberStr);
                     const node = nodesById.get(parsed.unitId) ?? null;
                     const isSelfConnection = parsed.unitId === network.masterId;
 
-                    // A member with a compIndex is a master component attached to this network.
-                    // We treat it as a sub-master only if that master has children of its own.
                     if (parsed.compIndex !== undefined) {
                         const childNet = C3NetworkUtil.findMasterNetwork(parsed.unitId, parsed.compIndex, networks);
-                        const hasChildren = !!(childNet?.members && childNet.members.length > 0);
+                        const hasChildren = !!(childNet?.members?.length);
 
                         if (childNet && hasChildren) {
                             const childVm = buildNetworkVm(childNet);
-                            const vm = {
+                            members.push({
                                 id: parsed.unitId,
                                 name: node?.unit.getUnit().chassis || 'Unknown',
-                                role: 'sub-master' as const,
-                                canRemove: true,
-                                isSelfConnection,
-                                memberStr,
-                                node,
-                                network: childNet,
-                                networkVm: childVm ?? undefined
-                            };
-                            members.push(vm);
-                            if (childVm) {
-                                subNetworks.push(childVm);
-                            }
+                                role: 'sub-master', canRemove: true, isSelfConnection,
+                                memberStr, node, network: childNet, networkVm: childVm ?? undefined
+                            });
+                            if (childVm) subNetworks.push(childVm);
                             continue;
                         }
                     }
@@ -578,182 +477,112 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     members.push({
                         id: parsed.unitId,
                         name: node?.unit.getUnit().chassis || 'Unknown',
-                        role: 'slave',
-                        canRemove: true,
-                        isSelfConnection,
-                        memberStr,
-                        node
+                        role: 'slave', canRemove: true, isSelfConnection, memberStr, node
                     });
                 }
             }
 
-            // Display name
             let displayName = 'Unknown Network';
             if (network.peerIds) {
                 displayName = `${C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
             } else if (network.masterId) {
-                const countNonSelfMembers = (net: SerializedC3NetworkGroup): number => {
-                    if (!net.masterId) return net.members?.length ?? 0;
-                    return (net.members ?? []).reduce((count, member) => {
-                        const parsed = C3NetworkUtil.parseMember(member);
-                        return parsed.unitId === net.masterId ? count : count + 1;
-                    }, 0);
-                };
-
-                // Include the master itself, but exclude any "self-connection" members.
-                const memberCount = countNonSelfMembers(network) + 1;
-                const subNetMemberCount = subNetworks.reduce((sum, child) => sum + countNonSelfMembers(child.network), 0);
-                const memberStr = (memberCount + subNetMemberCount) > 1 ? 'members' : 'member';
-                const networkTypeName = C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType);
-                displayName = `${networkTypeName} (${memberCount + subNetMemberCount} ${memberStr})`;
+                const countNonSelf = (net: SerializedC3NetworkGroup) =>
+                    (net.members ?? []).reduce((c, m) => C3NetworkUtil.parseMember(m).unitId === net.masterId ? c : c + 1, 0);
+                const memberCount = countNonSelf(network) + 1;
+                const subNetCount = subNetworks.reduce((s, child) => s + countNonSelf(child.network), 0);
+                displayName = `${C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType)} (${memberCount + subNetCount} ${memberCount + subNetCount > 1 ? 'members' : 'member'})`;
             }
 
-            return {
-                network,
-                displayName,
-                members,
-                subNetworks
-            };
+            return { network, displayName, members, subNetworks };
         };
 
-        return topLevel
-            .map(net => buildNetworkVm(net))
-            .filter((vm): vm is SidebarNetworkVm => vm !== null);
+        return topLevel.map(net => buildNetworkVm(net)).filter((vm): vm is SidebarNetworkVm => vm !== null);
     });
 
-    // ==================== Cached Pin State ====================
-
-    /** Map of "unitId:compIndex" to pin connection state */
     protected pinConnectionState = computed(() => {
         const state = new Map<string, { connected: boolean; disabled: boolean; color: string | null }>();
-        const nodes = this.nodes();
         const networks = this.networks();
-        
-        for (const node of nodes) {
+
+        for (const node of this.nodes()) {
             const unitId = node.unit.id;
-            
             for (let compIndex = 0; compIndex < node.c3Components.length; compIndex++) {
                 const comp = node.c3Components[compIndex];
                 const key = `${unitId}:${compIndex}`;
-                
-                let connected = false;
-                let disabled = false;
-                let color: string | null = null;
-                
+                let connected = false, disabled = false, color: string | null = null;
+
                 if (comp.role === C3Role.MASTER) {
                     const net = C3NetworkUtil.findMasterNetwork(unitId, compIndex, networks);
-                    connected = !!(net?.members && net.members.length > 0);
+                    connected = !!(net?.members?.length);
                     disabled = C3NetworkUtil.isUnitSlaveConnected(unitId, networks);
                     color = net?.color || this.masterPinColors.get(key) || null;
                 } else if (comp.role === C3Role.SLAVE) {
                     connected = networks.some(n => n.members?.includes(unitId));
                     disabled = C3NetworkUtil.isUnitMasterConnected(unitId, networks);
                     for (const net of networks) {
-                        if (net.members?.includes(unitId)) {
-                            color = net.color;
-                            break;
-                        }
+                        if (net.members?.includes(unitId)) { color = net.color; break; }
                     }
                 } else if (comp.role === C3Role.PEER) {
                     const net = C3NetworkUtil.findPeerNetwork(unitId, networks);
                     connected = !!(net?.peerIds && net.peerIds.length >= 2);
                     color = net?.color || null;
                 }
-                
+
                 state.set(key, { connected, disabled, color });
             }
         }
-        
         return state;
     });
 
-    /** Map of unitId to node border colors */
     protected nodeBorderColors = computed(() => {
         const map = new Map<string, string[]>();
         const networks = this.networks();
-        
+
         for (const node of this.nodes()) {
             const unitId = node.unit.id;
             const colors: string[] = [];
-            
-            // 1. Check if unit is a member (slave or sub-master) of any network
+
             for (const net of networks) {
-                if (!net.members) continue;
-                for (const member of net.members) {
-                    const parsed = C3NetworkUtil.parseMember(member);
-                    if (parsed.unitId === unitId && !colors.includes(net.color)) {
-                        colors.push(net.color);
-                        break;
-                    }
-                }
-            }
-            
-            // 2. Check if unit is a peer in any peer network
-            for (const net of networks) {
-                if (net.peerIds?.includes(unitId) && !colors.includes(net.color)) {
+                if (net.members?.some(m => C3NetworkUtil.parseMember(m).unitId === unitId) && !colors.includes(net.color)) {
                     colors.push(net.color);
                 }
             }
-            
-            // 3. Check if unit is a master with members
             for (const net of networks) {
-                if (net.masterId === unitId && net.members?.length && !colors.includes(net.color)) {
-                    colors.push(net.color);
-                }
+                if (net.peerIds?.includes(unitId) && !colors.includes(net.color)) colors.push(net.color);
             }
-            
+            for (const net of networks) {
+                if (net.masterId === unitId && net.members?.length && !colors.includes(net.color)) colors.push(net.color);
+            }
+
             map.set(unitId, colors);
         }
-        
         return map;
     });
 
-    /**
-     * Precomputed stroke segments for nodes in multiple networks.
-     * Each segment is rendered as its own dashed circle: one visible arc + one long gap.
-     */
     protected nodeBorderSegments = computed(() => {
         const map = new Map<string, BorderSegment[]>();
         const colorsByNode = this.nodeBorderColors();
-
         const radius = this.NODE_RADIUS / 2;
-        // For a regular hexagon with circumradius R, side length is R and perimeter is 6R.
         const perimeter = 6 * radius;
 
         for (const node of this.nodes()) {
             const colors = colorsByNode.get(node.unit.id) || [];
-            if (colors.length <= 1) {
-                map.set(node.unit.id, []);
-                continue;
-            }
+            if (colors.length <= 1) { map.set(node.unit.id, []); continue; }
 
             const segmentLen = perimeter / colors.length;
-            const gapLen = perimeter - segmentLen;
-            const dasharray = `${segmentLen} ${gapLen}`;
-
-            map.set(
-                node.unit.id,
-                colors.map((color, index) => ({
-                    id: `${node.unit.id}-seg-${index}`,
-                    color,
-                    dasharray,
-                    dashoffset: -segmentLen * index
-                }))
-            );
+            const dasharray = `${segmentLen} ${perimeter - segmentLen}`;
+            map.set(node.unit.id, colors.map((color, index) => ({
+                id: `${node.unit.id}-seg-${index}`, color, dasharray, dashoffset: -segmentLen * index
+            })));
         }
-
         return map;
     });
 
-    /** Map of unitId to whether unit is connected to any network */
     protected unitConnectionStatus = computed(() => {
         const map = new Map<string, boolean>();
         const networks = this.networks();
-        
         for (const node of this.nodes()) {
             map.set(node.unit.id, C3NetworkUtil.isUnitConnected(node.unit.id, networks));
         }
-        
         return map;
     });
 
@@ -765,31 +594,21 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         this.fitViewToNodes();
     }
 
-    /**
-     * Resolve any initial overlaps after nodes are first laid out.
-     * Uses multiple passes to handle cascaded collisions.
-     */
     private resolveAllNodeCollisions(): void {
         const nodes = this.nodes();
         if (nodes.length < 2) return;
 
-        const maxPasses = 10;
         let changed = false;
-
-        for (let pass = 0; pass < maxPasses; pass++) {
+        for (let pass = 0; pass < 10; pass++) {
             let passChanged = false;
             for (const node of nodes) {
-                if (this.resolveNodeCollisions(node)) {
-                    passChanged = true;
-                }
+                if (this.resolveNodeCollisions(node)) passChanged = true;
             }
-
             changed ||= passChanged;
             if (!passChanged) break;
         }
 
         if (changed) {
-            // Force recomputation of computed geometry that depends on node positions.
             this.nodes.set([...nodes]);
             this.hasModifications.set(true);
         }
@@ -804,14 +623,12 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const canvasH = el?.clientHeight || 600;
         const spacing = 180;
 
-        // First, place all nodes that already have saved x/y positions.
         const unitsWithPos: ForceUnit[] = [];
         const unitsWithoutPos: ForceUnit[] = [];
 
         for (const unit of c3Units) {
             const pos = unit.c3Position();
-            const hasXY = !!pos && Number.isFinite(pos.x) && Number.isFinite(pos.y);
-            (hasXY ? unitsWithPos : unitsWithoutPos).push(unit);
+            (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y) ? unitsWithPos : unitsWithoutPos).push(unit);
         }
 
         const positionsById = new Map<string, Vec2>();
@@ -819,93 +636,55 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         for (const unit of unitsWithPos) {
             const pos = unit.c3Position()!;
-            const p = { x: pos.x, y: pos.y };
-            positionsById.set(unit.id, p);
-            placed.push(p);
+            positionsById.set(unit.id, { x: pos.x, y: pos.y });
+            placed.push({ x: pos.x, y: pos.y });
         }
 
-        // Then, place remaining nodes into a grid that matches the canvas aspect ratio,
-        // while avoiding overlap with already placed nodes.
-        const startX = spacing; // Start with some margin
-        const startY = spacing;
+        const startX = spacing, startY = spacing;
+        const minCenterDistance = this.NODE_RADIUS + 12;
+        const wouldOverlap = (x: number, y: number) => placed.some(p => Math.hypot(p.x - x, p.y - y) < minCenterDistance);
 
-        const padding = 12;
-        const minCenterDistance = this.NODE_RADIUS + padding; // approx; consistent with collision padding
-        const wouldOverlap = (x: number, y: number) => {
-            for (const p of placed) {
-                if (Math.hypot(p.x - x, p.y - y) < minCenterDistance) return true;
-            }
-            return false;
-        };
+        if (unitsWithoutPos.length > 0) {
+            const aspectRatio = canvasW / canvasH;
+            let bestCols = 1, bestRows = unitsWithoutPos.length, bestRatioDiff = Infinity;
 
-        const aspectRatio = canvasW / canvasH;
-        const autoCount = unitsWithoutPos.length;
-        if (autoCount > 0) {
-            // Find cols/rows that best match aspect ratio
-            // cols/rows ≈ aspectRatio, and cols * rows >= autoCount
-            let bestCols = 1;
-            let bestRows = autoCount;
-            let bestRatioDiff = Infinity;
-
-            for (let cols = 1; cols <= autoCount; cols++) {
-                const rows = Math.ceil(autoCount / cols);
-                const gridRatio = cols / rows;
-                const ratioDiff = Math.abs(gridRatio - aspectRatio);
-                if (ratioDiff < bestRatioDiff) {
-                    bestRatioDiff = ratioDiff;
-                    bestCols = cols;
-                    bestRows = rows;
-                }
+            for (let cols = 1; cols <= unitsWithoutPos.length; cols++) {
+                const rows = Math.ceil(unitsWithoutPos.length / cols);
+                const diff = Math.abs(cols / rows - aspectRatio);
+                if (diff < bestRatioDiff) { bestRatioDiff = diff; bestCols = cols; bestRows = rows; }
             }
 
-            const cols = bestCols;
-            const basePositions: Vec2[] = Array.from({ length: autoCount }, (_, idx) => ({
-                x: startX + (idx % cols) * spacing,
-                y: startY + Math.floor(idx / cols) * spacing
+            const basePositions = Array.from({ length: unitsWithoutPos.length }, (_, idx) => ({
+                x: startX + (idx % bestCols) * spacing,
+                y: startY + Math.floor(idx / bestCols) * spacing
             }));
 
             const step = spacing / 2;
-            const maxRings = 12;
-            const ringOffsets = (ring: number): Vec2[] => {
-                if (ring === 0) return [{ x: 0, y: 0 }];
-                const d = ring * step;
-                return [
-                    { x:  d, y:  0 }, { x: -d, y:  0 },
-                    { x:  0, y:  d }, { x:  0, y: -d },
-                    { x:  d, y:  d }, { x:  d, y: -d },
-                    { x: -d, y:  d }, { x: -d, y: -d }
-                ];
-            };
+            const ringOffsets = (ring: number): Vec2[] => ring === 0 ? [{ x: 0, y: 0 }] : [
+                { x: ring * step, y: 0 }, { x: -ring * step, y: 0 },
+                { x: 0, y: ring * step }, { x: 0, y: -ring * step },
+                { x: ring * step, y: ring * step }, { x: ring * step, y: -ring * step },
+                { x: -ring * step, y: ring * step }, { x: -ring * step, y: -ring * step }
+            ];
 
             for (const unit of unitsWithoutPos) {
                 let chosen: Vec2 | null = null;
 
-                for (let ring = 0; ring <= maxRings && !chosen; ring++) {
-                    const offsets = ringOffsets(ring);
+                for (let ring = 0; ring <= 12 && !chosen; ring++) {
                     for (const base of basePositions) {
-                        for (const off of offsets) {
-                            const x = base.x + off.x;
-                            const y = base.y + off.y;
-                            if (!wouldOverlap(x, y)) {
-                                chosen = { x, y };
-                                break;
-                            }
+                        for (const off of ringOffsets(ring)) {
+                            const x = base.x + off.x, y = base.y + off.y;
+                            if (!wouldOverlap(x, y)) { chosen = { x, y }; break; }
                         }
                         if (chosen) break;
                     }
                 }
 
-                // Last resort fallback: drop below current content, marching until free.
                 if (!chosen) {
-                    let x = startX;
-                    let y = startY + Math.max(1, bestRows) * spacing;
-                    let guard = 0;
+                    let x = startX, y = startY + Math.max(1, bestRows) * spacing, guard = 0;
                     while (wouldOverlap(x, y) && guard < 200) {
                         x += spacing;
-                        if (x > startX + 10 * spacing) {
-                            x = startX;
-                            y += spacing;
-                        }
+                        if (x > startX + 10 * spacing) { x = startX; y += spacing; }
                         guard++;
                     }
                     chosen = { x, y };
@@ -918,253 +697,138 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         this.nodes.set(c3Units.map((unit, idx) => {
             const pos = positionsById.get(unit.id);
-            const iconPath = unit.getUnit().icon;
             const comps = C3NetworkUtil.getC3Components(unit.getUnit());
             const numPins = Math.max(1, comps.length);
             const totalWidth = (numPins - 1) * this.PIN_GAP;
-            const pinOffsetsX = Array.from({ length: numPins }, (_, i) => -totalWidth / 2 + i * this.PIN_GAP);
-            const fallbackX = startX + (idx % Math.max(1, c3Units.length)) * spacing;
-            const fallbackY = startY + Math.floor(idx / Math.max(1, c3Units.length)) * spacing;
             return {
                 unit,
                 c3Components: comps,
-                x: pos?.x ?? fallbackX,
-                y: pos?.y ?? fallbackY,
+                x: pos?.x ?? startX + (idx % c3Units.length) * spacing,
+                y: pos?.y ?? startY + Math.floor(idx / c3Units.length) * spacing,
                 zIndex: idx,
-                iconUrl: iconPath ? (this.imageService.getCachedUrl(iconPath) || this.FALLBACK_ICON) : this.FALLBACK_ICON,
-                pinOffsetsX
+                iconUrl: unit.getUnit().icon ? (this.imageService.getCachedUrl(unit.getUnit().icon!) || this.FALLBACK_ICON) : this.FALLBACK_ICON,
+                pinOffsetsX: Array.from({ length: numPins }, (_, i) => -totalWidth / 2 + i * this.PIN_GAP)
             };
         }));
 
-        // Load icon URLs asynchronously for any that weren't cached
         this.loadMissingIconUrls(c3Units);
     }
 
-    /**
-     * Auto-adjust zoom and pan to fit all nodes within the visible canvas.
-     */
     private fitViewToNodes(): void {
         const nodes = this.nodes();
         if (nodes.length === 0) return;
-
         const el = this.svgCanvas()?.nativeElement;
         if (!el) return;
 
-        const canvasW = el.clientWidth;
-        const canvasH = el.clientHeight;
-        const padding = 20; // Padding around the content
-
-        // Calculate bounding box of all nodes
+        const canvasW = el.clientWidth, canvasH = el.clientHeight, padding = 20;
         const nodeRadius = this.NODE_RADIUS / 2;
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        
+
         for (const node of nodes) {
             minX = Math.min(minX, node.x - nodeRadius);
             minY = Math.min(minY, node.y - nodeRadius);
             maxX = Math.max(maxX, node.x + nodeRadius);
-            maxY = Math.max(maxY, node.y + nodeRadius + 60); // Extra for pin labels
+            maxY = Math.max(maxY, node.y + nodeRadius + 60);
         }
 
-        const contentW = maxX - minX;
-        const contentH = maxY - minY;
-
-        // Calculate zoom to fit content with padding
-        const availableW = canvasW - padding * 2;
-        const availableH = canvasH - padding * 2;
-        const scaleX = availableW / contentW;
-        const scaleY = availableH / contentH;
-        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM / 2, Math.min(scaleX, scaleY)));
-        
-        // Calculate offset to center the content
-        const centerX = (minX + maxX) / 2;
-        const centerY = (minY + maxY) / 2;
-        const offsetX = canvasW / 2 - centerX * newZoom;
-        const offsetY = canvasH / 2 - centerY * newZoom;
+        const contentW = maxX - minX, contentH = maxY - minY;
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM / 2, Math.min((canvasW - padding * 2) / contentW, (canvasH - padding * 2) / contentH)));
+        const centerX = (minX + maxX) / 2, centerY = (minY + maxY) / 2;
 
         this.zoom.set(newZoom);
-        this.viewOffset.set({ x: offsetX, y: offsetY });
+        this.viewOffset.set({ x: canvasW / 2 - centerX * newZoom, y: canvasH / 2 - centerY * newZoom });
     }
 
     private async loadMissingIconUrls(units: ForceUnit[]) {
         const nodes = this.nodes();
-        const nodesById = new Map<string, C3Node>();
-        for (const node of nodes) {
-            nodesById.set(node.unit.id, node);
-        }
+        const nodesById = new Map(nodes.map(n => [n.unit.id, n]));
         let updated = false;
-        
+
         for (const unit of units) {
             const node = nodesById.get(unit.id);
             if (!node || node.iconUrl !== this.FALLBACK_ICON) continue;
-            
             const iconPath = unit.getUnit().icon;
             if (!iconPath) continue;
-            
+
             try {
                 const url = await this.imageService.getImage(iconPath);
-                if (url && url !== this.FALLBACK_ICON) {
-                    node.iconUrl = url;
-                    updated = true;
-                }
-            } catch {
-                // Keep fallback
-            }
+                if (url && url !== this.FALLBACK_ICON) { node.iconUrl = url; updated = true; }
+            } catch { /* keep fallback */ }
         }
-        
-        if (updated) {
-            this.nodes.set([...nodes]);
-        }
+
+        if (updated) this.nodes.set([...nodes]);
     }
 
     private initializeMasterPinColors() {
-        // Assign colors from existing networks
         for (const net of this.networks()) {
             if (net.masterId && net.masterCompIndex !== undefined) {
                 this.masterPinColors.set(`${net.masterId}:${net.masterCompIndex}`, net.color);
             }
         }
-        this.nextColorIndex = this.networks().length;
 
-        // Assign colors to unassigned master pins
         for (const node of this.nodes()) {
             node.c3Components.forEach((comp, idx) => {
                 if (comp.role === C3Role.MASTER) {
                     const key = `${node.unit.id}:${idx}`;
                     if (!this.masterPinColors.has(key)) {
-                        this.masterPinColors.set(key, this.getNextColor());
+                        this.masterPinColors.set(key, C3NetworkUtil.getNextColor(this.networks(), this.masterPinColors));
                     }
                 }
             });
         }
     }
 
-    private getNextColor(): string {
-        // Count how many times each color is used
-        const colorUsage = new Map<string, number>();
-        for (const color of C3_NETWORK_COLORS) {
-            colorUsage.set(color, 0);
-        }
-        for (const net of this.networks()) {
-            colorUsage.set(net.color, (colorUsage.get(net.color) || 0) + 1);
-        }
-        for (const color of this.masterPinColors.values()) {
-            colorUsage.set(color, (colorUsage.get(color) || 0) + 1);
-        }
-        // Find the least used color
-        let leastUsedColor: string = C3_NETWORK_COLORS[0];
-        let leastUsedCount = Infinity;
-        for (const [color, count] of colorUsage) {
-            if (count < leastUsedCount) {
-                leastUsedCount = count;
-                leastUsedColor = color;
-            }
-        }
-        
-        return leastUsedColor;
-    }
-
-    private generateNetworkId(): string {
-        return generateUUID();
-    }
-
-    // ==================== SVG Coordinate Helpers ====================
-
-    /**
-     * Get pin position in SVG world coordinates (before any transforms).
-     * This is used for drawing connection lines.
-     */
     private getPinWorldPosition(node: C3Node, compIndex: number): { x: number; y: number } {
-        return {
-            x: node.x + (node.pinOffsetsX[compIndex] ?? 0),
-            y: node.y + this.PIN_Y_OFFSET
-        };
+        return { x: node.x + (node.pinOffsetsX[compIndex] ?? 0), y: node.y + this.PIN_Y_OFFSET };
     }
 
-    /**
-     * Convert screen coordinates to SVG world coordinates.
-     * Accounts for pan offset and zoom scale.
-     */
     private screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
         const svg = this.svgCanvas()?.nativeElement;
         if (!svg) return { x: screenX, y: screenY };
-        
         const rect = svg.getBoundingClientRect();
         const offset = this.viewOffset();
         const scale = this.zoom();
-        
-        return {
-            x: (screenX - rect.left - offset.x) / scale,
-            y: (screenY - rect.top - offset.y) / scale
-        };
+        return { x: (screenX - rect.left - offset.x) / scale, y: (screenY - rect.top - offset.y) / scale };
     }
 
-    /**
-     * Resolve collisions between the dragged node and other nodes.
-     * Pushes colliding nodes away from the dragged node, cascading to other nodes.
-     */
     private resolveNodeCollisions(draggedNode: C3Node): boolean {
         const nodes = this.nodes();
-        const padding = 12; // Minimum gap between nodes
-        const maxIterations = 20; // Prevent infinite loops
-
-        let hadCollision = false;
-
-        // Expand collision hex slightly to preserve a visible gap
-        const collisionRadius = this.NODE_RADIUS / 2 + padding / 2;
-        
-        // Use a queue for cascade collision resolution
+        const collisionRadius = this.NODE_RADIUS / 2 + 6;
         const nodesToCheck = new Set<C3Node>([draggedNode]);
         const checkedPairs = new Set<string>();
-        let iterations = 0;
-        
-        while (nodesToCheck.size > 0 && iterations < maxIterations) {
+        let hadCollision = false, iterations = 0;
+
+        while (nodesToCheck.size > 0 && iterations < 20) {
             iterations++;
             const currentNode = nodesToCheck.values().next().value as C3Node;
             nodesToCheck.delete(currentNode);
-            
+
             for (const other of nodes) {
                 if (other === currentNode) continue;
-                
-                // Create a unique pair key to avoid checking the same pair twice
                 const pairKey = [currentNode.unit.id, other.unit.id].sort().join('-');
                 if (checkedPairs.has(pairKey)) continue;
                 checkedPairs.add(pairKey);
-                
-                const dx = other.x - currentNode.x;
-                const dy = other.y - currentNode.y;
 
                 const mtv = this.getHexOverlapMtv(currentNode, other, collisionRadius);
                 if (!mtv) continue;
 
-                // Ensure MTV pushes "other" away from current.
+                const dx = other.x - currentNode.x, dy = other.y - currentNode.y;
                 const dot = mtv.x * dx + mtv.y * dy;
                 const push = dot >= 0 ? mtv : { x: -mtv.x, y: -mtv.y };
-
                 other.x += push.x;
                 other.y += push.y;
-
                 hadCollision = true;
-
                 nodesToCheck.add(other);
             }
         }
-
         return hadCollision;
     }
 
-    // ==================== Hex Geometry / Collision ====================
-
     private static getHexRelativeVertices(radius: number): Vec2[] {
-        // Flat-top hex: vertices at angles 0, 60, 120, 180, 240, 300 degrees.
-        const verts: Vec2[] = [];
-        for (let i = 0; i < 6; i++) {
-            const angle = (Math.PI / 3) * i;
-            verts.push({
-                x: radius * Math.cos(angle),
-                y: radius * Math.sin(angle)
-            });
-        }
-        return verts;
+        return Array.from({ length: 6 }, (_, i) => ({
+            x: radius * Math.cos((Math.PI / 3) * i),
+            y: radius * Math.sin((Math.PI / 3) * i)
+        }));
     }
 
     private static toSvgPoints(verts: Vec2[]): string {
@@ -1172,356 +836,142 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     private getHexWorldVertices(node: C3Node, radius: number): Vec2[] {
-        const rel = C3NetworkDialogComponent.getHexRelativeVertices(radius);
-        return rel.map(v => ({ x: node.x + v.x, y: node.y + v.y }));
+        return C3NetworkDialogComponent.getHexRelativeVertices(radius).map(v => ({ x: node.x + v.x, y: node.y + v.y }));
     }
 
-    private static normalize(v: Vec2): Vec2 {
-        const len = Math.hypot(v.x, v.y);
-        if (len === 0) return { x: 1, y: 0 };
-        return { x: v.x / len, y: v.y / len };
-    }
-
-    private static dot(a: Vec2, b: Vec2): number {
-        return a.x * b.x + a.y * b.y;
-    }
-
-    private static getAxes(verts: Vec2[]): Vec2[] {
-        const axes: Vec2[] = [];
-        for (let i = 0; i < verts.length; i++) {
-            const p1 = verts[i];
-            const p2 = verts[(i + 1) % verts.length];
-            const edge = { x: p2.x - p1.x, y: p2.y - p1.y };
-            // Perpendicular axis
-            const axis = C3NetworkDialogComponent.normalize({ x: -edge.y, y: edge.x });
-            axes.push(axis);
-        }
-        return axes;
-    }
-
-    private static project(verts: Vec2[], axis: Vec2): { min: number; max: number } {
-        let min = Infinity;
-        let max = -Infinity;
-        for (const v of verts) {
-            const p = C3NetworkDialogComponent.dot(v, axis);
-            if (p < min) min = p;
-            if (p > max) max = p;
-        }
-        return { min, max };
-    }
-
-    /**
-     * Returns the minimum-translation vector (MTV) to separate `b` from `a`.
-     * If no overlap, returns null.
-     */
     private getHexOverlapMtv(a: C3Node, b: C3Node, radius: number): Vec2 | null {
         const aVerts = this.getHexWorldVertices(a, radius);
         const bVerts = this.getHexWorldVertices(b, radius);
 
-        const axes = [
-            ...C3NetworkDialogComponent.getAxes(aVerts),
-            ...C3NetworkDialogComponent.getAxes(bVerts)
-        ];
+        const getAxes = (verts: Vec2[]) => verts.map((p1, i) => {
+            const p2 = verts[(i + 1) % verts.length];
+            const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            return len === 0 ? { x: 1, y: 0 } : { x: -(p2.y - p1.y) / len, y: (p2.x - p1.x) / len };
+        });
 
+        const project = (verts: Vec2[], axis: Vec2) => {
+            let min = Infinity, max = -Infinity;
+            for (const v of verts) {
+                const p = v.x * axis.x + v.y * axis.y;
+                if (p < min) min = p;
+                if (p > max) max = p;
+            }
+            return { min, max };
+        };
+
+        const axes = [...getAxes(aVerts), ...getAxes(bVerts)];
         let smallestOverlap = Infinity;
         let smallestAxis: Vec2 | null = null;
 
         for (const axis of axes) {
-            const p1 = C3NetworkDialogComponent.project(aVerts, axis);
-            const p2 = C3NetworkDialogComponent.project(bVerts, axis);
+            const p1 = project(aVerts, axis), p2 = project(bVerts, axis);
             const overlap = Math.min(p1.max, p2.max) - Math.max(p1.min, p2.min);
             if (overlap <= 0) return null;
-            if (overlap < smallestOverlap) {
-                smallestOverlap = overlap;
-                smallestAxis = axis;
-            }
+            if (overlap < smallestOverlap) { smallestOverlap = overlap; smallestAxis = axis; }
         }
 
-        if (!smallestAxis || !Number.isFinite(smallestOverlap)) return null;
-
-        // MTV = axis * overlap
-        return {
-            x: smallestAxis.x * smallestOverlap,
-            y: smallestAxis.y * smallestOverlap
-        };
+        return smallestAxis && Number.isFinite(smallestOverlap)
+            ? { x: smallestAxis.x * smallestOverlap, y: smallestAxis.y * smallestOverlap }
+            : null;
     }
 
-    // ==================== Connection Logic ====================
-
-    /** Get valid pins for a target node from pre-computed connection state */
     protected getValidPinsForTarget(targetNode: C3Node): number[] {
         return this.connectionState().validPinsByUnit.get(targetNode.unit.id) || [];
     }
 
     protected isPinValidTarget(node: C3Node, compIndex: number): boolean {
-        const validPins = this.connectionState().validPinsByUnit.get(node.unit.id);
-        return validPins?.includes(compIndex) ?? false;
+        return this.connectionState().validPinsByUnit.get(node.unit.id)?.includes(compIndex) ?? false;
     }
 
-    /** Check if a pin is already connected to the source (would disconnect on drop) */
     protected isAlreadyConnectedPin(node: C3Node, compIndex: number): boolean {
-        const connectedPins = this.connectionState().alreadyConnectedPins.get(node.unit.id);
-        return connectedPins?.includes(compIndex) ?? false;
+        return this.connectionState().alreadyConnectedPins.get(node.unit.id)?.includes(compIndex) ?? false;
     }
 
-    /** Check if a node contains any pins that are already connected (disconnect target) */
     protected isNodeDisconnectTarget(node: C3Node): boolean {
-        const connectedPins = this.connectionState().alreadyConnectedPins.get(node.unit.id);
-        return (connectedPins?.length ?? 0) > 0;
+        return (this.connectionState().alreadyConnectedPins.get(node.unit.id)?.length ?? 0) > 0;
     }
-
-    // ==================== Event Handlers ====================
 
     protected onPinPointerDown(event: PointerEvent, node: C3Node, compIndex: number) {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
-
         this.setPointerCaptureIfAvailable(event);
 
         const comp = node.c3Components[compIndex];
         if (!comp) return;
 
-        // Track touch for potential pinch-zoom transition
         this.activeTouches.set(event.pointerId, event);
-
         this.connectingFrom.set({ node, compIndex, role: comp.role });
-        // Set initial connecting end in world coordinates
-        const worldPos = this.screenToWorld(event.clientX, event.clientY);
-        this.connectingEnd.set(worldPos);
-
+        this.connectingEnd.set(this.screenToWorld(event.clientX, event.clientY));
         this.addGlobalPointerListeners();
     }
 
-    /**
-     * Removes the existing link for a pin (if any).
-     * This is used to support "redrawing" an existing link by dragging from it.
-     */
-    private cancelExistingConnectionForPin(node: C3Node, compIndex: number): void {
+    protected onPinContextMenu(event: MouseEvent, node: C3Node, compIndex: number): void {
+        if (event.button !== 2) return;
+        event.preventDefault();
+        event.stopPropagation();
         if (this.data.readOnly) return;
 
         const comp = node.c3Components[compIndex];
         if (!comp) return;
 
-        const unitId = node.unit.id;
-        const networks = this.networks();
-
-        // Slave pins are stored as plain unitId members on a master network.
-        if (comp.role === C3Role.SLAVE) {
-            const net = networks.find(n => n.members?.includes(unitId));
-            if (net) {
-                this.removeMemberFromNetwork(net.id, unitId);
-            }
-            return;
-        }
-
-        // Master pins can be connected as a child (sub-master) via "unitId:compIndex".
-        if (comp.role === C3Role.MASTER) {
-            const memberStr = C3NetworkUtil.createMasterMember(unitId, compIndex);
-            const net = networks.find(n => n.members?.includes(memberStr));
-            if (net) {
-                this.removeMemberFromNetwork(net.id, memberStr);
-            }
-            return;
-        }
-
-        // Peer pins participate via peerIds.
-        if (comp.role === C3Role.PEER) {
-            const net = C3NetworkUtil.findPeerNetwork(unitId, networks);
-            if (!net) return;
-
-            const updated = [...networks];
-            const target = updated.find(n => n.id === net.id);
-            if (!target?.peerIds) return;
-
-            target.peerIds = target.peerIds.filter(id => id !== unitId);
-            // Peer networks are only meaningful with 2+ peers.
-            if (target.peerIds.length < 2) {
-                const idx = updated.indexOf(target);
-                if (idx >= 0) updated.splice(idx, 1);
-            }
-
-            this.networks.set(updated);
+        const result = C3NetworkUtil.cancelConnectionForPin(this.networks(), node.unit.id, compIndex, comp.role);
+        if (result.success) {
+            this.networks.set(result.networks);
             this.hasModifications.set(true);
         }
     }
 
-    /**
-     * Checks if two pins are already connected to each other.
-     * Returns the connection info if found, null otherwise.
-     */
-    private findConnectionBetweenPins(
-        sourceUnitId: string, sourceCompIndex: number, sourceRole: C3Role,
-        targetUnitId: string, targetCompIndex: number, targetRole: C3Role
-    ): { networkId: string; memberStr?: string } | null {
-        const networks = this.networks();
-
-        // Master -> Slave connection
-        if (sourceRole === C3Role.MASTER && targetRole === C3Role.SLAVE) {
-            const net = C3NetworkUtil.findMasterNetwork(sourceUnitId, sourceCompIndex, networks);
-            if (net?.members?.includes(targetUnitId)) {
-                return { networkId: net.id, memberStr: targetUnitId };
-            }
-        }
-
-        // Slave -> Master connection (reverse check)
-        if (sourceRole === C3Role.SLAVE && targetRole === C3Role.MASTER) {
-            const net = C3NetworkUtil.findMasterNetwork(targetUnitId, targetCompIndex, networks);
-            if (net?.members?.includes(sourceUnitId)) {
-                return { networkId: net.id, memberStr: sourceUnitId };
-            }
-        }
-
-        // Master -> Master connection (sub-master)
-        if (sourceRole === C3Role.MASTER && targetRole === C3Role.MASTER) {
-            const memberStr = C3NetworkUtil.createMasterMember(targetUnitId, targetCompIndex);
-            const net = C3NetworkUtil.findMasterNetwork(sourceUnitId, sourceCompIndex, networks);
-            if (net?.members?.includes(memberStr)) {
-                return { networkId: net.id, memberStr };
-            }
-            // Also check reverse (target is parent of source)
-            const reverseMemberStr = C3NetworkUtil.createMasterMember(sourceUnitId, sourceCompIndex);
-            const reverseNet = C3NetworkUtil.findMasterNetwork(targetUnitId, targetCompIndex, networks);
-            if (reverseNet?.members?.includes(reverseMemberStr)) {
-                return { networkId: reverseNet.id, memberStr: reverseMemberStr };
-            }
-        }
-
-        // Peer -> Peer connection
-        if (sourceRole === C3Role.PEER && targetRole === C3Role.PEER) {
-            // we ignore ourselves from the peer network
-            if (sourceUnitId === targetUnitId) return null;
-            const net = C3NetworkUtil.findPeerNetwork(sourceUnitId, networks);
-            if (net?.peerIds?.includes(targetUnitId)) {
-                return { networkId: net.id };
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Right-click handler for pins to cancel existing connections.
-     */
-    protected onPinContextMenu(event: MouseEvent, node: C3Node, compIndex: number): void {
-        if (event.button !== 2) return;
-        event.preventDefault();
-        event.stopPropagation();
-        this.cancelExistingConnectionForPin(node, compIndex);
-    }
-
     protected onNodePointerDown(event: PointerEvent, node: C3Node) {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
-
         this.setPointerCaptureIfAvailable(event);
-        
-        // Check if clicking on a pin
-        const target = event.target as Element;
-        if (target.closest('.pin')) return;
 
-        // Track touch for potential pinch-zoom transition
+        if ((event.target as Element).closest('.pin')) return;
+
         this.activeTouches.set(event.pointerId, event);
-
-        // Bring node to front (z-index layering)
         this.bringNodeToFront(node);
-
-        // Store starting positions for drag
         this.dragStartPos = { x: event.clientX, y: event.clientY };
         this.nodeStartPos = { x: node.x, y: node.y };
         this.draggedNode.set(node);
-
         this.addGlobalPointerListeners();
     }
 
-    /**
-     * Bring a node to the front by reordering z-indexes.
-     * Normalizes all z-indexes to stay within a compact range.
-     */
     private bringNodeToFront(node: C3Node): void {
         this.updateNodes(nodes => {
             const currentZ = node.zIndex;
-
-            // Shift down all nodes that were above this one
-            for (const n of nodes) {
-                if (n.zIndex > currentZ) {
-                    n.zIndex--;
-                }
-            }
-
-            // Put this node at the top
+            for (const n of nodes) { if (n.zIndex > currentZ) n.zIndex--; }
             const target = nodes.find(n => n.unit.id === node.unit.id);
-            if (target) {
-                target.zIndex = nodes.length - 1;
-            }
+            if (target) target.zIndex = nodes.length - 1;
         });
     }
 
     protected onCanvasPointerDown(event: PointerEvent) {
-        const target = event.target as Element;
-        if (target.closest('.node-group')) return;
-
         this.setPointerCaptureIfAvailable(event);
-        
-        // Track touch for pinch-to-zoom and pan
         this.activeTouches.set(event.pointerId, event);
-        
-        // Initialize pan point (either single touch or center of two)
         this.lastPanPoint = this.getEffectivePanPoint();
-        
-        if (this.activeTouches.size === 2) {
-            // Start pinch gesture - store initial distance for zoom calculation
-            this.startPinchGesture();
-        }
-
+        if (this.activeTouches.size === 2) this.startPinchGesture();
         this.addGlobalPointerListeners();
     }
 
-    /**
-     * Get the effective pan point - single touch position or center of two touches
-     */
     private getEffectivePanPoint(): { x: number; y: number } {
         const touches = Array.from(this.activeTouches.values());
         if (touches.length === 0) return { x: 0, y: 0 };
         if (touches.length === 1) return { x: touches[0].clientX, y: touches[0].clientY };
-        // Two or more touches - use center
-        return this.getTouchCenter(touches[0], touches[1]);
+        return { x: (touches[0].clientX + touches[1].clientX) / 2, y: (touches[0].clientY + touches[1].clientY) / 2 };
     }
 
-    /**
-     * Initialize pinch gesture state from current active touches
-     */
     private startPinchGesture(): void {
         const touches = Array.from(this.activeTouches.values());
         if (touches.length !== 2) return;
-        
-        this.pinchStartDistance = this.getTouchDistance(touches[0], touches[1]);
+        this.pinchStartDistance = Math.hypot(touches[1].clientX - touches[0].clientX, touches[1].clientY - touches[0].clientY);
         this.pinchStartZoom = this.zoom();
     }
 
-    /**
-     * Calculate distance between two touch points
-     */
-    private getTouchDistance(t1: PointerEvent, t2: PointerEvent): number {
-        const dx = t2.clientX - t1.clientX;
-        const dy = t2.clientY - t1.clientY;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    /**
-     * Calculate center point between two touches
-     */
-    private getTouchCenter(t1: PointerEvent, t2: PointerEvent): { x: number; y: number } {
-        return {
-            x: (t1.clientX + t2.clientX) / 2,
-            y: (t1.clientY + t2.clientY) / 2
-        };
-    }
-
     private onGlobalPointerMove = (event: PointerEvent) => {
-        // Always keep touch tracking up-to-date immediately (required for pinch correctness).
         this.activeTouches.set(event.pointerId, event);
 
-        // If we now have 2+ touches, cancel any drag/connection and switch to pinch-zoom immediately.
         if (this.activeTouches.size >= 2 && (this.draggedNode() || this.connectingFrom())) {
             this.draggedNode.set(null);
             this.connectingFrom.set(null);
@@ -1531,99 +981,68 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             this.lastPanPoint = this.getEffectivePanPoint();
         }
 
-        // Throttle heavier processing to one run per animation frame.
         this.pendingMoveEvent = event;
         if (this.moveRafId !== null) return;
-
         this.moveRafId = requestAnimationFrame(() => {
             this.moveRafId = null;
-            const e = this.pendingMoveEvent;
-            if (!e) return;
-            this.processPointerMove(e);
+            if (this.pendingMoveEvent) this.processPointerMove(this.pendingMoveEvent);
         });
     };
 
     private processPointerMove(event: PointerEvent): void {
-        const dragged = this.draggedNode()!;
+        const dragged = this.draggedNode();
         if (dragged) {
-            // Drag node - calculate new position in world coordinates
             const scale = this.zoom();
             const deltaX = (event.clientX - this.dragStartPos.x) / scale;
             const deltaY = (event.clientY - this.dragStartPos.y) / scale;
 
             this.updateNodes(nodes => {
                 const node = nodes.find(n => n.unit.id === dragged.unit.id);
-                if (!node) return;
-
-                node.x = this.nodeStartPos.x + deltaX;
-                node.y = this.nodeStartPos.y + deltaY;
+                if (node) { node.x = this.nodeStartPos.x + deltaX; node.y = this.nodeStartPos.y + deltaY; }
             });
-
             this.hasModifications.set(true);
             return;
         }
 
         if (this.connectingFrom()) {
-            // Update connecting line end in world coordinates
-            const worldPos = this.screenToWorld(event.clientX, event.clientY);
-            this.connectingEnd.set(worldPos);
+            this.connectingEnd.set(this.screenToWorld(event.clientX, event.clientY));
 
-            // Update hover state
             const target = document.elementFromPoint(event.clientX, event.clientY);
             const nodeEl = target?.closest('.node-group');
             const pinEl = target?.closest('.pin');
 
-            if (!nodeEl) {
-                this.hoveredNode.set(null);
-                this.hoveredPinIndex.set(null);
-                return;
-            }
+            if (!nodeEl) { this.hoveredNode.set(null); this.hoveredPinIndex.set(null); return; }
 
             const unitId = nodeEl.getAttribute('data-unit-id') || '';
             const targetNode = this.nodesById().get(unitId);
             if (!targetNode || !this.validTargets().has(targetNode.unit.id)) {
-                this.hoveredNode.set(null);
-                this.hoveredPinIndex.set(null);
-                return;
+                this.hoveredNode.set(null); this.hoveredPinIndex.set(null); return;
             }
 
             this.hoveredNode.set(targetNode);
-            if (!pinEl) {
-                this.hoveredPinIndex.set(null);
-                return;
-            }
+            if (!pinEl) { this.hoveredPinIndex.set(null); return; }
 
-            const pinGroup = pinEl as SVGGElement;
-            const siblings = Array.from(pinGroup.parentElement?.querySelectorAll('.pin') || []);
-            const idx = siblings.indexOf(pinGroup);
+            const idx = Array.from(pinEl.parentElement?.querySelectorAll('.pin') || []).indexOf(pinEl);
             this.hoveredPinIndex.set(this.isPinValidTarget(targetNode, idx) ? idx : null);
             return;
         }
 
         if (this.activeTouches.size > 0 && this.lastPanPoint) {
-            // Unified pan handling (works for both single-touch and pinch)
             const currentPanPoint = this.getEffectivePanPoint();
-            const panDeltaX = currentPanPoint.x - this.lastPanPoint.x;
-            const panDeltaY = currentPanPoint.y - this.lastPanPoint.y;
+            let newOffsetX = this.viewOffset().x + currentPanPoint.x - this.lastPanPoint.x;
+            let newOffsetY = this.viewOffset().y + currentPanPoint.y - this.lastPanPoint.y;
 
-            let newOffsetX = this.viewOffset().x + panDeltaX;
-            let newOffsetY = this.viewOffset().y + panDeltaY;
-
-            // Handle pinch-to-zoom if two touches are active
             if (this.activeTouches.size === 2) {
                 const touches = Array.from(this.activeTouches.values());
-                const currentDistance = this.getTouchDistance(touches[0], touches[1]);
-                const scaleChange = currentDistance / this.pinchStartDistance;
-                const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, this.pinchStartZoom * scaleChange));
-
-                // Adjust offset to zoom towards pinch center
+                const currentDistance = Math.hypot(touches[1].clientX - touches[0].clientX, touches[1].clientY - touches[0].clientY);
+                const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, this.pinchStartZoom * currentDistance / this.pinchStartDistance));
                 const oldZoom = this.zoom();
+
                 if (newZoom !== oldZoom) {
                     const svg = this.svgCanvas()?.nativeElement;
                     if (svg) {
                         const rect = svg.getBoundingClientRect();
-                        const centerX = currentPanPoint.x - rect.left;
-                        const centerY = currentPanPoint.y - rect.top;
+                        const centerX = currentPanPoint.x - rect.left, centerY = currentPanPoint.y - rect.top;
                         const zoomRatio = newZoom / oldZoom;
                         newOffsetX = centerX - (centerX - newOffsetX) * zoomRatio;
                         newOffsetY = centerY - (centerY - newOffsetY) * zoomRatio;
@@ -1638,84 +1057,73 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     private onGlobalPointerUp = (event: PointerEvent) => {
-        // Remove touch from tracking
         this.activeTouches.delete(event.pointerId);
-
-        // If a move is queued, it may run after this up; clear to reduce stale work.
         this.pendingMoveEvent = null;
-        
-        // Update pan point for remaining touches (smooth transition from pinch to single-touch pan)
+
         if (this.activeTouches.size > 0) {
             this.lastPanPoint = this.getEffectivePanPoint();
-            // Re-initialize pinch if still have 2 touches
-            if (this.activeTouches.size === 2) {
-                this.startPinchGesture();
-            }
+            if (this.activeTouches.size === 2) this.startPinchGesture();
         }
 
         const dragged = this.draggedNode();
         if (dragged) {
-            const hadCollision = this.resolveNodeCollisions(dragged);
-            if (hadCollision) {
-                // Collisions update node positions in-place; re-setting forces recomputation
-                // of computed geometry like connectionLines/hubPoints.
-                this.nodes.set([...this.nodes()]);
-            }
+            if (this.resolveNodeCollisions(dragged)) this.nodes.set([...this.nodes()]);
         }
 
         if (this.connectingFrom()) {
             const target = document.elementFromPoint(event.clientX, event.clientY);
             const nodeEl = target?.closest('.node-group');
             const pinEl = target?.closest('.pin');
+
             if (nodeEl) {
                 const unitId = nodeEl.getAttribute('data-unit-id');
                 const targetNode = this.nodesById().get(unitId || '');
                 const conn = this.connectingFrom()!;
+
                 if (targetNode && this.validTargets().has(targetNode.unit.id)) {
-                    let targetPin = -1;
-                    if (pinEl) {
-                        const pinGroup = pinEl as SVGGElement;
-                        const siblings = Array.from(pinGroup.parentElement?.querySelectorAll('.pin') || []);
-                        targetPin = siblings.indexOf(pinGroup);
-                    }
+                    let targetPin = pinEl ? Array.from(pinEl.parentElement?.querySelectorAll('.pin') || []).indexOf(pinEl) : -1;
                     if (targetPin < 0 || !this.isPinValidTarget(targetNode, targetPin)) {
                         const validPins = this.getValidPinsForTarget(targetNode);
                         targetPin = validPins.length > 0 ? validPins[0] : -1;
                     }
+
                     if (targetPin >= 0) {
-                        // Check if this is an already-connected pin (drag-to-disconnect)
                         const sourceComp = conn.node.c3Components[conn.compIndex];
                         const targetComp = targetNode.c3Components[targetPin];
-                        const existingConnection = this.findConnectionBetweenPins(
-                            conn.node.unit.id, conn.compIndex, sourceComp.role,
+                        const existingConnection = C3NetworkUtil.findConnectionBetweenPins(
+                            this.networks(), conn.node.unit.id, conn.compIndex, sourceComp.role,
                             targetNode.unit.id, targetPin, targetComp.role
                         );
-                        
+
                         if (existingConnection) {
-                            // Remove the existing connection
                             if (existingConnection.memberStr) {
-                                this.removeMemberFromNetwork(existingConnection.networkId, existingConnection.memberStr);
+                                const result = C3NetworkUtil.removeMemberFromNetwork(this.networks(), existingConnection.networkId, existingConnection.memberStr);
+                                this.networks.set(result.networks);
                             } else {
-                                // Peer network - remove the source unit from the peer network
-                                this.cancelExistingConnectionForPin(conn.node, conn.compIndex);
+                                const result = C3NetworkUtil.cancelConnectionForPin(this.networks(), conn.node.unit.id, conn.compIndex, sourceComp.role);
+                                this.networks.set(result.networks);
                             }
+                            this.hasModifications.set(true);
                             this.toastService.show('Connection removed', 'success');
-                        } else {
-                            this.createConnection(conn, targetNode, targetPin);
+                        } else if (!this.data.readOnly) {
+                            const result = C3NetworkUtil.createConnection(this.getNetworkContext(), conn.node, conn.compIndex, targetNode, targetPin);
+                            if (result.success) {
+                                this.networks.set(result.networks);
+                                this.hasModifications.set(true);
+                                this.toastService.show(result.message || 'Connected', 'success');
+                            }
                         }
                     }
                 }
             }
+
             this.connectingFrom.set(null);
             this.hoveredNode.set(null);
             this.hoveredPinIndex.set(null);
         }
+
         this.draggedNode.set(null);
-        
-        // Clean up when no touches remain
-        if (this.activeTouches.size === 0) {
-            this.cleanupGlobalPointerState();
-        }
+        if (this.activeTouches.size === 0) this.cleanupGlobalPointerState();
     };
 
     protected onWheel(event: WheelEvent) {
@@ -1723,258 +1131,20 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const delta = event.deltaY > 0 ? 0.9 : 1.1;
         const oldZoom = this.zoom();
         const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldZoom * delta));
-        
-        // Zoom towards mouse cursor
+
         const svg = this.svgCanvas()?.nativeElement;
         if (svg && newZoom !== oldZoom) {
             const rect = svg.getBoundingClientRect();
-            const mouseX = event.clientX - rect.left;
-            const mouseY = event.clientY - rect.top;
+            const mouseX = event.clientX - rect.left, mouseY = event.clientY - rect.top;
             const offset = this.viewOffset();
             const zoomRatio = newZoom / oldZoom;
-            this.viewOffset.set({
-                x: mouseX - (mouseX - offset.x) * zoomRatio,
-                y: mouseY - (mouseY - offset.y) * zoomRatio
-            });
+            this.viewOffset.set({ x: mouseX - (mouseX - offset.x) * zoomRatio, y: mouseY - (mouseY - offset.y) * zoomRatio });
         }
-        
         this.zoom.set(newZoom);
     }
 
     public toggleConnectionsAboveNodes() {
-        const current = this.optionsService.options().c3NetworkConnectionsAboveNodes;
-        this.optionsService.setOption('c3NetworkConnectionsAboveNodes', !current);
-    }
-
-    // ==================== Network Management ====================
-
-    private createConnection(
-        from: { node: C3Node; compIndex: number; role: C3Role },
-        targetNode: C3Node,
-        targetPinIndex: number
-    ) {
-        if (this.data.readOnly) return;
-
-        const sourceComp = from.node.c3Components[from.compIndex];
-        const targetComp = targetNode.c3Components[targetPinIndex];
-        if (!sourceComp || !targetComp) return;
-
-        if (sourceComp.role === C3Role.PEER) {
-            this.createPeerConnection(from.node, targetNode, sourceComp.networkType);
-        } else if (sourceComp.role === C3Role.MASTER) {
-            if (targetComp.role === C3Role.SLAVE) {
-                this.addMemberToMaster(from.node, from.compIndex, targetNode.unit.id);
-            } else if (targetComp.role === C3Role.MASTER) {
-                // Check if reverse connection exists (target is parent of source)
-                const reverseExists = this.isChildOfMaster(
-                    from.node.unit.id, from.compIndex,
-                    targetNode.unit.id, targetPinIndex
-                );
-                
-                if (reverseExists) {
-                    // Remove the reverse connection first
-                    this.removeChildFromMaster(
-                        targetNode.unit.id, targetPinIndex,
-                        from.node.unit.id, from.compIndex
-                    );
-                }
-                
-                // Now add the new connection
-                this.addMemberToMaster(from.node, from.compIndex, targetNode.unit.id, targetPinIndex);
-            }
-        } else if (sourceComp.role === C3Role.SLAVE && targetComp.role === C3Role.MASTER) {
-            this.addMemberToMaster(targetNode, targetPinIndex, from.node.unit.id);
-        }
-    }
-
-    private createPeerConnection(node1: C3Node, node2: C3Node, networkType: C3NetworkType) {
-        const networks = [...this.networks()];
-        const net1 = C3NetworkUtil.findPeerNetwork(node1.unit.id, networks);
-        const net2 = C3NetworkUtil.findPeerNetwork(node2.unit.id, networks);
-        // Check if both networks (if they exist) are at limit
-        const limit = C3_NETWORK_LIMITS[networkType];
-        const sourceCount = net1?.peerIds?.length || 1;
-        const targetCount = net2?.peerIds?.length || 1;
-        if (net1 && net2 && net1.id !== net2.id && (sourceCount + targetCount) <= limit) {
-            // Merge networks
-            const n1 = networks.find(n => n.id === net1.id)!;
-            const n2idx = networks.findIndex(n => n.id === net2.id);
-            for (const id of networks[n2idx].peerIds || []) {
-                if (!n1.peerIds!.includes(id)) n1.peerIds!.push(id);
-            }
-            networks.splice(n2idx, 1);
-        } else if (net2 && (targetCount < limit)) {
-            if (net1) {
-                // Remove node1 from its existing network
-                const n1idx = networks.findIndex(n => n.id === net1.id);
-                networks[n1idx].peerIds = networks[n1idx].peerIds!.filter(id => id !== node1.unit.id);
-                // If network is now empty, remove it
-                if (networks[n1idx].peerIds!.length <= 1) {
-                    networks.splice(n1idx, 1);
-                }
-            }
-            const n = networks.find(n => n.id === net2.id)!;
-            if (!n.peerIds!.includes(node1.unit.id)) n.peerIds!.push(node1.unit.id);
-        } else if (net1 && (sourceCount < limit)) {
-            if (net2) {
-                // Remove node2 from its existing network
-                const n2idx = networks.findIndex(n => n.id === net2.id);
-                networks[n2idx].peerIds = networks[n2idx].peerIds!.filter(id => id !== node2.unit.id);
-                // If network is now empty, remove it
-                if (networks[n2idx].peerIds!.length <= 1) {
-                    networks.splice(n2idx, 1);
-                }
-            }
-            const n = networks.find(n => n.id === net1.id)!;
-            if (!n.peerIds!.includes(node2.unit.id)) n.peerIds!.push(node2.unit.id);
-        } else {
-            if (net1) {
-                // Remove node1 from its existing network
-                const n1idx = networks.findIndex(n => n.id === net1.id);
-                networks[n1idx].peerIds = networks[n1idx].peerIds!.filter(id => id !== node1.unit.id);
-                // If network is now empty, remove it
-                if (networks[n1idx].peerIds!.length <= 1) {
-                    networks.splice(n1idx, 1);
-                }
-            }
-            if (net2) {
-                // Remove node2 from its existing network
-                const n2idx = networks.findIndex(n => n.id === net2.id);
-                networks[n2idx].peerIds = networks[n2idx].peerIds!.filter(id => id !== node2.unit.id);
-                // If network is now empty, remove it
-                if (networks[n2idx].peerIds!.length <= 1) {
-                    networks.splice(n2idx, 1);
-                }
-            }
-            networks.push({
-                id: this.generateNetworkId(),
-                type: networkType,
-                color: this.getNextColor(),
-                peerIds: [node1.unit.id, node2.unit.id]
-            });
-        }
-        this.networks.set(networks);
-        this.hasModifications.set(true);
-        this.toastService.show('Peer connection established', 'success');
-    }
-
-    /**
-     * Add a member (slave or master) to a master's network.
-     * If memberCompIndex is provided, the member is a master; otherwise it's a slave.
-     */
-    private addMemberToMaster(masterNode: C3Node, masterCompIdx: number, memberId: string, memberCompIdx?: number) {
-        const networks = [...this.networks()];
-        const masterComp = masterNode.c3Components[masterCompIdx];
-
-        // Create member string (unitId for slaves, unitId:compIndex for masters)
-        const memberStr = memberCompIdx !== undefined 
-            ? C3NetworkUtil.createMasterMember(memberId, memberCompIdx)
-            : memberId;
-
-        // Find or create master's network
-        let network = C3NetworkUtil.findMasterNetwork(masterNode.unit.id, masterCompIdx, networks);
-        if (!network) {
-            const pinKey = `${masterNode.unit.id}:${masterCompIdx}`;
-            network = {
-                id: this.generateNetworkId(),
-                type: masterComp.networkType,
-                color: this.masterPinColors.get(pinKey) || this.getNextColor(),
-                masterId: masterNode.unit.id,
-                masterCompIndex: masterCompIdx,
-                members: []
-            };
-            networks.push(network);
-        }
-
-        // Initialize members array if needed
-        if (!network.members) network.members = [];
-
-        // Remove member from any existing network first (a unit can only be in one network)
-        for (const net of networks) {
-            if (net.members) {
-                net.members = net.members.filter(m => {
-                    const parsed = C3NetworkUtil.parseMember(m);
-                    return parsed.unitId !== memberId;
-                });
-            }
-        }
-
-        // Add member
-        if (!network.members.includes(memberStr)) {
-            network.members.push(memberStr);
-        }
-
-        // Clean up empty networks
-        const filtered = networks.filter(n => 
-            (n.peerIds && n.peerIds.length > 0) ||
-            (n.masterId && (n.members?.length || 0) > 0) ||
-            n.masterId === masterNode.unit.id
-        );
-
-        this.networks.set(filtered);
-        this.hasModifications.set(true);
-        
-        const memberNode = this.nodesById().get(memberId);
-        this.toastService.show(
-            `Connected ${memberNode?.unit.getUnit().chassis || 'unit'} to ${masterNode.unit.getUnit().chassis}`,
-            'success'
-        );
-    }
-
-    private removeMemberFromNetwork(networkId: string, memberStr: string) {
-        const networks = [...this.networks()];
-        const network = networks.find(n => n.id === networkId);
-        if (!network?.members) return;
-
-        network.members = network.members.filter(m => m !== memberStr);
-
-        // Remove network if empty
-        if (network.members.length === 0) {
-            const idx = networks.indexOf(network);
-            networks.splice(idx, 1);
-        }
-
-        this.networks.set(networks);
-        this.hasModifications.set(true);
-    }
-
-    /**
-     * Check if a master component is a child of another master's network
-     */
-    private isChildOfMaster(
-        childId: string, childCompIdx: number,
-        parentId: string, parentCompIdx: number
-    ): boolean {
-        const parentNet = C3NetworkUtil.findMasterNetwork(parentId, parentCompIdx, this.networks());
-        if (!parentNet?.members) return false;
-        
-        const childMemberStr = C3NetworkUtil.createMasterMember(childId, childCompIdx);
-        return parentNet.members.includes(childMemberStr);
-    }
-
-    /**
-     * Remove a master child from another master's network
-     */
-    private removeChildFromMaster(
-        parentId: string, parentCompIdx: number,
-        childId: string, childCompIdx: number
-    ): void {
-        const networks = [...this.networks()];
-        const parentNet = networks.find(n => 
-            n.masterId === parentId && n.masterCompIndex === parentCompIdx
-        );
-        if (!parentNet?.members) return;
-
-        const childMemberStr = C3NetworkUtil.createMasterMember(childId, childCompIdx);
-        parentNet.members = parentNet.members.filter(m => m !== childMemberStr);
-
-        // Remove network if empty
-        if (parentNet.members.length === 0) {
-            const idx = networks.indexOf(parentNet);
-            networks.splice(idx, 1);
-        }
-
-        this.networks.set(networks);
+        this.optionsService.setOption('c3NetworkConnectionsAboveNodes', !this.optionsService.options().c3NetworkConnectionsAboveNodes);
     }
 
     protected removeNetwork(network: SerializedC3NetworkGroup) {
@@ -1989,74 +1159,48 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         this.hasModifications.set(true);
     }
 
-    // ==================== UI Helpers ====================
-
-    /** Check if a node is linked to any network */
     protected isNodeLinked(node: C3Node): boolean {
         return this.unitConnectionStatus().get(node.unit.id) ?? false;
     }
 
-    /** Get the border color for a node (first network color or default) */
     protected getNodeBorderColor(node: C3Node): string {
         const colors = this.nodeBorderColors().get(node.unit.id) || [];
         return colors.length > 0 ? colors[0] : '#666';
     }
 
-    /** Get pin stroke color (for the circle outline) */
     protected getPinStrokeColor(node: C3Node, compIndex: number): string {
         const state = this.pinConnectionState().get(`${node.unit.id}:${compIndex}`);
         if (state?.disabled) return '#555';
         if (state?.color) return state.color;
-        
-        // Master pins always show their assigned color on the border
+
         const comp = node.c3Components[compIndex];
         if (comp?.role === C3Role.MASTER) {
-            const key = `${node.unit.id}:${compIndex}`;
-            return this.masterPinColors.get(key) || '#666';
+            return this.masterPinColors.get(`${node.unit.id}:${compIndex}`) || '#666';
         }
-        
         return '#666';
     }
 
-    /** Get pin fill color (for connected pins) */
     protected getPinFillColor(node: C3Node, compIndex: number): string {
         const state = this.pinConnectionState().get(`${node.unit.id}:${compIndex}`);
         if (state?.disabled) return '#2a2a2a';
-        
+
         const comp = node.c3Components[compIndex];
-        
-        // Master pins: fill when connected (has slaves)
         if (comp?.role === C3Role.MASTER) {
-            if (state?.connected && state?.color) {
-                return state.color;
-            }
-            return '#333';
+            return state?.connected && state?.color ? state.color : '#333';
         }
-        
-        // Slave/peer pins: fill when connected
-        if (state?.connected && state?.color) {
-            return state.color;
-        }
-        
-        return '#333';
+        return state?.connected && state?.color ? state.color : '#333';
     }
 
     protected getPinNetworkColor(node: C3Node, compIndex: number): string | null {
-        const state = this.pinConnectionState().get(`${node.unit.id}:${compIndex}`);
-        return state?.color ?? null;
+        return this.pinConnectionState().get(`${node.unit.id}:${compIndex}`)?.color ?? null;
     }
 
     protected isPinConnected(node: C3Node, compIndex: number): boolean {
-        const state = this.pinConnectionState().get(`${node.unit.id}:${compIndex}`);
-        return state?.connected ?? false;
+        return this.pinConnectionState().get(`${node.unit.id}:${compIndex}`)?.connected ?? false;
     }
 
-    /**
-     * Check if a pin is disabled due to mutual exclusion (M/S on same unit)
-     */
     protected isPinDisabled(node: C3Node, compIndex: number): boolean {
-        const state = this.pinConnectionState().get(`${node.unit.id}:${compIndex}`);
-        return state?.disabled ?? false;
+        return this.pinConnectionState().get(`${node.unit.id}:${compIndex}`)?.disabled ?? false;
     }
 
     protected getRoleLabel(role: C3Role): string {
@@ -2071,20 +1215,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         if (this.data.readOnly) return;
 
         if (network.peerIds) {
-            const networks = [...this.networks()];
-            const net = networks.find(n => n.id === network.id);
-            if (net) {
-                net.peerIds = net.peerIds?.filter(id => id !== unitId);
-                if (!net.peerIds || net.peerIds.length < 2) {
-                    const idx = networks.indexOf(net);
-                    networks.splice(idx, 1);
-                }
-                this.networks.set(networks);
-                this.hasModifications.set(true);
-            }
+            const result = C3NetworkUtil.removeUnitFromPeerNetwork(this.networks(), unitId);
+            this.networks.set(result.networks);
         } else if (memberStr) {
-            this.removeMemberFromNetwork(network.id, memberStr);
+            const result = C3NetworkUtil.removeMemberFromNetwork(this.networks(), network.id, memberStr);
+            this.networks.set(result.networks);
         }
+        this.hasModifications.set(true);
     }
 
     protected saveAndClose() {

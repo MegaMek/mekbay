@@ -57,7 +57,8 @@
     </div>
 </div>
 <div class="c3-dialog-content">
-    <svg #svgCanvas class="svg-canvas" (wheel)="onWheel($event)" (pointerdown)="onCanvasPointerDown($event)">
+    <svg #svgCanvas class="svg-canvas" (wheel)="onWheel($event)" 
+        (pointerdown)="onCanvasPointerDown($event)">
         <defs>
             <path id="flatHex" d="M-20 0 L-10 17.32 L10 17.32 L20 0 L10 -17.32 L-10 -17.32 Z" />
             <line id="line" x1="0" y1="-3" x2="10" y2="-3" />
@@ -142,6 +143,7 @@
                 @if (!line.selfConnection) {
                 <line [attr.x1]="line.nodeX1" [attr.y1]="line.nodeY1" [attr.x2]="line.nodeX2" [attr.y2]="line.nodeY2"
                     [attr.stroke]="line.color" stroke-width="5"
+                    class="animated-line-big"
                     [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
                 }
                 }
@@ -265,6 +267,7 @@
                 @for (line of connectionLines(); track line.id) {
                 <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
                     [attr.stroke]="line.color" stroke-width="3"
+                    class="animated-line"
                     [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
                 }
 
@@ -286,7 +289,8 @@
                 <!-- Active drag line -->
                 @if (activeDragLine(); as dragLine) {
                 <line [attr.x1]="dragLine.x1" [attr.y1]="dragLine.y1" [attr.x2]="dragLine.x2" [attr.y2]="dragLine.y2"
-                    stroke="#ffffff" stroke-width="2" stroke-dasharray="6,4" />
+                    stroke="#ffffff" stroke-width="3"
+                    class="animated-line" />
                 }
             </g>
         </g>

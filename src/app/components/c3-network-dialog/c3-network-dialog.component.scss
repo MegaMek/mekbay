@@ -396,6 +396,28 @@
   }
 }
 
+.animated-line {
+  stroke-dasharray: 6, 4;
+  animation: dash-animation 0.3s linear infinite;
+}
+
+.animated-line-big {
+  stroke-dasharray: 10, 8;
+  animation: dash-animation-big 0.3s linear infinite;
+}
+
+@keyframes dash-animation {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+@keyframes dash-animation-big {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
 // ==================== Sidebar ====================
 
 .networks-sidebar {
