@@ -57,14 +57,13 @@
     </div>
 </div>
 <div class="c3-dialog-content">
-    <!-- SVG Canvas area -->
     <svg #svgCanvas class="svg-canvas" (wheel)="onWheel($event)" (pointerdown)="onCanvasPointerDown($event)">
         <defs>
             <path id="flatHex" d="M-20 0 L-10 17.32 L10 17.32 L20 0 L10 -17.32 L-10 -17.32 Z" />
             <line id="line" x1="0" y1="-3" x2="10" y2="-3" />
             <line id="line2" x1="48" y1="-3" x2="60" y2="-3" />
             <pattern id="flatHexGrid" width="60" height="34.64" patternUnits="userSpaceOnUse">
-            <g fill="none" stroke="#333" stroke-width="2">
+            <g fill="none" stroke="#222" stroke-width="2">
                 <use href="#line" x="0" y="20" />
                 <use href="#line2" x="0" y="20" />
                 <use href="#flatHex" x="30" y="17.32" />
