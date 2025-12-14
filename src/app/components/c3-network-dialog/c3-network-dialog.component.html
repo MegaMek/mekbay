@@ -60,6 +60,16 @@
     <!-- SVG Canvas area -->
     <svg #svgCanvas class="svg-canvas" (wheel)="onWheel($event)" (pointerdown)="onCanvasPointerDown($event)">
         <defs>
+            <path id="flatHex" d="M-20 0 L-10 17.32 L10 17.32 L20 0 L10 -17.32 L-10 -17.32 Z" />
+            <line id="line" x1="0" y1="-3" x2="10" y2="-3" />
+            <line id="line2" x1="48" y1="-3" x2="60" y2="-3" />
+            <pattern id="flatHexGrid" width="60" height="34.64" patternUnits="userSpaceOnUse">
+            <g fill="none" stroke="#333" stroke-width="2">
+                <use href="#line" x="0" y="20" />
+                <use href="#line2" x="0" y="20" />
+                <use href="#flatHex" x="30" y="17.32" />
+            </g>
+            </pattern>
             <radialGradient id="node-bg-gradient" cx="35%" cy="30%" r="80%">
                 <stop offset="0%" stop-color="#3a3a3a" />
                 <stop offset="100%" stop-color="#252525" />
@@ -121,6 +131,9 @@
 
         <!-- Main transform group for pan/zoom -->
         <g [attr.transform]="svgTransform()">
+
+            <!-- Hex grid background that scales with world transform -->
+            <rect x="-20000" y="-20000" width="40000" height="40000" fill="url(#flatHexGrid)" pointer-events="none" />
 
             @if (!connectionsAboveNodes()) {
             <!-- External connections layer (rendered before nodes, so it appears below) -->
