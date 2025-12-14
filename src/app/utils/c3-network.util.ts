@@ -415,16 +415,16 @@ export class C3NetworkUtil {
         if (sourceNet && targetNet && sourceNet.type !== targetNet.type) {
             return { valid: false, reason: 'Incompatible network types' };
         }
-        const limit = C3_NETWORK_LIMITS[networkType];
-        const sourceCount = sourceNet?.peerIds?.length || 1;
-        const targetCount = targetNet?.peerIds?.length || 1;
         // If same network, already connected
         if (sourceNet && targetNet && sourceNet.id === targetNet.id) {
             return { valid: false, reason: 'Units are already connected in the same network' };
         }
-        // Check if merged count would exceed limit
-        if (sourceCount + targetCount > limit) {
-            return { valid: false, reason: `Merging networks would exceed limit of ${limit} units` };
+        // Check if both networks (if they exist) are at limit
+        const limit = C3_NETWORK_LIMITS[networkType];
+        const sourceCount = sourceNet?.peerIds?.length || 1;
+        const targetCount = targetNet?.peerIds?.length || 1;
+        if (sourceCount >= limit && targetCount >= limit) {
+            return { valid: false, reason: `Both networks are at their limit of ${limit} units` };
         }
         return { valid: true };
     }

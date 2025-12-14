@@ -50,13 +50,15 @@ import {
     C3Component,
     C3NetworkType,
     C3Role,
-    C3_NETWORK_COLORS
+    C3_NETWORK_COLORS,
+    C3_NETWORK_LIMITS
 } from '../../models/c3-network.model';
 import { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { ToastService } from '../../services/toast.service';
 import { ImageStorageService } from '../../services/image-storage.service';
 import { OptionsService } from '../../services/options.service';
 import { LayoutService } from '../../services/layout.service';
+import { generateUUID } from '../../services/ws.service';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
@@ -332,7 +334,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     validPins.push(i); // Already-connected pins are valid targets for disconnection
                     continue;
                 }
-
                 const result = C3NetworkUtil.canConnectToPin(
                     conn.node.unit.id,
                     conn.compIndex,
@@ -1072,7 +1073,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     private generateNetworkId(): string {
-        return `net_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        return generateUUID();
     }
 
     // ==================== SVG Coordinate Helpers ====================
@@ -1799,8 +1800,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const networks = [...this.networks()];
         const net1 = C3NetworkUtil.findPeerNetwork(node1.unit.id, networks);
         const net2 = C3NetworkUtil.findPeerNetwork(node2.unit.id, networks);
-
-        if (net1 && net2 && net1.id !== net2.id) {
+        // Check if both networks (if they exist) are at limit
+        const limit = C3_NETWORK_LIMITS[networkType];
+        const sourceCount = net1?.peerIds?.length || 1;
+        const targetCount = net2?.peerIds?.length || 1;
+        if (net1 && net2 && net1.id !== net2.id && (sourceCount + targetCount) <= limit) {
             // Merge networks
             const n1 = networks.find(n => n.id === net1.id)!;
             const n2idx = networks.findIndex(n => n.id === net2.id);
@@ -1808,16 +1812,36 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (!n1.peerIds!.includes(id)) n1.peerIds!.push(id);
             }
             networks.splice(n2idx, 1);
-        } else if (net1) {
-            const n = networks.find(n => n.id === net1.id)!;
-            if (!n.peerIds!.includes(node2.unit.id)) n.peerIds!.push(node2.unit.id);
-        } else if (net2) {
+        } else if (net2 && (targetCount < limit)) {
+            if (net1) {
+                // Remove node1 from its existing network
+                const n1idx = networks.findIndex(n => n.id === net1.id);
+                networks[n1idx].peerIds = networks[n1idx].peerIds!.filter(id => id !== node1.unit.id);
+            }
             const n = networks.find(n => n.id === net2.id)!;
             if (!n.peerIds!.includes(node1.unit.id)) n.peerIds!.push(node1.unit.id);
+        } else if (net1 && (sourceCount < limit)) {
+            if (net2) {
+                // Remove node2 from its existing network
+                const n2idx = networks.findIndex(n => n.id === net2.id);
+                networks[n2idx].peerIds = networks[n2idx].peerIds!.filter(id => id !== node2.unit.id);
+            }
+            const n = networks.find(n => n.id === net1.id)!;
+            if (!n.peerIds!.includes(node2.unit.id)) n.peerIds!.push(node2.unit.id);
         } else {
+            if (net1) {
+                // Remove node1 from its existing network
+                const n1idx = networks.findIndex(n => n.id === net1.id);
+                networks[n1idx].peerIds = networks[n1idx].peerIds!.filter(id => id !== node1.unit.id);
+            }
+            if (net2) {
+                // Remove node2 from its existing network
+                const n2idx = networks.findIndex(n => n.id === net2.id);
+                networks[n2idx].peerIds = networks[n2idx].peerIds!.filter(id => id !== node2.unit.id);
+            }
             networks.push({
                 id: this.generateNetworkId(),
-                type: networkType as 'c3' | 'c3i' | 'naval' | 'nova',
+                type: networkType,
                 color: this.getNextColor(),
                 peerIds: [node1.unit.id, node2.unit.id]
             });
@@ -1846,7 +1870,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const pinKey = `${masterNode.unit.id}:${masterCompIdx}`;
             network = {
                 id: this.generateNetworkId(),
-                type: masterComp.networkType as 'c3' | 'c3i' | 'naval' | 'nova',
+                type: masterComp.networkType,
                 color: this.masterPinColors.get(pinKey) || this.getNextColor(),
                 masterId: masterNode.unit.id,
                 masterCompIndex: masterCompIdx,
