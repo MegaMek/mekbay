@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { ForceUnit } from './force-unit.model';
 import { UnitComponent } from './units.model';
 
 /**
@@ -192,6 +193,16 @@ export interface C3Component {
     boosted: boolean;
     /** Component index (for units with multiple C3 masters) */
     index: number;
+}
+
+export interface C3Node {
+    unit: ForceUnit;
+    c3Components: C3Component[];
+    x: number;
+    y: number;
+    zIndex: number;
+    iconUrl: string;
+    pinOffsetsX: number[];
 }
 
 /**

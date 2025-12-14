@@ -49,6 +49,7 @@ import { C3NetworkUtil } from '../../utils/c3-network.util';
 import {
     C3Component,
     C3NetworkType,
+    C3Node,
     C3Role,
     C3_NETWORK_COLORS,
     C3_NETWORK_LIMITS
@@ -72,16 +73,6 @@ export interface C3NetworkDialogData {
 export interface C3NetworkDialogResult {
     networks: SerializedC3NetworkGroup[];
     updated: boolean;
-}
-
-interface C3Node {
-    unit: ForceUnit;
-    c3Components: C3Component[];
-    x: number;
-    y: number;
-    zIndex: number;
-    iconUrl: string;
-    pinOffsetsX: number[];
 }
 
 interface ConnectionLine {
@@ -1817,6 +1808,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 // Remove node1 from its existing network
                 const n1idx = networks.findIndex(n => n.id === net1.id);
                 networks[n1idx].peerIds = networks[n1idx].peerIds!.filter(id => id !== node1.unit.id);
+                // If network is now empty, remove it
+                if (networks[n1idx].peerIds!.length <= 1) {
+                    networks.splice(n1idx, 1);
+                }
             }
             const n = networks.find(n => n.id === net2.id)!;
             if (!n.peerIds!.includes(node1.unit.id)) n.peerIds!.push(node1.unit.id);
@@ -1825,6 +1820,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 // Remove node2 from its existing network
                 const n2idx = networks.findIndex(n => n.id === net2.id);
                 networks[n2idx].peerIds = networks[n2idx].peerIds!.filter(id => id !== node2.unit.id);
+                // If network is now empty, remove it
+                if (networks[n2idx].peerIds!.length <= 1) {
+                    networks.splice(n2idx, 1);
+                }
             }
             const n = networks.find(n => n.id === net1.id)!;
             if (!n.peerIds!.includes(node2.unit.id)) n.peerIds!.push(node2.unit.id);
@@ -1833,11 +1832,19 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 // Remove node1 from its existing network
                 const n1idx = networks.findIndex(n => n.id === net1.id);
                 networks[n1idx].peerIds = networks[n1idx].peerIds!.filter(id => id !== node1.unit.id);
+                // If network is now empty, remove it
+                if (networks[n1idx].peerIds!.length <= 1) {
+                    networks.splice(n1idx, 1);
+                }
             }
             if (net2) {
                 // Remove node2 from its existing network
                 const n2idx = networks.findIndex(n => n.id === net2.id);
                 networks[n2idx].peerIds = networks[n2idx].peerIds!.filter(id => id !== node2.unit.id);
+                // If network is now empty, remove it
+                if (networks[n2idx].peerIds!.length <= 1) {
+                    networks.splice(n2idx, 1);
+                }
             }
             networks.push({
                 id: this.generateNetworkId(),
