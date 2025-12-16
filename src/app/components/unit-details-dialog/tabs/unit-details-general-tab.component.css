@@ -5,7 +5,6 @@
 }
     /* General Tab Styles */
 .tab-content {
-    padding-top: 0.5em;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -16,7 +15,7 @@
 }
 
 .tab-general {
-    padding: 8px;
+    padding: 8px 16px;
 }
 
 /* Basic Info */
