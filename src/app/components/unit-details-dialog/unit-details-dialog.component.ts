@@ -86,6 +86,7 @@ export class UnitDetailsDialogComponent {
     floatingOverlayService = inject(FloatingOverlayService);
     add = output<Unit>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
+    incomingPanelRef = viewChild<ElementRef>('incomingPanel');
 
     tabs = ['General', 'Intel', 'Factions', 'Sheet'];
     activeTab = signal(this.tabs[0]);
@@ -96,54 +97,54 @@ export class UnitDetailsDialogComponent {
         const currentUnit = this.unitList[this.unitIndex()]
         if (currentUnit instanceof CBTForceUnit) {
             return currentUnit.getCrewMember(0).getSkill('gunnery');
-        } else 
-        if (currentUnit instanceof ASForceUnit) {
-            return currentUnit.getPilotSkill();
-        }
+        } else
+            if (currentUnit instanceof ASForceUnit) {
+                return currentUnit.getPilotSkill();
+            }
         return this.data.gunnerySkill;
     });
     pilotingSkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList[this.unitIndex()]
         if (currentUnit instanceof CBTForceUnit) {
             return currentUnit.getCrewMember(0).getSkill('piloting');
-        } else 
-        if (currentUnit instanceof ASForceUnit) {
-            return currentUnit.getPilotSkill();
-        }
+        } else
+            if (currentUnit instanceof ASForceUnit) {
+                return currentUnit.getPilotSkill();
+            }
         return this.data.pilotingSkill;
     });
 
     // Swipe animation state
     isSwipeAnimating = signal(false);
     incomingUnit = signal<Unit | null>(null);
-    
+
     // Real-time swipe following state
     isSwiping = signal(false);
     swipeDeltaX = signal(0); // Raw swipe delta for header calculation
-    
+
     // CSS custom properties for panel positions
     currentPanelOffset = signal('0');
     incomingPanelOffset = signal('100%');
-    
+
     // Header unit - shows the most visible unit during swipe
     headerUnit = computed(() => {
         const incoming = this.incomingUnit();
         if (!incoming) return this.unit;
-        
+
         // Get the dialog width to calculate 50% threshold
         const dialogEl = this.baseDialogRef()?.nativeElement;
         const containerWidth = dialogEl?.querySelector('.swipe-container')?.clientWidth || 400;
         const threshold = containerWidth / 2;
-        
+
         const delta = Math.abs(this.swipeDeltaX());
-        
+
         // If we've swiped more than 50% of the width, show the incoming unit
         if (delta > threshold) {
             return incoming;
         }
         return this.unit;
     });
-    
+
     // Fluff background image URL - based on header unit (most visible during swipe)
     headerFluffImageUrl = computed(() => {
         const unit = this.headerUnit();
@@ -151,7 +152,7 @@ export class UnitDetailsDialogComponent {
         if (unit.fluff.img.endsWith('hud.png')) return null; // Ignore HUD images
         return `${REMOTE_HOST}/images/fluff/${unit.fluff.img}`;
     });
-    
+
     get unit(): Unit {
         const currentUnit = this.unitList[this.unitIndex()]
         if (currentUnit instanceof ForceUnit) {
@@ -170,7 +171,7 @@ export class UnitDetailsDialogComponent {
         const url = this.headerFluffImageUrl();
         return url ? `url("${url}")` : null;
     }
-    
+
     constructor() {
         effect(() => {
             this.unit;
@@ -265,11 +266,11 @@ export class UnitDetailsDialogComponent {
      */
     private navigateToUnit(newIndex: number, swipeDirection: 'left' | 'right') {
         this.floatingOverlayService.hide();
-        
+
         // Set incoming unit
         this.incomingUnit.set(this.getUnitAtIndex(newIndex));
         this.isSwiping.set(false);
-        
+
         // Set initial positions for animation
         if (swipeDirection === 'left') {
             // Swiping left: current goes to -100%, incoming starts at 100% and goes to 0
@@ -280,11 +281,11 @@ export class UnitDetailsDialogComponent {
             this.currentPanelOffset.set('0');
             this.incomingPanelOffset.set('-100%');
         }
-        
+
         // Trigger animation on next frame
-        requestAnimationFrame(() => {
+        requestAnimationFrame(async () => {
             this.isSwipeAnimating.set(true);
-            
+
             if (swipeDirection === 'left') {
                 this.currentPanelOffset.set('-100%');
                 this.incomingPanelOffset.set('0');
@@ -292,15 +293,14 @@ export class UnitDetailsDialogComponent {
                 this.currentPanelOffset.set('100%');
                 this.incomingPanelOffset.set('0');
             }
-            
+
+            await this.waitForTransitionEnd();
             // After animation completes, update the actual unit
-            setTimeout(() => {
-                this.unitIndex.set(newIndex);
-                this.isSwipeAnimating.set(false);
-                this.currentPanelOffset.set('0');
-                this.incomingPanelOffset.set('100%');
-                this.incomingUnit.set(null);
-            }, 300); // Match CSS transition duration
+            this.unitIndex.set(newIndex);
+            this.isSwipeAnimating.set(false);
+            this.currentPanelOffset.set('0');
+            this.incomingPanelOffset.set('100%');
+            this.incomingUnit.set(null);
         });
     }
 
@@ -363,10 +363,10 @@ export class UnitDetailsDialogComponent {
     public shouldBlockSwipe = (): boolean => {
         // Don't block if already swiping - only block before swipe starts
         if (this.isSwiping()) return false;
-        
+
         // Block if animation is in progress
         if (this.isSwipeAnimating()) return true;
-        
+
         // Block if single item list (no prev and no next)
         const index = this.unitIndex();
         return (index === 0 && !this.hasNext) || (index === this.unitList.length - 1 && !this.hasPrev);
@@ -383,10 +383,10 @@ export class UnitDetailsDialogComponent {
 
     public onSwipeMove(event: SwipeMoveEvent): void {
         if (this.isSwipeAnimating()) return;
-        
+
         const deltaX = event.deltaX;
         this.swipeDeltaX.set(deltaX);
-        
+
         // Determine which unit would be incoming based on swipe direction
         // Swiping right (deltaX > 0) = going to previous unit, incoming from LEFT
         // Swiping left (deltaX < 0) = going to next unit, incoming from RIGHT
@@ -418,20 +418,21 @@ export class UnitDetailsDialogComponent {
     }
 
     public onSwipeEnd(event: SwipeEndEvent): void {
+        // If animation is already in progress, just stop tracking the swipe.
+        // Don't reset state - the ongoing animation will handle that.
         if (this.isSwipeAnimating()) {
             this.isSwiping.set(false);
-            this.resetSwipeState();
             return;
         }
-        
+
         this.isSwiping.set(false);
-        
+
         if (!event.success) {
             // Animate back to original position
             this.animateSwipeCancel();
             return;
         }
-        
+
         const direction = event.direction;
         // Swipe left = go to next unit
         // Swipe right = go to previous unit
@@ -443,12 +444,12 @@ export class UnitDetailsDialogComponent {
             this.animateSwipeCancel();
         }
     }
-    
-    private animateSwipeCancel(): void {
+
+    private async animateSwipeCancel(): Promise<void> {
         // Animate back to start position
         this.isSwipeAnimating.set(true);
         this.currentPanelOffset.set('0');
-        
+
         // Determine where to animate incoming panel back to
         const incoming = this.incomingUnit();
         if (incoming) {
@@ -465,15 +466,47 @@ export class UnitDetailsDialogComponent {
                 this.incomingPanelOffset.set('100%');
             }
         }
-        
-        setTimeout(() => {
-            this.resetSwipeState();
-        }, 300);
+
+        await this.waitForTransitionEnd();
+
+        this.resetSwipeState();
     }
-    
-    private completeSwipeAnimation(swipeDirection: 'left' | 'right', newIndex: number): void {
+
+    /**
+     * Wait for the incoming panel's CSS transition to complete.
+     * Returns a promise that resolves when the transition ends.
+     */
+    private waitForTransitionEnd(): Promise<void> {
+        return new Promise((resolve) => {
+            const panel = this.incomingPanelRef()?.nativeElement;
+            if (!panel) {
+                // Fallback if no panel reference
+                setTimeout(resolve, 320);
+                return;
+            }
+
+            const handler = (event: TransitionEvent) => {
+                // Only listen for transform transitions on this element
+                if (event.propertyName === 'transform' && event.target === panel) {
+                    panel.removeEventListener('transitionend', handler);
+                    // Small buffer for rendering
+                    requestAnimationFrame(() => resolve());
+                }
+            };
+
+            panel.addEventListener('transitionend', handler);
+
+            // Safety timeout in case transitionend doesn't fire
+            setTimeout(() => {
+                panel.removeEventListener('transitionend', handler);
+                resolve();
+            }, 400);
+        });
+    }
+
+    private async completeSwipeAnimation(swipeDirection: 'left' | 'right', newIndex: number): Promise<void> {
         this.isSwipeAnimating.set(true);
-        
+
         if (swipeDirection === 'left') {
             // Swiping left: current goes to -100%, incoming goes to 0
             this.currentPanelOffset.set('-100%');
@@ -483,13 +516,15 @@ export class UnitDetailsDialogComponent {
             this.currentPanelOffset.set('100%');
             this.incomingPanelOffset.set('0');
         }
-        
-        setTimeout(() => {
-            this.unitIndex.set(newIndex);
-            this.resetSwipeState();
-        }, 300);
+
+        // Wait for the CSS transition to actually complete
+        await this.waitForTransitionEnd();
+
+        // Now update the index - this triggers re-render of current panel with new unit
+        this.unitIndex.set(newIndex);
+        setTimeout(() => this.resetSwipeState(), 100);
     }
-    
+
     private resetSwipeState(): void {
         this.isSwipeAnimating.set(false);
         this.isSwiping.set(false);

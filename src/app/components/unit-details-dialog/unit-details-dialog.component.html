@@ -71,7 +71,7 @@
 
     <!-- Incoming unit view (visible during animation or swiping) -->
     @if (incomingUnit()) {
-      <div class="swipe-panel incoming-panel"
+      <div #incomingPanel class="swipe-panel incoming-panel"
            [style.--incoming-offset]="incomingPanelOffset()">
         @if (activeTab() === 'General') {
           <unit-details-general-tab 
