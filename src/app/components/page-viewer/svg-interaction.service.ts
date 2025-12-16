@@ -342,7 +342,11 @@ export class SvgInteractionService {
     private setupArmorInteraction(svg: SVGSVGElement, signal: AbortSignal) {
         let locationZones = svg.querySelectorAll('.unitLocation');
         if (locationZones.length === 0) {
-            locationZones = svg.querySelectorAll('.pip.armor, .pip.structure');
+            // Fall back to pip hit areas (larger touch targets) or pips themselves
+            locationZones = svg.querySelectorAll('.pip-hit-area.armor, .pip-hit-area.structure');
+            if (locationZones.length === 0) {
+                locationZones = svg.querySelectorAll('.pip.armor, .pip.structure');
+            }
         }
         locationZones.forEach(el => {
             const svgEl = el as SVGElement;
@@ -510,7 +514,7 @@ export class SvgInteractionService {
                 if (!id) return;
                 let critLoc = this.unit()?.getCritLoc(id);
                 if (!critLoc) return;
-                critLoc.destroyed = !!critLoc.destroyed ? undefined : Date.now();
+                critLoc.destroying = !!critLoc.destroying ? undefined : Date.now();
                 this.unit()?.setCritLoc(critLoc);
             }, signal);
         });
