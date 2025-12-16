@@ -1,0 +1,89 @@
+<!-- Intel Tab Content -->
+<div class="tab-content">
+    <div class="fluff-content allow-select">
+        @if (unit().fluff; as fluff) {
+
+            <!-- Fluff Image -->
+            @if (fluffImageUrl()) {
+                <div class="fluff-image-container" [class.swiping]="isSwiping()">
+                    <img [src]="fluffImageUrl()" class="fluff-image"
+                        alt="{{ unit().chassis }} {{ unit().model }}" />
+                </div>
+            }
+
+            @if (fluff.systems && fluff.systems.length > 0) {
+                <div class="fluff-section">
+                    <div class="fluff-label">Systems:</div>
+                    <div class="fluff-text">
+                        @for (system of fluff.systems; track system.label) {
+                            <div>
+                                @if (system.label) {
+                                    <strong>{{ system.label }}: </strong>
+                                }
+                                @if (system.manufacturer) {
+                                    <span>{{ system.manufacturer }} </span>
+                                }
+                                @if (system.model) {
+                                    <span>({{ system.model }})</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (fluff.manufacturer) {
+                <div class="fluff-section">
+                    <div class="fluff-label">Manufacturers:</div>
+                    <div class="fluff-text">{{ sanitizeFluffHtml(fluff.manufacturer) }}</div>
+                </div>
+            }
+
+            @if (fluff.primaryFactory) {
+                <div class="fluff-section">
+                    <div class="fluff-label">Primary Factories:</div>
+                    <div class="fluff-text">{{ sanitizeFluffHtml(fluff.primaryFactory) }}</div>
+                </div>
+            }
+
+            @if (fluff.capabilities) {
+                <div class="fluff-section">
+                    <div class="fluff-label">Capabilities:</div>
+                    <div class="fluff-text">{{ sanitizeFluffHtml(fluff.capabilities) }}</div>
+                </div>
+            }
+
+            @if (fluff.overview) {
+                <div class="fluff-section">
+                    <div class="fluff-label">Overview:</div>
+                    <div class="fluff-text">{{ sanitizeFluffHtml(fluff.overview) }}</div>
+                </div>
+            }
+
+            @if (fluff.deployment) {
+                <div class="fluff-section">
+                    <div class="fluff-label">Deployment:</div>
+                    <div class="fluff-text">{{ sanitizeFluffHtml(fluff.deployment) }}</div>
+                </div>
+            }
+
+            @if (fluff.history) {
+                <div class="fluff-section">
+                    <div class="fluff-label">History:</div>
+                    <div class="fluff-text">{{ sanitizeFluffHtml(fluff.history) }}</div>
+                </div>
+            }
+
+            @if (fluff.notes) {
+                <div class="fluff-section">
+                    <div class="fluff-label">Notes:</div>
+                    <div class="fluff-text">{{ sanitizeFluffHtml(fluff.notes) }}</div>
+                </div>
+            }
+        } @else {
+            <div class="no-fluff">
+                No intel available for this unit.
+            </div>
+        }
+    </div>
+</div>

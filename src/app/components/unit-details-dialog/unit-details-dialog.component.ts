@@ -31,31 +31,27 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStrategy, output, viewChild, effect, computed, HostBinding, afterNextRender, Injector } from '@angular/core';
+import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStrategy, output, viewChild, effect, computed, HostBinding, Injector } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
-import { Unit, UnitComponent } from '../../models/units.model';
-import { weaponTypes, getWeaponTypeCSSClass } from '../../utils/equipment.util';
+import { Unit } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { ToastService } from '../../services/toast.service';
-import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
-import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { ForceUnit } from '../../models/force-unit.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Router } from '@angular/router';
-import { SvgViewerLiteComponent } from '../svg-viewer-lite/svg-viewer-lite.component';
-import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
-import { TooltipDirective } from '../../directives/tooltip.directive';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '../../directives/swipe.directive';
-import { LayoutService } from '../../services/layout.service';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { REMOTE_HOST } from '../../models/common.model';
+import { UnitDetailsGeneralTabComponent } from './tabs/unit-details-general-tab.component';
+import { UnitDetailsIntelTabComponent } from './tabs/unit-details-intel-tab.component';
+import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab.component';
+import { UnitDetailsSheetTabComponent } from './tabs/unit-details-sheet-tab.component';
 
 /*
  * Author: Drake
@@ -67,45 +63,6 @@ export interface UnitDetailsDialogData {
     pilotingSkill?: number;
 }
 
-// Define the matrix layouts by unit type.
-// Each slot can be a string (single location code) or an array of codes.
-// '~' in a slot means: if none of the provided codes has content, expand the area from the slot above.
-// '^' in a slot means: if the slot has no content, borrow content from the area above (cannot move up past an anchored area).
-// '!' prefix on a code marks the cell as an ANCHOR: content cannot move upward via '^', and area cannot expand downward.
-type SlotSpec = string | string[];
-type MatrixSpec = SlotSpec[][];
-
-const MATRIX_ALIGNMENT: Record<string, MatrixSpec> = {
-    Mek: [
-        [['LA', 'FLL'], 'HD', ['RA', 'FRL']],
-        ['LT', 'CT', 'RT'],
-        [['LL', 'RLL'], ['CL', '~'], ['RL', 'RRL']],
-    ],
-    Aero: [
-        ['FLS', 'NOS', 'FRS'],
-        [['LBS', 'LWG', 'LS'], ['HULL', 'FSLG', '~'], ['RBS', 'RWG', 'RS']],
-        ['~', 'WNG', '~'],
-        [['ALS', '~'], 'AFT', ['ARS', '~']],
-    ],
-    Tank: [
-        [['!FRLS', '^'], ['FR', '^'], ['!FRRS', 'FT', '^']],
-        ['RS', ['BD', 'GUN'], ['LS', '^']],
-        [['!RRLS', '~'], ['RR', '~'], ['!RRRS', '^', '~']],
-        ['~', '~', ['TU', '~']]
-    ],
-    Naval: [ // TODO: this is a copy of Tank, could be optimized for naval units only
-        [['!FRLS', '^'], ['FR', '^'], ['!FRRS', 'FT', '^']],
-        ['RS', ['BD', 'GUN'], ['LS', '^']],
-        [['!RRLS', '~'], ['RR', '~'], ['!RRRS', '^', '~']],
-        ['~', '~', ['TU', '~']]
-    ],
-    VTOL: [
-        ['RS', ['FR', '^'], ['RO', '^']],
-        ['~', 'BD', ['LS', '^']],
-        ['~', ['RR', '~'], ['TU', '~']],
-    ],
-};
-
 interface ManufacturerInfo {
     manufacturer: string;
     factory: string;
@@ -115,22 +72,22 @@ interface ManufacturerInfo {
     selector: 'unit-details-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, UnitComponentItemComponent, StatBarSpecsPipe, FilterAmmoPipe, SvgViewerLiteComponent, TooltipDirective, SwipeDirective, UnitIconComponent],
+    imports: [CommonModule, BaseDialogComponent, SwipeDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css']
 })
 export class UnitDetailsDialogComponent {
     dataService = inject(DataService);
-    layoutService = inject(LayoutService);
     forceBuilderService = inject(ForceBuilderService);
     dialogRef = inject(DialogRef<UnitDetailsDialogComponent>);
     data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     toastService = inject(ToastService);
     router = inject(Router);
     floatingOverlayService = inject(FloatingOverlayService);
-    injector = inject(Injector);
     add = output<Unit>();
+    indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
+    incomingPanelRef = viewChild<ElementRef>('incomingPanel');
 
     tabs = ['General', 'Intel', 'Factions', 'Sheet'];
     activeTab = signal(this.tabs[0]);
@@ -141,29 +98,62 @@ export class UnitDetailsDialogComponent {
         const currentUnit = this.unitList[this.unitIndex()]
         if (currentUnit instanceof CBTForceUnit) {
             return currentUnit.getCrewMember(0).getSkill('gunnery');
-        } else 
-        if (currentUnit instanceof ASForceUnit) {
-            return currentUnit.getPilotSkill();
-        }
+        } else
+            if (currentUnit instanceof ASForceUnit) {
+                return currentUnit.getPilotSkill();
+            }
         return this.data.gunnerySkill;
     });
     pilotingSkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList[this.unitIndex()]
         if (currentUnit instanceof CBTForceUnit) {
             return currentUnit.getCrewMember(0).getSkill('piloting');
-        } else 
-        if (currentUnit instanceof ASForceUnit) {
-            return currentUnit.getPilotSkill();
-        }
+        } else
+            if (currentUnit instanceof ASForceUnit) {
+                return currentUnit.getPilotSkill();
+            }
         return this.data.pilotingSkill;
     });
 
-    groupedBays: Array<{ l: string, p: number, bays: UnitComponent[] }> = [];
-    components: UnitComponent[] = [];
-    componentsForMatrix: UnitComponent[] = [];
-    factionAvailability: { eraName: string, eraImg?: string, factions: { name: string, img: string }[] }[] = [];
-    fluffImageUrl = signal<string | null>(null);
-    
+    // Swipe animation state
+    isSwipeAnimating = signal(false);
+    incomingUnit = signal<Unit | null>(null);
+
+    // Real-time swipe following state
+    isSwiping = signal(false);
+    swipeDeltaX = signal(0); // Raw swipe delta for header calculation
+
+    // CSS custom properties for panel positions
+    currentPanelOffset = signal('0');
+    incomingPanelOffset = signal('100%');
+
+    // Header unit - shows the most visible unit during swipe
+    headerUnit = computed(() => {
+        const incoming = this.incomingUnit();
+        if (!incoming) return this.unit;
+
+        // Get the dialog width to calculate 50% threshold
+        const dialogEl = this.baseDialogRef()?.nativeElement;
+        const containerWidth = dialogEl?.querySelector('.swipe-container')?.clientWidth || 400;
+        const threshold = containerWidth / 2;
+
+        const delta = Math.abs(this.swipeDeltaX());
+
+        // If we've swiped more than 50% of the width, show the incoming unit
+        if (delta > threshold) {
+            return incoming;
+        }
+        return this.unit;
+    });
+
+    // Fluff background image URL - based on header unit (most visible during swipe)
+    headerFluffImageUrl = computed(() => {
+        const unit = this.headerUnit();
+        if (!unit?.fluff?.img) return null;
+        if (unit.fluff.img.endsWith('hud.png')) return null; // Ignore HUD images
+        return `${REMOTE_HOST}/images/fluff/${unit.fluff.img}`;
+    });
+
     get unit(): Unit {
         const currentUnit = this.unitList[this.unitIndex()]
         if (currentUnit instanceof ForceUnit) {
@@ -172,50 +162,18 @@ export class UnitDetailsDialogComponent {
         return currentUnit;
     }
 
-    adjustedBV = computed<number | null>(() => {
-        const currentUnit = this.unitList[this.unitIndex()];
-        if (currentUnit instanceof CBTForceUnit) {
-            return currentUnit.getBv();
-        }
-        const gunnery = this.gunnerySkill();
-        const piloting = this.pilotingSkill();
-        if (gunnery === undefined || piloting === undefined) {
-            return null;
-        }
-        return BVCalculatorUtil.calculateAdjustedBV(this.unit.bv, gunnery, piloting);
-    });
-
-    hasNonDefaultSkills = computed<boolean>(() => {
-        return this.gunnerySkill() !== 4 || this.pilotingSkill() !== 5;
-    });
-
-    get weaponTypes() {
-        return weaponTypes;
-    }
-
-    // Matrix layout state
-    useMatrixLayout = signal(false);
-    gridAreas = '';
-    matrixAreaCodes: string[] = [];
-    private areaNameToCodes = new Map<string, string[]>();
-
     @HostBinding('class.fluff-background')
     get hostHasFluff(): boolean {
-        return !!this.fluffImageUrl();
+        return !!this.headerFluffImageUrl();
     }
 
     @HostBinding('style.--fluff-bg')
     get hostFluffBg(): string | null {
-        const url = this.fluffImageUrl();
+        const url = this.headerFluffImageUrl();
         return url ? `url("${url}")` : null;
     }
-    
+
     constructor() {
-        effect(() => {
-            this.unit; // Re-run when unit changes
-            this.canHaveThreeCols(); // Re-run when window size changes
-            this.updateCachedData();
-        });
         effect(() => {
             this.unit;
             this.activeTab()
@@ -228,6 +186,13 @@ export class UnitDetailsDialogComponent {
                 replaceUrl: true
             });
         });
+        
+        // Emit index changes
+        effect(() => {
+            const index = this.unitIndex();
+            this.indexChange.emit(index);
+        });
+        
         this.dialogRef.closed.subscribe(() => {
             this.router.navigate([], {
                 queryParams: {
@@ -238,531 +203,6 @@ export class UnitDetailsDialogComponent {
                 replaceUrl: true
             });
         });
-        effect(() => {
-            this.layoutService.windowWidth();
-            this.updateUseMatrixLayout();
-        });
-    }
-
-    private baysByLocCache = new Map<string, UnitComponent[]>();
-    private baysForArea = new Map<string, UnitComponent[]>();
-    private compsForArea = new Map<string, UnitComponent[]>();
-
-    trackByBay = (bay: UnitComponent) => `${bay.n}|${bay.t}|${bay.l}`;
-    trackByComp = (comp: UnitComponent) => `${comp.n}|${comp.t}|${comp.l}`;
-
-    updateCachedData() {
-        this.groupedBays = this.getGroupedBaysByLocation();
-        this.components = this.getComponents(false);
-        this.componentsForMatrix = this.getComponents(true);
-        this.baysByLocCache.clear();
-        this.buildMatrixLayout();
-        this.updateFactionAvailability();
-        this.updateFluffImage();
-    }
-
-    private updateFluffImage() {
-        this.fluffImageUrl.set(null);
-
-        if (this.unit?.fluff?.img) {
-            if (this.unit.fluff.img.endsWith('hud.png')) return; // Ignore HUD images
-            this.fluffImageUrl.set(`${REMOTE_HOST}/images/fluff/${this.unit.fluff.img}`);
-        }
-    }
-
-    onFluffImageError() {
-        this.fluffImageUrl.set(null);
-    }
-
-    private updateFactionAvailability() {
-        if (!this.unit) {
-            this.factionAvailability = [];
-            return;
-        }
-
-        const unitId = this.unit.id;
-        const allEras = this.dataService.getEras().sort((a, b) => (a.years.from || 0) - (b.years.from || 0));
-        const allFactions = this.dataService.getFactions();
-        const availability: { eraName: string, eraImg?: string, factions: { name: string, img: string }[] }[] = [];
-
-        for (const era of allEras) {
-            const factionsInEra: { name: string, img: string }[] = [];
-            for (const faction of allFactions) {
-                const factionEras = faction.eras[era.id];
-                if (factionEras && (factionEras as Set<number>).has(unitId)) {
-                    factionsInEra.push({ name: faction.name, img: faction.img });
-                }
-            }
-
-            if (factionsInEra.length > 0) {
-                factionsInEra.sort((a, b) => a.name.localeCompare(b.name));
-                availability.push({
-                    eraName: era.name,
-                    eraImg: era.img,
-                    factions: factionsInEra
-                });
-            }
-        }
-        this.factionAvailability = availability;
-    }
-
-    private normalizeLoc(loc: string): string {
-        if (!loc) {
-            return 'UNK';
-        }
-        let norm = (loc === '*') ? 'ALL' : loc.trim();
-        norm = norm.replace(/[^A-Za-z0-9_-]/g, '');
-        if (/^[0-9]/.test(norm)) norm = 'L' + norm;
-        if (!norm) norm = 'UNK';
-        return norm;
-    }
-
-    private buildMatrixLayout() {
-        const matrix = this.getMatrixForUnit();
-        if (!matrix) {
-            this.gridAreas = '';
-            this.matrixAreaCodes = [];
-            this.areaNameToCodes.clear();
-            this.useMatrixLayout.set(false);
-            this.baysForArea.clear();
-            this.compsForArea.clear();
-            return;
-        }
-
-        // Normalize with content-aware fallback expansion ('~'), borrow-up ('^'), and anchoring ('!').
-        const { names, areaCodes } = this.normalizeMatrix(matrix);
-        // Drop rows that resolve to fully empty ('.') after normalization
-        const filteredNames = names.filter(row => row.some(name => name !== '.'));
-
-        // We collect all area codes used and we check if some components are outside the matrix spec.
-        const matrixDeclaredCodes = new Set<string>();
-        for (const codes of areaCodes.values()) {
-            for (const c of codes) matrixDeclaredCodes.add(c);
-        }
-        const allUnitLocs = new Set<string>();
-        // Components
-        for (const comp of this.componentsForMatrix) {
-            if (comp.l) allUnitLocs.add(this.normalizeLoc(comp.l));
-        }
-        // Bays (groupedBays already built in updateStats -> getGroupedBaysByLocation)
-        for (const g of this.groupedBays) {
-            if (g.l) allUnitLocs.add(this.normalizeLoc(g.l));
-        }
-        const extraCodes: string[] = [];
-        for (const loc of allUnitLocs) {
-            if (!matrixDeclaredCodes.has(loc)) {
-                extraCodes.push(loc); // These codes are not in the matrix spec, will be added as extra rows
-            }
-        }
-
-        // Append extra codes as new rows
-        if (extraCodes.length) {
-            // If we currently have no rows (all original rows empty), we still need column count
-            const cols = matrix[0].length;
-            let i = 0;
-            while (i < extraCodes.length) {
-                const row: string[] = Array(cols).fill('.');
-                for (let c = 0; c < cols && i < extraCodes.length; c++, i++) {
-                    const code = extraCodes[i];
-                    const areaName = code;
-                    row[c] = areaName;
-                    if (!areaCodes.has(areaName)) {
-                        areaCodes.set(areaName, [code]);
-                    }
-                }
-                filteredNames.push(row);
-            }
-        }
-        if (!filteredNames.length) {
-            this.gridAreas = '';
-            this.matrixAreaCodes = [];
-            this.areaNameToCodes.clear();
-            this.useMatrixLayout.set(false);
-            return;
-        }
-
-        this.areaNameToCodes = areaCodes;
-
-        // Compute CSS grid-template-areas from canonical names
-        this.gridAreas = this.computeGridAreas(filteredNames);
-
-        // Unique area names in first-appearance order (skip '.')
-        const seen = new Set<string>();
-        const unique: string[] = [];
-        for (const row of filteredNames) {
-            for (const name of row) {
-                if (name === '.') continue;
-                if (!seen.has(name)) {
-                    seen.add(name);
-                    unique.push(name);
-                }
-            }
-        }
-        this.matrixAreaCodes = unique;
-        this.buildAreaCaches();
-        this.updateUseMatrixLayout();
-    }
-
-    // Parse a slot spec into codes (excluding '~' and '^').
-    // '!' prefix on a code marks the cell as an ANCHOR:
-    //  - '!' is stripped from the code name for lookups/labels.
-    //  - Anchor content cannot MOVE upward via '^'.
-    //  - Anchor area cannot expand downward (no fallback / implicit vertical merge below).
-    private parseSlotSpec(slot: SlotSpec): {
-        codes: string[];
-        hasFallback: boolean;
-        hasBorrowUp: boolean;
-        anchorCodes: string[];
-    } {
-        const arr = Array.isArray(slot) ? slot : [slot];
-        const codes: string[] = [];
-        const anchorCodes: string[] = [];
-        let hasFallback = false;
-        let hasBorrowUp = false;
-        for (let raw of arr) {
-            if (raw === '~') {
-                hasFallback = true;
-                continue;
-            }
-            if (raw === '^') {
-                hasBorrowUp = true;
-                continue;
-            }
-            if (raw.startsWith('!')) {
-                raw = raw.substring(1); // removing '!'
-                anchorCodes.push(raw);
-            }
-            codes.push(raw);
-        }
-        return { codes, hasFallback, hasBorrowUp, anchorCodes };
-    }
-
-    // Normalize matrix into canonical area names and map of area -> codes.
-    // Rules:
-    // - Prefer contiguity with the area above when its name is included in current slot's codes.
-    // - If no content for slot codes and slot has '~', expand the area above (use above's name).
-    // - If no content and no fallback, emit an empty cell '.'.
-    // - '^' (borrow-up): If the cell has no content, but some other cell in the same row DOES have content,
-    //       then pull the area name from the cell directly below (if that below cell resolves to an area).
-    //       This creates an upward expansion (vertical span) analogous to a '~' downward expansion.
-    private normalizeMatrix(matrix: MatrixSpec): { names: string[][]; areaCodes: Map<string, string[]> } {
-        interface CellMeta {
-            codes: string[];
-            anchorCodes: string[];
-            hasFallback: boolean;
-            hasBorrowUp: boolean;
-            hasContent: boolean;
-            borrowUpActive: boolean;
-            contentCodes: string[];
-            anchorActive: boolean;
-        }
-
-        const expectedCols = matrix[0]?.length || 0;
-        if (!expectedCols) return { names: [], areaCodes: new Map() };
-
-        const codeHasContent = (code: string): boolean =>
-            this.getBaysByLocation(code).length > 0 ||
-            this.getComponentsForLocation(code).length > 0;
-
-        // Build metadata
-        const meta: CellMeta[][] = [];
-        for (let r = 0; r < matrix.length; r++) {
-            const row = matrix[r];
-            const metaRow: CellMeta[] = [];
-            for (let c = 0; c < expectedCols; c++) {
-                const spec = row[c];
-                const { codes, hasFallback, hasBorrowUp, anchorCodes } = this.parseSlotSpec(spec);
-                const contentCodes = codes.filter(codeHasContent);
-                const anchorActive = contentCodes.some(cc => anchorCodes.includes(cc));
-                metaRow.push({
-                    codes,
-                    anchorCodes,
-                    hasFallback,
-                    hasBorrowUp,
-                    hasContent: contentCodes.length > 0,
-                    borrowUpActive: false,
-                    contentCodes,
-                    anchorActive
-                });
-            }
-            meta.push(metaRow);
-        }
-
-        // Determine row-level content (before borrow)
-        const rowHasOtherContent: boolean[] = meta.map(row => row.some(c => c.hasContent));
-
-        // Activate borrow ONLY if row already has some other content (spec) and cell empty
-        for (let r = 0; r < meta.length; r++) {
-            for (let c = 0; c < expectedCols; c++) {
-                const cell = meta[r][c];
-                if (cell.hasBorrowUp && !cell.hasContent) {
-                    cell.borrowUpActive = true;
-                }
-            }
-        }
-
-        // Phase: Borrow MOVE (column-wise). We move content upward.
-        // For each column, scan bottom-up: find a content source followed by one or more contiguous
-        // borrowUpActive rows above it (each of those rows already qualifies via rowHasOtherContent).
-        // Move the source content to the HIGHEST borrow row; clear source & intermediate cells.
-        for (let c = 0; c < expectedCols; c++) {
-            // We do multiple passes to catch cascades after earlier moves.
-            let changed = true;
-            while (changed) {
-                changed = false;
-                // Walk from bottom to top to find first movable chain
-                for (let r = meta.length - 1; r >= 0; r--) {
-                    const src = meta[r][c];
-                    if (!src.hasContent) continue;
-                    if (src.anchorActive) continue; // anchor content cannot move upward
-                    // Look upward for contiguous borrowUpActive cells
-                    let top = r - 1;
-                    if (top < 0) continue;
-                    if (!meta[top][c].borrowUpActive) continue;
-                    // Collect chain upward
-                    while (top - 1 >= 0 && meta[top - 1][c].borrowUpActive) top--;
-                    // Move to highest eligible row 'top'
-                    const dest = meta[top][c];
-                    if (dest.anchorActive) continue;
-                    // Copy content codes
-                    dest.codes = [...src.codes];
-                    dest.contentCodes = [...src.contentCodes];
-                    dest.hasContent = true;
-                    // Clear source
-                    src.hasContent = false;
-                    src.hasFallback = true; // It become fallback cell
-                    src.contentCodes = [];
-                    src.anchorActive = false;
-                    // Clear any intermediate borrow cells below dest (they remain empty; still borrowUpActive and becomes fallback cells)
-                    for (let rr = top + 1; rr < r; rr++) {
-                        meta[rr][c].hasContent = false;
-                        meta[rr][c].contentCodes = [];
-                        meta[rr][c].hasFallback = true;
-                        meta[rr][c].anchorActive = false;
-                    }
-                    changed = true;
-                    break; // restart scan after a move
-                }
-            }
-        }
-
-        // After moves, recompute rowHasOtherContent (some moved rows became empty)
-        for (let r = 0; r < meta.length; r++) {
-            rowHasOtherContent[r] = meta[r].some(c => c.hasContent);
-        }
-
-        // IMPORTANT: remove all rows that now have NO content after borrow MOVE.
-        // (This collapses the vertical space the content climbed through, so TU (or any other)
-        // ends up on the highest row it reached instead of leaving empty spacer rows that
-        // would later create extra grid-template-areas lines.)
-        const metaForNaming = meta.filter(row => row.some(c => c.hasContent));
-        if (!metaForNaming.length) {
-            return { names: [], areaCodes: new Map() };
-        }
-
-        const names: string[][] = [];
-        const areaCodes = new Map<string, string[]>();
-        const usedAreaNames = new Set<string>();
-
-        const makeUnique = (base: string): string => {
-            if (!base) base = 'A';
-            if (!usedAreaNames.has(base)) {
-                usedAreaNames.add(base);
-                return base;
-            }
-            let i = 2;
-            while (usedAreaNames.has(`${base}_${i}`)) i++;
-            const u = `${base}_${i}`;
-            usedAreaNames.add(u);
-            return u;
-        };
-
-        // Assign area names (top -> bottom) AFTER row collapse.
-        // Rules:
-        //  - Content cells choose a base code (first content code) and try to vertically merge
-        //    only if the area name above equals that base code (prevents unrelated merges).
-        //  - Fallback '~' cells copy the area name directly above if any.
-        //  - No borrowing logic here; borrow already converted into actual upward MOVE + row removal.
-        for (let r = 0; r < metaForNaming.length; r++) {
-            const row = metaForNaming[r];
-            const rowNames: string[] = [];
-            for (let c = 0; c < expectedCols; c++) {
-                const cell = row[c];
-                if (!cell) {
-                    rowNames.push('.');
-                    continue;
-                }
-                const aboveName = r > 0 ? names[r - 1][c] : undefined;
-                const aboveMeta = r > 0 ? metaForNaming[r - 1][c] : undefined;
-                let areaName = '.';
-
-                if (cell.hasContent) {
-                    const base = (cell.contentCodes[0] || cell.codes[0] || '').trim();
-                    if (aboveName && aboveName === base && !(aboveMeta?.anchorActive)) {
-                        areaName = aboveName;
-                    } else {
-                        areaName = makeUnique(base);
-                        if (!areaCodes.has(areaName)) areaCodes.set(areaName, []);
-                        const list = areaCodes.get(areaName)!;
-                        for (const cc of cell.contentCodes) {
-                            if (!list.includes(cc)) list.push(cc);
-                        }
-                    }
-                } else if (
-                    cell.hasFallback &&
-                    aboveName &&
-                    aboveName !== '.' &&
-                    !(aboveMeta?.anchorActive)
-                ) {
-                    areaName = aboveName;
-                } else {
-                    areaName = '.';
-                }
-
-                rowNames.push(areaName);
-            }
-            names.push(rowNames);
-        }
-
-        return { names, areaCodes };
-    }
-
-    // For a given canonical area, return all codes assigned to it
-    private getAreaCodes(areaName: string): string[] {
-        return this.areaNameToCodes.get(areaName) ?? [areaName];
-    }
-
-    // Which codes (within this area) actually have content for current unit
-    private getPresentAreaCodes(areaName: string): string[] {
-        const codes = this.getAreaCodes(areaName);
-        const present = new Set<string>();
-        for (const code of codes) {
-            if (this.getBaysByLocation(code).length > 0) present.add(code);
-            if (this.getComponentsForLocation(code).length > 0) present.add(code);
-        }
-        return Array.from(present);
-    }
-
-    getAreaLabel(areaName: string): string {
-        const present = this.getPresentAreaCodes(areaName);
-        if (present.length === 0) return '';
-        // Convert internal 'ALL' back to visual '*'
-        const display = present.map(c => c === 'ALL' ? '*' : c);
-        return display.join('/');
-    }
-
-    private getMatrixForUnit(): MatrixSpec | null {
-        const matrix = MATRIX_ALIGNMENT[this.unit?.type];
-        return Array.isArray(matrix) ? matrix : null;
-    }
-
-    private computeGridAreas(names: string[][]): string {
-        if (!names.length) return '';
-        const cols = names[0].length;
-        // Ensure every row has exactly cols entries
-        const sanitized = names.map(row => {
-            if (row.length < cols) return [...row, ...Array(cols - row.length).fill('.')];
-            if (row.length > cols) return row.slice(0, cols);
-            return row;
-        });
-        return sanitized.map(row => `"${row.join(' ')}"`).join(' ');
-    }
-
-    private canHaveThreeCols(): boolean {
-        const modal = this.baseDialogRef()?.nativeElement.querySelector('.modal') as HTMLElement | null;
-        return modal ? modal.clientWidth >= 780 : window.innerWidth >= 780;
-    }
-
-    private updateUseMatrixLayout() {
-        const hasMatrix = !!this.getMatrixForUnit();
-        this.useMatrixLayout.set(hasMatrix && this.canHaveThreeCols());
-    }
-
-    private buildAreaCaches() {
-        this.baysForArea.clear();
-        this.compsForArea.clear();
-        for (const area of this.matrixAreaCodes) {
-            const codes = this.getAreaCodes(area);
-            // Bays (merged)
-            const merged = new Map<string, UnitComponent>();
-            for (const code of codes) {
-                for (const bay of this.getBaysByLocation(code)) {
-                    const key = bay.n ?? '';
-                    if (!merged.has(key)) merged.set(key, { ...bay });
-                    else {
-                        const agg = merged.get(key)!;
-                        agg.q = (agg.q || 1) + (bay.q || 1);
-                    }
-                }
-            }
-            const bays = Array.from(merged.values()).sort((a, b) => {
-                if (a.n === b.n) return 0;
-                if (a.n === undefined) return 1;
-                if (b.n === undefined) return -1;
-                return a.n!.localeCompare(b.n!);
-            });
-            this.baysForArea.set(area, bays);
-
-            // Components
-            const comps = codes
-                .flatMap(code => this.getComponentsForLocation(code))
-                .sort((a, b) => {
-                    if (a.l === b.l) {
-                        if (a.n === b.n) return 0;
-                        if (a.n === undefined) return 1;
-                        if (b.n === undefined) return -1;
-                        return a.n!.localeCompare(b.n!);
-                    }
-                    return a.l.localeCompare(b.l);
-                });
-            this.compsForArea.set(area, comps);
-        }
-    }
-
-    getBaysByLocation(loc: string): UnitComponent[] {
-        const target = loc;
-        if (this.baysByLocCache.has(target)) return this.baysByLocCache.get(target)!;
-        const matched = this.groupedBays.filter(g => this.normalizeLoc(g.l) === target);
-
-        if (!matched.length) {
-            this.baysByLocCache.set(loc, []);
-            return [];
-        }
-        const byName = new Map<string, UnitComponent>();
-        for (const g of matched) {
-            for (const bay of g.bays) {
-                const key = bay.n ?? '';
-                if (!byName.has(key)) byName.set(key, { ...bay });
-                else {
-                    const agg = byName.get(key)!;
-                    agg.q = (agg.q || 1) + (bay.q || 1);
-                }
-            }
-        }
-        const arr = Array.from(byName.values()).sort((a, b) => {
-            if (a.n === b.n) return 0;
-            if (a.n === undefined) return 1;
-            if (b.n === undefined) return -1;
-            return a.n!.localeCompare(b.n!);
-        });
-        this.baysByLocCache.set(loc, arr);
-        return arr;
-    }
-
-    getComponentsForLocation(loc: string): UnitComponent[] {
-        return this.componentsForMatrix.filter(c => this.normalizeLoc(c.l) === loc);
-    }
-
-    getComponentsForArea(areaName: string): UnitComponent[] {
-        return this.compsForArea.get(areaName) ?? [];
-    }
-
-    getBaysForArea(areaName: string): UnitComponent[] {
-        return this.baysForArea.get(areaName) ?? [];
-    }
-
-    areaHasBays(areaName: string): boolean {
-        return (this.baysForArea.get(areaName)?.length || 0) > 0;
     }
 
     // Keyboard navigation (Left/Right)
@@ -800,18 +240,76 @@ export class UnitDetailsDialogComponent {
         return this.unitList && this.unitIndex() < this.unitList.length - 1;
     }
 
+    private getUnitAtIndex(index: number): Unit {
+        const item = this.unitList[index];
+        if (item instanceof ForceUnit) {
+            return item.getUnit();
+        }
+        return item;
+    }
+
     onPrev() {
-        if (this.hasPrev) {
+        if (this.hasPrev && !this.isSwipeAnimating() && !this.isSwiping()) {
+            // Emulate RIGHT swipe: current goes right, prev comes from left
+            // this.navigateToUnit(this.unitIndex() - 1, 'right');
             this.floatingOverlayService.hide();
             this.unitIndex.set(this.unitIndex() - 1);
         }
     }
 
     onNext() {
-        if (this.hasNext) {
+        if (this.hasNext && !this.isSwipeAnimating() && !this.isSwiping()) {
+            // Emulate LEFT swipe: current goes left, next comes from right
+            // this.navigateToUnit(this.unitIndex() + 1, 'left');
             this.floatingOverlayService.hide();
             this.unitIndex.set(this.unitIndex() + 1);
         }
+    }
+
+    /**
+     * Navigate to a new unit with animation.
+     * @param newIndex - The index of the unit to navigate to
+     * @param swipeDirection - 'left' means swiping left (current goes left, incoming from right)
+     *                        'right' means swiping right (current goes right, incoming from left)
+     */
+    private navigateToUnit(newIndex: number, swipeDirection: 'left' | 'right') {
+        this.floatingOverlayService.hide();
+
+        // Set incoming unit
+        this.incomingUnit.set(this.getUnitAtIndex(newIndex));
+        this.isSwiping.set(false);
+
+        // Set initial positions for animation
+        if (swipeDirection === 'left') {
+            // Swiping left: current goes to -100%, incoming starts at 100% and goes to 0
+            this.currentPanelOffset.set('0');
+            this.incomingPanelOffset.set('100%');
+        } else {
+            // Swiping right: current goes to 100%, incoming starts at -100% and goes to 0
+            this.currentPanelOffset.set('0');
+            this.incomingPanelOffset.set('-100%');
+        }
+
+        // Trigger animation on next frame
+        requestAnimationFrame(async () => {
+            this.isSwipeAnimating.set(true);
+
+            if (swipeDirection === 'left') {
+                this.currentPanelOffset.set('-100%');
+                this.incomingPanelOffset.set('0');
+            } else {
+                this.currentPanelOffset.set('100%');
+                this.incomingPanelOffset.set('0');
+            }
+
+            await this.waitForTransitionEnd();
+            // After animation completes, update the actual unit
+            this.unitIndex.set(newIndex);
+            this.isSwipeAnimating.set(false);
+            this.currentPanelOffset.set('0');
+            this.incomingPanelOffset.set('100%');
+            this.incomingUnit.set(null);
+        });
     }
 
     async onAdd() {
@@ -844,119 +342,6 @@ export class UnitDetailsDialogComponent {
         this.dialogRef.close();
     }
 
-    getUnitDisplayName(unit: any): string {
-        return `${unit.chassis} ${unit.model}`;
-    }
-
-    getTypeCount(typeCode: string): number {
-        if (!this.unit?.comp) return 0;
-        return this.unit.comp.filter(w => w.t === typeCode).reduce((sum, w) => sum + (w.q || 1), 0);
-    }
-
-    getTypeColor(typeCode: string): string {
-        const found = weaponTypes.find(t => t.code === typeCode);
-        return found ? found.color : '#ccc';
-    }
-
-    getTypeClass(typeCode: string): string {
-        return getWeaponTypeCSSClass(typeCode);
-    }
-
-    getTypeIcon(typeCode: string): string {
-        const found = weaponTypes.find(t => t.code === typeCode);
-        return found ? found.img : '/images/crate.svg';
-    }
-
-    getComponents(isForMatrix: boolean): UnitComponent[] {
-        if (!this.unit?.comp) return [];
-        const expanded: UnitComponent[] = [];
-        const equipmentList = this.dataService.getEquipment(this.unit.type);
-        for (const original of this.unit.comp) {
-            if (!isForMatrix && original.t === 'X') continue; // Exclude Ammo for normal view
-            if (original.t === 'HIDDEN') continue;
-            if (original.eq === undefined) {
-                original.eq = equipmentList[original.id] ?? null;
-            }
-            // Split multi-location components (e.g., "LA/LT")
-            if (isForMatrix && original.l && original.l.includes('/')) {
-                const locs = original.l.split('/').map(s => s.trim()).filter(Boolean);
-                for (const loc of locs) {
-                    expanded.push({
-                        ...original,
-                        l: loc,
-                        n: original.n ? `${original.n} (split)` : original.n
-                    });
-                }
-            } else {
-                expanded.push({ ...original });
-            }
-        }
-        return expanded.sort((a, b) => {
-            if (a.l === b.l) {
-                if (a.n === b.n) return 0;
-                if (a.n === undefined) return 1;
-                if (b.n === undefined) return -1;
-                return a.n.localeCompare(b.n);
-            }
-            if (a.p === undefined) return 1;
-            if (b.p === undefined) return -1;
-            if (a.p === b.p) {
-                // Same position, sort by location alphabetically (solves multi-loc split ordering)
-                if (a.l && b.l) {
-                    return a.l.localeCompare(b.l);
-                }
-            }
-            return a.p - b.p;
-        });
-    }
-
-    hasBays(): boolean {
-        return this.unit?.comp.some(c => c.bay && c.bay.length > 0);
-    }
-
-    getGroupedBaysByLocation(): Array<{ l: string, p: number, bays: UnitComponent[] }> {
-        if (!this.unit?.comp) return [];
-        const groupMap = new Map<string, { l: string, p: number, comps: UnitComponent[] }>();
-        this.unit?.comp.forEach(comp => {
-            const loc = comp.l;
-            const pos = comp.p ?? 0;
-            const key = `${loc}|${pos}`;
-            if (!groupMap.has(key)) {
-                groupMap.set(key, { l: loc, p: pos, comps: [] });
-            }
-            groupMap.get(key)!.comps.push(comp);
-        });
-
-        const result: Array<{ l: string, p: number, bays: UnitComponent[] }> = [];
-        groupMap.forEach(({ l, p, comps }) => {
-            const bayMap: { [name: string]: UnitComponent } = {};
-            comps.forEach(comp => {
-                if (comp.bay && comp.bay.length) {
-                    comp.bay.forEach(bayComp => {
-                        const key = bayComp.n;
-                        if (!bayMap[key]) {
-                            bayMap[key] = { ...bayComp };
-                        } else {
-                            bayMap[key].q = (bayMap[key].q || 1) + (bayComp.q || 1);
-                        }
-                    });
-                }
-            });
-            if (Object.keys(bayMap).length > 0) {
-                const sortedBays = Object.values(bayMap).sort((a, b) => {
-                    if (a.n === b.n) return 0;
-                    if (a.n === undefined) return 1;
-                    if (b.n === undefined) return -1;
-                    return a.n.localeCompare(b.n);
-                });
-                result.push({ l, p, bays: sortedBays });
-            }
-        });
-
-        result.sort((a, b) => a.p - b.p);
-        return result;
-    }
-
     formatThousands(value: number): string {
         if (value === undefined || value === null) return '';
         return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -982,106 +367,178 @@ export class UnitDetailsDialogComponent {
             this.toastService.show('Unit link copied to clipboard.', 'success');
         }
     }
-    
-    getQuirkClass(quirk: string): string {
-        const q = this.dataService.getQuirkByName(quirk);
-        if (!q) return '';
-        return q.type == 'positive' ? 'positive' : 'negative';
-    }
-
-    getQuirkDesc(quirk: string): string {
-        const q = this.dataService.getQuirkByName(quirk);
-        return q?.description || '';
-    }
-
-    getManufacturerFactoryPairs(): ManufacturerInfo[] {
-        if (!this.unit.fluff) return [];
-
-        const manufacturers = this.unit.fluff.manufacturer?.split(',').map(m => m.trim()) || [];
-        const factories = this.unit.fluff.primaryFactory?.split(',').map(f => f.trim()) || [];
-
-        const manufacturerMap = new Map<string, string[]>();
-        const maxLen = Math.max(manufacturers.length, factories.length);
-
-        // Build map of manufacturer -> factories
-        for (let i = 0; i < maxLen; i++) {
-            const mfg = manufacturers[i] || '';
-            const factory = factories[i] || '';
-
-            if (mfg) {
-                if (!manufacturerMap.has(mfg)) {
-                    manufacturerMap.set(mfg, []);
-                }
-                if (factory) {
-                    manufacturerMap.get(mfg)!.push(factory);
-                }
-            } else if (factory) {
-                // Factory without manufacturer
-                if (!manufacturerMap.has('')) {
-                    manufacturerMap.set('', []);
-                }
-                manufacturerMap.get('')!.push(factory);
-            }
-        }
-
-        const pairs: ManufacturerInfo[] = [];
-        manufacturerMap.forEach((factoryList, mfg) => {
-            pairs.push({
-                manufacturer: mfg,
-                factory: factoryList.join(', ')
-            });
-        });
-
-        return pairs;
-    }
-
-    public sanitizeFluffHtml(text: string | undefined): string {
-        if (!text) return '';
-
-        // Replace <p> tags with double newlines for paragraph breaks
-        let sanitized = text.replace(/<p>/gi, '\n\n');
-        sanitized = sanitized.replace(/<\/p>/gi, '');
-
-        // Strip all remaining HTML tags
-        sanitized = sanitized.replace(/<[^>]*>/g, '');
-
-        // Decode common HTML entities
-        sanitized = sanitized
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'");
-
-        // Clean up excessive whitespace and newlines
-        sanitized = sanitized
-            .replace(/\n{3,}/g, '\n\n') // Max 2 consecutive newlines
-            .replace(/[ \t]+/g, ' ')     // Normalize spaces
-            .trim();
-
-        return sanitized;
-    }
 
     public shouldBlockSwipe = (): boolean => {
+        // Don't block if already swiping - only block before swipe starts
+        if (this.isSwiping()) return false;
+
+        // Block if animation is in progress
+        if (this.isSwipeAnimating()) return true;
+
+        // Block if single item list (no prev and no next)
         const index = this.unitIndex();
         return (index === 0 && !this.hasNext) || (index === this.unitList.length - 1 && !this.hasPrev);
     };
 
     public onSwipeStart(event: SwipeStartEvent): void {
+        if (this.isSwipeAnimating()) return;
         this.floatingOverlayService.hide();
+        this.isSwiping.set(true);
+        this.swipeDeltaX.set(0);
+        this.currentPanelOffset.set('0');
+        this.incomingUnit.set(null);
+    }
+
+    public onSwipeMove(event: SwipeMoveEvent): void {
+        if (this.isSwipeAnimating()) return;
+
+        const deltaX = event.deltaX;
+        this.swipeDeltaX.set(deltaX);
+
+        // Determine which unit would be incoming based on swipe direction
+        // Swiping right (deltaX > 0) = going to previous unit, incoming from LEFT
+        // Swiping left (deltaX < 0) = going to next unit, incoming from RIGHT
+        if (deltaX > 0 && this.hasPrev) {
+            // Swiping right - show previous unit coming from the left
+            const prevUnit = this.getUnitAtIndex(this.unitIndex() - 1);
+            if (this.incomingUnit() !== prevUnit) {
+                this.incomingUnit.set(prevUnit);
+            }
+            // Current panel moves right by deltaX
+            this.currentPanelOffset.set(`${deltaX}px`);
+            // Incoming panel starts at -100% and moves right with the swipe
+            this.incomingPanelOffset.set(`calc(-100% + ${deltaX}px)`);
+        } else if (deltaX < 0 && this.hasNext) {
+            // Swiping left - show next unit coming from the right
+            const nextUnit = this.getUnitAtIndex(this.unitIndex() + 1);
+            if (this.incomingUnit() !== nextUnit) {
+                this.incomingUnit.set(nextUnit);
+            }
+            // Current panel moves left by deltaX (negative)
+            this.currentPanelOffset.set(`${deltaX}px`);
+            // Incoming panel starts at 100% and moves left with the swipe
+            this.incomingPanelOffset.set(`calc(100% + ${deltaX}px)`);
+        } else {
+            // Dampen the swipe if at boundary (no prev/next available)
+            this.currentPanelOffset.set(`${deltaX * 0.3}px`);
+            this.incomingUnit.set(null);
+        }
     }
 
     public onSwipeEnd(event: SwipeEndEvent): void {
-        if (!event.success) {
+        // If animation is already in progress, just stop tracking the swipe.
+        // Don't reset state - the ongoing animation will handle that.
+        if (this.isSwipeAnimating()) {
+            this.isSwiping.set(false);
             return;
         }
+
+        this.isSwiping.set(false);
+
+        if (!event.success) {
+            // Animate back to original position
+            this.animateSwipeCancel();
+            return;
+        }
+
         const direction = event.direction;
-        if (direction === 'right' && this.hasPrev) {
-            this.onPrev();
-        } else if (direction === 'left' && this.hasNext) {
-            this.onNext();
+        // Swipe left = go to next unit
+        // Swipe right = go to previous unit
+        if (direction === 'left' && this.hasNext) {
+            this.completeSwipeAnimation('left', this.unitIndex() + 1);
+        } else if (direction === 'right' && this.hasPrev) {
+            this.completeSwipeAnimation('right', this.unitIndex() - 1);
+        } else {
+            this.animateSwipeCancel();
         }
     }
 
+    private async animateSwipeCancel(): Promise<void> {
+        // Animate back to start position
+        this.isSwipeAnimating.set(true);
+        this.currentPanelOffset.set('0');
+
+        // Determine where to animate incoming panel back to
+        const incoming = this.incomingUnit();
+        if (incoming) {
+            const currentIdx = this.unitIndex();
+            const incomingIdx = this.unitList.findIndex(u => {
+                const unit = u instanceof ForceUnit ? u.getUnit() : u;
+                return unit === incoming;
+            });
+            if (incomingIdx < currentIdx) {
+                // Was coming from left, animate back to left
+                this.incomingPanelOffset.set('-100%');
+            } else {
+                // Was coming from right, animate back to right
+                this.incomingPanelOffset.set('100%');
+            }
+        }
+
+        await this.waitForTransitionEnd();
+
+        this.resetSwipeState();
+    }
+
+    /**
+     * Wait for the incoming panel's CSS transition to complete.
+     * Returns a promise that resolves when the transition ends.
+     */
+    private waitForTransitionEnd(): Promise<void> {
+        return new Promise((resolve) => {
+            const panel = this.incomingPanelRef()?.nativeElement;
+            if (!panel) {
+                // Fallback if no panel reference
+                setTimeout(resolve, 320);
+                return;
+            }
+
+            const handler = (event: TransitionEvent) => {
+                // Only listen for transform transitions on this element
+                if (event.propertyName === 'transform' && event.target === panel) {
+                    panel.removeEventListener('transitionend', handler);
+                    // Small buffer for rendering
+                    requestAnimationFrame(() => resolve());
+                }
+            };
+
+            panel.addEventListener('transitionend', handler);
+
+            // Safety timeout in case transitionend doesn't fire
+            setTimeout(() => {
+                panel.removeEventListener('transitionend', handler);
+                resolve();
+            }, 400);
+        });
+    }
+
+    private async completeSwipeAnimation(swipeDirection: 'left' | 'right', newIndex: number): Promise<void> {
+        this.isSwipeAnimating.set(true);
+
+        if (swipeDirection === 'left') {
+            // Swiping left: current goes to -100%, incoming goes to 0
+            this.currentPanelOffset.set('-100%');
+            this.incomingPanelOffset.set('0');
+        } else {
+            // Swiping right: current goes to 100%, incoming goes to 0
+            this.currentPanelOffset.set('100%');
+            this.incomingPanelOffset.set('0');
+        }
+
+        // Wait for the CSS transition to actually complete
+        await this.waitForTransitionEnd();
+
+        // Now update the index - this triggers re-render of current panel with new unit
+        this.unitIndex.set(newIndex);
+        setTimeout(() => this.resetSwipeState(), 100);
+    }
+
+    private resetSwipeState(): void {
+        this.isSwipeAnimating.set(false);
+        this.isSwiping.set(false);
+        this.swipeDeltaX.set(0);
+        this.currentPanelOffset.set('0');
+        this.incomingPanelOffset.set('100%');
+        this.incomingUnit.set(null);
+    }
 }

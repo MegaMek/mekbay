@@ -494,6 +494,33 @@ export class UnitSearchComponent {
         this.viewport()?.scrollToIndex(index, 'smooth');
     }
 
+    /**
+     * Scroll to make the item at the given index visible, but only if it's not already visible.
+     * If scrolling is needed, positions the item at the nearest edge (top or bottom).
+     */
+    private scrollToMakeVisible(index: number) {
+        const vp = this.viewport();
+        if (!vp) return;
+        
+        const itemHeight = this.itemSize();
+        const itemTop = index * itemHeight;
+        const itemBottom = itemTop + itemHeight;
+        
+        const scrollOffset = vp.measureScrollOffset();
+        const viewportSize = vp.getViewportSize();
+        const visibleTop = scrollOffset;
+        const visibleBottom = scrollOffset + viewportSize;
+        
+        if (itemTop < visibleTop) {
+            // Item is above the visible area - scroll up to show it at top
+            vp.scrollToOffset(itemTop, 'smooth');
+        } else if (itemBottom > visibleBottom) {
+            // Item is below the visible area - scroll down to show it at bottom
+            vp.scrollToOffset(itemBottom - viewportSize, 'smooth');
+        }
+        // Otherwise it's already visible, do nothing
+    }
+
     highlight(text: string): string {
         const searchGroups = this.filtersService.searchTokens();
         return highlightMatches(text, searchGroups, true);
@@ -562,6 +589,12 @@ export class UnitSearchComponent {
 
         ref.closed.subscribe(() => {
             this.unitDetailsDialogOpen.set(false);
+        });
+
+        // Track navigation within the dialog to keep activeIndex in sync
+        ref.componentInstance?.indexChange.subscribe(newIndex => {
+            this.activeIndex.set(newIndex);
+            this.scrollToMakeVisible(newIndex);
         });
 
         ref.componentInstance?.add.subscribe(newUnit => {
