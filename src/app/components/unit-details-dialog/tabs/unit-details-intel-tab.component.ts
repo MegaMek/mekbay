@@ -45,6 +45,7 @@ import { Unit } from '../../../models/units.model';
 export class UnitDetailsIntelTabComponent {
     unit = input.required<Unit>();
     fluffImageUrl = input<string | null>(null);
+    isSwiping = input<boolean>(false);
     fluffImageError = output<void>();
 
     onFluffImageError() {

@@ -36,8 +36,13 @@
     display: flex;
     flex-direction: column;
     flex-grow: 1;
-    touch-action: pan-y;
+    touch-action: pan-y pinch-zoom;
     overflow: hidden;
+}
+
+/* Swipe panels should not scroll themselves to avoid gesture conflicts */
+.swipe-panel {
+    touch-action: pan-y;
 }
 
 /* Swipe Animation Container */
@@ -58,10 +63,15 @@
     width: 100%;
     min-height: 0;
     position: relative;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
-.swipe-panel.current-panel {
+/* Only apply transform when swiping/animating to avoid stacking context issues at rest */
+.swipe-container.swiping .swipe-panel.current-panel,
+.swipe-container.animating .swipe-panel.current-panel {
     transform: translateX(var(--current-offset, 0));
+    will-change: transform;
 }
 
 .swipe-panel.incoming-panel {
@@ -71,6 +81,7 @@
     right: 0;
     bottom: 0;
     transform: translateX(var(--incoming-offset, 100%));
+    will-change: transform;
 }
 
 /* Enable transitions only during animation phase (after swipe ends) */

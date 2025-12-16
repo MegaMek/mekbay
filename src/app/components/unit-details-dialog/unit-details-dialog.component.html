@@ -37,13 +37,11 @@
   (swipestart)="onSwipeStart($event)"
   (swipemove)="onSwipeMove($event)"
   (swipeend)="onSwipeEnd($event)">
-  @if (fluffImageUrl()) {
-    <img [src]="fluffImageUrl()" class="fluff-bg-image" alt="">
-  }
   
   <!-- Swipe animation container -->
   <div class="swipe-container" 
-       [class.animating]="isSwipeAnimating()">
+       [class.animating]="isSwipeAnimating()"
+       [class.swiping]="isSwiping()">
     <!-- Current unit view -->
     <div class="swipe-panel current-panel" 
          [style.--current-offset]="currentPanelOffset()">
@@ -63,6 +61,7 @@
         <unit-details-intel-tab 
           [unit]="unit"
           [fluffImageUrl]="fluffImageUrl()"
+          [isSwiping]="isSwiping() || isSwipeAnimating()"
           (fluffImageError)="onFluffImageError()">
         </unit-details-intel-tab>
       }
@@ -92,6 +91,7 @@
           <unit-details-intel-tab 
             [unit]="incomingUnit()!"
             [fluffImageUrl]="null"
+            [isSwiping]="isSwiping() || isSwipeAnimating()"
             (fluffImageError)="onFluffImageError()">
           </unit-details-intel-tab>
         }
@@ -102,6 +102,11 @@
       </div>
     }
   </div>
+
+  <!-- Fluff background image - placed after swipe-container so sibling selector works -->
+  @if (fluffImageUrl()) {
+    <img [src]="fluffImageUrl()" class="fluff-bg-image" alt="">
+  }
 </div>
 <div class="footer" dialog-footer>
   <button [class.hidden]="!hasPrev" class="nav-arrow nav-arrow-left" (click)="onPrev()" aria-label="Previous Unit">

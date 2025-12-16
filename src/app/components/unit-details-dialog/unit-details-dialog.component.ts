@@ -368,7 +368,13 @@ export class UnitDetailsDialogComponent {
     }
 
     public shouldBlockSwipe = (): boolean => {
+        // Don't block if already swiping - only block before swipe starts
+        if (this.isSwiping()) return false;
+        
+        // Block if animation is in progress
         if (this.isSwipeAnimating()) return true;
+        
+        // Block if single item list (no prev and no next)
         const index = this.unitIndex();
         return (index === 0 && !this.hasNext) || (index === this.unitList.length - 1 && !this.hasPrev);
     };
