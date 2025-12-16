@@ -351,7 +351,11 @@ export class SvgInteractionService {
     private setupArmorInteraction(svg: SVGSVGElement, signal: AbortSignal) {
         let locationZones = svg.querySelectorAll('.unitLocation');
         if (locationZones.length === 0) {
-            locationZones = svg.querySelectorAll('.pip.armor, .pip.structure');
+            // Fall back to pip hit areas (larger touch targets) or pips themselves
+            locationZones = svg.querySelectorAll('.pip-hit-area.armor, .pip-hit-area.structure');
+            if (locationZones.length === 0) {
+                locationZones = svg.querySelectorAll('.pip.armor, .pip.structure');
+            }
         }
         locationZones.forEach(el => {
             const svgEl = el as SVGElement;

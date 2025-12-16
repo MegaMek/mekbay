@@ -95,6 +95,7 @@ export class RsPolyfillUtil {
         this.addCrewDamageClasses(unit, svg);
         this.addInventoryLines(svg);
         this.adjustArmorPips(unit, svg);
+        this.addPipHitAreas(svg);
         this.addHitMod(svg);
         this.injectFluffImage(unit, svg);
         this.addTurnStateClasses(unit, svg);
@@ -708,6 +709,53 @@ export class RsPolyfillUtil {
             });
         }
     };
+
+    /**
+     * Adds larger transparent hit areas to armor and structure pips.
+     * This is needed when .unitLocation zones are not available and we fall back to individual pips,
+     * which are too small to reliably tap on touch devices.
+     */
+    private static addPipHitAreas(svg: SVGSVGElement): void {
+        // Only add hit areas if there are no .unitLocation zones
+        // (if .unitLocation exists, those are used instead for interaction)
+        if (svg.querySelector('.unitLocation')) return;
+
+        const pips = svg.querySelectorAll<SVGElement>('.pip.armor, .pip.structure');
+        if (pips.length === 0) return;
+
+        const hitAreaSize = 15; // Size of the transparent hit area rectangle
+
+        pips.forEach(pip => {
+            // Skip if hit area already added
+            if (pip.querySelector('.pip-hit-area')) return;
+
+            const bbox = (pip as SVGGraphicsElement).getBBox();
+            const centerX = bbox.x + bbox.width / 2;
+            const centerY = bbox.y + bbox.height / 2;
+
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            rect.setAttribute('cx', centerX.toString());
+            rect.setAttribute('cy', centerY.toString());
+            rect.setAttribute('r', (hitAreaSize / 2).toString());
+            rect.setAttribute('fill', 'transparent');
+            rect.setAttribute('class', 'pip-hit-area noprint');
+
+            // Copy relevant attributes from pip to hit area
+            const loc = pip.getAttribute('loc');
+            if (loc) rect.setAttribute('loc', loc);
+            const rear = pip.getAttribute('rear');
+            if (rear) rect.setAttribute('rear', rear);
+            const id = pip.getAttribute('id');
+            if (id) rect.setAttribute('pip-id', id);
+
+            // Copy relevant classes for interaction service to identify pip type
+            if (pip.classList.contains('armor')) rect.classList.add('armor');
+            if (pip.classList.contains('structure')) rect.classList.add('structure');
+            if (pip.classList.contains('shield')) rect.classList.add('shield');
+
+            pip.after(rect);
+        });
+    }
 
     private static addHeatLevels(svg: SVGSVGElement): void {
         const heatScale = svg.querySelector('#heatScale');
