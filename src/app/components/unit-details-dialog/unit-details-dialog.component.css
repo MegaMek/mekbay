@@ -38,6 +38,109 @@
     flex-direction: column;
     flex-grow: 1;
     touch-action: pan-y;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Swipe Animation Container */
+.swipe-container {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+}
+
+.swipe-panel {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    width: 100%;
+    min-height: 0;
+    position: relative;
+}
+
+.swipe-panel.current-panel {
+    transition: transform 300ms ease-out, opacity 300ms ease-out;
+}
+
+.swipe-panel.incoming-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transition: transform 300ms ease-out, opacity 300ms ease-out;
+}
+
+/* Real-time swipe following - applied during swiping */
+.swipe-container.swiping .swipe-panel.current-panel {
+    transition: none;
+    transform: translateX(var(--swipe-offset, 0));
+}
+
+.swipe-container.swiping .swipe-panel.incoming-panel {
+    transition: none;
+}
+
+/* Position incoming panel based on swipe direction during real-time follow */
+.swipe-container.swiping .swipe-panel.incoming-left {
+    transform: translateX(calc(-100% + var(--swipe-offset, 0)));
+}
+
+.swipe-container.swiping .swipe-panel.incoming-right {
+    transform: translateX(calc(100% + var(--swipe-offset, 0)));
+}
+
+/* Slide out animations - when animation is triggered after swipe ends */
+.swipe-panel.slide-out-left {
+    transform: translateX(-100%);
+    opacity: 0;
+}
+
+.swipe-panel.slide-out-right {
+    transform: translateX(100%);
+    opacity: 0;
+}
+
+/* Slide in animations - incoming panel slides in from correct side */
+/* direction='left' means current slides left, so incoming comes from RIGHT */
+.swipe-panel.slide-in-from-left {
+    animation: slideInFromRight 300ms ease-out forwards;
+}
+
+/* direction='right' means current slides right, so incoming comes from LEFT */
+.swipe-panel.slide-in-from-right {
+    animation: slideInFromLeft 300ms ease-out forwards;
+}
+
+@keyframes slideInFromRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideInFromLeft {
+    from {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Disable pointer events during animation */
+.swipe-container.animating {
+    pointer-events: none;
 }
 
 /* Header */

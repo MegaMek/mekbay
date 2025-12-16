@@ -1,0 +1,22 @@
+<!-- Factions Tab Content -->
+<div class="tab-content">
+    <div class="faction-availability-list allow-select">
+        @if (factionAvailability().length === 0) {
+            <div class="no-factions">No faction availability information for this unit.</div>
+        } @else {
+            @for (era of factionAvailability(); let i = $index; track i) {
+                <div class="era-name">
+                    @if (era.eraImg) {
+                        <img [src]="era.eraImg" class="era-icon" />
+                    }
+                    <strong>{{ era.eraName }}:</strong>
+                </div>
+                <div class="faction-list">
+                    @for (faction of era.factions; let isLast = $last; track faction.name) {
+                        <span>{{ faction.name }}{{ !isLast ? ', ' : '' }}</span>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>

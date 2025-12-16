@@ -35,327 +35,79 @@
   [threshold]="20"
   [shouldBlockSwipe]="shouldBlockSwipe"
   (swipestart)="onSwipeStart($event)"
+  (swipemove)="onSwipeMove($event)"
   (swipeend)="onSwipeEnd($event)">
   @if (fluffImageUrl()) {
     <img [src]="fluffImageUrl()" class="fluff-bg-image" alt="">
   }
-  @if (activeTab() === 'General') {
-    <div class="tab-content tab-general">
-      <!-- Basic Info -->
-      <div class="basic-info-block allow-select">
-        <div><strong>{{ unit.type }}@if (unit.subtype != unit.type) {
-          <span> - {{ unit.subtype }}</span>
-          } - {{
-        unit.weightClass }}</strong></div>
-        <div>
-          <span class="muted">BV: </span>
-          @if (adjustedBV() != null && adjustedBV() != unit.bv) {
-            <strong>{{ formatThousands(adjustedBV()!) }}</strong>
-            <span class="muted"> ({{ formatThousands(unit.bv) }})</span>
-          } @else {
-            <strong>{{ formatThousands(unit.bv) }}</strong>
-          }
-        </div>
-        <div><span class="muted">Rules: </span><strong>{{ unit.level }}</strong></div>
-        <div><span class="muted">Tech: </span><strong>{{ unit.techBase }} | {{ unit.techRating }}</strong></div>
-        @if (unit.year) {
-          <div><span class="muted">Intro Year: </span><strong>{{ unit.year }}</strong>
-          @if (unit._era?.img) {
-            <img [src]="unit._era?.img" class="era-icon" title="{{ unit._era?.name }}" />
-          }
-        </div>
+  
+  <!-- Swipe animation container -->
+  <div class="swipe-container" 
+       [class.animating]="isSwipeAnimating()"
+       [class.swiping]="isSwiping()"
+       [style.--swipe-offset]="swipeOffset() + 'px'">
+    <!-- Current unit view -->
+    <div class="swipe-panel current-panel" 
+         [class.slide-out-left]="isSwipeAnimating() && swipeDirection() === 'left'"
+         [class.slide-out-right]="isSwipeAnimating() && swipeDirection() === 'right'">
+      @if (activeTab() === 'General') {
+        <unit-details-general-tab 
+          [unit]="unit"
+          [gunnerySkill]="gunnerySkill()"
+          [pilotingSkill]="pilotingSkill()">
+        </unit-details-general-tab>
       }
-      <div><span class="muted">C-Bill Cost: </span><strong>{{ formatThousands(unit.cost) }}</strong></div>
-      @if (unit.armorType) {
-        <div><span class="muted">Armor Type: </span><strong>{{ unit.armorType }}</strong>
-      </div>
-    }
-    @if (unit.structureType) {
-      <div><span class="muted">Structure Type: </span><strong>{{ unit.structureType
-    }}</strong></div>
-  }
-  @if (unit.engine) {
-    <div><span class="muted">Engine: </span><strong>@if (unit.engineRating) {
-    <span>{{
-    unit.engineRating }} </span>
-  }{{ unit.engine }}</strong></div>
-}
-@if (unit.moveType && unit.moveType != 'None') {
-  <div><span class="muted">Motive Type: </span><strong>{{
-unit.moveType }}</strong></div>
-}
-@if (unit.walk || unit.run || unit.jump || unit.umu) {
-  <div><span class="muted">Movement: </span>
-  <strong>{{ unit.walk }} / {{ unit.run
-    }}@if (unit.run2 != unit.run) {
-    <span> [{{ unit.run2 }}]</span>
-  }
-  @if (unit.jump) { / {{ unit.jump }}}
-    @if (unit.umu) { / {{ unit.umu }}}
-    </strong></div>
-  }
-  @if (unit.c3 && unit.c3 != 'None') {
-    <div><span class="muted">Network: </span><strong>{{ unit.c3 }}</strong></div>
-  }
-</div>
-@if (unit.quirks && unit.quirks.length > 0) {
-  <div class="quirks-block">
-    <div class="quirks">
-      <div class="muted">Quirks: </div>
-      @for (quirk of unit.quirks; let i = $index; track i) {
-        <div class="quirk" [ngClass]="getQuirkClass(quirk)" [tooltip]="getQuirkDesc(quirk)">{{ quirk }}</div>
-      }
-    </div>
-  </div>
-}
-<!-- Stat Progress Bars -->
-<div class="stat-bars-columns">
-  @for (spec of (unit | statBarSpecs); let i = $index; track i) {
-    <div class="stat-bar-row">
-      <div class="stat-bar">
-        <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
-      </div>
-      <span class="stat-label">{{ spec.label }}</span>
-      <span class="stat-value">{{ spec.valueText ?? spec.value }}</span>
-    </div>
-  }
-</div>
-<!-- Weapon Type Summary Bar -->
-<div class="type-summary-bar">
-  @for (type of weaponTypes; let i = $index; track i) {
-    <div class="type-summary-rect" [ngStyle]="{'border-color': type.color}" [title]="type.name">
-      <div [ngStyle]="{'background-color': type.color}" class="icon">
-        <img class="type-icon" [src]="getTypeIcon(type.code)" />
-      </div>
-      @let count = getTypeCount(type.code);
-      <div class="type-count" [class.empty]="count === 0">{{ count }}</div>
-    </div>
-  }
-</div>
-<!-- Components Grid -->
-<!-- Matrix layout (3x3) when supported and defined for unit.type -->
-@if (useMatrixLayout()) {
-  <div class="components-matrix" [style.grid-template-areas]="gridAreas">
-    @for (area of matrixAreaCodes; let i = $index; track i) {
-      <div class="component-rect" [style.grid-area]="area">
-        <div class="comp-loc">{{ getAreaLabel(area) }}</div>
-        <div class="comp-list">
-          <!-- Bays (matrix) -->
-          @if (areaHasBays(area)) {
-            <div class="bay">
-              @for (bay of getBaysForArea(area); let i = $index; track trackByBay(bay)) {
-                <unit-component-item [unit]="unit" [comp]="bay" displayStyle="small"></unit-component-item>
-              }
-            </div>
-          } @else {
-            <!-- Normal components (matrix) -->
-            @for (comp of getComponentsForArea(area); let i = $index; track trackByComp(comp)) {
-              <unit-component-item [unit]="unit" [comp]="comp" displayStyle="normal"></unit-component-item>
-            }
-          }
-        </div>
-      </div>
-    }
-  </div>
-} @else {
-  <!-- Default -->
-  @if (hasBays()) {
-    <div class="components-container">
-      @for (group of groupedBays; let i = $index; track group.l) {
-        <div class="component-rect">
-          <div class="comp-loc">{{ group.l }}</div>
-          <div class="bay">
-            @for (bay of group.bays; let j = $index; track j) {
-              <unit-component-item [unit]="unit" [comp]="bay" displayStyle="small" class="comp-single"></unit-component-item>
-            }
-          </div>
-        </div>
-      }
-    </div>
-  } @else {
-    <div class="components-container">
-      @for (comp of components; let i = $index; track i) {
-        <div class="component-rect">
-          <div class="comp-loc">{{ comp.l }}</div>
-          <div class="comp-list">
-            <unit-component-item [unit]="unit" [comp]="comp" displayStyle="normal" class="comp-single"></unit-component-item>
-          </div>
-        </div>
-      }
-    </div>
-  }
-  @if ((unit.comp | filterAmmo); as ammoList) {
-    @if (ammoList.length > 0) {
-      <div class="ammo-list"><span class="info-label muted">Ammo: </span>
-      @for (comp of ammoList; let last = $last; let i = $index; track i) {
-        <unit-component-item [unit]="unit" [comp]="comp" displayStyle="text"></unit-component-item>@if(!last){, }
-      }
-    </div>
-  }
-}
-}
-@if (unit.capital && unit.capital.gravDecks && unit.capital.gravDecks.length > 0) {
-  <div class="grav-list allow-select">
-    <span class="muted">Grav Decks: </span>
-    @for (deck of unit.capital.gravDecks; let last = $last; let i = $index; track i) {
-      <span class="deck-entry">Deck #{{ i + 1 }} ({{ deck }}-meters)</span>@if (!last) {, }
-    }
-  </div>
-}
-@if (unit.cargo && unit.cargo.length > 0) {
-  <div class="cargo-container allow-select">
-    <span class="info-label muted">Cargo: </span>
-    <div class="cargo-list">
-      @for (cargo of unit.cargo; let last = $last; let i = $index; track i) {
-        <span class="cargo-box">
-          <div class="cargo-caption">Bay {{ cargo.n }}:</div>
-          <div class="cargo-content">{{ cargo.type }} ({{ cargo.capacity }})</div>
-          <div class="cargo-doors">({{ cargo.doors }} door{{ cargo.doors !== 1 ? 's' : '' }})</div>
-        </span>
-      }
-    </div>
-  </div>
-}
-<div class="spanner"></div>
-<div class="bottom-info">
-  <div class="bottom-left">
-  @if (unit.source) {
-    <span class="label muted">Source: </span><strong>{{ unit.source }}</strong>
-  }
-  </div>
-  <div class="bottom-right">
-    @if (unit.id && unit.id > 0) {
-      <span class="label muted">MUL ID: </span><a
-      class="mul-link" target=_BLANK href="http://masterunitlist.info/Unit/Details/{{unit.id}}">{{
-    unit.id }}</a>
-    }
-  </div>
-</div>
-</div>
-}
 
-<!-- Factions -->
-@if (activeTab() === 'Factions') {
-  <div class="tab-content">
-    <div class="faction-availability-list allow-select">
-      @if (factionAvailability.length === 0) {
-        <div class="no-factions">No faction availability information for this unit.</div>
-      } @else {
-        @for (era of factionAvailability; let i = $index; track i) {
-          <div class="era-name">
-            @if (era.eraImg) {
-              <img [src]="era.eraImg" class="era-icon" />
-            }
-            <strong>{{ era.eraName }}:</strong>
-          </div>
-          <div class="faction-list">
-            @for (faction of era.factions; let isLast = $last; track faction.name) {
-              <span>{{ faction.name }}{{ !isLast ? ', ' : '' }}</span>
-            }
-          </div>
+      @if (activeTab() === 'Factions') {
+        <unit-details-factions-tab [unit]="unit"></unit-details-factions-tab>
+      }
+
+      @if (activeTab() === 'Intel') {
+        <unit-details-intel-tab 
+          [unit]="unit"
+          [fluffImageUrl]="fluffImageUrl()"
+          (fluffImageError)="onFluffImageError()">
+        </unit-details-intel-tab>
+      }
+
+      @if (activeTab() === 'Sheet') {
+        <unit-details-sheet-tab [unit]="unit"></unit-details-sheet-tab>
+      }
+    </div>
+
+    <!-- Incoming unit view (visible during animation or swiping) -->
+    @if ((isSwipeAnimating() || isSwiping()) && incomingUnit()) {
+      <div class="swipe-panel incoming-panel"
+           [class.slide-in-from-left]="isSwipeAnimating() && swipeDirection() === 'left'"
+           [class.slide-in-from-right]="isSwipeAnimating() && swipeDirection() === 'right'"
+           [class.incoming-left]="!isSwipeAnimating() && swipeOffset() > 0"
+           [class.incoming-right]="!isSwipeAnimating() && swipeOffset() < 0">
+        @if (activeTab() === 'General') {
+          <unit-details-general-tab 
+            [unit]="incomingUnit()!"
+            [gunnerySkill]="gunnerySkill()"
+            [pilotingSkill]="pilotingSkill()">
+          </unit-details-general-tab>
         }
-      }
-    </div>
-  </div>
-}
 
-<!-- Intel -->
-@if (activeTab() === 'Intel') {
-  <div class="tab-content">
-    <div class="fluff-content allow-select">
-      @if (unit.fluff) {
+        @if (activeTab() === 'Factions') {
+          <unit-details-factions-tab [unit]="incomingUnit()!"></unit-details-factions-tab>
+        }
 
-        <!-- Fluff Image -->
-        @if (fluffImageUrl()) {
-          <div class="fluff-image-container">
-            <img [src]="fluffImageUrl()" class="fluff-image" (error)="onFluffImageError()"
-              alt="{{ unit.chassis }} {{ unit.model }}" />
-            </div>
-          }
+        @if (activeTab() === 'Intel') {
+          <unit-details-intel-tab 
+            [unit]="incomingUnit()!"
+            [fluffImageUrl]="null"
+            (fluffImageError)="onFluffImageError()">
+          </unit-details-intel-tab>
+        }
 
-          @if (unit.fluff.systems && unit.fluff.systems.length > 0) {
-            <div class="fluff-section">
-              <div class="fluff-label">Systems:</div>
-              <div class="fluff-text">
-                @for (system of unit.fluff.systems; track system.label) {
-                  <div>
-                    @if (system.label) {
-                      <strong>{{ system.label }}: </strong>
-                    }
-                    @if (system.manufacturer) {
-                      <span>{{ system.manufacturer }} </span>
-                    }
-                    @if (system.model) {
-                      <span>({{ system.model }})</span>
-                    }
-                  </div>
-                }
-              </div>
-            </div>
-          }
-
-          @if (unit.fluff.manufacturer) {
-            <div class="fluff-section">
-              <div class="fluff-label">Manufacturers:</div>
-              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.manufacturer) }}</div>
-            </div>
-          }
-
-          @if (unit.fluff.primaryFactory) {
-            <div class="fluff-section">
-              <div class="fluff-label">Primary Factories:</div>
-              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.primaryFactory) }}</div>
-            </div>
-          }
-
-          @if (unit.fluff.capabilities) {
-            <div class="fluff-section">
-              <div class="fluff-label">Capabilities:</div>
-              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.capabilities) }}</div>
-            </div>
-          }
-
-          @if (unit.fluff.overview) {
-            <div class="fluff-section">
-              <div class="fluff-label">Overview:</div>
-              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.overview) }}</div>
-            </div>
-          }
-
-          @if (unit.fluff.deployment) {
-            <div class="fluff-section">
-              <div class="fluff-label">Deployment:</div>
-              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.deployment) }}</div>
-            </div>
-          }
-
-          @if (unit.fluff.history) {
-            <div class="fluff-section">
-              <div class="fluff-label">History:</div>
-              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.history) }}</div>
-            </div>
-          }
-
-          @if (unit.fluff.notes) {
-            <div class="fluff-section">
-              <div class="fluff-label">Notes:</div>
-              <div class="fluff-text">{{ sanitizeFluffHtml(unit.fluff.notes) }}</div>
-            </div>
-          }
-        } @else {
-          <div class="no-fluff">
-            No intel available for this unit.
-          </div>
+        @if (activeTab() === 'Sheet') {
+          <unit-details-sheet-tab [unit]="incomingUnit()!"></unit-details-sheet-tab>
         }
       </div>
-    </div>
-  }
-
-  @if (activeTab() === 'Sheet') {
-    <div class="tab-content">
-      <svg-viewer-lite [unit]="unit"></svg-viewer-lite>
-    </div>
-  }
+    }
+  </div>
 </div>
 <div class="footer" dialog-footer>
   <button [class.hidden]="!hasPrev" class="nav-arrow nav-arrow-left" (click)="onPrev()" aria-label="Previous Unit">
