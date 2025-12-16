@@ -116,14 +116,15 @@ export class UnitDetailsDialogComponent {
     fluffImageUrl = signal<string | null>(null);
 
     // Swipe animation state
-    swipeTranslateX = signal(0);
     isSwipeAnimating = signal(false);
-    swipeDirection = signal<'left' | 'right' | null>(null);
     incomingUnit = signal<Unit | null>(null);
     
     // Real-time swipe following state
     isSwiping = signal(false);
-    swipeOffset = signal(0);
+    
+    // CSS custom properties for panel positions
+    currentPanelOffset = signal('0');
+    incomingPanelOffset = signal('100%');
     
     get unit(): Unit {
         const currentUnit = this.unitList[this.unitIndex()]
@@ -231,34 +232,63 @@ export class UnitDetailsDialogComponent {
 
     onPrev() {
         if (this.hasPrev && !this.isSwipeAnimating() && !this.isSwiping()) {
-            this.navigateToUnit(this.unitIndex() - 1, 'left');
+            // Emulate RIGHT swipe: current goes right, prev comes from left
+            this.navigateToUnit(this.unitIndex() - 1, 'right');
         }
     }
 
     onNext() {
         if (this.hasNext && !this.isSwipeAnimating() && !this.isSwiping()) {
-            this.navigateToUnit(this.unitIndex() + 1, 'right');
+            // Emulate LEFT swipe: current goes left, next comes from right
+            this.navigateToUnit(this.unitIndex() + 1, 'left');
         }
     }
 
-    private navigateToUnit(newIndex: number, direction: 'left' | 'right') {
+    /**
+     * Navigate to a new unit with animation.
+     * @param newIndex - The index of the unit to navigate to
+     * @param swipeDirection - 'left' means swiping left (current goes left, incoming from right)
+     *                        'right' means swiping right (current goes right, incoming from left)
+     */
+    private navigateToUnit(newIndex: number, swipeDirection: 'left' | 'right') {
         this.floatingOverlayService.hide();
         
-        // Set incoming unit for the animation
+        // Set incoming unit
         this.incomingUnit.set(this.getUnitAtIndex(newIndex));
-        this.swipeDirection.set(direction);
-        this.isSwipeAnimating.set(true);
         this.isSwiping.set(false);
-        this.swipeOffset.set(0);
         
-        // After animation completes, update the actual unit
-        setTimeout(() => {
-            this.unitIndex.set(newIndex);
-            this.isSwipeAnimating.set(false);
-            this.swipeTranslateX.set(0);
-            this.incomingUnit.set(null);
-            this.swipeDirection.set(null);
-        }, 300); // Match CSS transition duration
+        // Set initial positions for animation
+        if (swipeDirection === 'left') {
+            // Swiping left: current goes to -100%, incoming starts at 100% and goes to 0
+            this.currentPanelOffset.set('0');
+            this.incomingPanelOffset.set('100%');
+        } else {
+            // Swiping right: current goes to 100%, incoming starts at -100% and goes to 0
+            this.currentPanelOffset.set('0');
+            this.incomingPanelOffset.set('-100%');
+        }
+        
+        // Trigger animation on next frame
+        requestAnimationFrame(() => {
+            this.isSwipeAnimating.set(true);
+            
+            if (swipeDirection === 'left') {
+                this.currentPanelOffset.set('-100%');
+                this.incomingPanelOffset.set('0');
+            } else {
+                this.currentPanelOffset.set('100%');
+                this.incomingPanelOffset.set('0');
+            }
+            
+            // After animation completes, update the actual unit
+            setTimeout(() => {
+                this.unitIndex.set(newIndex);
+                this.isSwipeAnimating.set(false);
+                this.currentPanelOffset.set('0');
+                this.incomingPanelOffset.set('100%');
+                this.incomingUnit.set(null);
+            }, 300); // Match CSS transition duration
+        });
     }
 
     async onAdd() {
@@ -327,7 +357,8 @@ export class UnitDetailsDialogComponent {
         if (this.isSwipeAnimating()) return;
         this.floatingOverlayService.hide();
         this.isSwiping.set(true);
-        this.swipeOffset.set(0);
+        this.currentPanelOffset.set('0');
+        this.incomingUnit.set(null);
     }
 
     public onSwipeMove(event: SwipeMoveEvent): void {
@@ -336,54 +367,113 @@ export class UnitDetailsDialogComponent {
         const deltaX = event.deltaX;
         
         // Determine which unit would be incoming based on swipe direction
-        // Swiping right (deltaX > 0) = going to previous unit
-        // Swiping left (deltaX < 0) = going to next unit
+        // Swiping right (deltaX > 0) = going to previous unit, incoming from LEFT
+        // Swiping left (deltaX < 0) = going to next unit, incoming from RIGHT
         if (deltaX > 0 && this.hasPrev) {
-            // Swiping right - show previous unit on the left
+            // Swiping right - show previous unit coming from the left
             const prevUnit = this.getUnitAtIndex(this.unitIndex() - 1);
             if (this.incomingUnit() !== prevUnit) {
                 this.incomingUnit.set(prevUnit);
             }
-            this.swipeOffset.set(deltaX);
+            // Current panel moves right by deltaX
+            this.currentPanelOffset.set(`${deltaX}px`);
+            // Incoming panel starts at -100% and moves right with the swipe
+            this.incomingPanelOffset.set(`calc(-100% + ${deltaX}px)`);
         } else if (deltaX < 0 && this.hasNext) {
-            // Swiping left - show next unit on the right
+            // Swiping left - show next unit coming from the right
             const nextUnit = this.getUnitAtIndex(this.unitIndex() + 1);
             if (this.incomingUnit() !== nextUnit) {
                 this.incomingUnit.set(nextUnit);
             }
-            this.swipeOffset.set(deltaX);
+            // Current panel moves left by deltaX (negative)
+            this.currentPanelOffset.set(`${deltaX}px`);
+            // Incoming panel starts at 100% and moves left with the swipe
+            this.incomingPanelOffset.set(`calc(100% + ${deltaX}px)`);
         } else {
-            // Dampen the swipe if at boundary
-            this.swipeOffset.set(deltaX * 0.3);
+            // Dampen the swipe if at boundary (no prev/next available)
+            this.currentPanelOffset.set(`${deltaX * 0.3}px`);
+            this.incomingUnit.set(null);
         }
     }
 
     public onSwipeEnd(event: SwipeEndEvent): void {
-        this.isSwiping.set(false);
-        
         if (this.isSwipeAnimating()) {
-            this.swipeOffset.set(0);
-            this.incomingUnit.set(null);
+            this.isSwiping.set(false);
+            this.resetSwipeState();
             return;
         }
         
+        this.isSwiping.set(false);
+        
         if (!event.success) {
             // Animate back to original position
-            this.swipeOffset.set(0);
-            this.incomingUnit.set(null);
+            this.animateSwipeCancel();
             return;
         }
         
         const direction = event.direction;
-        // Swipe right = go to previous unit, direction is 'left' for animation
-        // Swipe left = go to next unit, direction is 'right' for animation
-        if (direction === 'right' && this.hasPrev) {
-            this.navigateToUnit(this.unitIndex() - 1, 'left');
-        } else if (direction === 'left' && this.hasNext) {
-            this.navigateToUnit(this.unitIndex() + 1, 'right');
+        // Swipe left = go to next unit
+        // Swipe right = go to previous unit
+        if (direction === 'left' && this.hasNext) {
+            this.completeSwipeAnimation('left', this.unitIndex() + 1);
+        } else if (direction === 'right' && this.hasPrev) {
+            this.completeSwipeAnimation('right', this.unitIndex() - 1);
         } else {
-            this.swipeOffset.set(0);
-            this.incomingUnit.set(null);
+            this.animateSwipeCancel();
         }
+    }
+    
+    private animateSwipeCancel(): void {
+        // Animate back to start position
+        this.isSwipeAnimating.set(true);
+        this.currentPanelOffset.set('0');
+        
+        // Determine where to animate incoming panel back to
+        const incoming = this.incomingUnit();
+        if (incoming) {
+            const currentIdx = this.unitIndex();
+            const incomingIdx = this.unitList.findIndex(u => {
+                const unit = u instanceof ForceUnit ? u.getUnit() : u;
+                return unit === incoming;
+            });
+            if (incomingIdx < currentIdx) {
+                // Was coming from left, animate back to left
+                this.incomingPanelOffset.set('-100%');
+            } else {
+                // Was coming from right, animate back to right
+                this.incomingPanelOffset.set('100%');
+            }
+        }
+        
+        setTimeout(() => {
+            this.resetSwipeState();
+        }, 300);
+    }
+    
+    private completeSwipeAnimation(swipeDirection: 'left' | 'right', newIndex: number): void {
+        this.isSwipeAnimating.set(true);
+        
+        if (swipeDirection === 'left') {
+            // Swiping left: current goes to -100%, incoming goes to 0
+            this.currentPanelOffset.set('-100%');
+            this.incomingPanelOffset.set('0');
+        } else {
+            // Swiping right: current goes to 100%, incoming goes to 0
+            this.currentPanelOffset.set('100%');
+            this.incomingPanelOffset.set('0');
+        }
+        
+        setTimeout(() => {
+            this.unitIndex.set(newIndex);
+            this.resetSwipeState();
+        }, 300);
+    }
+    
+    private resetSwipeState(): void {
+        this.isSwipeAnimating.set(false);
+        this.isSwiping.set(false);
+        this.currentPanelOffset.set('0');
+        this.incomingPanelOffset.set('100%');
+        this.incomingUnit.set(null);
     }
 }

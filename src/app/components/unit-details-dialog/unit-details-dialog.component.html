@@ -43,13 +43,10 @@
   
   <!-- Swipe animation container -->
   <div class="swipe-container" 
-       [class.animating]="isSwipeAnimating()"
-       [class.swiping]="isSwiping()"
-       [style.--swipe-offset]="swipeOffset() + 'px'">
+       [class.animating]="isSwipeAnimating()">
     <!-- Current unit view -->
     <div class="swipe-panel current-panel" 
-         [class.slide-out-left]="isSwipeAnimating() && swipeDirection() === 'left'"
-         [class.slide-out-right]="isSwipeAnimating() && swipeDirection() === 'right'">
+         [style.--current-offset]="currentPanelOffset()">
       @if (activeTab() === 'General') {
         <unit-details-general-tab 
           [unit]="unit"
@@ -76,12 +73,9 @@
     </div>
 
     <!-- Incoming unit view (visible during animation or swiping) -->
-    @if ((isSwipeAnimating() || isSwiping()) && incomingUnit()) {
+    @if (incomingUnit()) {
       <div class="swipe-panel incoming-panel"
-           [class.slide-in-from-left]="isSwipeAnimating() && swipeDirection() === 'left'"
-           [class.slide-in-from-right]="isSwipeAnimating() && swipeDirection() === 'right'"
-           [class.incoming-left]="!isSwipeAnimating() && swipeOffset() > 0"
-           [class.incoming-right]="!isSwipeAnimating() && swipeOffset() < 0">
+           [style.--incoming-offset]="incomingPanelOffset()">
         @if (activeTab() === 'General') {
           <unit-details-general-tab 
             [unit]="incomingUnit()!"
