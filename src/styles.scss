@@ -1042,6 +1042,11 @@ span {
             fill: var(--damaged-highlight-color) !important;
         }
 
+        .pip-hit-area:hover {
+            fill: transparent !important;
+            stroke: transparent !important;
+        }
+
         .critLoc.willChange:not(.damaged) {
             fill: orange !important;
             stroke: #FF0 !important;
@@ -1622,7 +1627,7 @@ span {
 
 @media screen {
     .mekbay-sheet {
-    
+        
         .applyHeatButtonFrame {
             transition: stroke 0.2s, fill 0.2s;
         }
