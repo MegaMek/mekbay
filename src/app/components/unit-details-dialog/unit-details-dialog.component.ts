@@ -113,8 +113,6 @@ export class UnitDetailsDialogComponent {
         return this.data.pilotingSkill;
     });
 
-    fluffImageUrl = signal<string | null>(null);
-
     // Swipe animation state
     isSwipeAnimating = signal(false);
     incomingUnit = signal<Unit | null>(null);
@@ -146,6 +144,14 @@ export class UnitDetailsDialogComponent {
         return this.unit;
     });
     
+    // Fluff background image URL - based on header unit (most visible during swipe)
+    headerFluffImageUrl = computed(() => {
+        const unit = this.headerUnit();
+        if (!unit?.fluff?.img) return null;
+        if (unit.fluff.img.endsWith('hud.png')) return null; // Ignore HUD images
+        return `${REMOTE_HOST}/images/fluff/${unit.fluff.img}`;
+    });
+    
     get unit(): Unit {
         const currentUnit = this.unitList[this.unitIndex()]
         if (currentUnit instanceof ForceUnit) {
@@ -156,20 +162,16 @@ export class UnitDetailsDialogComponent {
 
     @HostBinding('class.fluff-background')
     get hostHasFluff(): boolean {
-        return !!this.fluffImageUrl();
+        return !!this.headerFluffImageUrl();
     }
 
     @HostBinding('style.--fluff-bg')
     get hostFluffBg(): string | null {
-        const url = this.fluffImageUrl();
+        const url = this.headerFluffImageUrl();
         return url ? `url("${url}")` : null;
     }
     
     constructor() {
-        effect(() => {
-            this.unit; // Re-run when unit changes
-            this.updateFluffImage();
-        });
         effect(() => {
             this.unit;
             this.activeTab()
@@ -192,19 +194,6 @@ export class UnitDetailsDialogComponent {
                 replaceUrl: true
             });
         });
-    }
-
-    private updateFluffImage() {
-        this.fluffImageUrl.set(null);
-
-        if (this.unit?.fluff?.img) {
-            if (this.unit.fluff.img.endsWith('hud.png')) return; // Ignore HUD images
-            this.fluffImageUrl.set(`${REMOTE_HOST}/images/fluff/${this.unit.fluff.img}`);
-        }
-    }
-
-    onFluffImageError() {
-        this.fluffImageUrl.set(null);
     }
 
     // Keyboard navigation (Left/Right)

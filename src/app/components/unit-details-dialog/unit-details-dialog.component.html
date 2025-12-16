@@ -99,9 +99,9 @@
     }
   </div>
 
-  <!-- Fluff background image - placed after swipe-container so sibling selector works -->
-  @if (fluffImageUrl()) {
-    <img [src]="fluffImageUrl()" class="fluff-bg-image" alt="">
+  <!-- Fluff background image - uses header unit (most visible during swipe) -->
+  @if (headerFluffImageUrl(); as bgUrl) {
+    <img [src]="bgUrl" class="fluff-bg-image" alt="">
   }
 </div>
 <div class="footer" dialog-footer>
