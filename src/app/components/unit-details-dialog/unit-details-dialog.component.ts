@@ -242,14 +242,19 @@ export class UnitDetailsDialogComponent {
     onPrev() {
         if (this.hasPrev && !this.isSwipeAnimating() && !this.isSwiping()) {
             // Emulate RIGHT swipe: current goes right, prev comes from left
-            this.navigateToUnit(this.unitIndex() - 1, 'right');
+            // Emulate RIGHT swipe: current goes right, prev comes from left
+            // this.navigateToUnit(this.unitIndex() - 1, 'right');
+            this.floatingOverlayService.hide();
+            this.unitIndex.set(this.unitIndex() - 1);
         }
     }
 
     onNext() {
         if (this.hasNext && !this.isSwipeAnimating() && !this.isSwiping()) {
             // Emulate LEFT swipe: current goes left, next comes from right
-            this.navigateToUnit(this.unitIndex() + 1, 'left');
+            // this.navigateToUnit(this.unitIndex() + 1, 'left');
+            this.floatingOverlayService.hide();
+            this.unitIndex.set(this.unitIndex() + 1);
         }
     }
 
