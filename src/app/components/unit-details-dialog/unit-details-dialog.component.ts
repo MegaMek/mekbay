@@ -85,6 +85,7 @@ export class UnitDetailsDialogComponent {
     router = inject(Router);
     floatingOverlayService = inject(FloatingOverlayService);
     add = output<Unit>();
+    indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
     incomingPanelRef = viewChild<ElementRef>('incomingPanel');
 
@@ -185,6 +186,13 @@ export class UnitDetailsDialogComponent {
                 replaceUrl: true
             });
         });
+        
+        // Emit index changes
+        effect(() => {
+            const index = this.unitIndex();
+            this.indexChange.emit(index);
+        });
+        
         this.dialogRef.closed.subscribe(() => {
             this.router.navigate([], {
                 queryParams: {
