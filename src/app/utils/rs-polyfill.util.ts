@@ -836,15 +836,13 @@ export class RsPolyfillUtil {
 
         const localWidth = localBR.x - localTL.x;
         const localHeight = localBR.y - localTL.y;
-        const rootX = minX;
-        const rootY = minY;
         const rootW = Math.max(0, localWidth);
         const rootH = Math.max(0, localHeight);
 
         const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
         fo.setAttribute('id', 'fluff-image-fo');
-        fo.setAttribute('x', rootX.toString());
-        fo.setAttribute('y', rootY.toString());
+        fo.setAttribute('x', localTL.x.toString());
+        fo.setAttribute('y', localTL.y.toString());
         fo.setAttribute('width', rootW.toString());
         fo.setAttribute('height', rootH.toString());
         fo.setAttribute('style', 'display: none;');
@@ -858,7 +856,7 @@ export class RsPolyfillUtil {
         htmlImg.style.objectFit = 'contain';
 
         fo.appendChild(htmlImg);
-        svg.appendChild(fo); // we append directly to root svg to avoid coordinate issues
+        topLeftElement.after(fo);
     }
 
     private static addTurnStateClasses(unit: Unit, svg: SVGSVGElement): void {
