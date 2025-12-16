@@ -60,9 +60,7 @@
       @if (activeTab() === 'Intel') {
         <unit-details-intel-tab 
           [unit]="unit"
-          [fluffImageUrl]="fluffImageUrl()"
-          [isSwiping]="isSwiping() || isSwipeAnimating()"
-          (fluffImageError)="onFluffImageError()">
+          [isSwiping]="isSwiping() || isSwipeAnimating()">
         </unit-details-intel-tab>
       }
 
@@ -90,9 +88,7 @@
         @if (activeTab() === 'Intel') {
           <unit-details-intel-tab 
             [unit]="incomingUnit()!"
-            [fluffImageUrl]="null"
-            [isSwiping]="isSwiping() || isSwipeAnimating()"
-            (fluffImageError)="onFluffImageError()">
+            [isSwiping]="isSwiping() || isSwipeAnimating()">
           </unit-details-intel-tab>
         }
 

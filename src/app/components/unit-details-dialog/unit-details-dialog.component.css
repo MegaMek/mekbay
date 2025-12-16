@@ -67,6 +67,12 @@
     overflow-x: hidden;
 }
 
+/* Hide scrollbars during swiping and animation */
+.swipe-container.swiping .swipe-panel,
+.swipe-container.animating .swipe-panel {
+    overflow-y: hidden;
+}
+
 /* Only apply transform when swiping/animating to avoid stacking context issues at rest */
 .swipe-container.swiping .swipe-panel.current-panel,
 .swipe-container.animating .swipe-panel.current-panel {

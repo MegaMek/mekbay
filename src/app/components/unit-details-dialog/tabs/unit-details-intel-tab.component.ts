@@ -31,9 +31,10 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, output } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit } from '../../../models/units.model';
+import { REMOTE_HOST } from '../../../models/common.model';
 
 @Component({
     selector: 'unit-details-intel-tab',
@@ -44,12 +45,21 @@ import { Unit } from '../../../models/units.model';
 })
 export class UnitDetailsIntelTabComponent {
     unit = input.required<Unit>();
-    fluffImageUrl = input<string | null>(null);
     isSwiping = input<boolean>(false);
-    fluffImageError = output<void>();
+    fluffImageUrl = signal(<string | null>(null));
+
+    private updateFluffImage() {
+        this.fluffImageUrl.set(null);
+        const unit = this.unit();
+
+        if (unit?.fluff?.img) {
+            if (unit.fluff.img.endsWith('hud.png')) return; // Ignore HUD images
+            this.fluffImageUrl.set(`${REMOTE_HOST}/images/fluff/${unit.fluff.img}`);
+        }
+    }
 
     onFluffImageError() {
-        this.fluffImageError.emit();
+        this.fluffImageUrl.set(null);
     }
 
     sanitizeFluffHtml(text: string | undefined): string {
