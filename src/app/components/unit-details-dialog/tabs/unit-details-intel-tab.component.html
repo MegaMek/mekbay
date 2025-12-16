@@ -6,7 +6,7 @@
             <!-- Fluff Image -->
             @if (fluffImageUrl()) {
                 <div class="fluff-image-container" [class.swiping]="isSwiping()">
-                    <img [src]="fluffImageUrl()" class="fluff-image" (error)="onFluffImageError()"
+                    <img [src]="fluffImageUrl()" class="fluff-image"
                         alt="{{ unit().chassis }} {{ unit().model }}" />
                 </div>
             }
