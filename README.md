@@ -17,15 +17,15 @@ MekBay is an Angular-based application designed for BattleTech enthusiasts to:
 - **Print Support**: Generate printable versions of record sheets for tabletop play
 - **Force Organization**: Build and maintain multiple force compositions, save/load/share them across devices with cloud sync
 
-This project was generated with [Angular CLI](https://github.com/angular/angular-cli). Follow the steps below to set up your local development environment.
+Follow the steps below to set up your local development environment.
 
 ### Prerequisites
 
 Before you begin, ensure you have the following installed on your machine:
 
-- **Node.js**: Version 20 LTS or higher is required. You can download it from [nodejs.org](https://nodejs.org/).
+- **Node.js**: Version 24 LTS or higher is required. You can download it from [nodejs.org](https://nodejs.org/).
 - **npm**: This is usually installed automatically with Node.js.
-- **Angular CLI**: While not strictly required to run scripts (as we use local binaries), installing it globally is helpful for generating components.
+- **Angular CLI**: Version 21+, while not strictly required to run scripts (as we use local binaries), installing it globally is helpful for generating components.
   ```bash
   npm install -g @angular/cli
   ```
