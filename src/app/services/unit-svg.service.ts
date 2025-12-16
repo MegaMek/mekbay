@@ -358,22 +358,8 @@ export class UnitSvgService {
 
         critLocs.forEach(critLoc => {
             if (!critLoc.el) return;
-            if (critLoc.destroyed) {
-                if (critLoc.el.classList.contains('damaged')) {
-                    critLoc.el.classList.remove('fresh');
-                } else {
-                    critLoc.el.classList.add('fresh');
-                }
-                critLoc.el.classList.add('damaged');
-            } else {
-                if (critLoc.el.classList.contains('damaged')) {
-                    critLoc.el.classList.add('fresh');
-                } else {
-                    critLoc.el.classList.remove('fresh');
-                }
-                critLoc.el.classList.remove('damaged');
-                critLoc.el.classList.toggle('willDamage', !!critLoc.destroying);
-            }
+                critLoc.el.classList.toggle('damaged', !!critLoc.destroyed);
+                critLoc.el.classList.toggle('willChange', !!critLoc.destroying != !!critLoc.destroyed);
         });
     }
 

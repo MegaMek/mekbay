@@ -941,8 +941,10 @@ span {
         text-decoration: line-through;
     }
 
-    .critLoc.damaged {
-        fill: var(--damage-color) !important;
+    .critLoc {
+        &.damaged {
+            fill: var(--damage-color) !important;
+        }
     }
 
     .crewHit.damaged .crew-x {
@@ -1040,18 +1042,19 @@ span {
             fill: var(--damaged-highlight-color) !important;
         }
 
-        .critLoc.fresh:not(.damaged) {
-            stroke: #03a9f4 !important;
-        }
-
-        .critLoc.damaged.fresh {
-            fill: var(--damage-color) !important;
+        .critLoc.willChange:not(.damaged) {
+            fill: orange !important;
             stroke: #FF0 !important;
             stroke-width: 1.5px;
             paint-order: stroke fill;
             stroke-linejoin: round;
             stroke-linecap: round;
             vector-effect: non-scaling-stroke;
+        }
+
+        .critLoc.damaged.willChange {
+            stroke: #03a9f4 !important;
+            fill: #d2f1ff !important;
         }
 
         .pip.disabled {
