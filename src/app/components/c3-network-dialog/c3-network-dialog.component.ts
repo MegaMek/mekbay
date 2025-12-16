@@ -36,9 +36,12 @@ import {
     Component,
     computed,
     DestroyRef,
+    effect,
     ElementRef,
     inject,
     signal,
+    Signal,
+    untracked,
     viewChild,
     AfterViewInit
 } from '@angular/core';
@@ -63,8 +66,10 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
 
 export interface C3NetworkDialogData {
-    units: ForceUnit[];
-    networks: SerializedC3NetworkGroup[];
+    /** Units to display - can be an array or a signal for reactive updates */
+    units: ForceUnit[] | Signal<ForceUnit[]>;
+    /** Networks configuration - can be an array or a signal for reactive updates */
+    networks: SerializedC3NetworkGroup[] | Signal<SerializedC3NetworkGroup[]>;
     readOnly?: boolean;
 }
 
@@ -130,7 +135,10 @@ interface Vec2 {
     selector: 'c3-network-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [NgTemplateOutlet],
-    host: { class: 'fullscreen-dialog-host tv-fade' },
+    host: {
+        class: 'fullscreen-dialog-host tv-fade',
+        '[class.read-only]': 'data.readOnly'
+    },
     templateUrl: './c3-network-dialog.component.html',
     styleUrls: ['./c3-network-dialog.component.scss']
 })
@@ -168,6 +176,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected sidebarAnimated = signal(false);
     protected connectionsAboveNodes = computed(() => this.optionsService.options().c3NetworkConnectionsAboveNodes);
 
+    // Flag to skip initial effect trigger
+    private initialized = false;
+
     protected nodesById = computed(() => {
         const map = new Map<string, C3Node>();
         for (const node of this.nodes()) map.set(node.unit.id, node);
@@ -204,6 +215,147 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     constructor() {
         this.destroyRef.onDestroy(() => this.cleanupGlobalPointerState());
+        this.watchForRemoteUpdates();
+    }
+
+    /** Check if a value is a Signal */
+    private isSignal<T>(value: T | Signal<T>): value is Signal<T> {
+        return typeof value === 'function';
+    }
+
+    /** Get current units value (reads from signal if provided) */
+    private getUnits(): ForceUnit[] {
+        return this.isSignal(this.data.units) ? this.data.units() : this.data.units;
+    }
+
+    /** Get current networks value (reads from signal if provided) */
+    private getNetworks(): SerializedC3NetworkGroup[] {
+        return this.isSignal(this.data.networks) ? this.data.networks() : this.data.networks;
+    }
+
+    /**
+     * Watches for remote force updates and syncs C3 network data.
+     * When the force is updated via WebSocket, this effect will detect
+     * changes to the provided signals and update the dialog accordingly.
+     */
+    private watchForRemoteUpdates(): void {
+        // Only set up reactive watching if signals are provided
+        const hasReactiveUnits = this.isSignal(this.data.units);
+        const hasReactiveNetworks = this.isSignal(this.data.networks);
+        if (!hasReactiveUnits && !hasReactiveNetworks) return;
+
+        effect(() => {
+            // Read the current values from the signals (this creates dependencies)
+            const forceNetworks = this.getNetworks();
+            const forceUnits = this.getUnits();
+
+            // Use untracked to avoid circular dependencies when reading local state
+            untracked(() => {
+                // Skip the initial effect trigger before dialog is fully initialized
+                if (!this.initialized) return;
+
+                // Only sync if we haven't made local modifications
+                // If user has modified, they will save or cancel explicitly
+                if (this.hasModifications()) {
+                    // User has local changes - show a toast notification
+                    this.toastService.show(
+                        'C3 network was updated remotely. Your local changes will be kept.',
+                        'info'
+                    );
+                    return;
+                }
+
+                // Sync networks from force to dialog
+                this.networks.set([...forceNetworks]);
+
+                // Update nodes for any new/removed units
+                this.syncNodesWithUnits(forceUnits);
+
+                // Re-initialize master pin colors
+                this.initializeMasterPinColors();
+            });
+        });
+    }
+
+    /**
+     * Syncs the dialog's nodes with the current force units.
+     * Adds nodes for new C3-capable units and removes nodes for deleted units.
+     * Also syncs positions from unit.c3Position() for existing nodes.
+     */
+    private syncNodesWithUnits(forceUnits: ForceUnit[]): void {
+        const c3Units = forceUnits.filter(u => C3NetworkUtil.hasC3(u.getUnit()));
+        const currentNodes = this.nodes();
+        const currentNodeIds = new Set(currentNodes.map(n => n.unit.id));
+        const newUnitIds = new Set(c3Units.map(u => u.id));
+
+        // Remove nodes for units that no longer exist
+        const nodesToKeep = currentNodes.filter(n => newUnitIds.has(n.unit.id));
+
+        // Update ForceUnit references and positions for existing nodes
+        let positionsChanged = false;
+        for (const node of nodesToKeep) {
+            const updatedUnit = c3Units.find(u => u.id === node.unit.id);
+            if (updatedUnit) {
+                // Update the unit reference if it changed
+                if (updatedUnit !== node.unit) {
+                    node.unit = updatedUnit;
+                }
+                // Sync position from unit's c3Position if it differs
+                const pos = updatedUnit.c3Position();
+                if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
+                    if (node.x !== pos.x || node.y !== pos.y) {
+                        node.x = pos.x;
+                        node.y = pos.y;
+                        positionsChanged = true;
+                    }
+                }
+            }
+        }
+
+        // Add nodes for new units
+        const newUnits = c3Units.filter(u => !currentNodeIds.has(u.id));
+        if (newUnits.length > 0) {
+            const el = this.svgCanvas()?.nativeElement;
+            const canvasW = el?.clientWidth || 800;
+            const canvasH = el?.clientHeight || 600;
+            const maxZ = nodesToKeep.length > 0 ? Math.max(...nodesToKeep.map(n => n.zIndex)) : 0;
+
+            for (let i = 0; i < newUnits.length; i++) {
+                const unit = newUnits[i];
+                const pos = unit.c3Position();
+                const x = pos?.x ?? canvasW / 2 + (i * 200);
+                const y = pos?.y ?? canvasH / 2;
+                const c3Components = C3NetworkUtil.getC3Components(unit.getUnit());
+                const pinOffsetsX = this.computePinOffsetsX(c3Components.length);
+
+                nodesToKeep.push({
+                    unit,
+                    x,
+                    y,
+                    zIndex: maxZ + i + 1,
+                    c3Components,
+                    iconUrl: this.FALLBACK_ICON,
+                    pinOffsetsX
+                });
+            }
+
+            // Load icons for new units
+            this.loadMissingIconUrls(newUnits);
+        }
+
+        if (nodesToKeep.length !== currentNodes.length || newUnits.length > 0 || positionsChanged) {
+            this.nodes.set(nodesToKeep);
+        }
+    }
+
+    /**
+     * Computes the X offsets for pins based on the number of C3 components.
+     */
+    private computePinOffsetsX(componentCount: number): number[] {
+        if (componentCount <= 1) return [0];
+        const totalWidth = (componentCount - 1) * this.PIN_GAP;
+        const startX = -totalWidth / 2;
+        return Array.from({ length: componentCount }, (_, i) => startX + i * this.PIN_GAP);
     }
 
     /** Create the network context for mutations */
@@ -441,7 +593,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     const node = nodesById.get(id) ?? null;
                     members.push({
                         id, name: node?.unit.getUnit().chassis || 'Unknown',
-                        role: 'peer', canRemove: true, node
+                        role: 'peer', canRemove: !this.data.readOnly, node
                     });
                 }
             } else if (network.masterId) {
@@ -466,7 +618,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                             members.push({
                                 id: parsed.unitId,
                                 name: node?.unit.getUnit().chassis || 'Unknown',
-                                role: 'sub-master', canRemove: true, isSelfConnection,
+                                role: 'sub-master', canRemove: !this.data.readOnly, isSelfConnection,
                                 memberStr, node, network: childNet, networkVm: childVm ?? undefined
                             });
                             if (childVm) subNetworks.push(childVm);
@@ -477,7 +629,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     members.push({
                         id: parsed.unitId,
                         name: node?.unit.getUnit().chassis || 'Unknown',
-                        role: 'slave', canRemove: true, isSelfConnection, memberStr, node
+                        role: 'slave', canRemove: !this.data.readOnly, isSelfConnection, memberStr, node
                     });
                 }
             }
@@ -598,9 +750,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     ngAfterViewInit() {
         this.initializeNodes();
         this.resolveAllNodeCollisions();
-        this.networks.set([...(this.data.networks || [])]);
+        this.networks.set([...this.getNetworks()]);
         this.initializeMasterPinColors();
         this.fitViewToNodes();
+        this.initialized = true;
     }
 
     private resolveAllNodeCollisions(): void {
@@ -624,7 +777,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     private initializeNodes() {
-        const c3Units = this.data.units.filter(u => C3NetworkUtil.hasC3(u.getUnit()));
+        const c3Units = this.getUnits().filter(u => C3NetworkUtil.hasC3(u.getUnit()));
         if (c3Units.length === 0) return;
 
         const el = this.svgCanvas()?.nativeElement;
@@ -901,6 +1054,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     protected onPinPointerDown(event: PointerEvent, node: C3Node, compIndex: number) {
+        if (this.data.readOnly) return;
         if (event.pointerType === 'mouse' && event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
@@ -936,8 +1090,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         event.preventDefault();
         event.stopPropagation();
         this.setPointerCaptureIfAvailable(event);
-
-        if ((event.target as Element).closest('.pin')) return;
 
         this.activeTouches.set(event.pointerId, event);
         this.bringNodeToFront(node);
@@ -1241,6 +1393,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     protected close() {
-        this.dialogRef.close({ networks: this.data.networks || [], updated: false });
+        this.dialogRef.close({ networks: this.getNetworks(), updated: false });
     }
 }

@@ -315,7 +315,7 @@
             }
         </div>
 
-        @if (networks().length > 0) {
+        @if (!data.readOnly && networks().length > 0) {
         <button class="clear-all-btn bt-button danger" (click)="clearAllNetworks()">CLEAR ALL</button>
         }
     </div>
@@ -335,10 +335,12 @@
             <span class="network-type">
                 {{ vm.displayName }}
             </span>
-            <button class="remove-btn" (click)="removeNetwork(vm.network)"
-                title="Delete entire network">
-            <svg _ngcontent-ng-c917707860="" width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c917707860="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
-                        L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg></button>
+            @if (!data.readOnly) {
+                <button class="remove-btn" (click)="removeNetwork(vm.network)" title="Delete entire network">
+                <svg _ngcontent-ng-c917707860="" width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c917707860="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                            L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg>
+                </button>
+            }
         </div>
 
         <div class="network-units">
@@ -409,6 +411,8 @@
 </ng-template>
 
 <div class="c3-dialog-footer">
-    <button class="modal-btn bt-button primary" (click)="saveAndClose()">COMMIT</button>
+    @if (!data.readOnly) {
+        <button class="modal-btn bt-button primary" (click)="saveAndClose()">COMMIT</button>
+    }
     <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
 </div>

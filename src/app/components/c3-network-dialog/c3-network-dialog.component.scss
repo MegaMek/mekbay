@@ -228,10 +228,6 @@
     cursor: pointer;
     transition: opacity 0.2s;
 
-    &.interaction-disabled {
-      pointer-events: none;
-    }
-
     .pin-ring {
       fill: none;
       stroke-width: 1.5;
@@ -244,7 +240,6 @@
       transition: transform 0.15s ease-out, filter 0.2s;
     }
 
-
     &:hover {
       .pin-connector {
         transform: scale(1.2);
@@ -256,7 +251,28 @@
       }
     }
   }
+}
 
+// Read-only mode: disable pin interactions
+:host(.read-only) {
+  .pin-container .pin {
+    cursor: default;
+    pointer-events: none;
+
+    &:hover {
+      .pin-connector {
+        transform: none;
+      }
+
+      .pin-ring {
+        opacity: 0.4;
+        transform: none;
+      }
+    }
+  }
+}
+
+.pin-container {
   .pin-role-label {
     font-size: 12px;
     font-weight: 700;
@@ -537,7 +553,16 @@
     background: var(--tag-bg, #333);
     padding: 3px 8px;
     flex: 1;
+    min-width: 0; // Allow flex item to shrink below content size
+
+    .member-label {
+      display: block;
+      min-width: 0; // Allow flex item to shrink below content size
+      overflow: hidden;
+    }
+
     .name {
+      display: block;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;

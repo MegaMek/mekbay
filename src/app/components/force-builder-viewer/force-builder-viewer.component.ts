@@ -176,13 +176,12 @@ export class ForceBuilderViewerComponent {
     openC3Network(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
         const force = this.forceBuilderService.currentForce();
-        const allUnits = force?.units();
-        if (!allUnits || !force) return;
+        if (!force) return;
 
         const ref = this.dialogsService.createDialog<C3NetworkDialogResult>(C3NetworkDialogComponent, {
             data: <C3NetworkDialogData>{
-                units: allUnits,
-                networks: force.c3Networks(),
+                units: force.units,
+                networks: force.c3Networks,
                 readOnly: unit.readOnly()
             },
             width: '100dvw',
