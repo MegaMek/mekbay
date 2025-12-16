@@ -242,7 +242,6 @@ export class UnitDetailsDialogComponent {
     onPrev() {
         if (this.hasPrev && !this.isSwipeAnimating() && !this.isSwiping()) {
             // Emulate RIGHT swipe: current goes right, prev comes from left
-            // Emulate RIGHT swipe: current goes right, prev comes from left
             // this.navigateToUnit(this.unitIndex() - 1, 'right');
             this.floatingOverlayService.hide();
             this.unitIndex.set(this.unitIndex() - 1);
