@@ -31,7 +31,8 @@ export class SvgViewerLiteComponent {
         effect(() => {
             const u = this.unit();
             this.svgs.set([]);
-            this.svgsAttached.set(false)
+            this.svgsAttached.set(false);
+            this.cleanContainer();
 
             if (!u || !u.sheets || u.sheets.length === 0) return;
 
