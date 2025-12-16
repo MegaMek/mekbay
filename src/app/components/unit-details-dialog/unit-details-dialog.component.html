@@ -2,21 +2,21 @@
 <div dialog-header class="header">
   <div class="header-group">
     <div class="header-icon-container">
-      <unit-icon [unit]="unit"></unit-icon>
+      <unit-icon [unit]="headerUnit()"></unit-icon>
     </div>
     <div class="header-name-group">
-      <div class="header-model allow-select">{{ unit.model }}</div>
-      <div class="header-chassis allow-select">{{ unit.chassis }}</div>
+      <div class="header-model allow-select">{{ headerUnit().model }}</div>
+      <div class="header-chassis allow-select">{{ headerUnit().chassis }}</div>
     </div>
   </div>
   <div class="header-details-container">
     <div class="spanner"></div>
     <div class="header-details">
-      @if (unit.role && unit.role != 'None') {
-        <div class="role"><strong>{{ unit.role }}</strong></div>
+      @if (headerUnit().role && headerUnit().role != 'None') {
+        <div class="role"><strong>{{ headerUnit().role }}</strong></div>
       }
       <div class="info-slot numeric allow-select" title="Tonnage">
-        <span class="value">{{ formatThousands(unit.tons) }}</span>
+        <span class="value">{{ formatThousands(headerUnit().tons) }}</span>
         <img src="/images/weight.svg" class="icon" alt="tons">
       </div>
     </div>

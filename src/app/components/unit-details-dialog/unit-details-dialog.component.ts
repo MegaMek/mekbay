@@ -121,10 +121,30 @@ export class UnitDetailsDialogComponent {
     
     // Real-time swipe following state
     isSwiping = signal(false);
+    swipeDeltaX = signal(0); // Raw swipe delta for header calculation
     
     // CSS custom properties for panel positions
     currentPanelOffset = signal('0');
     incomingPanelOffset = signal('100%');
+    
+    // Header unit - shows the most visible unit during swipe
+    headerUnit = computed(() => {
+        const incoming = this.incomingUnit();
+        if (!incoming) return this.unit;
+        
+        // Get the dialog width to calculate 50% threshold
+        const dialogEl = this.baseDialogRef()?.nativeElement;
+        const containerWidth = dialogEl?.querySelector('.swipe-container')?.clientWidth || 400;
+        const threshold = containerWidth / 2;
+        
+        const delta = Math.abs(this.swipeDeltaX());
+        
+        // If we've swiped more than 50% of the width, show the incoming unit
+        if (delta > threshold) {
+            return incoming;
+        }
+        return this.unit;
+    });
     
     get unit(): Unit {
         const currentUnit = this.unitList[this.unitIndex()]
@@ -357,6 +377,7 @@ export class UnitDetailsDialogComponent {
         if (this.isSwipeAnimating()) return;
         this.floatingOverlayService.hide();
         this.isSwiping.set(true);
+        this.swipeDeltaX.set(0);
         this.currentPanelOffset.set('0');
         this.incomingUnit.set(null);
     }
@@ -365,6 +386,7 @@ export class UnitDetailsDialogComponent {
         if (this.isSwipeAnimating()) return;
         
         const deltaX = event.deltaX;
+        this.swipeDeltaX.set(deltaX);
         
         // Determine which unit would be incoming based on swipe direction
         // Swiping right (deltaX > 0) = going to previous unit, incoming from LEFT
@@ -472,6 +494,7 @@ export class UnitDetailsDialogComponent {
     private resetSwipeState(): void {
         this.isSwipeAnimating.set(false);
         this.isSwiping.set(false);
+        this.swipeDeltaX.set(0);
         this.currentPanelOffset.set('0');
         this.incomingPanelOffset.set('100%');
         this.incomingUnit.set(null);
