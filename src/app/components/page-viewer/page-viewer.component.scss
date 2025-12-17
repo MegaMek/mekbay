@@ -139,6 +139,21 @@
     }
 }
 
+.page-wrapper.shadow-page {
+    opacity: 0.1;
+    cursor: pointer;
+    transition: opacity 0.2s ease-out;
+    
+    /* Disable pointer events on SVG content to ensure wrapper handles clicks */
+    svg {
+        pointer-events: none;
+    }
+    
+    @media print {
+        display: none;
+    }
+}
+
 
 /* Error container */
 .error-container {
