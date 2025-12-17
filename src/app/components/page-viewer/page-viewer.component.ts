@@ -64,6 +64,7 @@ import {
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
+import { LayoutService } from '../../services/layout.service';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { CBTForce } from '../../models/cbt-force.model';
 import { SvgInteractionService } from './svg-interaction.service';
@@ -108,6 +109,7 @@ export class PageViewerComponent implements AfterViewInit {
     private forceBuilder = inject(ForceBuilderService);
     private optionsService = inject(OptionsService);
     private dbService = inject(DbService);
+    private layoutService = inject(LayoutService);
     canvasService = inject(PageViewerCanvasService);
 
     // Inputs
@@ -348,6 +350,18 @@ export class PageViewerComponent implements AfterViewInit {
             // Track the option - when it changes, update visibility on all displayed SVGs
             this.optionsService.options().recordSheetCenterPanelContent;
             this.setFluffImageVisibility();
+        });
+
+        // Watch for window resize to re-evaluate shadow pages visibility
+        effect(() => {
+            // Track window dimensions
+            this.layoutService.windowWidth();
+            this.layoutService.windowHeight();
+            
+            // Re-render shadow pages when window size changes (they may or may not fit now)
+            if (this.viewInitialized && !this.isSwiping) {
+                untracked(() => this.renderShadowPages());
+            }
         });
 
         inject(DestroyRef).onDestroy(() => this.cleanup());
@@ -1661,14 +1675,30 @@ export class PageViewerComponent implements AfterViewInit {
         const displayedPositions = this.zoomPanService.getPagePositions(effectiveVisible);
         
         // Shadow pages to create: one on the left (previous) and one on the right (next)
+        // Only add shadows if there's viewport space for them to be visible
         const shadowConfigs: { unitIndex: number; scaledLeftPosition: number; direction: 'left' | 'right' }[] = [];
+        
+        // Get container dimensions and translate to calculate visible area
+        const container = this.containerRef().nativeElement;
+        const containerWidth = container.clientWidth;
+        const translate = this.zoomPanService.translate();
+        const scaledPageWidth = PAGE_WIDTH * scale;
+        
+        // Calculate visible area bounds in content coordinates
+        const visibleLeft = -translate.x;
+        const visibleRight = visibleLeft + containerWidth;
         
         // Left shadow (previous page)
         const prevUnitIndex = (startIndex - 1 + totalUnits) % totalUnits;
         // Position to the left of the first displayed page (in scaled coordinates)
         const firstPageScaledLeft = (displayedPositions[0] ?? 0) * scale;
         const leftShadowPosition = firstPageScaledLeft - scaledPageStep;
-        shadowConfigs.push({ unitIndex: prevUnitIndex, scaledLeftPosition: leftShadowPosition, direction: 'left' });
+        const leftShadowRight = leftShadowPosition + scaledPageWidth;
+        
+        // Only add left shadow if at least part of it would be visible
+        if (leftShadowRight > visibleLeft) {
+            shadowConfigs.push({ unitIndex: prevUnitIndex, scaledLeftPosition: leftShadowPosition, direction: 'left' });
+        }
         
         // Right shadow (next page after the last displayed)
         const nextUnitIndex = (startIndex + effectiveVisible) % totalUnits;
@@ -1676,7 +1706,14 @@ export class PageViewerComponent implements AfterViewInit {
         const lastPageUnscaledLeft = displayedPositions[effectiveVisible - 1] ?? ((effectiveVisible - 1) * (PAGE_WIDTH + PAGE_GAP));
         const lastPageScaledLeft = lastPageUnscaledLeft * scale;
         const rightShadowPosition = lastPageScaledLeft + scaledPageStep;
-        shadowConfigs.push({ unitIndex: nextUnitIndex, scaledLeftPosition: rightShadowPosition, direction: 'right' });
+        
+        // Only add right shadow if at least part of it would be visible
+        if (rightShadowPosition < visibleRight) {
+            shadowConfigs.push({ unitIndex: nextUnitIndex, scaledLeftPosition: rightShadowPosition, direction: 'right' });
+        }
+        
+        // If no shadows would be visible, exit early
+        if (shadowConfigs.length === 0) return;
         
         // Pre-load shadow units to ensure SVGs are available
         const shadowUnits = shadowConfigs.map(s => allUnits[s.unitIndex] as CBTForceUnit).filter(u => u);
