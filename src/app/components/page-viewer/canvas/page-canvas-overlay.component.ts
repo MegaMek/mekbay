@@ -214,6 +214,9 @@ export class PageCanvasOverlayComponent {
                 // Register with service for clear functionality
                 this.canvasService.registerCanvas(this.canvasId(), () => this.clearCanvas());
                 
+                // Register abort callback for cross-canvas multitouch coordination
+                this.canvasService.registerAbortCallback(this.canvasId(), () => this.abortDrawing());
+                
                 // Load saved canvas data
                 this.dbService.getCanvasData(unit.id).then(data => {
                     if (!data) return;
@@ -264,6 +267,17 @@ export class PageCanvasOverlayComponent {
         const ctx = this.getCanvasContext();
         if (!ctx) return;
         ctx.clearRect(0, 0, this.canvasWidth(), this.canvasHeight());
+    }
+
+    /**
+     * Abort the current drawing gesture.
+     * Called by the global canvas service when cross-canvas multitouch is detected.
+     * This releases all pointers and removes event listeners without saving.
+     */
+    private abortDrawing(): void {
+        this.activePointers.clear();
+        this.primaryPointerId = null;
+        this.removeEventListeners();
     }
 
     private getPointerPosition(event: PointerEvent): { x: number; y: number } | null {
@@ -327,11 +341,20 @@ export class PageCanvasOverlayComponent {
         if (inputFilter === 'pen' && event.pointerType !== 'pen') return;
         if (inputFilter === 'touch' && event.pointerType !== 'touch') return;
 
-        // Handle multitouch detection for switching to zoom/pan
+        // Check with global service if we should handle this pointer
+        // This detects cross-canvas multitouch and returns false if zoom/pan should take over
+        const canvasId = this.canvasId();
+        if (!this.canvasService.shouldHandlePointer(event, canvasId)) {
+            // Multitouch detected - let event propagate to zoom service
+            return;
+        }
+
+        // Handle multitouch detection within this canvas (2nd finger on same canvas)
         if (!this.MULTITOUCH && this.activePointers.size > 0) {
             const primaryId = this.primaryPointerId;
             const primary = primaryId !== null ? this.activePointers.get(primaryId) : undefined;
             if (primary && primary.moved === false && primary.event && primary.event.pointerType === event.pointerType) {
+                // First pointer hasn't moved yet - switch to zoom mode
                 try {
                     const orig = primary.event as PointerEvent;
                     const cloned = new PointerEvent(orig.type, {
@@ -357,19 +380,28 @@ export class PageCanvasOverlayComponent {
                 } catch (err) {
                     this.logger.error('Failed to re-dispatch primary pointer event: ' + err);
                 }
+                // Unregister pointers from global service
+                for (const pointerId of this.activePointers.keys()) {
+                    this.canvasService.unregisterPointer(pointerId);
+                }
                 this.activePointers.clear();
                 this.primaryPointerId = null;
                 this.removeEventListeners();
                 return;
             }
+            // Already have a pointer, ignore additional ones
             return;
         }
 
         const pos = this.getPointerPosition(event);
         if (!pos) return;
 
+        // Now we're committed to handling this pointer - stop propagation
         event.stopPropagation();
         event.preventDefault();
+
+        // Register pointer with global service AFTER deciding to handle it
+        this.canvasService.registerPointer(event, canvasId);
 
         const interactionMode = this.isEraseButton(event.button) ? 'eraser' : mode === 'brush' ? 'brush' : 'eraser';
         const moved = event.pointerType !== 'touch';
@@ -413,6 +445,7 @@ export class PageCanvasOverlayComponent {
         }
 
         this.activePointers.delete(event.pointerId);
+        this.canvasService.unregisterPointer(event.pointerId);
         if (this.activePointers.size === 0) {
             this.primaryPointerId = null;
             this.removeEventListeners();
@@ -435,6 +468,7 @@ export class PageCanvasOverlayComponent {
         if (!this.activePointers.has(event.pointerId)) return;
 
         this.activePointers.delete(event.pointerId);
+        this.canvasService.unregisterPointer(event.pointerId);
         if (this.activePointers.size === 0) {
             this.primaryPointerId = null;
             this.removeEventListeners();
@@ -463,6 +497,8 @@ export class PageCanvasOverlayComponent {
             const threshold = this.MOVE_THRESHOLD * this.INTERNAL_SCALE;
             if (distSq >= threshold * threshold) {
                 fromPos.moved = true;
+                // Notify global service that drawing has started - can't switch to zoom anymore
+                this.canvasService.markPointerMoved(event.pointerId);
                 this.startDraw(event.pointerId);
             }
         }
