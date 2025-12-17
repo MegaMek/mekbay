@@ -570,6 +570,10 @@ export class PageViewerComponent implements AfterViewInit {
             // Calculate final position to animate to
             const targetOffset = -pagesToMove * scaledPageWidth;
             
+            // Pre-attach SVGs for the target position before animation starts
+            // This ensures the destination page is visible during the animation, not blank
+            this.updateSwipeSlotVisibility(targetOffset);
+            
             // Animate to the target position
             swipeWrapper.style.transition = 'transform 0.25s ease-out';
             swipeWrapper.style.transform = `translateX(${targetOffset}px)`;
