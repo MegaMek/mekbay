@@ -572,7 +572,8 @@ export class PageViewerComponent implements AfterViewInit {
             
             // Pre-attach SVGs for the target position before animation starts
             // This ensures the destination page is visible during the animation, not blank
-            this.updateSwipeSlotVisibility(targetOffset);
+            // Using addOnly mode adds incoming SVGs without removing outgoing ones
+            this.updateSwipeSlotVisibility(targetOffset, { addOnly: true });
             
             // Animate to the target position
             swipeWrapper.style.transition = 'transform 0.25s ease-out';
@@ -755,22 +756,29 @@ export class PageViewerComponent implements AfterViewInit {
      * An SVG can only be in one place at a time, so we need to:
      * 1. Determine which slots are currently visible (even partially)
      * 2. For each visible slot, attach its assigned unit's SVG if not already attached elsewhere
-     * 3. Remove SVGs from slots that are no longer visible
+     * 3. Remove SVGs from slots that are no longer visible (unless addOnly=true)
      * 4. When the same unit is assigned to multiple visible slots, prioritize based on swipe direction
+     * 
+     * @param translateX The current swipe translateX offset
+     * @param options.addOnly When true, only adds SVGs without removing existing ones. Used before
+     *                        animation to pre-attach incoming pages without disrupting outgoing ones.
      */
-    private updateSwipeSlotVisibility(translateX: number): void {
+    private updateSwipeSlotVisibility(translateX: number, options: { addOnly?: boolean } = {}): void {
+        const addOnly = options.addOnly ?? false;
         const container = this.containerRef().nativeElement;
         const scale = this.zoomPanService.scale();
         const containerWidth = container.clientWidth;
         const translate = this.zoomPanService.translate();
         
-        // Update swipe direction based on movement
-        if (translateX > this.lastSwipeTranslateX + 1) {
-            this.swipeDirection = 'right'; // Swiping right (content moves right, showing left pages)
-        } else if (translateX < this.lastSwipeTranslateX - 1) {
-            this.swipeDirection = 'left'; // Swiping left (content moves left, showing right pages)
+        // Update swipe direction based on movement (skip in addOnly mode to preserve direction)
+        if (!addOnly) {
+            if (translateX > this.lastSwipeTranslateX + 1) {
+                this.swipeDirection = 'right'; // Swiping right (content moves right, showing left pages)
+            } else if (translateX < this.lastSwipeTranslateX - 1) {
+                this.swipeDirection = 'left'; // Swiping left (content moves left, showing right pages)
+            }
+            this.lastSwipeTranslateX = translateX;
         }
-        this.lastSwipeTranslateX = translateX;
         
         // Calculate the visible area in content coordinates (accounting for transform)
         // The content is transformed by translateX (swipe) and the base translate
@@ -851,34 +859,38 @@ export class PageViewerComponent implements AfterViewInit {
         }
         
         // Second pass: remove SVGs from non-visible slots AND from non-winning visible slots
-        for (let slotIdx = 0; slotIdx < this.swipeSlots.length; slotIdx++) {
-            const slot = this.swipeSlots[slotIdx];
-            const unitIndex = this.swipeSlotUnitAssignments[slotIdx];
-            const svg = slot.querySelector('svg') as SVGSVGElement | null;
-            
-            if (!svg || svg.parentElement !== slot) continue;
-            
-            const isVisible = visibleSlotIndices.includes(slotIdx);
-            const isWinningSlot = unitIndex !== null && winningSlotForUnit.get(unitIndex) === slotIdx;
-            
-            // Remove if not visible OR if visible but not the winning slot for this unit
-            if (!isVisible || !isWinningSlot) {
-                slot.removeChild(svg);
-                // Remove neighbor-visible class when removing
-                this.renderer.removeClass(slot, 'neighbor-visible');
-                if (unitIndex !== null) {
-                    unitToSlotMap.delete(unitIndex);
+        // Skip this pass entirely in addOnly mode - we don't want to remove any SVGs
+        if (!addOnly) {
+            for (let slotIdx = 0; slotIdx < this.swipeSlots.length; slotIdx++) {
+                const slot = this.swipeSlots[slotIdx];
+                const unitIndex = this.swipeSlotUnitAssignments[slotIdx];
+                const svg = slot.querySelector('svg') as SVGSVGElement | null;
+                
+                if (!svg || svg.parentElement !== slot) continue;
+                
+                const isVisible = visibleSlotIndices.includes(slotIdx);
+                const isWinningSlot = unitIndex !== null && winningSlotForUnit.get(unitIndex) === slotIdx;
+                
+                // Remove if not visible OR if visible but not the winning slot for this unit
+                if (!isVisible || !isWinningSlot) {
+                    slot.removeChild(svg);
+                    // Remove neighbor-visible class when removing
+                    this.renderer.removeClass(slot, 'neighbor-visible');
+                    if (unitIndex !== null) {
+                        unitToSlotMap.delete(unitIndex);
+                    }
                 }
             }
         }
         
-        // Third pass: attach SVGs to winning visible slots that need them
+        // Third pass: attach SVGs to visible slots that need them
+        // In addOnly mode, we use a simpler approach - just attach if slot is empty and SVG is free
         const displayedUnitIds = new Set<string>();
         
         // In single-page mode, determine which slot is most visible for 'fixed' overlay mode
-        // Calculate visibility percentage for each winning slot
+        // Calculate visibility percentage for each winning slot (skip in addOnly mode)
         let mostVisibleSlotIdx: number | null = null;
-        if (visiblePages === 1) {
+        if (!addOnly && visiblePages === 1) {
             let maxVisibility = 0;
             for (const [, slotIdx] of winningSlotForUnit) {
                 const slot = this.swipeSlots[slotIdx];
@@ -899,85 +911,108 @@ export class PageViewerComponent implements AfterViewInit {
             }
         }
         
-        for (const [unitIndex, winningSlotIdx] of winningSlotForUnit) {
-            const slot = this.swipeSlots[winningSlotIdx];
+        // In addOnly mode, iterate visible slots directly instead of winning slots
+        // This is simpler and avoids moving SVGs that are already attached elsewhere
+        const slotsToProcess = addOnly 
+            ? visibleSlotIndices.map(slotIdx => [this.swipeSlotUnitAssignments[slotIdx], slotIdx] as [number | null, number])
+            : Array.from(winningSlotForUnit.entries());
+        
+        for (const [unitIndex, slotIdx] of slotsToProcess) {
+            if (unitIndex === null) continue;
+            
+            const slot = this.swipeSlots[slotIdx];
             const unit = allUnits[unitIndex] as CBTForceUnit;
             if (!unit) continue;
             
             const svg = unit.svg();
             if (!svg) continue;
             
-            displayedUnitIds.add(unit.id);
-            
-            // Check if this slot already has this SVG
+            // Check if this slot already has an SVG
             const existingSvg = slot.querySelector('svg');
-            if (existingSvg === svg) {
-                // Already in place, but still need to update overlay mode in single-page mode
-                if (!this.readOnly() && visiblePages === 1) {
-                    const overlayMode = winningSlotIdx === mostVisibleSlotIdx ? 'fixed' : 'page';
-                    this.getOrCreateInteractionOverlay(slot, unit, overlayMode);
+            if (existingSvg) {
+                // In addOnly mode, skip if slot already has any SVG
+                if (addOnly) continue;
+                
+                // In normal mode, check if it's the correct SVG
+                if (existingSvg === svg) {
+                    displayedUnitIds.add(unit.id);
+                    // Already in place, but still need to update overlay mode in single-page mode
+                    if (!this.readOnly() && visiblePages === 1) {
+                        const overlayMode = slotIdx === mostVisibleSlotIdx ? 'fixed' : 'page';
+                        this.getOrCreateInteractionOverlay(slot, unit, overlayMode);
+                    }
+                    continue;
                 }
-                continue;
             }
             
-            // Check if this unit's SVG is still attached elsewhere (shouldn't happen after cleanup)
-            if (unitToSlotMap.has(unitIndex)) {
-                continue;
+            // Check if this unit's SVG is attached elsewhere
+            // In addOnly mode, skip this unit - we can't move it without disrupting outgoing page
+            // In normal mode, this shouldn't happen after cleanup
+            if (svg.parentElement && svg.parentElement !== slot) {
+                if (addOnly) continue;
+                if (unitToSlotMap.has(unitIndex)) continue;
             }
+            
+            displayedUnitIds.add(unit.id);
             
             // Update slot data attributes
             slot.dataset['unitId'] = unit.id;
             slot.dataset['unitIndex'] = String(unitIndex);
             
-            // Check if this is a neighbor slot (non-center)
-            const isNeighborSlot = winningSlotIdx < centerSlotStart || winningSlotIdx > centerSlotEnd;
-            
-            // Add selected class if this is the current unit (only for center slots)
-            const isSelected = unit.id === this.unit()?.id;
-            const multipleVisible = visiblePages > 1;
-            this.containerRef().nativeElement.classList.toggle('multiple-visible', multipleVisible);
-            if (isSelected) {
-                this.renderer.addClass(slot, 'selected');
-            } else {
-                this.renderer.removeClass(slot, 'selected');
-            }
-            
-            // Add neighbor-visible class for neighbor slots (non-center)
-            if (isNeighborSlot) {
-                this.renderer.addClass(slot, 'neighbor-visible');
-            } else {
-                this.renderer.removeClass(slot, 'neighbor-visible');
+            // Skip class updates in addOnly mode (we're just pre-attaching)
+            if (!addOnly) {
+                // Check if this is a neighbor slot (non-center)
+                const isNeighborSlot = slotIdx < centerSlotStart || slotIdx > centerSlotEnd;
+                
+                // Add selected class if this is the current unit (only for center slots)
+                const isSelected = unit.id === this.unit()?.id;
+                const multipleVisible = visiblePages > 1;
+                this.containerRef().nativeElement.classList.toggle('multiple-visible', multipleVisible);
+                if (isSelected) {
+                    this.renderer.addClass(slot, 'selected');
+                } else {
+                    this.renderer.removeClass(slot, 'selected');
+                }
+                
+                // Add neighbor-visible class for neighbor slots (non-center)
+                if (isNeighborSlot) {
+                    this.renderer.addClass(slot, 'neighbor-visible');
+                } else {
+                    this.renderer.removeClass(slot, 'neighbor-visible');
+                }
             }
             
             // Apply scale to SVG and attach
             svg.style.transform = `scale(${scale})`;
             svg.style.transformOrigin = 'top left';
             slot.appendChild(svg);
-            unitToSlotMap.set(unitIndex, winningSlotIdx);
+            unitToSlotMap.set(unitIndex, slotIdx);
             
             // Set up interactions if needed
             if (!this.readOnly()) {
                 this.getOrCreateInteractionService(unit, svg);
                 this.getOrCreateCanvasOverlay(slot, unit);
-                // In single-page mode, use 'fixed' for most visible slot, 'page' for others
-                // In multi-page mode, always use 'page' (all pages are equally important)
-                const overlayMode = visiblePages === 1 && winningSlotIdx === mostVisibleSlotIdx ? 'fixed' : 'page';
+                // In addOnly mode, use 'page' mode (we're pre-attaching)
+                // In normal mode with single-page, use 'fixed' for most visible slot
+                const overlayMode = !addOnly && visiblePages === 1 && slotIdx === mostVisibleSlotIdx ? 'fixed' : 'page';
                 this.getOrCreateInteractionOverlay(slot, unit, overlayMode);
             }
         }
         
-        // Update displayed units list (use unique units from winning slots)
-        const uniqueUnitIndices = new Set(winningSlotForUnit.keys());
-        this.displayedUnits = Array.from(uniqueUnitIndices)
-            .map(idx => allUnits[idx] as CBTForceUnit)
-            .filter(u => u);
+        // Update displayed units list and cleanup (skip in addOnly mode)
+        if (!addOnly) {
+            const uniqueUnitIndices = new Set(winningSlotForUnit.keys());
+            this.displayedUnits = Array.from(uniqueUnitIndices)
+                .map(idx => allUnits[idx] as CBTForceUnit)
+                .filter(u => u);
 
-        // Keep reactive ordering in sync (for marker ordering & picker state)
-        this.displayedUnitIds.set(this.displayedUnits.map(u => u.id));
-        
-        // Clean up unused overlays (keep only displayed ones)
-        this.cleanupUnusedCanvasOverlays(displayedUnitIds);
-        this.cleanupUnusedInteractionOverlays(displayedUnitIds);
+            // Keep reactive ordering in sync (for marker ordering & picker state)
+            this.displayedUnitIds.set(this.displayedUnits.map(u => u.id));
+            
+            // Clean up unused overlays (keep only displayed ones)
+            this.cleanupUnusedCanvasOverlays(displayedUnitIds);
+            this.cleanupUnusedInteractionOverlays(displayedUnitIds);
+        }
         
         // Apply fluff image visibility to newly attached SVGs (neighbor pages during swipe)
         this.setFluffImageVisibility();
