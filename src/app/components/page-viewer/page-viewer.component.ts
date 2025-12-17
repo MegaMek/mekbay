@@ -949,6 +949,9 @@ export class PageViewerComponent implements AfterViewInit {
         // Clean up unused overlays (keep only displayed ones)
         this.cleanupUnusedCanvasOverlays(displayedUnitIds);
         this.cleanupUnusedInteractionOverlays(displayedUnitIds);
+        
+        // Apply fluff image visibility to newly attached SVGs (neighbor pages during swipe)
+        this.setFluffImageVisibility();
     }
 
     /**
