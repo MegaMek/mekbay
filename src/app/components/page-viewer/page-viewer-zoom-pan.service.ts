@@ -512,9 +512,13 @@ export class PageViewerZoomPanService {
                 return;
             }
 
-            // Decide: swipe or pan based on zoom level
+            // Decide: swipe or pan based on zoom level and gesture direction
             const isAtMinZoom = this.isFullyVisible();
-            this.gestureState.isSwiping = isAtMinZoom;
+            const isHorizontalGesture = Math.abs(dx) > Math.abs(dy);
+            
+            // Swipe only allowed when at min zoom AND gesture is horizontal
+            // Vertical gestures at min zoom should be ignored (no scroll, no pan)
+            this.gestureState.isSwiping = isAtMinZoom && isHorizontalGesture;
             this.gestureState.isPanning = !isAtMinZoom;
 
             this.gestureState.pointerLast = { x: event.clientX, y: event.clientY };
