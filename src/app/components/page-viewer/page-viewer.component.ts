@@ -221,6 +221,9 @@ export class PageViewerComponent implements AfterViewInit {
     // Swipe state - track which units are displayed during swipe
     private baseDisplayStartIndex = 0; // The starting index before swipe began
     private isSwiping = false; // Whether we're currently in a swipe gesture
+    private swipeVersion = 0; // Version counter to cancel stale animation callbacks
+    private swipeAnimationCallback: (() => void) | null = null; // Current animation callback
+    private pendingPagesToMove = 0; // Pages to move when animation completes (used for cancellation)
 
     // Swipe state - slot-based system for smooth transitions
     // Slots are positional containers (left neighbors, visible, right neighbors)
@@ -410,6 +413,30 @@ export class PageViewerComponent implements AfterViewInit {
     private async onSwipeStart(): Promise<void> {
         if (!this.swipeAllowed()) return;
         
+        // Cancel any pending animation callback from a previous swipe
+        // This prevents stale callbacks from interfering with the new swipe
+        this.swipeVersion++;
+        if (this.swipeAnimationCallback) {
+            const swipeWrapper = this.swipeWrapperRef().nativeElement;
+            swipeWrapper.removeEventListener('transitionend', this.swipeAnimationCallback);
+            this.swipeAnimationCallback = null;
+            
+            // Apply the pending page move that the animation was heading toward
+            if (this.pendingPagesToMove !== 0) {
+                const force = this.forceBuilder.currentForce();
+                const totalUnits = force?.units().length ?? 0;
+                if (totalUnits > 0) {
+                    const newStartIndex = ((this.baseDisplayStartIndex + this.pendingPagesToMove) % totalUnits + totalUnits) % totalUnits;
+                    this.viewStartIndex.set(newStartIndex);
+                }
+                this.pendingPagesToMove = 0;
+            }
+            
+            // Reset the wrapper transform immediately since we're starting a new swipe
+            swipeWrapper.style.transition = 'none';
+            swipeWrapper.style.transform = '';
+        }
+        
         // Close any open interaction overlays before swiping
         this.closeInteractionOverlays();
         
@@ -522,9 +549,22 @@ export class PageViewerComponent implements AfterViewInit {
             swipeWrapper.style.transition = 'transform 0.25s ease-out';
             swipeWrapper.style.transform = `translateX(${targetOffset}px)`;
 
+            // Store the pending move so we can apply it if cancelled
+            this.pendingPagesToMove = pagesToMove;
+
+            // Capture version to detect if a new swipe started during animation
+            const animationVersion = this.swipeVersion;
+            
             // After animation completes, update state
             const onAnimationEnd = () => {
                 swipeWrapper.removeEventListener('transitionend', onAnimationEnd);
+                this.swipeAnimationCallback = null;
+                this.pendingPagesToMove = 0;
+                
+                // If a new swipe started during the animation, don't run cleanup
+                if (this.swipeVersion !== animationVersion) {
+                    return;
+                }
                 
                 // Calculate new view start index
                 const newStartIndex = ((this.baseDisplayStartIndex + pagesToMove) % totalUnits + totalUnits) % totalUnits;
@@ -551,19 +591,33 @@ export class PageViewerComponent implements AfterViewInit {
                 }
             };
             
+            // Store reference so we can cancel if a new swipe starts
+            this.swipeAnimationCallback = onAnimationEnd;
             swipeWrapper.addEventListener('transitionend', onAnimationEnd, { once: true });
         } else {
             // Snap back - animate to original position
             swipeWrapper.style.transition = 'transform 0.2s ease-out';
             swipeWrapper.style.transform = '';
+            
+            // Capture version to detect if a new swipe started during animation
+            const snapBackVersion = this.swipeVersion;
 
             const onSnapBack = () => {
                 swipeWrapper.removeEventListener('transitionend', onSnapBack);
+                this.swipeAnimationCallback = null;
+                
+                // If a new swipe started during the animation, don't run cleanup
+                if (this.swipeVersion !== snapBackVersion) {
+                    return;
+                }
+                
                 this.cleanupSwipeState();
                 // Restore normal display without full re-render
                 this.displayUnit();
             };
             
+            // Store reference so we can cancel if a new swipe starts
+            this.swipeAnimationCallback = onSnapBack;
             swipeWrapper.addEventListener('transitionend', onSnapBack, { once: true });
         }
     }
@@ -905,6 +959,8 @@ export class PageViewerComponent implements AfterViewInit {
         swipeWrapper.style.transition = '';
         swipeWrapper.style.transform = '';
         this.isSwiping = false;
+        this.swipeAnimationCallback = null;
+        this.pendingPagesToMove = 0;
         
         // Clear swipe slot elements (they'll be recreated by displayUnit)
         const content = this.contentRef().nativeElement;
