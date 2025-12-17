@@ -721,6 +721,13 @@ export class PageViewerZoomPanService {
             }
         }
 
+        // Only allow double-tap zoom when tapping on a page (not empty space or shadow pages)
+        const pageWrapper = target?.closest('.page-wrapper');
+        if (!pageWrapper || pageWrapper.classList.contains('shadow-page')) {
+            this.doubleTapState.lastTapPoint = null;
+            return;
+        }
+
         const now = Date.now();
         const timeSinceLastTap = now - this.doubleTapState.lastTapTime;
         const distanceFromLastTap = this.doubleTapState.lastTapPoint
