@@ -118,11 +118,18 @@ export class GameService {
         });
 
         // Update URL with current game system, but only after initial URL state is consumed
+        // and only when no force is loaded (ForceBuilderService handles URL when a force exists)
         effect(() => {
             const gs = this.currentGameSystem();
             const canUpdate = this.urlStateService.initialStateConsumed();
             if (!canUpdate) {
                 return; // Don't update URL until initial state is read by all consumers
+            }
+            // Skip URL update if a force is loaded - ForceBuilderService handles all URL params
+            // including `gs` when a force exists, avoiding race conditions between the two services
+            const hasForce = this.forceBuilderService.currentForce() !== null;
+            if (hasForce) {
+                return;
             }
             this.router.navigate([], {
                 relativeTo: this.route,

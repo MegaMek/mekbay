@@ -207,9 +207,23 @@ export class ForceBuilderService {
             return false; // User cancelled, do not load new force
         }
         this.setForce(null);
-        this.selectedUnit.set(null);
+        this.clearForceUrlParams();
         this.logger.info('ForceBuilderService: Current force removed.');
         return true;
+    }
+
+    private clearForceUrlParams() {
+        const urlTree = this.router.parseUrl(this.router.url);
+        const currentPath = urlTree.root.children['primary']?.segments.map(s => s.path).join('/') || '';
+        this.router.navigate([currentPath], {
+            queryParams: {
+                units: null,
+                name: null,
+                instance: null
+            },
+            queryParamsHandling: 'merge',
+            replaceUrl: true
+        });
     }
 
     async createNewForce(name: string = 'New Force'): Promise<Force | null> {
@@ -652,14 +666,13 @@ export class ForceBuilderService {
             if (!this.urlStateInitialized) {
                 return;
             }
-            const currentForce = this.currentForce();
             this.router.navigate([], {
                 relativeTo: this.route,
                 queryParams: {
                     gs: queryParameters.gs,
                     units: queryParameters.units,
                     name: queryParameters.name,
-                    instance: currentForce?.instanceId() || null
+                    instance: queryParameters.instance
                 },
                 queryParamsHandling: 'merge',
                 replaceUrl: true
@@ -670,11 +683,11 @@ export class ForceBuilderService {
     queryParameters = computed(() => {
         const currentForce = this.currentForce();
         if (!currentForce) {
-            return {};
+            return { units: null, name: null, instance: null };
         }
-        const instanceId = currentForce?.instanceId();
-        const groups = currentForce?.groups() || [];
-        const units = currentForce?.units() || [];
+        const instanceId = currentForce.instanceId();
+        const groups = currentForce.groups() || [];
+        const units = currentForce.units() || [];
         let forceName: string | undefined = currentForce?.name;
         if (units.length === 0) {
             forceName = undefined;
