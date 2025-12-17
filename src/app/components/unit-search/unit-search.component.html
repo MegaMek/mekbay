@@ -94,18 +94,35 @@
                     <div class="primary-info">
                         <div class="chassis" [innerHTML]="highlight(unit.chassis)"></div>
                     </div>
+
                     <div class="third-info">
                         <div class="info-area">
-                            <div class="info-slot numeric"
-                                [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
-                                <span class="value">BV: {{ unit.bv | adjustedBV:gunnery:piloting |
-                                    formatNumber:true:true }}</span>
-                            </div>
-                            <div class="info-slot numeric"
-                                [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
-                                <span class="value">{{ unit.tons | formatTons }}</span>
-                                <img src="/images/weight.svg" class="icon" alt="Tonnage">
-                            </div>
+                            @if (gameService.isAlphaStrike()) {
+                                <div class="info-slot centered slim"
+                                    [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">
+                                    <span class="value">PV: {{ unit.as.PV | adjustedPV:gunnery |
+                                        formatNumber:true:true }}</span>
+                                </div>
+                                <div class="info-slot centered slim"
+                                    [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">
+                                    <span class="value">SZ: {{ unit.as.SZ }}</span>
+                                </div>
+                                <div class="info-slot centered slim"
+                                    [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">
+                                    <span class="value">TMM: {{ unit.as.TMM }}</span>
+                                </div>
+                            } @else {
+                                <div class="info-slot numeric"
+                                    [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
+                                    <span class="value">BV: {{ unit.bv | adjustedBV:gunnery:piloting |
+                                        formatNumber:true:true }}</span>
+                                </div>
+                                <div class="info-slot numeric"
+                                    [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
+                                    <span class="value">{{ unit.tons | formatTons }}</span>
+                                    <img src="/images/weight.svg" class="icon" alt="Tonnage">
+                                </div>
+                            }
                             <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
                                 <span class="value">{{ unit.year }}</span>
                                 @if (unit._era?.img) {

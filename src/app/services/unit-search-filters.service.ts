@@ -274,7 +274,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN, game: GameSystem.CBT },
     { key: '_tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
     { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CBT },
-    { key: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.AS },
+    { key: 'as.PV', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.AS },
     { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: GameSystem.CBT },
     { key: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CBT },
     { key: 'armorPer', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CBT },

@@ -21,7 +21,7 @@
     @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
     <div class="unit-alias">{{ forceUnit()?.alias() }}</div>
     }
-    <div class="pilot-info info-slot numeric">
+    <div class="pilot-info info-slot numeric slim">
         <span class="value">{{ forceUnit()?.getPilotStats() }}</span>
     </div>
 </div>
@@ -126,19 +126,35 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
         </div>
         <div class="third-info">
             <div class="info-area">
-                <div class="info-slot numeric" [tooltip]="bvTooltip()">
-                    <span class="value">BV: {{ forceUnit()?.getBv() | formatNumber:true }}</span>
-                </div>
-                <div class="info-slot numeric">
-                    <span class="value">{{ unit()?.tons | formatTons }}</span>
-                    <img src="/images/weight.svg" class="icon" alt="Tonnage">
-                </div>
-                <div class="info-slot numeric pilot-info interactive" (click)="editPilot($event)" title="Edit Pilot">
-                    <span class="value">{{ forceUnit()?.getPilotStats() }}</span>
-                    <img src="/images/helmet.svg" class="icon" alt="Pilot">
-                </div>
+                @if (gameService.isAlphaStrike()) {
+                    <div class="info-slot centered slim">
+                        <span class="value">PV: {{ forceUnit()?.getBv() | formatNumber:true }}</span>
+                    </div>
+                    <div class="info-slot centered slim">
+                        <span class="value">SZ: {{ forceUnit()?.getUnit()?.as?.SZ }}</span>
+                    </div>
+                    <div class="info-slot centered slim">
+                        <span class="value">TMM: {{ forceUnit()?.getUnit()?.as?.TMM }}</span>
+                    </div>
+                    <div class="info-slot centered slim pilot-info interactive" (click)="editPilot($event)" title="Edit Pilot">
+                        <span class="value">{{ forceUnit()?.getPilotStats() }}</span>
+                        <img src="/images/helmet.svg" class="icon" alt="Pilot">
+                    </div>
+                } @else {
+                    <div class="info-slot numeric" [tooltip]="bvTooltip()">
+                        <span class="value">BV: {{ forceUnit()?.getBv() | formatNumber:true }}</span>
+                    </div>
+                    <div class="info-slot numeric">
+                        <span class="value">{{ unit()?.tons | formatTons }}</span>
+                        <img src="/images/weight.svg" class="icon" alt="Tonnage">
+                    </div>
+                    <div class="info-slot numeric pilot-info interactive" (click)="editPilot($event)" title="Edit Pilot">
+                        <span class="value">{{ forceUnit()?.getPilotStats() }}</span>
+                        <img src="/images/helmet.svg" class="icon" alt="Pilot">
+                    </div>
+                }
                 @for (c3Item of c3NetworkItems(); track c3Item.networkType) {
-                <div class="info-slot slim c3link interactive"
+                <div class="info-slot c3link interactive"
                     [style.--network-color]="c3Item.color"
                     [class.enabled]="c3Item.enabled"
                     (click)="openC3Network($event)" title="Configure C3 Network">
@@ -152,7 +168,7 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                 </div>
                 }
                 @if (hasECM()) {
-                <div class="info-slot slim ecm {{ getECMMode() }}">
+                <div class="info-slot ecm {{ getECMMode() }}">
                     <span>ECM</span>
                 </div>
                 }

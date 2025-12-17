@@ -14,6 +14,7 @@ import { ECMMode } from '../../models/common.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
 import { C3Component, C3NetworkType } from '../../models/c3-network.model';
+import { GameService } from '../../services/game.service';
 
 @Component({
     selector: 'unit-block',
@@ -25,6 +26,7 @@ import { C3Component, C3NetworkType } from '../../models/c3-network.model';
 })
 export class UnitBlockComponent {
     optionsService = inject(OptionsService);
+    gameService = inject(GameService);
     forceUnit = input<ForceUnit>();
     compactMode = input<boolean>(false);
     onInfo = output<MouseEvent>();

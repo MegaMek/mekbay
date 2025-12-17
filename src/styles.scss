@@ -620,11 +620,15 @@ hr.divider {
         gap: 4px;
         min-width: 40px;
         justify-content: start;
-
+        
+        &.centered {
+            justify-content: center;
+        }
+        
         &.numeric {
             justify-content: end;
         }
-
+        
         &.slim {
             min-width: auto;
         }

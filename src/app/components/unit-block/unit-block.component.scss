@@ -72,19 +72,14 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
         text-overflow: ellipsis;
-        z-index: 1;
     }
 
     .unit-alias {
         font-weight: bold;
-        z-index: 1;
     }
 
     .info-slot {
-        background-color: rgba(0, 0, 0, 0.2);
         padding: 0px 2px;
-        display: flex;
-        align-items: center;
         gap: 1px;
         justify-content: start;
         font-size: 0.7em;

@@ -54,6 +54,7 @@ import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
+import { AdjustedPV } from '../../pipes/adjusted-pv.pipe';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { LongPressDirective } from '../../directives/long-press.directive';
 import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
@@ -98,7 +99,7 @@ const PRECONFIGURED_TAGS = ['Favorites', 'My Collection'];
     selector: 'unit-search',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.css',
 })

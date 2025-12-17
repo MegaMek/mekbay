@@ -72,6 +72,9 @@ export class BVCalculatorUtil {
      */
     static calculateAdjustedBV(baseBV: number, gunnerySkill: number, pilotingSkill: number): number {
         const multiplier = this.getSkillMultiplier(gunnerySkill, pilotingSkill);
+        if (multiplier === 1.0) {
+            return baseBV;
+        }
         return Math.round(baseBV * multiplier);
     }
 

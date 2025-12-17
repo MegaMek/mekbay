@@ -33,19 +33,19 @@
  */
 
 import { Pipe, PipeTransform } from "@angular/core";
-import { BVCalculatorUtil } from "../utils/bv-calculator.util";
+import { PVCalculatorUtil } from "../utils/pv-calculator.util";
 
 /*
  * Author: Drake
  */
 @Pipe({
-    name: 'adjustedBV',
+    name: 'adjustedPV',
     pure: true // Pure pipes are only called when the input changes
 })
-export class AdjustedBV implements PipeTransform {
+export class AdjustedPV implements PipeTransform {
 
-    transform(bv: number, gunnery: number, piloting: number): number {
-        if (bv === undefined) return 0;
-        return BVCalculatorUtil.calculateAdjustedBV(bv, gunnery, piloting);
+    transform(pv: number, skill: number): number {
+        if (pv === undefined) return 0;
+        return PVCalculatorUtil.calculateAdjustedPV(pv, skill);
     }
 }
