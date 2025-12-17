@@ -208,59 +208,11 @@ export class CBTPrintUtil {
         }
         const overlay = document.createElement('div');
         overlay.id = 'multipage-container';
-        overlay.innerHTML = `
-            <style>
-                @media print {
-                    body, html {
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        height: 100% !important;
-                        width: 100% !important;
-                    }
-                    #multipage-container {
-                        width: 100% !important;
-                        height: 100% !important;
-                        padding: 0;
-                        margin: 0;
-                        left: 0;
-                        top: 0;
-                        display: block;
-                        background: transparent !important;
-                    }
-                    #multipage-container .svg-container {
-                        display: flex;
-                        justify-content: center;
-                        align-items: center;
-                        background: white !important;
-                        width: 100% !important;
-                        height: 100% !important;
-                        margin: 0 auto !important;
-                        box-sizing: border-box;
-                        page-break-after: always;
-                        break-after: page;
-                        overflow: hidden;
-                    }
-                    #multipage-container .svg-container.last-svg { 
-                        page-break-after: auto !important;
-                        break-after: auto !important;
-                    }
-                    #multipage-container .svg-container > svg {
-                        display: block;
-                        box-sizing: border-box;
-                        padding: 0;
-                        margin: 0in 0.16in;
-                        transform: none !important;
-                        height: 100%;
-                        width: auto;
-                        max-width: 100%;
-                        min-width: 0;
-                        max-height: 100%;
-                        page-break-inside: avoid;
-                        break-inside: avoid;
-                    }
-                }
-            </style>${bodyContent}`;
+        overlay.innerHTML = bodyContent;
 
+        const style = document.createElement('style');
+        style.textContent = this.getPrintStyles();
+        overlay.appendChild(style);
         document.body.appendChild(overlay);
         document.body.classList.add('multipage-container-active');
 
@@ -324,6 +276,70 @@ export class CBTPrintUtil {
         for (let i = 0; i < n; i++) {
             await new Promise<void>(r => requestAnimationFrame(() => r()));
         }
+    }
+
+    private static getPrintStyles(): string {
+        return `
+            @media print {
+                body, html {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    height: 100% !important;
+                    width: 100% !important;
+                }
+
+                body.multipage-container-active > *:not(#multipage-container) {
+                    display: none !important;
+                }
+
+                #multipage-container {
+                    width: 100% !important;
+                    height: 100% !important;
+                    padding: 0;
+                    margin: 0;
+                    left: 0;
+                    top: 0;
+                    display: block;
+                    background: transparent !important;
+                }
+                #multipage-container .svg-container {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    background: white !important;
+                    width: 100% !important;
+                    height: 100% !important;
+                    margin: 0 auto !important;
+                    box-sizing: border-box;
+                    page-break-after: always;
+                    break-after: page;
+                    overflow: hidden;
+                }
+                #multipage-container .svg-container.last-svg { 
+                    page-break-after: auto !important;
+                    break-after: auto !important;
+                }
+                #multipage-container .svg-container > svg {
+                    display: block;
+                    box-sizing: border-box;
+                    padding: 0;
+                    margin: 0in 0.16in;
+                    transform: none !important;
+                    height: 100%;
+                    width: auto;
+                    max-width: 100%;
+                    min-width: 0;
+                    max-height: 100%;
+                    page-break-inside: avoid;
+                    break-inside: avoid;
+                }
+
+                @page {
+                    size: auto;
+                    margin: 0.25in !important;
+                }
+            }
+        `;
     }
 
 }
