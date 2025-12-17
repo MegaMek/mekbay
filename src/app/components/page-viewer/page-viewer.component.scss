@@ -49,7 +49,7 @@
     /* Gap is handled via page translateX */
     will-change: transform;
     transform-origin: top left;
-    
+
     @media print {
         transform: none !important;
         width: 100% !important;
@@ -91,6 +91,10 @@
         background: white !important;
         transform: none !important;
 
+        &.shadow-page {
+            display: none;
+        }
+
         &:not(.selected) {
             display: none;
         }
@@ -112,6 +116,7 @@
 .page-wrapper:has(svg) {
     background-color: #fff;
 }
+
 @media screen {
     :host-context(.night-mode) {
         .page-wrapper:has(svg) {
@@ -122,18 +127,18 @@
 
 /* Neighbor pages during swipe */
 .page-wrapper.neighbor-page {
-//     pointer-events: none;
-//     transition: opacity 0.2s;
+    //     pointer-events: none;
+    //     transition: opacity 0.2s;
 
-//     /* Hide wrapper when no SVG inside */
-//     &:not(:has(svg)) {
-//         opacity: 0;
-//     }
+    //     /* Hide wrapper when no SVG inside */
+    //     &:not(:has(svg)) {
+    //         opacity: 0;
+    //     }
 
-//     /* Fade in neighbor pages */
-//     &.neighbor-visible {
-//         opacity: 1;
-//     }
+    //     /* Fade in neighbor pages */
+    //     &.neighbor-visible {
+    //         opacity: 1;
+    //     }
     @media print {
         display: none;
     }
@@ -143,12 +148,12 @@
     opacity: 0.1;
     cursor: pointer;
     transition: opacity 0.2s ease-out;
-    
+
     /* Disable pointer events on SVG content to ensure wrapper handles clicks */
     svg {
         pointer-events: none;
     }
-    
+
     @media print {
         display: none;
     }
@@ -213,5 +218,76 @@
 
     @media print {
         display: none;
+    }
+}
+
+@media print {
+    :host,
+    .page-viewer-container,
+    .page-viewer-container .page-content {
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        left: 0 !important;
+        top: 0 !important;
+        display: block !important;
+        background: transparent !important;
+        transform: none !important;
+        box-sizing: border-box;
+    }
+
+    .page-wrapper:not(.selected) {
+        display: none;
+    }
+
+    .page-wrapper.selected {
+        display: flex;
+        justify-content: flex-start !important;
+        align-items: flex-start !important;
+        background: white !important;
+        width: 100% !important;
+        height: 100% !important;
+        min-width: 100% !important;
+        min-height: 100% !important;
+        left: 0 !important;
+        top: 0 !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+        box-sizing: border-box;
+        page-break-after: always;
+        break-after: page;
+        overflow: hidden;
+        background: white !important;
+        transform: none !important;
+
+        ::ng-deep svg.mekbay-sheet {
+            display: block;
+            box-sizing: border-box;
+            padding: 0 !important;
+            margin: 0 !important;
+            transform: none !important;
+            top: 0 !important;
+            left: 0 !important;
+            height: 100%;
+            width: auto;
+            max-width: 100%;
+            min-width: 0;
+            max-height: 100%;
+            page-break-inside: avoid !important;
+            page-break-after: auto !important;
+            break-after: auto !important;
+        }
+
+        ::ng-deep svg {
+            transform: none !important;
+        }
+    }
+
+    @page {
+        size: auto;
+        margin: 0cm;
+        padding: 0cm !important;
+        overflow: hidden;
     }
 }

@@ -829,24 +829,6 @@ hr.divider {
         outline-offset: -4px;
     }
 }
-@media print {
-    .page-viewer-container .page-wrapper.selected > svg.mekbay-sheet {
-        display: block;
-        box-sizing: border-box;
-        padding: 0;
-        margin: 0in 0.16in;
-        transform: none !important;
-        height: 100%;
-        width: auto;
-        max-width: 100%;
-        min-width: 0;
-        max-height: 100%;
-        page-break-inside: avoid;
-        page-break-after: auto !important;
-        break-after: auto !important;
-        transform: none !important;
-    }
-}
 
 .mekbay-sheet {
     background-color: #FFF;
@@ -1742,6 +1724,10 @@ hr.divider {
         filter: none !important;
     }
 
+    .mekbay-sheet {
+        transform: none !important;
+    }
+
     html,
     body {
         width: 100%;
@@ -1750,85 +1736,6 @@ hr.divider {
         padding: 0;
         background: white;
         overflow: unset;
-    }
-
-    body.multipage-container-active *:not(#multipage-container):not(#multipage-container *):not(defs):not(defs *):not(symbol):not(symbol *):not(marker):not(marker *):not(clipPath):not(clipPath *):not(pattern):not(pattern *):not(linearGradient):not(linearGradient *):not(radialGradient):not(radialGradient *) {
-        display: none !important;
-        visibility: hidden !important;
-    }
-
-
-    force-builder-viewer,
-    .header {
-        display: none !important;
-    }
-
-
-    body:not(.multipage-container-active) {
-
-        main,
-        .app-container,
-        .main-content,
-        .content-area,
-        svg-viewer,
-        .svg-viewer-container,
-        .svg-viewer-container .slides {
-            width: 100% !important;
-            height: auto !important;
-            padding: 0;
-            margin: 0 !important;
-            left: 0;
-            top: 0;
-            display: block;
-            background: transparent !important;
-        }
-
-        .svg-viewer-container .slide {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: white !important;
-            width: 100% !important;
-            height: 100% !important;
-            padding: 0 !important;
-            margin: 0 auto !important;
-            box-sizing: border-box;
-            page-break-after: always;
-            break-after: page;
-            overflow: hidden;
-            background: white !important;
-            transform: none !important;
-
-            >svg {
-                display: block;
-                box-sizing: border-box;
-                padding: 0;
-                margin: 0in 0.16in;
-                transform: none !important;
-                height: 100%;
-                width: auto;
-                max-width: 100%;
-                min-width: 0;
-                max-height: 100%;
-                page-break-inside: avoid;
-                page-break-after: auto !important;
-                break-after: auto !important;
-            }
-        }
-    }
-
-    #faded-arrow,
-    #now-arrow,
-    #next-arrow {
-        display: none !important;
-        visibility: hidden !important;
-    }
-
-    @page {
-        size: auto;
-        margin: 0cm;
-        padding: 0cm !important;
-        overflow: hidden;
     }
 
 }
@@ -1840,6 +1747,7 @@ hr.divider {
 }
 
 @media print {
+    .header,
     .backdrop,
     .screen-only {
         display: none !important;

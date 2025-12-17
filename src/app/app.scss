@@ -18,6 +18,10 @@
 
 :host-context(.sidebar-docked) .main-content {
     margin-left: calc(var(--sidebar-offset) + var(--safe-area-inset-left));
+
+    @media print {
+        margin-left: 0;
+    }
 }
 
 .content-area {

@@ -93,6 +93,15 @@ interface BrushLocation {
             width: 100%;
             height: 100%;
             pointer-events: none;
+
+            @media print {
+                top: 0 !important;
+                left: 0 !important;
+                height: 100% !important;
+                width: 100% !important;
+                transform: none !important;
+                display: none !important;
+            }
         }
 
         .page-canvas-overlay {
