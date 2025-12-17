@@ -127,9 +127,7 @@ export abstract class ForceUnit {
         return this.unit;
     }
 
-    getBv = computed<number>(() => {
-        return this.unit.bv;
-    })
+    abstract getBv: Signal<number>;
 
     abstract getPilotStats: Signal<any>;
 

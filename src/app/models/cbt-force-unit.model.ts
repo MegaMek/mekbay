@@ -449,7 +449,7 @@ export class CBTForceUnit extends ForceUnit {
         return c3Tax;
     });
 
-    override getBv = computed<number>(() => {
+    getBv = computed<number>(() => {
         return this.baseBvPilotAdjusted() + this.c3Tax();
     });
 

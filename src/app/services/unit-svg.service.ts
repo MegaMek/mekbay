@@ -248,7 +248,7 @@ export class UnitSvgService {
             if (!destroyedOverlay) {
                 destroyedOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 destroyedOverlay.setAttribute('id', 'destroyed-overlay');
-                destroyedOverlay.classList.add('no-invert', 'noprint');
+                destroyedOverlay.classList.add('no-invert', 'screen-only');
                 destroyedOverlay.setAttribute('x', (this.svgDimensions.width / 2).toString());
                 destroyedOverlay.setAttribute('y', (this.svgDimensions.height / 2.5).toString());
                 destroyedOverlay.setAttribute('text-anchor', 'middle');
@@ -491,7 +491,7 @@ export class UnitSvgService {
                 if (!arrow) {
                     arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
                     arrow.setAttribute('id', id);
-                    arrow.classList.add('noprint');
+                    arrow.classList.add('screen-only');
                     heatEl.parentElement?.appendChild(arrow);
                 }
                 arrow.setAttribute('points', `${x + 8},${y - 5} ${x},${y} ${x + 8},${y + 5}`);

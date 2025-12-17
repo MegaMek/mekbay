@@ -20,7 +20,7 @@
         <!-- Empty state -->
         <div class="empty-state-container">
             <div class="header">
-                <div class="home-buttons noprint">
+                <div class="home-buttons screen-only">
                     <button class="home-button" (click)="showLoadForceDialog()">
                         <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
                             xmlns="http://www.w3.org/2000/svg">
@@ -41,7 +41,7 @@
                 <div class="main-search">
                     <div class="empty-state-logo">
                         <img src="/images/logo.png" alt="MekBay Logo">
-                        <div class="beta-notice noprint" (click)="showBetaDialog();">BETA</div>
+                        <div class="beta-notice screen-only" (click)="showBetaDialog();">BETA</div>
                     </div>
                     <div class="search-container">
                         <div [cdkPortalOutlet]="unitSearchPortalMain"></div>
@@ -105,7 +105,7 @@
                     </button>
                 </div>
                 }
-                <div class="build-info noprint" (click)="showBetaDialog();">{{ buildInfo }}</div>
+                <div class="build-info screen-only" (click)="showBetaDialog();">{{ buildInfo }}</div>
                 <span class="footer-text" style="cursor:pointer" (click)="showLicenseDialog();">MekBay is an
                     open-source, fan-made project not affiliated with Catalyst Game Labs or The Topps Company, Inc.
                     BattleTech and related marks are trademarks of The Topps Company, Inc. All rights

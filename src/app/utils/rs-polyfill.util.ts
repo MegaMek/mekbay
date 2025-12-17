@@ -317,7 +317,7 @@ export class RsPolyfillUtil {
         // Create group for indicator
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         group.setAttribute('id', `unconscious_indicator_${crewId}`);
-        group.setAttribute('class', 'unconscious-indicator noprint');
+        group.setAttribute('class', 'unconscious-indicator screen-only');
         group.setAttribute('crewId', crewId.toString());
         // group.setAttribute('display', 'none'); // Hidden by default
 
@@ -398,7 +398,7 @@ export class RsPolyfillUtil {
         // Create group for checkbox and label
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         group.setAttribute('id', `crew_status_checkbox_${crewId}`);
-        group.setAttribute('class', 'crew-status-checkbox noprint');
+        group.setAttribute('class', 'crew-status-checkbox screen-only');
         group.setAttribute('crewId', crewId.toString());
         group.setAttribute('state', 'unconscious');
 
@@ -659,7 +659,7 @@ export class RsPolyfillUtil {
             rect.setAttribute('width', rectWidth.toString());
             rect.setAttribute('height', rectHeight.toString());
             rect.setAttribute('inventory-id', id);
-            rect.setAttribute('class', 'inventoryEntryButton interactive noprint');
+            rect.setAttribute('class', 'inventoryEntryButton interactive screen-only');
             nameEl.parentElement?.insertBefore(rect, nameEl.parentElement.firstChild);
 
             const alternativeModes = group.querySelectorAll('.alternativeMode');
@@ -674,7 +674,7 @@ export class RsPolyfillUtil {
                 rect.setAttribute('height', rectHeight.toString());
                 rect.setAttribute('inventory-id', id);
                 rect.setAttribute('mode', modeName);
-                rect.setAttribute('class', 'inventoryEntryButton alternativeModeButton interactive noprint');
+                rect.setAttribute('class', 'inventoryEntryButton alternativeModeButton interactive screen-only');
                 mode.insertBefore(rect, mode.firstElementChild);
             });
         });
@@ -738,7 +738,7 @@ export class RsPolyfillUtil {
             rect.setAttribute('cy', centerY.toString());
             rect.setAttribute('r', (hitAreaSize / 2).toString());
             rect.setAttribute('fill', 'transparent');
-            rect.setAttribute('class', 'pip-hit-area noprint');
+            rect.setAttribute('class', 'pip-hit-area screen-only');
 
             // Copy relevant attributes from pip to hit area
             const loc = pip.getAttribute('loc');
@@ -777,7 +777,7 @@ export class RsPolyfillUtil {
             rect.setAttribute('y', bbox.y.toString());
             rect.setAttribute('width', bbox.width.toString());
             rect.setAttribute('height', bbox.height.toString());
-            rect.setAttribute('class', 'overflowButton noprint');
+            rect.setAttribute('class', 'overflowButton screen-only');
             rect.setAttribute('fill', 'transparent');
             rect.setAttribute('pointer-events', 'all');
             overflowFrameEl.parentElement?.insertBefore(rect, overflowFrameEl);
@@ -792,7 +792,7 @@ export class RsPolyfillUtil {
         if (!firstGroup) return;
         const buttonGroup = firstGroup.cloneNode(true) as SVGGElement;
         buttonGroup.setAttribute('id', 'applyHeatButton');
-        buttonGroup.setAttribute('class', 'noprint');
+        buttonGroup.setAttribute('class', 'screen-only');
         const textEl = buttonGroup.querySelector('text');
         if (textEl) {
             textEl.textContent = 'APPLY HEAT';
@@ -817,7 +817,7 @@ export class RsPolyfillUtil {
             rect.setAttribute('y', y.toString());
             rect.setAttribute('width', width.toString());
             rect.setAttribute('height', height.toString());
-            rect.setAttribute('class', 'changeActiveHeatsinksCountButton noprint');
+            rect.setAttribute('class', 'changeActiveHeatsinksCountButton screen-only');
             rect.setAttribute('fill', 'transparent');
             rect.setAttribute('pointer-events', 'all');
             pipsGroup.insertBefore(rect, pipsGroup.firstChild);
@@ -950,7 +950,7 @@ export class RsPolyfillUtil {
             rect.setAttribute('width', rectWidth.toString());
             rect.setAttribute('height', rectHeight.toString());
             rect.setAttribute('fill', '#000');
-            rect.setAttribute('class', moveEl.id + '-rect noprint');
+            rect.setAttribute('class', moveEl.id + '-rect screen-only');
             rect.setAttribute('display', 'none');
 
 
@@ -964,7 +964,7 @@ export class RsPolyfillUtil {
             text.setAttribute('font-size', fontSize.toString());
             text.setAttribute('font-weight', 'bold');
             text.setAttribute('fill', '#fff');
-            text.setAttribute('class', moveEl.id + '-rect noprint');
+            text.setAttribute('class', moveEl.id + '-rect screen-only');
             rect.setAttribute('display', 'none');
             if (moveEl == mpWalkEl) text.textContent = '+1';
             else if (moveEl == mpRunEl) text.textContent = '+2';

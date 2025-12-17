@@ -42,6 +42,7 @@ import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnitState } from './as-force-unit-state.model';
 import { CrewMember } from './crew-member.model';
 import { ASCustomPilotAbility } from './as-abilities.model';
+import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
 export type AbilitySelection = string | ASCustomPilotAbility;
@@ -56,7 +57,6 @@ export class ASForceUnit extends ForceUnit {
     private readonly _pilotName = signal<string | undefined>(undefined);
     private readonly _pilotSkill = signal<number>(4);
     private readonly _pilotAbilities = signal<AbilitySelection[]>([]);
-    public adjustedPv = signal<number | null>(null);
 
     readonly alias = this._pilotName.asReadonly();
     readonly pilotSkill = this._pilotSkill.asReadonly();
@@ -84,13 +84,20 @@ export class ASForceUnit extends ForceUnit {
         }
     }
 
-    override getBv = computed<number>(() => {
+    getBv = computed<number>(() => {
         const adjustedPv = this.adjustedPv();
         if (adjustedPv !== null) {
             return adjustedPv;
         }
-        return this.unit.bv;
+        return this.unit.pv;
     })
+
+    public adjustedPv = computed<number>(() => {
+        return PVCalculatorUtil.calculateAdjustedPV(
+            this.unit.pv,
+            this.pilotSkill()
+        );
+    });
 
     /** Alpha Strike units don't have detailed crew management - return empty signal */
     getCrewMembers = computed<CrewMember[]>(() => {
@@ -101,36 +108,11 @@ export class ASForceUnit extends ForceUnit {
         return this.state.heat();
     });
 
-    private calculateAdjustedPV(basePV: number, skill: number): number {
-        // PV adjustment based on skill (skill 4 is baseline)
-        const skillModifiers: Record<number, number> = {
-            0: 2.4,
-            1: 1.9,
-            2: 1.5,
-            3: 1.2,
-            4: 1.0,
-            5: 0.9,
-            6: 0.8,
-            7: 0.7,
-            8: 0.6
-        };
-        const modifier = skillModifiers[skill] ?? 1.0;
-        return Math.round(basePV * modifier);
+    setHeat(heat: number): void {
+        this.state.heat.set(heat);
+        this.setModified();
+        this.force.emitChanged();
     }
-    
-    recalculatePv() {
-        const skillLevel = this._pilotSkill();
-        let bv = this.unit.as.PV;
-        const adjustedPv = this.calculateAdjustedPV(bv, skillLevel);
-        
-        if (adjustedPv !== this.unit.bv) {
-            if (adjustedPv !== this.adjustedPv()) {
-                this.adjustedPv.set(adjustedPv);
-            }
-        } else {
-            this.adjustedPv.set(null);
-        }
-    };
     
     repairAll(): void {
         this.state.destroyed.set(false);
@@ -146,7 +128,6 @@ export class ASForceUnit extends ForceUnit {
 
     setPilotSkill(skill: number): void {
         this._pilotSkill.set(skill);
-        this.recalculatePv();
         this.setModified();
         this.force.emitChanged();
     }
@@ -204,7 +185,6 @@ export class ASForceUnit extends ForceUnit {
         if (state.c3Position) {
             this.state.c3Position.set(Sanitizer.sanitize(state.c3Position, C3_POSITION_SCHEMA));
         }
-        this.recalculatePv();
     }
 
     public static override deserialize(
@@ -231,7 +211,6 @@ export class ASForceUnit extends ForceUnit {
             fu._pilotAbilities.set(data.abilities);
         }
         fu.deserializeState(data.state);
-        fu.recalculatePv();
         return fu;
     }
 

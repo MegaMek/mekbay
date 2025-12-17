@@ -10,6 +10,8 @@
     font-size: 2.5cqw;
     overflow: hidden;
     container-type: inline-size;
+    page-break-inside: avoid;
+    break-inside: avoid;
 
     @media print {
         width: 88mm;

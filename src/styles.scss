@@ -1757,10 +1757,6 @@ hr.divider {
         visibility: hidden !important;
     }
 
-    .noprint,
-    .backdrop {
-        display: none !important;
-    }
 
     force-builder-viewer,
     .header {
@@ -1778,7 +1774,7 @@ hr.divider {
         .svg-viewer-container,
         .svg-viewer-container .slides {
             width: 100% !important;
-            height: 100% !important;
+            height: auto !important;
             padding: 0;
             margin: 0 !important;
             left: 0;
@@ -1842,7 +1838,9 @@ hr.divider {
         display: none !important;
     }
 }
+
 @media print {
+    .backdrop,
     .screen-only {
         display: none !important;
     }

@@ -1,5 +1,5 @@
 
-import { ChangeDetectionStrategy, Component, inject, computed, input, ElementRef, Renderer2, Injector, viewChildren } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, computed, input, ElementRef, Renderer2, Injector, viewChildren, ApplicationRef } from '@angular/core';
 import { PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { OptionsService } from '../../services/options.service';
@@ -13,10 +13,12 @@ import { DialogsService } from '../../services/dialogs.service';
 import { DataService } from '../../services/data.service';
 import { ForcePackDialogComponent } from '../force-pack-dialog/force-pack-dialog.component';
 import { CBTPrintUtil } from '../../utils/cbtprint.util';
+import { ASPrintUtil } from '../../utils/asprint.util';
 import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ShareForceDialogComponent, ShareForceDialogData } from '../share-force-dialog/share-force-dialog.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { CBTForce } from '../../models/cbt-force.model';
+import { ASForce } from '../../models/as-force.model';
 
 /*
  * Sidebar footer component
@@ -32,6 +34,7 @@ import { CBTForce } from '../../models/cbt-force.model';
 })
 export class SidebarFooterComponent {
     injector = inject(Injector);
+    appRef = inject(ApplicationRef);
     elRef = inject(ElementRef<HTMLElement>);
     layoutService = inject(LayoutService);
     optionsService = inject(OptionsService);
@@ -97,6 +100,8 @@ export class SidebarFooterComponent {
         }
         if (currentForce instanceof CBTForce) {
             CBTPrintUtil.multipagePrint(this.dataService, this.optionsService, currentForce.units());
+        } else if (currentForce instanceof ASForce) {
+            ASPrintUtil.multipagePrint(this.appRef, this.injector, this.optionsService, currentForce.units());
         }
     }
 
