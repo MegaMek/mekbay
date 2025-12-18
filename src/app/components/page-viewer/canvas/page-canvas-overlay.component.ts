@@ -51,6 +51,7 @@ import { OptionsService } from '../../../services/options.service';
 import { DbService } from '../../../services/db.service';
 import { LoggerService } from '../../../services/logger.service';
 import { ForceUnit } from '../../../models/force-unit.model';
+import { GameSystem } from '../../../models/common.model';
 
 /*
  * Author: Drake
@@ -111,6 +112,7 @@ interface BrushLocation {
             width: 100%;
             height: 100%;
             pointer-events: none;
+            z-index: 1;
         }
 
         .drawing-canvas {
@@ -190,6 +192,17 @@ export class PageCanvasOverlayComponent {
     // Canvas ID for registration
     private canvasId = signal<string>('');
 
+    // ID used for storing canvas data in DB
+    private unitCanvasId = computed<string>(() => {
+        const unit = this.unit();
+        if (!unit) return '';
+
+        const id = unit.id;
+        const isAlphaStrike = unit.force.gameSystem === GameSystem.ALPHA_STRIKE;
+
+        return isAlphaStrike ? `${id}-as` : id;
+    });
+
     // Bound event handlers
     private nativePointerDown = (event: PointerEvent) => this.onPointerDown(event);
     private nativePointerUp = (event: PointerEvent) => this.onPointerUp(event);
@@ -209,7 +222,7 @@ export class PageCanvasOverlayComponent {
                 if (!unit) return;
                 
                 // Set canvas ID based on unit
-                this.canvasId.set(`canvas-${unit.id}`);
+                this.canvasId.set(`canvas-${this.unitCanvasId()}`);
                 
                 // Register with service for clear functionality
                 this.canvasService.registerCanvas(this.canvasId(), () => this.clearCanvas());
@@ -218,7 +231,7 @@ export class PageCanvasOverlayComponent {
                 this.canvasService.registerAbortCallback(this.canvasId(), () => this.abortDrawing());
                 
                 // Load saved canvas data
-                this.dbService.getCanvasData(unit.id).then(data => {
+                this.dbService.getCanvasData(this.unitCanvasId()).then(data => {
                     if (!data) return;
                     this.importImageData(data);
                 });
@@ -458,7 +471,7 @@ export class PageCanvasOverlayComponent {
         const blob = await this.exportImageData();
         if (!blob) return;
 
-        this.dbService.saveCanvasData(unit.id, blob);
+        this.dbService.saveCanvasData(this.unitCanvasId(), blob);
         if (!unit.modified) {
             unit.setModified();
         }
@@ -546,7 +559,7 @@ export class PageCanvasOverlayComponent {
         this.clearCanvas();
         const unit = this.unit();
         if (unit) {
-            this.dbService.deleteCanvasData(unit.id);
+            this.dbService.deleteCanvasData(this.unitCanvasId());
         }
     }
 }

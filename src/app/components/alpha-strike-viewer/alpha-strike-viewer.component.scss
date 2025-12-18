@@ -10,7 +10,7 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-    padding: 8px;
+    padding: 16px;
 }
 
 .group-container {
@@ -37,7 +37,7 @@
 .units-grid {
     display: grid;
     grid-template-columns: repeat(var(--columns), var(--cell-width));
-    gap: 8px;
+    gap: 4px;
 }
 
 .no-units-message {
@@ -49,6 +49,8 @@
 }
 
 .card-cell {
+    position: relative;
+
     alpha-strike-card {
         display: block;
         width: 100%;
@@ -58,35 +60,16 @@
 
 // Toggle buttons
 .toggle-buttons {
-    position: fixed;
-    bottom: 16px;
-    right: 16px;
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 8px;
     z-index: 1;
-}
 
-.toggle-btn {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    border: 2px solid var(--text-color);
-    background: var(--background-color);
-    color: var(--text-color);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    
-    &:hover {
-        transform: scale(1.1);
-    }
-    
-    &.active {
-        background: var(--text-color);
-        color: var(--background-color);
+    @media print {
+        display: none;
     }
 }
 
@@ -113,10 +96,6 @@
     .card-cell {
         break-inside: avoid;
         page-break-inside: avoid;
-    }
-    
-    .toggle-buttons {
-        display: none;
     }
 
     @page {

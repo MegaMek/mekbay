@@ -38,6 +38,10 @@ import { ASForceUnit } from '../../models/as-force-unit.model';
 import { ASForce } from '../../models/as-force.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { getLayoutForUnitType } from '../alpha-strike-card/card-layout.config';
+import { PageViewerCanvasControlsComponent } from '../page-viewer/canvas/page-viewer-canvas-controls.component';
+import { PageCanvasOverlayComponent } from '../page-viewer/canvas/page-canvas-overlay.component';
+import { PageViewerCanvasService } from '../page-viewer/canvas/page-viewer-canvas.service';
+import { DbService } from '../../services/db.service';
 
 /**
  * Author: Drake
@@ -51,8 +55,8 @@ export interface CardRenderItem {
 // Layout constants
 const BASE_CELL_WIDTH = 350;
 const MIN_CELL_WIDTH = 280;
-const CELL_GAP = 8;
-const CONTAINER_PADDING = 16;
+const CELL_GAP = 4;
+const CONTAINER_PADDING = 16 * 2; // left + right padding
 
 // Pinch zoom threshold: distance change (in pixels) required to trigger a column change
 const PINCH_THRESHOLD = 40;
@@ -65,9 +69,10 @@ interface Point {
 @Component({
     selector: 'alpha-strike-viewer',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AlphaStrikeCardComponent],
+    imports: [AlphaStrikeCardComponent, PageCanvasOverlayComponent, PageViewerCanvasControlsComponent],
     templateUrl: './alpha-strike-viewer.component.html',
     styleUrl: './alpha-strike-viewer.component.scss',
+    providers: [PageViewerCanvasService],
     host: {
         '(wheel)': 'onWheel($event)',
         // Prevent iOS Safari's native gesture handling
@@ -80,6 +85,7 @@ export class AlphaStrikeViewerComponent {
     private readonly optionsService = inject(OptionsService);
     private readonly forceBuilderService = inject(ForceBuilderService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly dbService = inject(DbService);
     
     unit = input<ASForceUnit | null>(null);
     force = input<ASForce | null>(null);
@@ -151,6 +157,17 @@ export class AlphaStrikeViewerComponent {
         return items;
     }
     
+    /**
+     * Handle canvas clear request from controls - delete canvas data for current unit
+     */
+    onCanvasClearRequested(): void {
+        const currentUnit = this.unit();
+        if (currentUnit) {
+            // AS cards use a different canvas ID format
+            this.dbService.deleteCanvasData(`${currentUnit.id}-as`);
+        }
+    }
+
     private setupEffects(): void {
         // Scroll to selected unit when selection changes externally
         effect(() => {
