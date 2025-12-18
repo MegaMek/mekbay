@@ -1842,6 +1842,11 @@ export class PageViewerComponent implements AfterViewInit {
         // Replace the cloned SVG with the real SVG in the shadow wrapper
         // This prevents the "black flash" when the shadow is cleared
         const realSvg = unit.svg();
+        const scale = this.zoomPanService.scale();
+        const scaledPageStep = (PAGE_WIDTH + PAGE_GAP) * scale;
+        const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
+        const showFluff = centerContent === 'fluffImage';
+        
         if (realSvg) {
             // Remove the cloned SVG
             const clonedSvg = clickedShadow.querySelector('svg');
@@ -1850,12 +1855,14 @@ export class PageViewerComponent implements AfterViewInit {
             }
             
             // Apply scale to the real SVG (matching shadow page setup)
-            const scale = this.zoomPanService.scale();
             realSvg.style.transform = `scale(${scale})`;
             realSvg.style.transformOrigin = 'top left';
             
             // Add the real SVG to the shadow wrapper
             clickedShadow.appendChild(realSvg);
+            
+            // Apply fluff image visibility to the real SVG
+            this.applyFluffImageVisibilityToSvg(realSvg, showFluff);
             
             // Remove the shadow styling so it looks like a real page
             this.renderer.removeClass(clickedShadow, 'shadow-page');
@@ -1872,9 +1879,59 @@ export class PageViewerComponent implements AfterViewInit {
             return false;
         });
         
+        // Create the next shadow page adjacent to the clicked shadow
+        // This shadow will slide along with the animation, providing visual continuity
+        const clickedShadowLeft = parseFloat(clickedShadow.style.left) || 0;
+        const nextShadowUnitIndex = direction === 'right' 
+            ? (targetIndex + 1) % totalUnits 
+            : ((targetIndex - 1) + totalUnits) % totalUnits;
+        const nextShadowUnit = allUnits[nextShadowUnitIndex] as CBTForceUnit;
+        
+        if (nextShadowUnit) {
+            // Load the next shadow unit (fire and forget - we'll add it if ready)
+            nextShadowUnit.load().then(() => {
+                const nextSvg = nextShadowUnit.svg();
+                if (!nextSvg) return;
+                
+                // Clone the SVG for the shadow
+                const clonedNextSvg = nextSvg.cloneNode(true) as SVGSVGElement;
+                clonedNextSvg.style.transform = `scale(${scale})`;
+                clonedNextSvg.style.transformOrigin = 'top left';
+                clonedNextSvg.style.pointerEvents = 'none';
+                
+                // Create shadow wrapper
+                const nextShadowWrapper = this.renderer.createElement('div') as HTMLDivElement;
+                this.renderer.addClass(nextShadowWrapper, 'page-wrapper');
+                this.renderer.addClass(nextShadowWrapper, 'shadow-page');
+                nextShadowWrapper.dataset['unitId'] = nextShadowUnit.id;
+                nextShadowWrapper.dataset['unitIndex'] = String(nextShadowUnitIndex);
+                nextShadowWrapper.dataset['shadowDirection'] = direction;
+                
+                // Position adjacent to the clicked shadow
+                const nextShadowPosition = direction === 'right'
+                    ? clickedShadowLeft + scaledPageStep
+                    : clickedShadowLeft - scaledPageStep;
+                
+                nextShadowWrapper.dataset['originalLeft'] = String(nextShadowPosition / scale);
+                nextShadowWrapper.style.width = `${PAGE_WIDTH * scale}px`;
+                nextShadowWrapper.style.height = `${PAGE_HEIGHT * scale}px`;
+                nextShadowWrapper.style.position = 'absolute';
+                nextShadowWrapper.style.left = `${nextShadowPosition}px`;
+                nextShadowWrapper.style.top = '0';
+                
+                nextShadowWrapper.appendChild(clonedNextSvg);
+                
+                // Apply fluff visibility to the shadow
+                this.applyFluffImageVisibilityToSvg(clonedNextSvg, showFluff);
+                
+                const content = this.contentRef().nativeElement;
+                content.appendChild(nextShadowWrapper);
+                this.shadowPageElements.push(nextShadowWrapper);
+            });
+        }
+        
         // Animate the swipe
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
-        const scale = this.zoomPanService.scale();
         const scaledPageWidth = PAGE_WIDTH * scale + PAGE_GAP * scale;
         const targetOffset = -pagesToMove * scaledPageWidth;
         
@@ -1941,23 +1998,30 @@ export class PageViewerComponent implements AfterViewInit {
             const svg = wrapper.querySelector('svg');
             if (!svg) continue;
             
-            const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
-            if (!injectedEl) continue;
-            
-            const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
-            if (referenceTables.length === 0) continue;
-            
-            if (showFluff) {
-                injectedEl.style.setProperty('display', 'block');
-                referenceTables.forEach((rt) => {
-                    rt.style.display = 'none';
-                });
-            } else {
-                injectedEl.style.setProperty('display', 'none');
-                referenceTables.forEach((rt) => {
-                    rt.style.display = 'block';
-                });
-            }
+            this.applyFluffImageVisibilityToSvg(svg, showFluff);
+        }
+    }
+    
+    /**
+     * Applies fluff image visibility to a single SVG element.
+     */
+    private applyFluffImageVisibilityToSvg(svg: SVGSVGElement, showFluff: boolean): void {
+        const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
+        if (!injectedEl) return; // this SVG doesn't have a fluff image
+        
+        const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
+        if (referenceTables.length === 0) return; // no reference tables to hide/show
+        
+        if (showFluff) {
+            injectedEl.style.setProperty('display', 'block');
+            referenceTables.forEach((rt) => {
+                rt.style.display = 'none';
+            });
+        } else {
+            injectedEl.style.setProperty('display', 'none');
+            referenceTables.forEach((rt) => {
+                rt.style.display = 'block';
+            });
         }
     }
 
@@ -2056,23 +2120,7 @@ export class PageViewerComponent implements AfterViewInit {
             const svg = unit.svg();
             if (!svg) continue;
             
-            const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
-            if (!injectedEl) continue; // this unit doesn't have a fluff image
-            
-            const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
-            if (referenceTables.length === 0) continue; // no reference tables to hide/show
-            
-            if (showFluff) {
-                injectedEl.style.setProperty('display', 'block');
-                referenceTables.forEach((rt) => {
-                    rt.style.display = 'none';
-                });
-            } else {
-                injectedEl.style.setProperty('display', 'none');
-                referenceTables.forEach((rt) => {
-                    rt.style.display = 'block';
-                });
-            }
+            this.applyFluffImageVisibilityToSvg(svg, showFluff);
         }
     }
 
