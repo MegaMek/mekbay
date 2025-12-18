@@ -50,7 +50,7 @@ import { C3NetworkUtil } from '../utils/c3-network.util';
 const DEFAULT_GROUP_NAME = 'Main';
 
 export class ASForce extends Force<ASForceUnit> {
-    override gameSystem: GameSystem = GameSystem.AS;
+    override gameSystem: GameSystem = GameSystem.ALPHA_STRIKE;
 
     constructor(name: string,
         dataService: DataService,

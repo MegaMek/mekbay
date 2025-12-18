@@ -79,7 +79,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
 }
 
 export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
-    gameSystem: GameSystem = GameSystem.CBT;
+    gameSystem: GameSystem = GameSystem.CLASSIC;
     instanceId: WritableSignal<string | null> = signal(null);
     _name: WritableSignal<string>;
     nameLock: boolean = false; // If true, the force name cannot be changed by the random generator

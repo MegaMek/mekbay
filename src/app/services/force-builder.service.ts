@@ -231,7 +231,7 @@ export class ForceBuilderService {
         const gameService = this.injector.get(GameService);
         const gameSystem = gameService.currentGameSystem();
         let newForce: Force | null = null;
-        if (gameSystem === GameSystem.AS) {
+        if (gameSystem === GameSystem.ALPHA_STRIKE) {
             newForce = new ASForce(name, this.dataService, this.unitInitializer, this.injector);
         } else {
             newForce = new CBTForce(name, this.dataService, this.unitInitializer, this.injector);
@@ -782,9 +782,9 @@ export class ForceBuilderService {
                     }
                     const unitsParam = this.urlStateService.getInitialParam('units');
                     const forceNameParam = this.urlStateService.getInitialParam('name');
-                    const gameSystemParam = this.urlStateService.getInitialParam('gs') ?? GameSystem.CBT;
+                    const gameSystemParam = this.urlStateService.getInitialParam('gs') ?? GameSystem.CLASSIC;
                     let newForce: Force;
-                    if (gameSystemParam === GameSystem.AS) {
+                    if (gameSystemParam === GameSystem.ALPHA_STRIKE) {
                         newForce = new ASForce('New Force', this.dataService, this.unitInitializer, this.injector);
                     } else {
                         newForce = new CBTForce('New Force', this.dataService, this.unitInitializer, this.injector);

@@ -183,7 +183,7 @@ export async function exportUnitsToExcel(
 
     const { utils, writeFile } = await loadXlsx();
 
-    const rows = gameSystem === GameSystem.AS
+    const rows = gameSystem === GameSystem.ALPHA_STRIKE
         ? unitsToASRows(units)
         : unitsToCBTRows(units);
 
@@ -204,10 +204,10 @@ export async function exportUnitsToExcel(
     }
 
     const workbook = utils.book_new();
-    const sheetName = gameSystem === GameSystem.AS ? 'Alpha Strike Units' : 'BattleTech Units';
+    const sheetName = gameSystem === GameSystem.ALPHA_STRIKE ? 'Alpha Strike Units' : 'BattleTech Units';
     utils.book_append_sheet(workbook, worksheet, sheetName);
 
-    const defaultFilename = gameSystem === GameSystem.AS
+    const defaultFilename = gameSystem === GameSystem.ALPHA_STRIKE
         ? 'mekbay-alpha-strike-units'
         : 'mekbay-battletech-units';
     const exportFilename = `${filename || defaultFilename}.xlsx`;
@@ -233,16 +233,16 @@ export async function exportUnitsToCSV(
 
     const { utils, writeFile } = await loadXlsx();
 
-    const rows = gameSystem === GameSystem.AS
+    const rows = gameSystem === GameSystem.ALPHA_STRIKE
         ? unitsToASRows(units)
         : unitsToCBTRows(units);
 
     const worksheet = utils.json_to_sheet(rows);
     const workbook = utils.book_new();
-    const sheetName = gameSystem === GameSystem.AS ? 'Alpha Strike Units' : 'BattleTech Units';
+    const sheetName = gameSystem === GameSystem.ALPHA_STRIKE ? 'Alpha Strike Units' : 'BattleTech Units';
     utils.book_append_sheet(workbook, worksheet, sheetName);
 
-    const defaultFilename = gameSystem === GameSystem.AS
+    const defaultFilename = gameSystem === GameSystem.ALPHA_STRIKE
         ? 'mekbay-alpha-strike-units'
         : 'mekbay-battletech-units';
     const exportFilename = `${filename || defaultFilename}.csv`;

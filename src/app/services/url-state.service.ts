@@ -103,7 +103,7 @@ export class UrlStateService {
         // Parse game system
         const gsParam = params.get('gs');
         let gameSystem: GameSystem | null = null;
-        if (gsParam === GameSystem.AS || gsParam === GameSystem.CBT) {
+        if (gsParam === GameSystem.ALPHA_STRIKE || gsParam === GameSystem.CLASSIC) {
             gameSystem = gsParam;
         }
 

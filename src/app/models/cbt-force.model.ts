@@ -51,7 +51,7 @@ import { generateUUID } from '../services/ws.service';
 const DEFAULT_GROUP_NAME = 'Main';
 
 export class CBTForce extends Force<CBTForceUnit> {
-    override gameSystem: GameSystem = GameSystem.CBT;
+    override gameSystem: GameSystem = GameSystem.CLASSIC;
 
     constructor(name: string,
         dataService: DataService,

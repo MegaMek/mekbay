@@ -47,7 +47,7 @@ const DEFAULT_OPTIONS: Options = {
     canvasInput: 'all',
     swipeToNextSheet: 'horizontal',
     unitDisplayName: 'chassisModel',
-    gameSystem: GameSystem.CBT,
+    gameSystem: GameSystem.CLASSIC,
     recordSheetCenterPanelContent: 'clusterTable',
     syncZoomBetweenSheets: true,
     useAutomations: true,

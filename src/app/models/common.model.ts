@@ -32,8 +32,8 @@
  */
 
 export enum GameSystem {
-    CBT = 'cbt',
-    AS = 'as'
+    CLASSIC = 'cbt',
+    ALPHA_STRIKE = 'as'
 }
 
 export enum ECMMode {

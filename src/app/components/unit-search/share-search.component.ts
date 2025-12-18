@@ -199,7 +199,7 @@ export class ShareSearchDialogComponent {
             const { exportUnitsToExcel } = await import('../../utils/excel-export.util');
             const gameSystem = this.gameService.currentGameSystem();
             const timestamp = new Date().toISOString().slice(0, 10);
-            const systemLabel = gameSystem === GameSystem.AS ? 'alpha-strike' : 'battletech';
+            const systemLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'alpha-strike' : 'battletech';
             const filename = `mekbay-${systemLabel}-units-${timestamp}`;
             
             await exportUnitsToExcel(units, gameSystem, filename);
@@ -225,7 +225,7 @@ export class ShareSearchDialogComponent {
             const { exportUnitsToCSV } = await import('../../utils/excel-export.util');
             const gameSystem = this.gameService.currentGameSystem();
             const timestamp = new Date().toISOString().slice(0, 10);
-            const systemLabel = gameSystem === GameSystem.AS ? 'alpha-strike' : 'battletech';
+            const systemLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'alpha-strike' : 'battletech';
             const filename = `mekbay-${systemLabel}-units-${timestamp}`;
             
             await exportUnitsToCSV(units, gameSystem, filename);

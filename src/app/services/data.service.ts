@@ -826,7 +826,7 @@ export class DataService {
         let cloud: Force | null = null;
         if (localRaw) {
             try {
-                if (localRaw.type === GameSystem.AS) {
+                if (localRaw.type === GameSystem.ALPHA_STRIKE) {
                     local = ASForce.deserialize(localRaw as ASSerializedForce, this, this.unitInitializer, this.injector);
                 } else { // CBT
                     local = CBTForce.deserialize(localRaw as CBTSerializedForce, this, this.unitInitializer, this.injector);
@@ -837,7 +837,7 @@ export class DataService {
         }
         if (cloudRaw) {
             try {
-                if (cloudRaw.type === GameSystem.AS) {
+                if (cloudRaw.type === GameSystem.ALPHA_STRIKE) {
                     cloud = ASForce.deserialize(cloudRaw as ASSerializedForce, this, this.unitInitializer, this.injector);
                 } else { // CBT
                     cloud = CBTForce.deserialize(cloudRaw as CBTSerializedForce, this, this.unitInitializer, this.injector);

@@ -63,7 +63,7 @@ export class LoadForceEntry {
     constructor(data: Partial<LoadForceEntry>) {
         this.instanceId = data.instanceId ?? '';
         this.timestamp = data.timestamp ?? '';
-        this.type = data.type ?? GameSystem.CBT;
+        this.type = data.type ?? GameSystem.CLASSIC;
         this.cloud = data.cloud ?? false;
         this.local = data.local ?? false;
         this.name = data.name ?? '';
