@@ -144,18 +144,21 @@
     }
 }
 
-.page-wrapper.shadow-page {
-    opacity: 0.1;
-    cursor: pointer;
-    transition: opacity 0.2s ease-out;
+.page-wrapper {
+    &.leaving-page,
+    &.shadow-page {
+        opacity: 0.1;
+        cursor: pointer;
+        // transition: opacity 0.2s ease-out; // (disabled, is too heavy during swipe)
 
-    /* Disable pointer events on SVG content to ensure wrapper handles clicks */
-    svg {
-        pointer-events: none;
-    }
+        /* Disable pointer events on SVG content to ensure wrapper handles clicks */
+        svg {
+            pointer-events: none;
+        }
 
-    @media print {
-        display: none;
+        @media print {
+            display: none;
+        }
     }
 }
 

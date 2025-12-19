@@ -1879,6 +1879,15 @@ export class PageViewerComponent implements AfterViewInit {
             return false;
         });
         
+        // Add shadow styling to the page that's leaving (sliding out)
+        // Right shadow clicked: leftmost page is leaving
+        // Left shadow clicked: rightmost page is leaving
+        const leavingPageIndex = direction === 'right' ? 0 : this.pageElements.length - 1;
+        const leavingPage = this.pageElements[leavingPageIndex];
+        if (leavingPage) {
+            this.renderer.addClass(leavingPage, 'leaving-page');
+        }
+        
         // Create the next shadow page adjacent to the clicked shadow
         // This shadow will slide along with the animation, providing visual continuity
         const clickedShadowLeft = parseFloat(clickedShadow.style.left) || 0;
