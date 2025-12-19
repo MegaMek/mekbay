@@ -184,16 +184,20 @@
 .stats-row {
     display: flex;
     justify-content: flex-start;
-    align-items: center;
+    align-items: start;
     gap: 3cqw;
     font-size: 2.5cqw;
+
+    &.spread {
+        justify-content: space-between;
+    }
 }
 
 .stat-item {
     white-space: nowrap;
 }
 
-.stat-right {
+.right-column {
     margin-left: auto;
     text-align: right;
     display: flex;
@@ -202,8 +206,9 @@
 }
 
 .sprint-text {
-    font-size: 1.52cqw;
+    font-size: 2cqw;
     margin-top: -0.25cqw;
+    font-weight: 700;
 }
 
 // Damage Box
@@ -228,7 +233,6 @@
     font-weight: 900;
     text-align: center;
     margin-right: 1.5cqw;
-    color: var(--as-red);
 }
 
 .damage-ranges {
@@ -246,12 +250,13 @@
 
 .range-header {
     font-size: 1.96cqw;
+    font-weight: 700;
 }
 
 .range-value {
-    font-size: 3.48cqw;
-    font-weight: 500;
-    line-height: 1.4;
+    font-size: 5cqw;
+    font-weight: 700;
+    line-height: 1;
 }
 
 .range-distance {

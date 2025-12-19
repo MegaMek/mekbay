@@ -31,18 +31,20 @@
                 <div class="frame-background"></div>
 
                 <div class="frame-content">
-                    <div class="stats-row">
-                        <span class="stat-item">TP: {{ asStats().TP }}</span>
-                        <span class="stat-item">SZ: {{ asStats().SZ }}</span>
-                        <span class="stat-item">TMM: {{ tmmDisplay() }}</span>
-                        <span class="stat-item stat-right">
-                            <span>MV: {{ movementDisplay() }}</span>
+                    <div class="stats-row spread">
+                        <div class="stats-row">
+                            <span class="stat-item"><span class="as-caption">TP: </span><span class="as-value">{{ asStats().TP }}</span></span>
+                            <span class="stat-item"><span class="as-caption">SZ: </span><span class="as-value">{{ asStats().SZ }}</span></span>
+                            <span class="stat-item"><span class="as-caption">TMM: </span><span class="as-value">{{ tmmDisplay() }}</span></span>
+                        </div>
+                        <div class="right-column">
+                            <span class="stat-item"><span class="as-caption">MV: </span><span class="as-value">{{ movementDisplay() }}</span></span>
                             <span class="sprint-text">Sprint: {{ sprintMove() }}</span>
-                        </span>
+                        </div>
                     </div>
-                    <div class="stats-row">
-                        <span class="stat-item">ROLE: {{ unit().role | uppercase }}</span>
-                        <span class="stat-item stat-right">SKILL: {{ skill() }}</span>
+                    <div class="stats-row spread">
+                        <span class="stat-item"><span class="as-caption">ROLE: </span><span class="as-value">{{ unit().role | uppercase }}</span></span>
+                        <span class="stat-item"><span class="as-caption">SKILL: </span><span class="as-value">{{ skill() }}</span></span>
                     </div>
                 </div>
             </div>
@@ -51,26 +53,26 @@
             <div class="damage-box frame">
                 <div class="frame-background"></div>
                 <div class="frame-content">
-                    <div class="damage-label">DAMAGE</div>
+                    <div class="damage-label as-value">DAMAGE</div>
                     <div class="damage-ranges">
                         <!-- Short Range -->
                         <div class="damage-range">
-                            <div class="range-header">S (0 | 3+)</div>
-                            <div class="range-value">{{ asStats().dmg.dmgS }}</div>
+                            <div class="range-header">S (0 | {{ toHitShort() }}+)</div>
+                            <div class="range-value as-value">{{ asStats().dmg.dmgS }}</div>
                             <div class="range-distance">{{ rangeShort() }}</div>
                         </div>
 
                         <!-- Medium Range -->
                         <div class="damage-range">
-                            <div class="range-header">M (+2 | 5+)</div>
-                            <div class="range-value">{{ asStats().dmg.dmgM }}</div>
+                            <div class="range-header">M (+2 | {{ toHitMedium() }}+)</div>
+                            <div class="range-value as-value">{{ asStats().dmg.dmgM }}</div>
                             <div class="range-distance">{{ rangeMedium() }}</div>
                         </div>
 
                         <!-- Long Range -->
                         <div class="damage-range">
-                            <div class="range-header">L (+4 | 7+)</div>
-                            <div class="range-value">{{ asStats().dmg.dmgL }}</div>
+                            <div class="range-header">L (+4 | {{ toHitLong() }}+)</div>
+                            <div class="range-value as-value">{{ asStats().dmg.dmgL }}</div>
                             <div class="range-distance">{{ rangeLong() }}</div>
                         </div>
                     </div>

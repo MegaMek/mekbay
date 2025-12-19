@@ -97,10 +97,11 @@ export class AsLayoutStandardComponent {
     });
 
     // Movement
-    sprintMove = computed<number>(() => {
+    sprintMove = computed<string>(() => {
         const walkMove = this.parseMovement(this.asStats().MV);
         const sprintInches = Math.ceil(walkMove * 1.5);
-        return this.useHex() ? Math.floor(sprintInches / 2) : sprintInches;
+        const display = this.formatMovement(Math.floor(sprintInches));
+        return display;
     });
 
     movementDisplay = computed<string>(() => {
@@ -132,6 +133,11 @@ export class AsLayoutStandardComponent {
         }
         return `${tmm}`;
     });
+
+    // To-hit values
+    toHitShort = computed<number>(() => this.skill());
+    toHitMedium = computed<number>(() => this.skill() + 2);
+    toHitLong = computed<number>(() => this.skill() + 4);
 
     // Range distances
     rangeShort = computed<string>(() => this.useHex() ? '0-3' : '0-6"');
