@@ -69,6 +69,11 @@
             -webkit-text-stroke: 0.45cqw #ECD24B;
             paint-order: stroke fill;
             position: relative;
+            
+            &.bolder {
+                -webkit-text-stroke: 0.3cqw #ECD24B;
+                font-weight: 900;
+            }
         }
     }
 }
