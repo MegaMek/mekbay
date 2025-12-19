@@ -1975,6 +1975,9 @@ export class PageViewerComponent implements AfterViewInit {
             // Clear the remaining shadow (the converted one)
             this.clearShadowPages();
             
+            // Select the clicked shadow page's unit (after animation to prevent early re-render)
+            this.forceBuilder.selectUnit(unit);
+            
             // Re-render with new position
             this.displayUnit({ fromSwipe: true });
         };
