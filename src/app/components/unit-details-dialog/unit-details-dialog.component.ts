@@ -52,6 +52,7 @@ import { UnitDetailsGeneralTabComponent } from './tabs/unit-details-general-tab.
 import { UnitDetailsIntelTabComponent } from './tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab.component';
 import { UnitDetailsSheetTabComponent } from './tabs/unit-details-sheet-tab.component';
+import { GameService } from '../../services/game.service';
 
 /*
  * Author: Drake
@@ -78,6 +79,7 @@ interface ManufacturerInfo {
 })
 export class UnitDetailsDialogComponent {
     dataService = inject(DataService);
+    gameService = inject(GameService);
     forceBuilderService = inject(ForceBuilderService);
     dialogRef = inject(DialogRef<UnitDetailsDialogComponent>);
     data = inject(DIALOG_DATA) as UnitDetailsDialogData;
