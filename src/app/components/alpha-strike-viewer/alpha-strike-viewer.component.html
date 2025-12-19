@@ -49,7 +49,7 @@
     </div>
 
     <!-- Canvas controls -->
-    <page-viewer-canvas-controls [unit]="unit()" (clearRequested)="onCanvasClearRequested()"></page-viewer-canvas-controls>
+    <page-viewer-canvas-controls [unit]="unit()" (clearRequested)="onCanvasClearRequested()" (printRequested)="onPrintRequested()"></page-viewer-canvas-controls>
 
     <div class="toggle-buttons screen-only">
         <button class="bt-button square" [class.active]="useHex()" (click)="toggleHexMode()" title="Toggle Hex/Inches">

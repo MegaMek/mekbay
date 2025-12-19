@@ -2209,6 +2209,13 @@ export class PageViewerComponent implements AfterViewInit {
         }
     }
 
+    /**
+     * Handle print request from controls - trigger browser print dialog
+     */
+    onPrintRequested(): void {
+        window.print();
+    }
+
     // ========== Force Units Change Handling ==========
 
     /**

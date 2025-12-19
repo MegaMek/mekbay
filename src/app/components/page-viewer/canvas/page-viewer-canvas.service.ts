@@ -362,11 +362,4 @@ export class PageViewerCanvasService {
     clearAllCanvases(): void {
         this.registeredCanvases.forEach(callback => callback());
     }
-
-    /**
-     * Print the current view
-     */
-    print(): void {
-        window.print();
-    }
 }

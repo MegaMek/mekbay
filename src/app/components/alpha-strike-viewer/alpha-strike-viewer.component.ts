@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, inject, computed, effect, ElementRef, viewChildren, signal, DestroyRef, viewChild, afterNextRender } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, computed, effect, ElementRef, viewChildren, signal, DestroyRef, viewChild, afterNextRender, Injector, ApplicationRef } from '@angular/core';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { OptionsService } from '../../services/options.service';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -42,6 +42,7 @@ import { PageViewerCanvasControlsComponent } from '../page-viewer/canvas/page-vi
 import { PageCanvasOverlayComponent } from '../page-viewer/canvas/page-canvas-overlay.component';
 import { PageViewerCanvasService } from '../page-viewer/canvas/page-viewer-canvas.service';
 import { DbService } from '../../services/db.service';
+import { ASPrintUtil } from '../../utils/asprint.util';
 
 /**
  * Author: Drake
@@ -86,6 +87,8 @@ export class AlphaStrikeViewerComponent {
     private readonly forceBuilderService = inject(ForceBuilderService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly dbService = inject(DbService);
+    private readonly injector = inject(Injector);
+    private readonly appRef = inject(ApplicationRef);
     
     unit = input<ASForceUnit | null>(null);
     force = input<ASForce | null>(null);
@@ -166,6 +169,15 @@ export class AlphaStrikeViewerComponent {
             // AS cards use a different canvas ID format
             this.dbService.deleteCanvasData(`${currentUnit.id}-as`);
         }
+    }
+    
+    /**
+     * Handle print request from controls
+     */
+    onPrintRequested(): void {
+        const currentForce = this.forceBuilderService.currentForce();
+        if (!currentForce || currentForce instanceof ASForce === false) return;
+        ASPrintUtil.multipagePrint(this.appRef, this.injector, this.optionsService, currentForce.units());
     }
 
     private setupEffects(): void {

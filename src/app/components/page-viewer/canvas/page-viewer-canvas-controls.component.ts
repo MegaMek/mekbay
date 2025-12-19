@@ -89,7 +89,7 @@ import { ForceUnit } from '../../../models/force-unit.model';
             @if (canvasService.isActive()) {
                 <div class="controls-fab-column">
                     <button class="fab cornered-fab print-fab" 
-                            (click)="canvasService.print()" 
+                            (click)="requestPrintCurrentUnit()" 
                             aria-label="Print Canvas">
                         <img src="/images/print.svg" alt="Print">
                     </button>
@@ -148,6 +148,7 @@ export class PageViewerCanvasControlsComponent {
     unit = input<ForceUnit | null>(null);
 
     clearRequested = output<void>();
+    printRequested = output<void>();
 
     mainFabStyle = computed(() => {
         const mode = this.canvasService.mode();
@@ -180,5 +181,9 @@ export class PageViewerCanvasControlsComponent {
             this.canvasService.clearCanvas(`canvas-${currentUnit.id}`);
             this.clearRequested.emit();
         }
+    }
+
+    requestPrintCurrentUnit(): void {
+        this.printRequested.emit();
     }
 }
