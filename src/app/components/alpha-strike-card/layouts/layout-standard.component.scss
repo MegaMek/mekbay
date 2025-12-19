@@ -213,13 +213,15 @@
     .frame-content {
         display: flex;
         align-items: center;
+        position: relative;
+        height: 10cqw;
     }
 }
 
 .damage-label {
     font-family: "Roboto Condensed", sans-serif;
     position: absolute;
-    height: 92%;
+    height: 10cqw;
     writing-mode: vertical-rl;
     transform: rotate(180deg);
     font-size: 2.3cqw;
