@@ -64,11 +64,6 @@ export interface UnitDetailsDialogData {
     pilotingSkill?: number;
 }
 
-interface ManufacturerInfo {
-    manufacturer: string;
-    factory: string;
-}
-
 @Component({
     selector: 'unit-details-dialog',
     standalone: true,
