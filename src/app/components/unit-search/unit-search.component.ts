@@ -63,7 +63,6 @@ import { ShareSearchDialogComponent } from './share-search.component';
 import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { RangeModel, UnitSearchFilterRangeDialogComponent, UnitSearchFilterRangeDialogData } from '../unit-search-filter-range-dialog/unit-search-filter-range-dialog.component';
-import { GameSystem } from '../../models/common.model';
 import { GameService } from '../../services/game.service';
 
 
@@ -787,6 +786,12 @@ export class UnitSearchComponent {
         }
 
         this.activeIndex.set(null);
+    }
+
+    openSelect(event: Event, select: HTMLSelectElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        select.showPicker?.() ?? select.focus();
     }
 
     /* Adv Panel Dragging */

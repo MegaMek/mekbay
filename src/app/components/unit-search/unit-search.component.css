@@ -603,12 +603,15 @@
     display: flex;
     gap: 16px;
     flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
 }
 
 .skill-control {
+    max-width: 160px;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
     flex: 1;
 }
 

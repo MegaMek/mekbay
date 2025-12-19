@@ -255,27 +255,41 @@
         <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
         <div class="pilot-skills-section framed-borders">
             <div class="pilot-skills-controls">
-                <div class="skill-control">
-                    <label for="gunnery-skill">Gunnery:</label>
-                    <select id="gunnery-skill" class="bt-input skill-select" 
-                        [class.active]="gunnery != 4" [value]="gunnery"
-                        (change)="setPilotSkill('gunnery', +$any($event.target).value)">
-                        @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
-                        <option [value]="n" [selected]="n === gunnery">{{ n }}</option>
-                        }
+                @if (gameService.isAlphaStrike()) {
+                    <div class="skill-control">
+                        <label for="gunnery-skill" (click)="openSelect($event, gunnerySelect)">Pilot Skill:</label>
+                        <select #gunnerySelect id="gunnery-skill" class="bt-input skill-select" 
+                            [class.active]="gunnery != 4" [value]="gunnery"
+                            (change)="setPilotSkill('gunnery', +$any($event.target).value)">
+                            @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
+                            <option [value]="n" [selected]="n === gunnery">{{ n }}</option>
+                            }
 
-                    </select>
-                </div>
-                <div class="skill-control">
-                    <label for="piloting-skill">Piloting:</label>
-                    <select id="piloting-skill" class="bt-input skill-select"
-                        [class.active]="piloting != 5" [value]="piloting"
-                        (change)="setPilotSkill('piloting', +$any($event.target).value)">
-                        @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
-                        <option [value]="n" [selected]="n === piloting">{{ n }}</option>
-                        }
-                    </select>
-                </div>
+                        </select>
+                    </div>
+                } @else {
+                    <div class="skill-control">
+                        <label for="gunnery-skill" (click)="openSelect($event, gunnerySelect)">Gunnery:</label>
+                        <select #gunnerySelect id="gunnery-skill" class="bt-input skill-select" 
+                            [class.active]="gunnery != 4" [value]="gunnery"
+                            (change)="setPilotSkill('gunnery', +$any($event.target).value)">
+                            @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
+                            <option [value]="n" [selected]="n === gunnery">{{ n }}</option>
+                            }
+
+                        </select>
+                    </div>
+                    <div class="skill-control">
+                        <label for="piloting-skill" (click)="openSelect($event, pilotingSelect)">Piloting:</label>
+                        <select #pilotingSelect id="piloting-skill" class="bt-input skill-select"
+                            [class.active]="piloting != 5" [value]="piloting"
+                            (change)="setPilotSkill('piloting', +$any($event.target).value)">
+                            @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
+                            <option [value]="n" [selected]="n === piloting">{{ n }}</option>
+                            }
+                        </select>
+                    </div>
+                }
             </div>
         </div>
     </div>
