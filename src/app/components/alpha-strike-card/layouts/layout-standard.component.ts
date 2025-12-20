@@ -148,9 +148,9 @@ export class AsLayoutStandardComponent {
     toHitLong = computed<number>(() => this.skill() + 4);
 
     // Range distances
-    rangeShort = computed<string>(() => this.useHex() ? '0-3' : '0-6"');
-    rangeMedium = computed<string>(() => this.useHex() ? '4-12' : '6"-24"');
-    rangeLong = computed<string>(() => this.useHex() ? '13-21' : '24"-42"');
+    rangeShort = computed<string>(() => this.useHex() ? '0~3' : '0~6"');
+    rangeMedium = computed<string>(() => this.useHex() ? '4~12' : '6"~24"');
+    rangeLong = computed<string>(() => this.useHex() ? '13~21' : '24"~42"');
 
     // Armor and structure
     armorPips = computed<number>(() => this.asStats().Arm);
