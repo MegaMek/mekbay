@@ -61,8 +61,7 @@ import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
     }
 })
 export class AsLayoutLargeVessel1Component {
-    // Core inputs - minimal set needed
-    forceUnit = input.required<ASForceUnit>();
+    forceUnit = input<ASForceUnit>();
     unit = input.required<Unit>();
     useHex = input<boolean>(false);
     cardStyle = input<'colored' | 'monochrome'>('colored');
@@ -82,10 +81,10 @@ export class AsLayoutLargeVessel1Component {
     });
 
     // Skill and PV
-    skill = computed<number>(() => this.forceUnit().getPilotStats());
+    skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? 4);
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
-        return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.forceUnit().pilotSkill());
+        return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.skill());
     });
 
     // Armor and structure

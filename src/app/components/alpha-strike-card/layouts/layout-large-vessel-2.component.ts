@@ -74,7 +74,7 @@ interface ArcDamage {
     }
 })
 export class AsLayoutLargeVessel2Component {
-    forceUnit = input.required<ASForceUnit>();
+    forceUnit = input<ASForceUnit>();
     unit = input.required<Unit>();
     useHex = input<boolean>(false);
     cardStyle = input<'colored' | 'monochrome'>('colored');

@@ -67,7 +67,7 @@ import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
     }
 })
 export class AsLayoutStandardComponent {
-    forceUnit = input.required<ASForceUnit>();
+    forceUnit = input<ASForceUnit>();
     unit = input.required<Unit>();
     useHex = input<boolean>(false);
     cardStyle = input<'colored' | 'monochrome'>('colored');
@@ -87,54 +87,65 @@ export class AsLayoutStandardComponent {
     });
 
     // Skill and PV
-    skill = computed<number>(() => this.forceUnit().getPilotStats());
+    skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? 4);
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
-        return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.forceUnit().pilotSkill());
+        return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.skill());
     });
 
     // Movement
-    sprintMove = computed<string>(() => {
-        const walkMove = this.parseMovement(this.asStats().MV);
-        const sprintInches = Math.ceil(walkMove * 1.5);
-        const display = this.formatMovement(Math.floor(sprintInches));
-        return display;
-    });
-
     movementDisplay = computed<string>(() => {
-        const stats = this.asStats();
-        const mvx = stats.MVx;
-        const baseMove = this.parseMovement(stats.MV);
+        const mvm = this.asStats().MVm;
+        const entries = this.getMovementEntries(mvm);
+        if (entries.length === 0) return this.asStats().MV ?? '';
 
-        if (!mvx || Object.keys(mvx).length === 0) {
-            return this.formatMovement(baseMove);
-        }
+        return entries
+            .map(([mode, inches]) => this.formatMovement(inches, mode))
+            .join('/');
+    });
+    
+    sprintMove = computed<string | null>(() => {
+        const mvm = this.asStats().MVm;
+        const entries = this.getMovementEntries(mvm);
+        const groundEntries = entries.filter(([mode]) => mode !== 'j');
+        if (groundEntries.length === 0) return null;
 
-        let display = this.formatMovement(baseMove);
-        for (const [mode, value] of Object.entries(mvx)) {
-            if (mode === 'j' && value > 0) {
-                display += '/' + this.formatMovement(value as number, 'j');
-            }
-        }
-        return display;
+        // Sprinting is based on the unit's current ground Move (in inches), x1.5, rounded up.
+        // Prefer the default ("" key) ground move when present.
+        const defaultGround = groundEntries.find(([mode]) => mode === '') ?? groundEntries[0];
+        const groundMoveInches = defaultGround[1];
+        if (groundMoveInches <= 0) return null;
+        const sprintInches = Math.ceil(groundMoveInches * 1.5);
+        return this.formatMovement(sprintInches);
     });
 
     tmmDisplay = computed<string>(() => {
         const stats = this.asStats();
-        const tmm = stats.TMM;
-        const mvx = stats.MVx;
+        const baseTmm = stats.TMM;
+        if (baseTmm === undefined || baseTmm === null) return '';
 
-        if (mvx?.['j'] && mvx['j'] > 0) {
-            const jumpTMM = Math.max(0, tmm - 1);
-            return `${tmm}/${jumpTMM}j`;
+        const jumpMod = this.getSignedSpecialModifier(stats.specials, 'JMPS', 'JMPW');
+        const subMod = this.getSignedSpecialModifier(stats.specials, 'SUBS', 'SUBW');
+
+        const parts: string[] = [baseTmm.toString()];
+
+        if (jumpMod !== null) {
+            const jumpTmm = Math.max(0, baseTmm + jumpMod);
+            parts.push(`${jumpTmm}j`);
         }
-        return `${tmm}`;
+
+        if (subMod !== null) {
+            const subTmm = Math.max(0, baseTmm + subMod);
+            parts.push(`${subTmm}s`);
+        }
+
+        return parts.join('/');
     });
 
     // To-hit values
-    toHitShort = computed<number>(() => this.forceUnit().pilotSkill());
-    toHitMedium = computed<number>(() => this.forceUnit().pilotSkill() + 2);
-    toHitLong = computed<number>(() => this.forceUnit().pilotSkill() + 4);
+    toHitShort = computed<number>(() => this.skill() );
+    toHitMedium = computed<number>(() => this.skill() + 2);
+    toHitLong = computed<number>(() => this.skill() + 4);
 
     // Range distances
     rangeShort = computed<string>(() => this.useHex() ? '0-3' : '0-6"');
@@ -149,19 +160,82 @@ export class AsLayoutStandardComponent {
     showStructureAsNumber = computed<boolean>(() => this.structurePips() > this.pipThreshold);
 
     // Heat level
-    heatLevel = computed<number>(() => this.forceUnit().getHeat());
+    heatLevel = computed<number>(() => {
+        return this.forceUnit()?.getHeat() ?? 0;
+    });
 
-    // Helper methods
-    private parseMovement(mv: string): number {
-        const match = mv.match(/^(\d+)/);
-        return match ? parseInt(match[1], 10) : 0;
+    private getMovementEntries(mvm: Record<string, number> | undefined): Array<[string, number]> {
+        if (!mvm) return [];
+
+        const entries = Object.entries(mvm)
+            .filter(([, value]) => typeof value === 'number' && value > 0) as Array<[string, number]>;
+
+        // If the unit only has jumping movement, treat it as also having a default ("" key)
+        // ground movement with the same value.
+        if (entries.length === 1) {
+            switch (entries[0][0]) {
+                case '': 
+                    return entries;
+                case 'j':
+                return [['', entries[0][1]], ...entries];
+            }
+        }
+
+        // Prefer the default movement (empty key) first if present, then preserve insertion order.
+        const defaultIndex = entries.findIndex(([mode]) => mode === '');
+        if (defaultIndex >= 0) {
+            const [def] = entries.splice(defaultIndex, 1);
+            return [def, ...entries];
+        }
+        return entries;
+    }
+
+    private getTmmForMoveInches(inches: number): number {
+        // Alpha Strike TMM ranges
+        if (inches <= 4) return 0;
+        if (inches <= 8) return 1;
+        if (inches <= 12) return 2;
+        if (inches <= 18) return 3;
+        if (inches <= 34) return 4;
+        return 5;
     }
 
     private formatMovement(inches: number, suffix: string = ''): string {
         if (this.useHex()) {
-            return Math.floor(inches / 2) + suffix;
+            return Math.ceil(inches / 2) + suffix;
         }
         return inches + '"' + suffix;
+    }
+
+    private getFirstSpecialModifier(specials: string[] | undefined, prefixes: string[]): number | null {
+        if (!specials || specials.length === 0) return null;
+
+        for (const special of specials) {
+            for (const prefix of prefixes) {
+                const match = new RegExp(`^${prefix}([+-]?\\d+)$`).exec(special);
+                if (!match) continue;
+
+                const value = Number.parseInt(match[1], 10);
+                if (Number.isNaN(value)) return null;
+                return value;
+            }
+        }
+
+        return null;
+    }
+
+    private getSignedSpecialModifier(
+        specials: string[] | undefined,
+        addPrefix: string,
+        removePrefix: string
+    ): number | null {
+        const addValue = this.getFirstSpecialModifier(specials, [addPrefix]);
+        if (addValue !== null) return addValue;
+
+        const removeValue = this.getFirstSpecialModifier(specials, [removePrefix]);
+        if (removeValue !== null) return -removeValue;
+
+        return null;
     }
 
     range(count: number): number[] {

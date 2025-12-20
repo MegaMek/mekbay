@@ -351,6 +351,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         name: "Weak Jump Jets",
         summary: [
             "This unit has particularly underpowered, weak jump jets. Weak Jump Jets subtract the # from their TMM when using Jumping movement.",
+            "JMPW# also affect damage dealt when executing a Death From Above attack: subtract 1 damage if JMPW# is at 2 or higher (see p. 46).",
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 78,
@@ -362,6 +363,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         summary: [
             "This unit has particularly overpowered, strong jump jets compared to their non-jump movement. Strong Jump Jets add the # to their TMM when using Jumping movement.",
             "Any effect that reduces TMM by 50% will lower the JMPS# by 1, to a minimum of JMPS0.",
+            "JMPS# also affect damage dealt when executing a Death From Above attack: add +1 damage if JMPS is at 2 or higher (see p. 46).",
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 78,

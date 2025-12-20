@@ -183,14 +183,10 @@
 
 .stats-row {
     display: flex;
-    justify-content: flex-start;
+    justify-content: space-between;
     align-items: start;
-    gap: 3cqw;
+    gap: 1.5cqw;
     font-size: 2.5cqw;
-
-    &.spread {
-        justify-content: space-between;
-    }
 }
 
 .stat-item {
@@ -198,7 +194,6 @@
 }
 
 .right-column {
-    margin-left: auto;
     text-align: right;
     display: flex;
     flex-direction: column;
@@ -219,14 +214,14 @@
         display: flex;
         align-items: center;
         position: relative;
-        height: 10cqw;
+        height: 8cqw;
     }
 }
 
 .damage-label {
     font-family: "Roboto Condensed", sans-serif;
     position: absolute;
-    height: 10cqw;
+    height: 8cqw;
     writing-mode: vertical-rl;
     transform: rotate(180deg);
     font-size: 2.3cqw;
@@ -254,9 +249,9 @@
 }
 
 .range-value {
-    font-size: 5cqw;
+    font-size: 4cqw;
     font-weight: 700;
-    line-height: 1;
+    line-height: 3.5cqw;
 }
 
 .range-distance {

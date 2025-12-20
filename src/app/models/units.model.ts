@@ -154,14 +154,14 @@ export interface Units {
 }
 
 export interface AlphaStrikeUnitStats {
-    TP: 'AF' | 'BA' | 'BM' | 'CF' | 'CI' | 'CV' | 'DA' | 'DS' | 'IM' | 'JS' | 'PM' | 'SC' | 'SS' | 'SV' | 'WS';
+    TP: 'AF' | 'BA' | 'BM' | 'CF' | 'CI' | 'CV' | 'DA' | 'DS' | 'IM' | 'JS' | 'PM' | 'SC' | 'SS' | 'SV' | 'WS' | 'MS';
     PV: number;
     SZ: number;
     TMM: number;
     usesOV: boolean;
     OV: number;
     MV: string;
-    MVx: { [mode: string]: number }; // e.g. { j: 6 }
+    MVm: { [mode: string]: number }; // e.g. { j: 6 }
     usesTh: boolean;
     Th: number;
     Arm: number;
