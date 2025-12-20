@@ -149,8 +149,8 @@ export class AsLayoutStandardComponent {
 
     // Range distances
     rangeShort = computed<string>(() => this.useHex() ? '0-3' : '0-6"');
-    rangeMedium = computed<string>(() => this.useHex() ? '3-12' : '6"-24"');
-    rangeLong = computed<string>(() => this.useHex() ? '12-21' : '24"-42"');
+    rangeMedium = computed<string>(() => this.useHex() ? '4-12' : '6"-24"');
+    rangeLong = computed<string>(() => this.useHex() ? '13-21' : '24"-42"');
 
     // Armor and structure
     armorPips = computed<number>(() => this.asStats().Arm);
