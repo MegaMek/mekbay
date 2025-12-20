@@ -87,10 +87,7 @@
 .as-value {
     font-size: 3cqw;
     font-weight: 900;
-
-    @media screen {
-        color: var(--as-red);
-    }
+    color: var(--as-red);
 
     @media print {
         -webkit-text-stroke: 0.3cqw #fff;
