@@ -225,7 +225,7 @@ export class MultiSelectDropdownComponent {
         // Preserve the item's visible top within the container viewport (pixels from container top)
         let preservedVisibleTop: number | null = null;
         if (container) {
-            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + optionName + '"]');
+            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(optionName) + '"]');
             if (item) {
                 const containerRect = container.getBoundingClientRect();
                 const itemRect = item.getBoundingClientRect();
@@ -277,7 +277,7 @@ export class MultiSelectDropdownComponent {
             }
 
             // find the same item after update
-            const itemAfter = container.querySelector<HTMLElement>('.option-item[data-option-name="' + optionName + '"]');
+            const itemAfter = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(optionName) + '"]');
             if (!itemAfter) {
                 return;
             }
@@ -321,7 +321,7 @@ export class MultiSelectDropdownComponent {
         // Preserve the item's visible top within the container viewport (pixels from container top)
         let preservedVisibleTop: number | null = null;
         if (container) {
-            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + optionName + '"]');
+            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(optionName) + '"]');
             if (item) {
                 const containerRect = container.getBoundingClientRect();
                 const itemRect = item.getBoundingClientRect();
