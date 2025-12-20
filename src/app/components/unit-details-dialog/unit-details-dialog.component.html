@@ -1,4 +1,4 @@
-<base-dialog #baseDialog [tabs]="tabs" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)" (closed)="onClose()">
+<base-dialog #baseDialog [tabs]="tabs()" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)" (closed)="onClose()">
 <div dialog-header class="header">
   <div class="header-group">
     <div class="header-icon-container">
@@ -45,15 +45,11 @@
     <div class="swipe-panel current-panel" 
          [style.--current-offset]="currentPanelOffset()">
       @if (activeTab() === 'General') {
-        @if (gameService.isAlphaStrike()) {
-          HELLO WORLD
-        } @else {
-          <unit-details-general-tab 
-            [unit]="unit"
-            [gunnerySkill]="gunnerySkill()"
-            [pilotingSkill]="pilotingSkill()">
-          </unit-details-general-tab>
-        }
+        <unit-details-general-tab 
+          [unit]="unit"
+          [gunnerySkill]="gunnerySkill()"
+          [pilotingSkill]="pilotingSkill()">
+        </unit-details-general-tab>
       }
 
       @if (activeTab() === 'Factions') {
@@ -77,15 +73,11 @@
       <div #incomingPanel class="swipe-panel incoming-panel"
            [style.--incoming-offset]="incomingPanelOffset()">
         @if (activeTab() === 'General') {
-          @if (gameService.isAlphaStrike()) {
-            HELLO WORLD
-          } @else {
-            <unit-details-general-tab 
-              [unit]="incomingUnit()!"
-              [gunnerySkill]="gunnerySkill()"
-              [pilotingSkill]="pilotingSkill()">
-            </unit-details-general-tab>
-          }
+          <unit-details-general-tab 
+            [unit]="incomingUnit()!"
+            [gunnerySkill]="gunnerySkill()"
+            [pilotingSkill]="pilotingSkill()">
+          </unit-details-general-tab>
         }
 
         @if (activeTab() === 'Factions') {

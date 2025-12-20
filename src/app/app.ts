@@ -344,7 +344,7 @@ export class App {
         // Restore tab if provided
         if (tab && ref.componentInstance) {
             afterNextRender(() => {
-                if (ref.componentInstance?.tabs.includes(tab)) {
+                if (ref.componentInstance?.tabs().includes(tab)) {
                     ref.componentInstance.activeTab.set(tab);
                 }
             }, { injector: this.injector });

@@ -86,8 +86,13 @@ export class UnitDetailsDialogComponent {
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
     incomingPanelRef = viewChild<ElementRef>('incomingPanel');
 
-    tabs = ['General', 'Intel', 'Factions', 'Sheet'];
-    activeTab = signal(this.tabs[0]);
+    tabs = computed<string[]>(() => {
+        if (this.gameService.isAlphaStrike()) {
+            return ['Card', 'Intel', 'Factions', 'General', 'Sheet'];
+        }
+        return ['General', 'Intel', 'Factions', 'Sheet', 'Card'];
+    });
+    activeTab = signal(this.tabs()[0]);
 
     unitList: Unit[] | ForceUnit[] = this.data.unitList;
     unitIndex = signal(this.data.unitIndex);
