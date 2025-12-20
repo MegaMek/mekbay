@@ -498,7 +498,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         type: SpecialAbilityType.Standard,
     },
     {
-        tag: "TOR#",
+        tag: ["TOR#", "TOR#/#/#/#"],
         name: "Torpedo",
         summary: [
             "Torpedo launchers may only be launched by units in water (or on the surface of a water feature), against targets that are also on or in water (this includes units like hovercraft and airborne WiGEs operating just above the surface of water). Torpedo special ability damage is given in range brackets like a standard weapon attack, and may be fired separately or combined with the standard weapon damage that a submerged unit may deliver in combat.",
