@@ -100,6 +100,7 @@ export interface UnitTypeLayoutConfig {
  * - JS: JumpShip
  * - DA: DropShip (Aerodyne)
  * - DS: DropShip (Spheroid)
+ * - MS: Mobile Structure
  */
 export const UNIT_TYPE_LAYOUTS: Record<string, UnitTypeLayoutConfig> = {
     // Mek

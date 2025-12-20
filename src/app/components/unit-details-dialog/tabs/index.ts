@@ -35,3 +35,4 @@ export * from './unit-details-general-tab.component';
 export * from './unit-details-intel-tab.component';
 export * from './unit-details-factions-tab.component';
 export * from './unit-details-sheet-tab.component';
+export * from './unit-details-card-tab.component';

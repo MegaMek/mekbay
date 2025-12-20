@@ -66,7 +66,12 @@
       @if (activeTab() === 'Sheet') {
         <unit-details-sheet-tab [unit]="unit"></unit-details-sheet-tab>
       }
+
+      @if (activeTab() === 'Card') {
+        <unit-details-card-tab [unit]="unit"></unit-details-card-tab>
+      }
     </div>
+  
 
     <!-- Incoming unit view (visible during animation or swiping) -->
     @if (incomingUnit()) {
@@ -93,6 +98,10 @@
 
         @if (activeTab() === 'Sheet') {
           <unit-details-sheet-tab [unit]="incomingUnit()!"></unit-details-sheet-tab>
+        }
+
+        @if (activeTab() === 'Card') {
+          <unit-details-card-tab [unit]="incomingUnit()!"></unit-details-card-tab>
         }
       </div>
     }

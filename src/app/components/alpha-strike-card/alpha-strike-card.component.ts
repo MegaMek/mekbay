@@ -32,7 +32,7 @@
  */
 
 import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output } from '@angular/core';
-import { AlphaStrikeUnitStats, Unit } from '../../models/units.model';
+import { Unit } from '../../models/units.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -69,7 +69,10 @@ export class AlphaStrikeCardComponent {
     private readonly abilityLookup = inject(AsAbilityLookupService);
     private readonly dialogs = inject(DialogsService);
     
-    forceUnit = input.required<ASForceUnit>();
+    /** Optional: provide the stateful AS unit wrapper (preferred when available). */
+    forceUnit = input<ASForceUnit | undefined>(undefined);
+    /** Optional: provide a plain Unit (used when no forceUnit is available). */
+    unit = input<Unit | undefined>(undefined);
     useHex = input<boolean>(false);
     cardStyle = input<'colored' | 'monochrome'>('colored');
     isSelected = input<boolean>(false);
@@ -79,15 +82,19 @@ export class AlphaStrikeCardComponent {
     selected = output<ASForceUnit>();
     
     onCardClick(): void {
-        this.selected.emit(this.forceUnit());
+        const fu = this.forceUnit();
+        if (fu) {
+            this.selected.emit(fu);
+        }
     }
     
     imageUrl = signal<string>('');
     
-    unit = computed<Unit>(() => this.forceUnit().getUnit());
+    /** Effective Unit for rendering: forceUnit.getUnit() wins, otherwise the plain unit input. */
+    resolvedUnit = computed<Unit | undefined>(() => this.forceUnit()?.getUnit() ?? this.unit());
     
     /** Get the Alpha Strike unit type (BM, IM, CV, CI, WS, etc.) */
-    unitType = computed<string>(() => this.unit().as.TP);
+    unitType = computed<string>(() => this.resolvedUnit()?.as.TP ?? '');
     
     /** Get the layout configuration for this unit type */
     layoutConfig = computed(() => getLayoutForUnitType(this.unitType()));
@@ -103,10 +110,10 @@ export class AlphaStrikeCardComponent {
     currentDesign = computed<CardLayoutDesign>(() => this.currentCardConfig().design);
     
     constructor() {
-        // Effect to load image when forceUnit changes
+        // Effect to load image
         effect(() => {
-            const unit = this.unit();
-            const imagePath = unit.fluff?.img;
+            const unit = this.resolvedUnit();
+            const imagePath = unit?.fluff?.img;
             if (imagePath) {
                 this.loadFluffImage(imagePath);
             } else {

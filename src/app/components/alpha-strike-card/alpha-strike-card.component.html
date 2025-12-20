@@ -42,35 +42,37 @@
         </div>
     </div>
 
-    <!-- Layout Selection based on card design -->
-    @switch (currentDesign()) {
-        @case ('standard') {
-            <as-layout-standard
-                [forceUnit]="forceUnit()"
-                [unit]="unit()"
-                [useHex]="useHex()"
-                [cardStyle]="cardStyle()"
-                [imageUrl]="imageUrl()"
-                (specialClick)="onSpecialClick($event)"
-            />
-        }
-        @case ('large-vessel-1') {
-            <as-layout-large-vessel-1
-                [forceUnit]="forceUnit()"
-                [unit]="unit()"
-                [useHex]="useHex()"
-                [cardStyle]="cardStyle()"
-                [imageUrl]="imageUrl()"
-                (specialClick)="onSpecialClick($event)"
-            />
-        }
-        @case ('large-vessel-2') {
-            <as-layout-large-vessel-2
-                [forceUnit]="forceUnit()"
-                [unit]="unit()"
-                [useHex]="useHex()"
-                [cardStyle]="cardStyle()"
-            />
+    @if (resolvedUnit(); as unit) {
+        <!-- Layout Selection based on card design -->
+        @switch (currentDesign()) {
+            @case ('standard') {
+                <as-layout-standard
+                    [forceUnit]="forceUnit() ?? undefined"
+                    [unit]="unit"
+                    [useHex]="useHex()"
+                    [cardStyle]="cardStyle()"
+                    [imageUrl]="imageUrl()"
+                    (specialClick)="onSpecialClick($event)"
+                />
+            }
+            @case ('large-vessel-1') {
+                <as-layout-large-vessel-1
+                    [forceUnit]="forceUnit() ?? undefined"
+                    [unit]="unit"
+                    [useHex]="useHex()"
+                    [cardStyle]="cardStyle()"
+                    [imageUrl]="imageUrl()"
+                    (specialClick)="onSpecialClick($event)"
+                />
+            }
+            @case ('large-vessel-2') {
+                <as-layout-large-vessel-2
+                    [forceUnit]="forceUnit() ?? undefined"
+                    [unit]="unit"
+                    [useHex]="useHex()"
+                    [cardStyle]="cardStyle()"
+                />
+            }
         }
     }
 </div>

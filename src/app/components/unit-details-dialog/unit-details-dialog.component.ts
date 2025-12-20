@@ -53,6 +53,7 @@ import { UnitDetailsIntelTabComponent } from './tabs/unit-details-intel-tab.comp
 import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab.component';
 import { UnitDetailsSheetTabComponent } from './tabs/unit-details-sheet-tab.component';
 import { GameService } from '../../services/game.service';
+import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
 
 /*
  * Author: Drake
@@ -68,7 +69,7 @@ export interface UnitDetailsDialogData {
     selector: 'unit-details-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, SwipeDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent],
+    imports: [CommonModule, BaseDialogComponent, SwipeDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css']
 })
