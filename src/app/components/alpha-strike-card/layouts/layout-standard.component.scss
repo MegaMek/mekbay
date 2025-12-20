@@ -393,11 +393,10 @@
     &:hover {
         text-decoration: underline;
     }
-}
-
-.special-separator {
-    @media screen {
-        font-weight: 900;
-        color: var(--as-red);
+    
+    .special-separator {
+        &:hover {
+            text-decoration: none;
+        }
     }
 }

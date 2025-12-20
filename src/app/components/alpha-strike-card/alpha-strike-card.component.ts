@@ -102,7 +102,6 @@ export class AlphaStrikeCardComponent {
     /** Get the layout design for the current card */
     currentDesign = computed<CardLayoutDesign>(() => this.currentCardConfig().design);
     
-    
     constructor() {
         // Effect to load image when forceUnit changes
         effect(() => {
@@ -114,23 +113,6 @@ export class AlphaStrikeCardComponent {
                 this.imageUrl.set('');
             }
         });
-    }
-
-    private calculateAdjustedPV(basePV: number, skill: number): number {
-        // PV adjustment based on skill (skill 4 is baseline)
-        const skillModifiers: Record<number, number> = {
-            0: 2.4,
-            1: 1.9,
-            2: 1.5,
-            3: 1.2,
-            4: 1.0,
-            5: 0.9,
-            6: 0.8,
-            7: 0.7,
-            8: 0.6
-        };
-        const modifier = skillModifiers[skill] ?? 1.0;
-        return Math.round(basePV * modifier);
     }
     
     private async loadFluffImage(imagePath: string): Promise<void> {

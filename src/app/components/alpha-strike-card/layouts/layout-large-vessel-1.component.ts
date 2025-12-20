@@ -39,6 +39,7 @@ import {
     AsCriticalHitsAerospace1Component,
     AsCriticalHitsDropship1Component,
 } from '../critical-hits';
+import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
 
 /*
  * Author: Drake
@@ -84,11 +85,7 @@ export class AsLayoutLargeVessel1Component {
     skill = computed<number>(() => this.forceUnit().getPilotStats());
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
-        const skillModifiers: Record<number, number> = {
-            0: 2.4, 1: 1.9, 2: 1.5, 3: 1.2, 4: 1.0, 5: 0.9, 6: 0.8, 7: 0.7, 8: 0.6
-        };
-        const modifier = skillModifiers[this.skill()] ?? 1.0;
-        return Math.round(this.basePV() * modifier);
+        return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.forceUnit().pilotSkill());
     });
 
     // Armor and structure

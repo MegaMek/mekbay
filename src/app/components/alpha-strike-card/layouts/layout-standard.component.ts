@@ -42,6 +42,7 @@ import {
     AsCriticalHitsProtomekComponent,
     AsCriticalHitsAerofighterComponent,
 } from '../critical-hits';
+import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
 
 /*
  * Author: Drake
@@ -89,11 +90,7 @@ export class AsLayoutStandardComponent {
     skill = computed<number>(() => this.forceUnit().getPilotStats());
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
-        const skillModifiers: Record<number, number> = {
-            0: 2.4, 1: 1.9, 2: 1.5, 3: 1.2, 4: 1.0, 5: 0.9, 6: 0.8, 7: 0.7, 8: 0.6
-        };
-        const modifier = skillModifiers[this.skill()] ?? 1.0;
-        return Math.round(this.basePV() * modifier);
+        return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.forceUnit().pilotSkill());
     });
 
     // Movement
@@ -135,9 +132,9 @@ export class AsLayoutStandardComponent {
     });
 
     // To-hit values
-    toHitShort = computed<number>(() => this.skill());
-    toHitMedium = computed<number>(() => this.skill() + 2);
-    toHitLong = computed<number>(() => this.skill() + 4);
+    toHitShort = computed<number>(() => this.forceUnit().pilotSkill());
+    toHitMedium = computed<number>(() => this.forceUnit().pilotSkill() + 2);
+    toHitLong = computed<number>(() => this.forceUnit().pilotSkill() + 4);
 
     // Range distances
     rangeShort = computed<string>(() => this.useHex() ? '0-3' : '0-6"');

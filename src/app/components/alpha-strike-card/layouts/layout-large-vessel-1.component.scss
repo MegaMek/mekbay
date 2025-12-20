@@ -111,29 +111,6 @@
     font-size: 2.5cqw;
 }
 
-.stat-label {
-    font-weight: bold;
-    margin-right: 0.5cqw;
-}
-
-.stat-value {
-    font-weight: 900;
-    text-decoration: underline;
-    text-underline-offset: 0.3cqw;
-
-    @media screen {
-        :host:not(.monochrome) & {
-            color: var(--as-red);
-        }
-    }
-}
-
-.skill-box {
-    display: inline-block;
-    width: 4cqw;
-    border-bottom: 0.3cqw solid #000;
-}
-
 // Era Icons
 .era-icons {
     display: flex;
@@ -228,9 +205,8 @@
 
 .stats-row {
     display: flex;
-    justify-content: flex-start;
+    justify-content: space-between;
     align-items: center;
-    gap: 3cqw;
     font-size: 2.5cqw;
 }
 
@@ -309,12 +285,11 @@
     &:hover {
         text-decoration: underline;
     }
-}
-
-.special-separator {
-    @media screen {
-        font-weight: 900;
-        color: var(--as-red);
+    
+    .special-separator {
+        &:hover {
+            text-decoration: none;
+        }
     }
 }
 
