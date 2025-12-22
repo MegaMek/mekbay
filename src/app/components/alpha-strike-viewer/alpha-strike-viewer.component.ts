@@ -67,7 +67,7 @@ const PINCH_THRESHOLD_MAX_PX = 140;
 
 // Ctrl+Wheel zoom threshold: accumulated delta (in pixels) required per column change.
 // Touchpads often emit a continuous stream of small deltas; we quantize them into discrete "ticks".
-const WHEEL_TICK_THRESHOLD_PX = 100;
+const WHEEL_TICK_THRESHOLD_PX = 60;
 // If wheel events pause longer than this, discard any partial accumulation.
 const WHEEL_IDLE_RESET_MS = 200;
 
@@ -358,8 +358,8 @@ export class AlphaStrikeViewerComponent {
         // Apply the column changes, 1 step, regardless of the number of tickCount detected.
         applyRequestedCols(this.columnCount() + direction);
 
-        // Remove the processed ticks from accumulation.
-        this.wheelState.accumulatedDeltaPx -= direction * tickCount * WHEEL_TICK_THRESHOLD_PX;
+        // Reset accumulation
+        this.wheelState.accumulatedDeltaPx = 0;
     }
     
     private scrollToSelectedUnit(selectedUnit: ASForceUnit): void {
