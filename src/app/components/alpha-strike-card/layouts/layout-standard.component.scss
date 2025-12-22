@@ -220,7 +220,6 @@
 
 .damage-label {
     font-family: "Roboto Condensed", sans-serif;
-    position: absolute;
     height: 8cqw;
     writing-mode: vertical-rl;
     transform: rotate(180deg);
@@ -234,7 +233,6 @@
     display: flex;
     flex: 1;
     justify-content: space-around;
-    margin-left: 3cqw;
 }
 
 .damage-range {
@@ -253,6 +251,7 @@
     align-self: stretch;
     box-sizing: border-box;
     text-align: center;
+    margin-bottom: 0.3cqw;
 }
 
 @media screen {
@@ -260,6 +259,7 @@
         .range-header-background {
             background: #5B504E;
             color: #fff;
+            margin-bottom: 0.5cqw;
 
             &.left {        
                 background: linear-gradient(to right, transparent 0%, #5B504E 1.5cqw, #5B504E 100%);
