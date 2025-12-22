@@ -216,10 +216,10 @@
     }
 
     .info-slot.pilot-info {
-        background-color: var(--bt-yellow-background-bright-transparent);
+        background-color: rgba(176, 135, 0, 0.5);
 
         &:hover {
-            background-color: var(--bt-yellow-background-bright);
+            background-color: rgba(176, 135, 0, 0.8);
         }
     }
 
