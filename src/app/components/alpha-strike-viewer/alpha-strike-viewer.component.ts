@@ -60,7 +60,7 @@ const CELL_GAP = 4;
 const CONTAINER_PADDING = 16 * 2; // left + right padding
 
 // Pinch zoom threshold: distance change (in pixels) required to trigger a column change
-const PINCH_THRESHOLD = 40;
+const PINCH_THRESHOLD = 80;
 
 interface Point {
     x: number;
