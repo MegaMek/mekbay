@@ -64,6 +64,7 @@ function unitsToCBTRows(units: Unit[]): Record<string, unknown>[] {
         BV: unit.bv,
         cost: unit.cost,
         tonnage: unit.tons,
+        weightClass: unit.weightClass,
         level: unit.level,
         techBase: unit.techBase,
         techRating: unit.techRating,
