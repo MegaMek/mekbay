@@ -31,10 +31,25 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, output, computed } from '@angular/core';
+import {
+    Component,
+    ChangeDetectionStrategy,
+    input,
+    output,
+    computed,
+    signal,
+    inject,
+    ElementRef,
+    DestroyRef,
+    afterNextRender,
+    viewChild,
+} from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
 import { ASForceUnit } from '../../../models/as-force-unit.model';
+import type { AbilitySelection } from '../../../models/as-force-unit.model';
 import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
+import { AS_PILOT_ABILITIES } from '../../../models/as-abilities.model';
+import type { ASPilotAbility } from '../../../models/as-abilities.model';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import {
     AsCriticalHitsMekComponent,
@@ -67,6 +82,18 @@ import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
     }
 })
 export class AsLayoutStandardComponent {
+    private readonly elRef = inject(ElementRef<HTMLElement>);
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly statsContainerRef = viewChild('statsContainer', { read: ElementRef<HTMLElement> });
+
+    private readonly pilotAbilityById = new Map<string, ASPilotAbility>(
+        AS_PILOT_ABILITIES.map((ability) => [ability.id, ability])
+    );
+
+    private readonly statsToHostHeightThreshold = 0.7;
+    private resizeObserver: ResizeObserver | null = null;
+    chassisSmall = signal(false);
+
     forceUnit = input<ASForceUnit>();
     unit = input.required<Unit>();
     useHex = input<boolean>(false);
@@ -91,6 +118,10 @@ export class AsLayoutStandardComponent {
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
         return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.skill());
+    });
+    pilotAbilities = computed<string[]>(() => {
+        const selections = this.forceUnit()?.pilotAbilities() ?? [];
+        return selections.map((selection) => this.formatPilotAbility(selection));
     });
 
     // Movement
@@ -118,6 +149,15 @@ export class AsLayoutStandardComponent {
         const sprintInches = Math.ceil(groundMoveInches * 1.5);
         return this.formatMovement(sprintInches);
     });
+
+    private formatPilotAbility(selection: AbilitySelection): string {
+        if (typeof selection === 'string') {
+            const ability = this.pilotAbilityById.get(selection);
+            return ability ? `${ability.name} (${ability.cost})` : selection;
+        }
+
+        return `${selection.name} (${selection.cost})`;
+    }
 
     tmmDisplay = computed<string>(() => {
         const stats = this.asStats();
@@ -163,6 +203,47 @@ export class AsLayoutStandardComponent {
     heatLevel = computed<number>(() => {
         return this.forceUnit()?.getHeat() ?? 0;
     });
+
+    constructor() {
+        afterNextRender(() => {
+            const hostEl = this.elRef.nativeElement;
+            const statsEl = this.statsContainerRef()?.nativeElement;
+            if (!hostEl || !statsEl) return;
+
+            this.resizeObserver?.disconnect();
+            this.resizeObserver = new ResizeObserver(() => {
+                this.updateChassisSmallClass();
+            });
+
+            this.resizeObserver.observe(hostEl);
+            this.resizeObserver.observe(statsEl);
+
+            // Initial calculation after layout.
+            requestAnimationFrame(() => this.updateChassisSmallClass());
+        });
+
+        this.destroyRef.onDestroy(() => {
+            this.resizeObserver?.disconnect();
+        });
+    }
+
+    private updateChassisSmallClass(): void {
+        const hostEl = this.elRef.nativeElement;
+        const statsEl = this.statsContainerRef()?.nativeElement;
+        if (!hostEl || !statsEl) {
+            this.chassisSmall.set(false);
+            return;
+        }
+
+        const hostHeight = hostEl.clientHeight;
+        if (hostHeight <= 0) {
+            this.chassisSmall.set(false);
+            return;
+        }
+
+        const ratio = statsEl.clientHeight / hostHeight;
+        this.chassisSmall.set(ratio > this.statsToHostHeightThreshold);
+    }
 
     private getMovementEntries(mvm: Record<string, number> | undefined): Array<[string, number]> {
         if (!mvm) return [];

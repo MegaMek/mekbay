@@ -9,8 +9,8 @@
 <!-- Header Section -->
 <div class="header-section">
     <div class="unit-name">
-        <div class="model-text">{{ model() }}</div>
-        <div class="chassis-text alphastrike-text" [class.long-chassis]="isLongChassis()">{{ chassis() }}</div>
+        <div class="model-text" [class.small]="chassisSmall()">{{ model() }}</div>
+        <div class="chassis-text alphastrike-text" [class.long-chassis]="isLongChassis()" [class.small]="chassisSmall()">{{ chassis() }}</div>
     </div>
 
     <!-- PV Box -->
@@ -23,7 +23,17 @@
     </div>
 </div>
 
-<div class="stats-container">
+<div class="stats-container" #statsContainer>
+    @let abilities = pilotAbilities();
+    @if (abilities.length > 0) {
+        <div class="stats-container-row">
+            <div class="pilot-abilities">
+                @for (ability of abilities; track $index) {
+                    <span>{{ ability }}</span>
+                }
+            </div>
+        </div>
+    }
     <div class="stats-container-row">
         <div class="stats-container-column stats-left">
             <!-- Stats Box 1 - Type, Size, TMM, Movement -->
