@@ -32,7 +32,7 @@
  */
 
 import { Component, ChangeDetectionStrategy, input, output, computed } from '@angular/core';
-import { ASForceUnit } from '../../../models/as-force-unit.model';
+import { AbilitySelection, ASForceUnit } from '../../../models/as-force-unit.model';
 import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import {
@@ -40,6 +40,7 @@ import {
     AsCriticalHitsDropship1Component,
 } from '../critical-hits';
 import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
+import { AS_PILOT_ABILITIES, ASPilotAbility } from '../../../models/as-abilities.model';
 
 /*
  * Author: Drake
@@ -69,6 +70,10 @@ export class AsLayoutLargeVessel1Component {
 
     specialClick = output<string>();
 
+    private readonly pilotAbilityById = new Map<string, ASPilotAbility>(
+        AS_PILOT_ABILITIES.map((ability) => [ability.id, ability])
+    );
+    
     // Derived from unit
     asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
     model = computed<string>(() => this.unit().model);
@@ -86,6 +91,19 @@ export class AsLayoutLargeVessel1Component {
     adjustedPV = computed<number>(() => {
         return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.skill());
     });
+    pilotAbilities = computed<string[]>(() => {
+        const selections = this.forceUnit()?.pilotAbilities() ?? [];
+        return selections.map((selection) => this.formatPilotAbility(selection));
+    });
+
+    private formatPilotAbility(selection: AbilitySelection): string {
+        if (typeof selection === 'string') {
+            const ability = this.pilotAbilityById.get(selection);
+            return ability ? `${ability.name} (${ability.cost})` : selection;
+        }
+
+        return `${selection.name} (${selection.cost})`;
+    }
 
     // Armor and structure
     armorPips = computed<number>(() => this.asStats().Arm);

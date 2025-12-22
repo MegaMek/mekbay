@@ -18,22 +18,12 @@
     <div class="pv-box">
         <div class="pv-text alphastrike-text">{{ adjustedPV() }}</div>
         @if (basePV() != adjustedPV()) {
-        <div class="base-pv-text stroke-text">Base PV: {{ basePV() }}</div>
+        <div class="base-pv-text">Base PV: {{ basePV() }}</div>
         }
     </div>
 </div>
 
 <div class="stats-container" #statsContainer>
-    @let abilities = pilotAbilities();
-    @if (abilities.length > 0) {
-        <div class="stats-container-row">
-            <div class="pilot-abilities">
-                @for (ability of abilities; track $index) {
-                    <span>{{ ability }}</span>
-                }
-            </div>
-        </div>
-    }
     <div class="stats-container-row">
         <div class="stats-container-column stats-left">
             <!-- Stats Box 1 - Type, Size, TMM, Movement -->
@@ -171,7 +161,17 @@
             </div>
         </div>
         <div class="stats-container-column stats-right">
-
+            
+            @let abilities = pilotAbilities();
+            @if (abilities.length > 0) {
+                <div class="stats-container-row">
+                    <div class="pilot-abilities">
+                        @for (ability of abilities; track $index) {
+                            <div class="pilot-ability">{{ ability }}</div>
+                        }
+                    </div>
+                </div>
+            }
             <!-- Critical Hits Box - Rendered based on unit type -->
             @switch (criticalHitsVariant()) {
                 @case ('mek') {

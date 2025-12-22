@@ -79,8 +79,8 @@
     }
 
     &.small {
-        font-size: 3.5cqw;
-        line-height: 3.5cqw;
+        font-size: 3.3cqw;
+        line-height: 3.3cqw;
     }
 }
 
@@ -98,8 +98,8 @@
     }
 
     &.small {
-        font-size: 5.2cqw;
-        line-height: 5.2cqw;
+        font-size: 5cqw;
+        line-height: 5cqw;
     }
 }
 
@@ -141,23 +141,9 @@
     text-align: center;
     margin-top: 1.2cqw;
     z-index: 1;
-}
-
-.pilot-abilities {
-    color: #aa00ff;
-    font-size: 2.2cqw;
-    font-weight: 700;
-    
-    @media screen {
-        
-        :host:not(.monochrome) & {
-            color: #cdb0ff;
-        }
-    }
-
-    @media print {
-        color: #000;
-    }
+    -webkit-text-stroke: 0.3cqw #fff;
+    color: #000;
+    paint-order: stroke fill;
 }
 
 // Stats Container
@@ -449,4 +435,8 @@
             text-decoration: none;
         }
     }
+}
+
+.pilot-abilities {
+    margin-left: 0.5cqw;
 }

@@ -2,12 +2,6 @@
     --as-red: #7c2422;
 }
 
-.stroke-text {
-    -webkit-text-stroke: 0.3cqw #fff;
-    color: #000;
-    paint-order: stroke fill;
-}
-
 // Frame/Box styling
 .frame {
     width: 100%;
@@ -258,5 +252,38 @@
 
     &.structure {
         background: #bbb;
+    }
+}
+
+
+.pilot-abilities {
+
+    .pilot-ability {
+        color: black;
+        -webkit-text-stroke: #fff 0.3cqw;
+        paint-order: stroke fill;
+        font-size: 2.5cqw;
+        font-weight: 700;
+        cursor: pointer;
+
+        &:hover {
+            color: #6e00a5;
+        }
+        
+        @media screen {
+            
+            :host:not(.monochrome) & {
+                color: white;
+                -webkit-text-stroke: #000 0.3cqw;
+    
+                &:hover {
+                    color: #cdb0ff;
+                }
+            }
+        }
+    
+        @media print {
+            color: #000;
+        }
     }
 }

@@ -85,6 +85,9 @@
     text-align: center;
     margin-top: 1.2cqw;
     z-index: 1;
+    -webkit-text-stroke: 0.3cqw #fff;
+    color: #000;
+    paint-order: stroke fill;
 }
 
 // Stats Row Container
@@ -156,13 +159,14 @@
 }
 
 // Row 2-3: fluff-image starts after damage-threshold, spans down
-.fluff-image-container {
+.spa-container {
     grid-column: 2;
     grid-row: 2 / 4;
     min-height: 0;
     overflow: hidden;
-    padding: 2cqw;
     padding-top: 6cqw; // offset to start below damage-threshold
+    display: flex;
+    position: relative;
 }
 
 // Row 3: critical-hits stretches to fill remaining space
@@ -178,6 +182,11 @@
 .specials-box {
     grid-column: 2;
     grid-row: 4;
+}
+
+.pilot-abilities {
+    margin-left: 0.5cqw;
+    z-index: 1;
 }
 
 // Stats Box
@@ -291,17 +300,24 @@
 
 // Fluff Image
 .fluff-image-container {
+    margin-top: 5.8cqw;
+    top: 6cqw;
     overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    position: absolute;
+    inset: 0;
+    height: calc(100% - 7cqw);
+    pointer-events: none;
 }
 
 .fluff-image {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    object-position: center;
+    object-position: center top;
+
+    .center-vertical & {
+        object-position: center center;
+    }
 
     @media screen {
         :host:not(.monochrome) & {

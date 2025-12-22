@@ -10,7 +10,7 @@
     <div class="pv-box">
         <div class="pv-text alphastrike-text">{{ adjustedPV() }}</div>
         @if (basePV() != adjustedPV()) {
-        <div class="base-pv-text stroke-text">Base PV: {{ basePV() }}</div>
+        <div class="base-pv-text">Base PV: {{ basePV() }}</div>
         }
     </div>
 </div>
@@ -90,10 +90,21 @@
             }
         </div>
 
-        <!-- Row 3 Right: Unit Image -->
-        <div class="fluff-image-container">
+        <!-- Row 3 Right: SPAs -->
+        <div class="spa-container"> 
+            <!-- Unit Image -->
             @if (imageUrl()) {
-            <img class="fluff-image" [src]="imageUrl()" alt="Unit image" />
+            <div class="fluff-image-container center-vertical">
+                <img class="fluff-image" [src]="imageUrl()" alt="Unit image" />
+            </div>
+            }           
+            @let abilities = pilotAbilities();
+            @if (abilities.length > 0) {
+                <div class="pilot-abilities">
+                    @for (ability of abilities; track $index) {
+                        <div class="pilot-ability">{{ ability }}</div>
+                    }
+                </div>
             }
         </div>
 
