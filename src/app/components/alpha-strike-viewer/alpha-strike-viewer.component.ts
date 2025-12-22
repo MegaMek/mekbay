@@ -59,8 +59,17 @@ const MIN_CELL_WIDTH = 280;
 const CELL_GAP = 4;
 const CONTAINER_PADDING = 16 * 2; // left + right padding
 
-// Pinch zoom threshold: distance change (in pixels) required to trigger a column change
-const PINCH_THRESHOLD = 40;
+// Pinch zoom threshold: computed from container/viewport diagonal.
+// Using a ratio keeps gesture sensitivity consistent across device sizes.
+const PINCH_THRESHOLD_RATIO = 0.06;
+const PINCH_THRESHOLD_MIN_PX = 40;
+const PINCH_THRESHOLD_MAX_PX = 140;
+
+// Ctrl+Wheel zoom threshold: accumulated delta (in pixels) required per column change.
+// Touchpads often emit a continuous stream of small deltas; we quantize them into discrete "ticks".
+const WHEEL_TICK_THRESHOLD_PX = 100;
+// If wheel events pause longer than this, discard any partial accumulation.
+const WHEEL_IDLE_RESET_MS = 200;
 
 interface Point {
     x: number;
@@ -124,6 +133,13 @@ export class AlphaStrikeViewerComponent {
     private pinchState: {
         lastDistance: number;
         accumulatedDelta: number;
+    } | null = null;
+
+    // Ctrl+wheel zoom state (quantized)
+    private wheelState: {
+        accumulatedDeltaPx: number;
+        lastDirection: -1 | 0 | 1;
+        lastEventTime: number;
     } | null = null;
     
     // Flag to prevent scroll effect when selection is made by clicking a card
@@ -289,21 +305,61 @@ export class AlphaStrikeViewerComponent {
     onWheel(event: WheelEvent): void {
         if (!event.ctrlKey) return;
         event.preventDefault();
-        
-        const currentCols = this.columnCount();
+
+        const deltaY = event.deltaY;
+        if (deltaY === 0) return;
+
+        const direction = (deltaY > 0 ? 1 : -1) as -1 | 1;
         const maxCols = this.getMaxColumns();
-        
-        if (event.deltaY > 0) {
-            // Scroll down = zoom out = more columns
-            if (currentCols < maxCols) {
-                this.columnCount.set(currentCols + 1);
+
+        const applyRequestedCols = (requestedCols: number) => {
+            const nextCols = Math.min(maxCols, Math.max(1, requestedCols));
+            if (nextCols !== this.columnCount()) {
+                this.columnCount.set(nextCols);
             }
-        } else {
-            // Scroll up = zoom in = fewer columns
-            if (currentCols > 1) {
-                this.columnCount.set(currentCols - 1);
-            }
+        };
+
+        // For LINE/PAGE modes, treat each wheel event as a discrete tick.
+        // Pixel mode (common for touchpads) can spam tiny deltas, so we accumulate and threshold.
+        if (event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL) {
+            this.wheelState = null;
+
+            applyRequestedCols(this.columnCount() + direction);
+            return;
         }
+
+        const now = (typeof event.timeStamp === 'number' && Number.isFinite(event.timeStamp)) ? event.timeStamp : Date.now();
+
+        const deltaPx = deltaY;
+
+        if (!this.wheelState) {
+            this.wheelState = {
+                accumulatedDeltaPx: 0,
+                lastDirection: 0,
+                lastEventTime: now
+            };
+        }
+
+        // If the gesture paused, or direction changed, restart accumulation.
+        if (
+            (now - this.wheelState.lastEventTime) > WHEEL_IDLE_RESET_MS ||
+            (this.wheelState.lastDirection !== 0 && this.wheelState.lastDirection !== direction)
+        ) {
+            this.wheelState.accumulatedDeltaPx = 0;
+        }
+
+        this.wheelState.lastEventTime = now;
+        this.wheelState.lastDirection = direction;
+        this.wheelState.accumulatedDeltaPx += deltaPx;
+
+        const tickCount = Math.trunc(Math.abs(this.wheelState.accumulatedDeltaPx) / WHEEL_TICK_THRESHOLD_PX);
+        if (tickCount <= 0) return;
+
+        // Apply the column changes, 1 step, regardless of the number of tickCount detected.
+        applyRequestedCols(this.columnCount() + direction);
+
+        // Remove the processed ticks from accumulation.
+        this.wheelState.accumulatedDeltaPx -= direction * tickCount * WHEEL_TICK_THRESHOLD_PX;
     }
     
     private scrollToSelectedUnit(selectedUnit: ASForceUnit): void {
@@ -370,21 +426,36 @@ export class AlphaStrikeViewerComponent {
         
         const currentCols = this.columnCount();
         const maxCols = this.getMaxColumns();
+
+        const thresholdPx = this.getPinchThresholdPx();
         
         // Check if we've accumulated enough delta to trigger a column change
-        if (this.pinchState.accumulatedDelta >= PINCH_THRESHOLD) {
+        if (this.pinchState.accumulatedDelta >= thresholdPx) {
             // Pinch out (zoom in) = fewer columns
             if (currentCols > 1) {
                 this.columnCount.set(currentCols - 1);
             }
             this.pinchState.accumulatedDelta = 0;
-        } else if (this.pinchState.accumulatedDelta <= -PINCH_THRESHOLD) {
+        } else if (this.pinchState.accumulatedDelta <= -thresholdPx) {
             // Pinch in (zoom out) = more columns
             if (currentCols < maxCols) {
                 this.columnCount.set(currentCols + 1);
             }
             this.pinchState.accumulatedDelta = 0;
         }
+    }
+
+    private getPinchThresholdPx(): number {
+        const container = this.viewerContainer()?.nativeElement;
+        const width = container?.clientWidth ?? (typeof window !== 'undefined' ? window.innerWidth : 0);
+        const height = container?.clientHeight ?? (typeof window !== 'undefined' ? window.innerHeight : 0);
+
+        // Fallback to a sensible default if sizes are unavailable.
+        if (width <= 0 || height <= 0) return 80;
+
+        const diagonal = Math.sqrt(width * width + height * height);
+        const threshold = Math.round(diagonal * PINCH_THRESHOLD_RATIO);
+        return Math.min(PINCH_THRESHOLD_MAX_PX, Math.max(PINCH_THRESHOLD_MIN_PX, threshold));
     }
     
     private getDistance(p1: Point, p2: Point): number {
