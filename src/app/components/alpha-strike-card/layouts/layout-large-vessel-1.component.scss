@@ -167,6 +167,8 @@
     padding-top: 6cqw; // offset to start below damage-threshold
     display: flex;
     position: relative;
+    display: flex;
+    align-items: end;
 }
 
 // Row 3: critical-hits stretches to fill remaining space
