@@ -215,6 +215,14 @@
         background-color: rgba(185, 16, 16, 0.5);
     }
 
+    .info-slot.pilot-info {
+        background-color: var(--bt-yellow-background-bright-transparent);
+
+        &:hover {
+            background-color: var(--bt-yellow-background-bright);
+        }
+    }
+
 
 
     &.destroyed {
