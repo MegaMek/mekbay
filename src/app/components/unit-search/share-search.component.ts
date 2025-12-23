@@ -34,13 +34,15 @@
 
 
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { DialogRef } from '@angular/cdk/dialog';
 import { ActivatedRoute, Router } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { GameService } from '../../services/game.service';
 import { GameSystem } from '../../models/common.model';
+import { DialogsService } from '../../services/dialogs.service';
 
 /*
  * Author: Drake
@@ -163,6 +165,7 @@ export class ShareSearchDialogComponent {
     public dialogRef: DialogRef<string | number | null, ShareSearchDialogComponent> = inject(DialogRef);
     unitSearchFilters = inject(UnitSearchFiltersService);
     toastService = inject(ToastService);
+    private dialogsService = inject(DialogsService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
     private gameService = inject(GameService);
@@ -186,10 +189,24 @@ export class ShareSearchDialogComponent {
         this.shareUrl = origin + this.router.serializeUrl(instanceTree);
     }
 
+    private async confirmDataExportLicense(): Promise<boolean> {
+        const { DataExportLicenseDialogComponent } = await import('../data-export-license-dialog/data-export-license-dialog.component');
+        const ref = this.dialogsService.createDialog<boolean>(DataExportLicenseDialogComponent, {
+            disableClose: true
+        });
+        const accepted = await firstValueFrom(ref.closed);
+        return accepted === true;
+    }
+
     async exportToExcel() {
         const units = this.unitSearchFilters.filteredUnits();
         if (!units || units.length === 0) {
             this.toastService.show('No units to export.', 'error');
+            return;
+        }
+
+        const accepted = await this.confirmDataExportLicense();
+        if (!accepted) {
             return;
         }
 
@@ -216,6 +233,11 @@ export class ShareSearchDialogComponent {
         const units = this.unitSearchFilters.filteredUnits();
         if (!units || units.length === 0) {
             this.toastService.show('No units to export.', 'error');
+            return;
+        }
+
+        const accepted = await this.confirmDataExportLicense();
+        if (!accepted) {
             return;
         }
 
