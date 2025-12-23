@@ -37,7 +37,7 @@ import { DataService } from './data.service';
 import { MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { ActivatedRoute, Router } from '@angular/router';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { naturalCompare } from '../utils/sort.util';
+import { computeRelevanceScore, naturalCompare } from '../utils/sort.util';
 import { parseSearchQuery, SearchTokensGroup } from '../utils/search.util';
 import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
@@ -45,6 +45,7 @@ import { matchesSearch } from '../utils/search.util';
 import { GameSystem } from '../models/common.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
+import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 
 /*
  * Author: Drake
@@ -308,6 +309,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
 ];
 
 export const SORT_OPTIONS: SortOption[] = [
+    { key: '', label: 'Relevance' },
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
         .filter(f => !['era', 'faction', 'componentName', 'source'].includes(f.key))
@@ -360,7 +362,7 @@ export class UnitSearchFiltersService {
     pilotPilotingSkill = signal(5);
     searchText = signal('');
     filterState = signal<FilterState>({});
-    selectedSort = signal<string>('name');
+    selectedSort = signal<string>('');
     selectedSortDirection = signal<'asc' | 'desc'>('asc');
     expandedView = signal(false);
     advOpen = signal(false);
@@ -386,8 +388,13 @@ export class UnitSearchFiltersService {
             const gunnery = this.pilotGunnerySkill();
             const piloting = this.pilotPilotingSkill();
 
-            if (this.isDataReady() && this.advOptions()['bv']) {
-                this.recalculateBVRange();
+            if (this.isDataReady()) {
+                if (this.advOptions()['bv']) {
+                    this.recalculateBVRange();
+                }
+                if (this.advOptions()['as.PV']) {
+                    this.recalculatePVRange();
+                }
             }
         });
         this.loadFiltersFromUrlOnStartup();
@@ -441,6 +448,38 @@ export class UnitSearchFiltersService {
         }
     }
 
+    private recalculatePVRange() {
+        const units = this.units;
+        if (units.length === 0) return;
+
+        const pvValues = units
+            .map(u => this.getAdjustedPV(u))
+            .filter(pv => pv > 0)
+            .sort((a, b) => a - b);
+
+        if (pvValues.length === 0) return;
+
+        const min = pvValues[0];
+        const max = pvValues[pvValues.length - 1];
+
+        // Update the totalRangesCache which the computed signal depends on
+        this.totalRangesCache['as.PV'] = [min, max];
+        // Adjust current filter value to fit within new range if it exists
+        const currentFilter = this.filterState()['as.PV'];
+        if (currentFilter?.interactedWith) {
+            const currentValue = currentFilter.value as [number, number];
+            const adjustedValue: [number, number] = [
+                Math.max(min, currentValue[0]),
+                Math.min(max, currentValue[1])
+            ];
+
+            // Only update if the value actually changed
+            if (adjustedValue[0] !== currentValue[0] || adjustedValue[1] !== currentValue[1]) {
+                this.setFilter('as.PV', adjustedValue);
+            }
+        }
+    }
+
     private calculateTotalRanges() {
         const rangeFilters = ADVANCED_FILTERS.filter(f => f.type === AdvFilterType.RANGE);
         for (const conf of rangeFilters) {
@@ -453,6 +492,16 @@ export class UnitSearchFiltersService {
                     this.totalRangesCache['bv'] = [Math.min(...bvValues), Math.max(...bvValues)];
                 } else {
                     this.totalRangesCache['bv'] = [0, 0];
+                }
+            } else if (conf.key === 'as.PV') {
+                // Special handling for BV to use adjusted values
+                const pvValues = this.units
+                    .map(u => this.getAdjustedPV(u))
+                    .filter(pv => pv > 0);
+                if (pvValues.length > 0) {
+                    this.totalRangesCache['as.PV'] = [Math.min(...pvValues), Math.max(...pvValues)];
+                } else {
+                    this.totalRangesCache['as.PV'] = [0, 0];
                 }
             } else {
                 const allValues = this.getValidFilterValues(this.units, conf);
@@ -644,6 +693,11 @@ export class UnitSearchFiltersService {
                         const adjustedBV = this.getAdjustedBV(u);
                         return adjustedBV >= val[0] && adjustedBV <= val[1];
                     });
+                } else if (conf.key === 'as.PV') {
+                    results = results.filter(u => {
+                        const adjustedPV = this.getAdjustedPV(u);
+                        return adjustedPV >= val[0] && adjustedPV <= val[1];
+                    });
                 } else {
                     results = results.filter(u => {
                         const unitValue = getProperty(u, conf.key);
@@ -681,34 +735,68 @@ export class UnitSearchFiltersService {
         const sortDirection = this.selectedSortDirection();
 
         const sorted = [...results];
+
+        const compareByName = (a: Unit, b: Unit) => {
+            let comparison = naturalCompare(a.chassis || '', b.chassis || '');
+            if (comparison === 0) {
+                comparison = naturalCompare(a.model || '', b.model || '', true);
+                if (comparison === 0) {
+                    comparison = (a.year || 0) - (b.year || 0);
+                }
+            }
+            return comparison;
+        };
+
+        // Precompute relevance scores once per sort (avoids recomputing inside comparator).
+        let relevanceScores: WeakMap<Unit, number> | null = null;
+        if (sortKey === '') {
+            const tokens = this.searchTokens();
+            relevanceScores = new WeakMap<Unit, number>();
+            for (const u of sorted) {
+                const chassis = (u._chassis ?? u.chassis ?? '') as string;
+                const model = (u._model ?? u.model ?? '') as string;
+                relevanceScores.set(u, computeRelevanceScore(chassis, model, tokens));
+            }
+        }
+
         sorted.sort((a: Unit, b: Unit) => {
             let comparison = 0;
-            if (sortKey === 'name') {
-                comparison = naturalCompare(a.chassis || '', b.chassis || '');
+
+            if (sortKey === '') {
+                const aScore = relevanceScores?.get(a) ?? 0;
+                const bScore = relevanceScores?.get(b) ?? 0;
+
+                // Higher score = more relevant. Default sort direction is 'asc',
+                // but for relevance we want best-first by default.
+                comparison = bScore - aScore;
+
                 if (comparison === 0) {
-                    comparison = naturalCompare(a.model || '', b.model || '', true);
-                    if (comparison === 0) {
-                        comparison = (a.year || 0) - (b.year || 0);
-                    }
+                    comparison = compareByName(a, b);
                 }
-            } else
-                if (sortKey === 'bv') {
-                    // Use adjusted BV for sorting
-                    const aBv = this.getAdjustedBV(a);
-                    const bBv = this.getAdjustedBV(b);
-                    comparison = aBv - bBv;
-                } else
-                    if (sortKey in a && sortKey in b) {
-                        const key = sortKey as keyof Unit;
-                        const aValue = a[key];
-                        const bValue = b[key];
-                        if (typeof aValue === 'string' && typeof bValue === 'string') {
-                            comparison = naturalCompare(aValue, bValue);
-                        }
-                        if (typeof aValue === 'number' && typeof bValue === 'number') {
-                            comparison = aValue - bValue;
-                        }
-                    }
+            } else if (sortKey === 'name') {
+                comparison = compareByName(a, b);
+            } else if (sortKey === 'bv') {
+                // Use adjusted BV for sorting
+                const aBv = this.getAdjustedBV(a);
+                const bBv = this.getAdjustedBV(b);
+                comparison = aBv - bBv;
+            } else if (sortKey === 'as.PV') {
+                // Use adjusted PV for sorting
+                const aPv = this.getAdjustedPV(a);
+                const bPv = this.getAdjustedPV(b);
+                comparison = aPv - bPv;
+            } else if (sortKey in a && sortKey in b) {
+                const key = sortKey as keyof Unit;
+                const aValue = a[key];
+                const bValue = b[key];
+                if (typeof aValue === 'string' && typeof bValue === 'string') {
+                    comparison = naturalCompare(aValue, bValue);
+                }
+                if (typeof aValue === 'number' && typeof bValue === 'number') {
+                    comparison = aValue - bValue;
+                }
+            }
+
             if (sortDirection === 'desc') {
                 return -comparison;
             }
@@ -938,6 +1026,10 @@ export class UnitSearchFiltersService {
                     vals = contextUnits
                         .map(u => this.getAdjustedBV(u))
                         .filter(bv => bv > 0);
+                } else if (conf.key === 'as.PV') {
+                    vals = contextUnits
+                        .map(u => this.getAdjustedPV(u))
+                        .filter(pv => pv > 0);
                 } else {
                     vals = this.getValidFilterValues(contextUnits, conf);
                 }
@@ -1131,7 +1223,7 @@ export class UnitSearchFiltersService {
         queryParams.filters = filtersParam ? filtersParam : null;
 
         // Add sort if not default
-        queryParams.sort = (selectedSort !== 'name') ? selectedSort : null;
+        queryParams.sort = (selectedSort !== '') ? selectedSort : null;
         queryParams.sortDir = (selectedSortDirection !== 'asc') ? selectedSortDirection : null;
 
         
@@ -1335,7 +1427,7 @@ export class UnitSearchFiltersService {
     public clearFilters() {
         this.searchText.set('');
         this.filterState.set({});
-        this.selectedSort.set('name');
+        this.selectedSort.set('');
         this.selectedSortDirection.set('asc');
         this.pilotGunnerySkill.set(4);
         this.pilotPilotingSkill.set(5);
@@ -1392,6 +1484,16 @@ export class UnitSearchFiltersService {
         return BVCalculatorUtil.calculateAdjustedBV(unit.bv, gunnery, piloting);
     }
 
+    getAdjustedPV(unit: Unit): number {
+        let skill = this.pilotGunnerySkill();
+        // Use default skill - no adjustment needed
+        if (skill === 4) {
+            return unit.as.PV;
+        }
+
+        return PVCalculatorUtil.calculateAdjustedPV(unit.as.PV, skill);
+    }
+
 
     public serializeCurrentSearchFilter(name: string): SerializedSearchFilter {
         const filter: SerializedSearchFilter = { name };
@@ -1400,7 +1502,7 @@ export class UnitSearchFiltersService {
         if (q && q.trim().length > 0) filter.q = q.trim();
 
         const sort = this.selectedSort();
-        if (sort && sort !== 'name') filter.sort = sort;
+        if (sort && sort !== '') filter.sort = sort;
 
         const sortDir = this.selectedSortDirection();
         if (sortDir && sortDir !== 'asc') filter.sortDir = sortDir;

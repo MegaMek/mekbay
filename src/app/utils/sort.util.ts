@@ -138,3 +138,191 @@ export function naturalCompare(a: string, b: string, isModel: boolean = false): 
     // Fallback to locale compare if all tokens equal
     return a.localeCompare(b);
 }
+
+type RelevanceNormalizedText = {
+    lower: string;
+    alphaNum: string;
+};
+
+const relevanceNormalizeCache = new Map<string, RelevanceNormalizedText>();
+const relevanceFlexRegexCache = new Map<string, RegExp>();
+
+function removeAccentsLite(s: string): string {
+    try {
+        return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    } catch {
+        return s;
+    }
+}
+
+function normalizeForRelevance(text: string): RelevanceNormalizedText {
+    const token = (typeof text === 'string') ? text : (text == null ? '' : String(text));
+    const cached = relevanceNormalizeCache.get(token);
+    if (cached) return cached;
+
+    const lower = removeAccentsLite(token).toLowerCase();
+    const alphaNum = lower.replace(/[^a-z0-9]/gi, '');
+    const entry = { lower, alphaNum };
+    relevanceNormalizeCache.set(token, entry);
+    return entry;
+}
+
+function escapeRegExp(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getFlexTokenRegex(tokenAlphaNum: string): RegExp {
+    const cached = relevanceFlexRegexCache.get(tokenAlphaNum);
+    if (cached) return cached;
+
+    // Allow gaps made of non-alphanumerics between each character.
+    // This matches things like "tia n" or "t (ian)".
+    const parts = tokenAlphaNum.split('').map(ch => escapeRegExp(ch));
+    const pattern = parts.join('[^a-z0-9]*');
+    const re = new RegExp(pattern, 'i');
+    relevanceFlexRegexCache.set(tokenAlphaNum, re);
+    return re;
+}
+
+function isBoundaryChar(ch: string | undefined): boolean {
+    if (!ch) return true;
+    return !(/[a-z0-9]/i.test(ch));
+}
+
+function boundaryBonus(textLower: string, startIndex: number, matchLength: number): number {
+    const prev = startIndex > 0 ? textLower[startIndex - 1] : undefined;
+    const next = (startIndex + matchLength) < textLower.length ? textLower[startIndex + matchLength] : undefined;
+    const prevBoundary = isBoundaryChar(prev);
+    const nextBoundary = isBoundaryChar(next);
+
+    let bonus = 0;
+    if (startIndex === 0) bonus += 600;
+    if (prevBoundary) bonus += 300;
+    if (nextBoundary) bonus += 150;
+    if (prevBoundary && nextBoundary) bonus += 250; // looks like a whole token/word
+    return bonus;
+}
+
+function scoreTokenInText(
+    textLower: string,
+    textAlphaNum: string,
+    token: { token: string; mode: 'exact' | 'partial' }
+): number {
+    const rawToken = token.token ?? '';
+    if (!rawToken) return 0;
+
+    const tokenLower = removeAccentsLite(rawToken).toLowerCase();
+    const tokenAlpha = tokenLower.replace(/[^a-z0-9]/gi, '');
+
+    // Exact tokens: prioritize whole-token matches with boundaries.
+    if (token.mode === 'exact') {
+        const escaped = escapeRegExp(tokenLower);
+        const re = new RegExp(`(^|[^a-z0-9])(${escaped})($|[^a-z0-9])`, 'i');
+        const m = re.exec(textLower);
+        if (m && typeof m.index === 'number') {
+            const start = m.index + (m[1]?.length ?? 0);
+            const len = tokenLower.length;
+            const posPenalty = start * 8;
+            const lengthPenalty = Math.max(0, textLower.length - len);
+            return 16000 - posPenalty - lengthPenalty + boundaryBonus(textLower, start, len) + 1200;
+        }
+        // Fallback: if alphanumeric-normalized text equals token (rare but possible)
+        if (tokenAlpha && textAlphaNum === tokenAlpha) {
+            return 15000;
+        }
+        return -Infinity;
+    }
+
+    // Partial tokens: contiguous match in the original normalized text.
+    const directIdx = tokenLower ? textLower.indexOf(tokenLower) : -1;
+    if (directIdx !== -1) {
+        const posPenalty = directIdx * 6;
+        const lengthPenalty = Math.max(0, textLower.length - tokenLower.length);
+        return 14000 - posPenalty - lengthPenalty + boundaryBonus(textLower, directIdx, tokenLower.length);
+    }
+
+    // Contiguous match after removing non-alphanumerics.
+    if (tokenAlpha) {
+        const alphaIdx = textAlphaNum.indexOf(tokenAlpha);
+        if (alphaIdx !== -1) {
+            const posPenalty = alphaIdx * 5;
+            const lengthPenalty = Math.max(0, textAlphaNum.length - tokenAlpha.length);
+            // Slightly lower than direct contiguous because it may cross separators.
+            return 11000 - posPenalty - lengthPenalty + 250;
+        }
+
+        // Flexible match allowing punctuation/space between characters.
+        const flexRe = getFlexTokenRegex(tokenAlpha);
+        const flexMatch = flexRe.exec(textLower);
+        if (flexMatch && typeof flexMatch.index === 'number') {
+            const span = flexMatch[0].length;
+            const start = flexMatch.index;
+            const posPenalty = start * 7;
+            const spanPenalty = Math.max(0, span - tokenAlpha.length) * 30;
+            const lengthPenalty = Math.max(0, textLower.length - tokenAlpha.length);
+            return 9000 - posPenalty - spanPenalty - lengthPenalty + boundaryBonus(textLower, start, span);
+        }
+    }
+
+    return -Infinity;
+}
+
+function bestGroupScore(
+    chassis: RelevanceNormalizedText,
+    model: RelevanceNormalizedText,
+    group: { tokens: Array<{ token: string; mode: 'exact' | 'partial' }> }
+): number {
+    if (!group.tokens || group.tokens.length === 0) return 0;
+
+    let total = 0;
+    let chassisHitCount = 0;
+
+    for (const t of group.tokens) {
+        const chassisScore = scoreTokenInText(chassis.lower, chassis.alphaNum, t);
+        const modelScore = scoreTokenInText(model.lower, model.alphaNum, t);
+
+        if (chassisScore === -Infinity && modelScore === -Infinity) {
+            return -Infinity;
+        }
+
+        // Chassis is substantially more important than model.
+        const weightedChassis = chassisScore === -Infinity ? -Infinity : (chassisScore * 3);
+        const weightedModel = modelScore === -Infinity ? -Infinity : (modelScore * 1);
+
+        if (weightedChassis >= weightedModel) {
+            total += weightedChassis;
+            chassisHitCount++;
+        } else {
+            total += weightedModel;
+        }
+    }
+
+    // Bonus if many/all tokens hit in chassis.
+    if (chassisHitCount > 0) total += chassisHitCount * 700;
+    if (chassisHitCount === group.tokens.length && group.tokens.length > 1) total += 1200;
+
+    return total;
+}
+
+/**
+ * Computes a relevance score for a unit name (chassis+model) given parsed search tokens.
+ * Higher is more relevant.
+ */
+export function computeRelevanceScore(
+    chassisText: string,
+    modelText: string,
+    searchTokens: Array<{ tokens: Array<{ token: string; mode: 'exact' | 'partial' }> }>
+): number {
+    if (!searchTokens || searchTokens.length === 0) return 0;
+
+    const chassis = normalizeForRelevance(chassisText ?? '');
+    const model = normalizeForRelevance(modelText ?? '');
+
+    let best = -Infinity;
+    for (const group of searchTokens) {
+        const score = bestGroupScore(chassis, model, group);
+        if (score > best) best = score;
+    }
+
+    return best === -Infinity ? 0 : best;
+}
