@@ -179,7 +179,6 @@ export class UnitInitializerService {
                     console.warn(`Critical slot ID mismatch for loc ${loc} slot ${slot}: expected ${critSlot.id}, found ${id}`);
                 }
                 critSlot.id = id;
-                critSlot.name = name;
                 if (critSlot.name) {
                     critSlot.eq = equipmentList[critSlot.name];
                 }

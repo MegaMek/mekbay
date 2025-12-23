@@ -164,6 +164,8 @@ export class CBTForceUnitState extends ForceUnitState {
                         existingCrit.consumed !== incomingCrit.consumed) {
                         existingCrit.hits = incomingCrit.hits;
                         existingCrit.destroying = incomingCrit.destroying;
+                        existingCrit.name = incomingCrit.name;
+                        existingCrit.originalName = incomingCrit.originalName;
                         existingCrit.destroyed = incomingCrit.destroyed;
                         existingCrit.consumed = incomingCrit.consumed;
                         critsChanged = true;
