@@ -24,6 +24,10 @@
     font-size: 1.5rem;
     font-weight: 700;
     text-align: center;
+
+    @media print {
+        display: none;
+    }
 }
 
 .group-separator {
@@ -32,6 +36,10 @@
     border: none;
     background: var(--text-color);
     opacity: 0.3;
+
+    @media print {
+        display: none;
+    }
 }
 
 .units-grid {

@@ -41,6 +41,10 @@
         padding-right: 2.2cqw;
     }
 
+    .frame-content {
+        padding: 0.9cqw 1.2cqw;
+    }
+
     .frame-background {
         z-index: 0;
         width: 100%;
@@ -58,14 +62,15 @@
     paint-order: stroke fill;
     position: relative;
 
-    :host:not(.monochrome) & { 
+    :host:not(.monochrome) & {
         color: #d22027;
         -webkit-text-stroke: 0.45cqw #ECD24B;
     }
 
     &.bolder {
         font-weight: 900;
-        :host:not(.monochrome) & { 
+
+        :host:not(.monochrome) & {
             -webkit-text-stroke: 0.3cqw #ECD24B;
         }
     }
