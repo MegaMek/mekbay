@@ -14,6 +14,10 @@
     overflow: hidden;
     background-color: var(--background-color-menu);
     position: relative;
+
+    @media print {
+        background-color: unset;
+    }
 }
 
 :host-context(.sidebar-docked) .main-content {
