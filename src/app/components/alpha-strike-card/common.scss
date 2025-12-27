@@ -126,6 +126,11 @@
         border-radius: 1.6cqw;
         border: 0.36cqw solid #221F20;
     }
+
+    .pip {
+        width: 2.14cqw;
+        height: 2.14cqw;
+    }
 }
 
 .critical-title {
@@ -225,22 +230,24 @@
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
-    gap: 0.71cqw; // 8px / 1120
+    gap: 0.7cqw;
 }
 
 .pip {
-    width: 2.14cqw; // 24px / 1120
-    height: 2.14cqw;
-    border-radius: 50%;
-    border: 0.27cqw solid #000; // 3px / 1120
-    background: #fff;
+    width: 2.8cqw;
+    height: 2.8cqw;
     cursor: pointer;
-    box-sizing: border-box;
     position: relative;
     top: 0.2cqw;
 
-    &.structure {
-        background: #bbb;
+    circle {
+        fill: #fff;
+        stroke: #000;
+        stroke-width: 2pt;
+    }
+
+    &.structure circle {
+        fill: #bbb;
     }
 }
 

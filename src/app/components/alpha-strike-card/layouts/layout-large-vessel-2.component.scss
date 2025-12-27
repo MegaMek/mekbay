@@ -150,9 +150,8 @@
 
 .crit-pip-group {
     display: flex;
-    gap: 0.2cqw;
     flex: 1;
-    justify-content: center;
+    justify-content:center;
     min-height: 2.2cqw;
 
     &:not(:last-child) {
@@ -165,7 +164,10 @@
 .vessel-card-2 .pip {
     width: 1.8cqw;
     height: 1.8cqw;
-    border: 0.2cqw solid #000;
+
+    circle {
+        stroke-width: 1.2pt;
+    }
 }
 
 .weapon-criticals-note {

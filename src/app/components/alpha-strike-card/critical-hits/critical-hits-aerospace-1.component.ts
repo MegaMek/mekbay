@@ -56,7 +56,7 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     <span class="critical-name">CREW</span>
                     <div class="critical-pips">
                         @for (i of range(2); track i) {
-                        <div class="pip"></div>
+                        <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
                     <div class="desc-group">
@@ -69,7 +69,7 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     <span class="critical-name">ENGINE</span>
                     <div class="critical-pips">
                         @for (i of range(4); track i) {
-                        <div class="pip"></div>
+                        <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
                     <span class="critical-desc">-25%/-50%/-100% THR</span>
@@ -79,7 +79,7 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     <span class="critical-name">FIRE CONTROL</span>
                     <div class="critical-pips">
                         @for (i of range(4); track i) {
-                        <div class="pip"></div>
+                        <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
                     <span class="critical-desc">+2 To-Hit Each</span>
@@ -89,7 +89,7 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     <span class="critical-name">THRUSTER</span>
                     <div class="critical-pips">
                         @for (i of range(1); track i) {
-                        <div class="pip"></div>
+                        <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
                     <span class="critical-desc">-1 Thrust (THR)</span>
