@@ -180,6 +180,7 @@ export class ASPrintUtil {
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
+        const cardStyle = optionsService.options().ASCardStyle;
         
         // Create overlay container
         const overlay = document.createElement('div');
@@ -221,7 +222,7 @@ export class ASPrintUtil {
                 // Set inputs
                 componentRef.setInput('forceUnit', item.forceUnit);
                 componentRef.setInput('cardIndex', item.cardIndex);
-                componentRef.setInput('cardStyle', 'monochrome');
+                componentRef.setInput('cardStyle', cardStyle);
                 componentRef.setInput('useHex', useHex);
                 componentRef.setInput('isSelected', false);
                 
