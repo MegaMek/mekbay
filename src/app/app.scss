@@ -5,6 +5,10 @@
     width: 100%;
     box-sizing: border-box;
     overflow: hidden;
+
+    @media print {
+        overflow: unset;
+    }
 }
 
 .main-content {
@@ -17,6 +21,7 @@
 
     @media print {
         background-color: unset;
+        overflow: unset;
     }
 }
 
@@ -32,6 +37,10 @@
     flex-grow: 1;
     position: relative;
     overflow: hidden;
+
+    @media print {
+        overflow: unset;
+    }
 }
 
 .empty-state-container {
