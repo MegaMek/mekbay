@@ -102,7 +102,7 @@
     .frame-content {
         display: flex;
         flex-direction: column;
-        align-items: center;
+        align-items: flex-start;
         gap: 0.8cqw;
     }
 
@@ -148,16 +148,17 @@
     text-align: center;
     width: fit-content;
     white-space: nowrap;
+    align-self: center;
 }
 
 .critical-row {
     display: flex;
-    width: 100%;
     align-items: center;
     font-family: 'Roboto Condensed', sans-serif;
 
     &.centered-row {
         justify-content: center;
+        align-self: center;
     }
 }
 
@@ -165,7 +166,7 @@
     font-size: 2cqw;
     font-weight: 900;
     text-align: right;
-    min-width: 32%;
+    width: 12cqw;
     padding-right: 1cqw;
     letter-spacing: -0.05cqw;
     color: #000;
@@ -177,7 +178,7 @@
     }
 
     .critical-row.centered-row & {
-        min-width: initial;
+        width: auto;
     }
 }
 
