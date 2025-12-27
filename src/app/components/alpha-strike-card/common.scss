@@ -6,26 +6,31 @@
 .frame {
     width: 100%;
     box-sizing: border-box;
-    padding: 0.5cqw 1.25cqw;
     color: #000;
     position: relative;
+    display: flex;
+    flex-direction: column;
 
     .frame-content {
         z-index: 1;
-        width: 100%;
-        padding-top: 0.5cqw;
-        padding-bottom: 0.5cqw;
+        padding: 0.5cqw 1cqw;
+        flex: 1 1 auto;
     }
 
     :host(.monochrome) & {
         border-style: solid;
-        background: rgba(255, 255, 255, 0.7);
+        background: #fff;
         border-radius: 1.6cqw;
         border: 0.36cqw solid #221F20;
-        padding-top: 0.2cqw;
-        padding-bottom: 0.2cqw;
     }
 }
+
+:host:has(.monochrome) {
+    .frame-background {
+        display: none;
+    }
+}
+
 
 :host:not(.monochrome) {
     .frame-title-background {
@@ -42,22 +47,26 @@
         height: 100%;
         opacity: 0.7;
         position: absolute;
-        margin: -0.5cqw -1.25cqw;
         border-image-slice: 100 100 100 100 fill;
         border-image-width: 2cqw;
         border-image-outset: 0cqw;
         border-image-source: url("/images/asframe.png");
     }
+}
 
-    .alphastrike-text {
+.alphastrike-text {
+    paint-order: stroke fill;
+    position: relative;
+
+    :host:not(.monochrome) & { 
         color: #d22027;
         -webkit-text-stroke: 0.45cqw #ECD24B;
-        paint-order: stroke fill;
-        position: relative;
+    }
 
-        &.bolder {
+    &.bolder {
+        font-weight: 900;
+        :host:not(.monochrome) & { 
             -webkit-text-stroke: 0.3cqw #ECD24B;
-            font-weight: 900;
         }
     }
 }
@@ -85,7 +94,6 @@
     display: flex;
     width: 100%;
     box-sizing: border-box;
-    padding: 0.5cqw 1.25cqw;
     color: #000;
     position: relative;
 
@@ -94,6 +102,7 @@
         flex-direction: column;
         align-items: flex-start;
         gap: 0.8cqw;
+        padding-bottom: 1cqw;
     }
 
     &.autoheight {
@@ -111,11 +120,6 @@
         background: rgba(255, 255, 255, 0.7);
         border-radius: 1.6cqw;
         border: 0.36cqw solid #221F20;
-        padding: 0.3cqw 0.6cqw;
-
-        .frame-background {
-            display: none;
-        }
     }
 }
 
@@ -186,6 +190,10 @@
     margin-left: 0.5cqw;
     white-space: nowrap;
     letter-spacing: -0.05cqw;
+
+    &:not(:last-child) {
+        margin-right: 0.5cqw;
+    }
 }
 
 .pip-row {

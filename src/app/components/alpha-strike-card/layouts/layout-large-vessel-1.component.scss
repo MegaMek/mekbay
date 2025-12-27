@@ -87,11 +87,6 @@
 .damage-threshold-row-container {
     display: flex;
     align-items: center;
-    height: 5cqw;
-
-    .frame-content {
-        flex: 1;
-    }
 }
 
 // Era Icons
@@ -220,7 +215,6 @@
 
     .frame-content {
         display: flex;
-        width: 100%;
         gap: 1cqw;
     }
 }
