@@ -241,16 +241,24 @@ export class AlphaStrikeViewerComponent {
             this.resizeObserver.observe(container);
         });
         
-        // Calculate optimal column count on initial render and when container resizes
+        // Calculate optimal column count on initial render
         afterNextRender(() => {
-            this.calculateOptimalColumns();
+            // Wait for initial container width to be set by ResizeObserver
+            const unsubscribe = effect(() => {
+                const width = this.containerWidth();
+                if (width > 0) {
+                    this.calculateOptimalColumns();
+                    // Only run once - clean up after initial calculation
+                    unsubscribe.destroy();
+                }
+            }, { injector: this.injector });
         });
         
-        // Recalculate optimal columns when container width changes significantly
+        // On resize, clamp columns if they no longer fit
         effect(() => {
             const width = this.containerWidth();
             if (width > 0) {
-                this.calculateOptimalColumns();
+                this.clampColumnsToFit();
             }
         });
     }
@@ -288,6 +296,20 @@ export class AlphaStrikeViewerComponent {
         // How many BASE_CELL_WIDTH cells fit?
         const cols = Math.max(1, Math.floor((availableWidth + CELL_GAP) / (BASE_CELL_WIDTH + CELL_GAP)));
         this.columnCount.set(cols);
+    }
+    
+    /**
+     * Clamp column count to what can fit at MIN_CELL_WIDTH.
+     * Called on resize to prevent horizontal overflow
+     */
+    private clampColumnsToFit(): void {
+        const currentCols = this.columnCount();
+        const maxCols = this.getMaxColumns();
+        
+        // Only reduce columns if current count exceeds what can fit
+        if (currentCols > maxCols) {
+            this.columnCount.set(maxCols);
+        }
     }
     
     /**
