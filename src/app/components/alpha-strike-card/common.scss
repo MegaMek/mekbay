@@ -213,6 +213,7 @@
 .pips {
     display: flex;
     flex-wrap: wrap;
+    align-items: flex-start;
     gap: 0.71cqw; // 8px / 1120
 }
 
