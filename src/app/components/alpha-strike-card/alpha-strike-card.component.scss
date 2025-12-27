@@ -30,10 +30,6 @@
     :host(.monochrome) & {
         background: #fff;
     }
-
-    @media print {
-        background: #fff;
-    }
 }
 
 @media screen {
@@ -43,19 +39,14 @@
     }
 }
 
-.alphastrike-footer-background {
-    position: absolute;
-    inset: 0;
-    background: #000;
-    clip-path: polygon(0 89%, 50% 89%, 58% 100%, 0 100%);
-
-    @media screen {
-        :host:not(.monochrome) & {
-            display: none;
-        }
+:host:has(.monochrome) {
+    .alphastrike-footer-background {
+        position: absolute;
+        inset: 0;
+        background: #000;
+        clip-path: polygon(0 89%, 50% 89%, 58% 100%, 0 100%);
     }
 }
-
 
 :host:not(.monochrome) .card-background-image {
     position: absolute;
@@ -67,10 +58,6 @@
 
     &.secondary-card {
         background-image: url('/images/ascard_background2.jpg');
-    }
-
-    @media print {
-        display: none;
     }
 }
 
@@ -102,14 +89,9 @@
     :host(.monochrome) & {
         bottom: -15%;
 
-        svg path {
-            fill: #fff !important;
-            stroke-width: 0 !important;
+        svg g {
+            filter: none !important;
         }
-    }
-
-    @media print {
-        bottom: -15%;
 
         svg path {
             fill: #fff !important;
@@ -139,18 +121,6 @@
             stroke-width: 0 !important;
         }
         
-        .logo-text {
-                fill: #000;
-        }
-    }
-
-    @media print {
-        bottom: 15%;
-
-        svg path {
-            fill: #000 !important;
-            stroke-width: 0 !important;
-        }
         .logo-text {
                 fill: #000;
         }

@@ -31,10 +31,6 @@
         color: #000;
         font-weight: 700;
     }
-    @media print {
-        color: #000;
-        font-weight: 700;
-    }
 }
 
 .vessel-model {
@@ -42,10 +38,8 @@
     line-height: 3cqw;
     color: #000;
 
-    @media screen {
-        :host:not(.monochrome) & {
-            color: #ECD24B;
-        }
+    :host:not(.monochrome) & {
+        color: #ECD24B;
     }
 }
 
@@ -84,7 +78,11 @@
     font-weight: 900;
     text-transform: uppercase;
     white-space: nowrap;
-    color: var(--as-red);
+    color: #000;
+
+    :host:not(.monochrome) & {
+        color: var(--as-red);
+    }
 }
 
 .damage-table {
@@ -177,10 +175,9 @@
     flex-direction: row;
     gap: 0.5cqw;
     align-items: baseline;
-    @media screen {
-        :host(:not(.monochrome)) & {
-            color: #fff;
-        }
+    
+    :host(:not(.monochrome)) & {
+        color: #fff;
     }
 }
 

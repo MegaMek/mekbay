@@ -279,6 +279,7 @@ export class ASPrintUtil {
                 align-content: flex-start;
                 -webkit-justify-content: flex-start;
                 justify-content: flex-start;
+                gap: 0.01in;
                 background: white;
                 box-sizing: border-box;
                 overflow: hidden;
@@ -340,23 +341,6 @@ export class ASPrintUtil {
                 @page {
                     size: auto;
                     margin: 0.25in !important;
-                }
-            }
-
-            @media screen {
-                #as-multipage-container {
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    overflow: auto;
-                    padding: 20px;
-                }
-
-                .as-print-page {
-                    margin: 0 auto 20px auto;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
                 }
             }
         `;

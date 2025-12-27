@@ -25,49 +25,39 @@
         padding-top: 0.2cqw;
         padding-bottom: 0.2cqw;
     }
-
-    @media print {
-        border-style: solid;
-        background: rgba(255, 255, 255, 0.7);
-        border-radius: 1.6cqw;
-        border: 0.36cqw solid #221F20;
-        padding-top: 0.2cqw;
-        padding-bottom: 0.2cqw;
-    }
 }
 
-@media screen {
-    :host:not(.monochrome) {
-        .frame-title-background {
-            background: linear-gradient(to right, transparent 0%, #5B504E 1.5cqw, #5B504E calc(100% - 1.5cqw), transparent 100%);
-            color: #fff;
-            font-weight: bold;
-            padding-left: 2.2cqw;
-            padding-right: 2.2cqw;
-        }
+:host:not(.monochrome) {
+    .frame-title-background {
+        background: linear-gradient(to right, transparent 0%, #5B504E 1.5cqw, #5B504E calc(100% - 1.5cqw), transparent 100%);
+        color: #fff;
+        font-weight: bold;
+        padding-left: 2.2cqw;
+        padding-right: 2.2cqw;
+    }
 
-        .frame-background {
-            z-index: 0;
-            width: 100%;
-            height: 100%;
-            opacity: 0.7;
-            position: absolute;
-            margin: -0.5cqw -1.25cqw;
-            border-image-slice: 100 100 100 100 fill;
-            border-image-width: 2cqw;
-            border-image-outset: 0cqw;
-            border-image-source: url("/images/asframe.png");
-        }
-        .alphastrike-text {
-            color: #d22027;
-            -webkit-text-stroke: 0.45cqw #ECD24B;
-            paint-order: stroke fill;
-            position: relative;
-            
-            &.bolder {
-                -webkit-text-stroke: 0.3cqw #ECD24B;
-                font-weight: 900;
-            }
+    .frame-background {
+        z-index: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0.7;
+        position: absolute;
+        margin: -0.5cqw -1.25cqw;
+        border-image-slice: 100 100 100 100 fill;
+        border-image-width: 2cqw;
+        border-image-outset: 0cqw;
+        border-image-source: url("/images/asframe.png");
+    }
+
+    .alphastrike-text {
+        color: #d22027;
+        -webkit-text-stroke: 0.45cqw #ECD24B;
+        paint-order: stroke fill;
+        position: relative;
+
+        &.bolder {
+            -webkit-text-stroke: 0.3cqw #ECD24B;
+            font-weight: 900;
         }
     }
 }
@@ -83,7 +73,7 @@
     font-weight: 900;
     color: var(--as-red);
 
-    @media print {
+    :host:has(.monochrome) & {
         -webkit-text-stroke: 0.3cqw #fff;
         color: #000;
         paint-order: stroke fill;
@@ -108,6 +98,7 @@
 
     &.autoheight {
         height: 100%;
+
         .frame-content {
             gap: 0.1cqw;
             justify-content: space-between;
@@ -116,19 +107,6 @@
 
 
     :host(.monochrome) & {
-        border-style: solid;
-        background: rgba(255, 255, 255, 0.7);
-        border-radius: 1.6cqw;
-        border: 0.36cqw solid #221F20;
-        padding-top: 0.3cqw;
-        padding-bottom: 0.3cqw;
-
-        .frame-background {
-            display: none;
-        }
-    }
-
-    @media print {
         border-style: solid;
         background: rgba(255, 255, 255, 0.7);
         border-radius: 1.6cqw;
@@ -171,10 +149,8 @@
     letter-spacing: -0.05cqw;
     color: #000;
 
-    @media screen {
-        :host(:not(.monochrome)) & {
-            color: var(--as-red);
-        }
+    :host(:not(.monochrome)) & {
+        color: var(--as-red);
     }
 
     .critical-row.centered-row & {
@@ -224,7 +200,7 @@
     font-size: 2.5cqw;
     font-weight: bold;
 
-    @media print {
+    :host:has(.monochrome) & {
         width: 100%;
         text-align: right;
 
@@ -270,21 +246,14 @@
         &:hover {
             color: #6e00a5;
         }
-        
-        @media screen {
-            
-            :host:not(.monochrome) & {
-                color: white;
-                -webkit-text-stroke: #000 0.3cqw;
-    
-                &:hover {
-                    color: #cdb0ff;
-                }
+
+        :host:not(.monochrome) & {
+            color: white;
+            -webkit-text-stroke: #000 0.3cqw;
+
+            &:hover {
+                color: #cdb0ff;
             }
-        }
-    
-        @media print {
-            color: #000;
         }
     }
 }

@@ -30,11 +30,9 @@
         object-position: center center;
     }
 
-    @media screen {
-        :host:not(.monochrome) & {
-            filter: saturate(0) invert(1) brightness(1.25);
-            mix-blend-mode: lighten;
-        }
+    :host:not(.monochrome) & {
+        filter: saturate(0) invert(1) brightness(1.25);
+        mix-blend-mode: lighten;
     }
 }
 
@@ -72,10 +70,8 @@
     font-size: 4cqw;
     line-height: 4cqw;
 
-    @media screen {
-        :host:not(.monochrome) & {
-            color: #ECD24B;
-        }
+    :host:not(.monochrome) & {
+        color: #ECD24B;
     }
 
     &.small {
@@ -120,10 +116,8 @@
     background: #000;
     clip-path: polygon(74% 0, 100% 0, 100% 9cqw, 82% 9cqw);
 
-    @media screen {
-        :host(:not(.monochrome)) & {
-            display: none;
-        }
+    :host(:not(.monochrome)) & {
+        display: none;
     }
 }
 
@@ -272,19 +266,17 @@
     margin-bottom: 0.3cqw;
 }
 
-@media screen {
-    :host:not(.monochrome) {
-        .range-header-background {
-            background: #5B504E;
-            color: #fff;
-            margin-bottom: 0.5cqw;
+:host:not(.monochrome) {
+    .range-header-background {
+        background: #5B504E;
+        color: #fff;
+        margin-bottom: 0.5cqw;
 
-            &.left {        
-                background: linear-gradient(to right, transparent 0%, #5B504E 1.5cqw, #5B504E 100%);
-            }
-            &.right {
-                background: linear-gradient(to right, #5B504E 0%, #5B504E calc(100% - 1.5cqw), transparent 100%);
-            }
+        &.left {        
+            background: linear-gradient(to right, transparent 0%, #5B504E 1.5cqw, #5B504E 100%);
+        }
+        &.right {
+            background: linear-gradient(to right, #5B504E 0%, #5B504E calc(100% - 1.5cqw), transparent 100%);
         }
     }
 }
