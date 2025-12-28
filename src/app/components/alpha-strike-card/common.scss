@@ -13,15 +13,15 @@
 
     .frame-content {
         z-index: 1;
-        padding: 0.5cqw 1cqw;
+        padding: 0.5em 1em;
         flex: 1 1 auto;
     }
 
     :host(.monochrome) & {
         border-style: solid;
         background: #fff;
-        border-radius: 1.6cqw;
-        border: 0.36cqw solid #221F20;
+        border-radius: 1.6em;
+        border: 0.36em solid #221F20;
     }
 }
 
@@ -34,15 +34,15 @@
 
 :host:not(.monochrome) {
     .frame-title-background {
-        background: linear-gradient(to right, transparent 0%, #5B504E 1.5cqw, #5B504E calc(100% - 1.5cqw), transparent 100%);
+        background: linear-gradient(to right, transparent 0%, #5B504E 0.5em, #5B504E calc(100% - 0.5em), transparent 100%);
         color: #fff;
         font-weight: bold;
-        padding-left: 2.2cqw;
-        padding-right: 2.2cqw;
+        padding-left: 0.7em;
+        padding-right: 0.7em;
     }
 
     .frame-content {
-        padding: 0.9cqw 1.2cqw;
+        padding: 0.9em 1.2em;
     }
 
     .frame-background {
@@ -52,8 +52,8 @@
         opacity: 0.7;
         position: absolute;
         border-image-slice: 100 100 100 100 fill;
-        border-image-width: 2cqw;
-        border-image-outset: 0cqw;
+        border-image-width: 2em;
+        border-image-outset: 0em;
         border-image-source: url("/images/asframe.png");
     }
 }
@@ -64,31 +64,30 @@
 
     :host:not(.monochrome) & {
         color: #d22027;
-        -webkit-text-stroke: 0.45cqw #ECD24B;
+        -webkit-text-stroke: 0.08em #ECD24B;
     }
 
     &.bolder {
         font-weight: 900;
 
         :host:not(.monochrome) & {
-            -webkit-text-stroke: 0.3cqw #ECD24B;
+            -webkit-text-stroke: 0.06em #ECD24B;
         }
     }
 }
 
 .as-caption {
-    font-size: 3cqw;
+    font-size: 3em;
     font-weight: 500;
-    min-width: 2.5cqw;
 }
 
 .as-value {
-    font-size: 3cqw;
+    font-size: 3em;
     font-weight: 900;
     color: var(--as-red);
 
     :host:has(.monochrome) & {
-        -webkit-text-stroke: 0.3cqw #fff;
+        -webkit-text-stroke: 0.3em #fff;
         color: #000;
         paint-order: stroke fill;
     }
@@ -106,15 +105,15 @@
         display: flex;
         flex-direction: column;
         align-items: flex-start;
-        gap: 0.8cqw;
-        padding-bottom: 1cqw;
+        gap: 0.8em;
+        padding-bottom: 1em;
     }
 
     &.autoheight {
         height: 100%;
 
         .frame-content {
-            gap: 0.1cqw;
+            gap: 0.1em;
             justify-content: space-between;
         }
     }
@@ -123,18 +122,18 @@
     :host(.monochrome) & {
         border-style: solid;
         background: rgba(255, 255, 255, 0.7);
-        border-radius: 1.6cqw;
-        border: 0.36cqw solid #221F20;
+        border-radius: 1.6em;
+        border: 0.36em solid #221F20;
     }
 
     .pip {
-        width: 2.14cqw;
-        height: 2.14cqw;
+        width: 2.14em;
+        height: 2.14em;
     }
 }
 
 .critical-title {
-    font-size: 2.86cqw;
+    font-size: 2.86em;
     font-weight: 700;
     text-align: center;
     width: fit-content;
@@ -154,12 +153,12 @@
 }
 
 .critical-name {
-    font-size: 2cqw;
+    font-size: 2em;
     font-weight: 900;
     text-align: right;
-    width: 12cqw;
-    padding-right: 1cqw;
-    letter-spacing: -0.05cqw;
+    width: 5.8em;
+    padding-right: 0.2em;
+    letter-spacing: -0.03em;
     color: #000;
 
     :host(:not(.monochrome)) & {
@@ -173,47 +172,47 @@
 
 .critical-pips {
     display: flex;
-    gap: 0.5cqw;
+    gap: 0.5em;
     position: relative;
-    top: -0.2cqw;
+    top: -0.2em;
 }
 
 .desc-group {
     display: flex;
     flex-direction: column;
-    margin-left: 1cqw;
+    margin-left: 1em;
     position: relative;
 
     &::before {
         content: '﹛';
         position: absolute;
-        font-size: 4cqw;
-        left: -2.2cqw;
+        font-size: 4em;
+        left: -2.2em;
         top: 50%;
         transform: translateY(-50%);
     }
 }
 
 .critical-desc {
-    font-size: 2.1cqw;
+    font-size: 2.1em;
     font-weight: 600;
-    margin-left: 0.5cqw;
+    margin-left: 0.2em;
     white-space: nowrap;
-    letter-spacing: -0.05cqw;
+    letter-spacing: -0.05em;
 
     &:not(:last-child) {
-        margin-right: 0.5cqw;
+        margin-right: 0.4em;
     }
 }
 
 .pip-row {
     display: flex;
     align-items: baseline;
-    gap: 0.5cqw;
+    gap: 0.5em;
 }
 
 .pip-value {
-    font-size: 2.5cqw;
+    font-size: 2.5em;
     font-weight: bold;
 
     :host:has(.monochrome) & {
@@ -230,15 +229,15 @@
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
-    gap: 0.7cqw;
+    gap: 0.7em;
 }
 
 .pip {
-    width: 2.8cqw;
-    height: 2.8cqw;
+    width: 2.8em;
+    height: 2.8em;
     cursor: pointer;
     position: relative;
-    top: 0.2cqw;
+    top: 0.2em;
 
     circle {
         fill: #fff;
@@ -256,9 +255,9 @@
 
     .pilot-ability {
         color: black;
-        -webkit-text-stroke: #fff 0.3cqw;
+        -webkit-text-stroke: #fff 0.3em;
         paint-order: stroke fill;
-        font-size: 2.5cqw;
+        font-size: 2.5em;
         font-weight: 700;
         cursor: pointer;
 
@@ -268,7 +267,7 @@
 
         :host:not(.monochrome) & {
             color: white;
-            -webkit-text-stroke: #000 0.3cqw;
+            -webkit-text-stroke: #000 0.3em;
 
             &:hover {
                 color: #cdb0ff;
