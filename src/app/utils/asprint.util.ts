@@ -36,6 +36,7 @@ import { ASForceUnit } from '../models/as-force-unit.model';
 import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-strike-card.component';
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import { OptionsService } from '../services/options.service';
+import { isIOS } from './platform.util';
 
 /**
  * Represents a single card to render (handles multi-card units)
@@ -46,8 +47,8 @@ interface CardRenderItem {
 }
 
 // Card dimensions in inches (88mm x 63mm)
-const CARD_WIDTH_IN = 3.465;
-const CARD_HEIGHT_IN = 2.480;
+const CARD_WIDTH_IN = 3.46;
+const CARD_HEIGHT_IN = 2.48;
 // Page dimensions (Letter size with margins)
 const PAGE_WIDTH_IN = 8.0;  // 8.5 - 0.5 margins
 const PAGE_HEIGHT_IN = 10.5; // 11 - 0.5 margins
@@ -97,13 +98,11 @@ export class ASPrintUtil {
         // Expand units into individual cards (multi-card units become multiple entries)
         const cardRenderItems = this.expandToCardItems(forceUnits);
         
-        // Create print container
-        const { overlay, cardComponentRefs } = await this.createPrintContainer(
-            appRef,
-            injector,
-            optionsService,
-            cardRenderItems
-        );
+        // Create print container - use different layouts for iOS vs other platforms
+        const useFixedLayout = isIOS();
+        const { overlay, cardComponentRefs } = useFixedLayout
+            ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems)
+            : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems);
 
         // Wait for fonts and images to load
         if ((document as any).fonts?.ready) {
@@ -170,9 +169,10 @@ export class ASPrintUtil {
     }
 
     /**
-     * Creates the print container with dynamically created Alpha Strike card components.
+     * Creates a fixed grid print container (iOS-specific).
+     * Uses fixed page dimensions for reliable printing on iOS.
      */
-    private static async createPrintContainer(
+    private static async createFixedPrintContainer(
         appRef: ApplicationRef,
         injector: Injector,
         optionsService: OptionsService,
@@ -188,7 +188,7 @@ export class ASPrintUtil {
         
         // Add print styles
         const style = document.createElement('style');
-        style.textContent = this.getPrintStyles();
+        style.textContent = this.getFixedPrintStyles();
         overlay.appendChild(style);
         
         // Create pages with fixed number of cards per page
@@ -251,10 +251,79 @@ export class ASPrintUtil {
     }
 
     /**
-     * Returns the CSS styles for printing Alpha Strike cards.
+     * Creates a flexible print container (non-iOS platforms).
+     * Uses flexbox with auto-wrapping for portrait/landscape support.
+     */
+    private static async createFlexPrintContainer(
+        appRef: ApplicationRef,
+        injector: Injector,
+        optionsService: OptionsService,
+        cardItems: CardRenderItem[]
+    ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
+        const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
+        const useHex = optionsService.options().ASUseHex;
+        const cardStyle = optionsService.options().ASCardStyle;
+        
+        // Create overlay container
+        const overlay = document.createElement('div');
+        overlay.id = 'as-multipage-container';
+        
+        // Add print styles
+        const style = document.createElement('style');
+        style.textContent = this.getFlexPrintStyles();
+        overlay.appendChild(style);
+        
+        // Create a single flex container for all cards
+        const flexContainer = document.createElement('div');
+        flexContainer.className = 'as-flex-container';
+        
+        for (const item of cardItems) {
+            // Create card cell
+            const cellDiv = document.createElement('div');
+            cellDiv.className = 'as-card-cell';
+            
+            // Create the Alpha Strike card component
+            const environmentInjector = injector.get(EnvironmentInjector);
+            const componentRef = createComponent(AlphaStrikeCardComponent, {
+                environmentInjector,
+                elementInjector: injector
+            });
+            
+            // Set inputs
+            componentRef.setInput('forceUnit', item.forceUnit);
+            componentRef.setInput('cardIndex', item.cardIndex);
+            componentRef.setInput('cardStyle', cardStyle);
+            componentRef.setInput('useHex', useHex);
+            componentRef.setInput('isSelected', false);
+            
+            // Attach to Angular's change detection
+            appRef.attachView(componentRef.hostView);
+            
+            // Add component's DOM element to cell
+            const cardElement = componentRef.location.nativeElement as HTMLElement;
+            cellDiv.appendChild(cardElement);
+            flexContainer.appendChild(cellDiv);
+            
+            componentRefs.push(componentRef);
+        }
+        
+        overlay.appendChild(flexContainer);
+        
+        // Append to body
+        document.body.appendChild(overlay);
+        document.body.classList.add('as-multipage-container-active');
+        
+        // Trigger change detection for all components
+        appRef.tick();
+        
+        return { overlay, cardComponentRefs: componentRefs };
+    }
+
+    /**
+     * Returns the CSS styles for fixed grid printing (iOS).
      * Card size: 88mm x 63mm (standard Alpha Strike card dimensions)
      */
-    private static getPrintStyles(): string {
+    private static getFixedPrintStyles(): string {
         const cardWidthIn = `${CARD_WIDTH_IN}in`;
         const cardHeightIn = `${CARD_HEIGHT_IN}in`;
         const pageWidthIn = `${PAGE_WIDTH_IN}in`;
@@ -262,7 +331,6 @@ export class ASPrintUtil {
         
         return `
             #as-multipage-container {
-                background: #555;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
                 z-index: -1;
@@ -322,10 +390,6 @@ export class ASPrintUtil {
                     display: none !important;
                 }
 
-                #as-multipage-container {
-                    background: transparent !important;
-                }
-
                 .as-print-page {
                     page-break-after: always;
                     break-after: page;
@@ -342,6 +406,80 @@ export class ASPrintUtil {
                     size: auto;
                     margin: 0.25in !important;
                 }
+            }
+        `;
+    }
+
+    /**
+     * Returns the CSS styles for flexible printing (non-iOS platforms).
+     * Uses flexbox with auto-wrapping for portrait/landscape support.
+     */
+    private static getFlexPrintStyles(): string {
+        const cardWidthIn = `${CARD_WIDTH_IN}in`;
+        const cardHeightIn = `${CARD_HEIGHT_IN}in`;
+        
+        return `
+            #as-multipage-container {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                z-index: -1;
+            }
+
+            .as-flex-container {
+                display: flex;
+                flex-wrap: wrap;
+                align-content: flex-start;
+                justify-content: flex-start;
+                gap: 0.01in;
+                background: white;
+                padding: 0;
+            }
+
+            .as-card-cell {
+                flex: 0 0 ${cardWidthIn};
+                width: ${cardWidthIn};
+                height: ${cardHeightIn};
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                overflow: hidden;
+                container-type: inline-size;
+                box-sizing: border-box;
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .as-card-cell > alpha-strike-card {
+                display: block;
+                width: 100%;
+                height: 100%;
+            }
+
+            .as-card-cell alpha-strike-card .card-container {
+                width: 100% !important;
+                height: 100% !important;
+            }
+
+            @media print {
+                body, html {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                }
+
+                body.as-multipage-container-active > *:not(#as-multipage-container) {
+                    display: none !important;
+                }
+
+                .as-card-cell {
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                }
+                
+                @page {
+                    size: auto;
+                    margin: 0.25in !important;
+                }
+
             }
         `;
     }
