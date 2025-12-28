@@ -331,8 +331,6 @@ export class ASPrintUtil {
         
         return `
             #as-multipage-container {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
                 z-index: -1;
             }
 
@@ -365,19 +363,21 @@ export class ASPrintUtil {
                 -webkit-align-items: center;
                 align-items: center;
                 overflow: hidden;
-                container-type: inline-size;
                 box-sizing: border-box;
             }
 
             .as-card-cell > alpha-strike-card {
                 display: block;
-                width: 100%;
-                height: 100%;
+                width: 88mm;
+                height: 63mm;
             }
 
             .as-card-cell alpha-strike-card .card-container {
-                width: 100% !important;
-                height: 100% !important;
+                width: 88mm !important;
+                min-width: 88mm !important;
+                max-width: 88mm !important;
+                height: 63mm !important;
+                aspect-ratio: auto !important;
             }
 
             @media print {
@@ -420,8 +420,6 @@ export class ASPrintUtil {
         
         return `
             #as-multipage-container {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
                 z-index: -1;
             }
 
@@ -435,31 +433,6 @@ export class ASPrintUtil {
                 padding: 0;
             }
 
-            .as-card-cell {
-                flex: 0 0 ${cardWidthIn};
-                width: ${cardWidthIn};
-                height: ${cardHeightIn};
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                overflow: hidden;
-                container-type: inline-size;
-                box-sizing: border-box;
-                break-inside: avoid;
-                page-break-inside: avoid;
-            }
-
-            .as-card-cell > alpha-strike-card {
-                display: block;
-                width: 100%;
-                height: 100%;
-            }
-
-            .as-card-cell alpha-strike-card .card-container {
-                width: 100% !important;
-                height: 100% !important;
-            }
-
             @media print {
                 body, html {
                     margin: 0 !important;
@@ -468,11 +441,6 @@ export class ASPrintUtil {
 
                 body.as-multipage-container-active > *:not(#as-multipage-container) {
                     display: none !important;
-                }
-
-                .as-card-cell {
-                    break-inside: avoid;
-                    page-break-inside: avoid;
                 }
                 
                 @page {

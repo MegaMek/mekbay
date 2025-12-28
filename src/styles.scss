@@ -1797,6 +1797,7 @@ hr.divider {
 @media print {
 
     * {
+        -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
         -webkit-transition: none !important;
         transition: none !important;
