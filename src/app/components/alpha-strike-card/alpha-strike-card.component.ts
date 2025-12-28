@@ -66,8 +66,13 @@ import { REMOTE_HOST } from '../../models/common.model';
     }
 })
 export class AlphaStrikeCardComponent {
+    private static nextId = 0;
+    
     private readonly abilityLookup = inject(AsAbilityLookupService);
     private readonly dialogs = inject(DialogsService);
+    
+    /** Unique instance ID for SVG filter deduplication */
+    readonly instanceId = AlphaStrikeCardComponent.nextId++;
     
     /** Optional: provide the stateful AS unit wrapper (preferred when available). */
     forceUnit = input<ASForceUnit | undefined>(undefined);
