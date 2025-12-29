@@ -90,7 +90,7 @@ export class AsLayoutStandardComponent {
         AS_PILOT_ABILITIES.map((ability) => [ability.id, ability])
     );
 
-    private readonly statsToHostHeightThreshold = 0.7;
+    private readonly statsToHostHeightThreshold = 0.67;
     private resizeObserver: ResizeObserver | null = null;
     chassisSmall = signal(false);
 

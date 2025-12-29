@@ -197,6 +197,10 @@
 
 .stat-item {
     white-space: nowrap;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.1em;
 }
 
 .right-column {
@@ -263,7 +267,7 @@
     .range-header-background {
         background: #5B504E;
         color: #fff;
-        margin-bottom: 0.5em;
+        margin-bottom: 0.2em;
 
         &.left {        
             background: linear-gradient(to right, transparent 0%, #5B504E 1.5em, #5B504E 100%);

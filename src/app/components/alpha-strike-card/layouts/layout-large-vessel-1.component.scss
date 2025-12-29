@@ -203,7 +203,13 @@
 .stat-item {
     white-space: nowrap;
     display: flex;
+    flex-direction: row;
     align-items: center;
+    gap: 0.1em;
+
+    &.wide-spaced {
+        gap: 0.5em;
+    }
 }
 
 // Armor/Damage Row

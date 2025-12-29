@@ -19,7 +19,7 @@
 .vessel-header {
     display: flex;
     flex-direction: row;
-    padding: 0.5em;
+    padding: 0.2em;
     gap: 1.5em;
     align-items: baseline;
     height: 4em;
@@ -46,7 +46,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
-    gap: 1em;
+    gap: 0.5em;
     flex: 1;
 }
 
@@ -66,8 +66,8 @@
     align-items: center;
     justify-content: center;
     width: 2.8em;
-    padding-left: 0.5em;
-    margin-left: -0.5em;
+    padding-left: 0.4em;
+    margin-left: -0.4em;
 }
 
 .arc-label {
@@ -84,10 +84,11 @@
 }
 
 .damage-table {
-    flex: 1;
+    flex: 1 1 auto;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     font-size: 2em;
+    line-height: 1em;
 
     &.has-cap {
         grid-template-columns: repeat(5, 1fr);
@@ -108,7 +109,7 @@
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
     align-items: center;
-    padding: 0.2em 0;
+    padding: 0.2em 0em;
     border-bottom: 0.1em solid #ccc;
 
     &:nth-last-child(-n + 2) {
