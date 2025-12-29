@@ -42,7 +42,7 @@
     }
 
     .frame-content {
-        padding: 0.9em 1.2em;
+        padding: 0.7em 1.2em;
     }
 
     .frame-background {
@@ -87,7 +87,7 @@
     color: var(--as-red);
 
     :host:has(.monochrome) & {
-        -webkit-text-stroke: 0.3em #fff;
+        -webkit-text-stroke: 0.1em #fff;
         color: #000;
         paint-order: stroke fill;
     }

@@ -100,16 +100,38 @@
         width: 100%;        
         display: flex;
         flex-wrap: wrap;
-        justify-content: center;
-        gap: 4px;
+        align-content: flex-start;
+        justify-content: flex-start;
+        gap: 0.01in;
         flex-direction: row;
         overflow: visible;
+        padding: 0;
     }
     
     .card-cell {
         break-inside: avoid;
         page-break-inside: avoid;
+        -webkit-flex: 0 0 88mm;
+        flex: 0 0 88mm;
+        width: 88mm;
+        height: 63mm;
+        display: -webkit-flex;
+        display: flex;
+        -webkit-justify-content: center;
+        justify-content: center;
+        -webkit-align-items: center;
+        align-items: center;
+        overflow: hidden;
+        box-sizing: border-box;
+
+        alpha-strike-card {
+            display: block;
+            width: 88mm;
+            height: 63mm;
+        }
+
     }
+
 
     @page {
         margin: 0.25in;

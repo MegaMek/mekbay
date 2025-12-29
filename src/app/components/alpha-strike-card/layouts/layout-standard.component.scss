@@ -128,9 +128,9 @@
     font-size: 2.5em;
     font-weight: bold;
     text-align: center;
-    margin-top: 1.2em;
+    margin-top: 0.6em;
     z-index: 1;
-    -webkit-text-stroke: 0.3em #fff;
+    -webkit-text-stroke: 0.15em #fff;
     color: #000;
     paint-order: stroke fill;
 }
@@ -212,7 +212,7 @@
 
 .sprint-text {
     font-size: 2em;
-    margin-top: -0.3em;
+    line-height: 1em;
     font-weight: 700;
 }
 

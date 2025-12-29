@@ -375,14 +375,6 @@ export class ASPrintUtil {
                 height: 63mm;
             }
 
-            .as-card-cell alpha-strike-card .card-container {
-                width: 88mm !important;
-                min-width: 88mm !important;
-                max-width: 88mm !important;
-                height: 63mm !important;
-                aspect-ratio: auto !important;
-            }
-
             @media print {
                 body, html {
                     margin: 0 !important;
