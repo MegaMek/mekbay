@@ -207,7 +207,7 @@
 
 .pip-row {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 0.5em;
 }
 
@@ -236,8 +236,6 @@
     width: 2.8em;
     height: 2.8em;
     cursor: pointer;
-    position: relative;
-    top: 0.2em;
 
     circle {
         fill: #fff;

@@ -35,7 +35,6 @@
 
 .vessel-model {
     font-size: 3em;
-    line-height: 3em;
     color: #000;
 
     :host:not(.monochrome) & {
@@ -100,8 +99,8 @@
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
     font-weight: 900;
-    border-bottom: 0.2em solid #000;
-    padding: 0.3em 0;
+    border-bottom: 0.1em solid #000;
+    padding: 0.1em 0;
 }
 
 .table-row {
@@ -112,7 +111,7 @@
     padding: 0.2em 0;
     border-bottom: 0.1em solid #ccc;
 
-    &:last-child {
+    &:nth-last-child(-n + 2) {
         border-bottom: none;
     }
 }
@@ -134,12 +133,11 @@
 .spe-row .spe-value {
     grid-column: 2 / -1;
     text-align: left;
-    font-size: 1.6em;
 }
 
 .crit-row {
-    border-top: 0.2em solid #000;
-    padding-top: 0.5em;
+    border-top: 0.1em solid #000;
+    padding-top: 0.2em;
 }
 
 .crit-pips-container {
@@ -152,18 +150,17 @@
     display: flex;
     flex: 1;
     justify-content:center;
-    min-height: 2.2em;
 
     &:not(:last-child) {
-        border-right: 0.2em solid #000;
+        border-right: 0.1em solid #000;
     }
 }
 
 
 // Override pip size for vessel card
 .vessel-card-2 .pip {
-    width: 1.8em;
-    height: 1.8em;
+    width: 1em;
+    height: 1em;
 
     circle {
         stroke-width: 2pt;
