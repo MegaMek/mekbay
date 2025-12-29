@@ -137,19 +137,22 @@
 
 .crit-row {
     border-top: 0.1em solid #000;
-    padding-top: 0.2em;
+    padding-bottom: 0.1em;
+    overflow: visible;
 }
 
 .crit-pips-container {
     grid-column: 2 / -1;
-    display: flex;
     justify-content: space-around;
+    display: flex;
+    align-items: center;
 }
 
 .crit-pip-group {
     display: flex;
     flex: 1;
     justify-content:center;
+    align-items: center;
 
     &:not(:last-child) {
         border-right: 0.1em solid #000;
@@ -159,8 +162,9 @@
 
 // Override pip size for vessel card
 .vessel-card-2 .pip {
-    width: 1em;
-    height: 1em;
+    width: 0.9em;
+    height: 0.9em;
+    position: relative;
 
     circle {
         stroke-width: 2pt;

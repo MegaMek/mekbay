@@ -28,7 +28,6 @@
                                 <div class="card-cell" #cardWrapper 
                                      [attr.data-unit-id]="forceUnit.id"
                                      [attr.data-card-index]="cardItem.cardIndex"
-                                     [style.--card-font-size]="cardFontSize()"
                                      (click)="onCardCellClick($event, cardItem.forceUnit)">
                                     <alpha-strike-card 
                                         [forceUnit]="cardItem.forceUnit" 

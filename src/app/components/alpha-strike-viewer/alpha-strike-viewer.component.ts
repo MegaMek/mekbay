@@ -125,9 +125,6 @@ export class AlphaStrikeViewerComponent {
         const cellWidth = (availableWidth - (cols - 1) * CELL_GAP) / cols;
         return Math.floor(Math.max(MIN_CELL_WIDTH, cellWidth));
     });
-
-    // Card font size: 1em = 1% of card width for scalable typography
-    readonly cardFontSize = computed(() => `${this.cellWidth() / 100}px`);
     
     private resizeObserver: ResizeObserver | null = null;
     
