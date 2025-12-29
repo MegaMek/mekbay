@@ -330,8 +330,11 @@ export class ASPrintUtil {
         const pageHeightIn = `${PAGE_HEIGHT_IN}in`;
         
         return `
-            #as-multipage-container {
-                z-index: -1;
+            @media screen {
+                #as-multipage-container {
+                    display: none;
+                    z-index: -1000;
+                }
             }
 
             .as-print-page {
@@ -418,9 +421,12 @@ export class ASPrintUtil {
         const cardWidthIn = `${CARD_WIDTH_IN}in`;
         const cardHeightIn = `${CARD_HEIGHT_IN}in`;
         
-        return `
-            #as-multipage-container {
-                z-index: -1;
+        return `            
+            @media screen {
+                #as-multipage-container {
+                    display: none;
+                    z-index: -1000;
+                }
             }
 
             .as-flex-container {

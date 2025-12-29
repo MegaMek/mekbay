@@ -11,6 +11,11 @@
     flex-direction: column;
     gap: 16px;
     padding: 16px;
+
+    @media print {
+        padding: 0;
+        gap: 4px;
+    }
 }
 
 .group-container {
