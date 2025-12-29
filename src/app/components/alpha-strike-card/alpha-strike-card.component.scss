@@ -9,7 +9,7 @@
     font-family: 'Roboto', sans-serif;
     // Base font-size: 1em = 1% of card width (set by --card-font-size from parent)
     // Fallback for standalone usage: 88mm / 100 = 0.88mm
-    font-size: var(--card-font-size, 0.88mm);
+    font-size: var(--card-font-size, 1cqw);
     page-break-inside: avoid;
     break-inside: avoid;
 
