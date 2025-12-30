@@ -13,24 +13,26 @@
 
     .frame-content {
         z-index: 1;
-        padding: 0.5em 1em;
+        padding: 0.7em 1.2em;
         flex: 1 1 auto;
     }
+}
+
+.frame-background {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    opacity: 0.7;
+    border-image: none;
+    background-color: #E3ECED;
+    border-radius: 1.6em;
+    border: 0.3em solid #221F20;
+    box-sizing: border-box;
 
     :host(.monochrome) & {
-        border-style: solid;
-        background: #fff;
-        border-radius: 1.6em;
-        border: 0.36em solid #221F20;
+        background-color: #fff;
     }
 }
-
-:host:has(.monochrome) {
-    .frame-background {
-        display: none;
-    }
-}
-
 
 :host:not(.monochrome) {
     .frame-title-background {
@@ -39,22 +41,6 @@
         font-weight: bold;
         padding-left: 0.7em;
         padding-right: 0.7em;
-    }
-
-    .frame-content {
-        padding: 0.7em 1.2em;
-    }
-
-    .frame-background {
-        z-index: 0;
-        width: 100%;
-        height: 100%;
-        opacity: 0.7;
-        position: absolute;
-        border-image-slice: 100 100 100 100 fill;
-        border-image-width: 2em;
-        border-image-outset: 0em;
-        border-image-source: url("/images/asframe.png");
     }
 }
 
@@ -87,9 +73,9 @@
     color: var(--as-red);
 
     :host:has(.monochrome) & {
-        -webkit-text-stroke: 0.1em #fff;
         color: #000;
-        paint-order: stroke fill;
+        // -webkit-text-stroke: 0.1em #fff;
+        // paint-order: stroke fill;
     }
 }
 
@@ -116,14 +102,6 @@
             gap: 0.1em;
             justify-content: space-between;
         }
-    }
-
-
-    :host(.monochrome) & {
-        border-style: solid;
-        background: rgba(255, 255, 255, 0.7);
-        border-radius: 1.6em;
-        border: 0.36em solid #221F20;
     }
 
     .pip {
