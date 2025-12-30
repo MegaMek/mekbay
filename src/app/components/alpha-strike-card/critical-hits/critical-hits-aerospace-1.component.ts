@@ -60,6 +60,7 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                         }
                     </div>
                     <div class="desc-group">
+                        <span class="brace">&#123;</span>
                         <span class="critical-desc">+2 Weapon To-Hit Each</span>
                         <span class="critical-desc">+2 Control Roll Each</span>
                     </div>

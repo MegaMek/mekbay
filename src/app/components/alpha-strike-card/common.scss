@@ -161,13 +161,13 @@
     position: relative;
     box-sizing: border-box;
 
-    &::before {
-        content: '﹛';
+    .brace {
         position: absolute;
         font-size: 4em;
-        left: -0.6em;
+        left: -0.28em;
         top: 50%;
         transform: translateY(-50%);
+        line-height: 1;
     }
 }
 
