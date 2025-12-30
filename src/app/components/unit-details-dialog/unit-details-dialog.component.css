@@ -224,7 +224,7 @@
 
 /* Fluff Tab */
 :host ::ng-deep .modal.activetab-intel .swipe-panel {
-    background-color: #202b46FF;
+    background-color: #202b46;
 }
 
 .fluff-bg-image {

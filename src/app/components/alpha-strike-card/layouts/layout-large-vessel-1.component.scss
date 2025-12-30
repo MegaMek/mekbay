@@ -16,14 +16,14 @@
     position: absolute;
     display: flex;
     flex-direction: row;
-    gap: 1.5cqw;
+    gap: 1.5em;
     align-items: baseline;
     top: 24%;
-    left: 2.8cqw;
+    left: 2.8em;
 }
 
 .vessel-name {
-    font-size: 4cqw;
+    font-size: 4em;
     :host(.monochrome) & {
         color: #000;
         font-weight: 700;
@@ -31,8 +31,8 @@
 }
 
 .vessel-model {
-    font-size: 3cqw;
-    line-height: 3cqw;
+    font-size: 3em;
+    line-height: 3em;
     color: #000;
 
     :host:not(.monochrome) & {
@@ -45,7 +45,7 @@
 .pv-box {
     position: absolute;
     top: 16%;
-    right: 1.8cqw;
+    right: 1.8em;
     width: 17%;
     display: flex;
     flex-direction: column;
@@ -56,7 +56,7 @@
     position: absolute;
     inset: 0;
     background: #000;
-    clip-path: polygon(74% 0, 100% 0, 100% 9cqw, 82% 9cqw);
+    clip-path: polygon(74% 0, 100% 0, 100% 9em, 82% 9em);
 
     :host(:not(.monochrome)) & {
         display: none;
@@ -64,20 +64,20 @@
 }
 
 .pv-text {
-    font-size: 5.36cqw;
+    font-size: 5.4em;
     font-weight: 900;
     text-align: center;
-    letter-spacing: 0.36cqw;
+    letter-spacing: 0.1em;
     z-index: 1;
 }
 
 .base-pv-text {
-    font-size: 2.5cqw;
+    font-size: 2.5em;
     font-weight: bold;
     text-align: center;
-    margin-top: 1.2cqw;
+    margin-top: 0.6em;
     z-index: 1;
-    -webkit-text-stroke: 0.3cqw #fff;
+    -webkit-text-stroke: 0.15em #fff;
     color: #000;
     paint-order: stroke fill;
 }
@@ -94,7 +94,7 @@
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 1cqw;
+    gap: 1em;
 }
 
 // Main Content Area
@@ -109,14 +109,14 @@
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    gap: 0.5cqw;
+    gap: 0.5em;
 }
 
 .stats-container-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto 1fr auto;
-    gap: 0.5cqw;
+    gap: 0.5em;
     align-content: end;
     height: 100%;
 }
@@ -151,7 +151,7 @@
     grid-row: 2 / 4;
     min-height: 0;
     overflow: hidden;
-    padding-top: 6cqw; // offset to start below damage-threshold
+    padding-top: 6em; // offset to start below damage-threshold
     display: flex;
     position: relative;
     display: flex;
@@ -174,7 +174,7 @@
 }
 
 .pilot-abilities {
-    margin-left: 0.5cqw;
+    margin-left: 0.5em;
     z-index: 1;
 }
 
@@ -193,8 +193,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 2.5cqw;
-    gap: 1.5cqw;
+    gap: 1.5em;
 
     &.center {
         justify-content: center;
@@ -204,8 +203,13 @@
 .stat-item {
     white-space: nowrap;
     display: flex;
+    flex-direction: row;
     align-items: center;
-    font-size: 2.5cqw;
+    gap: 0.1em;
+
+    &.wide-spaced {
+        gap: 0.5em;
+    }
 }
 
 // Armor/Damage Row
@@ -215,7 +219,7 @@
 
     .frame-content {
         display: flex;
-        gap: 1cqw;
+        gap: 1em;
     }
 }
 
@@ -224,18 +228,18 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    border-right: 0.2cqw solid #000;
-    padding-right: 1cqw;
+    border-right: 0.2em solid #000;
+    padding-right: 1em;
 }
 
 .section-label {
-    font-size: 2cqw;
+    font-size: 2em;
     font-weight: bold;
     text-transform: uppercase;
 }
 
 .section-value {
-    font-size: 5cqw;
+    font-size: 5em;
     font-weight: 900;
 
     :host:not(.monochrome) & {
@@ -251,8 +255,8 @@
 
 .damage-track {
     flex: 1;
-    border-bottom: 0.2cqw solid #000;
-    margin-top: 0.5cqw;
+    border-bottom: 0.2em solid #000;
+    margin-top: 0.5em;
 }
 
 
@@ -265,7 +269,6 @@
         flex-wrap: wrap;
         align-items: flex-start;
         align-content: flex-start;
-        font-size: 2.5cqw;
     }
 }
 
@@ -286,12 +289,12 @@
 
 // Fluff Image
 .fluff-image-container {
-    margin-top: 5.8cqw;
-    top: 6cqw;
+    margin-top: 5.8em;
+    top: 6em;
     overflow: hidden;
     position: absolute;
     inset: 0;
-    height: calc(100% - 7cqw);
+    height: calc(100% - 7em);
     pointer-events: none;
 }
 

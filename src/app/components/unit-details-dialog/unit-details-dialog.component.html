@@ -37,6 +37,10 @@
   (swipemove)="onSwipeMove($event)"
   (swipeend)="onSwipeEnd($event)">
   
+  <!-- Fluff background image - uses header unit (most visible during swipe) -->
+  @if (headerFluffImageUrl(); as bgUrl) {
+    <img [src]="bgUrl" class="fluff-bg-image" alt="">
+  }
   <!-- Swipe animation container -->
   <div class="swipe-container" 
        [class.animating]="isSwipeAnimating()"
@@ -106,11 +110,6 @@
       </div>
     }
   </div>
-
-  <!-- Fluff background image - uses header unit (most visible during swipe) -->
-  @if (headerFluffImageUrl(); as bgUrl) {
-    <img [src]="bgUrl" class="fluff-bg-image" alt="">
-  }
 </div>
 <div class="footer" dialog-footer>
   <button [class.hidden]="!hasPrev" class="nav-arrow nav-arrow-left" (click)="onPrev()" aria-label="Previous Unit">

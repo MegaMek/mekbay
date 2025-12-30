@@ -330,8 +330,11 @@ export class ASPrintUtil {
         const pageHeightIn = `${PAGE_HEIGHT_IN}in`;
         
         return `
-            #as-multipage-container {
-                z-index: -1;
+            @media screen {
+                #as-multipage-container {
+                    display: none;
+                    z-index: -1000;
+                }
             }
 
             .as-print-page {
@@ -372,14 +375,6 @@ export class ASPrintUtil {
                 height: 63mm;
             }
 
-            .as-card-cell alpha-strike-card .card-container {
-                width: 88mm !important;
-                min-width: 88mm !important;
-                max-width: 88mm !important;
-                height: 63mm !important;
-                aspect-ratio: auto !important;
-            }
-
             @media print {
                 body, html {
                     margin: 0 !important;
@@ -418,9 +413,12 @@ export class ASPrintUtil {
         const cardWidthIn = `${CARD_WIDTH_IN}in`;
         const cardHeightIn = `${CARD_HEIGHT_IN}in`;
         
-        return `
-            #as-multipage-container {
-                z-index: -1;
+        return `            
+            @media screen {
+                #as-multipage-container {
+                    display: none;
+                    z-index: -1000;
+                }
             }
 
             .as-flex-container {

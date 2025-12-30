@@ -6,27 +6,27 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    padding: 2.4cqw;
-    padding-bottom: 10cqw;
+    padding: 2.4em;
+    padding-bottom: 10em;
     box-sizing: border-box;
-    gap: 1cqw;
+    gap: 1em;
 
     :host(.monochrome) & {
-    padding-bottom: 9cqw;
+    padding-bottom: 9em;
     }
 }
 
 .vessel-header {
     display: flex;
     flex-direction: row;
-    padding: 0.5cqw;
-    gap: 1.5cqw;
+    padding: 0.2em;
+    gap: 1.5em;
     align-items: baseline;
-    height: 4cqw;
+    height: 4em;
 }
 
 .vessel-name {
-    font-size: 4cqw;
+    font-size: 4em;
     :host(.monochrome) & {
         color: #000;
         font-weight: 700;
@@ -34,8 +34,7 @@
 }
 
 .vessel-model {
-    font-size: 3cqw;
-    line-height: 3cqw;
+    font-size: 3em;
     color: #000;
 
     :host:not(.monochrome) & {
@@ -47,7 +46,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
-    gap: 1cqw;
+    gap: 0.5em;
     flex: 1;
 }
 
@@ -66,14 +65,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 2.8cqw;
-    padding-left: 0.5cqw;
-    margin-left: -0.5cqw;
+    width: 2.8em;
+    padding-left: 0.4em;
+    margin-left: -0.4em;
 }
 
 .arc-label {
     font-family: "Roboto Condensed", sans-serif;
-    font-size: 2.3cqw;
+    font-size: 2.3em;
     font-weight: 900;
     text-transform: uppercase;
     white-space: nowrap;
@@ -85,10 +84,11 @@
 }
 
 .damage-table {
-    flex: 1;
+    flex: 1 1 auto;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    font-size: 2cqw;
+    font-size: 2em;
+    line-height: 1em;
 
     &.has-cap {
         grid-template-columns: repeat(5, 1fr);
@@ -100,8 +100,8 @@
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
     font-weight: 900;
-    border-bottom: 0.2cqw solid #000;
-    padding: 0.3cqw 0;
+    border-bottom: 0.1em solid #000;
+    padding: 0.1em 0;
 }
 
 .table-row {
@@ -109,17 +109,17 @@
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
     align-items: center;
-    padding: 0.2cqw 0;
-    border-bottom: 0.1cqw solid #ccc;
+    padding: 0.2em 0em;
+    border-bottom: 0.1em solid #ccc;
 
-    &:last-child {
+    &:nth-last-child(-n + 2) {
         border-bottom: none;
     }
 }
 
 .range-col {
     font-weight: 700;
-    padding-left: 0.5cqw;
+    padding-left: 0.5em;
 }
 
 .dmg-col {
@@ -134,36 +134,38 @@
 .spe-row .spe-value {
     grid-column: 2 / -1;
     text-align: left;
-    font-size: 1.6cqw;
 }
 
 .crit-row {
-    border-top: 0.2cqw solid #000;
-    padding-top: 0.5cqw;
+    border-top: 0.1em solid #000;
+    padding-bottom: 0.1em;
+    overflow: visible;
 }
 
 .crit-pips-container {
     grid-column: 2 / -1;
-    display: flex;
     justify-content: space-around;
+    display: flex;
+    align-items: center;
 }
 
 .crit-pip-group {
     display: flex;
     flex: 1;
     justify-content:center;
-    min-height: 2.2cqw;
+    align-items: center;
 
     &:not(:last-child) {
-        border-right: 0.2cqw solid #000;
+        border-right: 0.1em solid #000;
     }
 }
 
 
 // Override pip size for vessel card
 .vessel-card-2 .pip {
-    width: 1.8cqw;
-    height: 1.8cqw;
+    width: 0.9em;
+    height: 0.9em;
+    position: relative;
 
     circle {
         stroke-width: 2pt;
@@ -174,7 +176,7 @@
     color: #000;
     display: flex;
     flex-direction: row;
-    gap: 0.5cqw;
+    gap: 0.5em;
     align-items: baseline;
     
     :host(:not(.monochrome)) & {
@@ -184,10 +186,10 @@
 
 .note-title {
     font-weight: 900;
-    font-size: 1.8cqw;
+    font-size: 1.8em;
     white-space: nowrap;
 }
 
 .note-text {
-    font-size: 1.6cqw;
+    font-size: 1.6em;
 }
