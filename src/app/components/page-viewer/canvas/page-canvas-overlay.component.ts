@@ -128,6 +128,7 @@ interface BrushLocation {
 
         .page-canvas-overlay.active .drawing-canvas {
             pointer-events: auto;
+            touch-action: none; /* Prevent browser scroll/pan during drawing */
         }
 
         .drawing-canvas canvas {
