@@ -32,6 +32,7 @@
  */
 
 import { Component, ChangeDetectionStrategy, computed } from '@angular/core';
+import { UpperCasePipe } from '@angular/common';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import {
     AsCriticalHitsAerospace1Component,
@@ -50,7 +51,8 @@ import { AsLayoutBaseComponent } from './layout-base.component';
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         AsCriticalHitsAerospace1Component,
-        AsCriticalHitsDropship1Component
+        AsCriticalHitsDropship1Component,
+        UpperCasePipe,
     ],
     templateUrl: './layout-large-vessel-1.component.html',
     styleUrls: ['./layout-large-vessel-1.component.scss'],

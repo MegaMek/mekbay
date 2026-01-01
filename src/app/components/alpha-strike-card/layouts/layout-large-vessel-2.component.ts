@@ -32,6 +32,7 @@
  */
 
 import { Component, ChangeDetectionStrategy, computed } from '@angular/core';
+import { UpperCasePipe } from '@angular/common';
 import { AsLayoutBaseComponent } from './layout-base.component';
 
 /*
@@ -68,6 +69,9 @@ interface ArcDamage {
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './layout-large-vessel-2.component.html',
     styleUrls: ['./layout-large-vessel-2.component.scss'],
+    imports: [
+        UpperCasePipe,
+    ],
     host: {
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     }
