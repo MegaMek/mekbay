@@ -216,7 +216,7 @@
     white-space: nowrap;
     display: flex;
     flex-direction: row;
-    align-items: center;
+    align-items: baseline;
     gap: 0.1em;
 
     &.wide-spaced {
@@ -279,7 +279,7 @@
     .frame-content {
         display: flex;
         flex-wrap: wrap;
-        align-items: flex-start;
+        align-items: baseline;
         align-content: flex-start;
     }
 }
