@@ -21,8 +21,8 @@
 <!-- Header Section -->
 <div class="header-section">
     <div class="unit-name">
-        <div class="model-text" [class.small]="chassisSmall()">{{ model() }}</div>
-        <div class="chassis-text alphastrike-text" [class.long-chassis]="isLongChassis()" [class.small]="chassisSmall()">{{ chassis() }}</div>
+        <div class="model-text" [class.small]="chassisSmall()">{{ model() | uppercase}}</div>
+        <div class="chassis-text alphastrike-text" [class.long-chassis]="isLongChassis()" [class.small]="chassisSmall()">{{ chassis() | uppercase }}</div>
     </div>
 
     <!-- PV Box -->
