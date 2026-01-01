@@ -54,7 +54,7 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
 
                 <div class="critical-row">
                     <span class="critical-name">ENGINE</span>
-                    <div class="critical-pips">
+                    <div class="critical-pips" data-crit="engine">
                         @for (i of range(1+1); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
@@ -64,7 +64,7 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
 
                 <div class="critical-row">
                     <span class="critical-name">FIRE CONTROL</span>
-                    <div class="critical-pips">
+                    <div class="critical-pips" data-crit="fire-control">
                         @for (i of range(4); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
@@ -74,7 +74,7 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
 
                 <div class="critical-row">
                     <span class="critical-name">WEAPONS</span>
-                    <div class="critical-pips">
+                    <div class="critical-pips" data-crit="weapons">
                         @for (i of range(4); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
@@ -84,19 +84,19 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                 
                 <div class="critical-row centered-row">
                     <span class="critical-name">MOTIVE</span>
-                    <div class="critical-pips">
+                    <div class="critical-pips" data-crit="motive">
                         @for (i of range(2); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
                     <span class="critical-desc">-2 MV</span>
-                    <div class="critical-pips">
+                    <div class="critical-pips" data-crit="motive">
                         @for (i of range(2); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
                     <span class="critical-desc">½ MV</span>
-                    <div class="critical-pips">
+                    <div class="critical-pips" data-crit="motive">
                         @for (i of range(1); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
