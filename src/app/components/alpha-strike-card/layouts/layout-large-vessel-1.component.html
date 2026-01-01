@@ -37,6 +37,15 @@
 
         <!-- Row 1 Right: Era Icons -->
         <div class="era-icons">
+            @for (item of eraAvailability(); track item.era.id) {
+                @if (item.era.icon) {
+                    <img class="era-icon" 
+                         [src]="item.era.icon" 
+                         [alt]="item.era.name"
+                         [title]="item.era.name"
+                         [class.unavailable]="!item.isAvailable" />
+                }
+            }
         </div>
 
         <!-- Row 2 Left: Armor Row -->

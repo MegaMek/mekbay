@@ -11,7 +11,7 @@
     position: absolute;
     top: 14%;
     left: 57.14%;
-    width: 40.36%;
+    width: 36.5%;
     height: 58.75%;
     overflow: hidden;
 
@@ -33,6 +33,33 @@
     :host:not(.monochrome) & {
         filter: saturate(0) invert(1) brightness(1.25);
         mix-blend-mode: lighten;
+    }
+}
+
+// Era Icons
+.era-icons {
+    position: absolute;
+    top: 13em;
+    right: 2.5em;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 1;
+}
+
+.era-icon {
+    width: 3em;
+    height: 3em;
+    object-fit: contain;
+    transition: opacity 0.2s ease;
+    mix-blend-mode: lighten;
+
+    :host:has(.monochrome) & {
+        filter: saturate(0) invert(1) brightness(1.25);
+    }
+
+    &.unavailable {
+        opacity: 0.3;
     }
 }
 

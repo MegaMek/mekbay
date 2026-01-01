@@ -31,9 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, computed } from '@angular/core';
-import { ASForceUnit } from '../../../models/as-force-unit.model';
-import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
+import { Component, ChangeDetectionStrategy, computed } from '@angular/core';
+import { AsLayoutBaseComponent } from './layout-base.component';
 
 /*
  * Author: Drake
@@ -73,14 +72,7 @@ interface ArcDamage {
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     }
 })
-export class AsLayoutLargeVessel2Component {
-    forceUnit = input<ASForceUnit>();
-    unit = input.required<Unit>();
-    useHex = input<boolean>(false);
-    cardStyle = input<'colored' | 'monochrome'>('colored');
-
-    asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
-
+export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
     hasCap = computed<boolean>(() => {
         const stats = this.asStats();
         return stats.TP == 'WS' || stats.TP == 'SS' || stats.TP == 'JS';
@@ -191,11 +183,6 @@ export class AsLayoutLargeVessel2Component {
             },
         ];
     });
-
-    // Generate array of numbers for ngFor
-    range(count: number): number[] {
-        return Array.from({ length: count }, (_, i) => i);
-    }
 
     // Helper to convert 0 or "0" to em-dash
     private dmgValue(val: number | string | undefined): number | string {

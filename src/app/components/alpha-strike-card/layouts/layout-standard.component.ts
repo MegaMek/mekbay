@@ -34,8 +34,6 @@
 import {
     Component,
     ChangeDetectionStrategy,
-    input,
-    output,
     computed,
     signal,
     inject,
@@ -45,11 +43,6 @@ import {
     viewChild,
 } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
-import { ASForceUnit } from '../../../models/as-force-unit.model';
-import type { AbilitySelection } from '../../../models/as-force-unit.model';
-import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
-import { AS_PILOT_ABILITIES } from '../../../models/as-abilities.model';
-import type { ASPilotAbility } from '../../../models/as-abilities.model';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import {
     AsCriticalHitsMekComponent,
@@ -57,7 +50,7 @@ import {
     AsCriticalHitsProtomekComponent,
     AsCriticalHitsAerofighterComponent,
 } from '../critical-hits';
-import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
+import { AsLayoutBaseComponent } from './layout-base.component';
 
 /*
  * Author: Drake
@@ -81,47 +74,21 @@ import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     }
 })
-export class AsLayoutStandardComponent {
+export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     private readonly elRef = inject(ElementRef<HTMLElement>);
     private readonly destroyRef = inject(DestroyRef);
     private readonly statsContainerRef = viewChild('statsContainer', { read: ElementRef<HTMLElement> });
-
-    private readonly pilotAbilityById = new Map<string, ASPilotAbility>(
-        AS_PILOT_ABILITIES.map((ability) => [ability.id, ability])
-    );
 
     private readonly statsToHostHeightThreshold = 0.67;
     private resizeObserver: ResizeObserver | null = null;
     chassisSmall = signal(false);
 
-    forceUnit = input<ASForceUnit>();
-    unit = input.required<Unit>();
-    useHex = input<boolean>(false);
-    cardStyle = input<'colored' | 'monochrome'>('colored');
-    imageUrl = input<string>('');
-
-    specialClick = output<string>();
-
-    asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
-    model = computed<string>(() => this.unit().model);
-    chassis = computed<string>(() => this.unit().chassis);
     isLongChassis = computed<boolean>(() => this.chassis().length > 20);
 
-    // Critical hits variant from layout config
-    criticalHitsVariant = computed<CriticalHitsVariant>(() => {
+    // Critical hits variant from layout config (override for standard units)
+    override criticalHitsVariant = computed<CriticalHitsVariant>(() => {
         const config = getLayoutForUnitType(this.asStats().TP);
         return config.cards[0]?.criticalHits ?? 'none';
-    });
-
-    // Skill and PV
-    skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? 4);
-    basePV = computed<number>(() => this.asStats().PV);
-    adjustedPV = computed<number>(() => {
-        return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.skill());
-    });
-    pilotAbilities = computed<string[]>(() => {
-        const selections = this.forceUnit()?.pilotAbilities() ?? [];
-        return selections.map((selection) => this.formatPilotAbility(selection));
     });
 
     // Movement
@@ -149,15 +116,6 @@ export class AsLayoutStandardComponent {
         const sprintInches = Math.ceil(groundMoveInches * 1.5);
         return this.formatMovement(sprintInches);
     });
-
-    private formatPilotAbility(selection: AbilitySelection): string {
-        if (typeof selection === 'string') {
-            const ability = this.pilotAbilityById.get(selection);
-            return ability ? `${ability.name} (${ability.cost})` : selection;
-        }
-
-        return `${selection.name} (${selection.cost})`;
-    }
 
     tmmDisplay = computed<string>(() => {
         const stats = this.asStats();
@@ -192,9 +150,6 @@ export class AsLayoutStandardComponent {
     rangeMedium = computed<string>(() => this.useHex() ? '4~12' : '>6"~24"');
     rangeLong = computed<string>(() => this.useHex() ? '13~21' : '>24"~42"');
 
-    // Armor and structure
-    armorPips = computed<number>(() => this.asStats().Arm);
-    structurePips = computed<number>(() => this.asStats().Str);
     readonly pipThreshold = 30;
     showArmorAsNumber = computed<boolean>(() => this.armorPips() > this.pipThreshold);
     showStructureAsNumber = computed<boolean>(() => this.structurePips() > this.pipThreshold);
@@ -205,6 +160,7 @@ export class AsLayoutStandardComponent {
     });
 
     constructor() {
+        super();
         afterNextRender(() => {
             const hostEl = this.elRef.nativeElement;
             const statsEl = this.statsContainerRef()?.nativeElement;
@@ -318,12 +274,5 @@ export class AsLayoutStandardComponent {
 
         return null;
     }
-
-    range(count: number): number[] {
-        return Array.from({ length: count }, (_, i) => i);
-    }
-
-    onSpecialClick(special: string): void {
-        this.specialClick.emit(special);
-    }
 }
+

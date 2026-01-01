@@ -89,14 +89,6 @@
     align-items: center;
 }
 
-// Era Icons
-.era-icons {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 1em;
-}
-
 // Main Content Area
 
 // Stats Container
@@ -131,6 +123,26 @@
     grid-column: 2;
     grid-row: 1;
     align-self: center;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 1em;
+    gap: 0.5em;
+}
+
+.era-icon {
+    width: 4em;
+    height: 4em;
+    object-fit: contain;
+    transition: opacity 0.2s ease;
+
+    :host:has(.monochrome) & {
+        filter: saturate(0) invert(1) brightness(1.25);
+    }
+
+    &.unavailable {
+        opacity: 0.3;
+    }
 }
 
 // Row 2: armor-damage-row, damage-threshold (top-aligned)

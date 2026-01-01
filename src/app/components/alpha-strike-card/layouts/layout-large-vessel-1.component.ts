@@ -31,16 +31,13 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, output, computed } from '@angular/core';
-import { AbilitySelection, ASForceUnit } from '../../../models/as-force-unit.model';
-import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
+import { Component, ChangeDetectionStrategy, computed } from '@angular/core';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import {
     AsCriticalHitsAerospace1Component,
     AsCriticalHitsDropship1Component,
 } from '../critical-hits';
-import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
-import { AS_PILOT_ABILITIES, ASPilotAbility } from '../../../models/as-abilities.model';
+import { AsLayoutBaseComponent } from './layout-base.component';
 
 /*
  * Author: Drake
@@ -61,55 +58,10 @@ import { AS_PILOT_ABILITIES, ASPilotAbility } from '../../../models/as-abilities
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     }
 })
-export class AsLayoutLargeVessel1Component {
-    forceUnit = input<ASForceUnit>();
-    unit = input.required<Unit>();
-    useHex = input<boolean>(false);
-    cardStyle = input<'colored' | 'monochrome'>('colored');
-    imageUrl = input<string>('');
-
-    specialClick = output<string>();
-
-    private readonly pilotAbilityById = new Map<string, ASPilotAbility>(
-        AS_PILOT_ABILITIES.map((ability) => [ability.id, ability])
-    );
-    
-    // Derived from unit
-    asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
-    model = computed<string>(() => this.unit().model);
-    chassis = computed<string>(() => this.unit().chassis);
-
+export class AsLayoutLargeVessel1Component extends AsLayoutBaseComponent {
     // Critical hits variant from layout config (first card for large vessels)
-    criticalHitsVariant = computed<CriticalHitsVariant>(() => {
+    override criticalHitsVariant = computed<CriticalHitsVariant>(() => {
         const config = getLayoutForUnitType(this.asStats().TP);
         return config.cards[0]?.criticalHits ?? 'none';
     });
-
-    // Skill and PV
-    skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? 4);
-    basePV = computed<number>(() => this.asStats().PV);
-    adjustedPV = computed<number>(() => {
-        return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.skill());
-    });
-    pilotAbilities = computed<string[]>(() => {
-        const selections = this.forceUnit()?.pilotAbilities() ?? [];
-        return selections.map((selection) => this.formatPilotAbility(selection));
-    });
-
-    private formatPilotAbility(selection: AbilitySelection): string {
-        if (typeof selection === 'string') {
-            const ability = this.pilotAbilityById.get(selection);
-            return ability ? `${ability.name} (${ability.cost})` : selection;
-        }
-
-        return `${selection.name} (${selection.cost})`;
-    }
-
-    // Armor and structure
-    armorPips = computed<number>(() => this.asStats().Arm);
-    structurePips = computed<number>(() => this.asStats().Str);
-
-    onSpecialClick(special: string): void {
-        this.specialClick.emit(special);
-    }
 }

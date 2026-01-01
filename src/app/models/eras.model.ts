@@ -43,6 +43,7 @@ export interface Era {
     };
     description?: string; // Description of the era
     img?: string; // Logo URL for the era
+    icon?: string; // Icon URL for the era (same as logo but aligned)
     factions: number[] | Set<number>; // List of faction ids associated with this era
     units: number[] | Set<number>; // List of unit ids associated with this era
 }
