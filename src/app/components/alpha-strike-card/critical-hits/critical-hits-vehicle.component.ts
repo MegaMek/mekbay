@@ -55,11 +55,11 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                 <div class="critical-row">
                     <span class="critical-name">ENGINE</span>
                     <div class="critical-pips">
-                        @for (i of range(2); track i) {
+                        @for (i of range(1+1); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
-                    <span class="critical-desc">½ MV Each</span>
+                    <span class="critical-desc">½ MV and Damage</span>
                 </div>
 
                 <div class="critical-row">
