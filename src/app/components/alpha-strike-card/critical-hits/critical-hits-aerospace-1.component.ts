@@ -52,9 +52,9 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
             <div class="frame-content">
                 <div class="critical-title frame-title-background">CRITICAL HITS</div>
 
-                <div class="critical-row">
+                <div class="critical-row" data-crit="crew">
                     <span class="critical-name">CREW</span>
-                    <div class="critical-pips" data-crit="crew">
+                    <div class="critical-pips">
                         @for (i of range(2); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
@@ -66,9 +66,9 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     </div>
                 </div>
 
-                <div class="critical-row">
+                <div class="critical-row" data-crit="engine">
                     <span class="critical-name">ENGINE</span>
-                    <div class="critical-pips" data-crit="engine">
+                    <div class="critical-pips">
                         @for (i of range(3+1); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
@@ -76,9 +76,9 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     <span class="critical-desc">-25%/-50%/-100% THR</span>
                 </div>
 
-                <div class="critical-row">
+                <div class="critical-row" data-crit="fire-control">
                     <span class="critical-name">FIRE CONTROL</span>
-                    <div class="critical-pips" data-crit="fire-control">
+                    <div class="critical-pips">
                         @for (i of range(4); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
@@ -86,9 +86,9 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     <span class="critical-desc">+2 To-Hit Each</span>
                 </div>
 
-                <div class="critical-row">
+                <div class="critical-row" data-crit="thruster">
                     <span class="critical-name">THRUSTER</span>
-                    <div class="critical-pips" data-crit="thruster">
+                    <div class="critical-pips">
                         @for (i of range(1); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }

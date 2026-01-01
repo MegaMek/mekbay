@@ -52,9 +52,9 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
             <div class="frame-content">
                 <div class="critical-title frame-title-background">CRITICAL HITS</div>
 
-                <div class="critical-row">
+                <div class="critical-row" data-crit="engine">
                     <span class="critical-name">ENGINE</span>
-                    <div class="critical-pips" data-crit="engine">
+                    <div class="critical-pips">
                         @for (i of range(1+1); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
@@ -62,9 +62,9 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     <span class="critical-desc">½ MV and Damage</span>
                 </div>
 
-                <div class="critical-row">
+                <div class="critical-row" data-crit="fire-control">
                     <span class="critical-name">FIRE CONTROL</span>
-                    <div class="critical-pips" data-crit="fire-control">
+                    <div class="critical-pips">
                         @for (i of range(4); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
@@ -72,9 +72,9 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     <span class="critical-desc">+2 To-Hit Each</span>
                 </div>
 
-                <div class="critical-row">
+                <div class="critical-row" data-crit="weapons">
                     <span class="critical-name">WEAPONS</span>
-                    <div class="critical-pips" data-crit="weapons">
+                    <div class="critical-pips">
                         @for (i of range(4); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
@@ -82,21 +82,21 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     <span class="critical-desc">-1 Damage Each</span>
                 </div>
                 
-                <div class="critical-row centered-row">
+                <div class="critical-row centered-row" data-crit="motive">
                     <span class="critical-name">MOTIVE</span>
-                    <div class="critical-pips" data-crit="motive">
+                    <div class="critical-pips">
                         @for (i of range(2); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
                     <span class="critical-desc">-2 MV</span>
-                    <div class="critical-pips" data-crit="motive">
+                    <div class="critical-pips">
                         @for (i of range(2); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
                     <span class="critical-desc">½ MV</span>
-                    <div class="critical-pips" data-crit="motive">
+                    <div class="critical-pips">
                         @for (i of range(1); track i) {
                         <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
