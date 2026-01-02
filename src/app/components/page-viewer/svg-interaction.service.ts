@@ -1333,6 +1333,8 @@ export class SvgInteractionService {
         instance.values.set(opts.values);
         compRef.setInput('title', opts.title);
         compRef.setInput('selected', opts.selected);
+        const colorMode = this.optionsService.options().sheetsColor;
+        compRef.setInput('lightTheme', (colorMode === 'night') );
 
         const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
         const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
