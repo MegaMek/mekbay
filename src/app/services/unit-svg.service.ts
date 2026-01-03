@@ -291,7 +291,7 @@ export class UnitSvgService {
         const allCrewDefault = crew.every(member => 
             !member.getName() && // No name set
             member.getSkill('gunnery') === DEFAULT_GUNNERY_SKILL && // Default gunnery skill
-            member.getSkill('piloting') === DEFAULT_PILOTING_SKILL && // Default piloting skill
+            member.getSkill('piloting') === DEFAULT_PILOTING_SKILL // Default piloting skill
         );
 
         // Apply or remove screen-only class on skillValue elements
