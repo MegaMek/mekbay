@@ -37,6 +37,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { Force, UnitGroup } from '../../models/force.model';
 import { ForceUnit } from '../../models/force-unit.model';
+import { GameSystem } from '../../models/common.model';
 import { DragDropModule, CdkDragDrop, moveItemInArray, CdkDragMove } from '@angular/cdk/drag-drop'
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
@@ -91,6 +92,10 @@ export class ForceBuilderViewerComponent {
 
     hasSingleGroup = computed(() => {
         return this.forceBuilderService.currentForce()?.groups().length === 1;
+    });
+
+    isAlphaStrike = computed(() => {
+        return this.forceBuilderService.currentForce()?.gameSystem === GameSystem.ALPHA_STRIKE;
     });
 
     constructor() {

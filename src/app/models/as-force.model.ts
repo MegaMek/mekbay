@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injector } from '@angular/core';
+import { computed, Injector } from '@angular/core';
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
@@ -126,7 +126,7 @@ export class ASForce extends Force<ASForceUnit> {
         }
         return force;
     }
-
+    
     public override serialize(): ASSerializedForce {
         let instanceId = this.instanceId();
         if (!instanceId) {

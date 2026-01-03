@@ -60,6 +60,7 @@ type ResolvedPack = {
     units: PackUnitEntry[];
     _searchText: string;
     bv: number;
+    pv: number;
 };
         
 @Pipe({
@@ -186,6 +187,7 @@ export class ForceLoadDialogComponent {
                 const resolved: ResolvedPack = { name: p.name, 
                         units: entries, 
                         bv: entries.reduce((sum, e) => sum + (e.unit?.bv || 0), 0),
+                        pv: entries.reduce((sum, e) => sum + (e.unit?.as.PV || 0), 0),
                         _searchText: p.name.toLowerCase() + ' ' + entries.map(e => [e.chassis, e.model].filter(Boolean).join(' ')).join(' ').toLowerCase() }
                 return resolved;
             });

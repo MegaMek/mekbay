@@ -370,7 +370,8 @@ export class DbService {
                                 instanceId: raw.instanceId,
                                 name: raw.name,
                                 type: raw.type,
-                                bv: raw.bv,
+                                bv: raw.bv ?? undefined,
+                                pv: raw.pv ?? undefined,
                                 timestamp: raw.timestamp, 
                                 groups: groups
                             });

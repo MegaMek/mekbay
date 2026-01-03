@@ -15,7 +15,7 @@
                     <div class="group-header">
                         <div class="group-name" (click)="promptChangeGroupName(group)">{{ group.name() }}</div>
                         <div class="group-footer">
-                            <span class="group-bv">BV: {{ group.totalBV() | number }}</span>
+                            <span class="group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
                         </div>
                     </div>
                 } @else {
@@ -71,7 +71,7 @@
     @if (!miniMode()) {
         <div class="footer">
             @if (!hasSingleGroup()) {
-            <div class="row total-bv">Total BV: {{ forceBuilderService.currentForce()?.totalBv() | number }}</div>
+            <div class="row total-bv">Total {{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ forceBuilderService.currentForce()?.totalBv() | number }}</div>
             }
         </div>
     }

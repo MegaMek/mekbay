@@ -55,7 +55,7 @@
                                         {{ force.timestamp | formatTimestamp }}</span>
                                 @if (force.type === 'as') {
                                     @if (force.pv && force.pv > 0) {
-                                        <span class="force-pv">PV: {{ force.pv | number }}</span>
+                                        <span class="force-bv">PV: {{ force.pv | number }}</span>
                                     }
                                 } @else {
                                     @if (force.bv && force.bv > 0) {
