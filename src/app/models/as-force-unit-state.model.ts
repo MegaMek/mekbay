@@ -34,7 +34,7 @@
 import { computed, signal } from '@angular/core';
 import { ForceUnitState } from './force-unit-state.model';
 import { ASForceUnit } from './as-force-unit.model';
-import { ASSerializedState, ASCriticalHit, C3_POSITION_SCHEMA } from './force-serialization';
+import { ASSerializedState, ASCriticalHit, C3_POSITION_SCHEMA, AS_SERIALIZED_STATE_SCHEMA } from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
 
 /*
@@ -372,56 +372,34 @@ export class ASForceUnitState extends ForceUnitState {
     }
 
     override update(data: ASSerializedState) {
-        this.modified.set(data.modified);
-        this.destroyed.set(data.destroyed);
-        this.shutdown.set(data.shutdown);
+        // Sanitize the input data using the schema
+        const sanitized = Sanitizer.sanitize(data, AS_SERIALIZED_STATE_SCHEMA);
         
-        // Handle new array format for heat/armor/internal
-        if (Array.isArray(data.heat)) {
-            this.heat.set(data.heat[0] ?? 0);
-            this.pendingHeat.set(data.heat[1] ?? 0);
-        } else {
-            this.heat.set(typeof data.heat === 'number' ? data.heat : 0);
-            this.pendingHeat.set(0);
-        }
+        this.modified.set(sanitized.modified);
+        this.destroyed.set(sanitized.destroyed);
+        this.shutdown.set(sanitized.shutdown);
         
-        if (Array.isArray(data.armor)) {
-            this.armor.set(data.armor[0] ?? 0);
-            this.pendingArmor.set(data.armor[1] ?? 0);
-        } else {
-            this.armor.set(typeof data.armor === 'number' ? data.armor : 0);
-            this.pendingArmor.set(0);
-        }
+        // Heat/armor/internal are already validated as [number, number] tuples
+        this.heat.set(sanitized.heat[0]);
+        this.pendingHeat.set(sanitized.heat[1]);
         
-        if (Array.isArray(data.internal)) {
-            this.internal.set(data.internal[0] ?? 0);
-            this.pendingInternal.set(data.internal[1] ?? 0);
-        } else {
-            this.internal.set(typeof data.internal === 'number' ? data.internal : 0);
-            this.pendingInternal.set(0);
-        }
+        this.armor.set(sanitized.armor[0]);
+        this.pendingArmor.set(sanitized.armor[1]);
         
-        if (data.crits && Array.isArray(data.crits)) {
-            this.crits.set([...data.crits]);
-        } else {
-            this.crits.set([]);
-        }
+        this.internal.set(sanitized.internal[0]);
+        this.pendingInternal.set(sanitized.internal[1]);
         
-        if (data.pCrits && Array.isArray(data.pCrits)) {
-            this.pendingCrits.set([...data.pCrits]);
-        } else {
-            this.pendingCrits.set([]);
-        }
+        // Crits are already validated arrays
+        this.crits.set([...sanitized.crits]);
+        this.pendingCrits.set([...sanitized.pCrits]);
         
         // Handle consumed abilities
-        if (data.consumed && typeof data.consumed === 'object') {
+        if (sanitized.consumed) {
             const consumed: Record<string, number> = {};
             const pending: Record<string, number> = {};
-            for (const [key, value] of Object.entries(data.consumed)) {
-                if (Array.isArray(value)) {
-                    if (value[0]) consumed[key] = value[0];
-                    if (value[1]) pending[key] = value[1];
-                }
+            for (const [key, value] of Object.entries(sanitized.consumed)) {
+                if (value[0]) consumed[key] = value[0];
+                if (value[1]) pending[key] = value[1];
             }
             this.consumedAbilities.set(consumed);
             this.pendingConsumed.set(pending);
@@ -431,18 +409,18 @@ export class ASForceUnitState extends ForceUnitState {
         }
         
         // Handle exhausted abilities
-        if (data.exhausted && Array.isArray(data.exhausted)) {
-            this.exhaustedAbilities.set(new Set(data.exhausted[0] ?? []));
-            this.pendingExhausted.set(new Set(data.exhausted[1] ?? []));
-            this.pendingRestored.set(new Set(data.exhausted[2] ?? []));
+        if (sanitized.exhausted) {
+            this.exhaustedAbilities.set(new Set(sanitized.exhausted[0]));
+            this.pendingExhausted.set(new Set(sanitized.exhausted[1]));
+            this.pendingRestored.set(new Set(sanitized.exhausted[2]));
         } else {
             this.exhaustedAbilities.set(new Set());
             this.pendingExhausted.set(new Set());
             this.pendingRestored.set(new Set());
         }
         
-        if (data.c3Position) {
-            this.c3Position.set(Sanitizer.sanitize(data.c3Position, C3_POSITION_SCHEMA));
+        if (sanitized.c3Position) {
+            this.c3Position.set(sanitized.c3Position);
         }
     }
 }

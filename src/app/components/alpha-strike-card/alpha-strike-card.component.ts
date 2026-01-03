@@ -307,22 +307,22 @@ export class AlphaStrikeCardComponent {
                 switch (val.value) {
                     case 'consume': {
                         const currentDelta = fu.getState().getPendingConsumedDelta(abilityKey);
-                        fu.getState().setPendingConsumedDelta(abilityKey, currentDelta + 1);
+                        fu.setPendingConsumedDelta(abilityKey, currentDelta + 1);
                         vibrate(10);
                         break;
                     }
                     case 'restore': {
                         if (ability.consumable) {
                             const currentDelta = fu.getState().getPendingConsumedDelta(abilityKey);
-                            fu.getState().setPendingConsumedDelta(abilityKey, currentDelta - 1);
+                            fu.setPendingConsumedDelta(abilityKey, currentDelta - 1);
                         } else if (ability.canExhaust) {
-                            fu.getState().setPendingRestore(abilityKey);
+                            fu.setPendingRestore(abilityKey);
                         }
                         vibrate(10);
                         break;
                     }
                     case 'exhaust':
-                        fu.getState().setPendingExhaust(abilityKey);
+                        fu.setPendingExhaust(abilityKey);
                         vibrate(10);
                         break;
                     case 'info':
@@ -459,10 +459,10 @@ export class AlphaStrikeCardComponent {
                 
                 if (effectiveHeat === index) {
                     // Toggle off - reset pending to 0
-                    unit.getState().pendingHeat.set(0);
+                    unit.setPendingHeat(0);
                 } else {
                     // Set pending delta to reach this level
-                    unit.getState().pendingHeat.set(index - committedHeat);
+                    unit.setPendingHeat(index - committedHeat);
                 }
                 vibrate(10);
             }, signal);

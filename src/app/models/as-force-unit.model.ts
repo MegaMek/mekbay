@@ -35,7 +35,7 @@ import { computed, Injector, signal, Signal } from '@angular/core';
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
-import { ASSerializedState, ASSerializedUnit, C3_POSITION_SCHEMA } from './force-serialization';
+import { ASSerializedState, ASSerializedUnit, C3_POSITION_SCHEMA, AS_SERIALIZED_STATE_SCHEMA, AS_SERIALIZED_UNIT_SCHEMA } from './force-serialization';
 import { ASForce } from './as-force.model';
 import { ForceUnit } from './force-unit.model';
 import { Sanitizer } from '../utils/sanitizer.util';
@@ -254,10 +254,20 @@ export class ASForceUnit extends ForceUnit {
     }
 
     /**
+     * Set pending heat delta.
+     * @param delta Heat delta from committed heat (can be negative to reduce pending)
+     */
+    setPendingHeat(delta: number): void {
+        this.state.pendingHeat.set(delta);
+        this.force.emitChanged();
+    }
+
+    /**
      * Set pending damage (will be distributed to armor first, then internal).
      */
     setPendingDamage(totalDamage: number): void {
         this.state.setPendingDamage(totalDamage);
+        this.force.emitChanged();
     }
 
     /**
@@ -277,6 +287,7 @@ export class ASForceUnit extends ForceUnit {
      */
     discardPending(): void {
         this.state.discardPending();
+        this.force.emitChanged();
     }
 
     repairAll(): void {
@@ -305,6 +316,32 @@ export class ASForceUnit extends ForceUnit {
      */
     setPendingCritHits(key: string, delta: number): void {
         this.state.setPendingCritHits(key, delta);
+        this.force.emitChanged();
+    }
+
+    /**
+     * Set pending consumed delta for an ability.
+     * Positive delta = consume more, negative delta = restore.
+     */
+    setPendingConsumedDelta(abilityKey: string, delta: number): void {
+        this.state.setPendingConsumedDelta(abilityKey, delta);
+        this.force.emitChanged();
+    }
+
+    /**
+     * Set an ability as pending exhausted.
+     */
+    setPendingExhaust(abilityKey: string): void {
+        this.state.setPendingExhaust(abilityKey);
+        this.force.emitChanged();
+    }
+
+    /**
+     * Set an ability as pending restored from exhausted.
+     */
+    setPendingRestore(abilityKey: string): void {
+        this.state.setPendingRestore(abilityKey);
+        this.force.emitChanged();
     }
 
     setPilotName(name: string | undefined): void {
@@ -334,8 +371,19 @@ export class ASForceUnit extends ForceUnit {
     });
 
     public override update(data: ASSerializedUnit) {
+        // Update pilot name/alias
         if (data.alias !== this.alias()) {
+            this._pilotName.set(data.alias);
         }
+        // Update pilot skill
+        if (data.skill !== undefined && data.skill !== this._pilotSkill()) {
+            this._pilotSkill.set(data.skill);
+        }
+        // Update pilot abilities
+        if (data.abilities !== undefined) {
+            this._pilotAbilities.set(data.abilities);
+        }
+        // Update state (includes pending)
         if (data.state) {
             this.state.update(data.state);
         }
@@ -388,49 +436,46 @@ export class ASForceUnit extends ForceUnit {
     }
 
     protected deserializeState(state: ASSerializedState) {
-        this.state.modified.set(typeof state.modified === 'boolean' ? state.modified : false);
-        this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
-        this.state.shutdown.set(typeof state.shutdown === 'boolean' ? state.shutdown : false);
+        // State is already sanitized by AS_SERIALIZED_STATE_SCHEMA via AS_SERIALIZED_UNIT_SCHEMA
+        this.state.modified.set(state.modified);
+        this.state.destroyed.set(state.destroyed);
+        this.state.shutdown.set(state.shutdown);
         
-        // Handle new array format for heat/armor/internal
-        if (Array.isArray(state.heat)) {
-            this.state.heat.set(state.heat[0] ?? 0);
-            this.state.pendingHeat.set(state.heat[1] ?? 0);
-        } else {
-            this.state.heat.set(typeof state.heat === 'number' ? state.heat : 0);
-            this.state.pendingHeat.set(0);
+        // Heat/armor/internal are already validated as [number, number] tuples
+        this.state.heat.set(state.heat[0]);
+        this.state.pendingHeat.set(state.heat[1]);
+        
+        this.state.armor.set(state.armor[0]);
+        this.state.pendingArmor.set(state.armor[1]);
+        
+        this.state.internal.set(state.internal[0]);
+        this.state.pendingInternal.set(state.internal[1]);
+        
+        // Crits are already validated arrays
+        this.state.crits.set([...state.crits]);
+        this.state.pendingCrits.set([...state.pCrits]);
+        
+        // Handle consumed abilities
+        if (state.consumed) {
+            const consumed: Record<string, number> = {};
+            const pending: Record<string, number> = {};
+            for (const [key, value] of Object.entries(state.consumed)) {
+                if (value[0]) consumed[key] = value[0];
+                if (value[1]) pending[key] = value[1];
+            }
+            this.state.consumedAbilities.set(consumed);
+            this.state.pendingConsumed.set(pending);
         }
         
-        if (Array.isArray(state.armor)) {
-            this.state.armor.set(state.armor[0] ?? 0);
-            this.state.pendingArmor.set(state.armor[1] ?? 0);
-        } else {
-            this.state.armor.set(typeof state.armor === 'number' ? state.armor : 0);
-            this.state.pendingArmor.set(0);
-        }
-        
-        if (Array.isArray(state.internal)) {
-            this.state.internal.set(state.internal[0] ?? 0);
-            this.state.pendingInternal.set(state.internal[1] ?? 0);
-        } else {
-            this.state.internal.set(typeof state.internal === 'number' ? state.internal : 0);
-            this.state.pendingInternal.set(0);
-        }
-        
-        if (state.crits && Array.isArray(state.crits)) {
-            this.state.crits.set([...state.crits]);
-        } else {
-            this.state.crits.set([]);
-        }
-        
-        if (state.pCrits && Array.isArray(state.pCrits)) {
-            this.state.pendingCrits.set([...state.pCrits]);
-        } else {
-            this.state.pendingCrits.set([]);
+        // Handle exhausted abilities
+        if (state.exhausted) {
+            this.state.exhaustedAbilities.set(new Set(state.exhausted[0]));
+            this.state.pendingExhausted.set(new Set(state.exhausted[1]));
+            this.state.pendingRestored.set(new Set(state.exhausted[2]));
         }
         
         if (state.c3Position) {
-            this.state.c3Position.set(Sanitizer.sanitize(state.c3Position, C3_POSITION_SCHEMA));
+            this.state.c3Position.set(state.c3Position);
         }
     }
 
@@ -441,23 +486,26 @@ export class ASForceUnit extends ForceUnit {
         unitInitializer: UnitInitializerService,
         injector: Injector
     ): ASForceUnit {
-        const unit = dataService.getUnitByName(data.unit);
+        // Sanitize the input data using the schema
+        const sanitizedData = Sanitizer.sanitize(data, AS_SERIALIZED_UNIT_SCHEMA);
+        
+        const unit = dataService.getUnitByName(sanitizedData.unit);
         if (!unit) {
-            throw new Error(`Unit with name "${data.unit}" not found in dataService`);
+            throw new Error(`Unit with name "${sanitizedData.unit}" not found in dataService`);
         }
         const fu = new ASForceUnit(unit, force, dataService, unitInitializer, injector);
-        fu.id = data.id;
+        fu.id = sanitizedData.id;
         
-        if (data.alias !== undefined) {
-            fu._pilotName.set(data.alias);
+        if (sanitizedData.alias !== undefined) {
+            fu._pilotName.set(sanitizedData.alias);
         }
-        if (data.skill !== undefined) {
-            fu._pilotSkill.set(data.skill);
+        if (sanitizedData.skill !== undefined) {
+            fu._pilotSkill.set(sanitizedData.skill);
         }
-        if (data.abilities !== undefined) {
-            fu._pilotAbilities.set(data.abilities);
+        if (sanitizedData.abilities !== undefined) {
+            fu._pilotAbilities.set(sanitizedData.abilities);
         }
-        fu.deserializeState(data.state);
+        fu.deserializeState(sanitizedData.state);
         return fu;
     }
 

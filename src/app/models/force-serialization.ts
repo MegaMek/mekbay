@@ -38,6 +38,7 @@ import { GameSystem } from './common.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
 import { ASCustomPilotAbility } from './as-abilities.model';
 import { C3NetworkType } from './c3-network.model';
+import { DEFAULT_GUNNERY_SKILL } from './crew-member.model';
 
 export interface LocationData {
     armor?: number;
@@ -296,6 +297,160 @@ export const C3_NETWORK_GROUP_SCHEMA = Sanitizer.schema<SerializedC3NetworkGroup
             return value.filter(id => typeof id === 'string').map(String);
         }
         return undefined;
+    })
+    .build();
+
+// ===== Alpha Strike Schemas =====
+
+/**
+ * Schema for ASCriticalHit - single critical hit with timestamp
+ */
+export const AS_CRITICAL_HIT_SCHEMA = Sanitizer.schema<ASCriticalHit>()
+    .string('key')
+    .number('timestamp', { default: 0 })
+    .build();
+
+/**
+ * Schema for ASCustomPilotAbility
+ */
+export const AS_CUSTOM_PILOT_ABILITY_SCHEMA = Sanitizer.schema<ASCustomPilotAbility>()
+    .string('name', { default: '' })
+    .number('cost', { default: 1 })
+    .string('summary', { default: '' })
+    .build();
+
+/**
+ * Schema for ASSerializedState
+ */
+export const AS_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<ASSerializedState>()
+    .boolean('modified', { default: false })
+    .boolean('destroyed', { default: false })
+    .boolean('shutdown', { default: false })
+    .custom('c3Position', (value: unknown) => {
+        if (!value || typeof value !== 'object') return undefined;
+        return Sanitizer.sanitize(value, C3_POSITION_SCHEMA);
+    })
+    .custom('heat', (value: unknown) => {
+        if (Array.isArray(value) && value.length >= 2) {
+            return [
+                typeof value[0] === 'number' ? value[0] : 0,
+                typeof value[1] === 'number' ? value[1] : 0
+            ] as [number, number];
+        }
+        return [0, 0] as [number, number];
+    })
+    .custom('armor', (value: unknown) => {
+        if (Array.isArray(value) && value.length >= 2) {
+            return [
+                typeof value[0] === 'number' ? value[0] : 0,
+                typeof value[1] === 'number' ? value[1] : 0
+            ] as [number, number];
+        }
+        return [0, 0] as [number, number];
+    })
+    .custom('internal', (value: unknown) => {
+        if (Array.isArray(value) && value.length >= 2) {
+            return [
+                typeof value[0] === 'number' ? value[0] : 0,
+                typeof value[1] === 'number' ? value[1] : 0
+            ] as [number, number];
+        }
+        return [0, 0] as [number, number];
+    })
+    .custom('crits', (value: unknown) => {
+        if (!Array.isArray(value)) return [];
+        return Sanitizer.sanitizeArray(value, AS_CRITICAL_HIT_SCHEMA);
+    })
+    .custom('pCrits', (value: unknown) => {
+        if (!Array.isArray(value)) return [];
+        return Sanitizer.sanitizeArray(value, AS_CRITICAL_HIT_SCHEMA);
+    })
+    .custom('consumed', (value: unknown) => {
+        if (!value || typeof value !== 'object') return undefined;
+        const result: Record<string, [number, number]> = {};
+        for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+            if (Array.isArray(val) && val.length >= 2) {
+                result[key] = [
+                    typeof val[0] === 'number' ? val[0] : 0,
+                    typeof val[1] === 'number' ? val[1] : 0
+                ];
+            }
+        }
+        return Object.keys(result).length > 0 ? result : undefined;
+    })
+    .custom('exhausted', (value: unknown) => {
+        if (!Array.isArray(value) || value.length < 3) return undefined;
+        const committed = Array.isArray(value[0]) ? value[0].filter((s: unknown) => typeof s === 'string') : [];
+        const pendingExhaust = Array.isArray(value[1]) ? value[1].filter((s: unknown) => typeof s === 'string') : [];
+        const pendingRestore = Array.isArray(value[2]) ? value[2].filter((s: unknown) => typeof s === 'string') : [];
+        if (committed.length === 0 && pendingExhaust.length === 0 && pendingRestore.length === 0) {
+            return undefined;
+        }
+        return [committed, pendingExhaust, pendingRestore] as [string[], string[], string[]];
+    })
+    .build();
+
+/**
+ * Schema for ASSerializedUnit
+ */
+export const AS_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<ASSerializedUnit>()
+    .string('id')
+    .string('unit')
+    .string('model')
+    .string('chassis')
+    .string('alias')
+    .number('skill', { default: DEFAULT_GUNNERY_SKILL, min: 0, max: 8 })
+    .custom('abilities', (value: unknown) => {
+        if (!Array.isArray(value)) return [];
+        return value.map((item: unknown) => {
+            if (typeof item === 'string') return item;
+            if (typeof item === 'object' && item !== null) {
+                return Sanitizer.sanitize(item, AS_CUSTOM_PILOT_ABILITY_SCHEMA);
+            }
+            return null;
+        }).filter((item): item is string | ASCustomPilotAbility => item !== null);
+    })
+    .custom('state', (value: unknown) => {
+        if (!value || typeof value !== 'object') {
+            return Sanitizer.sanitize({}, AS_SERIALIZED_STATE_SCHEMA);
+        }
+        return Sanitizer.sanitize(value, AS_SERIALIZED_STATE_SCHEMA);
+    })
+    .build();
+
+/**
+ * Schema for ASSerializedGroup
+ */
+export const AS_SERIALIZED_GROUP_SCHEMA = Sanitizer.schema<ASSerializedGroup>()
+    .string('id')
+    .string('name', { default: 'Main' })
+    .boolean('nameLock', { default: false })
+    .string('color')
+    .custom('units', (value: unknown) => {
+        if (!Array.isArray(value)) return [];
+        return Sanitizer.sanitizeArray(value, AS_SERIALIZED_UNIT_SCHEMA);
+    })
+    .build();
+
+/**
+ * Schema for ASSerializedForce
+ */
+export const AS_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<ASSerializedForce>()
+    .number('version', { default: 1 })
+    .string('timestamp')
+    .string('instanceId')
+    .string('type')
+    .string('name', { default: 'Unnamed Force' })
+    .boolean('nameLock', { default: false })
+    .number('pv')
+    .boolean('owned', { default: true })
+    .custom('groups', (value: unknown) => {
+        if (!Array.isArray(value)) return [];
+        return Sanitizer.sanitizeArray(value, AS_SERIALIZED_GROUP_SCHEMA);
+    })
+    .custom('c3Networks', (value: unknown) => {
+        if (!Array.isArray(value)) return undefined;
+        return Sanitizer.sanitizeArray(value, C3_NETWORK_GROUP_SCHEMA);
     })
     .build();
 
