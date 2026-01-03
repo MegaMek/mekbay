@@ -16,6 +16,17 @@
             </div>
         }
         @if (activeTab() === 'Hangar') {
+            <div class="filter-bar">
+                <button class="filter-btn" 
+                    [class.active]="gameTypeFilter() === 'all'" 
+                    (click)="onGameTypeFilter('all')">All</button>
+                <button class="filter-btn" 
+                    [class.active]="gameTypeFilter() === 'cbt'" 
+                    (click)="onGameTypeFilter('cbt')">Battletech</button>
+                <button class="filter-btn" 
+                    [class.active]="gameTypeFilter() === 'as'" 
+                    (click)="onGameTypeFilter('as')">Alpha Strike</button>
+            </div>
             @if (loading()) {
                 <div class="loading-spinner">Loading forces...</div>
             } @else if (filteredForces().length === 0) {
@@ -27,8 +38,9 @@
                         tabindex="0">
                         <div class="force-header">
                             <span class="force-name">{{ force.name }}</span>
-                            <div class="force-info">
+                            <div class="force-info">                                
                                 <span class="force-timestamp">
+                                    <span class="game-type-badge" [class.as]="force.type === 'as'">{{ getGameTypeLabel(force.type) }}</span>
                                         @if (force.local) {
                                             <img
                                         src="/images/floppy.svg"
@@ -38,9 +50,17 @@
                                         <img
                                         [src]="force.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'"
                                         class="save-state-icon" alt="Cloud status"
-                                        title="{{ force.cloud ? 'Stored online' : 'Not stored online' }}" /> {{ force.timestamp | formatTimestamp }}</span>
-                                @if (force.bv > 0) {
-                                    <span class="force-bv">BV: {{ force.bv | number }}</span>
+                                        title="{{ force.cloud ? 'Stored online' : 'Not stored online' }}" />
+                                        
+                                        {{ force.timestamp | formatTimestamp }}</span>
+                                @if (force.type === 'as') {
+                                    @if (force.pv && force.pv > 0) {
+                                        <span class="force-pv">PV: {{ force.pv | number }}</span>
+                                    }
+                                } @else {
+                                    @if (force.bv && force.bv > 0) {
+                                        <span class="force-bv">BV: {{ force.bv | number }}</span>
+                                    }
                                 }
                             </div>
                         </div>

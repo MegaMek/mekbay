@@ -56,7 +56,8 @@ export class LoadForceEntry {
     cloud: boolean;
     local: boolean;
     name: string;
-    bv: number;
+    bv?: number;
+    pv?: number;
     groups: LoadForceGroup[];
     _searchText?: string; // for internal searching use only, not persisted
 
@@ -67,7 +68,8 @@ export class LoadForceEntry {
         this.cloud = data.cloud ?? false;
         this.local = data.local ?? false;
         this.name = data.name ?? '';
-        this.bv = data.bv ?? 0;
+        this.bv = data.bv ?? undefined;
+        this.pv = data.pv ?? undefined;
         this.groups = data.groups ?? [];
     }
 }

@@ -42,6 +42,7 @@ import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { OptionsService } from '../../services/options.service';
 import { FORCE_PACKS } from '../../models/forcepacks.model';
 import { Unit } from '../../models/units.model';
+import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
 /*
@@ -110,10 +111,20 @@ export class ForceLoadDialogComponent {
     activeTab = signal(this.tabs[0]);
 
     searchText = signal<string>('');
+    gameTypeFilter = signal<'all' | 'cbt' | 'as'>('all');
+    
     filteredForces = computed<LoadForceEntry[]>(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
-        if (tokens.length === 0) return this.forces();
+        const typeFilter = this.gameTypeFilter();
+        
         return this.forces().filter(force => {
+            // Game type filter (forces with no type are considered CBT)
+            const forceType = force.type || GameSystem.CLASSIC;
+            if (typeFilter !== 'all' && forceType !== typeFilter) {
+                return false;
+            }
+            // Text search filter
+            if (tokens.length === 0) return true;
             const hay = force._searchText || '';
             return tokens.every(t => hay.indexOf(t) !== -1);
         });
@@ -211,6 +222,15 @@ export class ForceLoadDialogComponent {
 
     onSearch(text: string) {
         this.searchText.set(text);
+        this.clearFilteredOutSelections();
+    }
+
+    onGameTypeFilter(type: 'all' | 'cbt' | 'as') {
+        this.gameTypeFilter.set(type);
+        this.clearFilteredOutSelections();
+    }
+
+    private clearFilteredOutSelections() {
         // if selected force is filtered out, clear selection
         const selForce = this.selectedForce();
         if (selForce && !this.filteredForces().includes(selForce)) {
@@ -221,6 +241,10 @@ export class ForceLoadDialogComponent {
         if (selPack && !this.filteredPacks().includes(selPack)) {
             this.selectedPack.set(null);
         }
+    }
+
+    getGameTypeLabel(type: GameSystem | undefined): string {
+        return (type || GameSystem.CLASSIC) === GameSystem.ALPHA_STRIKE ? 'AS' : 'CBT';
     }
 
     onLoad() {
