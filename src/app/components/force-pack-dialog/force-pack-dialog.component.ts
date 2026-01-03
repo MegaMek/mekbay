@@ -36,6 +36,7 @@ import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
+import { GameService } from '../../services/game.service';
 import { FORCE_PACKS } from '../../models/forcepacks.model';
 import { Unit } from '../../models/units.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
@@ -54,6 +55,7 @@ type ResolvedPack = {
     units: PackUnitEntry[];
     _searchText: string;
     bv: number;
+    pv: number;
 };
 
 
@@ -68,6 +70,7 @@ type ResolvedPack = {
 export class ForcePackDialogComponent {
     dialogRef = inject(DialogRef<unknown>);
     dataService = inject(DataService);
+    gameService = inject(GameService);
     injector = inject(Injector);
 
     add = output<ResolvedPack | null>();
@@ -118,6 +121,7 @@ export class ForcePackDialogComponent {
                 const resolved: ResolvedPack = { name: p.name, 
                         units: entries, 
                         bv: entries.reduce((sum, e) => sum + (e.unit?.bv || 0), 0),
+                        pv: entries.reduce((sum, e) => sum + (e.unit?.as.PV || 0), 0),
                         _searchText:  p.name.toLowerCase() + ' ' + entries.map(e => [e.chassis, e.model].filter(Boolean).join(' ')).join(' ').toLowerCase() }
                 return resolved;
             });

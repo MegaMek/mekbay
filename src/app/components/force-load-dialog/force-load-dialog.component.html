@@ -103,7 +103,11 @@
                         <div class="force-header">
                             <span class="force-name">{{ pack.name }}</span>
                                 <div class="force-info">
-                                    <span class="force-bv">BV: {{ pack.bv | number }}</span>
+                                    @if (gameService.isAlphaStrike()) {
+                                        <span class="force-bv">PV: {{ pack.pv | number }}</span>
+                                    } @else {
+                                        <span class="force-bv">BV: {{ pack.bv | number }}</span>
+                                    }
                                 </div>
                         </div>
                         <div class="unit-scroll">

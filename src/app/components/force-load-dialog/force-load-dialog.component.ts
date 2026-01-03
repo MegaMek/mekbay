@@ -40,6 +40,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { Pipe, PipeTransform } from "@angular/core";
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { OptionsService } from '../../services/options.service';
+import { GameService } from '../../services/game.service';
 import { FORCE_PACKS } from '../../models/forcepacks.model';
 import { Unit } from '../../models/units.model';
 import { GameSystem } from '../../models/common.model';
@@ -99,6 +100,7 @@ export class ForceLoadDialogComponent {
     dialogRef = inject(DialogRef<ForceLoadDialogComponent>);
     dataService = inject(DataService);
     optionsService = inject(OptionsService);
+    gameService = inject(GameService);
     dialogsService = inject(DialogsService);
     injector = inject(Injector);
     load = output<LoadForceEntry | ResolvedPack>();
