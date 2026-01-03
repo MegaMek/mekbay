@@ -52,7 +52,7 @@ const DEFAULT_OPTIONS: Options = {
     syncZoomBetweenSheets: true,
     useAutomations: true,
     ASUseHex: false,
-    ASCardStyle: 'colored',
+    ASCardStyle: 'monochrome',
     c3NetworkConnectionsAboveNodes: false,
 };
 
