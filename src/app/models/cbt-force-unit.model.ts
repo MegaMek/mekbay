@@ -459,6 +459,7 @@ export class CBTForceUnit extends ForceUnit {
             if (crewMember.getHits() > 0) {
                 crewMember.setHits(0);
             }
+            crewMember.setState('healthy');
             return crewMember;
         });
         this.state.crew.set(crew);
