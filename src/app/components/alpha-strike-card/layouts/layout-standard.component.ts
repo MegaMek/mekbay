@@ -219,13 +219,17 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         if (jumpTmm !== null) {
             jumpTmm = Math.max(0, jumpTmm - tmmPenalty);
             // Jump TMM is NOT affected by heat
-            parts.push(`${jumpTmm}j`);
+            if (baseTmm !== jumpTmm) {
+                parts.push(`${jumpTmm}j`);
+            }
         }
 
         if (subTmm !== null) {
             subTmm = Math.max(0, subTmm - tmmPenalty);
             subTmm = Math.max(0, subTmm - heatTmmPenalty);
-            parts.push(`${subTmm}s`);
+            if (baseTmm !== subTmm) {
+                parts.push(`${subTmm}s`);
+            }
         }
 
         return parts.join('/');
