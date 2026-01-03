@@ -47,6 +47,8 @@ export interface ParsedAbility {
     turretDamage?: string;
     /** Sub-abilities contained within parentheses */
     subAbilities?: ParsedAbility[];
+    /** For consumable abilities, the maximum number of uses extracted from the text */
+    consumableMax?: number;
 }
 
 /**
@@ -233,6 +235,26 @@ export class AsAbilityLookupService {
     }
 
     /**
+     * Extracts the consumable count from an ability text.
+     * Handles patterns like: BOMB4 -> 4, MDS2 -> 2, BTAS3 -> 3, TSEMP2-O4 -> 4, FUEL120 -> 120
+     */
+    extractConsumableMax(abilityText: string): number | undefined {
+        // Handle one-shot variant pattern ending with -O# (e.g., TSEMP2-O4)
+        const oneShotMatch = abilityText.match(/-O(\d+)$/i);
+        if (oneShotMatch) {
+            return parseInt(oneShotMatch[1], 10);
+        }
+        
+        // Standard pattern: extract trailing number from ability text
+        const match = abilityText.match(/(\d+)$/);
+        if (match) {
+            return parseInt(match[1], 10);
+        }
+        
+        return undefined;
+    }
+
+    /**
      * Parses a composite ability (one with parentheses like TUR or BIM).
      * Returns the main ability and any sub-abilities.
      */
@@ -249,6 +271,10 @@ export class AsAbilityLookupService {
         if (!parenMatch) {
             // Not a composite ability, just look it up directly
             result.ability = this.lookupAbility(abilityText);
+            // Extract consumable max if this is a consumable ability
+            if (result.ability?.consumable) {
+                result.consumableMax = this.extractConsumableMax(abilityText);
+            }
             return result;
         }
 

@@ -42,6 +42,7 @@ export interface ASSpecialAbility {
     type: SpecialAbilityType;
     displaysDamage?: boolean;
     consumable?: boolean;
+    canExhaust?: boolean;
     summary: string[];
     rulesBook: string;
     rulesPage: number;
@@ -1272,7 +1273,8 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 88,
-        type: SpecialAbilityType.Optional
+        type: SpecialAbilityType.Optional,
+        canExhaust: true,
     },
     {
         tag: "RAIL",
@@ -1360,7 +1362,8 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 89,
-        type: SpecialAbilityType.Optional
+        type: SpecialAbilityType.Optional,
+        canExhaust: true,
     },
     {
         tag: "DJ",
@@ -1786,7 +1789,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         tag: "FUEL#",
         name: "Fuel",
         summary: [
-            "Only recorded on aerospace fighters to track fuel endurance (see p. 75), this special ability records the operational fuel stores for such units in space combat. (Airborne support vehicles, conventional fighters, small craft, DropShips, and other large spacecraft do not track fuel in Alpha Strike play.)"
+            "Only recorded on aerospace fighters to track fuel endurance (see p. 75 of Alpha Strike Companion), this special ability records the operational fuel stores for such units in space combat. (Airborne support vehicles, conventional fighters, small craft, DropShips, and other large spacecraft do not track fuel in Alpha Strike play.)"
         ],
         rulesBook: ASRulebook.ASC_ERR16,
         rulesPage: 14,

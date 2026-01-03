@@ -290,6 +290,12 @@ export class ASForceUnit extends ForceUnit {
         this.state.pendingInternal.set(0);
         this.state.pendingHeat.set(0);
         this.state.pendingCrits.set([]);
+        // Reset consumable and exhausted abilities
+        this.state.consumedAbilities.set({});
+        this.state.pendingConsumed.set({});
+        this.state.exhaustedAbilities.set(new Set());
+        this.state.pendingExhausted.set(new Set());
+        this.state.pendingRestored.set(new Set());
         this.setModified();
     }
 
@@ -336,6 +342,19 @@ export class ASForceUnit extends ForceUnit {
     }
 
     public override serialize(): ASSerializedUnit {
+        // Build consumed map with [committed, pending] format
+        const consumed: Record<string, [number, number]> = {};
+        for (const [key, value] of Object.entries(this.state.consumedAbilities())) {
+            const pending = this.state.pendingConsumed()[key] ?? 0;
+            consumed[key] = [value, pending];
+        }
+        // Add pending-only entries
+        for (const [key, value] of Object.entries(this.state.pendingConsumed())) {
+            if (!consumed[key]) {
+                consumed[key] = [0, value];
+            }
+        }
+        
         const stateObj: ASSerializedState = {
             modified: this.state.modified(),
             destroyed: this.state.destroyed(),
@@ -346,6 +365,16 @@ export class ASForceUnit extends ForceUnit {
             internal: [this.state.internal(), this.state.pendingInternal()],
             crits: [...this.state.crits()],
             pCrits: [...this.state.pendingCrits()],
+            consumed: Object.keys(consumed).length > 0 ? consumed : undefined,
+            exhausted: (this.state.exhaustedAbilities().size > 0 || 
+                       this.state.pendingExhausted().size > 0 || 
+                       this.state.pendingRestored().size > 0) 
+                ? [
+                    [...this.state.exhaustedAbilities()],
+                    [...this.state.pendingExhausted()],
+                    [...this.state.pendingRestored()]
+                  ] 
+                : undefined,
         };
         const data = {
             id: this.id,

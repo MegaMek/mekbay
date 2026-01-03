@@ -143,8 +143,11 @@
             <div class="frame-content">
                 <span class="as-caption">SPECIAL:&nbsp;</span>
                 @for (item of effectiveSpecials(); track item.original; let isLast = $last) {
-                <span class="special-ability as-value" [attr.data-original]="item.original"
-                    (click)="onSpecialClick(item)">{{ item.effective }}@if (!isLast) {<span
+                <span class="special-ability as-value" 
+                      [attr.data-original]="item.original"
+                      [class.exhausted]="item.isExhausted || (item.maxCount && (item.consumedCount ?? 0) >= item.maxCount)"
+                      [class.has-consumed]="item.consumedCount"
+                      (click)="onSpecialClick(item, $event)">{{ item.effective }}@if (item.maxCount && item.consumedCount) {<span class="consumed-indicator">[{{ item.maxCount - item.consumedCount }}]</span>}@if (!isLast) {<span
                         class="special-separator">,</span>}</span>&nbsp;
                 }
             </div>

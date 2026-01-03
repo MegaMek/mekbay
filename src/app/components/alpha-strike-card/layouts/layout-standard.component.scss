@@ -431,6 +431,19 @@
         text-decoration: underline;
     }
     
+    &.exhausted {
+        text-decoration: line-through;
+        color: var(--as-red-bright);
+        
+        &:hover {
+            text-decoration: line-through underline;
+        }
+    }
+    
+    .consumed-indicator {
+        color: var(--as-red-bright);
+    }
+    
     .special-separator {
         &:hover {
             text-decoration: none;

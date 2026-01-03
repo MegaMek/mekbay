@@ -163,6 +163,16 @@ export interface ASSerializedState extends SerializedState {
      * Positive timestamp = pending damage, negative timestamp = pending heal.
      */
     pCrits: ASCriticalHit[];
+    /**
+     * Consumed ability counts. Key is ability originalText, value is [committed, pendingDelta].
+     * Example: { "BOMB4": [2, 1] } means 2 bombs used, 1 more pending.
+     */
+    consumed?: Record<string, [number, number]>;
+    /**
+     * Exhausted abilities. Array of ability originalText values.
+     * [committed[], pendingExhaust[], pendingRestore[]]
+     */
+    exhausted?: [string[], string[], string[]];
 }
 
 /**

@@ -69,6 +69,20 @@ export interface PipState {
 export interface SpecialAbilityState {
     original: string;
     effective: string;
+    /** True if this ability is exhausted (should show strikethrough) */
+    isExhausted?: boolean;
+    /** For consumable abilities, how many have been consumed */
+    consumedCount?: number;
+    /** For consumable abilities, the max count */
+    maxCount?: number;
+}
+
+/**
+ * Event data for special ability click.
+ */
+export interface SpecialAbilityClickEvent {
+    state: SpecialAbilityState;
+    event: MouseEvent;
 }
 
 @Directive()
@@ -89,7 +103,7 @@ export abstract class AsLayoutBaseComponent {
     interactive = input<boolean>(false);
 
     // Common outputs
-    specialClick = output<SpecialAbilityState>();
+    specialClick = output<SpecialAbilityClickEvent>();
     editPilotClick = output<void>();
 
     // Derived from unit
@@ -383,14 +397,33 @@ export abstract class AsLayoutBaseComponent {
      * Get effective specials with weapon hit reduction applied.
      * Returns both original and effective values for each special.
      * Uses displaysDamage property from ability definitions to determine reduction.
+     * Also tracks exhausted/consumed state for interactive abilities.
      */
     effectiveSpecials = computed<SpecialAbilityState[]>(() => {
         const specials = this.asStats().specials;
         const hits = this.weaponHits();
+        const fu = this.forceUnit();
         
         return specials.map(special => {
             const effective = hits > 0 ? this.applyWeaponHitsToSpecial(special, hits) : special;
-            return { original: special, effective };
+            const state: SpecialAbilityState = { original: special, effective };
+            
+            // Add exhausted/consumed state if we have a force unit
+            if (fu) {
+                const parsed = this.abilityLookup.parseAbility(special);
+                const ability = parsed.ability;
+                
+                if (ability?.canExhaust) {
+                    state.isExhausted = fu.getState().isAbilityEffectivelyExhausted(special);
+                }
+                
+                if (ability?.consumable && parsed.consumableMax) {
+                    state.maxCount = parsed.consumableMax;
+                    state.consumedCount = fu.getState().getEffectiveConsumedCount(special);
+                }
+            }
+            
+            return state;
         });
     });
 
@@ -515,8 +548,8 @@ export abstract class AsLayoutBaseComponent {
         return Array.from({ length: count }, (_, i) => i);
     }
 
-    onSpecialClick(state: SpecialAbilityState): void {
-        this.specialClick.emit(state);
+    onSpecialClick(state: SpecialAbilityState, event: MouseEvent): void {
+        this.specialClick.emit({ state, event });
     }
 
     onEditPilotClick(): void {

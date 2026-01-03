@@ -34,11 +34,11 @@
 import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, ApplicationRef, EnvironmentInjector, createComponent, ComponentRef, Injector } from '@angular/core';
 import { Unit } from '../../models/units.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
+import { AsAbilityLookupService, ParsedAbility } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 import { CardConfig, CardLayoutDesign, CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
-import { SpecialAbilityState } from './layouts/layout-base.component';
+import { SpecialAbilityState, SpecialAbilityClickEvent } from './layouts/layout-base.component';
 import {
     AsLayoutStandardComponent,
     AsLayoutLargeVessel1Component,
@@ -46,6 +46,7 @@ import {
 } from './layouts';
 import { REMOTE_HOST } from '../../models/common.model';
 import { RotatingPickerComponent } from '../rotating-picker/rotating-picker.component';
+import { LinearPickerComponent } from '../linear-picker/linear-picker.component';
 import { PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 
@@ -54,7 +55,7 @@ import { vibrate } from '../../utils/vibrate.util';
  */
 
 interface PickerInstance {
-    componentRef: ComponentRef<RotatingPickerComponent>;
+    componentRef: ComponentRef<RotatingPickerComponent | LinearPickerComponent>;
     destroy(): void;
 }
 
@@ -210,17 +211,126 @@ export class AlphaStrikeCardComponent {
         }
     }
     
-    // Handle special ability click
-    onSpecialClick(state: SpecialAbilityState): void {
+    // Handle special ability click from layout components
+    onSpecialClick(clickEvent: SpecialAbilityClickEvent): void {
+        const { state, event } = clickEvent;
         const parsedAbility = this.abilityLookup.parseAbility(state.original);
+        const ability = parsedAbility.ability;
+        const fu = this.forceUnit();
         
-        // Only parse effective if it differs from original
+        // In interactive mode, show picker for consumable/exhaustible abilities
+        if (this.interactive() && fu && ability && (ability.consumable || ability.canExhaust)) {
+            const anchorElement = event.currentTarget as HTMLElement | undefined;
+            if (anchorElement) {
+                this.showAbilityPicker(state, parsedAbility, anchorElement);
+                return;
+            }
+        }
+        
+        // Default: show info dialog
+        this.showAbilityInfoDialog(state);
+    }
+    
+    private showAbilityInfoDialog(state: SpecialAbilityState): void {
+        const parsedAbility = this.abilityLookup.parseAbility(state.original);
         const effectiveParsed = state.effective !== state.original 
             ? this.abilityLookup.parseAbility(state.effective) 
             : undefined;
         
         this.dialogs.createDialog<void>(AbilityInfoDialogComponent, {
             data: { parsedAbility, effectiveParsed } as AbilityInfoDialogData
+        });
+    }
+    
+    private showAbilityPicker(state: SpecialAbilityState, parsedAbility: ParsedAbility, anchorElement: HTMLElement): void {
+        const fu = this.forceUnit();
+        const ability = parsedAbility.ability;
+        if (!fu || !ability) return;
+        
+        const abilityKey = state.original;
+        const values: PickerChoice[] = [];
+        
+        if (ability.consumable) {
+            const maxCount = parsedAbility.consumableMax ?? 1;
+            const consumedCount = fu.getState().getEffectiveConsumedCount(abilityKey);
+            const remaining = maxCount - consumedCount;
+            
+            // -1 option (only if not at max)
+            if (remaining > 0) {
+                values.push({ 
+                    label: '-1', 
+                    value: 'consume',
+                    tooltipType: 'error'
+                });
+            }
+            
+            // +1 option (only if consumed > 0)
+            if (consumedCount > 0) {
+                values.push({ 
+                    label: '+1', 
+                    value: 'restore',
+                    tooltipType: 'success'
+                });
+            }
+        } else if (ability.canExhaust) {
+            const isExhausted = fu.getState().isAbilityEffectivelyExhausted(abilityKey);
+            
+            if (!isExhausted) {
+                values.push({ 
+                    label: 'Exhaust', 
+                    value: 'exhaust',
+                    tooltipType: 'error'
+                });
+            } else {
+                values.push({ 
+                    label: 'Restore', 
+                    value: 'restore',
+                    tooltipType: 'success'
+                });
+            }
+        }
+        
+        // Always add Info option
+        values.push({ 
+            label: 'Rules', 
+            value: 'info',
+            tooltipType: 'info'
+        });
+        
+        this.showLinearPicker({
+            anchorElement,
+            title: ability.name.toUpperCase(),
+            values,
+            onPick: (val: PickerChoice) => {
+                this.removePicker();
+                
+                switch (val.value) {
+                    case 'consume': {
+                        const currentDelta = fu.getState().getPendingConsumedDelta(abilityKey);
+                        fu.getState().setPendingConsumedDelta(abilityKey, currentDelta + 1);
+                        vibrate(10);
+                        break;
+                    }
+                    case 'restore': {
+                        if (ability.consumable) {
+                            const currentDelta = fu.getState().getPendingConsumedDelta(abilityKey);
+                            fu.getState().setPendingConsumedDelta(abilityKey, currentDelta - 1);
+                        } else if (ability.canExhaust) {
+                            fu.getState().setPendingRestore(abilityKey);
+                        }
+                        vibrate(10);
+                        break;
+                    }
+                    case 'exhaust':
+                        fu.getState().setPendingExhaust(abilityKey);
+                        vibrate(10);
+                        break;
+                    case 'info':
+                        this.showAbilityInfoDialog(state);
+                        break;
+                }
+            },
+            onCancel: () => this.removePicker()
         });
     }
 
@@ -464,11 +574,49 @@ export class AlphaStrikeCardComponent {
         };
     }
     
+    private showLinearPicker(config: {
+        anchorElement: HTMLElement;
+        title: string;
+        values: PickerChoice[];
+        onPick: (val: PickerChoice) => void;
+        onCancel: () => void;
+    }): void {
+        this.removePicker();
+        
+        this.pickerAnchorElement = config.anchorElement;
+        const position = this.calculatePickerPosition(config.anchorElement);
+        
+        const compRef = createComponent(LinearPickerComponent, {
+            environmentInjector: this.envInjector,
+        });
+        
+        compRef.setInput('position', position);
+        compRef.setInput('lightTheme', this.cardStyle() === 'colored');
+        compRef.setInput('title', config.title);
+        compRef.setInput('align', 'top');
+        compRef.setInput('horizontal', true);
+        compRef.instance.values.set(config.values);
+        
+        compRef.instance.picked.subscribe((val: PickerChoice) => config.onPick(val));
+        compRef.instance.cancelled.subscribe(() => config.onCancel());
+        
+        this.appRef.attachView(compRef.hostView);
+        document.body.appendChild(compRef.location.nativeElement);
+        
+        this.pickerRef = {
+            componentRef: compRef,
+            destroy: () => {
+                this.appRef.detachView(compRef.hostView);
+                compRef.destroy();
+            }
+        };
+    }
+    
     private calculatePickerPosition(element: HTMLElement): PickerPosition {
         const rect = element.getBoundingClientRect();
         return {
             x: rect.left + rect.width / 2,
-            y: rect.top + rect.height / 2
+            y: rect.top
         };
     }
     

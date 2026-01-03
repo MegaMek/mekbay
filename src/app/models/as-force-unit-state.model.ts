@@ -53,6 +53,10 @@ export class ASForceUnitState extends ForceUnitState {
     public internal = signal<number>(0);
     /** Committed critical hits with timestamps for effect ordering */
     public crits = signal<ASCriticalHit[]>([]);
+    /** Committed consumed counts per ability (key = ability originalText) */
+    public consumedAbilities = signal<Record<string, number>>({});
+    /** Committed exhausted abilities (ability originalText values) */
+    public exhaustedAbilities = signal<Set<string>>(new Set());
 
     // Pending state (uncommitted changes) - all use delta system (0 = no change)
     public pendingHeat = signal<number>(0);
@@ -60,6 +64,12 @@ export class ASForceUnitState extends ForceUnitState {
     public pendingInternal = signal<number>(0);
     /** Pending critical hits - positive timestamp = damage, negative timestamp = heal */
     public pendingCrits = signal<ASCriticalHit[]>([]);
+    /** Pending consumed delta per ability (positive = consume more, negative = restore) */
+    public pendingConsumed = signal<Record<string, number>>({});
+    /** Pending abilities to exhaust */
+    public pendingExhausted = signal<Set<string>>(new Set());
+    /** Pending abilities to restore from exhausted */
+    public pendingRestored = signal<Set<string>>(new Set());
 
     constructor(unit: ASForceUnit) {
         super(unit);
@@ -72,7 +82,11 @@ export class ASForceUnitState extends ForceUnitState {
         if (this.pendingHeat() !== 0) return true;
         if (this.pendingArmor() !== 0) return true;
         if (this.pendingInternal() !== 0) return true;
-        return this.pendingCrits().length > 0;
+        if (this.pendingCrits().length > 0) return true;
+        if (Object.keys(this.pendingConsumed()).length > 0) return true;
+        if (this.pendingExhausted().size > 0) return true;
+        if (this.pendingRestored().size > 0) return true;
+        return false;
     });
 
     /**
@@ -160,6 +174,111 @@ export class ASForceUnitState extends ForceUnitState {
         }
     }
 
+    // ===== Consumable Ability Methods =====
+
+    /**
+     * Get the committed consumed count for an ability.
+     */
+    getConsumedCount(abilityKey: string): number {
+        return this.consumedAbilities()[abilityKey] ?? 0;
+    }
+
+    /**
+     * Get the pending consumed delta for an ability.
+     */
+    getPendingConsumedDelta(abilityKey: string): number {
+        return this.pendingConsumed()[abilityKey] ?? 0;
+    }
+
+    /**
+     * Get the effective consumed count (committed + pending).
+     */
+    getEffectiveConsumedCount(abilityKey: string): number {
+        return this.getConsumedCount(abilityKey) + this.getPendingConsumedDelta(abilityKey);
+    }
+
+    /**
+     * Set pending consumed delta for an ability.
+     */
+    setPendingConsumedDelta(abilityKey: string, delta: number): void {
+        const pending = { ...this.pendingConsumed() };
+        if (delta === 0) {
+            delete pending[abilityKey];
+        } else {
+            pending[abilityKey] = delta;
+        }
+        this.pendingConsumed.set(pending);
+    }
+
+    // ===== Exhausted Ability Methods =====
+
+    /**
+     * Check if an ability is committed as exhausted.
+     */
+    isAbilityExhausted(abilityKey: string): boolean {
+        return this.exhaustedAbilities().has(abilityKey);
+    }
+
+    /**
+     * Check if an ability is effectively exhausted (committed or pending exhaust, not pending restore).
+     */
+    isAbilityEffectivelyExhausted(abilityKey: string): boolean {
+        if (this.pendingRestored().has(abilityKey)) return false;
+        if (this.pendingExhausted().has(abilityKey)) return true;
+        return this.exhaustedAbilities().has(abilityKey);
+    }
+
+    /**
+     * Set pending exhaust for an ability.
+     */
+    setPendingExhaust(abilityKey: string): void {
+        // If already exhausted, no-op
+        if (this.exhaustedAbilities().has(abilityKey)) return;
+        
+        // Remove from pending restored if present
+        const restored = new Set(this.pendingRestored());
+        restored.delete(abilityKey);
+        this.pendingRestored.set(restored);
+        
+        // Add to pending exhausted
+        const exhausted = new Set(this.pendingExhausted());
+        exhausted.add(abilityKey);
+        this.pendingExhausted.set(exhausted);
+    }
+
+    /**
+     * Set pending restore for an ability.
+     */
+    setPendingRestore(abilityKey: string): void {
+        // If not exhausted (committed or pending), no-op
+        if (!this.exhaustedAbilities().has(abilityKey) && !this.pendingExhausted().has(abilityKey)) return;
+        
+        // Remove from pending exhausted if present
+        const exhausted = new Set(this.pendingExhausted());
+        exhausted.delete(abilityKey);
+        this.pendingExhausted.set(exhausted);
+        
+        // Add to pending restored only if it's committed exhausted
+        if (this.exhaustedAbilities().has(abilityKey)) {
+            const restored = new Set(this.pendingRestored());
+            restored.add(abilityKey);
+            this.pendingRestored.set(restored);
+        }
+    }
+
+    /**
+     * Clear pending exhaust/restore for an ability (cancel pending change).
+     */
+    clearPendingExhaustState(abilityKey: string): void {
+        const exhausted = new Set(this.pendingExhausted());
+        exhausted.delete(abilityKey);
+        this.pendingExhausted.set(exhausted);
+        
+        const restored = new Set(this.pendingRestored());
+        restored.delete(abilityKey);
+        this.pendingRestored.set(restored);
+    }
+
     /**
      * Commit all pending changes to the committed state.
      */
@@ -210,6 +329,31 @@ export class ASForceUnitState extends ForceUnitState {
         this.crits.set(newCommitted);
         this.pendingCrits.set([]);
 
+        // Commit consumables
+        const consumables = { ...this.consumedAbilities() };
+        for (const [key, delta] of Object.entries(this.pendingConsumed())) {
+            const newValue = (consumables[key] ?? 0) + delta;
+            if (newValue <= 0) {
+                delete consumables[key];
+            } else {
+                consumables[key] = newValue;
+            }
+        }
+        this.consumedAbilities.set(consumables);
+        this.pendingConsumed.set({});
+
+        // Commit exhausted abilities
+        const exhausted = new Set(this.exhaustedAbilities());
+        for (const key of this.pendingExhausted()) {
+            exhausted.add(key);
+        }
+        for (const key of this.pendingRestored()) {
+            exhausted.delete(key);
+        }
+        this.exhaustedAbilities.set(exhausted);
+        this.pendingExhausted.set(new Set());
+        this.pendingRestored.set(new Set());
+
         // Mark as modified
         this.modified.set(true);
     }
@@ -222,6 +366,9 @@ export class ASForceUnitState extends ForceUnitState {
         this.pendingArmor.set(0);
         this.pendingInternal.set(0);
         this.pendingCrits.set([]);
+        this.pendingConsumed.set({});
+        this.pendingExhausted.set(new Set());
+        this.pendingRestored.set(new Set());
     }
 
     override update(data: ASSerializedState) {
@@ -264,6 +411,34 @@ export class ASForceUnitState extends ForceUnitState {
             this.pendingCrits.set([...data.pCrits]);
         } else {
             this.pendingCrits.set([]);
+        }
+        
+        // Handle consumed abilities
+        if (data.consumed && typeof data.consumed === 'object') {
+            const consumed: Record<string, number> = {};
+            const pending: Record<string, number> = {};
+            for (const [key, value] of Object.entries(data.consumed)) {
+                if (Array.isArray(value)) {
+                    if (value[0]) consumed[key] = value[0];
+                    if (value[1]) pending[key] = value[1];
+                }
+            }
+            this.consumedAbilities.set(consumed);
+            this.pendingConsumed.set(pending);
+        } else {
+            this.consumedAbilities.set({});
+            this.pendingConsumed.set({});
+        }
+        
+        // Handle exhausted abilities
+        if (data.exhausted && Array.isArray(data.exhausted)) {
+            this.exhaustedAbilities.set(new Set(data.exhausted[0] ?? []));
+            this.pendingExhausted.set(new Set(data.exhausted[1] ?? []));
+            this.pendingRestored.set(new Set(data.exhausted[2] ?? []));
+        } else {
+            this.exhaustedAbilities.set(new Set());
+            this.pendingExhausted.set(new Set());
+            this.pendingRestored.set(new Set());
         }
         
         if (data.c3Position) {

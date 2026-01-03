@@ -1295,6 +1295,7 @@ export class SvgInteractionService {
         const instance = compRef.instance;
         compRef.setInput('title', opts.title);
         compRef.setInput('selected', opts.selected);
+        compRef.setInput('lightTheme', (this.optionsService.options().sheetsColor === 'night') );
         instance.values.set(opts.values);
 
         if (opts.targetType === 'crit') {
