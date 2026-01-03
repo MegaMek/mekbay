@@ -33,8 +33,8 @@
 import { CBTForceUnit } from "./cbt-force-unit.model";
 import { ForceUnit } from "./force-unit.model";
 
-const DEFAULT_GUNNERY_SKILL = 4;
-const DEFAULT_PILOTING_SKILL = 5;
+export const DEFAULT_GUNNERY_SKILL = 4;
+export const DEFAULT_PILOTING_SKILL = 5;
 
 export type SkillType = 'gunnery' | 'piloting';
 

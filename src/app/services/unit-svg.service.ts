@@ -32,7 +32,7 @@
  */
 
 import { Injectable, effect, inject, DestroyRef } from '@angular/core';
-import { CrewMember, SkillType } from '../models/crew-member.model';
+import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, SkillType } from '../models/crew-member.model';
 import { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { UnitInitializerService } from './unit-initializer.service';
@@ -286,6 +286,34 @@ export class UnitSvgService {
         const svg = this.unit.svg();
         if (!svg) return;
         const PSRMod = this.unit.PSRModifiers();
+
+        // Check if all crew members have default values (no name and default skills)
+        const allCrewDefault = crew.every(member => 
+            !member.getName() && // No name set
+            member.getSkill('gunnery') === DEFAULT_GUNNERY_SKILL && // Default gunnery skill
+            member.getSkill('piloting') === DEFAULT_PILOTING_SKILL && // Default piloting skill
+        );
+
+        // Apply or remove screen-only class on skillValue elements
+        svg.querySelectorAll('.skillValue').forEach(el => {
+            el.classList.toggle('screen-only', allCrewDefault);
+        });
+        const blanks = ['blankPilotingSkill0', 
+            'blankGunnerySkill0', 
+            'blankAsfGunnerySkill0', 
+            'blankAsfPilotingSkill0',
+            'blankPilotingSkill1',
+            'blankGunnerySkill1',
+            'blankPilotingSkill2',
+            'blankGunnerySkill2',
+            'blankPilotingSkill3',
+            'blankGunnerySkill3'];
+        blanks.forEach(selector => {
+            const el = svg.getElementById(selector);
+            if (el) {
+                el.classList.toggle('print-show', allCrewDefault);
+            }
+        });
 
         crew.forEach(member => {
             const crewId = member.getId();
