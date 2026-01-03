@@ -5,7 +5,7 @@
             <div class="name-wrapper">
                 <p>Name</p>
                 <div class="input-wrapper">
-                    <input #nameInput type="text" class="input" [value]="data.name || ''" (keydown.enter)="submit()" />
+                    <input #nameInput type="text" class="input" maxlength="32" [value]="data.name || ''" (keydown.enter)="submit()" />
                 </div>
             </div>
             <div class="skill-wrapper">

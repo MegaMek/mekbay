@@ -48,6 +48,7 @@ import { ASCustomPilotAbility } from '../../models/as-abilities.model';
                         id="abilityName"
                         type="text" 
                         placeholder="Name"
+                        maxlength="50"
                         (keydown.enter)="onSubmit()">
                 </div>
                 
@@ -69,6 +70,7 @@ import { ASCustomPilotAbility } from '../../models/as-abilities.model';
                     id="abilitySummary"
                     class="summary-input"
                     placeholder="Description"
+                    maxlength="512"
                     rows="3"></textarea>
             </div>
             
