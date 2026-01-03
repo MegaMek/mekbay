@@ -43,6 +43,7 @@ import { PageCanvasOverlayComponent } from '../page-viewer/canvas/page-canvas-ov
 import { PageViewerCanvasService } from '../page-viewer/canvas/page-viewer-canvas.service';
 import { DbService } from '../../services/db.service';
 import { ASPrintUtil } from '../../utils/asprint.util';
+import { ASInteractionOverlayComponent } from './as-interaction-overlay.component';
 
 /**
  * Author: Drake
@@ -79,7 +80,7 @@ interface Point {
 @Component({
     selector: 'alpha-strike-viewer',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AlphaStrikeCardComponent, PageCanvasOverlayComponent, PageViewerCanvasControlsComponent],
+    imports: [AlphaStrikeCardComponent, PageCanvasOverlayComponent, PageViewerCanvasControlsComponent, ASInteractionOverlayComponent],
     templateUrl: './alpha-strike-viewer.component.html',
     styleUrl: './alpha-strike-viewer.component.scss',
     providers: [PageViewerCanvasService],
@@ -144,6 +145,9 @@ export class AlphaStrikeViewerComponent {
     
     // Flag to prevent scroll effect when selection is made by clicking a card
     private internalSelectionInProgress = false;
+    
+    // Signal to trigger closing pickers in all cards (increments to trigger)
+    readonly updatePickerPositionTrigger = signal(0);
     
     constructor() {
         this.setupEffects();
@@ -257,9 +261,26 @@ export class AlphaStrikeViewerComponent {
         // On resize, clamp columns if they no longer fit
         effect(() => {
             const width = this.containerWidth();
+            this.updatePickerPositionTrigger.update(v => v + 1);
             if (width > 0) {
                 this.clampColumnsToFit();
             }
+        });
+        
+        // Setup scroll listeners to update picker position
+        effect(() => {
+            const container = this.viewerContainer()?.nativeElement;
+            if (!container) return;
+            
+            const onScroll = () => {
+                this.updatePickerPositionTrigger.update(v => v + 1);
+            };
+            
+            container.addEventListener('scroll', onScroll, { passive: true });
+            
+            this.destroyRef.onDestroy(() => {
+                container.removeEventListener('scroll', onScroll);
+            });
         });
     }
     
@@ -271,6 +292,10 @@ export class AlphaStrikeViewerComponent {
         // Scroll to the clicked card cell
         const cardCell = (event.currentTarget as HTMLElement);
         cardCell.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    onEditPilot(unit: ASForceUnit): void {
+        this.forceBuilderService.editPilotOfUnit(unit);
     }
     
     toggleHexMode(): void {
@@ -295,6 +320,9 @@ export class AlphaStrikeViewerComponent {
         const availableWidth = width - CONTAINER_PADDING;
         // How many BASE_CELL_WIDTH cells fit?
         const cols = Math.max(1, Math.floor((availableWidth + CELL_GAP) / (BASE_CELL_WIDTH + CELL_GAP)));
+        if (cols != this.columnCount()) {
+            this.updatePickerPositionTrigger.update(v => v + 1);
+        }
         this.columnCount.set(cols);
     }
     

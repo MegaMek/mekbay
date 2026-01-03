@@ -141,11 +141,11 @@
         @if (activeTab() === 'Alpha Strike') {
         <div class="tab-content">
             <div class="option-row">
-                <label for="ASCardStyle">Card style:</label>
+                <label for="ASCardStyle">Card theme:</label>
                 <select id="ASCardStyle" class="bt-select" [value]="optionsService.options().ASCardStyle"
                     (change)="onASCardStyleChange($event)">
-                    <option value="colored">Color (default)</option>
-                    <option value="monochrome">Monochrome</option>
+                    <option value="colored">Dark (default)</option>
+                    <option value="monochrome">Light</option>
                 </select>
             </div>
             <div class="option-row">

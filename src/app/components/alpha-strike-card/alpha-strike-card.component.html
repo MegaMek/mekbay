@@ -4,8 +4,8 @@
     <div class="card-background-image" [class.secondary-card]="cardIndex() > 0"></div>
 
     <!-- Footer -->
-    <div class="alphastrike-footer-background"></div>
     <div class="footer-section">
+        <div class="alphastrike-footer-background"></div>
         <div class="alphastrike-logo">
             <svg viewBox="0 0 100 15" xmlns="http://www.w3.org/2000/svg">
                 <defs>
@@ -52,7 +52,9 @@
                     [useHex]="useHex()"
                     [cardStyle]="cardStyle()"
                     [imageUrl]="imageUrl()"
+                    [interactive]="interactive()"
                     (specialClick)="onSpecialClick($event)"
+                    (editPilotClick)="onEditPilotClick()"
                 />
             }
             @case ('large-vessel-1') {
@@ -62,7 +64,9 @@
                     [useHex]="useHex()"
                     [cardStyle]="cardStyle()"
                     [imageUrl]="imageUrl()"
+                    [interactive]="interactive()"
                     (specialClick)="onSpecialClick($event)"
+                    (editPilotClick)="onEditPilotClick()"
                 />
             }
             @case ('large-vessel-2') {
@@ -74,5 +78,12 @@
                 />
             }
         }
+    }
+
+    <!-- Commit button overlay (only in interactive mode when dirty) -->
+    @if (interactive() && isDirty()) {
+        <div class="commit-overlay">
+            <button class="bt-button commit-button" (click)="onCommitClick($event)">COMMIT</button>
+        </div>
     }
 </div>

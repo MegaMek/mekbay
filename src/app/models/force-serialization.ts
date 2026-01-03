@@ -148,9 +148,31 @@ export interface SerializedC3NetworkGroup {
 }
 
 export interface ASSerializedState extends SerializedState {
-    heat: number;
-    armor: number;
-    internal: number;
+    /** Heat as [committed, pendingDelta]. pendingDelta of 0 means no pending change. */
+    heat: [number, number];
+    /** Armor as [committed, pendingDelta]. Positive = damage, negative = heal. */
+    armor: [number, number];
+    /** Internal as [committed, pendingDelta]. Positive = damage, negative = heal. */
+    internal: [number, number];
+    /** 
+     * Array of committed critical hits with timestamps for ordering.
+     */
+    crits: ASCriticalHit[];
+    /**
+     * Array of pending critical hit changes.
+     * Positive timestamp = pending damage, negative timestamp = pending heal.
+     */
+    pCrits: ASCriticalHit[];
+}
+
+/**
+ * Represents a single critical hit with timestamp for ordering effects.
+ */
+export interface ASCriticalHit {
+    /** The critical type key ('engine', 'weapons', 'motive', ...) */
+    key: string;
+    /** Timestamp when this hit was applied (for ordering effects). Negative = pending heal. */
+    timestamp: number;
 }
 
 export interface CBTSerializedState extends SerializedState {

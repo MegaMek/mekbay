@@ -24,6 +24,12 @@
     color: var(--bt-yellow);
 }
 
+.original-tag {
+    font-weight: bold;
+    color: var(--text-color-secondary);
+    text-decoration: line-through;
+}
+
 .ability-name {
     font-size: 1em;
     color: var(--text-color-secondary);
@@ -52,6 +58,12 @@
     .value {
         font-weight: bold;
         color: var(--bt-yellow);
+    }
+    
+    .original-value {
+        margin-left: 8px;
+        color: var(--text-color-secondary);
+        text-decoration: line-through;
     }
 }
 
@@ -112,6 +124,11 @@
 .sub-tag {
     font-weight: bold;
     color: var(--bt-yellow);
+}
+
+.sub-original-tag {
+    color: var(--text-color-secondary);
+    text-decoration: line-through;
 }
 
 .sub-name {

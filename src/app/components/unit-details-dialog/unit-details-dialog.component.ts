@@ -354,7 +354,7 @@ export class UnitDetailsDialogComponent {
         const domain = window.location.origin + window.location.pathname;
         const unitName = encodeURIComponent(this.unit.name);
         const tab = encodeURIComponent(this.activeTab());
-        const shareUrl = `${domain}?shareUnit=${unitName}&tab=${tab}`;
+        const shareUrl = `${domain}?gs=${this.gameService.currentGameSystem()}&shareUnit=${unitName}&tab=${tab}`;
         const shareText = `${this.unit.chassis} ${this.unit.model}`;
         if (navigator.share) {
             navigator.share({

@@ -114,10 +114,11 @@ export class AsAbilityLookupService {
         // Remove asterisks (used for marking optional values)
         pattern = pattern.replace(/\*/g, '');
 
-        // Handle ART% pattern - artillery abilities like ARTLTC-2, ARTLT-1
+        // Handle ART% pattern - artillery abilities like ARTLTC-2, ARTCM5-1
         if (pattern.startsWith('ART')) {
-            // Extract the artillery type code between ART and the number
-            const artMatch = pattern.match(/^ART([A-Z]+)-?(\d+)?$/);
+            // Extract the artillery type code between ART and the final dash-number
+            // Handles: ARTLTC-2, ARTCM5-1, ARTLT-1, etc.
+            const artMatch = pattern.match(/^ART([A-Z\d]+)-(\d+)$/);
             if (artMatch) {
                 // Convert to ART%-# pattern where % is the type code
                 return 'ART%-#';
@@ -127,8 +128,12 @@ export class AsAbilityLookupService {
         // Replace all numbers (including decimals like 0.02, 3.5) with #
         // This handles patterns like "CT0.02" -> "CT#", "IT3.5" -> "IT#"
         pattern = pattern.replace(/[\d]+\.?[\d]*/g, '#');
-        // Replace standalone dash that represents a missing number with #
-        pattern = pattern.replace(/(?<=[/#])-(?=[/#]|$)/g, '#');
+        
+        // Replace standalone dash that represents a missing damage value with #
+        // Matches: at start before /, between //, or after / at end
+        // Examples: LRM-/2/2 -> LRM#/#/#, AC2/2/- -> AC#/#/#
+        pattern = pattern.replace(/(?<=^[A-Z]*)-(?=\/)/g, '#');  // Dash after letters before /
+        pattern = pattern.replace(/(?<=[/#])-(?=[/#]|$)/g, '#'); // Dash between / or at end
 
         return pattern;
     }

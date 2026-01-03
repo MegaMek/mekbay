@@ -40,46 +40,9 @@
     }
 }
 
-
-// PV Box
-.pv-box {
-    position: absolute;
-    top: 16%;
-    right: 1.8em;
-    width: 17%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.pv-box-background {
-    position: absolute;
-    inset: 0;
-    background: #000;
-    clip-path: polygon(74% 0, 100% 0, 100% 9em, 82% 9em);
-
-    :host(:not(.monochrome)) & {
-        display: none;
-    }
-}
-
-.pv-text {
-    font-size: 5.4em;
-    font-weight: 900;
-    text-align: center;
-    letter-spacing: 0.1em;
-    z-index: 1;
-}
-
 .base-pv-text {
-    font-size: 2.5em;
-    font-weight: bold;
-    text-align: center;
-    margin-top: 0.6em;
-    z-index: 1;
-    -webkit-text-stroke: 0.15em #fff;
-    color: #000;
-    paint-order: stroke fill;
+    font-size: 2.2em;
+    margin-top: 0.85em;
 }
 
 // Stats Row Container
@@ -128,6 +91,7 @@
     align-items: center;
     padding-left: 1em;
     gap: 0.5em;
+    pointer-events: none;
 }
 
 .era-icon {
@@ -222,6 +186,15 @@
     &.wide-spaced {
         gap: 0.5em;
     }
+
+    &.clickable {
+        cursor: pointer;
+        transition: text-decoration 0.15s ease;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
 }
 
 // Armor/Damage Row
@@ -269,6 +242,29 @@
     flex: 1;
     border-bottom: 0.2em solid #000;
     margin-top: 0.5em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+
+    .damage-value {
+        font-size: 5em;
+        font-weight: 900;
+        color: var(--as-red-bright);
+    }
+
+    .pending-value {
+        font-size: 4em;
+        font-weight: 900;
+    }
+
+    &.pending-damage .pending-value {
+        color: var(--damage-color);
+    }
+
+    &.pending-heal .pending-value {
+        color: #03a9f4;
+    }
 }
 
 
@@ -324,4 +320,19 @@
         filter: saturate(0) invert(1) brightness(1.25);
         mix-blend-mode: lighten;
     }
+}
+
+.destroyed-text {
+    position: absolute;
+    right: 0.7em;
+    top: 4.5em;
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 7em;
+    font-weight: 900;
+    color: #a00;
+    -webkit-text-stroke: 0.12em #111;
+    paint-order: stroke fill;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    transform: rotate(-15deg);
 }

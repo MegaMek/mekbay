@@ -45,6 +45,7 @@
     flex-direction: column;
     align-items: center;
     z-index: 1;
+    pointer-events: none;
 }
 
 .era-icon {
@@ -97,7 +98,8 @@
     font-size: 4em;
 
     :host:not(.monochrome) & {
-        color: #ECD24B;
+        // color: #ECD24B;
+        color: #FFF;
     }
 
     &.small {
@@ -111,6 +113,7 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
     font-family: 'Roboto Condensed', sans-serif;
+    line-height: 0.95em;
 
     &.long-chassis {
         font-size: 6em;
@@ -119,47 +122,6 @@
     &.small {
         font-size: 5em;
     }
-}
-
-// PV Box
-.pv-box {
-    position: absolute;
-    top: 16%;
-    right: 1.8em;
-    width: 17%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.pv-box-background {
-    position: absolute;
-    inset: 0;
-    background: #000;
-    clip-path: polygon(74% 0, 100% 0, 100% 9em, 82% 9em);
-
-    :host(:not(.monochrome)) & {
-        display: none;
-    }
-}
-
-.pv-text {
-    font-size: 5.4em;
-    font-weight: 900;
-    text-align: center;
-    letter-spacing: 0.1em;
-    z-index: 1;
-}
-
-.base-pv-text {
-    font-size: 2.5em;
-    font-weight: bold;
-    text-align: center;
-    margin-top: 0.6em;
-    z-index: 1;
-    -webkit-text-stroke: 0.15em #fff;
-    color: #000;
-    paint-order: stroke fill;
 }
 
 // Stats Container
@@ -228,6 +190,15 @@
     flex-direction: row;
     align-items: baseline;
     gap: 0.1em;
+
+    &.clickable {
+        cursor: pointer;
+        transition: text-decoration 0.15s ease;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
 }
 
 .right-column {
@@ -344,7 +315,7 @@
     display: flex;
     border-radius: 1.2em;
     border: 0.25em solid #000;
-    background-color: rgba(0, 0, 0, .4);
+    background-color: #888;
     overflow: hidden;
 }
 
@@ -384,6 +355,20 @@
         &.heat-s.active {
             background: rgb(255, 0, 0);
         }
+
+        @media screen {
+            // Pending heat states - pulsing animation
+            &.pending {
+                animation: pending-heat-pulse 0.6s cubic-bezier(0.8, 0, 1, 1) infinite alternate;
+                background: rgb(187, 0, 255);
+            }
+        }
+    }
+}
+
+@keyframes pending-heat-pulse {
+    from {
+        background-color: rgba(187, 0, 255, 0.3);
     }
 }
 
@@ -404,6 +389,7 @@
             flex-direction: column;
             justify-content: space-around;
             position: relative;
+            flex: 1 1 auto;
         }
     }
 
@@ -454,4 +440,19 @@
 
 .pilot-abilities {
     margin-left: 0.5em;
+}
+
+.destroyed-text {
+    position: absolute;
+    right: 0.2em;
+    top: 3em;
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 7em;
+    font-weight: 900;
+    color: #a00;
+    -webkit-text-stroke: 0.12em #111;
+    paint-order: stroke fill;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    transform: rotate(-15deg);
 }

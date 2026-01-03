@@ -113,11 +113,192 @@ export class ASForceUnit extends ForceUnit {
         this.setModified();
         this.force.emitChanged();
     }
-    
+
+    // ===== State Access Methods =====
+
+    /**
+     * Get the unit's state for direct access.
+     */
+    getState(): ASForceUnitState {
+        return this.state;
+    }
+
+    /**
+     * Check if there are uncommitted changes.
+     */
+    isDirty = computed<boolean>(() => {
+        return this.state.isDirty();
+    });
+
+    /**
+     * Get the remaining armor (max - effective damage).
+     */
+    remainingArmor = computed<number>(() => {
+        return Math.max(0, this.unit.as.Arm - (this.state.armor() + this.state.pendingArmor()));
+    });
+
+    /**
+     * Get the remaining internal structure (max - effective damage).
+     */
+    remainingInternal = computed<number>(() => {
+        return Math.max(0, this.unit.as.Str - (this.state.internal() + this.state.pendingInternal()));
+    });
+
+    /**
+     * Check if unit is destroyed.
+     * Destroyed when:
+     * a) Internal structure is fully damaged
+     * b) Engine gets 2nd hit (3rd for vessels)
+     * c) Crew gets more than 1 hit
+     * d) Thrust reaches 0 (for units with Th)
+     */
+    isDestroyed = computed<boolean>(() => {
+        // Check if internal is fully damaged
+        const maxInternal = this.unit.as.Str;
+        if (this.state.internal() >= maxInternal) return true;
+        
+        // Check engine hits
+        const engineHits = this.state.getCommittedCritHits('engine');
+        const engineDestroyThreshold = this.isVessel() ? 3 : 2;
+        if (engineHits >= engineDestroyThreshold) return true;
+        
+        const crewHits = this.state.getCommittedCritHits('crew');
+        if (crewHits > 1) return true;
+        
+        // Check if Thrust reaches 0 (only for units with Th)
+        const baseTh = this.unit.as.Th;
+        if (baseTh > 0) {
+            const effectiveTh = this.calculateEffectiveThrust();
+            if (effectiveTh <= 0) return true;
+        }
+        
+        return false;
+    });
+
+    /**
+     * Calculate effective Thrust after applying Engine and Thruster critical hits.
+     * 
+     * Engine Hit (Aerospace Fighters, Conventional Fighters, Fixed-Wing Support Vehicles):
+     * - 1st hit: -50% of original THR (round down, minimum 1 lost)
+     * - 2nd hit: THR = 0
+     * 
+     * Engine Hit (DropShips/Small Craft):
+     * - 1st hit: -25% of original THR (round normally, minimum 1 lost)
+     * - 2nd hit: -50% of original THR (round normally, minimum 1 lost)
+     * - 3rd hit: THR = 0
+     * 
+     * Thruster Hit:
+     * - -1 THR
+     */
+    public calculateEffectiveThrust(): number {
+        const base = this.unit.as.Th;
+        if (base <= 0) return base;
+        
+        const orderedCrits = this.state.getCommittedCritsOrdered();
+        const engineHits = this.state.getCommittedCritHits('engine');
+        let current = base;
+        let engineHitCount = 0;
+        
+        for (const crit of orderedCrits) {
+            if (current <= 0) break;
+            
+            switch (crit.key) {
+                case 'engine':
+                    engineHitCount++;
+                    if (this.isVessel()) {
+                        if (engineHitCount === engineHits) { // Apply only on the last engine hit with his timestamp
+                            if (engineHitCount === 1) {
+                                // 1st hit: -25% of original THR (round normally, minimum 1 lost)
+                                const reduction = Math.max(1, Math.round(base * 0.25));
+                                current = Math.max(0, current - reduction);
+                            } else if (engineHitCount === 2) {
+                                // 2nd hit: -50% of original THR (round normally, minimum 1 lost)
+                                const reduction = Math.max(1, Math.round(base * 0.50));
+                                current = Math.max(0, current - reduction);
+                            } else if (engineHitCount >= 3) {
+                                // 3rd hit: THR = 0 (crash/destroyed)
+                                current = 0;
+                            }
+                        }
+                    } else {
+                        if (engineHitCount === 1) {
+                        const reduction = Math.max(1, Math.ceil(base * 0.5));
+                        current = Math.max(0, current - reduction);
+                        } else if (engineHitCount >= 2) {
+                            current = 0;
+                        }
+                    }
+                    break;
+                case 'thruster':
+                    // -1 THR per hit (only first hit counts per rules)
+                    current = Math.max(0, current - 1);
+                    break;
+            }
+        }
+        
+        return current;
+    }
+
+    /**
+     * Get pending crit change for a given key.
+     */
+    getPendingCritChange(key: string): number {
+        return this.state.getPendingCritChange(key);
+    }
+
+    /**
+     * Get committed crit hits for a given key.
+     */
+    getCommittedCritHits(key: string): number {
+        return this.state.getCommittedCritHits(key);
+    }
+
+    /**
+     * Set pending damage (will be distributed to armor first, then internal).
+     */
+    setPendingDamage(totalDamage: number): void {
+        this.state.setPendingDamage(totalDamage);
+    }
+
+    /**
+     * Commit all pending changes.
+     */
+    commitPending(): void {
+        this.state.commit();
+        
+        // Update destroyed signal based on computed destruction state
+        this.state.destroyed.set(this.isDestroyed());
+        
+        this.force.emitChanged();
+    }
+
+    /**
+     * Discard all pending changes.
+     */
+    discardPending(): void {
+        this.state.discardPending();
+    }
+
     repairAll(): void {
         this.state.destroyed.set(false);
         this.state.shutdown.set(false);
+        this.state.armor.set(0);
+        this.state.internal.set(0);
+        this.state.heat.set(0);
+        this.state.crits.set([]);
+        this.state.pendingArmor.set(0);
+        this.state.pendingInternal.set(0);
+        this.state.pendingHeat.set(0);
+        this.state.pendingCrits.set([]);
         this.setModified();
+    }
+
+    /**
+     * Set pending critical hits by delta.
+     * Positive delta = add damage, negative delta = heal.
+     */
+    setPendingCritHits(key: string, delta: number): void {
+        this.state.setPendingCritHits(key, delta);
     }
 
     setPilotName(name: string | undefined): void {
@@ -160,9 +341,11 @@ export class ASForceUnit extends ForceUnit {
             destroyed: this.state.destroyed(),
             shutdown: this.state.shutdown(),
             c3Position: this.state.c3Position() ?? undefined,
-            heat: this.state.heat(),
-            armor: this.state.armor(),
-            internal: this.state.internal()
+            heat: [this.state.heat(), this.state.pendingHeat()],
+            armor: [this.state.armor(), this.state.pendingArmor()],
+            internal: [this.state.internal(), this.state.pendingInternal()],
+            crits: [...this.state.crits()],
+            pCrits: [...this.state.pendingCrits()],
         };
         const data = {
             id: this.id,
@@ -179,9 +362,44 @@ export class ASForceUnit extends ForceUnit {
         this.state.modified.set(typeof state.modified === 'boolean' ? state.modified : false);
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
         this.state.shutdown.set(typeof state.shutdown === 'boolean' ? state.shutdown : false);
-        this.state.heat.set(typeof state.heat === 'number' ? state.heat : 0);
-        this.state.armor.set(typeof state.armor === 'number' ? state.armor : 0);
-        this.state.internal.set(typeof state.internal === 'number' ? state.internal : 0);
+        
+        // Handle new array format for heat/armor/internal
+        if (Array.isArray(state.heat)) {
+            this.state.heat.set(state.heat[0] ?? 0);
+            this.state.pendingHeat.set(state.heat[1] ?? 0);
+        } else {
+            this.state.heat.set(typeof state.heat === 'number' ? state.heat : 0);
+            this.state.pendingHeat.set(0);
+        }
+        
+        if (Array.isArray(state.armor)) {
+            this.state.armor.set(state.armor[0] ?? 0);
+            this.state.pendingArmor.set(state.armor[1] ?? 0);
+        } else {
+            this.state.armor.set(typeof state.armor === 'number' ? state.armor : 0);
+            this.state.pendingArmor.set(0);
+        }
+        
+        if (Array.isArray(state.internal)) {
+            this.state.internal.set(state.internal[0] ?? 0);
+            this.state.pendingInternal.set(state.internal[1] ?? 0);
+        } else {
+            this.state.internal.set(typeof state.internal === 'number' ? state.internal : 0);
+            this.state.pendingInternal.set(0);
+        }
+        
+        if (state.crits && Array.isArray(state.crits)) {
+            this.state.crits.set([...state.crits]);
+        } else {
+            this.state.crits.set([]);
+        }
+        
+        if (state.pCrits && Array.isArray(state.pCrits)) {
+            this.state.pendingCrits.set([...state.pCrits]);
+        } else {
+            this.state.pendingCrits.set([]);
+        }
+        
         if (state.c3Position) {
             this.state.c3Position.set(Sanitizer.sanitize(state.c3Position, C3_POSITION_SCHEMA));
         }
@@ -214,5 +432,9 @@ export class ASForceUnit extends ForceUnit {
         return fu;
     }
 
+    isVessel = computed<boolean>(() => {
+        const type = this.unit.as.TP;
+        return type === 'DA' || type === 'DS' || type === 'SC' || type === 'WS' || type === 'SS' || type === 'JS';
+    });
 
 }

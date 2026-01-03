@@ -30,10 +30,6 @@
     background: #000;
     border: 1.43em solid #000;
     box-sizing: border-box;
-
-    :host(.monochrome) & {
-        background: #fff;
-    }
 }
 
 @media screen {
@@ -43,25 +39,29 @@
     }
 }
 
-:host:has(.monochrome) {
-    .alphastrike-footer-background {
-        position: absolute;
-        inset: 0;
-        background: #000;
-        clip-path: polygon(0 89%, 50% 89%, 58% 100%, 0 100%);
-    }
+.alphastrike-footer-background {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    clip-path: polygon(0 3%, 48% 3%, 53% 100%, 0 100%);
 }
 
-:host:not(.monochrome) .card-background-image {
+.card-background-image {
     position: absolute;
     inset: 1.8em;
-    background-image: url('/images/ascard_background1.jpg');
-    background-size: cover;
-    background-position: center;
-    clip-path: polygon(0 0, 100% 0, 100% 100%, 8em 100%, 0 calc(100% - 8em));
+    background-color: #242424;
+    // background-image: url('/images/as/ascard_background1.jpg');
+    // background-size: cover;
+    // background-position: center;
+    // clip-path: polygon(0 0, 100% 0, 100% 100%, 7.5em 100%, 0 calc(100% - 7.5em));
 
     &.secondary-card {
-        background-image: url('/images/ascard_background2.jpg');
+        // background-image: url('/images/ascard_background2.jpg');
+        
+    }
+
+    :host:has(.monochrome) & {
+        background-color: #fff;
     }
 }
 
@@ -70,12 +70,13 @@
 .footer-section {
     position: absolute;
     bottom: 2.5%;
-    left: 2.5%;
-    right: 2.5%;
+    left: 1.43em;
+    right: 1.43em;
     height: 9%;
     display: flex;
     align-items: center;
     font-size: 1em;
+    overflow: hidden;
 }
 
 
@@ -88,10 +89,19 @@
     svg {
         width: 100%;
         height: 100%;
+
+        g {
+            filter: none !important;
+        }
+        
+        path {
+            fill: #fff !important;
+            stroke-width: 0 !important;
+        }
     }
 
     :host(.monochrome) & {
-        bottom: -15%;
+        // bottom: -15%;
 
         svg g {
             filter: none !important;
@@ -118,7 +128,7 @@
     }
 
     :host(.monochrome) & {
-        bottom: 15%;
+        // bottom: 15%;
 
         svg path {
             fill: #000 !important;
@@ -129,4 +139,26 @@
                 fill: #000;
         }
     }
+}
+
+// Commit button overlay
+.commit-overlay {
+    position: absolute;
+    bottom: 3%;
+    left: 53%;
+    transform: translateX(-50%);
+    z-index: 10;
+    pointer-events: auto;
+
+    @media print {
+        display: none;
+    }
+}
+
+.commit-button {
+    min-height: auto;
+    padding: 0.45em 1.2em;
+    font-size: 2.4em;
+    font-weight: bold;
+    cursor: pointer;
 }

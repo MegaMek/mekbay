@@ -1,6 +1,9 @@
 <div class="ability-dialog glass framed-borders has-shadow">
     <div class="dialog-header">
-        <span class="ability-tag">{{ originalText() }}</span>
+        <span class="ability-tag">{{ effectiveText() }}</span>
+        @if (hasModification()) {
+            <span class="original-tag">{{ originalText() }}</span>
+        }
         @if (abilityName()) {
         <span class="ability-name">{{ abilityName() }}</span>
         }
@@ -13,6 +16,9 @@
             <div class="turret-damage">
                 <span class="label">Turret Damage:</span>
                 <span class="value">{{ turretDamage() }}</span>
+                @if (hasTurretModification()) {
+                    <span class="original-value">{{ originalTurretDamage() }}</span>
+                }
             </div>
             }
 
@@ -38,10 +44,13 @@
         <hr class="divider" />
         <div class="sub-abilities">
             <div class="sub-abilities-header">Sub-Abilities:</div>
-            @for (sub of subAbilities(); track sub.originalText) {
+            @for (sub of subAbilitiesDisplay(); track sub.effectiveText) {
             <div class="sub-ability">
                 <div class="sub-ability-header">
-                    <span class="sub-tag">{{ sub.originalText }}</span>
+                    <span class="sub-tag">{{ sub.effectiveText }}</span>
+                    @if (sub.hasModification) {
+                        <span class="sub-original-tag">{{ sub.originalText }}</span>
+                    }
                     @if (sub.ability) {
                     <span class="sub-name">{{ sub.ability.name }}</span>
                     }

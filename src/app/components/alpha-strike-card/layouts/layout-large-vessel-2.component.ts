@@ -64,6 +64,26 @@ interface ArcDamage {
     spe?: string;
 }
 
+/** Effective arc damage with crit damage reduction applied */
+interface EffectiveArcDamage extends ArcDamage {
+    effDmgS: string;
+    effDmgM: string;
+    effDmgL: string;
+    effDmgE: string;
+    effCapS: string;
+    effCapM: string;
+    effCapL: string;
+    effCapE: string;
+    effScapS: string;
+    effScapM: string;
+    effScapL: string;
+    effScapE: string;
+    effMslS: string;
+    effMslM: string;
+    effMslL: string;
+    effMslE: string;
+}
+
 @Component({
     selector: 'as-layout-large-vessel-2',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -193,6 +213,76 @@ export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
         if (val === undefined || val === null || val === 0 || val === '0' || val === '') {
             return '—';
         }
+        if (typeof val === 'string') {
+            return parseInt(val, 10);
+        }
         return val;
+    }
+
+    /**
+     * Get column name from index based on whether CAP column is present.
+     */
+    getColumnName(index: number): string {
+        if (this.hasCap()) {
+            return ['STD', 'CAP', 'SCAP', 'MSL'][index] ?? '';
+        }
+        return ['STD', 'SCAP', 'MSL'][index] ?? '';
+    }
+
+    /**
+     * Get effective arc damage with crit damage reduction applied.
+     * Vessel weapon criticals reduce column damage by 50% per hit (halving each time).
+     */
+    effectiveArcDamageData = computed<EffectiveArcDamage[]>(() => {
+        const arcs = this.arcDamageData();
+        const forceUnit = this.forceUnit();
+        
+        return arcs.map(arc => {
+            // Get crit hits for each column using column names
+            const stdCrits = forceUnit?.getCommittedCritHits(`${arc.shortLabel}-STD`) ?? 0;
+            const capCrits = forceUnit?.getCommittedCritHits(`${arc.shortLabel}-CAP`) ?? 0;
+            const scapCrits = forceUnit?.getCommittedCritHits(`${arc.shortLabel}-SCAP`) ?? 0;
+            const mslCrits = forceUnit?.getCommittedCritHits(`${arc.shortLabel}-MSL`) ?? 0;
+            return {
+                ...arc,
+                effDmgS: this.applyVesselCritReduction(arc.dmgS, stdCrits),
+                effDmgM: this.applyVesselCritReduction(arc.dmgM, stdCrits),
+                effDmgL: this.applyVesselCritReduction(arc.dmgL, stdCrits),
+                effDmgE: this.applyVesselCritReduction(arc.dmgE, stdCrits),
+                effCapS: this.applyVesselCritReduction(arc.capS, capCrits),
+                effCapM: this.applyVesselCritReduction(arc.capM, capCrits),
+                effCapL: this.applyVesselCritReduction(arc.capL, capCrits),
+                effCapE: this.applyVesselCritReduction(arc.capE, capCrits),
+                effScapS: this.applyVesselCritReduction(arc.scapS, scapCrits),
+                effScapM: this.applyVesselCritReduction(arc.scapM, scapCrits),
+                effScapL: this.applyVesselCritReduction(arc.scapL, scapCrits),
+                effScapE: this.applyVesselCritReduction(arc.scapE, scapCrits),
+                effMslS: this.applyVesselCritReduction(arc.mslS, mslCrits),
+                effMslM: this.applyVesselCritReduction(arc.mslM, mslCrits),
+                effMslL: this.applyVesselCritReduction(arc.mslL, mslCrits),
+                effMslE: this.applyVesselCritReduction(arc.mslE, mslCrits),
+            };
+        });
+    });
+
+    /**
+     * Apply vessel weapon crit reduction: 50% reduction per crit hit (halving each time).
+     * Each hit halves the current value (rounded down).
+     * 1 hit = x0.5, 2 hits = x0.25, 3 hits = x0.125, 4 hits = x0.0625
+     */
+    private applyVesselCritReduction(baseValue: number | string | undefined, critHits: number): string {
+        // If it's already a string (like '—') or not a number, return as-is
+        if (baseValue === undefined || baseValue === null || typeof baseValue === 'string') {
+            return String(baseValue ?? '—');
+        }
+        
+        if (critHits <= 0) return String(baseValue);
+        
+        // Apply 50% reduction per hit, flooring at each step
+        let current = baseValue;
+        for (let i = 0; i < critHits; i++) {
+            current = Math.floor(current / 2);
+        }
+        return String(current);
     }
 }

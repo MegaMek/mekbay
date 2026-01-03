@@ -28,7 +28,7 @@
     <!-- PV Box -->
     <div class="pv-box-background"></div>
     <div class="pv-box">
-        <div class="pv-text alphastrike-text">{{ adjustedPV() }}</div>
+        <div class="pv-text">{{ adjustedPV() }}</div>
         @if (basePV() != adjustedPV()) {
         <div class="base-pv-text">Base PV: {{ basePV() }}</div>
         }
@@ -56,7 +56,7 @@
                     </div>
                     <div class="stats-row">
                         <span class="stat-item"><span class="as-caption">ROLE:</span>&nbsp;<span class="as-value">{{ unit().role }}</span></span>
-                        <span class="stat-item"><span class="as-caption">SKILL:</span>&nbsp;<span class="as-value">{{ skill() }}</span></span>
+                        <span class="stat-item" [class.clickable]="interactive()" (click)="interactive() && onEditPilotClick()"><span class="as-caption">SKILL:</span>&nbsp;<span class="as-value">{{ skill() }}</span></span>
                     </div>
                 </div>
             </div>
@@ -70,21 +70,21 @@
                         <!-- Short Range -->
                         <div class="damage-range">
                             <div class="range-header range-header-background left">S (0 | {{ toHitShort() }}+)</div>
-                            <div class="range-value as-value">{{ asStats().dmg.dmgS }}</div>
+                            <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageS() }}</div>
                             <div class="range-distance">{{ rangeShort() }}</div>
                         </div>
 
                         <!-- Medium Range -->
                         <div class="damage-range">
                             <div class="range-header range-header-background">M (+2 | {{ toHitMedium() }}+)</div>
-                            <div class="range-value as-value">{{ asStats().dmg.dmgM }}</div>
+                            <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageM() }}</div>
                             <div class="range-distance">{{ rangeMedium() }}</div>
                         </div>
 
                         <!-- Long Range -->
                         <div class="damage-range">
                             <div class="range-header range-header-background right">L (+4 | {{ toHitLong() }}+)</div>
-                            <div class="range-value as-value">{{ asStats().dmg.dmgL }}</div>
+                            <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageL() }}</div>
                             <div class="range-distance">{{ rangeLong() }}</div>
                         </div>
                     </div>
@@ -104,23 +104,35 @@
                     <div class="frame-title-background heat-label">HEAT SCALE</div>
                     <div class="heat-track">
                         <!-- Heat 0 -->
-                        <div class="heat-level heat-0" [class.active]="heatLevel() === 0">
+                        @let pendingHeatDelta = pendingHeat();
+                        @let effectiveHeat = heatLevel() + pendingHeatDelta;
+                        <div class="heat-level heat-0" 
+                             [class.active]="heatLevel() === 0"
+                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 0">
                             <span>0</span>
                         </div>
                         <!-- Heat 1 -->
-                        <div class="heat-level heat-1" [class.active]="heatLevel() === 1">
+                        <div class="heat-level heat-1" 
+                             [class.active]="heatLevel() === 1"
+                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 1">
                             <span>1</span>
                         </div>
                         <!-- Heat 2 -->
-                        <div class="heat-level heat-2" [class.active]="heatLevel() === 2">
+                        <div class="heat-level heat-2" 
+                             [class.active]="heatLevel() === 2"
+                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 2">
                             <span>2</span>
                         </div>
                         <!-- Heat 3 -->
-                        <div class="heat-level heat-3" [class.active]="heatLevel() === 3">
+                        <div class="heat-level heat-3" 
+                             [class.active]="heatLevel() === 3"
+                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 3">
                             <span>3</span>
                         </div>
                         <!-- Shutdown -->
-                        <div class="heat-level heat-s" [class.active]="heatLevel() >= 4">
+                        <div class="heat-level heat-s" 
+                             [class.active]="heatLevel() >= 4"
+                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat >= 4">
                             <span>S</span>
                         </div>
                     </div>
@@ -134,31 +146,31 @@
                 <div class="frame-content">
                     <div class="pips-wrapper">
                         <!-- Armor Pips -->
-                        <div class="pip-row">
+                        <div class="pip-row" data-damage-type="armor">
                             <span class="as-caption armor-caption">A:</span>
-                            @if (showArmorAsNumber()) {
-                            <span class="pip-value"><span class="current-value">0</span>/{{ armorPips() }}</span>
-                            } @else {
                             <div class="pips">
-                                @for (i of range(armorPips()); track i) {
-                                <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
+                                @for (pipState of armorPipStates(); track pipState.index) {
+                                <svg class="pip" 
+                                     [class.damaged]="pipState.isDamaged"
+                                     [class.pending-damage]="pipState.isPendingDamage"
+                                     [class.pending-heal]="pipState.isPendingHeal"
+                                     viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                                 }
                             </div>
-                            }
                         </div>
 
                         <!-- Structure Pips -->
-                        <div class="pip-row">
+                        <div class="pip-row" data-damage-type="structure">
                             <span class="as-caption armor-caption">S:</span>
-                            @if (showStructureAsNumber()) {
-                            <span class="pip-value">{{ structurePips() }}/{{ structurePips() }}</span>
-                            } @else {
                             <div class="pips">
-                                @for (i of range(structurePips()); track i) {
-                                <svg class="pip structure" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
+                                @for (pipState of structurePipStates(); track pipState.index) {
+                                <svg class="pip structure" 
+                                     [class.damaged]="pipState.isDamaged"
+                                     [class.pending-damage]="pipState.isPendingDamage"
+                                     [class.pending-heal]="pipState.isPendingHeal"
+                                     viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                                 }
                             </div>
-                            }
                         </div>
                     </div>
 
@@ -166,7 +178,7 @@
                     @if (asStats().usesTh) {
                     <div class="thrust-display">
                         <span class="as-caption">TH:</span>
-                        <span class="as-value">{{ asStats().Th }}</span>
+                        <span class="as-value">{{ effectiveTh() }}</span>
                     </div>
                     }
                 </div>
@@ -204,17 +216,24 @@
 
 
     <!-- Specials Box -->
-    @if (asStats().specials.length > 0) {
+    @if (effectiveSpecials().length > 0) {
     <div class="stats-container-row">
         <div class="specials-box frame">
             <div class="frame-background"></div>
             <div class="frame-content">
                 <span class="as-caption">SPECIAL:&nbsp;</span>
-                @for (item of asStats().specials; track item; let isLast = $last) {
-                <span class="special-ability as-value" (click)="onSpecialClick(item)">{{ item }}@if (!isLast) {<span class="special-separator">,</span>}</span>&nbsp;
+                @for (item of effectiveSpecials(); track item.original; let isLast = $last) {
+                <span class="special-ability as-value" [attr.data-original]="item.original" (click)="onSpecialClick(item)">{{ item.effective }}@if (!isLast) {<span class="special-separator">,</span>}</span>&nbsp;
                 }
             </div>
         </div>
     </div>
     }
 </div>
+
+<!-- Destroyed Overlay -->
+@if (isDestroyed()) {
+<div class="destroyed-overlay">
+    <span class="destroyed-text">DESTROYED</span>
+</div>
+}

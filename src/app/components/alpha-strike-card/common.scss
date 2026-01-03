@@ -1,5 +1,8 @@
 :host {
-    --as-red: #7c2422;
+    // --as-red: #7c2422;
+    // --as-red-bright: #b31816;
+    --as-red: #7b0000;
+    --as-red-bright: #cd0000;
 }
 
 // Frame/Box styling
@@ -47,18 +50,13 @@
 .alphastrike-text {
     paint-order: stroke fill;
     position: relative;
+    font-weight: 900;
 
     :host:not(.monochrome) & {
-        color: #d22027;
-        -webkit-text-stroke: 0.08em #ECD24B;
-    }
-
-    &.bolder {
-        font-weight: 900;
-
-        :host:not(.monochrome) & {
-            -webkit-text-stroke: 0.06em #ECD24B;
-        }
+        // color: #d22027;
+        // -webkit-text-stroke: 0.08em #ECD24B;
+        color: #000;
+        -webkit-text-stroke: 0.08em #fff;
     }
 }
 
@@ -78,6 +76,52 @@
         // paint-order: stroke fill;
     }
 }
+
+
+// PV Box
+.pv-box {
+    position: absolute;
+    top: 16%;
+    right: 1.8em;
+    width: 17%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.pv-box-background {
+    position: absolute;
+    top: 1.43em;
+    right: 1.43em;
+    width: 22em;
+    height: 7.5em;
+    background: #000;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 4em 100%, 0 0);
+
+    // :host(:not(.monochrome)) & {
+    //     display: none;
+    // }
+}
+
+.pv-text {
+    font-size: 5.4em;
+    font-weight: 900;
+    text-align: center;
+    letter-spacing: 0.1em;
+    z-index: 1;
+}
+
+.base-pv-text {
+    font-size: 2.4em;
+    font-weight: bold;
+    text-align: center;
+    margin-top: 0.5em;
+    z-index: 1;
+    -webkit-text-stroke: 0.12em #fff;
+    color: #000;
+    paint-order: stroke fill;
+}
+
 
 // Critical Hits Box
 .critical-hits-box {
@@ -128,6 +172,12 @@
         justify-content: center;
         align-self: center;
     }
+
+    .critical-row { // Nested critical rows for motive of vehicles
+        &:not(:last-child) {
+            margin-right: 1.5em;
+        }
+    }
 }
 
 .critical-name {
@@ -177,10 +227,6 @@
     margin-left: 0.2em;
     white-space: nowrap;
     letter-spacing: -0.05em;
-
-    &:not(:last-child) {
-        margin-right: 0.4em;
-    }
 }
 
 .pip-row {
@@ -189,31 +235,16 @@
     gap: 0.5em;
 }
 
-.pip-value {
-    font-size: 2.5em;
-    font-weight: bold;
-
-    :host:has(.monochrome) & {
-        width: 100%;
-        text-align: right;
-
-        .current-value {
-            display: none;
-        }
-    }
-}
-
 .pips {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
-    gap: 0.7em;
+    gap: 0.5em;
 }
 
 .pip {
     width: 2.8em;
     height: 2.8em;
-    cursor: pointer;
 
     circle {
         fill: #fff;
@@ -223,6 +254,18 @@
 
     &.structure circle {
         fill: #bbb;
+    }
+
+    &.damaged circle {
+        fill: var(--damage-color);
+    }
+
+    &.pending-damage circle {
+        fill: orange; // Yellow for uncommitted damage
+    }
+
+    &.pending-heal circle {
+        fill: #03a9f4; // Light blue for uncommitted heal
     }
 }
 
@@ -251,3 +294,20 @@
         }
     }
 }
+
+.interactive {
+    cursor: pointer;
+}
+
+.destroyed-overlay {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(128, 0, 0, 0.3);
+    z-index: 100;
+    pointer-events: none;
+
+    @media print {
+        display: none;
+    }
+}
+

@@ -36,6 +36,7 @@ import { ASForceUnit, AbilitySelection } from '../../../models/as-force-unit.mod
 import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
 import { Era } from '../../../models/eras.model';
 import { DataService } from '../../../services/data.service';
+import { AsAbilityLookupService } from '../../../services/as-ability-lookup.service';
 import { AS_PILOT_ABILITIES, ASPilotAbility } from '../../../models/as-abilities.model';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
@@ -52,9 +53,28 @@ export interface EraAvailability {
     isAvailable: boolean;
 }
 
+/**
+ * Represents the state of a single pip for rendering.
+ */
+export interface PipState {
+    index: number;
+    isDamaged: boolean;           // Committed damage
+    isPendingDamage: boolean;     // Pending damage (not yet committed)
+    isPendingHeal: boolean;       // Pending heal (not yet committed)
+}
+
+/**
+ * Represents a special ability with both original and effective values.
+ */
+export interface SpecialAbilityState {
+    original: string;
+    effective: string;
+}
+
 @Directive()
 export abstract class AsLayoutBaseComponent {
     protected readonly dataService = inject(DataService);
+    protected readonly abilityLookup = inject(AsAbilityLookupService);
 
     protected readonly pilotAbilityById = new Map<string, ASPilotAbility>(
         AS_PILOT_ABILITIES.map((ability) => [ability.id, ability])
@@ -66,9 +86,11 @@ export abstract class AsLayoutBaseComponent {
     useHex = input<boolean>(false);
     cardStyle = input<'colored' | 'monochrome'>('colored');
     imageUrl = input<string>('');
+    interactive = input<boolean>(false);
 
     // Common outputs
-    specialClick = output<string>();
+    specialClick = output<SpecialAbilityState>();
+    editPilotClick = output<void>();
 
     // Derived from unit
     asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
@@ -95,6 +117,144 @@ export abstract class AsLayoutBaseComponent {
     // Armor and structure
     armorPips = computed<number>(() => this.asStats().Arm);
     structurePips = computed<number>(() => this.asStats().Str);
+
+    // ===== Damage State =====
+
+    /**
+     * Get committed armor damage.
+     */
+    committedArmorDamage = computed<number>(() => {
+        const fu = this.forceUnit();
+        if (!fu) return 0;
+        return fu.getState().armor();
+    });
+
+    /**
+     * Get committed internal damage.
+     */
+    committedInternalDamage = computed<number>(() => {
+        const fu = this.forceUnit();
+        if (!fu) return 0;
+        return fu.getState().internal();
+    });
+
+    /**
+     * Get pending armor change.
+     */
+    pendingArmorChange = computed<number>(() => {
+        const fu = this.forceUnit();
+        if (!fu) return 0;
+        return fu.getState().pendingArmor();
+    });
+
+    /**
+     * Get pending internal change.
+     */
+    pendingInternalChange = computed<number>(() => {
+        const fu = this.forceUnit();
+        if (!fu) return 0;
+        return fu.getState().pendingInternal();
+    });
+
+    /**
+     * Get armor pip states for rendering.
+     */
+    armorPipStates = computed<PipState[]>(() => {
+        const maxArmor = this.armorPips();
+        const committed = this.committedArmorDamage();
+        const pending = this.pendingArmorChange();
+        const effective = committed + pending;
+
+        return this.calculatePipStates(maxArmor, committed, pending, effective);
+    });
+
+    /**
+     * Get structure pip states for rendering.
+     */
+    structurePipStates = computed<PipState[]>(() => {
+        const maxStructure = this.structurePips();
+        const committed = this.committedInternalDamage();
+        const pending = this.pendingInternalChange();
+        const effective = committed + pending;
+
+        return this.calculatePipStates(maxStructure, committed, pending, effective);
+    });
+
+    /**
+     * Calculate pip states for a given set of pips.
+     */
+    protected calculatePipStates(max: number, committed: number, pending: number, effective: number): PipState[] {
+        const states: PipState[] = [];
+        for (let i = 0; i < max; i++) {
+            const pipIndex = i; // Pips fill from left to right (low to high)
+            const isCommittedDamaged = pipIndex < committed;
+            const isEffectiveDamaged = pipIndex < effective;
+
+            states.push({
+                index: i,
+                isDamaged: isCommittedDamaged,
+                isPendingDamage: !isCommittedDamaged && isEffectiveDamaged && pending > 0,
+                isPendingHeal: isCommittedDamaged && !isEffectiveDamaged && pending < 0
+            });
+        }
+        return states;
+    }
+
+    /**
+     * Check if a specific crit pip is damaged (for rendering).
+     * Pips fill from left (index 0) up to committed count.
+     */
+    isCritPipDamaged(key: string, pipIndex: number): boolean {
+        const fu = this.forceUnit();
+        if (!fu) return false;
+        const committed = fu.getState().getCommittedCritHits(key);
+        return pipIndex < committed;
+    }
+
+    /**
+     * Check if a specific crit pip has pending damage.
+     * Pending damage pips come after committed pips.
+     */
+    isCritPipPendingDamage(key: string, pipIndex: number): boolean {
+        const fu = this.forceUnit();
+        if (!fu) return false;
+        const committed = fu.getState().getCommittedCritHits(key);
+        const pendingChange = fu.getState().getPendingCritChange(key);
+        
+        // If pending is positive (damage), pips from committed to committed+pending are pending damage
+        if (pendingChange > 0) {
+            return pipIndex >= committed && pipIndex < committed + pendingChange;
+        }
+        return false;
+    }
+
+    /**
+     * Check if a specific crit pip has pending heal.
+     * Pending heal pips are the last committed pips that will be removed.
+     */
+    isCritPipPendingHeal(key: string, pipIndex: number): boolean {
+        const fu = this.forceUnit();
+        if (!fu) return false;
+        const committed = fu.getState().getCommittedCritHits(key);
+        const pendingChange = fu.getState().getPendingCritChange(key);
+        
+        // If pending is negative (heal), the last |pendingChange| committed pips are pending heal
+        if (pendingChange < 0) {
+            const healCount = -pendingChange;
+            const startHealIndex = Math.max(0, committed - healCount);
+            return pipIndex >= startHealIndex && pipIndex < committed;
+        }
+        return false;
+    }
+
+    /**
+     * Check if unit is destroyed.
+     */
+    isDestroyed = computed<boolean>(() => {
+        const fu = this.forceUnit();
+        if (!fu) return false;
+        return fu.isDestroyed();
+    });
 
     // Era availability (grouped by image)
     eraAvailability = computed<EraAvailability[]>(() => {
@@ -153,6 +313,195 @@ export abstract class AsLayoutBaseComponent {
         return result;
     });
 
+    // To-hit values (affected by crew and fire control critical hits: +2 per hit)
+    toHitShort = computed<number>(() => this.skill() + this.heatLevel() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
+    toHitMedium = computed<number>(() => this.skill() + 2 + this.heatLevel() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
+    toHitLong = computed<number>(() => this.skill() + 4 + this.heatLevel() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
+    toHitExtreme = computed<number>(() => this.skill() + 6 + this.heatLevel() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
+
+    // Heat level (committed)
+    heatLevel = computed<number>(() => {
+        return this.forceUnit()?.getHeat() ?? 0;
+    });
+
+    effectiveTh = computed<number>(() => {
+        const base = this.asStats().Th;
+        const fu = this.forceUnit();
+        if (!fu || base <= 0) return base;
+        return fu.calculateEffectiveThrust();
+    });
+
+    // ===== Critical Hit Effects on Stats =====
+    // NOTE: These use COMMITTED hits only, not pending. Effects only apply after commit.
+
+    /**
+     * Get committed fire control hits (affects to-hit).
+     */
+    fireControlHits = computed<number>(() => {
+        const fu = this.forceUnit();
+        if (!fu) return 0;
+        return fu.getState().getCommittedCritHits('fire-control');
+    });
+
+    /**
+     * Get committed crew hits (affects to-hit and control rolls).
+     */
+    crewHits = computed<number>(() => {
+        const fu = this.forceUnit();
+        if (!fu) return 0;
+        return fu.getState().getCommittedCritHits('crew');
+    });
+
+    /**
+     * Get committed MP hits (affects movement).
+     */
+    mpHits = computed<number>(() => {
+        const fu = this.forceUnit();
+        if (!fu) return 0;
+        return fu.getState().getCommittedCritHits('mp');
+    });
+
+    /**
+     * Get committed engine hits (affects heat).
+     */
+    engineHits = computed<number>(() => {
+        const fu = this.forceUnit();
+        if (!fu) return 0;
+        return fu.getState().getCommittedCritHits('engine');
+    });
+
+    /**
+     * Get committed weapon hits (affects damage).
+     */
+    weaponHits = computed<number>(() => {
+        const fu = this.forceUnit();
+        if (!fu) return 0;
+        return fu.getState().getCommittedCritHits('weapons');
+    });
+
+    /**
+     * Get effective specials with weapon hit reduction applied.
+     * Returns both original and effective values for each special.
+     * Uses displaysDamage property from ability definitions to determine reduction.
+     */
+    effectiveSpecials = computed<SpecialAbilityState[]>(() => {
+        const specials = this.asStats().specials;
+        const hits = this.weaponHits();
+        
+        return specials.map(special => {
+            const effective = hits > 0 ? this.applyWeaponHitsToSpecial(special, hits) : special;
+            return { original: special, effective };
+        });
+    });
+
+    /**
+     * Apply weapon hit reduction to a single special ability.
+     * Uses displaysDamage property from ability lookup to determine if reduction applies.
+     * For TUR(...) with comma-separated items:
+     *   - First item with #/#/# pattern gets reduced (turret damage)
+     *   - Remaining items checked via displaysDamage lookup
+     */
+    protected applyWeaponHitsToSpecial(special: string, weaponHits: number): string {
+        // Handle TUR(...) or similar bracketed patterns
+        const bracketMatch = special.match(/^([A-Za-z]+)\((.+)\)$/);
+        if (bracketMatch) {
+            const prefix = bracketMatch[1].toUpperCase();
+            const content = bracketMatch[2];
+            const items = content.split(',').map(s => s.trim());
+            
+            const processedItems = items.map((item, index) => {
+                // First item: if it's a damage pattern (no letters, just #/#/#), always reduce
+                if (index === 0 && this.isDamagePatternOnly(item)) {
+                    return this.reduceAllNumbers(item, weaponHits);
+                }
+                // Other items: check if ability has displaysDamage
+                return this.processItemByDisplaysDamage(item, weaponHits);
+            });
+            
+            return `${prefix}(${processedItems.join(',')})`;
+        }
+        
+        // Handle regular special (no brackets)
+        return this.processItemByDisplaysDamage(special, weaponHits);
+    }
+
+    /**
+     * Check if an item is a pure damage pattern without letters (e.g., "1/1/1", "0-star/2/2")
+     */
+    protected isDamagePatternOnly(item: string): boolean {
+        return /^(\d+|0\*|-)\/(\d+|0\*|-)\/(\d+|0\*|-)(\/(\d+|0\*|-))?$/.test(item);
+    }
+
+    /**
+     * Process an item based on whether its ability has displaysDamage: true.
+     * If displaysDamage is true, reduce ALL numbers in the item.
+     * Otherwise, return unchanged.
+     */
+    protected processItemByDisplaysDamage(item: string, weaponHits: number): string {
+        const ability = this.abilityLookup.lookupAbility(item);
+        if (ability?.displaysDamage) {
+            return this.reduceAllNumbers(item, weaponHits);
+        }
+        return item;
+    }
+
+    /**
+     * Reduce ALL numeric values in a string by weapon hits.
+     * Works on any format: "FLK1/2/3", "TOR3/2/1", "IF2", etc.
+     */
+    protected reduceAllNumbers(item: string, weaponHits: number): string {
+        // Handle 0* specially - it's a token that shouldn't be split
+        // First, temporarily replace 0* with a placeholder
+        const placeholder = '\x00ZEROSTAR\x00';
+        let result = item.replace(/0\*/g, placeholder);
+        
+        // Replace all numbers with their reduced values
+        result = result.replace(/\d+/g, (match) => {
+            return this.reduceDamageValue(match, weaponHits);
+        });
+        
+        // Restore 0* placeholders, but also reduce them
+        const reducedZeroStar = this.reduceDamageValue('0*', weaponHits);
+        result = result.replace(new RegExp(placeholder, 'g'), reducedZeroStar);
+        
+        return result;
+    }
+
+    /**
+     * Reduce a single damage value by weapon hits.
+     * Uses damage scale: 9 8 7 6 5 4 3 2 1 0* 0
+     * Non-numeric values (like '-') are returned unchanged.
+     */
+    protected reduceDamageValue(value: string, weaponHits: number): string {
+        value = value.trim();
+        
+        // Handle special values
+        if (value === '-' || value === '') return value;
+        if (value === '0*') {
+            // 0* is at position 9 in the scale (0-indexed), maps to position 1
+            // After weaponHits reductions, if position <= 0, return '0'
+            const newPosition = Math.max(0, 1 - weaponHits);
+            return newPosition === 0 ? '0' : '0*';
+        }
+        if (value === '0') return '0'; // Already at minimum
+        
+        // Parse numeric value
+        const numericValue = parseInt(value, 10);
+        if (isNaN(numericValue) || numericValue < 0) {
+            // Non-numeric, return as-is
+            return value;
+        }
+        
+        // Position in sequence: value + 1 (so 1 -> position 2, 9 -> position 10)
+        const position = numericValue + 1;
+        const newPosition = Math.max(0, position - weaponHits);
+        
+        // Convert back to string
+        if (newPosition === 0) return '0';
+        if (newPosition === 1) return '0*';
+        return (newPosition - 1).toString();
+    }
+
     protected formatPilotAbility(selection: AbilitySelection): string {
         if (typeof selection === 'string') {
             const ability = this.pilotAbilityById.get(selection);
@@ -166,7 +515,11 @@ export abstract class AsLayoutBaseComponent {
         return Array.from({ length: count }, (_, i) => i);
     }
 
-    onSpecialClick(special: string): void {
-        this.specialClick.emit(special);
+    onSpecialClick(state: SpecialAbilityState): void {
+        this.specialClick.emit(state);
+    }
+
+    onEditPilotClick(): void {
+        this.editPilotClick.emit();
     }
 }

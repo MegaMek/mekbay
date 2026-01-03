@@ -222,7 +222,7 @@ export class ASPrintUtil {
                 // Set inputs
                 componentRef.setInput('forceUnit', item.forceUnit);
                 componentRef.setInput('cardIndex', item.cardIndex);
-                componentRef.setInput('cardStyle', cardStyle);
+                componentRef.setInput('cardStyle', 'monochrome' /* cardStyle */);
                 componentRef.setInput('useHex', useHex);
                 componentRef.setInput('isSelected', false);
                 
@@ -292,7 +292,7 @@ export class ASPrintUtil {
             // Set inputs
             componentRef.setInput('forceUnit', item.forceUnit);
             componentRef.setInput('cardIndex', item.cardIndex);
-            componentRef.setInput('cardStyle', cardStyle);
+            componentRef.setInput('cardStyle', 'monochrome' /* cardStyle */);
             componentRef.setInput('useHex', useHex);
             componentRef.setInput('isSelected', false);
             

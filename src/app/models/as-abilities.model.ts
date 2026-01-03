@@ -40,6 +40,8 @@ export interface ASSpecialAbility {
     tag: string | string[];
     name: string;
     type: SpecialAbilityType;
+    displaysDamage?: boolean;
+    consumable?: boolean;
     summary: string[];
     rulesBook: string;
     rulesPage: number;
@@ -195,6 +197,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         rulesBook: ASRulebook.ASCE,
         rulesPage: 77,
         type: SpecialAbilityType.Standard,
+        consumable: true,
     },
     {
         tag: "CAR#",
@@ -302,6 +305,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         rulesBook: ASRulebook.ASCE,
         rulesPage: 78,
         type: SpecialAbilityType.Standard,
+        displaysDamage: true,
     },
     {
         tag: "HT#/#/#",
@@ -313,6 +317,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         rulesBook: ASRulebook.ASCE,
         rulesPage: 78,
         type: SpecialAbilityType.Standard,
+        displaysDamage: true,
     },
     {
         tag: "IF#",
@@ -324,6 +329,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         rulesBook: ASRulebook.ASCE,
         rulesPage: 78,
         type: SpecialAbilityType.Standard,
+        displaysDamage: true,
     },
     {
         tag: "I-TSM",
@@ -462,6 +468,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         rulesBook: ASRulebook.ASCE,
         rulesPage: 78,
         type: SpecialAbilityType.Standard,
+        displaysDamage: true,
     },
     {
         tag: "STL",
@@ -507,6 +514,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         rulesBook: ASRulebook.ASCE,
         rulesPage: 79,
         type: SpecialAbilityType.Standard,
+        displaysDamage: true,
     },
     {
         tag: "TSM",
@@ -531,6 +539,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         rulesBook: ASRulebook.ASCE,
         rulesPage: 79,
         type: SpecialAbilityType.Standard,
+        displaysDamage: true,
     },
     {
         tag: "UMU",
@@ -663,7 +672,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 82,
-        type: SpecialAbilityType.Optional,
+        type: SpecialAbilityType.Optional
     },
     {
         tag: "ABA",
@@ -684,6 +693,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         rulesBook: ASRulebook.ASCE,
         rulesPage: 83,
         type: SpecialAbilityType.Optional,
+        displaysDamage: true,
     },
     {
         tag: "BRA",
@@ -987,6 +997,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         rulesBook: ASRulebook.ASCE,
         rulesPage: 86,
         type: SpecialAbilityType.Optional,
+        displaysDamage: true,
     },
     {
         tag: "INARC#",
@@ -1039,6 +1050,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         rulesBook: ASRulebook.ASCE,
         rulesPage: 86,
         type: SpecialAbilityType.Optional,
+        displaysDamage: true,
     },
     {
         tag: "MAG",
@@ -1091,6 +1103,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         rulesBook: ASRulebook.ASCE,
         rulesPage: 87,
         type: SpecialAbilityType.Optional,
+        consumable: true,
     },
     {
         tag: "MSW",
@@ -1431,7 +1444,8 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 90,
-        type: SpecialAbilityType.Optional
+        type: SpecialAbilityType.Optional,
+        displaysDamage: true,
     },
     {
         tag: ["ST#", "ST#-D#"],
@@ -1452,7 +1466,8 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 90,
-        type: SpecialAbilityType.Optional
+        type: SpecialAbilityType.Optional,
+        displaysDamage: true,
     },
     {
         tag: "SDS-CM #/#/#/#",
@@ -1463,7 +1478,8 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 90,
-        type: SpecialAbilityType.Optional
+        type: SpecialAbilityType.Optional,
+        displaysDamage: true,
     },
     {
         tag: "SDS-SC #/#/#/#",
@@ -1474,7 +1490,8 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 90,
-        type: SpecialAbilityType.Optional
+        type: SpecialAbilityType.Optional,
+        displaysDamage: true,
     },
     {
         tag: "SOA",
@@ -1545,7 +1562,8 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 90,
-        type: SpecialAbilityType.Optional
+        type: SpecialAbilityType.Optional,
+        consumable: true
     },
     {
         tag: "TSEMP#",
@@ -1560,6 +1578,21 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         rulesBook: ASRulebook.ASCE,
         rulesPage: 90,
         type: SpecialAbilityType.Optional
+    },
+    {
+        tag: "TSEMP#-O#",
+        name: "Tight-stream Electromagnetic Pulse Weapons",
+        summary: [
+            "A unit with this special ability carries tight-stream EMP weapons (TSEMPs), which function much like an energy-based version of the taser (see above).",
+            "As with taser weapons, the numerical value for this special ability indicates the number of TSEMP weapon attacks the unit may attempt per turn. If this numerical value is preceded by a “-O”, then the unit is only carrying one-shot TSEMPs, and the number instead indicates how many TSEMP attacks it may attempt for the entire scenario.",
+            "TSEMP attacks may only be attempted in the unit’s Combat Phase, and may only be directed against targets within the unit’s Short or Medium range brackets on the ground map.",
+            "A successful TSEMP attack will have no effect against conventional infantry unit, DropShips, or any other units that possess the VLG or SLG specials. For all other unit types, a successful TSEMP attack must be followed by a second 2D6 roll, applying a –1 roll modifier if the target is a BattleMech or aerospace unit, a –2 if the target has the LG special, and a +2 if the target is a support vehicle unit.",
+            "If the modified roll result is 8 or higher, the target shuts down for 1 turn. On a 7 or less, the target instead suffers a +1 target modifier for all attacks and Control Rolls required of it for 1 turn. Multiple TSEMP attacks against the same target will not increase these modifiers, but each attack each should make its effects roll as long as the target has not been shut down. TSEMP effects against a target automatically wear off in the End Phase of the following turn."
+        ],
+        rulesBook: ASRulebook.ASCE,
+        rulesPage: 90,
+        type: SpecialAbilityType.Optional,
+        consumable: true
     },
     {
         tag: "HTC",
@@ -1757,7 +1790,8 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         ],
         rulesBook: ASRulebook.ASC_ERR16,
         rulesPage: 14,
-        type: SpecialAbilityType.Standard
+        type: SpecialAbilityType.Standard,
+        consumable: true
     }
 
 ]

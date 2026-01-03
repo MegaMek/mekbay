@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input } from '@angular/core';
-import { ASForceUnit } from '../../../models/as-force-unit.model';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
+import { AsCriticalHitsBase } from './critical-hits-base';
 
 /*
  * Author: Drake
@@ -55,8 +55,12 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                 <div class="critical-row" data-crit="engine">
                     <span class="critical-name">ENGINE</span>
                     <div class="critical-pips">
-                        @for (i of range(1+1); track i) {
-                        <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
+                        @for (i of range(2); track i) {
+                        <svg class="pip" 
+                             [class.damaged]="isCritPipDamaged('engine', i)"
+                             [class.pending-damage]="isCritPipPendingDamage('engine', i)"
+                             [class.pending-heal]="isCritPipPendingHeal('engine', i)"
+                             viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
                     <span class="critical-desc">+1 Heat/Firing Weapons</span>
@@ -66,7 +70,11 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     <span class="critical-name">FIRE CONTROL</span>
                     <div class="critical-pips">
                         @for (i of range(4); track i) {
-                        <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
+                        <svg class="pip" 
+                             [class.damaged]="isCritPipDamaged('fire-control', i)"
+                             [class.pending-damage]="isCritPipPendingDamage('fire-control', i)"
+                             [class.pending-heal]="isCritPipPendingHeal('fire-control', i)"
+                             viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
                     <span class="critical-desc">+2 TN Each</span>
@@ -76,7 +84,11 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     <span class="critical-name">MP</span>
                     <div class="critical-pips">
                         @for (i of range(4); track i) {
-                        <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
+                        <svg class="pip" 
+                             [class.damaged]="isCritPipDamaged('mp', i)"
+                             [class.pending-damage]="isCritPipPendingDamage('mp', i)"
+                             [class.pending-heal]="isCritPipPendingHeal('mp', i)"
+                             viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
                     <span class="critical-desc">½ MV Each</span>
@@ -87,7 +99,11 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
                     <span class="critical-name">WEAPONS</span>
                     <div class="critical-pips">
                         @for (i of range(4); track i) {
-                        <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
+                        <svg class="pip" 
+                             [class.damaged]="isCritPipDamaged('weapons', i)"
+                             [class.pending-damage]="isCritPipPendingDamage('weapons', i)"
+                             [class.pending-heal]="isCritPipPendingHeal('weapons', i)"
+                             viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                         }
                     </div>
                     <span class="critical-desc">-1 Damage Each</span>
@@ -97,11 +113,4 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
     `,
     styleUrl: './../common.scss'
 })
-export class AsCriticalHitsMekComponent {
-    forceUnit = input<ASForceUnit>();
-    cardStyle = input<'colored' | 'monochrome'>('colored');
-    
-    range(count: number): number[] {
-        return Array.from({ length: count }, (_, i) => i);
-    }
-}
+export class AsCriticalHitsMekComponent extends AsCriticalHitsBase {}

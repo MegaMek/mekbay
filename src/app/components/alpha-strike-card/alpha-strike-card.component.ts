@@ -31,23 +31,32 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, ApplicationRef, EnvironmentInjector, createComponent, ComponentRef, Injector } from '@angular/core';
 import { Unit } from '../../models/units.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 import { CardConfig, CardLayoutDesign, CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
+import { SpecialAbilityState } from './layouts/layout-base.component';
 import {
     AsLayoutStandardComponent,
     AsLayoutLargeVessel1Component,
         AsLayoutLargeVessel2Component,
 } from './layouts';
 import { REMOTE_HOST } from '../../models/common.model';
+import { RotatingPickerComponent } from '../rotating-picker/rotating-picker.component';
+import { PickerChoice, PickerPosition } from '../picker/picker.interface';
+import { vibrate } from '../../utils/vibrate.util';
 
 /*
  * Author: Drake
  */
+
+interface PickerInstance {
+    componentRef: ComponentRef<RotatingPickerComponent>;
+    destroy(): void;
+}
 
 @Component({
     selector: 'alpha-strike-card',
@@ -62,14 +71,19 @@ import { REMOTE_HOST } from '../../models/common.model';
     host: {
         '[class.monochrome]': 'cardStyle() === "monochrome"',
         '[class.selected]': 'isSelected()',
+        '[class.interactive]': 'interactive()',
         '(click)': 'onCardClick()'
     }
 })
 export class AlphaStrikeCardComponent {
     private static nextId = 0;
-    
+    private readonly injector = inject(Injector);
     private readonly abilityLookup = inject(AsAbilityLookupService);
     private readonly dialogs = inject(DialogsService);
+    private readonly elRef = inject(ElementRef<HTMLElement>);
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly appRef = inject(ApplicationRef);
+    private readonly envInjector = inject(EnvironmentInjector);
     
     /** Unique instance ID for SVG filter deduplication */
     readonly instanceId = AlphaStrikeCardComponent.nextId++;
@@ -83,8 +97,21 @@ export class AlphaStrikeCardComponent {
     isSelected = input<boolean>(false);
     /** Which card index to render (0 for first/only card, 1 for second card) */
     cardIndex = input<number>(0);
+    /** Enable interactive mode (damage/crit pickers) */
+    interactive = input<boolean>(false);
+    /** Trigger to update picker position (viewer increments this on scroll/resize) */
+    updatePickerPositionTrigger = input<number>(0);
     
     selected = output<ASForceUnit>();
+    editPilot = output<ASForceUnit>();
+    
+    imageUrl = signal<string>('');
+    
+    // Interaction state
+    private interactionAbortController: AbortController | null = null;
+    private pickerRef: PickerInstance | null = null;
+    private pickerAnchorElement: HTMLElement | null = null;
+    private interactionsSetup = false;
     
     onCardClick(): void {
         const fu = this.forceUnit();
@@ -92,8 +119,6 @@ export class AlphaStrikeCardComponent {
             this.selected.emit(fu);
         }
     }
-    
-    imageUrl = signal<string>('');
     
     /** Effective Unit for rendering: forceUnit.getUnit() wins, otherwise the plain unit input. */
     resolvedUnit = computed<Unit | undefined>(() => this.forceUnit()?.getUnit() ?? this.unit());
@@ -113,7 +138,22 @@ export class AlphaStrikeCardComponent {
     
     /** Get the layout design for the current card */
     currentDesign = computed<CardLayoutDesign>(() => this.currentCardConfig().design);
-    
+
+    /** Check if the force unit has uncommitted changes */
+    isDirty = computed<boolean>(() => {
+        const fu = this.forceUnit();
+        return fu ? fu.isDirty() : false;
+    });
+
+    /** Handle commit button click */
+    onCommitClick(event: MouseEvent): void {
+        event.stopPropagation();
+        const fu = this.forceUnit();
+        if (fu) {
+            fu.commitPending();
+        }
+    }
+
     constructor() {
         // Effect to load image
         effect(() => {
@@ -124,6 +164,35 @@ export class AlphaStrikeCardComponent {
             } else {
                 this.imageUrl.set('');
             }
+        });
+        
+        // Setup interactions when interactive mode is enabled
+        afterNextRender(() => {
+            if (this.interactive() && !this.interactionsSetup) {
+                this.setupInteractions();
+            }
+        });
+        
+        // Watch for interactive changes
+        effect(() => {
+            const isInteractive = this.interactive();
+            if (isInteractive && !this.interactionsSetup) {
+            afterNextRender(() => this.setupInteractions(), { injector: this.injector });
+            } else if (!isInteractive && this.interactionsSetup) {
+            this.cleanupInteractions();
+            }
+        });
+        
+        // Watch for update picker position trigger from parent (viewer handles scroll/resize)
+        effect(() => {
+            const trigger = this.updatePickerPositionTrigger();
+            if (trigger > 0) {
+                this.updatePickerPosition();
+            }
+        });
+        
+        this.destroyRef.onDestroy(() => {
+            this.cleanupInteractions();
         });
     }
     
@@ -142,11 +211,285 @@ export class AlphaStrikeCardComponent {
     }
     
     // Handle special ability click
-    onSpecialClick(special: string): void {
-        const parsedAbility = this.abilityLookup.parseAbility(special);
+    onSpecialClick(state: SpecialAbilityState): void {
+        const parsedAbility = this.abilityLookup.parseAbility(state.original);
+        
+        // Only parse effective if it differs from original
+        const effectiveParsed = state.effective !== state.original 
+            ? this.abilityLookup.parseAbility(state.effective) 
+            : undefined;
         
         this.dialogs.createDialog<void>(AbilityInfoDialogComponent, {
-            data: { parsedAbility } as AbilityInfoDialogData
+            data: { parsedAbility, effectiveParsed } as AbilityInfoDialogData
         });
+    }
+
+    // Handle edit pilot click
+    onEditPilotClick(): void {
+        const fu = this.forceUnit();
+        if (fu) {
+            this.editPilot.emit(fu);
+        }
+    }
+    
+    // ===== Interaction Logic =====
+    
+    private setupInteractions(): void {
+        if (this.interactionsSetup) return;
+        
+        this.interactionAbortController = new AbortController();
+        const signal = this.interactionAbortController.signal;
+        const el = this.elRef.nativeElement;
+        
+        this.setupArmorInteraction(el, signal);
+        this.setupCriticalHitInteraction(el, signal);
+        this.setupVesselDamageTrackInteraction(el, signal);
+        this.setupHeatInteraction(el, signal);
+        
+        this.interactionsSetup = true;
+    }
+    
+    private cleanupInteractions(): void {
+        this.removePicker();
+        if (this.interactionAbortController) {
+            this.interactionAbortController.abort();
+            this.interactionAbortController = null;
+        }
+        this.interactionsSetup = false;
+    }
+    
+    private addTapHandler(el: HTMLElement, handler: (evt: PointerEvent) => void, signal: AbortSignal): void {
+        el.classList.add('interactive');
+        const eventOptions = { passive: false, signal };
+        
+        let pointerId: number | null = null;
+        let pointerMoved = false;
+        let startX = 0;
+        let startY = 0;
+        const moveThreshold = 10;
+        
+        el.addEventListener('pointerdown', (evt: PointerEvent) => {
+            evt.preventDefault();
+            evt.stopPropagation();
+            pointerMoved = false;
+            startX = evt.clientX;
+            startY = evt.clientY;
+            pointerId = evt.pointerId;
+        }, eventOptions);
+        
+        el.addEventListener('pointermove', (evt: PointerEvent) => {
+            if (evt.pointerId !== pointerId) return;
+            const dx = Math.abs(evt.clientX - startX);
+            const dy = Math.abs(evt.clientY - startY);
+            if (dx > moveThreshold || dy > moveThreshold) {
+                pointerMoved = true;
+            }
+        }, eventOptions);
+        
+        el.addEventListener('pointerup', (evt: PointerEvent) => {
+            if (evt.pointerId !== pointerId) return;
+            evt.preventDefault();
+            if (!pointerMoved) {
+                handler(evt);
+            }
+            pointerId = null;
+        }, eventOptions);
+        
+        el.addEventListener('pointerleave', (evt: PointerEvent) => {
+            if (evt.pointerId === pointerId) pointerId = null;
+        }, eventOptions);
+        
+        el.addEventListener('pointercancel', (evt: PointerEvent) => {
+            if (evt.pointerId === pointerId) pointerId = null;
+        }, eventOptions);
+    }
+    
+    private setupArmorInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
+        const pipsWrapper = cardElement.querySelector('.pips-wrapper');
+        if (!pipsWrapper) return;
+        
+        this.addTapHandler(pipsWrapper as HTMLElement, (evt) => {
+            this.showDamagePicker(evt);
+        }, signal);
+    }
+    
+    private setupCriticalHitInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
+        const critRows = cardElement.querySelectorAll('[data-crit]');
+        critRows.forEach(row => {
+            const critKey = row.getAttribute('data-crit');
+            if (!critKey) return;
+            
+            this.addTapHandler(row as HTMLElement, (evt) => {
+                this.showCritPicker(evt, critKey, row as HTMLElement);
+            }, signal);
+        });
+    }
+    
+    private setupVesselDamageTrackInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
+        const damageTracks = cardElement.querySelectorAll('.damage-track');
+        damageTracks.forEach(track => {
+            this.addTapHandler(track as HTMLElement, (evt) => {
+                this.showDamagePicker(evt);
+            }, signal);
+        });
+    }
+    
+    private setupHeatInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
+        const heatTrack = cardElement.querySelector('.heat-track');
+        if (!heatTrack) return;
+        
+        const heatLevels = heatTrack.querySelectorAll('.heat-level');
+        heatLevels.forEach((level, index) => {
+            this.addTapHandler(level as HTMLElement, () => {
+                const unit = this.forceUnit();
+                if (!unit) return;
+                const committedHeat = unit.getState().heat();
+                const pendingHeat = unit.getState().pendingHeat();
+                const effectiveHeat = committedHeat + pendingHeat;
+                
+                if (effectiveHeat === index) {
+                    // Toggle off - reset pending to 0
+                    unit.getState().pendingHeat.set(0);
+                } else {
+                    // Set pending delta to reach this level
+                    unit.getState().pendingHeat.set(index - committedHeat);
+                }
+                vibrate(10);
+            }, signal);
+        });
+    }
+    
+    private showDamagePicker(event: PointerEvent): void {
+        const unit = this.forceUnit();
+        if (!unit) return;
+        
+        const maxArmor = unit.getUnit().as.Arm;
+        const maxInternal = unit.getUnit().as.Str;
+        const totalMax = maxArmor + maxInternal;
+        
+        const committedTotal = unit.getState().armor() + unit.getState().internal();
+        const pendingTotal = unit.getState().pendingArmor() + unit.getState().pendingInternal();
+        const currentTotalDamage = committedTotal + pendingTotal;
+        const currentTotal = totalMax - currentTotalDamage;
+        
+        const values: PickerChoice[] = [];
+        values.push({ label: `-${currentTotalDamage}`, value: -currentTotalDamage });
+        values.push({ label: `0`, value: 0 });
+        values.push({ label: `${currentTotal}`, value: currentTotal });
+        
+        this.showPicker({
+            anchorElement: event.currentTarget as HTMLElement,
+            title: 'DAMAGE',
+            values,
+            onPick: (val: PickerChoice) => {
+                this.removePicker();
+                const deltaChange = val.value as number;
+                const delta = pendingTotal + deltaChange;
+                unit.setPendingDamage(delta);
+                vibrate(10);
+            },
+            onCancel: () => this.removePicker()
+        });
+    }
+    
+    private showCritPicker(event: PointerEvent, critKey: string, rowElement: HTMLElement): void {
+        const unit = this.forceUnit();
+        if (!unit) return;
+        
+        const pips = rowElement.querySelectorAll('.pip');
+        const maxHits = pips.length;
+        if (maxHits === 0) return;
+        
+        const committedHits = unit.getCommittedCritHits(critKey);
+        const pendingHits = unit.getPendingCritChange(critKey);
+        const currentHits = committedHits + pendingHits;
+        const currentTotal = maxHits - currentHits;
+        
+        const values: PickerChoice[] = [];
+        values.push({ label: `-${currentHits}`, value: -currentHits });
+        values.push({ label: `0`, value: 0 });
+        values.push({ label: `${currentTotal}`, value: currentTotal });
+        
+        this.showPicker({
+            anchorElement: rowElement,
+            title: critKey.replace(/-/g, ' ').toUpperCase(),
+            values,
+            selected: 1, // Start with delta of 1 selected
+            onPick: (val: PickerChoice) => {
+                this.removePicker();
+                const delta = pendingHits + (val.value as number);
+                unit.setPendingCritHits(critKey, delta);
+                vibrate(10);
+            },
+            onCancel: () => this.removePicker()
+        });
+    }
+    
+    private showPicker(config: {
+        anchorElement: HTMLElement;
+        title: string;
+        values: PickerChoice[];
+        selected?: number;
+        onPick: (val: PickerChoice) => void;
+        onCancel: () => void;
+    }): void {
+        this.removePicker();
+        
+        // Store anchor element for position updates on scroll
+        this.pickerAnchorElement = config.anchorElement;
+        const position = this.calculatePickerPosition(config.anchorElement);
+        
+        const compRef = createComponent(RotatingPickerComponent, {
+            environmentInjector: this.envInjector,
+        });
+        
+        compRef.setInput('position', position);
+        compRef.setInput('title', config.title);
+        compRef.setInput('lightTheme', this.cardStyle() === 'colored');
+        compRef.setInput('selected', config.selected ?? 0);
+        compRef.instance.values.set(config.values);
+        
+        compRef.instance.picked.subscribe((val: PickerChoice) => config.onPick(val));
+        compRef.instance.cancelled.subscribe(() => config.onCancel());
+        
+        this.appRef.attachView(compRef.hostView);
+        document.body.appendChild(compRef.location.nativeElement);
+        
+        this.pickerRef = {
+            componentRef: compRef,
+            destroy: () => {
+                this.appRef.detachView(compRef.hostView);
+                compRef.destroy();
+            }
+        };
+    }
+    
+    private calculatePickerPosition(element: HTMLElement): PickerPosition {
+        const rect = element.getBoundingClientRect();
+        return {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2
+        };
+    }
+    
+    private updatePickerPosition(): void {
+        if (!this.pickerRef || !this.pickerAnchorElement) return;
+        
+        // Check if anchor element is still in the DOM and visible
+        if (!document.body.contains(this.pickerAnchorElement)) {
+            this.removePicker();
+            return;
+        }
+        
+        const position = this.calculatePickerPosition(this.pickerAnchorElement);
+        this.pickerRef.componentRef.setInput('position', position);
+    }
+    
+    private removePicker(): void {
+        if (this.pickerRef) {
+            this.pickerRef.destroy();
+            this.pickerRef = null;
+        }
+        this.pickerAnchorElement = null;
     }
 }

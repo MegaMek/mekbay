@@ -1,13 +1,13 @@
 <div class="vessel-card-2">
     <!-- Header with unit name -->
     <div class="vessel-header">
-        <span class="alphastrike-text bolder vessel-name">{{ unit().chassis | uppercase }}</span>
+        <span class="alphastrike-text vessel-name">{{ unit().chassis | uppercase }}</span>
         <span class="vessel-model">{{ unit().model | uppercase }}</span>
     </div>
 
     <!-- Arc Damage Tables Grid -->
     <div class="arc-damage-grid">
-        @for (arc of arcDamageData(); track arc.label) {
+        @for (arc of effectiveArcDamageData(); track arc.label) {
         <div class="arc-damage-table frame">
             <div class="frame-background"></div>
             <div class="frame-content">
@@ -29,38 +29,38 @@
 
                     <!-- S Row -->
                     <div class="table-row">
-                        <div class="range-col">S (+0)</div>
-                        <div class="dmg-col">{{ arc.dmgS }}</div>
-                        @if (hasCap()) {<div class="dmg-col">{{ arc.capS }}</div>}
-                        <div class="dmg-col">{{ arc.scapS }}</div>
-                        <div class="dmg-col">{{ arc.mslS }}</div>
+                        <div class="range-col">S ({{ toHitShort() }}+)</div>
+                        <div class="dmg-col">{{ arc.effDmgS }}</div>
+                        @if (hasCap()) {<div class="dmg-col">{{ arc.effCapS }}</div>}
+                        <div class="dmg-col">{{ arc.effScapS }}</div>
+                        <div class="dmg-col">{{ arc.effMslS }}</div>
                     </div>
 
                     <!-- M Row -->
                     <div class="table-row">
-                        <div class="range-col">M(+2)</div>
-                        <div class="dmg-col">{{ arc.dmgM }}</div>
-                        @if (hasCap()) {<div class="dmg-col">{{ arc.capM }}</div>}
-                        <div class="dmg-col">{{ arc.scapM }}</div>
-                        <div class="dmg-col">{{ arc.mslM }}</div>
+                        <div class="range-col">M({{ toHitMedium() }}+)</div>
+                        <div class="dmg-col">{{ arc.effDmgM }}</div>
+                        @if (hasCap()) {<div class="dmg-col">{{ arc.effCapM }}</div>}
+                        <div class="dmg-col">{{ arc.effScapM }}</div>
+                        <div class="dmg-col">{{ arc.effMslM }}</div>
                     </div>
 
                     <!-- L Row -->
                     <div class="table-row">
-                        <div class="range-col">L (+4)</div>
-                        <div class="dmg-col">{{ arc.dmgL }}</div>
-                        @if (hasCap()) {<div class="dmg-col">{{ arc.capL }}</div>}
-                        <div class="dmg-col">{{ arc.scapL }}</div>
-                        <div class="dmg-col">{{ arc.mslL }}</div>
+                        <div class="range-col">L ({{ toHitLong() }}+)</div>
+                        <div class="dmg-col">{{ arc.effDmgL }}</div>
+                        @if (hasCap()) {<div class="dmg-col">{{ arc.effCapL }}</div>}
+                        <div class="dmg-col">{{ arc.effScapL }}</div>
+                        <div class="dmg-col">{{ arc.effMslL }}</div>
                     </div>
 
                     <!-- E Row -->
                     <div class="table-row">
-                        <div class="range-col">E (+6)</div>
-                        <div class="dmg-col">{{ arc.dmgE }}</div>
-                        @if (hasCap()) {<div class="dmg-col">{{ arc.capE }}</div>}
-                        <div class="dmg-col">{{ arc.scapE }}</div>
-                        <div class="dmg-col">{{ arc.mslE }}</div>
+                        <div class="range-col">E ({{ toHitExtreme() }}+)</div>
+                        <div class="dmg-col">{{ arc.effDmgE }}</div>
+                        @if (hasCap()) {<div class="dmg-col">{{ arc.effCapE }}</div>}
+                        <div class="dmg-col">{{ arc.effScapE }}</div>
+                        <div class="dmg-col">{{ arc.effMslE }}</div>
                     </div>
 
                     @let columns = hasCap() ? 4 : 3;
@@ -75,9 +75,14 @@
                         <div class="range-col">CRIT</div>
                         <div class="crit-pips-container">
                             @for (col of range(columns); track col) {
-                            <div class="crit-pip-group" [attr.data-crit]="arc.shortLabel + '-' + col">
+                            @let critKey = arc.shortLabel + '-' + getColumnName(col);
+                            <div class="crit-pip-group" [attr.data-crit]="critKey">
                                 @for (i of range(4); track i) {
-                                    <svg class="pip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
+                                    <svg class="pip" 
+                                         [class.damaged]="isCritPipDamaged(critKey, i)"
+                                         [class.pending-damage]="isCritPipPendingDamage(critKey, i)"
+                                         [class.pending-heal]="isCritPipPendingHeal(critKey, i)"
+                                         viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                                 }
                             </div>
                             }
@@ -95,3 +100,9 @@
         <span class="note-text">Damage Value Reduced by 25% per hit. — Randomly determine an appropriate STD/@if(hasCap()){CAP/}SCAP/MSL column.</span>
     </div>
 </div>
+
+<!-- Destroyed Overlay -->
+@if (isDestroyed()) {
+<div class="destroyed-overlay">
+</div>
+}
