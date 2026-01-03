@@ -56,5 +56,5 @@ export class UnitDetailsCardTabComponent {
     });
 
     readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
-    // readonly cardStyle = computed<'colored' | 'monochrome'>(() => this.optionsService.options().ASCardStyle);
+    readonly cardStyle = computed<'colored' | 'monochrome'>(() => this.optionsService.options().ASCardStyle);
 }

@@ -29,7 +29,8 @@
                             asStats().SZ }}</span></span>
                     <span class="stat-item"><span class="as-caption">THR:</span><span class="as-value">{{
                             effectiveTh() }}</span></span>
-                    <span class="stat-item" [class.clickable]="interactive()" (click)="interactive() && onEditPilotClick()"><span class="as-caption">SKILL:</span><span
+                    <span class="stat-item" [class.clickable]="interactive()"
+                        (click)="interactive() && onEditPilotClick()"><span class="as-caption">SKILL:</span><span
                             class="as-value">{{ skill() }}</span></span>
                 </div>
             </div>
@@ -38,13 +39,10 @@
         <!-- Row 1 Right: Era Icons -->
         <div class="era-icons">
             @for (item of eraAvailability(); track item.era.id) {
-                @if (item.era.icon) {
-                    <img class="era-icon" 
-                         [src]="item.era.icon" 
-                         [alt]="item.era.name"
-                         [title]="item.era.name"
-                         [class.unavailable]="!item.isAvailable" />
-                }
+            @if (item.era.icon) {
+            <img class="era-icon" [src]="item.era.icon" [alt]="item.era.name" [title]="item.era.name"
+                [class.unavailable]="!item.isAvailable" />
+            }
             }
         </div>
 
@@ -58,14 +56,15 @@
                 </div>
                 <div class="damage-section">
                     <div class="section-label">DAMAGE</div>
-                    <div class="damage-track" 
-                         data-damage-track="armor"
-                         [class.has-pending]="pendingArmorChange() !== 0"
-                         [class.pending-damage]="pendingArmorChange() > 0"
-                         [class.pending-heal]="pendingArmorChange() < 0">
-                         <span class="damage-value">{{ committedArmorDamage() }}</span>
+                    <div class="damage-track" data-damage-track="armor" [class.has-pending]="pendingArmorChange() !== 0"
+                        [class.pending-damage]="pendingArmorChange() > 0"
+                        [class.pending-heal]="pendingArmorChange() < 0">
+                        @if (committedArmorDamage() > 0 || pendingArmorChange() > 0) {
+                        <span class="damage-value">{{ committedArmorDamage() }}</span>
                         @if (pendingArmorChange() !== 0) {
-                             <span class="pending-value">{{ pendingArmorChange() >= 0 ? '+' : '' }}{{ pendingArmorChange() }}</span>
+                        <span class="pending-value">{{ pendingArmorChange() >= 0 ? '+' : '' }}{{ pendingArmorChange()
+                            }}</span>
+                        }
                         }
                     </div>
                 </div>
@@ -79,15 +78,16 @@
                 </div>
                 <div class="damage-section">
                     <div class="section-label">DAMAGE</div>
-                    <div class="damage-track" 
-                         data-damage-track="structure"
-                         [class.has-pending]="pendingInternalChange() !== 0"
-                         [class.pending-damage]="pendingInternalChange() > 0"
-                         [class.pending-heal]="pendingInternalChange() < 0">
-                         <span class="damage-value">{{ committedInternalDamage() }}</span>
+                    <div class="damage-track" data-damage-track="structure"
+                        [class.has-pending]="pendingInternalChange() !== 0"
+                        [class.pending-damage]="pendingInternalChange() > 0"
+                        [class.pending-heal]="pendingInternalChange() < 0">
+                        @if (committedInternalDamage() > 0 || pendingInternalChange() > 0) {
+                        <span class="damage-value">{{ committedInternalDamage() }}</span>
                         @if (pendingInternalChange() !== 0) {
-                            <span class="pending-value">{{ pendingInternalChange() >= 0 ? '+' : '' }}{{ pendingInternalChange() }}</span>
-                        } @else {
+                        <span class="pending-value">{{ pendingInternalChange() >= 0 ? '+' : '' }}{{
+                            pendingInternalChange() }}</span>
+                        }
                         }
                     </div>
                 </div>
@@ -119,34 +119,36 @@
         </div>
 
         <!-- Row 3 Right: SPAs -->
-        <div class="spa-container"> 
+        <div class="spa-container">
             <!-- Unit Image -->
             @if (imageUrl()) {
             <div class="fluff-image-container center-vertical">
                 <img class="fluff-image" [src]="imageUrl()" alt="Unit image" />
             </div>
-            }           
+            }
             @let abilities = pilotAbilities();
             @if (abilities.length > 0) {
-                <div class="pilot-abilities">
-                    @for (ability of abilities; track $index) {
-                        <div class="pilot-ability">{{ ability }}</div>
-                    }
-                </div>
+            <div class="pilot-abilities">
+                @for (ability of abilities; track $index) {
+                <div class="pilot-ability">{{ ability }}</div>
+                }
+            </div>
             }
         </div>
 
         <!-- Row 4 Right: Specials Box -->
         @if (effectiveSpecials().length > 0) {
-            <div class="specials-box frame">
-                <div class="frame-background"></div>
-                <div class="frame-content">
-                    <span class="as-caption">SPECIAL:&nbsp;</span>
-                    @for (item of effectiveSpecials(); track item.original; let isLast = $last) {
-                    <span class="special-ability as-value" [attr.data-original]="item.original" (click)="onSpecialClick(item)">{{ item.effective }}@if (!isLast) {<span class="special-separator">,</span>}</span>&nbsp;
-                    }
-                </div>
+        <div class="specials-box frame">
+            <div class="frame-background"></div>
+            <div class="frame-content">
+                <span class="as-caption">SPECIAL:&nbsp;</span>
+                @for (item of effectiveSpecials(); track item.original; let isLast = $last) {
+                <span class="special-ability as-value" [attr.data-original]="item.original"
+                    (click)="onSpecialClick(item)">{{ item.effective }}@if (!isLast) {<span
+                        class="special-separator">,</span>}</span>&nbsp;
+                }
             </div>
+        </div>
         }
     </div>
 </div>
