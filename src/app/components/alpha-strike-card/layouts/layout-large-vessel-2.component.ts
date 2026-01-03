@@ -266,9 +266,10 @@ export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
     });
 
     /**
-     * Apply vessel weapon crit reduction: 50% reduction per crit hit (halving each time).
-     * Each hit halves the current value (rounded down).
-     * 1 hit = x0.5, 2 hits = x0.25, 3 hits = x0.125, 4 hits = x0.0625
+     * Apply vessel weapon crit reduction: 25% reduction per crit hit. 4 hits = 100% reduction.
+     * @param baseValue The base damage value (number or string)
+     * @param critHits Number of crit hits applied
+     * @returns The adjusted damage value as a string
      */
     private applyVesselCritReduction(baseValue: number | string | undefined, critHits: number): string {
         // If it's already a string (like '—') or not a number, return as-is
@@ -278,11 +279,11 @@ export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
         
         if (critHits <= 0) return String(baseValue);
         
-        // Apply 50% reduction per hit, flooring at each step
-        let current = baseValue;
-        for (let i = 0; i < critHits; i++) {
-            current = Math.floor(current / 2);
-        }
-        return String(current);
+        // Apply 25% reduction per hit, 1 hit = 25%, 2 hits = 50%, 3 hits = 75%, 4 hits = 100%
+        const effectiveCrits = Math.min(critHits, 4);
+        const reductionFactor = 1 - (effectiveCrits * 0.25);
+        const reducedValue = Math.floor(baseValue * reductionFactor);
+        
+        return reducedValue <= 0 ? '0' : String(reducedValue);
     }
 }
