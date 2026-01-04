@@ -583,7 +583,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         type: SpecialAbilityType.Standard,
     },
     {
-        tag: "C3EM#",
+        tag: "C3EM",
         name: "C³ Emergency Master Computer",
         summary: [
             "A C³EM system is an emergency backup for a standard C³ Master system, and activates only during the End Phase of any turn in which the network’s normal C³ master cannot be contacted (either due to destruction or ECM interference). The emergency master runs for 2 consecutive turns (not counting the turn in which it activates), shutting down in the End Phase of the second turn. "
