@@ -186,8 +186,7 @@ export class AlphaStrikeViewerComponent {
     onCanvasClearRequested(): void {
         const currentUnit = this.unit();
         if (currentUnit) {
-            // AS cards use a different canvas ID format
-            this.dbService.deleteCanvasData(`${currentUnit.id}-as`);
+            this.dbService.deleteCanvasData(currentUnit.id);
         }
     }
     

@@ -197,11 +197,7 @@ export class PageCanvasOverlayComponent {
     private unitCanvasId = computed<string>(() => {
         const unit = this.unit();
         if (!unit) return '';
-
-        const id = unit.id;
-        const isAlphaStrike = unit.force.gameSystem === GameSystem.ALPHA_STRIKE;
-
-        return isAlphaStrike ? `${id}-as` : id;
+        return unit.id;
     });
 
     // Bound event handlers
