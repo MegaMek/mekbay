@@ -76,7 +76,11 @@
                 (longPress)="multiSelectUnit(unit)">
 
                 @if (this.expandedView()) {
+                @if (gameService.isAlphaStrike()) {
+                <ng-container *ngTemplateOutlet="expandedViewAS; context: { unit: unit }"></ng-container>
+                } @else {
                 <ng-container *ngTemplateOutlet="expandedView; context: { unit: unit }"></ng-container>
+                }
                 } @else {
                 <!-- Compact View Template -->
                 <div class="unit-image-container">
@@ -497,6 +501,126 @@
                     }
                 </div>
                 }
+                }
+            </div>
+        </div>
+    </div>
+</ng-template>
+
+<ng-template #expandedViewAS let-unit="unit">
+    <div class="expanded-unit-card">
+        <!-- Header Section -->
+        <div class="expanded-header">
+            <div class="expanded-image">
+                <unit-icon [unit]="unit"></unit-icon>
+            </div>
+            <div class="expanded-title">
+                <div class="expanded-model" [innerHTML]="highlight(unit.model)"></div>
+                <div class="expanded-chassis" [innerHTML]="highlight(unit.chassis)"></div>
+            </div>
+            <div class="expanded-subtitle">
+                @if (unit.role && unit.role !== 'None') {
+                <div class="subtitle-line role">{{ unit.role }}</div>
+                }
+                <div class="subtitle-line">
+                    <span>{{ unit.as.TP }}</span>
+                    <span> • {{ unit.weightClass }}</span>
+                </div>
+                <div class="subtitle-line">
+                    <div class="info-slot-tags">
+                        @for(tag of unit._tags; let i = $index; track i) {
+                        <span class="tag">{{ tag }}</span>
+                        }
+                        <a class="add-tag-btn" (click)="onAddTag(unit, $event)" title="Add tag" aria-label="Add tag">
+                            <svg fill="none" stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24"
+                                xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                                <path
+                                    d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z"
+                                    stroke-width="1.5" />
+                                <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="expanded-content as-view">
+            <!-- Left Column: Basic Info & Stats -->
+            <div class="expanded-basic">
+                <!-- Basic Info Grid -->
+                <div class="expanded-basic-info">
+                    <div class="info-item">
+                        <span class="info-label muted">PV:</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Size:</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">{{ unit.as.SZ }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label muted">TMM:</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">{{ unit.as.TMM }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Movement:</span>
+                        <span class="info-value">{{ formatASMovement(unit) }}</span>
+                    </div>
+                    @if (!unit.as.usesArcs) {
+                    <div class="info-item">
+                        <span class="info-label muted">Damage:</span>
+                        <span class="info-value">{{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }}</span>
+                    </div>
+                    }
+                    <div class="info-item">
+                        <span class="info-label muted">Armor:</span>
+                        <span class="info-value">{{ unit.as.Arm }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Structure:</span>
+                        <span class="info-value">{{ unit.as.Str }}</span>
+                    </div>
+                    @if (unit.as.usesOV) {
+                    <div class="info-item">
+                        <span class="info-label muted">Overheat:</span>
+                        <span class="info-value">{{ unit.as.OV }}</span>
+                    </div>
+                    }
+                    @if (unit.as.usesTh) {
+                    <div class="info-item">
+                        <span class="info-label muted">Thrust:</span>
+                        <span class="info-value">{{ unit.as.Th }}</span>
+                    </div>
+                    }
+                    <div class="info-item">
+                        <span class="info-label muted">Intro Year: </span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">{{ unit.year }} @if(unit._era?.img) {
+                            <img [src]="unit._era.img" class="era-icon" [alt]="unit._era?.name"
+                                [title]="unit._era?.name" /> }</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Tech:</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'techBase'">{{ unit.techBase }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label muted">Tons:</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">{{ unit.tons | formatTons }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Specials -->
+            <div class="expanded-right">
+                @if (unit.as.specials && unit.as.specials.length > 0) {
+                <div class="components-header">Special:</div>
+                <div class="expanded-specials">
+                    <div class="specials-pills">
+                        @for (special of unit.as.specials; let last = $last; let i = $index; track i) {
+                        <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
+                        }
+                    </div>
+                </div>
                 }
             </div>
         </div>

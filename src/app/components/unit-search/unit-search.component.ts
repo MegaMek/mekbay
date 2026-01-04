@@ -64,6 +64,9 @@ import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { RangeModel, UnitSearchFilterRangeDialogComponent, UnitSearchFilterRangeDialogData } from '../unit-search-filter-range-dialog/unit-search-filter-range-dialog.component';
 import { GameService } from '../../services/game.service';
+import { OptionsService } from '../../services/options.service';
+import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
+import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 
 
 
@@ -114,6 +117,10 @@ export class UnitSearchComponent {
     private dialogsService = inject(DialogsService);
     private overlay = inject(Overlay);
     private cdr = inject(ChangeDetectorRef);
+    private abilityLookup = inject(AsAbilityLookupService);
+    private optionsService = inject(OptionsService);
+
+    readonly useHex = computed(() => this.optionsService.options().ASUseHex);
 
     public readonly ADVANCED_FILTERS = ADVANCED_FILTERS;
     public readonly AdvFilterType = AdvFilterType;
@@ -889,6 +896,48 @@ export class UnitSearchComponent {
         };
         this.clearSelection();
         this.closeAllPanels();
+    }
+
+    /**
+     * Show ability info dialog for an Alpha Strike special ability.
+     * @param abilityText The original ability text (e.g., "ECM", "LRM1/2/2")
+     */
+    showAbilityInfoDialog(abilityText: string): void {
+        const parsedAbility = this.abilityLookup.parseAbility(abilityText);
+        this.dialogsService.createDialog<void>(AbilityInfoDialogComponent, {
+            data: { parsedAbility } as AbilityInfoDialogData
+        });
+    }
+
+    /**
+     * Format movement value for Alpha Strike expanded view.
+     * Converts inches to hexes if hex mode is enabled.
+     * Handles different movement modes (j for jump, etc.)
+     */
+    formatASMovement(unit: Unit): string {
+        const mvm = unit.as.MVm;
+        if (!mvm) return unit.as.MV ?? '';
+
+        const entries = Object.entries(mvm)
+            .filter(([, value]) => typeof value === 'number' && value > 0) as Array<[string, number]>;
+
+        if (entries.length === 0) return unit.as.MV ?? '';
+
+        // Sort so default movement comes first
+        entries.sort((a, b) => {
+            if (a[0] === '') return -1;
+            if (b[0] === '') return 1;
+            return 0;
+        });
+
+        return entries
+            .map(([mode, inches]) => {
+                if (this.useHex()) {
+                    return Math.ceil(inches / 2) + mode;
+                }
+                return inches + '"' + mode;
+            })
+            .join('/');
     }
 
     toggleExpandedView() {
