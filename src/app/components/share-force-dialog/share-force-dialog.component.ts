@@ -164,6 +164,7 @@ export class ShareForceDialogComponent {
         const cleanTree = this.router.createUrlTree([], {
             relativeTo: this.route,
             queryParams: {
+                gs: queryParameters.gs || null,
                 units: queryParameters.units,
                 name: queryParameters.name || null
             }
