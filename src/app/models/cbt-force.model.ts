@@ -136,13 +136,13 @@ export class CBTForce extends Force<CBTForceUnit> {
             id: g.id,
             name: g.name(),
             nameLock: g.nameLock,
-            type: GameSystem.CLASSIC,
             color: g.color,
             units: g.units().map(u => u.serialize())
         })) as CBTSerializedGroup[];
         return {
             version: 1,
             timestamp: this.timestamp ?? new Date().toISOString(),
+            type: GameSystem.CLASSIC,
             instanceId: instanceId,
             name: this.name,
             bv: this.totalBv(),
