@@ -70,6 +70,19 @@ export class ImageStorageService {
         this.checkAndHydrate();
     }
 
+    public async clearUnitIconsStore(): Promise<void> {
+        await this.setLocalHash('');
+        return this.dbPromise.then(db => {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readwrite');
+                const store = transaction.objectStore(UNIT_ICONS_STORE_NAME);
+                const request = store.clear();
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        });
+    }
+
     private initIndexedDb(): Promise<IDBDatabase> {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -96,7 +109,7 @@ export class ImageStorageService {
         });
     }
 
-    private async checkAndHydrate() {
+    public async checkAndHydrate() {
         try {
             const count = await this.getCount();
             const localHash = await this.getLocalHash();
@@ -174,7 +187,7 @@ export class ImageStorageService {
         });
     }
 
-    private getCount(): Promise<number> {
+    public getCount(): Promise<number> {
         return this.dbPromise.then(db => {
             return new Promise((resolve, reject) => {
                 const transaction = db.transaction(UNIT_ICONS_STORE_NAME, 'readonly');

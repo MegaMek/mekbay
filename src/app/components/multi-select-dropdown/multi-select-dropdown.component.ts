@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, HostListener, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector, effect } from '@angular/core';
+import { Component, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LayoutService } from '../../services/layout.service';
 import { highlightMatches, matchesSearch, parseSearchQuery } from '../../utils/search.util';
@@ -137,6 +137,17 @@ export class MultiSelectDropdownComponent {
         }
     };
 
+    private onOutsideDocumentClick = (event: MouseEvent) => {
+        if (!this.isOpen()) return;
+        const target = event.target;
+        if (!(target instanceof Node)) return;
+
+        if (!this.elementRef.nativeElement.contains(target)) {
+            this.isOpen.set(false);
+            this.filterText.set('');
+        }
+    };
+
     constructor() {
         effect((cleanup) => {
             document.addEventListener('multi-select-dropdown-open', this.openListener as EventListener);
@@ -144,14 +155,16 @@ export class MultiSelectDropdownComponent {
                 document.removeEventListener('multi-select-dropdown-open', this.openListener as EventListener);
             });
         });
-    }
 
-    @HostListener('document:click', ['$event'])
-    onDocumentClick(event: MouseEvent) {
-        if (this.isOpen() && !this.elementRef.nativeElement.contains(event.target)) {
-            this.isOpen.set(false);
-            this.filterText.set('');
-        }
+        effect((cleanup) => {
+            if (!this.isOpen()) return;
+
+            document.addEventListener('click', this.onOutsideDocumentClick, true);
+
+            cleanup(() => {
+                document.removeEventListener('click', this.onOutsideDocumentClick, true);
+            });
+        });
     }
 
     toggleDropdown() {
@@ -212,7 +225,7 @@ export class MultiSelectDropdownComponent {
         // Preserve the item's visible top within the container viewport (pixels from container top)
         let preservedVisibleTop: number | null = null;
         if (container) {
-            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + optionName + '"]');
+            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(optionName) + '"]');
             if (item) {
                 const containerRect = container.getBoundingClientRect();
                 const itemRect = item.getBoundingClientRect();
@@ -264,7 +277,7 @@ export class MultiSelectDropdownComponent {
             }
 
             // find the same item after update
-            const itemAfter = container.querySelector<HTMLElement>('.option-item[data-option-name="' + optionName + '"]');
+            const itemAfter = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(optionName) + '"]');
             if (!itemAfter) {
                 return;
             }
@@ -308,7 +321,7 @@ export class MultiSelectDropdownComponent {
         // Preserve the item's visible top within the container viewport (pixels from container top)
         let preservedVisibleTop: number | null = null;
         if (container) {
-            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + optionName + '"]');
+            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(optionName) + '"]');
             if (item) {
                 const containerRect = container.getBoundingClientRect();
                 const itemRect = item.getBoundingClientRect();

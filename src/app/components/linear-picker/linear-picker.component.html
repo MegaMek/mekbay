@@ -1,4 +1,4 @@
-<div #picker class="linear-picker" [class.touch]="this.layoutService.isTouchInput()" [class.horizontal]="horizontal()"
+<div #picker class="linear-picker" [class.light-theme]="lightTheme()" [class.touch]="this.layoutService.isTouchInput()" [class.horizontal]="horizontal()"
     [class.vertical]="!horizontal()">
     @for (choice of values(); let i = $index; track choice.value) {
     @switch(choice.displayType) {

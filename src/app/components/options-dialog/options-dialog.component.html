@@ -1,174 +1,202 @@
-<base-dialog [tabs]="tabs" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)">
+<base-dialog [tabs]="tabs()" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)">
     <div dialog-header>
         <div class="title">Options</div>
     </div>
     <div dialog-body class="dialog-body">
         @if (activeTab() === 'General') {
-            <div class="tab-content">
+        <div class="tab-content">
+            <div class="option-row">
+                <label for="gameSystem">Default Game system:</label>
+                <select id="gameSystem" class="bt-select" [value]="optionsService.options().gameSystem"
+                    (change)="onGameSystemChange($event)">
+                    <option value="cbt">BattleTech Classic (default)</option>
+                    <option value="as">Alpha Strike</option>
+                </select>
+            </div>
+            <div class="option-row">
+                <label for="unitDisplayName">Unit display name:</label>
+                <select id="unitDisplayName" class="bt-select" [value]="optionsService.options().unitDisplayName"
+                    (change)="onUnitDisplayNameChange($event)">
+                    <option value="chassisModel">Chassis & model (default)</option>
+                    <option value="alias">Pilot name</option>
+                    <option value="both">Chassis, model and pilot</option>
+                </select>
+            </div>
+            <hr />
+            <div class="option-col">
+                <label for="userUuid">User identifier:</label>
                 <div class="option-row">
-                    <label for="sheetsColor">Theme:</label>
-                    <select id="sheetsColor" class="bt-select" [value]="optionsService.options().sheetsColor"
-                        (change)="onSheetsColorChange($event)">
-                        <option value="normal">Normal (default)</option>
-                        <option value="night">Night mode</option>
-                    </select>
+                    <input #uuidInput id="userUuid" class="bt-input" [class.error]="!!userUuidError" type="text"
+                        [value]="userUuid()" (focus)="selectAll($event)" (keydown)="onUserUuidKeydown($event)" />
+                    <button class="bt-button" (click)="onSetUuid(uuidInput.value)">APPLY</button>
                 </div>
-                <div class="option-row">
-                    <label for="unitDisplayName">Unit Display Name:</label>
-                    <select id="unitDisplayName" class="bt-select" [value]="optionsService.options().unitDisplayName"
-                        (change)="onUnitDisplayNameChange($event)">
-                        <option value="chassisModel">Chassis & Model (default)</option>
-                        <option value="alias">Pilot Name</option>
-                        <option value="both">Chassis, Model and Pilot</option>
-                    </select>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="quickActions">Quick actions:</label>
-                        <select id="quickActions" class="bt-select" [value]="optionsService.options().quickActions"
-                            (change)="onQuickActionsChange($event)">
-                            <option value="enabled">Enabled</option>
-                            <option value="disabled">Disabled (default)</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Quick actions let you trigger the picker's default action with a single tap or click, without opening
-                            the picker.</p>
-                        <p>Examples: in the Critical Table, clicking an ammo slot reduces ammo by 1; clicking other critical
-                            slots applies a critical hit.</p>
-                    </div>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="useAutomations">Use Automations:</label>
-                        <select id="useAutomations" class="bt-select" [value]="optionsService.options().useAutomations"
-                            (change)="onUseAutomationsChange($event)">
-                            <option value="true">Enabled (default)</option>
-                            <option value="false">Disabled</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Automations provide automatic calculations and effects for various game mechanics, such as
-                            turn/phase tracking, PSRs, critical table, and damage application.</p>
-                        <p>Disabling automations will require manual tracking of these mechanics during gameplay.</p>
-                    </div>
-                </div>
-                <hr />
-                <div class="option-col">
-                    <label for="userUuid">User Identifier:</label>
-                    <div class="option-row">
-                        <input #uuidInput id="userUuid" class="bt-input" [class.error]="!!userUuidError" type="text" [value]="userUuid()"
-                            (focus)="selectAll($event)"
-                            (keydown)="onUserUuidKeydown($event)" />
-                        <button class="bt-button" (click)="onSetUuid(uuidInput.value)">APPLY</button>
-                    </div>
-                    @if (userUuidError) {<div class="error-msg">{{ userUuidError }}</div>}
-                    <div class="description">
-                        <p>The User Identifier is used for cloud saving and is autogenerated the first time the application is
-                            started.</p>
-                        <p>By setting the same ID on multiple devices, you can share your saved forces across them.</p>
-                    </div>
+                @if (userUuidError) {<div class="error-msg">{{ userUuidError }}</div>}
+                <div class="description">
+                    <p>The User Identifier is used for cloud saving and is autogenerated the first time the application
+                        is
+                        started.</p>
+                    <p>By setting the same ID on multiple devices, you can share your saved forces across them.</p>
                 </div>
             </div>
+        </div>
         }
         @if (activeTab() === 'Sheets') {
-            <div class="tab-content">
+        <div class="tab-content">
+            <div class="option-row">
+                <label for="sheetsColor">Color schema:</label>
+                <select id="sheetsColor" class="bt-select" [value]="optionsService.options().sheetsColor"
+                    (change)="onSheetsColorChange($event)">
+                    <option value="normal">Normal (default)</option>
+                    <option value="night">Night mode</option>
+                </select>
+            </div>
+            <div class="option-col">
                 <div class="option-row">
-                    <label for="recordSheetCenterPanelContent">Center Panel:</label>
-                    <select id="recordSheetCenterPanelContent" class="bt-select" [value]="optionsService.options().recordSheetCenterPanelContent"
-                        (change)="onRecordSheetCenterPanelContentChange($event)">
-                        <option value="clusterTable">Hit Location and Cluster Table (default)</option>
-                        <option value="fluffImage">Artwork</option>
+                    <label for="quickActions">Quick actions:</label>
+                    <select id="quickActions" class="bt-select" [value]="optionsService.options().quickActions"
+                        (change)="onQuickActionsChange($event)">
+                        <option value="enabled">Enabled</option>
+                        <option value="disabled">Disabled (default)</option>
                     </select>
                 </div>
+                <div class="description">
+                    <p>Quick actions let you trigger the picker's default action with a single tap or click, without
+                        opening
+                        the picker.</p>
+                    <p>Examples: in the Critical Table, clicking an ammo slot reduces ammo by 1; clicking other critical
+                        slots applies a critical hit.</p>
+                </div>
+            </div>
+            <div class="option-col">
                 <div class="option-row">
-                    <label for="syncZoomBetweenSheets">Sync zoom/pan:</label>
-                    <select id="syncZoomBetweenSheets" class="bt-select" [value]="optionsService.options().syncZoomBetweenSheets"
-                        (change)="onSyncZoomBetweenSheetsChange($event)">
+                    <label for="useAutomations">Use automations:</label>
+                    <select id="useAutomations" class="bt-select" [value]="optionsService.options().useAutomations"
+                        (change)="onUseAutomationsChange($event)">
                         <option value="true">Enabled (default)</option>
                         <option value="false">Disabled</option>
                     </select>
                 </div>
-                <div class="option-row">
-                    <label for="swipeToNextSheet">Swipe to next sheet:</label>
-                    <select id="swipeToNextSheet" class="bt-select" [value]="optionsService.options().swipeToNextSheet"
-                        (change)="onSwipeToNextSheetChange($event)">
-                        <!-- <option value="vertical">Vertical</option> -->
-                        <option value="horizontal">Horizontal</option>
-                        <option value="disabled">Disabled</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="pickerStyle">Picker style:</label>
-                    <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"
-                        (change)="onPickerStyleChange($event)">
-                        <option value="default">Automatic (default)</option>
-                        <option value="radial">Always Dial</option>
-                        <option value="linear">Always Linear</option>
-                    </select>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="canvasInput">Drawing input:</label>
-                        <select id="canvasInput" class="bt-select" [value]="optionsService.options().canvasInput"
-                            (change)="onCanvasInputChange($event)">
-                            <option value="all">All</option>
-                            <option value="pen">Pen only</option>
-                            <option value="touch">Touch only</option>
-                        </select>
-                    </div>
-                    @if (isIOS) {
-                    <div class="description">
-                        <p>To enhance the performance with Apple Pencil, disable Scribble mode in Settings > Apple Pencil > Scribble.</p>
-                    </div>
-                    }
+                <div class="description">
+                    <p>Automations provide automatic calculations and effects for various game mechanics, such as
+                        turn/phase tracking, PSRs, critical table, and damage application.</p>
+                    <p>Disabling automations will require manual tracking of these mechanics during gameplay.</p>
                 </div>
             </div>
+            <div class="option-row">
+                <label for="recordSheetCenterPanelContent">Center panel:</label>
+                <select id="recordSheetCenterPanelContent" class="bt-select"
+                    [value]="optionsService.options().recordSheetCenterPanelContent"
+                    (change)="onRecordSheetCenterPanelContentChange($event)">
+                    <option value="clusterTable">Hit location and cluster table (default)</option>
+                    <option value="fluffImage">Artwork</option>
+                </select>
+            </div>
+            <div class="option-row">
+                <label for="syncZoomBetweenSheets">Sync zoom/pan:</label>
+                <select id="syncZoomBetweenSheets" class="bt-select"
+                    [value]="optionsService.options().syncZoomBetweenSheets"
+                    (change)="onSyncZoomBetweenSheetsChange($event)">
+                    <option value="true">Enabled (default)</option>
+                    <option value="false">Disabled</option>
+                </select>
+            </div>
+            <div class="option-row">
+                <label for="swipeToNextSheet">Swipe to next sheet:</label>
+                <select id="swipeToNextSheet" class="bt-select" [value]="optionsService.options().swipeToNextSheet"
+                    (change)="onSwipeToNextSheetChange($event)">
+                    <!-- <option value="vertical">Vertical</option> -->
+                    <option value="horizontal">Horizontal</option>
+                    <option value="disabled">Disabled</option>
+                </select>
+            </div>
+            <div class="option-row">
+                <label for="pickerStyle">Picker style:</label>
+                <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"
+                    (change)="onPickerStyleChange($event)">
+                    <option value="default">Automatic (default)</option>
+                    <option value="radial">Always Dial</option>
+                    <option value="linear">Always Linear</option>
+                </select>
+            </div>
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="canvasInput">Drawing input:</label>
+                    <select id="canvasInput" class="bt-select" [value]="optionsService.options().canvasInput"
+                        (change)="onCanvasInputChange($event)">
+                        <option value="all">All</option>
+                        <option value="pen">Pen only</option>
+                        <option value="touch">Touch only</option>
+                    </select>
+                </div>
+                @if (isIOS) {
+                <div class="description">
+                    <p>To enhance the performance with Apple Pencil, disable Scribble mode in Settings > Apple Pencil >
+                        Scribble.</p>
+                </div>
+                }
+            </div>
+        </div>
+        }
+        <!-- Alpha Strike options -->
+        @if (activeTab() === 'Alpha Strike') {
+        <div class="tab-content">
+            <div class="option-row">
+                <label for="ASCardStyle">Card theme:</label>
+                <select id="ASCardStyle" class="bt-select" [value]="optionsService.options().ASCardStyle"
+                    (change)="onASCardStyleChange($event)">
+                    <option value="monochrome">Light (default)</option>
+                    <option value="colored">Dark</option>
+                </select>
+            </div>
+            <div class="option-row">
+                <label for="ASUseHex">Measures:</label>
+                <select id="ASUseHex" class="bt-select" [value]="optionsService.options().ASUseHex"
+                    (change)="onASUseHexChange($event)">
+                    <option value="false">Inches (default)</option>
+                    <option value="true">Hexes</option>
+                </select>
+            </div>
+        </div>
         }
         <!-- Advanced options -->
         @if (activeTab() === 'Advanced') {
-            <div class="tab-content">
+        <div class="tab-content">
+            <div class="option-row">
+                <span>Unit icons stored: <strong>{{ unitIconsCount() }}</strong></span>
+                <button class="bt-button" (click)="onPurgeIcons()">PURGE</button>
+            </div>
+            <div class="option-row">
+                <span>Drawings stored: <strong>{{ formatBytes(canvasMemorySize()) }}</strong></span>
+                <button class="bt-button" (click)="onPurgeCanvas()">PURGE</button>
+            </div>
+            <div class="option-col">
                 <div class="option-row">
-                    <span>Drawings stored: <strong>{{ formatBytes(canvasMemorySize()) }}</strong></span>
-                    <button class="bt-button" (click)="onPurgeCanvas()">PURGE</button>
+                    <span>Record sheets stored ({{ sheetCacheCount() }}): <strong>{{ formatBytes(sheetCacheSize())
+                            }}</strong></span>
+                    <button class="bt-button" (click)="onPurgeCache()">PURGE</button>
                 </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <span>Record sheets stored ({{ sheetCacheCount() }}): <strong>{{ formatBytes(sheetCacheSize()) }}</strong></span>
-                        <button class="bt-button" (click)="onPurgeCache()">PURGE</button>
-                    </div>
-                    <div class="description">
-                        <p>MekBay caches record sheets locally to speed up loading times and for offline use.</p>
-                        <p>Purging the cache will remove all stored sheets. They will be re-downloaded as needed.</p>
-                    </div>
+                <div class="description">
+                    <p>MekBay caches record sheets locally to speed up loading times and for offline use.</p>
+                    <p>Purging the cache will remove all stored sheets. They will be re-downloaded as needed.</p>
                 </div>
             </div>
-            <div class="tab-content">
-                <div class="option-row">
-                    <label for="gameSystem">Game System:</label>
-                    <select id="gameSystem" class="bt-select" [value]="optionsService.options().gameSystem"
-                        (change)="onGameSystemChange($event)">
-                        <option value="cbt">BattleTech Classic (default)</option>
-                        <option value="as">Alpha Strike</option>
-                    </select>
-                </div>
-            </div>
+        </div>
         }
-        @if (activeTab() === 'Debug') {
-            <div class="tab-content debug">
-                <div class="logs-list allow-select">
-                    @for (log of logger.logs().slice().reverse(); let i = $index; track i) {
-                        <div class="log-row log-{{ log.type.toLowerCase() }}">
-                            <span class="log-timestamp">{{ log.timestamp | date:'short' }}</span>
-                            <span class="log-message">{{ log.message }}</span>
-                        </div>
-                    }
+        @if (activeTab() === 'Logs') {
+        <div class="tab-content debug">
+            <div class="logs-list allow-select">
+                @for (log of logger.logs().slice().reverse(); let i = $index; track i) {
+                <div class="log-row log-{{ log.type.toLowerCase() }}">
+                    <span class="log-timestamp">{{ log.timestamp | date:'short' }}</span>
+                    <span class="log-message">{{ log.message }}</span>
                 </div>
-                <div class="spanner"></div>
-                <div class="option-row debug-controls">
-                    <button class="bt-button" (click)="logger.clear()">CLEAR</button>
-                </div>
+                }
             </div>
+            <div class="spanner"></div>
+            <div class="option-row debug-controls">
+                <button class="bt-button" (click)="logger.clear()">CLEAR</button>
+            </div>
+        </div>
         }
     </div>
     <div dialog-footer>

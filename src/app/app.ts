@@ -35,7 +35,8 @@ import { Component, computed, signal, HostListener, inject, effect, ChangeDetect
 
 import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
-import { SvgViewerComponent } from './components/svg-viewer/svg-viewer.component';
+import { PageViewerComponent } from './components/page-viewer/page-viewer.component';
+import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
 import { DataService } from './services/data.service';
 import { ForceBuilderService } from './services/force-builder.service';
 import { Unit } from './models/units.model';
@@ -56,9 +57,15 @@ import { UnitSearchFiltersService } from './services/unit-search-filters.service
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { APP_VERSION_STRING } from './build-meta';
-import { copyTextToClipboard } from './utils/clipboard.util';
 import { LoggerService } from './services/logger.service';
 import { isIOS, isRunningStandalone } from './utils/platform.util';
+import { GameService } from './services/game.service';
+import { CBTForceUnit } from './models/cbt-force-unit.model';
+import { CBTForce } from './models/cbt-force.model';
+import { ASForceUnit } from './models/as-force-unit.model';
+import { ASForce } from './models/as-force.model';
+import { GameSystem } from './models/common.model';
+import { UrlStateService } from './services/url-state.service';
 
 /*
  * Author: Drake
@@ -69,7 +76,8 @@ import { isIOS, isRunningStandalone } from './utils/platform.util';
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
     ToastsComponent,
-    SvgViewerComponent,
+    PageViewerComponent,
+    AlphaStrikeViewerComponent,
     LayoutModule,
     UpdateButtonComponent,
     SidebarComponent,
@@ -89,10 +97,13 @@ export class App {
     private wsService = inject(WsService);
     private dialogService = inject(DialogsService);
     private toastService = inject(ToastService);
-    private optionsService = inject(OptionsService);
-    public unitSearchFilter = inject(UnitSearchFiltersService);
+    protected optionsService = inject(OptionsService);
+    public unitSearchFiltersService = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
+    public gameService = inject(GameService);
+    private urlStateService = inject(UrlStateService);
 
+    protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
     private lastUpdateCheck: number = 0;
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
@@ -111,6 +122,9 @@ export class App {
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
 
     constructor() {
+        // Register as a URL state consumer - must call markConsumerReady when done reading URL
+        this.urlStateService.registerConsumer('app');
+        
         // if ("virtualKeyboard" in navigator) {
         //     (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
         // }
@@ -143,7 +157,7 @@ export class App {
                     this.unitSearchPortal.detach();
                 }
                 this.unitSearchPortal = new DomPortal(unitSearchContainer);
-                if (this.unitSearchFilter.expandedView()) {
+                if (this.unitSearchFiltersService.expandedView()) {
                     this.unitSearchPortalExtended = this.unitSearchPortal;
                 } else {
                     if (this.sidebar()) {
@@ -159,9 +173,9 @@ export class App {
         effect(() => {
             if (this.dataService.isDataReady() && !initialShareHandled) {
                 initialShareHandled = true;
-                const params = new URLSearchParams(window.location.search);
-                const sharedUnitName = params.get('shareUnit');
-                const tab = params.get('tab') ?? undefined;
+                // Use UrlStateService to get initial URL params (captured before any routing effects)
+                const sharedUnitName = this.urlStateService.getInitialParam('shareUnit');
+                const tab = this.urlStateService.getInitialParam('tab') ?? undefined;
                 if (sharedUnitName) {
                     // Find the unit by model name (decode first)
                     const unitNameDecoded = decodeURIComponent(sharedUnitName);
@@ -171,11 +185,13 @@ export class App {
                     }
                 } else {
                     afterNextRender(() => {
-                        const params = new URLSearchParams(window.location.search);
-                        if (params.has('instanceId') || params.has('units')) return; // Don't focus if loading a force
+                        // Don't focus if loading a force
+                        if (this.urlStateService.hasInitialParam('instance') || this.urlStateService.hasInitialParam('units')) return;
                         this.unitSearchComponentRef()?.focusInput();
                     }, { injector: this.injector });
                 }
+                // Signal that we're done reading URL state
+                this.urlStateService.markConsumerReady('app');
             }
         });
         inject(DestroyRef).onDestroy(() => {
@@ -186,9 +202,29 @@ export class App {
         });
     }
 
-    hasUnits = computed(() => this.forceBuilderService.forceUnits().length > 0);
-    selectedUnit = computed(() => this.forceBuilderService.selectedUnit());
+    hasUnits = this.forceBuilderService.hasUnits;
+
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
+
+    // Type-safe computed signals for CBT game system
+    selectedCBTUnit = computed<CBTForceUnit | null>(() => {
+        if (this.gameService.isAlphaStrike()) return null;
+        return this.forceBuilderService.selectedUnit() as CBTForceUnit | null;
+    });
+    currentCBTForce = computed<CBTForce | null>(() => {
+        if (this.gameService.isAlphaStrike()) return null;
+        return this.forceBuilderService.currentForce() as CBTForce | null;
+    });
+
+    // Type-safe computed signals for Alpha Strike game system
+    selectedASUnit = computed<ASForceUnit | null>(() => {
+        if (!this.gameService.isAlphaStrike()) return null;
+        return this.forceBuilderService.selectedUnit() as ASForceUnit | null;
+    });
+    currentASForce = computed<ASForce | null>(() => {
+        if (!this.gameService.isAlphaStrike()) return null;
+        return this.forceBuilderService.currentForce() as ASForce | null;
+    });
 
     @HostListener('window:online')
     onOnline() {
@@ -266,12 +302,11 @@ export class App {
             event.preventDefault();
             return 'Cloud sync is still pending. Are you sure you want to leave?';
         }
-        if (this.forceBuilderService.forceUnits().length > 0) {
-            if (!this.forceBuilderService.force.instanceId()) {
-                // We have units but we don't have an instanceId? This is not yet saved.
-                event.preventDefault();
-                return 'You have unsaved changes in your force. Are you sure you want to leave?';
-            }
+        const currentForce = this.forceBuilderService.currentForce();
+        if (currentForce && currentForce.units().length > 0 && !currentForce.instanceId()) {
+            // We have units but we don't have an instanceId? This is not yet saved.
+            event.preventDefault();
+            return 'You have unsaved changes in your force. Are you sure you want to leave?';
         }
         // No units, allow navigation without warning
         return undefined;
@@ -309,7 +344,7 @@ export class App {
         // Restore tab if provided
         if (tab && ref.componentInstance) {
             afterNextRender(() => {
-                if (ref.componentInstance?.tabs.includes(tab)) {
+                if (ref.componentInstance?.tabs().includes(tab)) {
                     ref.componentInstance.activeTab.set(tab);
                 }
             }, { injector: this.injector });

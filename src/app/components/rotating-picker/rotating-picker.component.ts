@@ -56,6 +56,7 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
     imports: [],
     template: `
         <div #container class="rotating-picker-container"
+            [class.light-theme]="lightTheme()"
             [style.position]="'fixed'"
             [style.left.px]="position().x"
             [style.top.px]="position().y"
@@ -101,7 +102,7 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
                         <feDropShadow dx="0.5" dy="0" stdDeviation="0" flood-color="white"/>
                         <feDropShadow dx="-0.5" dy="0" stdDeviation="0" flood-color="white"/>
                     </filter>
-                    <filter id="night-hard-stroke">
+                    <filter id="light-theme-hard-stroke">
                         <feDropShadow dx="0.5" dy="0.5" stdDeviation="0" flood-color="black"/>
                         <feDropShadow dx="-0.5" dy="0.5" stdDeviation="0" flood-color="black"/>
                         <feDropShadow dx="0.5" dy="-0.5" stdDeviation="0" flood-color="black"/>
@@ -224,7 +225,7 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
             fill: #000A;
             cursor: grab;
             pointer-events: auto;
-            touch-action: manipulation;
+            touch-action: none;
         }
         .dial-notch {
             stroke: #fff;
@@ -273,39 +274,39 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
             fill: #000;
         }
 
-        /* Night mode styles */
-        :host-context(.night-mode) .title-hex-shape {
+        /* Light Theme styles */
+        .light-theme .title-hex-shape {
             fill: #fff;
             stroke: #000;
         }
-        :host-context(.night-mode) .title-text {
+        .light-theme .title-text {
             color: #000;
         }
-        :host-context(.night-mode) .dial-background {
+        .light-theme .dial-background {
             fill: #FFFC;
         }
-        :host-context(.night-mode) .dial-notch {
+        .light-theme .dial-notch {
             stroke: #000;
         }
-        :host-context(.night-mode) .dial-center-area {
+        .light-theme .dial-center-area {
             fill: #fff;
         }
-        :host-context(.night-mode) .dial-center-area.zero {
+        .light-theme .dial-center-area.zero {
             fill: #fff6;
         }
-        :host-context(.night-mode) .dial-center-area:hover {
+        .light-theme .dial-center-area:hover {
             fill: var(--bt-yellow-strong);
         }
-        :host-context(.night-mode) .dial-center-value {
+        .light-theme .dial-center-value {
             fill: #000;
         }
-        :host-context(.night-mode) .arrows {
-            filter: url(#night-hard-stroke);
+        .light-theme .arrows {
+            filter: url(#light-theme-hard-stroke);
         }
-        :host-context(.night-mode) .arrow-path {
+        .light-theme .arrow-path {
             stroke: #fff;
         }
-        :host-context(.night-mode) .arrow-head {
+        .light-theme .arrow-head {
             fill: #fff;
         }
     `]
@@ -320,6 +321,7 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
     selected = input<PickerValue | null>(0);
     position = input<PickerPosition>({ x: 0, y: 0 });
     initialEvent = signal<PointerEvent | null>(null);
+    lightTheme = input<boolean>(false);
 
     picked = output<PickerChoice>();
     cancelled = output<void>();

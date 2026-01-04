@@ -141,13 +141,11 @@
     }
 }
 
-/* Night mode styles */
-:host-context(.night-mode) {
-    .linear-picker {
-        background: #fff;
-        color: #000;
-        border-color: #000;
-    }
+/* Light Theme styles */
+.linear-picker.light-theme {
+    background: #fff;
+    color: #000;
+    border-color: #000;
 
     .value-cell {
         &.selected[data-title]::before {
@@ -155,12 +153,12 @@
             color: #000;
             border-color: #000;
         }
-
+    
         &.disabled {
             color: #999;
             background: #ccc;
         }
-
+    
         &.selected {
             background: var(--bt-yellow-background-light);
         }
@@ -169,20 +167,20 @@
     .button-cell.highlight:not(.disabled) {
         background: var(--bt-yellow);
     }
-
+    
     .dropdown-cell {
-
+    
         select {
             color: #000;
-
+    
             option {
                 background: #fff;
                 color: #000;
             }
         }
     }
-
-    .linear-picker.horizontal .value-cell {
+    
+    &.horizontal .value-cell {
         border-right-color: rgba(0, 0, 0, 0.3);
     }
 }

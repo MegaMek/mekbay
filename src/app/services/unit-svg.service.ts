@@ -32,14 +32,14 @@
  */
 
 import { Injectable, effect, inject, DestroyRef } from '@angular/core';
-import { ForceUnit } from '../models/force-unit.model';
-import { CrewMember, SkillType } from '../models/crew-member.model';
+import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, SkillType } from '../models/crew-member.model';
 import { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
 import { DataService } from './data.service';
-import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
+import { UnitInitializerService } from './unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
-import { heatLevels, linkedLocs, uidTranslations } from '../components/svg-viewer/common';
+import { heatLevels, linkedLocs, uidTranslations } from "../models/common.model";
 import { LoggerService } from './logger.service';
+import { CBTForceUnit } from '../models/cbt-force-unit.model';
 
 /*
  * Author: Drake
@@ -54,7 +54,7 @@ export class UnitSvgService {
     private svgDimensions = { width: 0, height: 0 };
 
     constructor(
-        protected unit: ForceUnit,
+        protected unit: CBTForceUnit,
         protected dataService: DataService,
         protected unitInitializer: UnitInitializerService
     ) {
@@ -248,7 +248,7 @@ export class UnitSvgService {
             if (!destroyedOverlay) {
                 destroyedOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 destroyedOverlay.setAttribute('id', 'destroyed-overlay');
-                destroyedOverlay.classList.add('no-invert', 'noprint');
+                destroyedOverlay.classList.add('no-invert', 'screen-only');
                 destroyedOverlay.setAttribute('x', (this.svgDimensions.width / 2).toString());
                 destroyedOverlay.setAttribute('y', (this.svgDimensions.height / 2.5).toString());
                 destroyedOverlay.setAttribute('text-anchor', 'middle');
@@ -286,6 +286,34 @@ export class UnitSvgService {
         const svg = this.unit.svg();
         if (!svg) return;
         const PSRMod = this.unit.PSRModifiers();
+
+        // Check if all crew members have default values (no name and default skills)
+        const allCrewDefault = crew.every(member => 
+            !member.getName() && // No name set
+            member.getSkill('gunnery') === DEFAULT_GUNNERY_SKILL && // Default gunnery skill
+            member.getSkill('piloting') === DEFAULT_PILOTING_SKILL // Default piloting skill
+        );
+
+        // Apply or remove screen-only class on skillValue elements
+        svg.querySelectorAll('.skillValue').forEach(el => {
+            el.classList.toggle('screen-only', allCrewDefault);
+        });
+        const blanks = ['blankPilotingSkill0', 
+            'blankGunnerySkill0', 
+            'blankAsfGunnerySkill0', 
+            'blankAsfPilotingSkill0',
+            'blankPilotingSkill1',
+            'blankGunnerySkill1',
+            'blankPilotingSkill2',
+            'blankGunnerySkill2',
+            'blankPilotingSkill3',
+            'blankGunnerySkill3'];
+        blanks.forEach(selector => {
+            const el = svg.getElementById(selector);
+            if (el) {
+                el.classList.toggle('print-show', allCrewDefault);
+            }
+        });
 
         crew.forEach(member => {
             const crewId = member.getId();
@@ -491,7 +519,7 @@ export class UnitSvgService {
                 if (!arrow) {
                     arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
                     arrow.setAttribute('id', id);
-                    arrow.classList.add('noprint');
+                    arrow.classList.add('screen-only');
                     heatEl.parentElement?.appendChild(arrow);
                 }
                 arrow.setAttribute('points', `${x + 8},${y - 5} ${x},${y} ${x + 8},${y + 5}`);
@@ -854,7 +882,7 @@ export class UnitSvgService {
         });
     }
 
-    protected calculateHitModifiers(unit: ForceUnit, entry: MountedEquipment, additionalModifiers: number): number | null {
+    protected calculateHitModifiers(unit: CBTForceUnit, entry: MountedEquipment, additionalModifiers: number): number | null {
         if (!entry.equipment && !entry.physical) {
             return null; // No equipment, no hit modifier
         }

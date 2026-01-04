@@ -1,0 +1,99 @@
+<div class="content">
+    <h2 dialog-title>Warrior Data</h2>
+    <div dialog-content>
+        <div class="group">
+            <div class="name-wrapper">
+                <p>Name</p>
+                <div class="input-wrapper">
+                    <input #nameInput type="text" class="input" maxlength="32" [value]="data.name || ''" (keydown.enter)="submit()" />
+                </div>
+            </div>
+            <div class="skill-wrapper">
+                <p>Skill</p>
+                <div class="input-wrapper">
+                    <input #skillInput type="number" class="input" [value]="data.skill" [placeholder]="data.skill"
+                        min="0" max="8" (keydown.enter)="submit()" (input)="onSkillChange($event)" />
+                </div>
+            </div>
+        </div>
+
+        <div class="abilities-section">
+            <p>Pilot Abilities</p>
+
+            @if (abilityLimits().maxAbilities === 0) {
+            <div class="ability-limits-info disabled-message">
+                Green pilots (skill 5+) cannot have special abilities.
+            </div>
+            } @else {
+            <div class="ability-limits-info">
+                <span>Slots: {{ currentAbilityCount() }}/{{ abilityLimits().maxAbilities }}</span>
+                <span class="separator">•</span>
+                <span [class.over-limit]="remainingCost() < 0">Cost: {{ totalCost() }}/{{ abilityLimits().maxCost }}</span>
+            </div>
+
+            @for (slot of [0, 1, 2]; track slot) {
+                @if (slot < abilityLimits().maxAbilities) {
+                <div class="ability-slot">
+                    @if (selectedAbilities()[slot]; as selectedAbility) {
+                    @let displayInfo = getAbilityDisplayInfo(selectedAbility);
+                    @if (displayInfo) {
+                    <div class="selected-ability-info corner-borders" 
+                         [class.custom-ability]="displayInfo.isCustom"
+                         [class.clickable]="displayInfo.isCustom"
+                         (click)="displayInfo.isCustom ? editCustomAbility(slot) : null">
+                        <div class="ability-detail-header">
+                            <div class="group">
+                                <span class="ability-detail-name">
+                                    @if (displayInfo.isCustom) {
+                                        <span class="custom-badge">Custom</span>
+                                    }
+                                    {{ displayInfo.name }}
+                                </span>
+                                <span class="ability-detail-cost">Cost: {{ displayInfo.cost }}</span>
+                            </div>
+
+                            <button class="remove-btn" (click)="removeAbility(slot); $event.stopPropagation()" title="Remove ability">
+                                <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
+                                    xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                            L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                                </svg>
+                            </button>
+                        </div>
+                        @if (displayInfo.rulesInfo) {
+                            <div class="ability-detail-rules">{{ displayInfo.rulesInfo }}</div>
+                        }
+                        <div class="ability-detail-summary">{{ displayInfo.summary }}</div>
+                    </div>
+                    }
+                    } @else {
+                    <div class="ability-dropdown">
+                        @if (slot === 0) {
+                        <button #dropdownTrigger0 class="dropdown-trigger bt-select" (click)="toggleDropdown(slot)"
+                                [disabled]="!canAddMoreAbilities()">
+                            <span class="placeholder">Select ability...</span>
+                        </button>
+                        } @else if (slot === 1) {
+                        <button #dropdownTrigger1 class="dropdown-trigger bt-select" (click)="toggleDropdown(slot)"
+                                [disabled]="!canAddMoreAbilities()">
+                            <span class="placeholder">Select ability...</span>
+                        </button>
+                        } @else {
+                        <button #dropdownTrigger2 class="dropdown-trigger bt-select" (click)="toggleDropdown(slot)"
+                                [disabled]="!canAddMoreAbilities()">
+                            <span class="placeholder">Select ability...</span>
+                        </button>
+                        }
+                    </div>
+                    }
+                </div>
+                }
+            }
+            }
+        </div>
+    </div>
+    <div dialog-actions>
+        <button (click)="submit()" class="bt-button">CONFIRM</button>
+        <button (click)="close()" class="bt-button">DISMISS</button>
+    </div>
+</div>

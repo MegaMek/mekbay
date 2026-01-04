@@ -54,8 +54,8 @@ import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
+import { AdjustedPV } from '../../pipes/adjusted-pv.pipe';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
-import { OptionsService } from '../../services/options.service';
 import { LongPressDirective } from '../../directives/long-press.directive';
 import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
@@ -63,6 +63,10 @@ import { ShareSearchDialogComponent } from './share-search.component';
 import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { RangeModel, UnitSearchFilterRangeDialogComponent, UnitSearchFilterRangeDialogData } from '../unit-search-filter-range-dialog/unit-search-filter-range-dialog.component';
+import { GameService } from '../../services/game.service';
+import { OptionsService } from '../../services/options.service';
+import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
+import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 
 
 
@@ -97,7 +101,7 @@ const PRECONFIGURED_TAGS = ['Favorites', 'My Collection'];
     selector: 'unit-search',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.css',
 })
@@ -106,13 +110,17 @@ export class UnitSearchComponent {
     filtersService = inject(UnitSearchFiltersService);
     dataService = inject(DataService);
     forceBuilderService = inject(ForceBuilderService);
-    optionsService = inject(OptionsService);
+    gameService = inject(GameService);
     overlayManager = inject(OverlayManagerService);
 
     private injector = inject(Injector);
     private dialogsService = inject(DialogsService);
     private overlay = inject(Overlay);
     private cdr = inject(ChangeDetectorRef);
+    private abilityLookup = inject(AsAbilityLookupService);
+    private optionsService = inject(OptionsService);
+
+    readonly useHex = computed(() => this.optionsService.options().ASUseHex);
 
     public readonly ADVANCED_FILTERS = ADVANCED_FILTERS;
     public readonly AdvFilterType = AdvFilterType;
@@ -128,7 +136,7 @@ export class UnitSearchComponent {
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
     resultsDropdown = viewChild<ElementRef<HTMLElement>>('resultsDropdown');
 
-    gameSystem = computed(() => this.optionsService.options().gameSystem);
+    gameSystem = computed(() => this.gameService.currentGameSystem());
     autoFocus = input(false);
     buttonOnly = signal(false);
     expandedView = this.filtersService.expandedView;
@@ -493,6 +501,33 @@ export class UnitSearchComponent {
         this.viewport()?.scrollToIndex(index, 'smooth');
     }
 
+    /**
+     * Scroll to make the item at the given index visible, but only if it's not already visible.
+     * If scrolling is needed, positions the item at the nearest edge (top or bottom).
+     */
+    private scrollToMakeVisible(index: number) {
+        const vp = this.viewport();
+        if (!vp) return;
+        
+        const itemHeight = this.itemSize();
+        const itemTop = index * itemHeight;
+        const itemBottom = itemTop + itemHeight;
+        
+        const scrollOffset = vp.measureScrollOffset();
+        const viewportSize = vp.getViewportSize();
+        const visibleTop = scrollOffset;
+        const visibleBottom = scrollOffset + viewportSize;
+        
+        if (itemTop < visibleTop) {
+            // Item is above the visible area - scroll up to show it at top
+            vp.scrollToOffset(itemTop, 'smooth');
+        } else if (itemBottom > visibleBottom) {
+            // Item is below the visible area - scroll down to show it at bottom
+            vp.scrollToOffset(itemBottom - viewportSize, 'smooth');
+        }
+        // Otherwise it's already visible, do nothing
+    }
+
     highlight(text: string): string {
         const searchGroups = this.filtersService.searchTokens();
         return highlightMatches(text, searchGroups, true);
@@ -563,8 +598,14 @@ export class UnitSearchComponent {
             this.unitDetailsDialogOpen.set(false);
         });
 
+        // Track navigation within the dialog to keep activeIndex in sync
+        ref.componentInstance?.indexChange.subscribe(newIndex => {
+            this.activeIndex.set(newIndex);
+            this.scrollToMakeVisible(newIndex);
+        });
+
         ref.componentInstance?.add.subscribe(newUnit => {
-            if (this.forceBuilderService.forceUnits().length === 1) {
+            if (this.forceBuilderService.currentForce()?.units().length === 1) {
                 // If this is the first unit being added, close the search panel
                 this.closeAllPanels();
             }
@@ -754,6 +795,12 @@ export class UnitSearchComponent {
         this.activeIndex.set(null);
     }
 
+    openSelect(event: Event, select: HTMLSelectElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        select.showPicker?.() ?? select.focus();
+    }
+
     /* Adv Panel Dragging */
     onAdvPanelDragStart(event: PointerEvent) {
         if (!this.advPanelDocked() || !this.expandedView()) return;
@@ -835,20 +882,62 @@ export class UnitSearchComponent {
         this.selectedUnits.set(allNames);
     }
 
-    addSelectedUnits() {
+    async addSelectedUnits() {
         const gunnery = this.filtersService.pilotGunnerySkill();
         const piloting = this.filtersService.pilotPilotingSkill();
         const selectedUnits = this.selectedUnits();
         for (let selectedUnit of selectedUnits) {
             const unit = this.dataService.getUnitByName(selectedUnit);
             if (unit) {
-                if (!this.forceBuilderService.addUnit(unit, gunnery, piloting)) {
+                if (!await this.forceBuilderService.addUnit(unit, gunnery, piloting)) {
                     break;
                 }
             }
         };
         this.clearSelection();
         this.closeAllPanels();
+    }
+
+    /**
+     * Show ability info dialog for an Alpha Strike special ability.
+     * @param abilityText The original ability text (e.g., "ECM", "LRM1/2/2")
+     */
+    showAbilityInfoDialog(abilityText: string): void {
+        const parsedAbility = this.abilityLookup.parseAbility(abilityText);
+        this.dialogsService.createDialog<void>(AbilityInfoDialogComponent, {
+            data: { parsedAbility } as AbilityInfoDialogData
+        });
+    }
+
+    /**
+     * Format movement value for Alpha Strike expanded view.
+     * Converts inches to hexes if hex mode is enabled.
+     * Handles different movement modes (j for jump, etc.)
+     */
+    formatASMovement(unit: Unit): string {
+        const mvm = unit.as.MVm;
+        if (!mvm) return unit.as.MV ?? '';
+
+        const entries = Object.entries(mvm)
+            .filter(([, value]) => typeof value === 'number' && value > 0) as Array<[string, number]>;
+
+        if (entries.length === 0) return unit.as.MV ?? '';
+
+        // Sort so default movement comes first
+        entries.sort((a, b) => {
+            if (a[0] === '') return -1;
+            if (b[0] === '') return 1;
+            return 0;
+        });
+
+        return entries
+            .map(([mode, inches]) => {
+                if (this.useHex()) {
+                    return Math.ceil(inches / 2) + mode;
+                }
+                return inches + '"' + mode;
+            })
+            .join('/');
     }
 
     toggleExpandedView() {

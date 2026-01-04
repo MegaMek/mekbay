@@ -1,0 +1,351 @@
+@use '../common.scss';
+
+// Header Section
+.header-section {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 16.25%;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.vessel-header {
+    position: absolute;
+    display: flex;
+    flex-direction: row;
+    gap: 1.5em;
+    align-items: baseline;
+    top: 24%;
+    left: 2.8em;
+}
+
+.vessel-name {
+    font-size: 4em;
+    :host(.monochrome) & {
+        color: #000;
+        font-weight: 700;
+    }
+}
+
+.vessel-model {
+    font-size: 3em;
+    line-height: 3em;
+    color: #000;
+
+    :host:not(.monochrome) & {
+        color: #ECD24B;
+    }
+}
+
+.base-pv-text {
+    font-size: 2.2em;
+    margin-top: 0.85em;
+}
+
+// Stats Row Container
+.stats-row-container,
+.damage-threshold-row-container {
+    display: flex;
+    align-items: center;
+}
+
+// Main Content Area
+
+// Stats Container
+.stats-container {
+    position: absolute;
+    bottom: 12%;
+    left: 2.5%;
+    right: 2.5%;
+    height: 75%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.5em;
+}
+
+.stats-container-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto 1fr auto;
+    gap: 0.5em;
+    align-content: end;
+    height: 100%;
+}
+
+// Row 1: stats-row-container aligned with era-icons
+.stats-row-container {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.era-icons {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 1em;
+    gap: 0.5em;
+    pointer-events: none;
+}
+
+.era-icon {
+    width: 4em;
+    height: 4em;
+    object-fit: contain;
+    transition: opacity 0.2s ease;
+
+    :host:has(.monochrome) & {
+        filter: saturate(0) invert(1) brightness(1.25);
+    }
+
+    &.unavailable {
+        opacity: 0.3;
+    }
+}
+
+// Row 2: armor-damage-row, damage-threshold (top-aligned)
+.armor-damage-row {
+    grid-column: 1;
+    grid-row: 2;
+}
+
+.damage-threshold-row-container {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+}
+
+// Row 2-3: fluff-image starts after damage-threshold, spans down
+.spa-container {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    min-height: 0;
+    overflow: hidden;
+    padding-top: 6em; // offset to start below damage-threshold
+    display: flex;
+    position: relative;
+    display: flex;
+    align-items: end;
+}
+
+// Row 3: critical-hits stretches to fill remaining space
+.critical-hits-container {
+    grid-column: 1;
+    grid-row: 3 / 5;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+// Row 4: specials-box on right
+.specials-box {
+    grid-column: 2;
+    grid-row: 4;
+}
+
+.pilot-abilities {
+    margin-left: 0.5em;
+    z-index: 1;
+}
+
+// Stats Box
+.stats-box {
+    display: flex;
+
+    .frame-content {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+    }
+}
+
+.stats-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1.5em;
+
+    &.center {
+        justify-content: center;
+    }
+}
+
+.stat-item {
+    white-space: nowrap;
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.1em;
+
+    &.wide-spaced {
+        gap: 0.5em;
+    }
+
+    &.clickable {
+        cursor: pointer;
+        transition: text-decoration 0.15s ease;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+}
+
+// Armor/Damage Row
+.armor-damage-row {
+    display: flex;
+    flex-direction: column;
+
+    .frame-content {
+        display: flex;
+        gap: 1em;
+    }
+}
+
+.armor-section {
+    flex: 0 0 30%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border-right: 0.2em solid #000;
+    padding-right: 1em;
+}
+
+.section-label {
+    font-size: 2em;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.section-value {
+    font-size: 5em;
+    font-weight: 900;
+
+    :host:not(.monochrome) & {
+        color: var(--as-red);
+    }
+}
+
+.damage-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.damage-track {
+    flex: 1;
+    border-bottom: 0.2em solid #000;
+    margin-top: 0.5em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+
+    .damage-value {
+        font-size: 5em;
+        font-weight: 900;
+        color: var(--as-red-bright);
+    }
+
+    .pending-value {
+        font-size: 4em;
+        font-weight: 900;
+    }
+
+    &.pending-damage .pending-value {
+        color: var(--damage-color);
+    }
+
+    &.pending-heal .pending-value {
+        color: #03a9f4;
+    }
+}
+
+
+// Specials Box
+.specials-box {
+    display: flex;
+
+    .frame-content {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        align-content: flex-start;
+    }
+}
+
+.special-ability {
+    cursor: pointer;
+    transition: text-decoration 0.15s ease;
+
+    &:hover {
+        text-decoration: underline;
+    }
+    
+    &.exhausted {
+        text-decoration: line-through;
+        color: var(--as-red-bright);
+        
+        &:hover {
+            text-decoration: line-through underline;
+        }
+    }
+    
+    .consumed-indicator {
+        color: var(--as-red-bright);
+    }
+    
+    .special-separator {
+        &:hover {
+            text-decoration: none;
+        }
+    }
+}
+
+// Fluff Image
+.fluff-image-container {
+    margin-top: 5.8em;
+    top: 6em;
+    overflow: hidden;
+    position: absolute;
+    inset: 0;
+    height: calc(100% - 7em);
+    pointer-events: none;
+}
+
+.fluff-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center top;
+
+    .center-vertical & {
+        object-position: center center;
+    }
+
+    :host:not(.monochrome) & {
+        filter: saturate(0) invert(1) brightness(1.25);
+        mix-blend-mode: lighten;
+    }
+}
+
+.destroyed-text {
+    position: absolute;
+    right: 0.7em;
+    top: 4.5em;
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 7em;
+    font-weight: 900;
+    color: #a00;
+    -webkit-text-stroke: 0.12em #111;
+    paint-order: stroke fill;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    transform: rotate(-15deg);
+}

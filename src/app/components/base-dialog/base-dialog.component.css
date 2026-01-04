@@ -8,30 +8,7 @@
     pointer-events: none;
 }
 
-@keyframes tv-vertical-expand {
-    0% {
-        opacity: 0.5;
-        transform: scaleY(0.01) scaleX(0.1);
-        filter: brightness(3);
-    }
-    40% {
-        opacity: 1;
-        transform: scaleY(0.01) scaleX(1);
-        filter: brightness(4);
-    }
-
-    55% {
-        filter: none;
-    }
-
-    100% {
-        transform: scaleY(1) scaleX(1);
-    }
-}
-
 .modal {
-    animation: tv-vertical-expand .38s cubic-bezier(0.23, 1.02, 0.35, 1) both;
-    transform-origin: center center;
     box-sizing: border-box;
     background-color: var(--background-color-menu);
     min-height: 50%;
@@ -77,6 +54,39 @@
     .tab-buttons {
         display: flex;
         flex-direction: row;
+        overflow: hidden;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .tab-buttons.wrap {
+        flex-wrap: wrap;
+        overflow: visible;
+    }
+
+    .tab-overflow-trigger {
+        display: flex;
+        align-items: center;
+        gap: 0.25em;
+    }
+
+    .overflow-active-label {
+        max-width: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .overflow-icon {
+        font-size: 0.8em;
+        opacity: 0.8;
+    }
+
+    .tab-header.wrap-mode {
+        flex-wrap: wrap;
+    }
+
+    .tab-header.wrap-mode .tab-actions {
+        margin-left: auto;
     }
 
     .tab-actions {
@@ -110,6 +120,12 @@
         border-bottom: 2px solid transparent;
         transition: color 0.2s, border-color 0.2s;
         outline: none;
+        white-space: nowrap;
+
+        @container (max-width: 500px) {
+            padding: 0.5em 0.5em;
+            font-size: 0.95em;
+        }
     }
 
     .tab-button:focus-visible:not(.active),
@@ -134,7 +150,7 @@
     display: flex;
     justify-content: center;
     padding: 8px;
-    border-top: 2px solid #fff;
+    border-top: 2px solid var(--border-color);
     font-size: 1em;
 }
 

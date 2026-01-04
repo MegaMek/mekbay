@@ -1,0 +1,12 @@
+<!-- Card Tab Content -->
+<div class="tab-content">
+    @for (cardIndex of cardIndices(); track cardIndex) {
+        <alpha-strike-card
+            [unit]="unit()"
+            [useHex]="useHex()"
+            [cardIndex]="cardIndex"
+            [cardStyle]="cardStyle()"
+            class="alpha-strike-card-panel">
+        </alpha-strike-card>
+    }
+</div>

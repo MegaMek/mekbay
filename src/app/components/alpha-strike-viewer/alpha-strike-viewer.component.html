@@ -1,0 +1,103 @@
+<div class="alpha-strike-viewer" 
+     #viewerContainer
+     [class.monochrome]="cardStyle() === 'monochrome'"
+     [style.--columns]="columnCount()"
+     [style.--cell-width.px]="cellWidth()"
+     (pointerdown)="onPointerDown($event)"
+     (pointermove)="onPointerMove($event)"
+     (pointerup)="onPointerUp($event)"
+     (pointercancel)="onPointerUp($event)"
+     (pointerleave)="onPointerUp($event)">
+    <div class="groups-container">
+        @let groups = force()?.groups();
+        @if (!groups || groups.length === 0) {
+            <div class="no-units-message">
+                No units in this force.
+            </div>
+        } @else {
+            @for (group of groups; track group.id) {
+                <div class="group-container">
+                    @if (groups.length > 1) {
+                        <div class="group-header">
+                            {{ group.name() }}
+                        </div>
+                    }
+                    <div class="units-grid">
+                        @for (forceUnit of group.units(); track forceUnit.id) {
+                            @for (cardItem of getCardRenderItems(forceUnit); track cardItem.trackKey) {
+                                <div class="card-cell" #cardWrapper 
+                                     [attr.data-unit-id]="forceUnit.id"
+                                     [attr.data-card-index]="cardItem.cardIndex"
+                                     (click)="onCardCellClick($event, cardItem.forceUnit)">
+                                    <alpha-strike-card 
+                                        [forceUnit]="cardItem.forceUnit" 
+                                        [cardIndex]="cardItem.cardIndex"
+                                        [useHex]="useHex()" 
+                                        [cardStyle]="cardStyle()" 
+                                        [isSelected]="unit()?.id === forceUnit.id"
+                                        [interactive]="true"
+                                        [updatePickerPositionTrigger]="updatePickerPositionTrigger()"
+                                        (editPilot)="onEditPilot($event)" />
+                                    <page-canvas-overlay [unit]="cardItem.forceUnit" [width]="336" [height]="240"></page-canvas-overlay>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+                @if (groups.length > 1) {
+                    <hr class="group-separator" />
+                }
+            }
+        }
+    </div>
+
+    <!-- Interaction overlay for commit/discard controls -->
+    <as-interaction-overlay [force]="force()"></as-interaction-overlay>
+
+    <!-- Canvas controls -->
+    <page-viewer-canvas-controls [unit]="unit()" (clearRequested)="onCanvasClearRequested()" (printRequested)="onPrintRequested()"></page-viewer-canvas-controls>
+
+    <div class="toggle-buttons screen-only">
+        <button class="bt-button square" [class.active]="useHex()" (click)="toggleHexMode()" title="Toggle Hex/Inches">
+            @if (useHex()) {
+            <svg fill="currentColor" width="24px" height="24px" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                <path
+                    d="M30.8508,15.4487,23.8867,3.5322A1.0687,1.0687,0,0,0,22.9643,3H9.0357a1.0687,1.0687,0,0,0-.9224.5322L1.1492,15.4487a1.0933,1.0933,0,0,0,0,1.1026L8.1133,28.4678A1.0687,1.0687,0,0,0,9.0357,29H22.9643a1.0687,1.0687,0,0,0,.9224-.5322l6.9641-11.9165A1.0933,1.0933,0,0,0,30.8508,15.4487Z" />
+            </svg>
+            } @else {
+                <svg fill="currentColor" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
+                    width="24px" height="24px" viewBox="0 0 32 32" xml:space="preserve">
+                <path d="M27.354,10.646l-0.707,0.707l2,2l-1.293,1.293l-3-3l-0.707,0.707l3,3l-1.293,1.293l-2-2
+                    l-0.707,0.707l2,2l-1.293,1.293l-3-3l-0.707,0.707l3,3l-1.293,1.293l-2-2l-0.707,0.707l2,2l-1.293,1.293l-3-3l-0.707,0.707l3,3
+                    l-1.293,1.293l-2-2l-0.707,0.707l2,2l-1.293,1.293l-3-3l-0.707,0.707l3,3l-1.293,1.293l-2-2l-0.707,0.707l2,2L11,31L1,21L21,1l10,10
+                    l-1.646,1.646L27.354,10.646z"/>
+                </svg>
+            }
+        </button>
+        <button class="bt-button square" [class.active]="cardStyle() === 'colored'" (click)="toggleCardStyle()"
+            title="Toggle Dark/Light Card Theme">
+            @if (cardStyle() === 'colored') {
+                <svg fill="currentColor" width="24px" height="24px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+                <path d="M8 0c-4.4 0-8 3.6-8 8s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8zM8 15c-3.9 0-7-3.1-7-7 0-2.4 1.2-4.6 3.2-5.9-0.1 0.6-0.2 1.3-0.2 1.9 0 4.9 4 8.9 8.9 9-1.3 1.3-3 2-4.9 2z"></path>
+                </svg>
+            <!-- <svg fill="currentColor" width="24px" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path
+                    d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.38 0 2.5-1.12 2.5-2.5 0-.61-.23-1.2-.64-1.67-.08-.1-.13-.21-.13-.33 0-.28.22-.5.5-.5H16c3.31 0 6-2.69 6-6 0-4.96-4.49-9-10-9zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 8 6.5 8 8 8.67 8 9.5 7.33 11 6.5 11zm3-4C8.67 7 8 6.33 8 5.5S8.67 4 9.5 4s1.5.67 1.5 1.5S10.33 7 9.5 7zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 4 14.5 4s1.5.67 1.5 1.5S15.33 7 14.5 7zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 8 17.5 8s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
+            </svg> -->
+            } @else {
+                <svg fill="currentColor" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
+	 width="24px" height="24px" viewBox="0 0 120 120" enable-background="new 0 0 120 120" xml:space="preserve">
+                <path d="M18.932,64.777H0.104V54.81h18.828V64.777z M27.42,34.32L14.131,21.031l7.014-7.014l13.289,13.289
+                    L27.42,34.32z M27.42,85.449l7.014,7.014l-13.289,13.293l-7.011-7.021L27.42,85.449z M64.894,18.814h-9.969V-0.012h9.969V18.814z
+                    M54.924,100.955h9.969v18.822h-9.969V100.955z M92.579,34.32l-7.199-7.014l13.472-13.289l7.014,7.014L92.579,34.32z
+                    M92.579,85.261l13.286,13.475l-7.014,7.021L85.565,92.463L92.579,85.261z M119.896,54.81v9.967h-18.825V54.81H119.896z"/>
+            <circle cx="59.147" cy="59.883" r="31.38"/>
+            </svg>
+            <!-- <svg width="24px" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="9" fill="white" stroke="currentColor" stroke-width="2"/>
+                <path d="M12 3a9 9 0 0 0 0 18V3z" fill="#444"/>
+            </svg> -->
+            }
+        </button>
+    </div>
+</div>

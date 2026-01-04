@@ -34,6 +34,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
 import { Options } from '../models/options.model';
+import { GameSystem } from '../models/common.model';
 
 /*
  * Author: Drake
@@ -46,10 +47,13 @@ const DEFAULT_OPTIONS: Options = {
     canvasInput: 'all',
     swipeToNextSheet: 'horizontal',
     unitDisplayName: 'chassisModel',
-    gameSystem: 'cbt',
+    gameSystem: GameSystem.CLASSIC,
     recordSheetCenterPanelContent: 'clusterTable',
     syncZoomBetweenSheets: true,
     useAutomations: true,
+    ASUseHex: false,
+    ASCardStyle: 'monochrome',
+    c3NetworkConnectionsAboveNodes: false,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -67,6 +71,9 @@ export class OptionsService {
         gameSystem: DEFAULT_OPTIONS.gameSystem,
         recordSheetCenterPanelContent: DEFAULT_OPTIONS.recordSheetCenterPanelContent,
         useAutomations: DEFAULT_OPTIONS.useAutomations,
+        ASUseHex: DEFAULT_OPTIONS.ASUseHex,
+        ASCardStyle: DEFAULT_OPTIONS.ASCardStyle,
+        c3NetworkConnectionsAboveNodes: DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
     });
 
     constructor() {
@@ -88,6 +95,9 @@ export class OptionsService {
             lastCanvasState: saved?.lastCanvasState,
             sidebarLipPosition: saved?.sidebarLipPosition,
             useAutomations: saved?.useAutomations ?? DEFAULT_OPTIONS.useAutomations,
+            ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
+            ASCardStyle: saved?.ASCardStyle ?? DEFAULT_OPTIONS.ASCardStyle,
+            c3NetworkConnectionsAboveNodes: saved?.c3NetworkConnectionsAboveNodes ?? DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
         });
     }
 

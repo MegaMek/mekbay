@@ -34,11 +34,13 @@
 import { signal, computed, WritableSignal, EventEmitter, Injector } from '@angular/core';
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
-import { UnitInitializerService } from '../components/svg-viewer/unit-initializer.service';
+import { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
 import { LoggerService } from '../services/logger.service';
-import { SerializedForce, SerializedGroup, SerializedUnit } from './force-serialization';
+import { SerializedForce, SerializedGroup, SerializedUnit, SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
+import { GameSystem } from './common.model';
+import { C3NetworkUtil } from '../utils/c3-network.util';
 
 /*
  * Author: Drake
@@ -47,13 +49,13 @@ const DEFAULT_GROUP_NAME = 'Main';
 const MAX_GROUPS = 12;
 const MAX_UNITS = 50;
 
-export class UnitGroup {
+export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     force: Force;
     id: string = generateUUID();
     name = signal<string>('Group');
     nameLock?: boolean; // If true, the group name cannot be changed by the random generator
     color?: string;
-    units: WritableSignal<ForceUnit[]> = signal([]);
+    units: WritableSignal<TUnit[]> = signal([]);
 
     totalBV = computed(() => {
         return this.units().reduce((sum, unit) => sum + (unit.getBv()), 0);
@@ -76,21 +78,24 @@ export class UnitGroup {
     }
 }
 
-export class Force {
+export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
+    gameSystem: GameSystem = GameSystem.CLASSIC;
     instanceId: WritableSignal<string | null> = signal(null);
     _name: WritableSignal<string>;
     nameLock: boolean = false; // If true, the force name cannot be changed by the random generator
     timestamp: string | null = null;
-    groups: WritableSignal<UnitGroup[]> = signal([]);
+    groups: WritableSignal<UnitGroup<TUnit>[]> = signal([]);
+    _c3Networks: WritableSignal<SerializedC3NetworkGroup[]> = signal([]); // C3 network configurations
     loading: boolean = false;
     cloud?: boolean = false; // Indicates if this force is stored in the cloud
     owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
+    c3Networks = this._c3Networks.asReadonly(); 
     public changed = new EventEmitter<void>();
     private _debounceTimer: any = null;
 
-    private dataService: DataService;
-    private unitInitializer: UnitInitializerService;
-    private injector: Injector;
+    protected dataService: DataService;
+    protected unitInitializer: UnitInitializerService;
+    protected injector: Injector;
 
     constructor(name: string,
         dataService: DataService,
@@ -102,10 +107,11 @@ export class Force {
         this.injector = injector;
     }
 
-    units = computed<ForceUnit[]>(() => {
+    units = computed<TUnit[]>(() => {
         return this.groups().flatMap(g => g.units());
     });
 
+    /** Total BV (C3 tax is applied at unit level via adjustedBv, not here) */
     totalBv = computed(() => {
         return this.units().reduce((sum, unit) => sum + (unit.getBv()), 0);
     });
@@ -122,11 +128,23 @@ export class Force {
         }
     }
 
-    public addUnit(unit: Unit): ForceUnit {
+    /**
+     * Factory method to create the appropriate ForceUnit subclass.
+     * Must be implemented by subclasses to create CBTForceUnit, ASForceUnit, etc.
+     */
+    protected abstract createForceUnit(unit: Unit): TUnit;
+
+    /**
+     * Factory method to deserialize the appropriate ForceUnit subclass.
+     * Must be implemented by subclasses to deserialize CBTForceUnit, ASForceUnit, etc.
+     */
+    protected abstract deserializeForceUnit(data: SerializedUnit): TUnit;
+
+    public addUnit(unit: Unit): TUnit {
         if (this.units().length >= MAX_UNITS) {
             throw new Error(`Cannot add more than ${MAX_UNITS} units to a single force`);
         }
-        const forceUnit = new ForceUnit(unit, this, this.dataService, this.unitInitializer, this.injector);
+        const forceUnit = this.createForceUnit(unit);
         if (this.groups().length === 0) {
             this.addGroup(DEFAULT_GROUP_NAME);
         }
@@ -147,17 +165,17 @@ export class Force {
         return this.groups().length >= MAX_GROUPS;
     });
 
-    public addGroup(name: string = 'Group'): UnitGroup {
+    public addGroup(name: string = 'Group'): UnitGroup<TUnit> {
         if (this.hasMaxGroups()) {
             throw new Error(`Cannot add more than ${MAX_GROUPS} groups`);
         }
-        const newGroup = new UnitGroup(this, name);
-        this.groups.update(gs => [...gs, newGroup]);
+        const newGroup = new UnitGroup<TUnit>(this, name);
+        this.groups.update(groups => [...groups, newGroup]);
         if (this.instanceId()) this.emitChanged();
         return newGroup;
     }
 
-    public removeGroup(group: UnitGroup) {
+    public removeGroup(group: UnitGroup<TUnit>) {
         const groups = [...this.groups()];
         const idx = groups.findIndex(g => g.id === group.id);
         if (idx === -1) return;
@@ -175,7 +193,7 @@ export class Force {
         if (this.instanceId()) this.emitChanged();
     }
 
-    public removeUnit(unitToRemove: ForceUnit) {
+    public removeUnit(unitToRemove: TUnit) {
         const groups = this.groups();
         for (const g of groups) {
             const originalCount = g.units().length;
@@ -186,7 +204,6 @@ export class Force {
         }
         unitToRemove.destroy();
         this.removeEmptyGroups();
-        this.refreshUnits();
         if (this.instanceId()) {
             this.emitChanged();
         }
@@ -202,7 +219,7 @@ export class Force {
         }
     }
 
-    public setUnits(newUnits: ForceUnit[]) {
+    public setUnits(newUnits: TUnit[]) {
         this.groups.set([]);
         const defaultGroup = this.addGroup(DEFAULT_GROUP_NAME);
         defaultGroup.units.set(newUnits);
@@ -211,10 +228,9 @@ export class Force {
         }
     }
 
-    public refreshUnits() {
-        this.units().forEach(unit => {
-            unit.recalculateBv();
-        });
+    public setNetwork(networks: SerializedC3NetworkGroup[]) {
+        this._c3Networks.set(networks);
+        this.emitChanged();
     }
 
     public loadAll() {
@@ -223,87 +239,12 @@ export class Force {
 
     /** Serialize this Force instance to a plain object */
     public serialize(): SerializedForce {
-        let instanceId = this.instanceId();
-        if (!instanceId) {
-            instanceId = generateUUID();
-            this.instanceId.set(instanceId);
-        }
-        // Serialize groups (preserve per-group structure)
-        const serializedGroups: SerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => ({
-            id: g.id,
-            name: g.name(),
-            nameLock: g.nameLock,
-            color: g.color,
-            units: g.units().map(u => u.serialize())
-        })) as SerializedGroup[];
-        return {
-            version: 1,
-            timestamp: this.timestamp ?? new Date().toISOString(),
-            instanceId: instanceId,
-            name: this.name,
-            bv: this.totalBv(),
-            nameLock: this.nameLock || false,
-            groups: serializedGroups,
-        } as SerializedForce & { groups?: any[] };
+        throw new Error('Force.serialize must be implemented by subclass');
     }
 
-    /** Deserialize a plain object to a Force instance */
-    public static deserialize(data: SerializedForce, dataService: DataService, unitInitializer: UnitInitializerService, injector: Injector): Force {
-        const force = new Force(data.name, dataService, unitInitializer, injector);
-        force.loading = true;
-        try {
-            force.instanceId.set(data.instanceId);
-            force.nameLock = data.nameLock || false;
-            force.owned.set(data.owned !== false);
-            const units: ForceUnit[] = [];
-            // Deserialize groups
-            if (data.groups && Array.isArray(data.groups)) {
-                const groupsIn = data.groups;
-                const parsedGroups: UnitGroup[] = [];
-                for (const g of groupsIn) {
-                    const groupUnits: ForceUnit[] = [];
-                    for (const unitData of g.units) {
-                        try {
-                            groupUnits.push(ForceUnit.deserialize(unitData, force, dataService, unitInitializer, injector));
-                        } catch (err) {
-                            const logger = injector.get(LoggerService);
-                            logger.error(`Force.deserialize error on unit "${unitData.unit}": ${err}`);
-                            continue;
-                        }
-                    }
-                    const group = new UnitGroup(force, g.name || DEFAULT_GROUP_NAME);
-                    if (g.id) {
-                        group.id = g.id;
-                    }
-                    group.nameLock = g.nameLock || false;
-                    group.color = g.color || '';
-                    group.units.set(groupUnits);
-                    parsedGroups.push(group);
-                }
-                force.groups.set(parsedGroups);
-            } else if (data.units) { // DEPRECATED: Backwards compatibility for forces without groups
-                for (const unitData of data.units) {
-                    try {
-                        units.push(ForceUnit.deserialize(unitData, force, dataService, unitInitializer, injector));
-                    } catch (err) {
-                        const logger = injector.get(LoggerService);
-                        logger.error(`Force.deserialize error on unit "${unitData.unit}": ${err}`);
-                        continue; // Ignore this unit
-                    }
-                }
-                // Put existing units into a default group for compatibility
-                const defaultGroup = force.addGroup(DEFAULT_GROUP_NAME);
-                if (force.nameLock) {
-                    defaultGroup.nameLock = true; // Propagate name lock to default group, fallback behavior
-                }
-                defaultGroup.units.set(units);
-            }
-            force.timestamp = data.timestamp ?? null;
-            force.refreshUnits();
-        } finally {
-            force.loading = false;
-        }
-        return force;
+    /** Deserialize a plain object to a Force instance - must be implemented by subclass */
+    public static deserialize(data: SerializedForce, dataService: DataService, unitInitializer: UnitInitializerService, injector: Injector): Force<ForceUnit> {
+        throw new Error('Force.deserialize must be implemented by subclass');
     }
 
     emitChanged() {
@@ -318,66 +259,6 @@ export class Force {
         }, 300); // debounce
     }
 
-    /**
-     * Updates the force in-place from serialized data.
-     */
-    public update(data: SerializedForce) {
-        this.loading = true;
-        try {
-            if (this.name !== data.name) this.setName(data.name, false);
-            this.nameLock = data.nameLock || false;
-            this.timestamp = data.timestamp ?? null;
+    public abstract update(data: SerializedForce): void;
 
-            const incomingGroupsData = data.groups || [];
-            const currentGroups = this.groups();
-            const currentGroupMap = new Map(currentGroups.map(g => [g.id, g]));
-            const allCurrentUnitsMap = new Map(this.units().map(u => [u.id, u]));
-            const allIncomingUnitIds = new Set(incomingGroupsData.flatMap(g => g.units.map(u => u.id)));
-
-            // Destroy units that are no longer in the force at all
-            for (const [unitId, unit] of allCurrentUnitsMap.entries()) {
-                if (!allIncomingUnitIds.has(unitId)) {
-                    unit.destroy();
-                    allCurrentUnitsMap.delete(unitId);
-                }
-            }
-
-            // Update existing groups and add new ones, and update/move units
-            const updatedGroups: UnitGroup[] = incomingGroupsData.map(groupData => {
-                let group = currentGroupMap.get(groupData.id);
-                if (group) {
-                    // Update existing group
-                    if (group.name() !== groupData.name) group.setName(groupData.name, false);
-                    group.nameLock = groupData.nameLock;
-                    group.color = groupData.color;
-                } else {
-                    // Add new group
-                    group = new UnitGroup(this, groupData.name);
-                    group.id = groupData.id;
-                    group.nameLock = groupData.nameLock;
-                    group.color = groupData.color;
-                }
-
-                const groupUnits = groupData.units.map(unitData => {
-                    let unit = allCurrentUnitsMap.get(unitData.id);
-                    if (unit) {
-                        // Unit exists, update it
-                        unit.update(unitData);
-                    } else {
-                        // Unit is new to the force, create it
-                        unit = ForceUnit.deserialize(unitData, this, this.dataService, this.unitInitializer, this.injector);
-                    }
-                    return unit;
-                });
-                group.units.set(groupUnits);
-                return group;
-            });
-
-            this.groups.set(updatedGroups);
-            this.removeEmptyGroups();
-            this.refreshUnits();
-        } finally {
-            this.loading = false;
-        }
-    }
 }

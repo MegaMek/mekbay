@@ -72,19 +72,14 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
         text-overflow: ellipsis;
-        z-index: 1;
     }
 
     .unit-alias {
         font-weight: bold;
-        z-index: 1;
     }
 
     .info-slot {
-        background-color: rgba(0, 0, 0, 0.2);
         padding: 0px 2px;
-        display: flex;
-        align-items: center;
         gap: 1px;
         justify-content: start;
         font-size: 0.7em;
@@ -182,43 +177,65 @@
         font-weight: normal;
     }
 
-    .info-slot.interactive {
-        pointer-events: auto;
-        cursor: pointer;
-        transition: filter 0.2s, background-color 0.2s;
-        &:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-            filter: brightness(1.2);
+    .info-slot {
+        &.interactive {
+            pointer-events: auto;
+            cursor: pointer;
+            transition: filter 0.2s, background-color 0.2s;
+            &:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+                filter: brightness(1.2);
+            }
+        }
+
+        &.off {
+            background-color: rgba(185, 16, 16, 0.5);
+        }
+
+        &.c3link {
+            background-color: rgba(128, 128, 128, 0.5);
+            
+            &.enabled {
+                background-color: color-mix(in srgb, var(--network-color) 100%, transparent 50%);
+            }
+        }
+        
+        &.ecm {
+            background-color: rgba(0, 130, 9, 0.5);
+            
+            &.eccm {
+                background-color: rgba(117, 0, 212, 0.5);
+            }
+        
+            &.ghost {
+                background-color: rgba(176, 173, 0, 0.5);
+            }
+        
+            &.off {
+                background-color: rgba(185, 16, 16, 0.5);
+            }
+        }
+    
+    
+    
+        &.pilot-info {
+            background-color: rgba(176, 135, 0, 0.5);
+    
+            &:hover {
+                background-color: rgba(176, 135, 0, 0.8);
+            }
+        }
+    
+        &.destroyed {
+            background-image: repeating-linear-gradient(140deg,
+                    #500B 0px,
+                    #500B 12px,
+                    #300A 12px,
+                    #300A 24px);
+            color: #d00;
         }
     }
 
-    .info-slot.off {
-        background-color: rgba(185, 16, 16, 0.5);
-    }
-
-    .info-slot.c3link {
-        background-color: rgba(185, 16, 16, 0.5);
-    }
-
-    .info-slot.c3link.enabled {
-        background-color: rgba(27, 136, 199, 0.5);
-    }
-
-    .info-slot.ecm {
-        background-color: rgba(0, 130, 9, 0.5);
-    }
-
-    .info-slot.ecm.eccm {
-        background-color: rgba(117, 0, 212, 0.5);
-    }
-
-    .info-slot.ecm.ghost {
-        background-color: rgba(176, 173, 0, 0.5);
-    }
-
-    .info-slot.ecm.off {
-        background-color: rgba(185, 16, 16, 0.5);
-    }
 
 
 

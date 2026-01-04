@@ -68,7 +68,7 @@ export interface EditPilotResult {
         <div dialog-content>
             <p>Name</p>
             <div class="input-wrapper">
-                <input #nameInput type="text" class="input" [value]="data.name || ''" (keydown.enter)="submit()" />
+                <input #nameInput type="text" class="input" [value]="data.name || ''" maxlength="32" (keydown.enter)="submit()" />
             </div>
             <div class="stats">
                 <div class="stat">

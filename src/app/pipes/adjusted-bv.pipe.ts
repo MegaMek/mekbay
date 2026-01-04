@@ -46,9 +46,6 @@ export class AdjustedBV implements PipeTransform {
 
     transform(bv: number, gunnery: number, piloting: number): number {
         if (bv === undefined) return 0;
-        if (gunnery === 4 && piloting === 5) {
-            return bv;
-        }
         return BVCalculatorUtil.calculateAdjustedBV(bv, gunnery, piloting);
     }
 }

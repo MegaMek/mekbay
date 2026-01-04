@@ -37,13 +37,15 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { Force, UnitGroup } from '../../models/force.model';
 import { ForceUnit } from '../../models/force-unit.model';
+import { GameSystem } from '../../models/common.model';
 import { DragDropModule, CdkDragDrop, moveItemInArray, CdkDragMove } from '@angular/cdk/drag-drop'
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
-import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
+import { ShareForceDialogComponent, ShareForceDialogData } from '../share-force-dialog/share-force-dialog.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
+import { C3NetworkDialogComponent, C3NetworkDialogData, C3NetworkDialogResult } from '../c3-network-dialog/c3-network-dialog.component';
 
 /*
  * Author: Drake
@@ -74,7 +76,7 @@ export class ForceBuilderViewerComponent {
     });
 
     hasEmptyGroups = computed(() => {
-        return this.forceBuilderService.force.groups().some(g => g.units().length === 0);
+        return this.forceBuilderService.currentForce()?.groups().some(g => g.units().length === 0);
     });
 
     // --- Gesture State ---
@@ -89,7 +91,11 @@ export class ForceBuilderViewerComponent {
     private readonly AUTOSCROLL_MIN = 40;
 
     hasSingleGroup = computed(() => {
-        return this.forceBuilderService.force.groups().length === 1;
+        return this.forceBuilderService.currentForce()?.groups().length === 1;
+    });
+
+    isAlphaStrike = computed(() => {
+        return this.forceBuilderService.currentForce()?.gameSystem === GameSystem.ALPHA_STRIKE;
     });
 
     constructor() {
@@ -107,7 +113,8 @@ export class ForceBuilderViewerComponent {
     }
 
     onUnitKeydown(event: KeyboardEvent, index: number) {
-        const units = this.forceBuilderService.forceUnits();
+        const units = this.forceBuilderService.currentForce()?.units();
+        if (!units || units.length === 0) return;
         if (event.key === 'ArrowDown') {
             if (index < units.length - 1) {
                 event.preventDefault();
@@ -125,9 +132,7 @@ export class ForceBuilderViewerComponent {
         }
     }
 
-    get forceName() {
-        return computed(() => this.forceBuilderService.force.name);
-    }
+    forceName =  computed(() => this.forceBuilderService.currentForce()?.name);
 
     selectUnit(unit: ForceUnit) {
         this.forceBuilderService.selectUnit(unit);
@@ -140,7 +145,7 @@ export class ForceBuilderViewerComponent {
         event.stopPropagation();
         await this.forceBuilderService.removeUnit(unit);
         // If this was the last unit, close the menu (offcanvas OFF mode)
-        if (this.forceBuilderService.forceUnits().length === 0) {
+        if (this.forceBuilderService.forceUnits()?.length === 0) {
             this.layoutService.closeMenu();
         }
     }
@@ -161,7 +166,8 @@ export class ForceBuilderViewerComponent {
 
     showUnitInfo(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
-        const unitList = this.forceBuilderService.forceUnits();
+        const unitList = this.forceBuilderService.currentForce()?.units();
+        if (!unitList) return;
         const unitIndex = unitList.findIndex(u => u.id === unit.id);
         const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
@@ -172,10 +178,31 @@ export class ForceBuilderViewerComponent {
 
     }
 
-    toggleC3Link(event: MouseEvent, unit: ForceUnit) {
-        if (unit.readOnly()) return;
+    openC3Network(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
-        unit.setC3Linked(!unit.c3Linked);
+        const force = this.forceBuilderService.currentForce();
+        if (!force) return;
+
+        const ref = this.dialogsService.createDialog<C3NetworkDialogResult>(C3NetworkDialogComponent, {
+            data: <C3NetworkDialogData>{
+                units: force.units,
+                networks: force.c3Networks,
+                readOnly: unit.readOnly()
+            },
+            width: '100dvw',
+            height: '100dvh',
+            maxWidth: '100dvw',
+            maxHeight: '100dvh',
+            panelClass: 'c3-network-dialog-panel'
+        });
+
+        ref.closed.subscribe((result) => {
+            if (result?.updated) {
+                // Save networks back to force
+                force.setNetwork(result.networks);
+                this.toastService.show('C3 network configuration changed', 'success');
+            }
+        });
     }
 
 
@@ -184,8 +211,7 @@ export class ForceBuilderViewerComponent {
         if (unit.readOnly()) return;
         event.stopPropagation();
         const crew = unit.getCrewMembers();
-        const pilot = crew.length > 0 ? crew[0] : null;
-        if (!pilot) return;
+        const pilot = crew.length > 0 ? crew[0] : undefined;
         await this.forceBuilderService.editPilotOfUnit(unit, pilot);
     }
 
@@ -289,7 +315,8 @@ export class ForceBuilderViewerComponent {
     drop(event: CdkDragDrop<ForceUnit[]>) {
         if (this.forceBuilderService.readOnlyForce()) return;
 
-        const force = this.forceBuilderService.force;
+        const force = this.forceBuilderService.currentForce();
+        if (!force) return;
         const groups = force.groups();
 
         const groupIdFromContainer = (id?: string) => id && id.startsWith('group-') ? id.substring('group-'.length) : null;
@@ -335,7 +362,7 @@ export class ForceBuilderViewerComponent {
     }
 
     connectedDropLists(): string[] {
-        const groups = this.forceBuilderService.force.groups() || [];
+        const groups = this.forceBuilderService.currentForce()?.groups() || [];
         const ids = groups.map(g => `group-${g.id}`);
         if (this.newGroupDropzone()?.nativeElement) {
             ids.push('new-group-dropzone');
@@ -344,12 +371,11 @@ export class ForceBuilderViewerComponent {
     }
 
     dropForNewGroup(event: CdkDragDrop<any, any, any>) {
-        if (this.forceBuilderService.readOnlyForce()) return;
-
-        const force = this.forceBuilderService.force;
+        const currentForce = this.forceBuilderService.currentForce();
+        if (!currentForce || !currentForce.owned()) return;
 
         // Create the group first (force.addGroup already updates force.groups())
-        const newGroup = force.addGroup('New Group');
+        const newGroup = currentForce.addGroup('New Group');
         if (!newGroup) return;
 
         const prevId = event.previousContainer?.id;
@@ -359,7 +385,7 @@ export class ForceBuilderViewerComponent {
         }
 
         const sourceGroupId = prevId.substring('group-'.length);
-        const sourceGroup = force.groups().find(g => g.id === sourceGroupId);
+        const sourceGroup = currentForce.groups().find(g => g.id === sourceGroupId);
         if (!sourceGroup) return;
 
         // Move the item from source to the new group
@@ -372,10 +398,10 @@ export class ForceBuilderViewerComponent {
         newGroup.units.set(targetUnits);
         this.forceBuilderService.generateGroupNameIfNeeded(sourceGroup);
         this.forceBuilderService.generateGroupNameIfNeeded(newGroup);
-        force.removeEmptyGroups();
+        currentForce.removeEmptyGroups();
 
         // Commit change
-        force.emitChanged();
+        currentForce.emitChanged();
 
         // Select the moved unit
         this.forceBuilderService.selectUnit(moved);
@@ -401,7 +427,11 @@ export class ForceBuilderViewerComponent {
     }
 
     shareForce() {
-        this.dialogsService.createDialog(ShareForceDialogComponent);
+        const currentForce = this.forceBuilderService.currentForce();
+        if (!currentForce) return;
+        this.dialogsService.createDialog(ShareForceDialogComponent, {
+            data: { force: currentForce }
+        });
     }
 
     onEmptyGroupClick(group: UnitGroup) {

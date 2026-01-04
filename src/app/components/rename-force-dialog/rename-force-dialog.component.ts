@@ -233,7 +233,7 @@ export class RenameForceDialogComponent {
 
     private computeFactionsText(): string[] | null {
         const factions = this.forceBuilder.getAllFactionsAvailable();
-        const totalUnits = this.forceBuilder.forceUnits().length;
+        const totalUnits = this.forceBuilder.forceUnits()?.length;
         if (!totalUnits || !factions || factions.size === 0) {
             return null;
         }

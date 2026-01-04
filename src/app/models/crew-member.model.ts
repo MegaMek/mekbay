@@ -30,15 +30,16 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
+import { CBTForceUnit } from "./cbt-force-unit.model";
 import { ForceUnit } from "./force-unit.model";
 
-const DEFAULT_GUNNERY_SKILL = 4;
-const DEFAULT_PILOTING_SKILL = 5;
+export const DEFAULT_GUNNERY_SKILL = 4;
+export const DEFAULT_PILOTING_SKILL = 5;
 
 export type SkillType = 'gunnery' | 'piloting';
 
 export class CrewMember {
-    private unit: ForceUnit;
+    private unit: CBTForceUnit;
     private id: number;
     private name: string;
     private gunnerySkill: number;
@@ -48,7 +49,7 @@ export class CrewMember {
     private hits: number;
     private state: 'healthy' | 'unconscious' | 'dead' = 'healthy';
 
-    constructor(id: number, unit: ForceUnit) {
+    constructor(id: number, unit: CBTForceUnit) {
         this.unit = unit;
         this.id = id;
         this.name = '';
@@ -158,7 +159,7 @@ export class CrewMember {
     }
 
     /** Deserialize a plain object to a CrewMember instance */
-    public static deserialize(data: any, unit: ForceUnit): CrewMember {
+    public static deserialize(data: any, unit: CBTForceUnit): CrewMember {
         const crew = new CrewMember(data.id, unit);
         crew.setName(data.name);
         crew.setSkill('gunnery', data.gunnerySkill);

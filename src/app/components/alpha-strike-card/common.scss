@@ -1,0 +1,313 @@
+:host {
+    // --as-red: #7c2422;
+    // --as-red-bright: #b31816;
+    --as-red: #7b0000;
+    --as-red-bright: #cd0000;
+}
+
+// Frame/Box styling
+.frame {
+    width: 100%;
+    box-sizing: border-box;
+    color: #000;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+
+    .frame-content {
+        z-index: 1;
+        padding: 0.7em 1.2em;
+        flex: 1 1 auto;
+    }
+}
+
+.frame-background {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    opacity: 0.7;
+    border-image: none;
+    background-color: #E3ECED;
+    border-radius: 1.6em;
+    border: 0.3em solid #221F20;
+    box-sizing: border-box;
+
+    :host(.monochrome) & {
+        background-color: #fff;
+    }
+}
+
+:host:not(.monochrome) {
+    .frame-title-background {
+        background: linear-gradient(to right, transparent 0%, #5B504E 0.5em, #5B504E calc(100% - 0.5em), transparent 100%);
+        color: #fff;
+        font-weight: bold;
+        padding-left: 0.7em;
+        padding-right: 0.7em;
+    }
+}
+
+.alphastrike-text {
+    paint-order: stroke fill;
+    position: relative;
+    font-weight: 900;
+
+    :host:not(.monochrome) & {
+        // color: #d22027;
+        // -webkit-text-stroke: 0.08em #ECD24B;
+        color: #000;
+        -webkit-text-stroke: 0.08em #fff;
+    }
+}
+
+.as-caption {
+    font-size: 3em;
+    font-weight: 500;
+}
+
+.as-value {
+    font-size: 3em;
+    font-weight: 900;
+    color: var(--as-red);
+
+    :host:has(.monochrome) & {
+        color: #000;
+        // -webkit-text-stroke: 0.1em #fff;
+        // paint-order: stroke fill;
+    }
+}
+
+
+// PV Box
+.pv-box {
+    position: absolute;
+    top: 16%;
+    right: 1.8em;
+    width: 17%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.pv-box-background {
+    position: absolute;
+    top: 1.43em;
+    right: 1.43em;
+    width: 22em;
+    height: 7.5em;
+    background: #000;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 4em 100%, 0 0);
+
+    // :host(:not(.monochrome)) & {
+    //     display: none;
+    // }
+}
+
+.pv-text {
+    font-size: 5.4em;
+    font-weight: 900;
+    text-align: center;
+    letter-spacing: 0.1em;
+    z-index: 1;
+}
+
+.base-pv-text {
+    font-size: 2.4em;
+    font-weight: bold;
+    text-align: center;
+    margin-top: 0.5em;
+    z-index: 1;
+    -webkit-text-stroke: 0.12em #fff;
+    color: #000;
+    paint-order: stroke fill;
+}
+
+
+// Critical Hits Box
+.critical-hits-box {
+    display: flex;
+    width: 100%;
+    box-sizing: border-box;
+    color: #000;
+    position: relative;
+
+    .frame-content {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.8em;
+        padding-bottom: 1em;
+    }
+
+    &.autoheight {
+        height: 100%;
+
+        .frame-content {
+            gap: 0.1em;
+            justify-content: space-between;
+        }
+    }
+
+    .pip {
+        width: 2.14em;
+        height: 2.14em;
+    }
+}
+
+.critical-title {
+    font-size: 2.86em;
+    font-weight: 700;
+    text-align: center;
+    width: fit-content;
+    white-space: nowrap;
+    align-self: center;
+}
+
+.critical-row {
+    display: flex;
+    align-items: center;
+    font-family: 'Roboto Condensed', sans-serif;
+
+    &.centered-row {
+        justify-content: center;
+        align-self: center;
+    }
+
+    .critical-row { // Nested critical rows for motive of vehicles
+        &:not(:last-child) {
+            margin-right: 1.5em;
+        }
+    }
+}
+
+.critical-name {
+    font-size: 2em;
+    font-weight: 900;
+    text-align: right;
+    width: 5.8em;
+    padding-right: 0.2em;
+    letter-spacing: -0.03em;
+    color: #000;
+
+    :host(:not(.monochrome)) & {
+        color: var(--as-red);
+    }
+
+    .critical-row.centered-row & {
+        width: auto;
+    }
+}
+
+.critical-pips {
+    display: flex;
+    gap: 0.5em;
+    position: relative;
+}
+
+.desc-group {
+    display: flex;
+    flex-direction: column;
+    margin-left: 1.6em;
+    position: relative;
+    box-sizing: border-box;
+
+    .brace {
+        position: absolute;
+        font-size: 4em;
+        left: -0.28em;
+        top: 50%;
+        transform: translateY(-50%);
+        line-height: 1;
+    }
+}
+
+.critical-desc {
+    font-size: 2.3em;
+    font-weight: 600;
+    margin-left: 0.2em;
+    white-space: nowrap;
+    letter-spacing: -0.05em;
+}
+
+.pip-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+}
+
+.pips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5em;
+}
+
+.pip {
+    width: 2.8em;
+    height: 2.8em;
+
+    circle {
+        fill: #fff;
+        stroke: #000;
+        stroke-width: 2pt;
+    }
+
+    &.structure circle {
+        fill: #bbb;
+    }
+
+    &.damaged circle {
+        fill: var(--damage-color);
+    }
+
+    &.pending-damage circle {
+        fill: orange; // Yellow for uncommitted damage
+    }
+
+    &.pending-heal circle {
+        fill: #03a9f4; // Light blue for uncommitted heal
+    }
+}
+
+
+.pilot-abilities {
+
+    .pilot-ability {
+        color: black;
+        -webkit-text-stroke: #fff 0.3em;
+        paint-order: stroke fill;
+        font-size: 2.5em;
+        font-weight: 700;
+        cursor: pointer;
+
+        &:hover {
+            color: #6e00a5;
+        }
+
+        :host:not(.monochrome) & {
+            color: white;
+            -webkit-text-stroke: #000 0.3em;
+
+            &:hover {
+                color: #cdb0ff;
+            }
+        }
+    }
+}
+
+.interactive {
+    cursor: pointer;
+}
+
+.destroyed-overlay {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(128, 0, 0, 0.3);
+    z-index: 100;
+    pointer-events: none;
+
+    @media print {
+        display: none;
+    }
+}
+

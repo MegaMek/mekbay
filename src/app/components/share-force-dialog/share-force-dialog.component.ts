@@ -33,16 +33,21 @@
 
 
 
-import { ChangeDetectionStrategy, Component, effect, ElementRef, inject, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ToastService } from '../../services/toast.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { Force } from '../../models/force.model';
 
 /*
  * Author: Drake
  */
+
+export interface ShareForceDialogData {
+    force: Force;
+}
 
 @Component({
     selector: 'share-force-dialog',
@@ -54,19 +59,24 @@ import { copyTextToClipboard } from '../../utils/clipboard.util';
     },
     template: `
     <div class="content">
-        <h2 dialog-title>{{ forceBuilderService.force.name }}</h2>
+        <h2 dialog-title>{{ force.name }}</h2>
         <div dialog-content class="content">
-            <label class="description"><strong>Live battle record:</strong> share the current deployment as a read-only field report — includes damage, pilots, and status conditions.</label>
-            <div class="row">
-                <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="shareUrl"/>
-                <button class="bt-button" (click)="share(shareUrl)">SHARE</button>
-            </div>
-
-            <label class="description"><strong>Clean roster:</strong> share a pristine copy of the force — no damage, pilots, or status conditions.</label>
-            <div class="row">
-                <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="cleanUrl"/>
-                <button class="bt-button" (click)="share(cleanUrl)">SHARE</button>
-            </div>
+            @let shareLiveUrlString = shareLiveUrl();
+            @if (shareLiveUrlString != null) {
+                <label class="description"><strong>Live battle record:</strong> share the current deployment as a read-only field report — includes damage, pilots, and status conditions.</label>
+                <div class="row">
+                    <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="shareLiveUrlString"/>
+                    <button class="bt-button" (click)="share(shareLiveUrlString)">SHARE</button>
+                </div>
+            }
+            @let cleanUrlString = cleanUrl();
+            @if (cleanUrlString != null) {
+                <label class="description"><strong>Clean roster:</strong> share a pristine copy of the force — no damage, pilots, or status conditions.</label>
+                <div class="row">
+                    <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="cleanUrlString"/>
+                    <button class="bt-button" (click)="share(cleanUrlString)">SHARE</button>
+                </div>
+            }
         </div>
         <div dialog-actions>
             <button class="bt-button" (click)="close(null)">DISMISS</button>
@@ -123,17 +133,19 @@ import { copyTextToClipboard } from '../../utils/clipboard.util';
 
 export class ShareForceDialogComponent {
     public dialogRef: DialogRef<string | number | null, ShareForceDialogComponent> = inject(DialogRef);
+    private data: ShareForceDialogData = inject(DIALOG_DATA);
     forceBuilderService = inject(ForceBuilderService);
     toastService = inject(ToastService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
-    shareUrl: string = '';
-    cleanUrl: string = '';
+    shareLiveUrl = signal<string | null>(null);
+    cleanUrl = signal<string | null>(null);
+    force: Force;
 
     constructor() {
+        this.force = this.data.force;
         this.buildUrls();
     }
-
 
     private buildUrls() {
         const origin = window.location.origin || '';
@@ -143,12 +155,11 @@ export class ShareForceDialogComponent {
         const instanceTree = this.router.createUrlTree([], {
             relativeTo: this.route,
             queryParams: {
-                units: queryParameters.units,
-                instance: queryParameters.instance || null,
-                name: queryParameters.name || null
+                instance: queryParameters.instance || null
             }
         });
-        this.shareUrl = origin + this.router.serializeUrl(instanceTree);
+        const shareLiveUrl = this.router.serializeUrl(instanceTree);
+        this.shareLiveUrl.set(shareLiveUrl.length > 1 ? origin + shareLiveUrl : null);
 
         const cleanTree = this.router.createUrlTree([], {
             relativeTo: this.route,
@@ -157,13 +168,14 @@ export class ShareForceDialogComponent {
                 name: queryParameters.name || null
             }
         });
-        this.cleanUrl = origin + this.router.serializeUrl(cleanTree);
+        const cleanUrl = this.router.serializeUrl(cleanTree);
+        this.cleanUrl.set(cleanUrl.length > 1 ? origin + cleanUrl : null);
     }
 
     async share(url: string) {
         if (navigator.share) {
             navigator.share({
-                title: this.forceBuilderService.force.name || 'Shared MekBay Force',
+                title: this.force.name || 'Shared MekBay Force',
                 url: url
             }).catch(() => {
                 // fallback if user cancels or error

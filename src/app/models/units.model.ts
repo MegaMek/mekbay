@@ -154,31 +154,31 @@ export interface Units {
 }
 
 export interface AlphaStrikeUnitStats {
-    specials: string[];
+    TP: 'AF' | 'BA' | 'BM' | 'CF' | 'CI' | 'CV' | 'DA' | 'DS' | 'IM' | 'JS' | 'PM' | 'SC' | 'SS' | 'SV' | 'WS' | 'MS';
     PV: number;
     SZ: number;
-    OV: number;
-    MV: string;
-    MVx: { [mode: string]: number }; // e.g. { j: 6 }
-    usesTh: boolean;
-    usesArcs: boolean;
-    Str: number;
-    Th: number;
     TMM: number;
     usesOV: boolean;
-    TP: string;
+    OV: number;
+    MV: string;
+    MVm: { [mode: string]: number }; // e.g. { j: 6 }
+    usesTh: boolean;
+    Th: number;
     Arm: number;
+    Str: number;
+    specials: string[];
     dmg: {
+        dmgS: string;
         dmgM: string;
         dmgL: string;
         dmgE: string;
-        dmgS: string;
         _dmgS?: number; // Precomputed numeric values for filtering
         _dmgM?: number;
         _dmgL?: number;
         _dmgE?: number;
     };
     usesE: boolean;
+    usesArcs: boolean;
     frontArc?: AlphaStrikeArcStats;
     rearArc?: AlphaStrikeArcStats;
     leftArc?: AlphaStrikeArcStats;
@@ -198,7 +198,6 @@ export interface AlphaStrikeArcStats {
         dmgE: string;
         dmgS: string;
     };
-    specials: string;
     MSL: {
         dmgM: string;
         dmgL: string;
@@ -211,4 +210,5 @@ export interface AlphaStrikeArcStats {
         dmgE: string;
         dmgS: string;
     };
+    specials: string;
 }

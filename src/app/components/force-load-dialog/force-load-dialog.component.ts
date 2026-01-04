@@ -40,8 +40,10 @@ import { DialogsService } from '../../services/dialogs.service';
 import { Pipe, PipeTransform } from "@angular/core";
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { OptionsService } from '../../services/options.service';
+import { GameService } from '../../services/game.service';
 import { FORCE_PACKS } from '../../models/forcepacks.model';
 import { Unit } from '../../models/units.model';
+import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
 /*
@@ -59,6 +61,7 @@ type ResolvedPack = {
     units: PackUnitEntry[];
     _searchText: string;
     bv: number;
+    pv: number;
 };
         
 @Pipe({
@@ -97,6 +100,7 @@ export class ForceLoadDialogComponent {
     dialogRef = inject(DialogRef<ForceLoadDialogComponent>);
     dataService = inject(DataService);
     optionsService = inject(OptionsService);
+    gameService = inject(GameService);
     dialogsService = inject(DialogsService);
     injector = inject(Injector);
     load = output<LoadForceEntry | ResolvedPack>();
@@ -110,10 +114,20 @@ export class ForceLoadDialogComponent {
     activeTab = signal(this.tabs[0]);
 
     searchText = signal<string>('');
+    gameTypeFilter = signal<'all' | 'cbt' | 'as'>('all');
+    
     filteredForces = computed<LoadForceEntry[]>(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
-        if (tokens.length === 0) return this.forces();
+        const typeFilter = this.gameTypeFilter();
+        
         return this.forces().filter(force => {
+            // Game type filter (forces with no type are considered CBT)
+            const forceType = force.type || GameSystem.CLASSIC;
+            if (typeFilter !== 'all' && forceType !== typeFilter) {
+                return false;
+            }
+            // Text search filter
+            if (tokens.length === 0) return true;
             const hay = force._searchText || '';
             return tokens.every(t => hay.indexOf(t) !== -1);
         });
@@ -175,6 +189,7 @@ export class ForceLoadDialogComponent {
                 const resolved: ResolvedPack = { name: p.name, 
                         units: entries, 
                         bv: entries.reduce((sum, e) => sum + (e.unit?.bv || 0), 0),
+                        pv: entries.reduce((sum, e) => sum + (e.unit?.as.PV || 0), 0),
                         _searchText: p.name.toLowerCase() + ' ' + entries.map(e => [e.chassis, e.model].filter(Boolean).join(' ')).join(' ').toLowerCase() }
                 return resolved;
             });
@@ -211,6 +226,15 @@ export class ForceLoadDialogComponent {
 
     onSearch(text: string) {
         this.searchText.set(text);
+        this.clearFilteredOutSelections();
+    }
+
+    onGameTypeFilter(type: 'all' | 'cbt' | 'as') {
+        this.gameTypeFilter.set(type);
+        this.clearFilteredOutSelections();
+    }
+
+    private clearFilteredOutSelections() {
         // if selected force is filtered out, clear selection
         const selForce = this.selectedForce();
         if (selForce && !this.filteredForces().includes(selForce)) {
@@ -221,6 +245,10 @@ export class ForceLoadDialogComponent {
         if (selPack && !this.filteredPacks().includes(selPack)) {
             this.selectedPack.set(null);
         }
+    }
+
+    getGameTypeLabel(type: GameSystem | undefined): string {
+        return (type || GameSystem.CLASSIC) === GameSystem.ALPHA_STRIKE ? 'AS' : 'CBT';
     }
 
     onLoad() {

@@ -1,0 +1,164 @@
+<!-- Header Section -->
+
+<div class="header-section">
+    <div class="vessel-header">
+        <span class="alphastrike-text vessel-name">{{ unit().chassis | uppercase }}</span>
+        <span class="vessel-model">{{ unit().model | uppercase }}</span>
+    </div>
+    <!-- PV Box -->
+    <div class="pv-box-background"></div>
+    <div class="pv-box">
+        <div class="pv-text">{{ adjustedPV() }}</div>
+        @if (basePV() != adjustedPV()) {
+        <div class="base-pv-text">Base PV: {{ basePV() }}</div>
+        }
+    </div>
+</div>
+
+<!-- Main Content Area -->
+<div class="stats-container">
+    <div class="stats-container-row">
+        <!-- Row 1 Left: Stats Row - Type, Size, Thrust, Skill -->
+        <div class="stats-row-container frame">
+            <div class="frame-background"></div>
+            <div class="frame-content">
+                <div class="stats-row">
+                    <span class="stat-item"><span class="as-caption">TP:</span><span class="as-value">{{
+                            asStats().TP }}</span></span>
+                    <span class="stat-item"><span class="as-caption">SZ:</span><span class="as-value">{{
+                            asStats().SZ }}</span></span>
+                    <span class="stat-item"><span class="as-caption">THR:</span><span class="as-value">{{
+                            effectiveTh() }}</span></span>
+                    <span class="stat-item" [class.clickable]="interactive()"
+                        (click)="interactive() && onEditPilotClick()"><span class="as-caption">SKILL:</span><span
+                            class="as-value">{{ skill() }}</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row 1 Right: Era Icons -->
+        <div class="era-icons">
+            @for (item of eraAvailability(); track item.era.id) {
+            @if (item.era.icon) {
+            <img class="era-icon" [src]="item.era.icon" [alt]="item.era.name" [title]="item.era.name"
+                [class.unavailable]="!item.isAvailable" />
+            }
+            }
+        </div>
+
+        <!-- Row 2 Left: Armor Row -->
+        <div class="armor-damage-row frame">
+            <div class="frame-background"></div>
+            <div class="frame-content">
+                <div class="armor-section">
+                    <div class="section-label">ARMOR</div>
+                    <div class="section-value">{{ armorPips() }}</div>
+                </div>
+                <div class="damage-section">
+                    <div class="section-label">DAMAGE</div>
+                    <div class="damage-track" data-damage-track="armor" [class.has-pending]="pendingArmorChange() !== 0"
+                        [class.pending-damage]="pendingArmorChange() > 0"
+                        [class.pending-heal]="pendingArmorChange() < 0">
+                        @if (committedArmorDamage() > 0 || pendingArmorChange() > 0) {
+                        <span class="damage-value">{{ committedArmorDamage() }}</span>
+                        @if (pendingArmorChange() !== 0) {
+                        <span class="pending-value">{{ pendingArmorChange() >= 0 ? '+' : '' }}{{ pendingArmorChange()
+                            }}</span>
+                        }
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Structure Row -->
+            <div class="frame-content">
+                <div class="armor-section">
+                    <div class="section-label">STRUCTURE</div>
+                    <div class="section-value">{{ structurePips() }}</div>
+                </div>
+                <div class="damage-section">
+                    <div class="section-label">DAMAGE</div>
+                    <div class="damage-track" data-damage-track="structure"
+                        [class.has-pending]="pendingInternalChange() !== 0"
+                        [class.pending-damage]="pendingInternalChange() > 0"
+                        [class.pending-heal]="pendingInternalChange() < 0">
+                        @if (committedInternalDamage() > 0 || pendingInternalChange() > 0) {
+                        <span class="damage-value">{{ committedInternalDamage() }}</span>
+                        @if (pendingInternalChange() !== 0) {
+                        <span class="pending-value">{{ pendingInternalChange() >= 0 ? '+' : '' }}{{
+                            pendingInternalChange() }}</span>
+                        }
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row 2 Right: Damage Threshold -->
+        <div class="damage-threshold-row-container frame">
+            <div class="frame-background"></div>
+            <div class="frame-content">
+                <div class="stats-row center">
+                    <span class="stat-item wide-spaced">
+                        <span class="as-value">{{ asStats().Th }}</span><span class="as-caption">DAMAGE THRESHOLD</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row 3-4 Left: Critical Hits Box -->
+        <div class="critical-hits-container">
+            @switch (criticalHitsVariant()) {
+            @case ('aerospace-1') {
+            <as-critical-hits-aerospace-1 [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" />
+            }
+            @case ('dropship-1') {
+            <as-critical-hits-dropship-1 [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" />
+            }
+            }
+        </div>
+
+        <!-- Row 3 Right: SPAs -->
+        <div class="spa-container">
+            <!-- Unit Image -->
+            @if (imageUrl()) {
+            <div class="fluff-image-container center-vertical">
+                <img class="fluff-image" [src]="imageUrl()" alt="Unit image" />
+            </div>
+            }
+            @let abilities = pilotAbilities();
+            @if (abilities.length > 0) {
+            <div class="pilot-abilities">
+                @for (ability of abilities; track $index) {
+                <div class="pilot-ability">{{ ability }}</div>
+                }
+            </div>
+            }
+        </div>
+
+        <!-- Row 4 Right: Specials Box -->
+        @if (effectiveSpecials().length > 0) {
+        <div class="specials-box frame">
+            <div class="frame-background"></div>
+            <div class="frame-content">
+                <span class="as-caption">SPECIAL:&nbsp;</span>
+                @for (item of effectiveSpecials(); track item.original; let isLast = $last) {
+                <span class="special-ability as-value" 
+                      [attr.data-original]="item.original"
+                      [class.exhausted]="item.isExhausted || (item.maxCount && (item.consumedCount ?? 0) >= item.maxCount)"
+                      [class.has-consumed]="item.consumedCount"
+                      (click)="onSpecialClick(item, $event)">{{ item.effective }}@if (item.maxCount && item.consumedCount) {<span class="consumed-indicator">[{{ item.maxCount - item.consumedCount }}]</span>}@if (!isLast) {<span
+                        class="special-separator">,</span>}</span>&nbsp;
+                }
+            </div>
+        </div>
+        }
+    </div>
+</div>
+
+<!-- Destroyed Overlay -->
+@if (isDestroyed()) {
+<div class="destroyed-overlay">
+    <span class="destroyed-text">DESTROYED</span>
+</div>
+}

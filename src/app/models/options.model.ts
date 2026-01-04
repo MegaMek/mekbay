@@ -31,6 +31,8 @@
  * affiliated with Microsoft.
  */
 
+import { GameSystem } from "./common.model";
+
 /*
  * Author: Drake
  */
@@ -43,7 +45,7 @@ export interface Options {
     swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
     syncZoomBetweenSheets: boolean;
     unitDisplayName: 'chassisModel' | 'alias' | 'both';
-    gameSystem: 'cbt' | 'as';
+    gameSystem: GameSystem;
     recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
     lastCanvasState?: {
         brushSize: number;
@@ -51,4 +53,7 @@ export interface Options {
     },
     sidebarLipPosition?: string;
     useAutomations: boolean;
+    ASUseHex: boolean;
+    ASCardStyle: 'colored' | 'monochrome';
+    c3NetworkConnectionsAboveNodes: boolean;
 }

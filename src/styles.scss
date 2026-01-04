@@ -14,12 +14,12 @@
     --background-input: rgba(40, 40, 40, 0.5);
     --background-highlight: #3D3D3D;
     --background-highlight-bright: #7A7A7A;
-    --primary-color: #1976d2;
     --border-color: #555;
     --scrollbar-width: 6px;
     --text-color: #ffffff;
     --text-color-secondary: silver;
     --text-color-tertiary: #888;
+    --accent-color: #EAAE3F;
     --bt-yellow: #EAAE3F;
     --bt-yellow-strong: #FFAE16;
     --bt-yellow-background: #443912;
@@ -49,6 +49,7 @@
 }
 
 html {
+    touch-action: pan-x pan-y;
     margin: 0;
     padding: 0;
     height: 100vh;
@@ -58,15 +59,8 @@ html {
     background-color: var(--background-color);
 }
 
-// @media all and (display-mode: standalone) {
-//     html {
-//         height: 100lvh;
-//     }
-// }
-
-
 body {
-    touch-action: manipulation;
+    touch-action: pan-x pan-y;
     margin: 0;
     padding: 0;
     width: 100%;
@@ -78,6 +72,7 @@ body {
     -moz-osx-font-smoothing: grayscale;
     user-select: none;
     box-sizing: border-box;
+    cursor: default;
 }
 
 a {
@@ -90,8 +85,30 @@ a {
     }
 }
 
-:where(body, .searchbar-container, .adv-panel, .dropdown, .dropdown-item, .dropdown-viewport, .name, .year, .bv, .no-results) {
-    user-select: none;
+@keyframes tv-vertical-expand {
+    0% {
+        opacity: 0.5;
+        transform: scaleY(0.01) scaleX(0.1);
+        filter: brightness(3);
+    }
+    40% {
+        opacity: 1;
+        transform: scaleY(0.01) scaleX(1);
+        filter: brightness(4);
+    }
+
+    55% {
+        filter: none;
+    }
+
+    100% {
+        transform: scaleY(1) scaleX(1);
+    }
+}
+
+.tv-fade {
+    animation: tv-vertical-expand .38s cubic-bezier(0.23, 1.02, 0.35, 1) both;
+    transform-origin: center center;
 }
 
 /* Allow selection in input and textarea fields */
@@ -150,14 +167,11 @@ hr {
     width: 100vw;
     pointer-events: auto;
     padding: 16px;
-}
-
-.cdk-overlay-pane .fullscreen-dialog-host {
-    transform: translateY(-10vh);
+    max-height: 100%;
 }
 
 .cdk-overlay-pane {
-    padding-bottom: calc(8px + var(--safe-area-inset-bottom)) !important;
+    // padding-bottom: calc(8px + var(--safe-area-inset-bottom)) !important;
     box-sizing: border-box;
 }
 
@@ -306,8 +320,91 @@ hr {
     }
 }
 
+.bt-checkbox {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    margin: 0;
+    border: 2px transparent;
+    box-sizing: border-box;
+    cursor: pointer;
+    background: var(--background-input);
+    transition: all 0.2s ease-in-out;
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    background-image:
+        linear-gradient(transparent, transparent),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666),
+        linear-gradient(#666, #666);
+    background-size: 2px 2px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px;
+    background-position: center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+
+    &:hover {
+        background-color: var(--background-highlight);
+        background-image:
+            linear-gradient(transparent, transparent),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white);
+    }
+
+    &:focus,
+    &:focus-visible {
+        outline: none;
+        background-color: var(--background-input);
+        background-image:
+            linear-gradient(transparent, transparent),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white),
+            linear-gradient(white, white);
+        background-size: 2px 2px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
+        background-position: center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    }
+
+    &:checked {
+        background-image:
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow));
+        background-repeat: no-repeat;
+        background-origin: border-box;
+        background-size: 12px 12px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px;
+        background-position: center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    }
+
+    &:disabled,
+    &[disabled] {
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+}
+
 .bt-select {
-    touch-action: manipulation;
+    touch-action: none;
     cursor: pointer;
     padding: 8px 20px 8px 8px;
     border: 2px transparent;
@@ -368,7 +465,7 @@ hr {
 
 .bt-button {
     cursor: pointer;
-    touch-action: manipulation;
+    touch-action: none;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -508,7 +605,7 @@ span {
         transition: color 0.2s, background-color 0.2s;
 
         &:hover {
-            background-color: var(--background-highlight, #444);
+            background-color: var(--background-highlight);
         }
 
         &:disabled {
@@ -531,12 +628,16 @@ span {
         }
 
     }
+}
 
-    hr {
-        border: none;
-        border-top: 1px solid #444;
-        margin: 6px 28px;
-    }
+hr.divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #888, transparent);
+    margin: 0;
+    margin-left: 6px;
+    margin-right: 6px;
+    padding: 0;
+    border: 0;
 }
 
 /* Unit Card */
@@ -570,6 +671,7 @@ span {
     }
 
     .third-info {
+        clear: both;
         flex-grow: 1;
         display: flex;
         flex-direction: row;
@@ -601,11 +703,15 @@ span {
         gap: 4px;
         min-width: 40px;
         justify-content: start;
-
+        
+        &.centered {
+            justify-content: center;
+        }
+        
         &.numeric {
             justify-content: end;
         }
-
+        
         &.slim {
             min-width: auto;
         }
@@ -800,6 +906,12 @@ span {
 
 
 /* MekBay SVG Sheet Styles */
+@media screen {
+    .multiple-visible .page-wrapper.selected > svg.mekbay-sheet {
+        outline: 4px solid var(--bt-yellow);
+        outline-offset: -4px;
+    }
+}
 
 .mekbay-sheet {
     background-color: #FFF;
@@ -865,7 +977,7 @@ span {
 
     .interactive {
         cursor: pointer;
-        touch-action: manipulation;
+        touch-action: none;
     }
 
     .critGroup.locationDestroyed text {
@@ -1028,7 +1140,7 @@ span {
         .selectable,
         .selectable>path {
             cursor: pointer;
-            touch-action: manipulation;
+            touch-action: none;
             transition: fill ease-out 0.2s;
         }
 
@@ -1685,6 +1797,7 @@ span {
 @media print {
 
     * {
+        -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
         -webkit-transition: none !important;
         transition: none !important;
@@ -1693,6 +1806,10 @@ span {
     .night-mode .mekbay-sheet,
     .night-mode .mekbay-sheet * {
         filter: none !important;
+    }
+
+    .mekbay-sheet {
+        transform: none !important;
     }
 
     html,
@@ -1705,87 +1822,21 @@ span {
         overflow: unset;
     }
 
-    body.multipage-container-active *:not(#multipage-container):not(#multipage-container *):not(defs):not(defs *):not(symbol):not(symbol *):not(marker):not(marker *):not(clipPath):not(clipPath *):not(pattern):not(pattern *):not(linearGradient):not(linearGradient *):not(radialGradient):not(radialGradient *) {
-        display: none !important;
-        visibility: hidden !important;
-    }
+}
 
-    .noprint,
-    .backdrop {
+@media screen {
+    .print-only {
         display: none !important;
     }
+}
 
-    force-builder-viewer,
-    .header {
+@media print {
+    .header,
+    .backdrop,
+    .screen-only {
         display: none !important;
     }
-
-
-    body:not(.multipage-container-active) {
-
-        main,
-        .app-container,
-        .main-content,
-        .content-area,
-        svg-viewer,
-        .svg-viewer-container,
-        .svg-viewer-container .slides {
-            width: 100% !important;
-            height: 100% !important;
-            padding: 0;
-            margin: 0 !important;
-            left: 0;
-            top: 0;
-            display: block;
-            background: transparent !important;
-        }
-
-        .svg-viewer-container .slide {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: white !important;
-            width: 100% !important;
-            height: 100% !important;
-            padding: 0 !important;
-            margin: 0 auto !important;
-            box-sizing: border-box;
-            page-break-after: always;
-            break-after: page;
-            overflow: hidden;
-            background: white !important;
-            transform: none !important;
-
-            >svg {
-                display: block;
-                box-sizing: border-box;
-                padding: 0;
-                margin: 0in 0.16in;
-                transform: none !important;
-                height: 100%;
-                width: auto;
-                max-width: 100%;
-                min-width: 0;
-                max-height: 100%;
-                page-break-inside: avoid;
-                page-break-after: auto !important;
-                break-after: auto !important;
-            }
-        }
+    .print-show {
+        visibility: visible !important;
     }
-
-    #faded-arrow,
-    #now-arrow,
-    #next-arrow {
-        display: none !important;
-        visibility: hidden !important;
-    }
-
-    @page {
-        size: auto;
-        margin: 0cm;
-        padding: 0cm !important;
-        overflow: hidden;
-    }
-
 }

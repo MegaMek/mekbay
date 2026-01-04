@@ -1,0 +1,296 @@
+:host {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--background-color);
+}
+
+.page-viewer-container {
+    width: 100%;
+    min-height: 0;
+    flex: 1 1 0;
+    overflow: hidden;
+    background: transparent;
+    position: relative;
+    touch-action: none;
+    user-select: none;
+}
+
+/* Swipe wrapper - handles X translation during swipe (separate from zoom) */
+.swipe-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    will-change: transform;
+
+    @media print {
+        transform: none !important;
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0;
+        margin: 0 !important;
+        left: 0;
+        top: 0;
+        display: block;
+        background: transparent !important;
+    }
+}
+
+/* Content wrapper - contains all pages and receives zoom/pan transforms */
+.page-content {
+    position: absolute;
+    top: 0;
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    /* Gap is handled via page translateX */
+    will-change: transform;
+    transform-origin: top left;
+
+    @media print {
+        transform: none !important;
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0;
+        margin: 0 !important;
+        left: 0;
+        top: 0;
+        display: block;
+        background: transparent !important;
+    }
+}
+
+/* Page wrapper for individual pages */
+.page-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    box-sizing: border-box;
+    /* Empty wrappers are transparent with a subtle border */
+    background-color: transparent;
+    transition: background-color 1.6s, outline 0.6s;
+
+    @media print {
+        position: relative;
+        outline: none;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: white !important;
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+        box-sizing: border-box;
+        page-break-after: always;
+        break-after: page;
+        overflow: hidden;
+        background: white !important;
+        transform: none !important;
+
+        &.shadow-page {
+            display: none;
+        }
+
+        &:not(.selected) {
+            display: none;
+        }
+
+        &.selected {
+            left: 0 !important;
+            top: 0 !important;
+        }
+    }
+}
+
+/* Empty page wrapper during swipe - subtle border to show position */
+.page-wrapper:not(:has(svg)) {
+    outline: 1px solid var(--border-color);
+    outline-offset: -1px;
+}
+
+/* Page wrapper with content (has SVG) shows white background */
+.page-wrapper:has(svg) {
+    background-color: #fff;
+}
+
+@media screen {
+    :host-context(.night-mode) {
+        .page-wrapper:has(svg) {
+            background-color: unset;
+        }
+    }
+}
+
+/* Neighbor pages during swipe */
+.page-wrapper.neighbor-page {
+    //     pointer-events: none;
+    //     transition: opacity 0.2s;
+
+    //     /* Hide wrapper when no SVG inside */
+    //     &:not(:has(svg)) {
+    //         opacity: 0;
+    //     }
+
+    //     /* Fade in neighbor pages */
+    //     &.neighbor-visible {
+    //         opacity: 1;
+    //     }
+    @media print {
+        display: none;
+    }
+}
+
+.page-wrapper {
+    &.leaving-page,
+    &.shadow-page {
+        opacity: 0.1;
+        cursor: pointer;
+        // transition: opacity 0.2s ease-out; // (disabled, is too heavy during swipe)
+
+        /* Disable pointer events on SVG content to ensure wrapper handles clicks */
+        svg {
+            pointer-events: none;
+        }
+
+        @media print {
+            display: none;
+        }
+    }
+}
+
+
+/* Error container */
+.error-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: #ccc;
+    text-align: center;
+    z-index: 20;
+    background: var(--background-color);
+}
+
+.error-message {
+    margin-bottom: 16px;
+    font-size: 1.1em;
+}
+
+.reload-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.reload-button span.icon {
+    font-size: 1.2em;
+    line-height: 1;
+}
+
+/* Canvas overlay wrapper - positioned absolutely within page-content */
+.page-canvas-overlay-wrapper {
+    position: absolute;
+    width: 612px;
+    height: 792px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.page-canvas-overlay-wrapper.active {
+    pointer-events: auto;
+}
+
+/* Fixed overlay container - positioned at container level for single page mode */
+.fixed-overlay-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 10;
+
+    @media print {
+        display: none;
+    }
+}
+
+@media print {
+    :host,
+    .page-viewer-container,
+    .page-viewer-container .page-content {
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        left: 0 !important;
+        top: 0 !important;
+        display: block !important;
+        background: transparent !important;
+        transform: none !important;
+        box-sizing: border-box;
+    }
+
+    .page-wrapper:not(.selected) {
+        display: none;
+    }
+
+    .page-wrapper.selected {
+        display: flex;
+        justify-content: flex-start !important;
+        align-items: flex-start !important;
+        background: white !important;
+        width: 100% !important;
+        height: 100% !important;
+        min-width: 100% !important;
+        min-height: 100% !important;
+        left: 0 !important;
+        top: 0 !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+        box-sizing: border-box;
+        page-break-after: always;
+        break-after: page;
+        overflow: hidden;
+        background: white !important;
+        transform: none !important;
+
+        ::ng-deep svg.mekbay-sheet {
+            display: block;
+            box-sizing: border-box;
+            padding: 0 !important;
+            margin: 0 !important;
+            transform: none !important;
+            top: 0 !important;
+            left: 0 !important;
+            height: 100%;
+            width: auto;
+            max-width: 100%;
+            min-width: 0;
+            max-height: 100%;
+            page-break-inside: avoid !important;
+            page-break-after: auto !important;
+            break-after: auto !important;
+        }
+
+        ::ng-deep svg {
+            transform: none !important;
+        }
+    }
+
+    @page {
+        size: auto;
+        margin: 0cm;
+        padding: 0cm !important;
+        overflow: hidden;
+    }
+}

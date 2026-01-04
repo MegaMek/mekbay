@@ -8,14 +8,14 @@
     }
     <div #scrollableContent class="scrollable-content" cdkScrollable>
         <div class="force-units-list" [class.single-group]="hasSingleGroup()">
-            @let groups = forceBuilderService.force.groups();
+            @let groups = forceBuilderService.currentForce()?.groups();
             @for (group of groups; let gi = $index; track gi) {
             <div class="group-container">
                 @if (!miniMode()) {
                     <div class="group-header">
                         <div class="group-name" (click)="promptChangeGroupName(group)">{{ group.name() }}</div>
                         <div class="group-footer">
-                            <span class="group-bv">BV: {{ group.totalBV() | number }}</span>
+                            <span class="group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
                         </div>
                     </div>
                 } @else {
@@ -47,19 +47,19 @@
                             (onRemoveUnit)="removeUnit($event, unit)" (onInfo)="showUnitInfo($event, unit)"
                             (onRepairUnit)="repairUnit($event, unit)"
                             (onEditPilot)="editPilot($event, unit)"
-                            (onToggleC3)="toggleC3Link($event, unit)"></unit-block>
+                            (onOpenC3Network)="openC3Network($event, unit)"></unit-block>
                     </div>
                     }
                 </div>
             </div>
             }
             @if (!compactMode() && !miniMode()) {
-                @if (!forceBuilderService.readOnlyForce() && !isUnitDragging() && !forceBuilderService.force.hasMaxGroups()) {
+                @if (!forceBuilderService.readOnlyForce() && !isUnitDragging() && !forceBuilderService.currentForce()?.hasMaxGroups()) {
                 <button class="bt-button btn-add-group" (click)="forceBuilderService.addGroup()">+ Add Group</button>
                 }
                 <div #newGroupDropzone class="group-container new-group-dropzone" cdkDropList id="new-group-dropzone"
                 [cdkDropListConnectedTo]="connectedDropLists()" [cdkDropListData]="[]"
-                [class.visible]="isUnitDragging() && !hasEmptyGroups() && !forceBuilderService.force.hasMaxGroups()"
+                [class.visible]="isUnitDragging() && !hasEmptyGroups() && !forceBuilderService.currentForce()?.hasMaxGroups()"
                 [cdkDropListDisabled]="forceBuilderService.readOnlyForce()"
                 (cdkDropListDropped)="dropForNewGroup($event)">
                 <div class="group-name">New Group</div>
@@ -71,7 +71,7 @@
     @if (!miniMode()) {
         <div class="footer">
             @if (!hasSingleGroup()) {
-            <div class="row total-bv">Total BV: {{ forceBuilderService.force.totalBv() | number }}</div>
+            <div class="row total-bv">Total {{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ forceBuilderService.currentForce()?.totalBv() | number }}</div>
             }
         </div>
     }

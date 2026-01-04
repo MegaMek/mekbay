@@ -37,11 +37,15 @@ import { DataService } from './data.service';
 import { MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { ActivatedRoute, Router } from '@angular/router';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { naturalCompare } from '../utils/sort.util';
+import { computeRelevanceScore, naturalCompare } from '../utils/sort.util';
 import { parseSearchQuery, SearchTokensGroup } from '../utils/search.util';
 import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
 import { matchesSearch } from '../utils/search.util';
+import { GameSystem } from '../models/common.model';
+import { GameService } from './game.service';
+import { UrlStateService } from './url-state.service';
+import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 
 /*
  * Author: Drake
@@ -51,7 +55,7 @@ export interface SortOption {
     label: string;
     slotLabel?: string; // Optional label prefix to show in the slot (e.g., "BV")
     slotIcon?: string;  // Optional icon for the slot (e.g., '/images/calendar.svg')
-    gameSystem?: 'cbt' | 'as';
+    gameSystem?: GameSystem;
 }
 
 export enum AdvFilterType {
@@ -59,7 +63,7 @@ export enum AdvFilterType {
     RANGE = 'range'
 }
 export interface AdvFilterConfig {
-    game?: 'cbt' | 'as';
+    game?: GameSystem;
     key: string;
     label: string;
     type: AdvFilterType;
@@ -248,63 +252,64 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
 export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'era', label: 'Era', type: AdvFilterType.DROPDOWN, external: true },
     { key: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true, multistate: true },
-    { key: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'cbt' },
-    { key: 'as.TP', label: 'Type', type: AdvFilterType.DROPDOWN, game: 'as' },
-    { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: 'cbt' },
+    { key: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'as.TP', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
+    { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
     {
         key: 'techBase', label: 'Tech', type: AdvFilterType.DROPDOWN,
         sortOptions: ['Inner Sphere', 'Clan', 'Mixed']
     },
-    { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN, game: 'cbt' },
+    { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
     {
-        key: 'weightClass', label: 'Weight Class', type: AdvFilterType.DROPDOWN, game: 'cbt',
+        key: 'weightClass', label: 'Weight Class', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
         sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*']
     },
     {
-        key: 'level', label: 'Rules', type: AdvFilterType.DROPDOWN, game: 'cbt',
+        key: 'level', label: 'Rules', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
         sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial']
     },
-    { key: 'c3', label: 'Network', type: AdvFilterType.DROPDOWN, game: 'cbt' },
-    { key: 'moveType', label: 'Motive', type: AdvFilterType.DROPDOWN, game: 'cbt' },
-    { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: 'cbt' },
-    { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: 'cbt' },
-    { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN, game: 'cbt' },
+    { key: 'c3', label: 'Network', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'moveType', label: 'Motive', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: GameSystem.CLASSIC },
+    { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
+    { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
     { key: '_tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
-    { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'as' },
-    { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: 'cbt' },
-    { key: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'armorPer', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'internal', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: '_mdSumNoPhysical', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'cbt' },
-    { key: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'cbt' },
-    { key: '_dissipationEfficiency', label: 'Heat Efficiency', type: AdvFilterType.RANGE, curve: 1, game: 'cbt' },
-    { key: '_maxRange', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
-    { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
-    { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
-    { key: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
-    { key: 'umu', label: 'UMU MP', type: AdvFilterType.RANGE, curve: 0.9, game: 'cbt' },
+    { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'as.PV', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.ALPHA_STRIKE },
+    { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: GameSystem.CLASSIC },
+    { key: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'armorPer', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'internal', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: '_mdSumNoPhysical', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
+    { key: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
+    { key: '_dissipationEfficiency', label: 'Heat Efficiency', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.CLASSIC },
+    { key: '_maxRange', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'umu', label: 'UMU MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
     { key: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
-    { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: 'cbt' },
+    { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
 
     /* Alpha Strike specific filters (but some are above) */
-    { key: 'as.MV', label: 'Move', type: AdvFilterType.DROPDOWN, game: 'as' },
-    { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: 'as' },
-    { key: 'as.SZ', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.TMM', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.OV', label: 'Overheat Value', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.Th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, ignoreValues: [-1], game: 'as' },
-    { key: 'as.dmg._dmgS', label: 'Damage (Short)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.dmg._dmgM', label: 'Damage (Medium)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.dmg._dmgL', label: 'Damage (Long)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.dmg._dmgE', label: 'Damage (Extreme)', type: AdvFilterType.RANGE, curve: 1, game: 'as' },
-    { key: 'as.Arm', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'as' },
-    { key: 'as.Str', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: 'as' },
+    { key: 'as.MV', label: 'Move', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.SZ', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.TMM', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.OV', label: 'Overheat Value', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.Th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgS', label: 'Damage (Short)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgM', label: 'Damage (Medium)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgL', label: 'Damage (Long)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgE', label: 'Damage (Extreme)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.Arm', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.Str', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
 ];
 
 export const SORT_OPTIONS: SortOption[] = [
+    { key: '', label: 'Relevance' },
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
         .filter(f => !['era', 'faction', 'componentName', 'source'].includes(f.key))
@@ -348,14 +353,16 @@ export class UnitSearchFiltersService {
     optionsService = inject(OptionsService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
+    gameService = inject(GameService);
     logger = inject(LoggerService);
+    private urlStateService = inject(UrlStateService);
 
     ADVANCED_FILTERS = ADVANCED_FILTERS;
     pilotGunnerySkill = signal(4);
     pilotPilotingSkill = signal(5);
     searchText = signal('');
     filterState = signal<FilterState>({});
-    selectedSort = signal<string>('name');
+    selectedSort = signal<string>('');
     selectedSortDirection = signal<'asc' | 'desc'>('asc');
     expandedView = signal(false);
     advOpen = signal(false);
@@ -365,6 +372,9 @@ export class UnitSearchFiltersService {
     private tagsCacheKey = signal('');
 
     constructor() {
+        // Register as a URL state consumer - must call markConsumerReady when done reading URL
+        this.urlStateService.registerConsumer('unit-search-filters');
+        
         effect(() => {
             if (this.isDataReady()) {
                 this.calculateTotalRanges();
@@ -378,15 +388,18 @@ export class UnitSearchFiltersService {
             const gunnery = this.pilotGunnerySkill();
             const piloting = this.pilotPilotingSkill();
 
-            if (this.isDataReady() && this.advOptions()['bv']) {
-                this.recalculateBVRange();
+            if (this.isDataReady()) {
+                if (this.advOptions()['bv']) {
+                    this.recalculateBVRange();
+                }
+                if (this.advOptions()['as.PV']) {
+                    this.recalculatePVRange();
+                }
             }
         });
         this.loadFiltersFromUrlOnStartup();
         this.updateUrlOnFiltersChange();
     }
-
-    gameSystem = computed(() => this.optionsService.options().gameSystem);
 
     dynamicInternalLabel = computed(() => {
         const units = this.filteredUnits();
@@ -435,6 +448,38 @@ export class UnitSearchFiltersService {
         }
     }
 
+    private recalculatePVRange() {
+        const units = this.units;
+        if (units.length === 0) return;
+
+        const pvValues = units
+            .map(u => this.getAdjustedPV(u))
+            .filter(pv => pv > 0)
+            .sort((a, b) => a - b);
+
+        if (pvValues.length === 0) return;
+
+        const min = pvValues[0];
+        const max = pvValues[pvValues.length - 1];
+
+        // Update the totalRangesCache which the computed signal depends on
+        this.totalRangesCache['as.PV'] = [min, max];
+        // Adjust current filter value to fit within new range if it exists
+        const currentFilter = this.filterState()['as.PV'];
+        if (currentFilter?.interactedWith) {
+            const currentValue = currentFilter.value as [number, number];
+            const adjustedValue: [number, number] = [
+                Math.max(min, currentValue[0]),
+                Math.min(max, currentValue[1])
+            ];
+
+            // Only update if the value actually changed
+            if (adjustedValue[0] !== currentValue[0] || adjustedValue[1] !== currentValue[1]) {
+                this.setFilter('as.PV', adjustedValue);
+            }
+        }
+    }
+
     private calculateTotalRanges() {
         const rangeFilters = ADVANCED_FILTERS.filter(f => f.type === AdvFilterType.RANGE);
         for (const conf of rangeFilters) {
@@ -447,6 +492,16 @@ export class UnitSearchFiltersService {
                     this.totalRangesCache['bv'] = [Math.min(...bvValues), Math.max(...bvValues)];
                 } else {
                     this.totalRangesCache['bv'] = [0, 0];
+                }
+            } else if (conf.key === 'as.PV') {
+                // Special handling for BV to use adjusted values
+                const pvValues = this.units
+                    .map(u => this.getAdjustedPV(u))
+                    .filter(pv => pv > 0);
+                if (pvValues.length > 0) {
+                    this.totalRangesCache['as.PV'] = [Math.min(...pvValues), Math.max(...pvValues)];
+                } else {
+                    this.totalRangesCache['as.PV'] = [0, 0];
                 }
             } else {
                 const allValues = this.getValidFilterValues(this.units, conf);
@@ -576,7 +631,7 @@ export class UnitSearchFiltersService {
             .filter(([, s]) => s.interactedWith)
             .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
 
-        const currentGame = this.gameSystem();
+        const currentGame = this.gameService.currentGameSystem();
 
         // Handle external (ID-based) filters first
         const selectedEraNames = activeFilters['era'] as string[] || [];
@@ -638,6 +693,11 @@ export class UnitSearchFiltersService {
                         const adjustedBV = this.getAdjustedBV(u);
                         return adjustedBV >= val[0] && adjustedBV <= val[1];
                     });
+                } else if (conf.key === 'as.PV') {
+                    results = results.filter(u => {
+                        const adjustedPV = this.getAdjustedPV(u);
+                        return adjustedPV >= val[0] && adjustedPV <= val[1];
+                    });
                 } else {
                     results = results.filter(u => {
                         const unitValue = getProperty(u, conf.key);
@@ -675,34 +735,68 @@ export class UnitSearchFiltersService {
         const sortDirection = this.selectedSortDirection();
 
         const sorted = [...results];
+
+        const compareByName = (a: Unit, b: Unit) => {
+            let comparison = naturalCompare(a.chassis || '', b.chassis || '');
+            if (comparison === 0) {
+                comparison = naturalCompare(a.model || '', b.model || '', true);
+                if (comparison === 0) {
+                    comparison = (a.year || 0) - (b.year || 0);
+                }
+            }
+            return comparison;
+        };
+
+        // Precompute relevance scores once per sort (avoids recomputing inside comparator).
+        let relevanceScores: WeakMap<Unit, number> | null = null;
+        if (sortKey === '') {
+            const tokens = this.searchTokens();
+            relevanceScores = new WeakMap<Unit, number>();
+            for (const u of sorted) {
+                const chassis = (u._chassis ?? u.chassis ?? '') as string;
+                const model = (u._model ?? u.model ?? '') as string;
+                relevanceScores.set(u, computeRelevanceScore(chassis, model, tokens));
+            }
+        }
+
         sorted.sort((a: Unit, b: Unit) => {
             let comparison = 0;
-            if (sortKey === 'name') {
-                comparison = naturalCompare(a.chassis || '', b.chassis || '');
+
+            if (sortKey === '') {
+                const aScore = relevanceScores?.get(a) ?? 0;
+                const bScore = relevanceScores?.get(b) ?? 0;
+
+                // Higher score = more relevant. Default sort direction is 'asc',
+                // but for relevance we want best-first by default.
+                comparison = bScore - aScore;
+
                 if (comparison === 0) {
-                    comparison = naturalCompare(a.model || '', b.model || '', true);
-                    if (comparison === 0) {
-                        comparison = (a.year || 0) - (b.year || 0);
-                    }
+                    comparison = compareByName(a, b);
                 }
-            } else
-                if (sortKey === 'bv') {
-                    // Use adjusted BV for sorting
-                    const aBv = this.getAdjustedBV(a);
-                    const bBv = this.getAdjustedBV(b);
-                    comparison = aBv - bBv;
-                } else
-                    if (sortKey in a && sortKey in b) {
-                        const key = sortKey as keyof Unit;
-                        const aValue = a[key];
-                        const bValue = b[key];
-                        if (typeof aValue === 'string' && typeof bValue === 'string') {
-                            comparison = naturalCompare(aValue, bValue);
-                        }
-                        if (typeof aValue === 'number' && typeof bValue === 'number') {
-                            comparison = aValue - bValue;
-                        }
-                    }
+            } else if (sortKey === 'name') {
+                comparison = compareByName(a, b);
+            } else if (sortKey === 'bv') {
+                // Use adjusted BV for sorting
+                const aBv = this.getAdjustedBV(a);
+                const bBv = this.getAdjustedBV(b);
+                comparison = aBv - bBv;
+            } else if (sortKey === 'as.PV') {
+                // Use adjusted PV for sorting
+                const aPv = this.getAdjustedPV(a);
+                const bPv = this.getAdjustedPV(b);
+                comparison = aPv - bPv;
+            } else if (sortKey in a && sortKey in b) {
+                const key = sortKey as keyof Unit;
+                const aValue = a[key];
+                const bValue = b[key];
+                if (typeof aValue === 'string' && typeof bValue === 'string') {
+                    comparison = naturalCompare(aValue, bValue);
+                }
+                if (typeof aValue === 'number' && typeof bValue === 'number') {
+                    comparison = aValue - bValue;
+                }
+            }
+
             if (sortDirection === 'desc') {
                 return -comparison;
             }
@@ -932,6 +1026,10 @@ export class UnitSearchFiltersService {
                     vals = contextUnits
                         .map(u => this.getAdjustedBV(u))
                         .filter(bv => bv > 0);
+                } else if (conf.key === 'as.PV') {
+                    vals = contextUnits
+                        .map(u => this.getAdjustedPV(u))
+                        .filter(pv => pv > 0);
                 } else {
                     vals = this.getValidFilterValues(contextUnits, conf);
                 }
@@ -974,28 +1072,29 @@ export class UnitSearchFiltersService {
         effect(() => {
             const isDataReady = this.dataService.isDataReady();
             if (isDataReady && !this.urlStateInitialized) {
-                const params = this.route.snapshot.queryParamMap;
+                // Use UrlStateService to get initial URL params (captured before any routing effects)
                 let hasFilters = false;
+                
                 // Load search query
-                const searchParam = params.get('q');
+                const searchParam = this.urlStateService.getInitialParam('q');
                 if (searchParam) {
                     this.searchText.set(decodeURIComponent(searchParam));
                     hasFilters = true;
                 }
 
                 // Load sort settings
-                const sortParam = params.get('sort');
+                const sortParam = this.urlStateService.getInitialParam('sort');
                 if (sortParam && SORT_OPTIONS.some(opt => opt.key === sortParam)) {
                     this.selectedSort.set(sortParam);
                 }
 
-                const sortDirParam = params.get('sortDir');
+                const sortDirParam = this.urlStateService.getInitialParam('sortDir');
                 if (sortDirParam === 'desc' || sortDirParam === 'asc') {
                     this.selectedSortDirection.set(sortDirParam);
                 }
 
                 // Load filters
-                const filtersParam = params.get('filters');
+                const filtersParam = this.urlStateService.getInitialParam('filters');
                 if (filtersParam) {
                     hasFilters = true;
                     try {
@@ -1043,14 +1142,14 @@ export class UnitSearchFiltersService {
                     }
                 }
 
-                const expandedParam = params.get('expanded');
-                const suggestExpanded = !params.has('instance') && !params.has('units') && hasFilters;
+                const expandedParam = this.urlStateService.getInitialParam('expanded');
+                const suggestExpanded = !this.urlStateService.hasInitialParam('instance') && !this.urlStateService.hasInitialParam('units') && hasFilters;
                 if (expandedParam === 'true' || suggestExpanded) {
                     this.expandedView.set(true);
                 }
 
-                if (params.has('gunnery')) {
-                    const gunneryParam = params.get('gunnery');
+                if (this.urlStateService.hasInitialParam('gunnery')) {
+                    const gunneryParam = this.urlStateService.getInitialParam('gunnery');
                     if (gunneryParam) {
                         const gunnery = parseInt(gunneryParam);
                         if (!isNaN(gunnery) && gunnery >= 0 && gunnery <= 8) {
@@ -1059,8 +1158,8 @@ export class UnitSearchFiltersService {
                     }
                 }
 
-                if (params.has('piloting')) {
-                    const pilotingParam = params.get('piloting');
+                if (this.urlStateService.hasInitialParam('piloting')) {
+                    const pilotingParam = this.urlStateService.getInitialParam('piloting');
                     if (pilotingParam) {
                         const piloting = parseInt(pilotingParam);
                         if (!isNaN(piloting) && piloting >= 0 && piloting <= 8) {
@@ -1068,8 +1167,9 @@ export class UnitSearchFiltersService {
                         }
                     }
                 }
-
                 this.urlStateInitialized = true;
+                // Signal that we're done reading URL state
+                this.urlStateService.markConsumerReady('unit-search-filters');
             }
         });
     }
@@ -1118,16 +1218,19 @@ export class UnitSearchFiltersService {
 
         // Add search query if present
         queryParams.q = search.trim() ? encodeURIComponent(search.trim()) : null;
-
-        // Add sort if not default
-        queryParams.sort = (selectedSort !== 'name') ? selectedSort : null;
-        queryParams.sortDir = (selectedSortDirection !== 'asc') ? selectedSortDirection : null;
-
         // Add filters if any are active
         const filtersParam = this.generateCompactFiltersParam(filterState);
         queryParams.filters = filtersParam ? filtersParam : null;
+
+        // Add sort if not default
+        queryParams.sort = (selectedSort !== '') ? selectedSort : null;
+        queryParams.sortDir = (selectedSortDirection !== 'asc') ? selectedSortDirection : null;
+
+        
+        // Add pilot skills if not default
         queryParams.gunnery = (gunnery !== 4) ? gunnery : null;
         queryParams.piloting = (piloting !== 5) ? piloting : null;
+
         queryParams.expanded = (expanded ? 'true' : null);
         return queryParams;
     });
@@ -1321,10 +1424,10 @@ export class UnitSearchFiltersService {
         }));
     }
 
-    clearFilters() {
+    public clearFilters() {
         this.searchText.set('');
         this.filterState.set({});
-        this.selectedSort.set('name');
+        this.selectedSort.set('');
         this.selectedSortDirection.set('asc');
         this.pilotGunnerySkill.set(4);
         this.pilotPilotingSkill.set(5);
@@ -1381,6 +1484,16 @@ export class UnitSearchFiltersService {
         return BVCalculatorUtil.calculateAdjustedBV(unit.bv, gunnery, piloting);
     }
 
+    getAdjustedPV(unit: Unit): number {
+        let skill = this.pilotGunnerySkill();
+        // Use default skill - no adjustment needed
+        if (skill === 4) {
+            return unit.as.PV;
+        }
+
+        return PVCalculatorUtil.calculateAdjustedPV(unit.as.PV, skill);
+    }
+
 
     public serializeCurrentSearchFilter(name: string): SerializedSearchFilter {
         const filter: SerializedSearchFilter = { name };
@@ -1389,7 +1502,7 @@ export class UnitSearchFiltersService {
         if (q && q.trim().length > 0) filter.q = q.trim();
 
         const sort = this.selectedSort();
-        if (sort && sort !== 'name') filter.sort = sort;
+        if (sort && sort !== '') filter.sort = sort;
 
         const sortDir = this.selectedSortDirection();
         if (sortDir && sortDir !== 'asc') filter.sortDir = sortDir;

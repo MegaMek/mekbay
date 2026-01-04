@@ -58,8 +58,9 @@ export class LinearPickerComponent implements PickerComponent {
     readonly selected = input<PickerValue | null>(null);
     readonly position = input<{ x: number, y: number }>({ x: 0, y: 0 });
     readonly horizontal = input<boolean>(false);
-    readonly align = input<'topleft' | 'left' | 'center'>('center');
+    readonly align = input<'topleft' | 'left' | 'center' | 'top'>('center');
     readonly initialEvent = signal<PointerEvent | null>(null);
+    lightTheme = input<boolean>(false);
 
     picked = output<HandlerChoice>();
     cancelled = output<void>();
@@ -77,6 +78,7 @@ export class LinearPickerComponent implements PickerComponent {
     // Private properties
     private longPressTimeout?: number;
     private pointerDownInside = false;
+    private initialPositionSet = false;
 
     constructor() {
         effect((cleanup) => {
@@ -85,6 +87,7 @@ export class LinearPickerComponent implements PickerComponent {
                 requestAnimationFrame(() => {
                     if (this.pickerRef()?.nativeElement) {
                         this.centerSelectedCell();
+                        this.initialPositionSet = true;
                     }
                 });
             }, { injector: this.injector });
@@ -93,6 +96,54 @@ export class LinearPickerComponent implements PickerComponent {
                 this.cleanupEventListeners();
             });
         });
+        
+        // Watch for position changes and re-position the picker (for scroll updates)
+        effect(() => {
+            const pos = this.position();
+            // Only update after initial positioning is set
+            if (this.initialPositionSet && this.pickerRef()?.nativeElement) {
+                this.updatePosition();
+            }
+        });
+    }
+    
+    /** Re-position the picker when position input changes (e.g., during scroll) */
+    private updatePosition(): void {
+        const picker = this.pickerRef()?.nativeElement;
+        if (!picker) return;
+        
+        const align = this.align();
+        
+        if (align === 'topleft') {
+            this.positionPickerTopLeft(picker);
+        } else if (align === 'top') {
+            this.positionPickerTop(picker);
+        } else if (align === 'left') {
+            this.positionPickerLeft(picker);
+        } else {
+            // For 'center' alignment with selected cell, just update transform
+            this.recenterPicker(picker);
+        }
+    }
+    
+    /** Recenter the picker based on current position */
+    private recenterPicker(picker: HTMLDivElement): void {
+        const selectedValue = this.selected();
+        const cells = Array.from(picker.querySelectorAll('.value-cell')) as HTMLElement[];
+        const selectedIdx = selectedValue !== null ? this.values().findIndex(choice => choice.value === selectedValue) : -1;
+        
+        if (selectedIdx === -1) {
+            this.centerPickerAtPosition(picker);
+            return;
+        }
+        
+        const selectedCell = cells[selectedIdx];
+        if (!selectedCell) {
+            this.centerPickerAtPosition(picker);
+            return;
+        }
+        
+        this.centerPickerOnSelectedCell(picker, selectedCell);
     }
 
     // Helper methods
@@ -193,8 +244,10 @@ export class LinearPickerComponent implements PickerComponent {
         if (align === 'topleft') {
             this.positionPickerTopLeft(picker);
             return;
-        } else 
-        if (align === 'left') {
+        } else if (align === 'top') {
+            this.positionPickerTop(picker);
+            return;
+        } else if (align === 'left') {
             this.positionPickerLeft(picker);
             return;
         }
@@ -229,6 +282,31 @@ export class LinearPickerComponent implements PickerComponent {
                 const overflow = pickerRect.right - viewportWidth;
                 leftPosition = Math.max(0, leftPosition - overflow);
                 picker.style.left = `${leftPosition}px`;
+            }
+            picker.style.visibility = 'visible';
+        });
+    }
+
+    private positionPickerTop(picker: HTMLDivElement): void {
+        picker.style.left = `${this.position().x}px`;
+        picker.style.top = `${this.position().y}px`;
+        picker.style.transform = 'translate(-50%, -100%)';
+        picker.style.visibility = 'hidden';
+        
+        // Check if picker overflows the viewport and adjust
+        requestAnimationFrame(() => {
+            const pickerRect = picker.getBoundingClientRect();
+            const viewportWidth = window.innerWidth;
+            let adjustX = 0;
+            
+            if (pickerRect.left < 0) {
+                adjustX = -pickerRect.left;
+            } else if (pickerRect.right > viewportWidth) {
+                adjustX = viewportWidth - pickerRect.right;
+            }
+            
+            if (adjustX !== 0) {
+                picker.style.transform = `translate(calc(-50% + ${adjustX}px), -100%)`;
             }
             picker.style.visibility = 'visible';
         });
