@@ -748,7 +748,8 @@ export class SvgInteractionService {
 
             const createAndShowPicker = (event: Event) => {
                 const context: HandlerContext = {
-                    toastService: this.toastService
+                    toastService: this.toastService,
+                    dialogsService: this.dialogsService
                 };
 
                 const registry = this.equipmentRegistryService.getRegistry();

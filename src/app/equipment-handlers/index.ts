@@ -37,6 +37,7 @@ import { BAPHandler } from './bap.handler';
 import { StealthHandler } from './stealth.handler';
 import { MASCHandler } from './masc.handler';
 import { UACJammingHandler } from './uacjamming.handler';
+import { C3Handler } from './c3.handler';
 
 /**
  * Register all equipment handlers.
@@ -51,4 +52,5 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     registry.register(new StealthHandler());
     registry.register(new MASCHandler());
     registry.register(new UACJammingHandler());
+    registry.register(new C3Handler());
 }
