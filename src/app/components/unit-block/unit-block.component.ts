@@ -171,11 +171,15 @@ export class UnitBlockComponent {
     c3NetworkItems = computed<{ label: string; networkType: C3NetworkType; enabled: boolean; color?: string }[]>(() => {
         const unit = this.unit();
         if (!unit) return [];
+        
+        // getC3Components now handles both CBT (component flags) and AS (specials)
         const components = C3NetworkUtil.getC3Components(unit);
         if (components.length === 0) return [];
         
         const forceUnit = this.forceUnit();
-        const networks = forceUnit instanceof CBTForceUnit ? forceUnit.force.c3Networks() : [];
+        const networks = (forceUnit instanceof CBTForceUnit || forceUnit instanceof ASForceUnit) 
+            ? forceUnit.force.c3Networks() 
+            : [];
         const unitId = forceUnit?.id;
         
         // Group by network type to get unique types
@@ -187,7 +191,7 @@ export class UnitBlockComponent {
         }
         
         const items: { label: string; networkType: C3NetworkType; enabled: boolean; color?: string }[] = [];
-        for (const [networkType, comps] of typeMap) {
+        for (const [networkType] of typeMap) {
             // Find the network this unit is connected to for this type
             const connectedNetwork = unitId ? networks.find(n => 
                 n.type === networkType && (

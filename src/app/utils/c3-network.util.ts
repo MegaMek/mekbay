@@ -50,7 +50,8 @@ import {
     C3_TAX_RATE,
     C3_BOOSTED_TAX_RATE,
     NOVA_MAX_TAX_RATE,
-    C3_NETWORK_COLORS
+    C3_NETWORK_COLORS,
+    parseASC3Specials
 } from '../models/c3-network.model';
 import { SerializedC3NetworkGroup } from '../models/force-serialization';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
@@ -112,10 +113,12 @@ export class C3NetworkUtil {
         return C3_BOOSTED_FLAGS.some(flag => component.eq!.flags.has(flag));
     }
 
-    /** Get all C3 components from a unit */
+    /** Get all C3 components from a unit (supports both CBT components and AS specials) */
     public static getC3Components(unit: Unit): C3Component[] {
         const components: C3Component[] = [];
         let index = 0;
+        
+        // Check CBT component flags first
         for (const comp of unit.comp) {
             if (this.hasC3Flag(comp)) {
                 const networkType = this.getNetworkType(comp);
@@ -131,12 +134,49 @@ export class C3NetworkUtil {
                 }
             }
         }
+        
+        // If no CBT components found, check Alpha Strike specials
+        if (components.length === 0 && unit.as?.specials) {
+            const asC3Info = parseASC3Specials(unit.as.specials);
+            for (const info of asC3Info) {
+                // For masters with count > 1, create multiple components
+                const count = info.role === C3Role.MASTER ? info.count : 1;
+                for (let i = 0; i < count; i++) {
+                    // Create a synthetic component for AS units
+                    const syntheticComp: UnitComponent = {
+                        id: `as-c3-${info.flag}-${i}`,
+                        q: 1,
+                        n: this.getNetworkTypeName(info.networkType),
+                        t: 'O',
+                        p: 0,
+                        l: 'N/A'
+                    };
+                    components.push({
+                        component: syntheticComp,
+                        networkType: info.networkType,
+                        role: info.role,
+                        boosted: info.boosted,
+                        index: index++
+                    });
+                }
+            }
+        }
+        
         return components;
     }
 
-    /** Check if a unit has any C3 capability */
+    /** Check if a unit has any C3 capability (supports both CBT components and AS specials) */
     public static hasC3(unit: Unit): boolean {
-        return unit.comp.some(comp => this.hasC3Flag(comp));
+        // Check CBT component flags
+        if (unit.comp.some(comp => this.hasC3Flag(comp))) {
+            return true;
+        }
+        // Check Alpha Strike specials
+        if (unit.as?.specials) {
+            const asC3Info = parseASC3Specials(unit.as.specials);
+            return asC3Info.length > 0;
+        }
+        return false;
     }
 
     // ==================== Network Queries ====================

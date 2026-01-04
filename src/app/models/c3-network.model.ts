@@ -247,3 +247,65 @@ export const C3_NETWORK_COLORS = [
     '#827717', // Dark Lime
     '#01579B', // Navy Blue
 ] as const;
+
+/**
+ * Alpha Strike C3 ability info (parsed from specials)
+ */
+export interface ASC3Info {
+    /** C3 flag equivalent */
+    flag: string;
+    /** Network type */
+    networkType: C3NetworkType;
+    /** Role (master/slave/peer) */
+    role: C3Role;
+    /** Is this a boosted C3 */
+    boosted: boolean;
+    /** Count (for multiple masters) */
+    count: number;
+}
+
+/**
+ * Mapping of Alpha Strike special ability patterns to C3 flags.
+ * Pattern uses regex to match the ability string from as.specials.
+ */
+const AS_C3_PATTERNS: { pattern: RegExp; flag: string; networkType: C3NetworkType; role: C3Role; boosted: boolean }[] = [
+    // C3BSS - Boosted Slave (no count)
+    { pattern: /^C3BSS$/, flag: C3_FLAGS.C3SBS, networkType: C3NetworkType.C3, role: C3Role.SLAVE, boosted: true },
+    // C3BSM# - Boosted Master with count
+    { pattern: /^C3BSM(\d*)$/, flag: C3_FLAGS.C3MBS, networkType: C3NetworkType.C3, role: C3Role.MASTER, boosted: true },
+    // C3EM# - Emergency Master with count
+    { pattern: /^C3EM(\d*)$/, flag: C3_FLAGS.C3EM, networkType: C3NetworkType.C3, role: C3Role.SLAVE, boosted: false },
+    // C3M# - Master with count
+    { pattern: /^C3M(\d*)$/, flag: C3_FLAGS.C3M, networkType: C3NetworkType.C3, role: C3Role.MASTER, boosted: false },
+    // C3S - Slave (no count)
+    { pattern: /^C3S$/, flag: C3_FLAGS.C3S, networkType: C3NetworkType.C3, role: C3Role.SLAVE, boosted: false },
+    // C3I - Improved C3 (peer network)
+    { pattern: /^C3I$/, flag: C3_FLAGS.C3I, networkType: C3NetworkType.C3I, role: C3Role.PEER, boosted: false },
+    // NC3 - Naval C3
+    { pattern: /^NC3$/, flag: C3_FLAGS.NAVAL_C3, networkType: C3NetworkType.NAVAL, role: C3Role.PEER, boosted: false },
+    // NOVA - Nova CEWS
+    { pattern: /^NOVA$/, flag: C3_FLAGS.NOVA, networkType: C3NetworkType.NOVA, role: C3Role.PEER, boosted: false },
+];
+
+/**
+ * Parse Alpha Strike specials to extract C3 capabilities.
+ * @param specials Array of special ability strings from unit.as.specials
+ * @returns Array of C3 info objects
+ */
+export function parseASC3Specials(specials: string[]): ASC3Info[] {
+    const results: ASC3Info[] = [];
+    
+    for (const special of specials) {
+        for (const { pattern, flag, networkType, role, boosted } of AS_C3_PATTERNS) {
+            const match = special.match(pattern);
+            if (match) {
+                // Extract count from capture group if present, default to 1
+                const count = match[1] ? parseInt(match[1], 10) : 1;
+                results.push({ flag, networkType, role, boosted, count });
+                break; // Only match one pattern per special
+            }
+        }
+    }
+    
+    return results;
+}
