@@ -154,7 +154,7 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                     </div>
                 }
                 @for (c3Item of c3NetworkItems(); track c3Item.networkType) {
-                <div class="info-slot c3link interactive"
+                <div class="info-slot slim c3link interactive"
                     [style.--network-color]="c3Item.color"
                     [class.enabled]="c3Item.enabled"
                     (click)="openC3Network($event)" title="Configure C3 Network">
@@ -168,8 +168,8 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                 </div>
                 }
                 @if (hasECM()) {
-                <div class="info-slot ecm {{ getECMMode() }}">
-                    <span>ECM</span>
+                <div class="info-slot slim ecm {{ getECMMode() }}" [class.destroyed]="getECMStatus() === false">
+                    <span>{{ getECMMode() | uppercase }}</span>
                 </div>
                 }
             </div>

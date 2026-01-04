@@ -32,6 +32,7 @@
  */
 
 import { Component, ChangeDetectionStrategy, computed, input, output, inject } from '@angular/core';
+import { UpperCasePipe } from '@angular/common';
 import { ForceUnit } from '../../models/force-unit.model';
 import { Unit } from '../../models/units.model';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
@@ -54,7 +55,7 @@ import { GameService } from '../../services/game.service';
 @Component({
     selector: 'unit-block',
     standalone: true,
-    imports: [CdkMenuModule, FormatNumberPipe, FormatTonsPipe, UnitIconComponent, TooltipDirective],
+    imports: [CdkMenuModule, FormatNumberPipe, FormatTonsPipe, UnitIconComponent, TooltipDirective, UpperCasePipe],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
     styleUrls: ['./unit-block.component.scss'],
@@ -117,28 +118,51 @@ export class UnitBlockComponent {
         return false;
     });
 
-    getECMStatus = computed(() => {
-        const unit = this.forceUnit();
-        if (!unit) return true;
+    hasECM = computed(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return false;
+        if (forceUnit instanceof ASForceUnit) {
+            const hasECM = forceUnit.getUnit().as.specials.some(spec => spec === 'ECM' || spec === 'AECM' || spec === 'LECM');
+            return hasECM;
+        } else 
+        if (forceUnit instanceof CBTForceUnit) {
+            const hasECM = forceUnit.getUnit().comp.some(eq => eq.eq?.flags.has('F_ECM'));
+            return hasECM;
+        }
         return false;
     });
 
-    hasECM = computed(() => {
-        const unit = this.unit();
-        if (!unit) return false;
-        const hasECM = unit.comp.some(eq => eq.eq?.flags.has('F_ECM'));
-        return hasECM;
-    });
-
-    getECMMode = computed<ECMMode | undefined>(() => {
+    getECMStatus = computed<boolean | undefined>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return undefined;
         if (forceUnit instanceof ASForceUnit) {
-            return ECMMode.ECM;
+            return true;
         } else 
         if (forceUnit instanceof CBTForceUnit) {
+            forceUnit.getCritSlots();
             const mountedECM = forceUnit.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
-            return mountedECM ? mountedECM.states?.get('ecm_mode') as ECMMode || undefined : undefined;
+            if (!mountedECM) return undefined;
+            if (mountedECM.destroyed) {
+                return false;
+            }
+            return true;
+        }
+        return undefined;
+    });
+
+    getECMMode = computed<ECMMode | string | undefined>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return undefined;
+        if (forceUnit instanceof ASForceUnit) {
+            // we return ECM, AECM or LECM as mode for AS units
+            const ecmSpec = forceUnit.getUnit().as.specials.find(spec => spec === 'ECM' || spec === 'AECM' || spec === 'LECM');
+            return ecmSpec || undefined;
+        } else 
+        if (forceUnit instanceof CBTForceUnit) {
+            forceUnit.getCritSlots();
+            const mountedECM = forceUnit.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
+            if (!mountedECM) return ECMMode.ECM;
+            return mountedECM ? mountedECM.states?.get('ecm_mode') as ECMMode || ECMMode.ECM : ECMMode.ECM;
         }
         return undefined;
     });
