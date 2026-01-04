@@ -1457,5 +1457,20 @@ export const FORCE_PACKS: ForcePack[] = [
         "name": "CVMobileHeadquarters"
       }
     ]
+  },
+  {
+    "name": "Beginner Box 1st Edition",
+    "units": [
+      {
+        "chassis": "Griffin",
+        "model": "'GRF-1N",
+        "name": "BMGriffin_GRF1N"
+      },
+      {
+        "chassis": "Wolverine",
+        "model": "WVR-6R",
+        "name": "BMWolverine_WVR6R"
+      },      
+    ]
   }
 ];
