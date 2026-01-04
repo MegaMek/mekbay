@@ -205,8 +205,6 @@ export class ForceBuilderViewerComponent {
         });
     }
 
-
-
     async editPilot(event: MouseEvent, unit: ForceUnit) {
         if (unit.readOnly()) return;
         event.stopPropagation();

@@ -65,7 +65,7 @@ export enum C3Role {
  */
 export const C3_FLAGS = {
     /** Any C3 equipment */
-    ANY_C3: 'F_C3S', // We'll check for any C3 flag
+    ANY_C3: 'ANY_C3', // We'll check for any C3 flag
     /** C3 Slave */
     C3S: 'F_C3S',
     /** C3 Boosted Slave */
