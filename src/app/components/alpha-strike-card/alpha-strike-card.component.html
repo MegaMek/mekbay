@@ -83,7 +83,7 @@
     <!-- Commit button overlay (only in interactive mode when dirty) -->
     @if (interactive() && isDirty()) {
         <div class="commit-overlay">
-            <button class="bt-button commit-button" (click)="onCommitClick($event)">COMMIT</button>
+            <button class="bt-button commit-button primary" (click)="onCommitClick($event)">COMMIT</button>
         </div>
     }
 </div>
