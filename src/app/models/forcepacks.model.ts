@@ -1457,5 +1457,515 @@ export const FORCE_PACKS: ForcePack[] = [
         "name": "CVMobileHeadquarters"
       }
     ]
-  }
+  },
+  {
+    "name": "Beginner Box 1st Edition",
+    "units": [
+      {
+        "chassis": "Griffin",
+        "model": "'GRF-1N",
+        "name": "BMGriffin_GRF1N"
+      },
+      {
+        "chassis": "Wolverine",
+        "model": "WVR-6R",
+        "name": "BMWolverine_WVR6R"
+      }      
+    ]
+  },
+  {
+    "name": "Beginner Box 2nd Edition",
+    "units": [
+      {
+        "chassis": "Griffin",
+        "model": "'GRF-1N",
+        "name": "BMGriffin_GRF1N"
+      },
+      {
+        "chassis": "Vindicator",
+        "model": "VND-1R",
+        "name": "BMVindicator_VND1R"
+      }, 
+        {
+        "chassis": "Locust",
+        "model": "LCT-1V",
+        "name": "BMLocust_LCT1V"
+      },  
+        {
+        "chassis": "Thunderbolt",
+        "model": "TDR-5S",
+        "name": "BMThunderbolt_TDR5S"
+      }
+    ]
+  },
+  {
+    "name": "A Game of Armored Combat Box",
+    "units": [
+      {
+        "chassis": "Awesome",
+        "model": "AWS-8Q",
+        "name": "BMAwesome_AWS8Q"
+      },
+      {
+        "chassis": "BattleMaster",
+        "model": "BLR-1G",
+        "name": "BMBattleMaster_BLR1G"
+      },
+      {
+        "chassis": "Catapult",
+        "model": "CPLT-C1",
+        "name": "BMCatapult_CPLTC1"
+      },
+      {
+        "chassis": "Commando",
+        "model": "COM-2D",
+        "name": "BMCommando_COM2D"
+      },
+      {
+        "chassis": "Locust",
+        "model": "LCT-1V",
+        "name": "BMLocust_LCT1V"
+      },
+      {
+        "chassis": "Shadow Hawk",
+        "model": "SHD-2H",
+        "name": "BMShadowHawk_SHD2H"
+      },
+      {
+        "chassis": "Thunderbolt",
+        "model": "TDR-5S",
+        "name": "BMThunderbolt_TDR5S"
+      },
+      {
+        "chassis": "Wolverine",
+        "model": "WVR-6R",
+        "name": "BMWolverine_WVR6R"
+      }
+    ]
+  },    
+  {
+    "name": "A Game of Armored Combat Box IlClan variants",
+    "units": [
+      {
+        "chassis": "Awesome",
+        "model": "AWS-11H",
+        "name": "BMAwesome_AWS11H"
+      },
+      {
+        "chassis": "BattleMaster",
+        "model": "BLR-6G",
+        "name": "BMBattleMaster_BLR6G"
+      },
+      {
+        "chassis": "Catapult",
+        "model": "CPLT-K6",
+        "name": "BMCatapult_CPLTK6"
+      },
+      {
+        "chassis": "Commando",
+        "model": "COM-9S",
+        "name": "BMCommando_COM9S"
+      },
+      {
+        "chassis": "Locust",
+        "model": "LCT-7S",
+        "name": "BMLocust_LCT7S"
+      },
+      {
+        "chassis": "Shadow Hawk",
+        "model": "SHD-7M",
+        "name": "BMShadowHawk_SHD7M"
+      },
+      {
+        "chassis": "Thunderbolt",
+        "model": "TDR-7S",
+        "name": "BMThunderbolt_TDR7S"
+      },
+      {
+        "chassis": "Wolverine",
+        "model": "WVR-9R",
+        "name": "BMWolverine_WVR6R"
+      }
+    ]
+  },
+  {
+    "name": "Essentials Box",
+    "units": [
+      {
+        "chassis": "Centurion",
+        "model": "'CN9-A",
+        "name": "BMCenturion_CN9-A"
+      },
+      {
+        "chassis": "Rifleman",
+        "model": "RFL-3N",
+        "name": "BMRifleman_RFL3N"
+      }, 
+        {
+        "chassis": "Centurion",
+        "model": "CN9-YLW 'Yen Lo Wang'",
+        "name": "BMCenturion_CN9YLWYenLoWang"
+      },  
+    ]
+  },    
+  {
+    "name": "Alpha Strike Boxed Set",
+    "units": [
+      {
+        "chassis": "Archer",
+        "model": "ARC-5R",
+        "name": "BMArcher_ARC5R"
+      },
+      {
+        "chassis": "Atlas",
+        "model": "AS7-S",
+        "name": "BMAtlas_AS7S"
+      },
+      {
+        "chassis": "Blackjack",
+        "model": "BJ-3",
+        "name": "BMBlackjack_BJ3"
+      },
+      {
+        "chassis": "Dasher (Fire Moth)",
+        "model": "D",
+        "name": "BMDasher_D"
+      },
+      {
+        "chassis": "Locust",
+        "model": "LCT-3M",
+        "name": "BMLocust_LCT3M"
+      },
+      {
+        "chassis": "Black Hawk (Nova)",
+        "model": "Prime",
+        "name": "BMBlackHawk_Prime"
+      },
+      {
+        "chassis": "Phoenix Hawk",
+        "model": "PXH-3K",
+        "name": "BMPhoenixHawk_PXH3K"
+      },
+      {
+        "chassis": "Pouncer",
+        "model": "Prime",
+        "name": "BMPouncer_Prime"
+      },
+      {
+        "chassis": "Mad Cat (Timber Wolf)",
+        "model": "Prime",
+        "name": "BMMadCat_Prime"
+      },
+      {
+        "chassis": "Warhammer",
+        "model": "WHM-6R",
+        "name": "BMWarhammer_WHM6R"
+      },
+      {
+        "chassis": "Masakari (Warhawk)",
+        "model": "C",
+        "name": "BMMasakari_C"
+      },
+      {
+        "chassis": "Wasp",
+        "model": "WSP-3W",
+        "name": "BMWasp_WSP3W"
+      },
+      {
+        "chassis": "Wraith",
+        "model": "TR1",
+        "name": "BMWraith_TR1"
+      }
+    ]
+  },    
+  {
+    "name": "Clan Invasion Box",
+    "units": [
+      {
+        "chassis": "Puma (Adder)",
+        "model": "Prime",
+        "name": "BMPuma_Prime"
+      },
+      {
+        "chassis": "Gladiator (Executioner)",
+        "model": "Prime",
+        "name": "BMGladiator_Prime"
+      },
+      {
+        "chassis": "Grendel (Mongrel)",
+        "model": "Prime",
+        "name": "BMGrendel_Prime"
+      },
+      {
+        "chassis": "Black Hawk (Nova)",
+        "model": "Prime",
+        "name": "BMBlackHawk_Prime"
+      },
+      {
+        "chassis": "Mad Cat (Timber Wolf)",
+        "model": "Prime",
+        "name": "BMMadCat_Prime"
+      },
+      {
+        "chassis": "Elemental Battle Armor",
+        "model": "[Laser](Sqd5)",
+        "name": "BAElementalBattleArmor_LaserSqd5"
+      },
+      {
+        "chassis": "Elemental Battle Armor",
+        "model": "[Laser](Sqd5)",
+        "name": "BAElementalBattleArmor_LaserSqd5"
+      }
+    ]
+  },    
+  {
+    "name": "Mercenaries Box",
+    "units": [
+      {
+        "chassis": "Caesar",
+        "model": "CES-3R",
+        "name": "BMCaesar_CES3R"
+      },
+      {
+        "chassis": "Chameleon",
+        "model": "CLN-7V",
+        "name": "BMChameleon_CLN7V"
+      },
+      {
+        "chassis": "Devastator",
+        "model": "DVS-2",
+        "name": "BMDevastator_DVS2"
+      },
+      {
+        "chassis": "Flea",
+        "model": "FLE-17",
+        "name": "BMFlea_FLE17"
+      },
+      {
+        "chassis": "Firefly",
+        "model": "FFL-4C",
+        "name": "BMFirefly_FFL4C"
+      },
+      {
+        "chassis": "Ostsol",
+        "model": "OTL-4D",
+        "name": "BMOstsol_OTL4D"
+      },
+      {
+        "chassis": "Quickdraw",
+        "model": "QKD-4G",
+        "name": "BMQuickdraw_QKD4G"
+      },
+      {
+        "chassis": "Starslayer",
+        "model": "STY-3C",
+        "name": "BMStarslayer_STY3C"
+      },
+      {
+        "chassis": "Galleon Light Tank",
+        "model": "GAL-100",
+        "name": "CVGalleonLightTank_GAL100"
+      },
+      {
+        "chassis": "Galleon Light Tank",
+        "model": "GAL-102",
+        "name": "CVGalleonLightTank_GAL102"
+      },
+      {
+        "chassis": "Maxim Heavy Hover Transport",
+        "model": "",
+        "name": "CVMaximHeavyHoverTransport"
+      },
+      {
+        "chassis": "Maxim Heavy Hover Transport",
+        "model": "Escort",
+        "name": "CVMaximHeavyHoverTransport_Escort"
+      }
+    ]
+  },    
+  {
+    "name": "Solaris VII: The Game World",
+    "units": [
+      {
+        "chassis": "Mantis",
+        "model": "SA-MN",
+        "name": "BMMantis_SAMN"
+      },
+      {
+        "chassis": "Ronin",
+        "model": "SA-RN",
+        "name": "BMRonin_SARN"
+      },
+      {
+        "chassis": "Onslaught",
+        "model": "SA-OS",
+        "name": "BMOnslaught_SAOS"
+      },
+      {
+        "chassis": "Juggernaut",
+        "model": "JG-R9T1",
+        "name": "BMJuggernaut_JGR9T1"
+      },
+      {
+        "chassis": "Longshot",
+        "model": "LNG-1B",
+        "name": "BMLongshot_LNG1B"
+      },
+      {
+        "chassis": "Daedalus",
+        "model": "DAD-3C",
+        "name": "BMDaedalus_DAD3C"
+      },
+      {
+        "chassis": "Paladin",
+        "model": "PAL-1",
+        "name": "BMPaladin_PAL1"
+      },
+      {
+        "chassis": "Cudgel",
+        "model": "CDG-1B",
+        "name": "BMCudgel_CDG1B"
+      },
+      {
+        "chassis": "Koto",
+        "model": "KT-P2",
+        "name": "BMKoto_KTP2"
+      },
+      {
+        "chassis": "Tsunami",
+        "model": "TS-P1",
+        "name": "BMTsunami_TSP1"
+      },
+      {
+        "chassis": "Morpheus",
+        "model": "MR-P1",
+        "name": "BMMorpheus_MRP1"
+      },
+      {
+        "chassis": "Colossus",
+        "model": "CL-P3",
+        "name": "BMColossus_CLP3"
+      }
+    ]
+  },    
+  {
+    "name": "Aces: Scouring Sands",
+    "units": [
+      {
+        "chassis": "Thunderbolt IIC",
+        "model": "",
+        "name": "BMThunderboltIIC"
+      },
+      {
+        "chassis": "Thor (Summoner)",
+        "model": "H",
+        "name": "BMThor_H"
+      },
+      {
+        "chassis": "Baboon (Howler)",
+        "model": "6",
+        "name": "BMBaboon_6"
+      },
+      {
+        "chassis": "Kraken (Bane)",
+        "model": "3",
+        "name": "BMKraken_3"
+      },
+      {
+        "chassis": "Rifleman",
+        "model": "C 2",
+        "name": "BMRifleman_C2"
+      },
+      {
+        "chassis": "Locust IIC",
+        "model": "",
+        "name": "BMLocustIIC"
+      },
+      {
+        "chassis": "Marauder IIC",
+        "model": "10",
+        "name": "BMMarauderIIC_10"
+      },
+      {
+        "chassis": "Fulcrum Heavy Hovertank",
+        "model": "",
+        "name": "CVFulcrumHeavyHovertank"
+      },
+      {
+        "chassis": "Fulcrum Heavy Hovertank",
+        "model": "",
+        "name": "CVFulcrumHeavyHovertank"
+      }
+    ]
+  },    
+  {
+    "name": "Third Star League Strike Team",
+    "units": [
+      {
+        "chassis": "Lament",
+        "model": "LMT-2R",
+        "name": "BMLament_LMT2R"
+      },
+      {
+        "chassis": "Jackalope",
+        "model": "JLP-BD",
+        "name": "BMJackalope_JLPBD"
+      },
+      {
+        "chassis": "Kintaro",
+        "model": "KTO-20 ",
+        "name": "BMKintaro_KTO20"
+      },
+      {
+        "chassis": "Hammerhead",
+        "model": "",
+        "name": "BMKraken_3"
+      },
+      {
+        "chassis": "Havoc",
+        "model": "HVC-P6",
+        "name": "BMHavoc_HVCP6"
+      },
+      {
+        "chassis": "J-27 Ordnance Transport",
+        "model": "",
+        "name": "CVJ27OrdnanceTransport"
+      }
+    ]
+  },    
+  {
+    "name": "Third Star League Battle Group",
+    "units": [
+      {
+        "chassis": "Mad Cat Mk IV (Savage Wolf)",
+        "model": "A",
+        "name": "BMMadCatMkIV_A"
+      },
+      {
+        "chassis": "Wendigo",
+        "model": "Prime",
+        "name": "BMWendigo_Prime"
+      },
+      {
+        "chassis": "Excalibur",
+        "model": "EXC-B2",
+        "name": "BMExcalibur_EXCB2"
+      },
+      {
+        "chassis": "Peacekeeper",
+        "model": "PKP-1A",
+        "name": "BMPeacekeeper_PKP1A"
+      },
+      {
+        "chassis": "Malice",
+        "model": "MAL-XT",
+        "name": "BMMalice_MALXT"
+      },
+      {
+        "chassis": "Savior Repair Vehicle",
+        "model": "",
+        "name": "SVSaviorRepairVehicle"
+      }
+    ]
+  }        
 ];
