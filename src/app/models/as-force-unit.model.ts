@@ -531,9 +531,18 @@ export class ASForceUnit extends ForceUnit {
         const heat = this.state.heat();
         const heatReduction = heat * 2;
         const mpHits = this.state.getCommittedCritHits('mp');
-        const result: { [mode: string]: number } = {};
+        const mvByMode: { [mode: string]: number } = {};
 
-        for (const [mode, inches] of Object.entries(mvm)) {
+        const entries = Object.entries(mvm);
+        if (entries.length === 1) {
+            // Single movement, if is "j", we create a ground entry as well "" with same value
+            const [mode, inches] = entries[0];
+            if (mode === 'j') {
+                entries.unshift(['', inches]);
+            }
+        }
+
+        for (const [mode, inches] of entries) {
             if (typeof inches !== 'number' || inches <= 0) continue;
 
             let reducedInches: number;
@@ -546,9 +555,21 @@ export class ASForceUnit extends ForceUnit {
             if (mode !== 'j') {
                 reducedInches = Math.max(0, reducedInches - heatReduction);
             }
-            result[mode] = reducedInches;
+            mvByMode[mode] = reducedInches;
         }
 
+        if (Object.keys(mvByMode).length === 0) return {};
+
+        // Build result with '' always first
+        const result: { [mode: string]: number } = {};
+        if ('' in mvByMode) {
+            result[''] = mvByMode[''];
+        }
+        for (const [mode, mv] of Object.entries(mvByMode)) {
+            if (mode !== '') {
+                result[mode] = mv;
+            }
+        }
         return result;
     });
 
@@ -573,10 +594,7 @@ export class ASForceUnit extends ForceUnit {
 
     /**
      * Get effective TMM values after applying crits and heat.
-     * Returns { [mode: string]: number } where:
-     * - '' (empty): base ground TMM
-     * - 'j': jump TMM (if different from base)
-     * - 's': submarine TMM (if different from base)
+     * Returns { [mode: string]: number }
      * Modes with the same TMM are merged (e.g., if ground and jump have same TMM, only '' is returned).
      */
     effectiveTmm = computed<{ [mode: string]: number }>(() => {
@@ -585,13 +603,21 @@ export class ASForceUnit extends ForceUnit {
             return { '': -4 };
         }
 
-        const mvm = this.unit.as.MVm;
+        const stats = this.unit.as;
+        const mvm = stats.MVm;
         if (!mvm) return {};
 
         const entries = Object.entries(mvm);
         if (entries.length === 0) return {};
 
-        const stats = this.unit.as;
+        if (entries.length === 1) {
+            // Single movement, if is "j", we create a ground entry as well "" with same value
+            const [mode, inches] = entries[0];
+            if (mode === 'j') {
+                entries.unshift(['', inches]);
+            }
+        }
+
         // Get jump/sub TMM modifiers from specials
         const jumpMod = this.getSignedSpecialModifier(stats.specials, 'JMPS', 'JMPW');
         const subMod = this.getSignedSpecialModifier(stats.specials, 'SUBS', 'SUBW');
@@ -631,15 +657,17 @@ export class ASForceUnit extends ForceUnit {
             tmmByMode[mode] = effectiveTmm;
         }
 
-        // Get base (ground) TMM - prefer '' key, otherwise first non-jump entry
-        const groundTmm = tmmByMode[''] ?? tmmByMode[Object.keys(tmmByMode).find(k => k !== 'j') ?? ''];
+        if (Object.keys(tmmByMode).length === 0) return {};
 
-        // Merge modes with same TMM as ground
+        // Get base (ground) TMM - prefer '' key, otherwise use the first available mode
+        const groundTmm = tmmByMode[''];
+
+        // Build result with '' always first, merging modes with same TMM as ground
         const result: { [mode: string]: number } = { '': groundTmm };
         for (const [mode, tmm] of Object.entries(tmmByMode)) {
-            if (mode !== '' && tmm !== groundTmm) {
-                result[mode] = tmm;
-            }
+            // Skip '' (already added) and modes with same TMM as ground
+            if (mode === '' || tmm === groundTmm) continue;
+            result[mode] = tmm;
         }
 
         return result;

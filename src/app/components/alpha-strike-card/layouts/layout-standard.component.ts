@@ -239,23 +239,6 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         const entries = Object.entries(mvm)
             .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
 
-        // If the unit only has jumping movement, treat it as also having a default ("" key)
-        // ground movement with the same value.
-        if (entries.length === 1) {
-            switch (entries[0][0]) {
-                case '':
-                    return entries;
-                case 'j':
-                    return [['', entries[0][1]], ...entries];
-            }
-        }
-
-        // Prefer the default movement (empty key) first if present, then preserve insertion order.
-        const defaultIndex = entries.findIndex(([mode]) => mode === '');
-        if (defaultIndex >= 0) {
-            const [def] = entries.splice(defaultIndex, 1);
-            return [def, ...entries];
-        }
         return entries;
     }
 

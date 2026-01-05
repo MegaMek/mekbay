@@ -264,19 +264,6 @@ export class UnitBlockComponent {
         if (!mvm) return [];
         const entries = Object.entries(mvm)
             .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
-        if (entries.length === 1) {
-            switch (entries[0][0]) {
-                case '':
-                    return entries;
-                case 'j':
-                    return [['', entries[0][1]], ...entries];
-            }
-        }
-        const defaultIndex = entries.findIndex(([mode]) => mode === '');
-        if (defaultIndex >= 0) {
-            const [def] = entries.splice(defaultIndex, 1);
-            return [def, ...entries];
-        }
         return entries;
     }
 
