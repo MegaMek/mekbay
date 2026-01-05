@@ -259,7 +259,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
         key: 'techBase', label: 'Tech', type: AdvFilterType.DROPDOWN,
         sortOptions: ['Inner Sphere', 'Clan', 'Mixed']
     },
-    { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN },
     {
         key: 'weightClass', label: 'Weight Class', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
         sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*']
