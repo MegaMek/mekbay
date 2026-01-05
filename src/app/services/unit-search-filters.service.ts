@@ -36,6 +36,7 @@ import { Unit } from '../models/units.model';
 import { DataService } from './data.service';
 import { MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { ActivatedRoute, Router } from '@angular/router';
+import { getForcePacks } from '../models/forcepacks.model';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { computeRelevanceScore, naturalCompare } from '../utils/sort.util';
 import { parseSearchQuery, SearchTokensGroup } from '../utils/search.util';
@@ -270,9 +271,12 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     },
     { key: 'c3', label: 'Network', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
     { key: 'moveType', label: 'Motive', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'as.MV', label: 'Move', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.ALPHA_STRIKE },
     { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: GameSystem.CLASSIC },
     { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
-    { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
+    { key: 'forcePack', label: 'Force Packs', type: AdvFilterType.DROPDOWN, external: true },
     { key: '_tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
     { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
     { key: 'as.PV', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.ALPHA_STRIKE },
@@ -294,8 +298,6 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
 
     /* Alpha Strike specific filters (but some are above) */
-    { key: 'as.MV', label: 'Move', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.SZ', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.TMM', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.OV', label: 'Overheat Value', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
@@ -312,7 +314,7 @@ export const SORT_OPTIONS: SortOption[] = [
     { key: '', label: 'Relevance' },
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
-        .filter(f => !['era', 'faction', 'componentName', 'source'].includes(f.key))
+        .filter(f => !['era', 'faction', 'forcePack', 'componentName', 'source'].includes(f.key))
         .map(f => ({
             key: f.key,
             label: f.label,
@@ -657,6 +659,21 @@ export class UnitSearchFiltersService {
             results = results.filter(u => finalIds!.has(u.id));
         }
 
+        // Handle forcePack filter (chassis-based)
+        const selectedForcePackNames = activeFilters['forcePack'] as string[] || [];
+        if (selectedForcePackNames.length > 0) {
+            const chassisSet = new Set<string>();
+            for (const packName of selectedForcePackNames) {
+                const pack = getForcePacks().find(p => p.name === packName);
+                if (pack) {
+                    for (const unit of pack.units) {
+                        chassisSet.add(unit.chassis);
+                    }
+                }
+            }
+            results = results.filter(u => chassisSet.has(u.chassis));
+        }
+
         // Handle standard (property-based) filters
         for (const conf of ADVANCED_FILTERS) {
             if (conf.game && conf.game !== currentGame) continue;
@@ -868,6 +885,12 @@ export class UnitSearchFiltersService {
                                 return false;
                             })
                             .map(faction => ({ name: faction.name, img: faction.img }));
+                    } else if (conf.key === 'forcePack') {
+                        // Build a set of chassis from context units for quick lookup
+                        const contextChassis = new Set(contextUnits.map(u => u.chassis));
+                        availableOptions = getForcePacks()
+                            .filter(pack => pack.units.some(pu => contextChassis.has(pu.chassis)))
+                            .map(pack => ({ name: pack.name }));
                     }
                 }
                 else if (conf.multistate) {

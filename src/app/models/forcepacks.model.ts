@@ -47,7 +47,9 @@ export interface ForcePack {
     bv?: number;
 }
 
-export const FORCE_PACKS: ForcePack[] = [
+export const getForcePacks = (): ForcePack[] => sortedForcePacks;
+
+const FORCE_PACKS: ForcePack[] = [
   {
     "name": "Clan Command Star",
     "units": [
@@ -1969,3 +1971,6 @@ export const FORCE_PACKS: ForcePack[] = [
     ]
   }        
 ];
+
+// Sort once at module load and cache
+const sortedForcePacks = [...FORCE_PACKS].sort((a, b) => a.name.localeCompare(b.name));

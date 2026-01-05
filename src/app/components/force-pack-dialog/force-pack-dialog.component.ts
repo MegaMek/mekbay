@@ -37,7 +37,7 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { GameService } from '../../services/game.service';
-import { FORCE_PACKS } from '../../models/forcepacks.model';
+import { getForcePacks } from '../../models/forcepacks.model';
 import { Unit } from '../../models/units.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
@@ -94,7 +94,7 @@ export class ForcePackDialogComponent {
     constructor() {
         // Resolve pack units against the available units from dataService
         (async () => {
-            const resolved: ResolvedPack[] = FORCE_PACKS.map(p => {
+            const resolved: ResolvedPack[] = getForcePacks().map(p => {
                 const entries: PackUnitEntry[] = p.units.map(u => {
 
                     // We search the unit by "name", should be a straight 1:1 match if we have no issues with the data
@@ -126,7 +126,7 @@ export class ForcePackDialogComponent {
                 return resolved;
             });
 
-            this.packs.set(resolved.sort((a, b) => a.name.localeCompare(b.name)));
+            this.packs.set(resolved);
 
             // focus search if present
             afterNextRender(() => this.searchInput()?.nativeElement?.focus(), { injector: this.injector });

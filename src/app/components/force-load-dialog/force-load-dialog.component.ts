@@ -41,7 +41,7 @@ import { Pipe, PipeTransform } from "@angular/core";
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { OptionsService } from '../../services/options.service';
 import { GameService } from '../../services/game.service';
-import { FORCE_PACKS } from '../../models/forcepacks.model';
+import { getForcePacks } from '../../models/forcepacks.model';
 import { Unit } from '../../models/units.model';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
@@ -162,7 +162,7 @@ export class ForceLoadDialogComponent {
             }
         });
         effect(() => {
-            const resolved: ResolvedPack[] = FORCE_PACKS.map(p => {
+            const resolved: ResolvedPack[] = getForcePacks().map(p => {
                 const entries: PackUnitEntry[] = p.units.map(u => {
 
                     // We search the unit by "name", should be a straight 1:1 match if we have no issues with the data
@@ -194,7 +194,7 @@ export class ForceLoadDialogComponent {
                 return resolved;
             });
 
-            this.packs.set(resolved.sort((a, b) => a.name.localeCompare(b.name)));
+            this.packs.set(resolved);
         });
     }
 
