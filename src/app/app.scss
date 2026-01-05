@@ -53,18 +53,23 @@
 }
 
 .main-search {
-    margin-top: 80px;
+    margin-top: 64px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
     width: 100%;
-    gap: 30px;
+    gap: 24px;
     box-sizing: border-box;
+
+    @media (max-width: 480px) {
+        margin-top: 36px;
+    }
 
     @media (max-height: 400px) {
         margin-top: 8px;
     }
+
 }
 
 .empty-state-container .header {
@@ -105,7 +110,7 @@
 }
 
 .empty-state-logo {
-    max-width: 250px;
+    max-width: 240px;
     width: 50%;
     height: auto;
 
@@ -227,27 +232,15 @@ svg-viewer {
     }
 }
 
-.beta-notice {
-    font-size: 0.8em;
-    color: var(--bt-yellow);
-    font-weight: bold;
-    cursor: pointer;
-    text-align: center;
-    margin: -12px 12px;
-}
-
-// Game System Selector
 .gameSystemSelector {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 16px;
-    margin-top: 36px;
     padding: 0 16px;
 
     @media (max-width: 440px) {
         gap: 10px;
-        margin-top: 24px;
     }
 
     &.loading {

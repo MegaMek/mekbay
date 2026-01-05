@@ -82,14 +82,6 @@ export class GameService {
             this.gameSystemOverride.set(initialOverride);
         }
 
-        // Auto-clear override when a force is loaded, since the force's game system takes precedence
-        effect(() => {
-            const currentForce = this.forceBuilderService.currentForce();
-            if (currentForce && this.gameSystemOverride()) {
-                this.setOverride(null);
-            }
-        });
-
         /**
          * Computes the effective game system based on priority:
          * 1. Force game system (highest priority - explicit user action)
@@ -146,13 +138,6 @@ export class GameService {
      */
     setOverride(gameSystem: GameSystem | null): void {
         this.gameSystemOverride.set(gameSystem);
-    }
-
-    /**
-     * Clears the temporary game system override.
-     */
-    clearOverride(): void {
-        this.setOverride(null);
     }
 
     isAlphaStrike = computed(() => {
