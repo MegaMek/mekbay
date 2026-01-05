@@ -53,7 +53,7 @@ const DEFAULT_OPTIONS: Options = {
     useAutomations: true,
     ASUseHex: false,
     ASCardStyle: 'monochrome',
-    ASPrintPageBreakOnGroups: false,
+    ASPrintPageBreakOnGroups: true,
     c3NetworkConnectionsAboveNodes: false,
 };
 
