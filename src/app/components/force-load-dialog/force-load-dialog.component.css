@@ -100,6 +100,7 @@
     color: #fff;
     text-transform: uppercase;
     flex-shrink: 0;
+    align-self: baseline;
 }
 
 .game-type-badge.as {
