@@ -1096,17 +1096,31 @@ export class C3NetworkUtil {
         const participatingNets = this.findNetworksContainingUnit(unit.id, networks);
         if (participatingNets.length === 0) return 0;
         const rootNet = this.getRootNetwork(participatingNets[0], networks);
-        const networkedUnits = this.getNetworkUnits(rootNet, allUnits) as CBTForceUnit[];
-        
-        let networkTotalBv = 0;
-        for (const u of networkedUnits) {
-            const bv = u.baseBvPilotAdjusted();
-            let taxRate = C3_TAX_RATE;
-            const uC3Comps = this.getC3Components(u.getUnit());
-            if (uC3Comps.some(c => c.boosted)) taxRate = C3_BOOSTED_TAX_RATE;
-            networkTotalBv += bv * taxRate;
-        }
-        return Math.round(networkTotalBv);
+        const networkedUnits = this.getNetworkTreeUnits(rootNet, networks, allUnits);
+        if (networkedUnits.length < 2) return 0; // No tax for single unit
+
+        const hasBoosted = networkedUnits.some(u => 
+            this.getC3Components(u.getUnit()).some(c => c.boosted)
+        );
+        const taxRate = hasBoosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
+        const networkTotalBv = networkedUnits.reduce((sum, u) => sum + u.baseBvPilotAdjusted(), 0);
+        return Math.round(networkTotalBv * taxRate);
+    }
+
+    /** Get all unique units in a network tree (including sub-networks) */
+    private static getNetworkTreeUnits(
+        network: SerializedC3NetworkGroup,
+        allNetworks: SerializedC3NetworkGroup[],
+        allUnits: CBTForceUnit[]
+    ): CBTForceUnit[] {
+        const unitIds = new Set<string>();
+        const collect = (net: SerializedC3NetworkGroup) => {
+            for (const id of this.getNetworkUnitIds(net)) unitIds.add(id);
+            for (const subNet of this.findSubNetworks(net, allNetworks)) collect(subNet);
+        };
+        collect(network);
+        const unitMap = new Map(allUnits.map(u => [u.id, u]));
+        return [...unitIds].map(id => unitMap.get(id)).filter((u): u is CBTForceUnit => !!u);
     }
 
     // ==================== Color Management ====================
