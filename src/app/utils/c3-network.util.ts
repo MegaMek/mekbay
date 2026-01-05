@@ -124,13 +124,17 @@ export class C3NetworkUtil {
                 const networkType = this.getNetworkType(comp);
                 const role = this.getRole(comp);
                 if (networkType && role) {
-                    components.push({
-                        component: comp,
-                        networkType,
-                        role,
-                        boosted: this.isBoosted(comp),
-                        index: index++
-                    });
+                    // Create one C3Component entry per quantity
+                    const count = comp.q > 1 ? comp.q : 1;
+                    for (let i = 0; i < count; i++) {
+                        components.push({
+                            component: comp,
+                            networkType,
+                            role,
+                            boosted: this.isBoosted(comp),
+                            index: index++
+                        });
+                    }
                 }
             }
         }
