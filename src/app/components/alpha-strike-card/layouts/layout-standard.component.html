@@ -21,8 +21,16 @@
 <!-- Header Section -->
 <div class="header-section">
     <div class="unit-name">
-        <div class="model-text" [class.small]="chassisSmall()">{{ model() | uppercase}}</div>
-        <div class="chassis-text alphastrike-text" [class.long-chassis]="isLongChassis()" [class.small]="chassisSmall()">{{ chassis() | uppercase }}</div>
+        @let alias = forceUnit()?.alias();
+        @if (alias) {
+            @let longChassis = alias.length > 20;
+            <div class="model-text" [class.small]="chassisSmall()">{{ chassis() | uppercase }} {{ model() | uppercase }}</div>
+            <div class="chassis-text alphastrike-text" [class.long-chassis]="longChassis" [class.small]="chassisSmall()">{{ alias }}</div>
+        } @else {
+            @let longChassis = chassis().length > 20;
+            <div class="model-text" [class.small]="chassisSmall()">{{ model() | uppercase}}</div>
+            <div class="chassis-text alphastrike-text" [class.long-chassis]="longChassis" [class.small]="chassisSmall()">{{ chassis() | uppercase }}</div>
+        }
     </div>
 
     <!-- PV Box -->

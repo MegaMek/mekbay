@@ -83,8 +83,6 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     private resizeObserver: ResizeObserver | null = null;
     chassisSmall = signal(false);
 
-    isLongChassis = computed<boolean>(() => this.chassis().length > 20);
-
     // Critical hits variant from layout config (override for standard units)
     override criticalHitsVariant = computed<CriticalHitsVariant>(() => {
         const config = getLayoutForUnitType(this.asStats().TP);

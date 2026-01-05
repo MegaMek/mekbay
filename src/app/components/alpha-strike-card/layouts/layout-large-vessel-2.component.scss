@@ -23,13 +23,29 @@
     gap: 1.5em;
     align-items: baseline;
     height: 4em;
+    flex-wrap: wrap;
+    overflow: hidden;
 }
 
 .vessel-name {
     font-size: 4em;
+    white-space: nowrap;
     :host(.monochrome) & {
         color: #000;
         font-weight: 700;
+    }
+
+    &.long-chassis {
+        font-size: 3.5em;
+    }
+}
+
+.vessel-name-subtext {
+    font-size: 2em;
+    color: #000;
+
+    :host:not(.monochrome) & {
+        color: #ECD24B;
     }
 }
 
