@@ -26,9 +26,9 @@
 
 .vessel-name {
     font-size: 4em;
-    margin-bottom: -0.1em;
+    margin-bottom: -0.2em;
     white-space: nowrap;
-    
+
     :host(.monochrome) & {
         color: #000;
         font-weight: 700;
