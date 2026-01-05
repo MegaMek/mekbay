@@ -6,7 +6,7 @@
         @if (alias) {
             @let longAlias = alias.length > 30;
             <span class="alphastrike-text vessel-name" [class.long-chassis]="longAlias">{{ alias }}</span>
-            <span class="vessel-name-subtext">{{ unit().chassis | uppercase }}</span>
+            <span class="vessel-name-subtext">{{ unit().chassis | uppercase }} {{ unit().model | uppercase }}</span>
         } @else {
             @let longChassis = chassis().length > 30;
             <span class="alphastrike-text vessel-name" [class.long-chassis]="longChassis">{{ unit().chassis | uppercase }}</span>
