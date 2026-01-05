@@ -638,26 +638,25 @@
   padding: 1px 6px;
   font-size: 0.7rem;
   font-weight: 600;
-  color: var(--success, #4caf50);
-  background: rgba(76, 175, 80, 0.15);
-  border-radius: 3px;
+  color: var(--bt-yellow);
+  background: rgba(255, 193, 7, 0.15);
 }
 
 .member-bv-details {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   padding: 2px 8px;
   font-size: 0.65rem;
-  color: var(--text-secondary, #888);
+  color: var(--text-color-secondary);
   background: rgba(0, 0, 0, 0.2);
-  margin-top: 2px;
+  margin-top: -4px;
 
   .tax {
-    color: var(--success, #4caf50);
+    color: var(--bt-yellow);
   }
 
   .total {
-    color: var(--text-primary, #fff);
+    color: var(--text-color);
     font-weight: 500;
   }
 }
@@ -666,30 +665,30 @@
   margin-top: 12px;
   padding: 10px;
   background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--border-color, #444);
+  border: 1px solid var(--border-color);
 
   .bv-totals-row {
     display: flex;
     justify-content: space-between;
     padding: 4px 0;
     font-size: 0.75rem;
-    color: var(--text-secondary, #aaa);
+    color: var(--text-color-secondary);
 
     .bv-value {
       font-weight: 500;
-      color: var(--text-primary, #fff);
+      color: var(--text-color);
 
       &.tax {
-        color: var(--success, #4caf50);
+        color: var(--bt-yellow);
       }
     }
 
     &.grand-total {
-      border-top: 1px solid var(--border-color, #444);
+      border-top: 1px solid var(--border-color);
       margin-top: 4px;
       padding-top: 8px;
       font-weight: 600;
-      color: var(--text-primary, #fff);
+      color: var(--text-color);
 
       .bv-value {
         font-size: 0.85rem;

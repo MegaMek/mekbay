@@ -399,7 +399,7 @@
                 </div>
                 @if (showBvDetails() && !member.isSelfConnection && member.baseBv !== undefined) {
                 <div class="member-bv-details">
-                    <span>{{ member.baseBv }}</span>
+                    <span>BV: {{ member.baseBv }}</span>
                     <span class="tax">+ {{ member.c3Tax ?? 0 }}</span>
                     <span class="total">= {{ member.baseBv + (member.c3Tax ?? 0) }}</span>
                 </div>
@@ -432,7 +432,7 @@
                 </div>
                 @if (showBvDetails() && !member.isSelfConnection && member.baseBv !== undefined) {
                 <div class="member-bv-details">
-                    <span>{{ member.baseBv }}</span>
+                    <span>BV: {{ member.baseBv }}</span>
                     <span class="tax">+ {{ member.c3Tax ?? 0 }}</span>
                     <span class="total">= {{ member.baseBv + (member.c3Tax ?? 0) }}</span>
                 </div>

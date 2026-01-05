@@ -687,9 +687,21 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 }
                 for (const sub of subNetworks) collectUnitIds(sub);
                 
-                // Tax is same for all units in the network, so just get it from first member
-                const firstMember = members.find(m => !m.isSelfConnection && m.c3Tax !== undefined);
-                networkTax = firstMember?.c3Tax ?? 0;
+                // Sum the tax of all unique units in the network
+                const collectTaxes = (vm: { members: SidebarMemberVm[], subNetworks: { members: SidebarMemberVm[], subNetworks: any[] }[] }, seen: Set<string>): number => {
+                    let sum = 0;
+                    for (const m of vm.members) {
+                        if (!m.isSelfConnection && m.c3Tax !== undefined && !seen.has(m.id)) {
+                            seen.add(m.id);
+                            sum += m.c3Tax;
+                        }
+                    }
+                    for (const sub of vm.subNetworks) {
+                        sum += collectTaxes(sub, seen);
+                    }
+                    return sum;
+                };
+                networkTax = collectTaxes({ members, subNetworks }, new Set<string>());
             }
 
             return { network, displayName, members, subNetworks, networkTax };
