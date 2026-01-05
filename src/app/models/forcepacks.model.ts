@@ -291,32 +291,32 @@ const FORCE_PACKS: ForcePack[] = [
     ]
   },
   {
-    "name": "Clan Elementals",
+    "name": "Clan Elemental Star",
     "units": [
       {
         "chassis": "Elemental Battle Armor",
         "model": "[Laser](sqd5)",
-        "name": "BAElementalBattleArmor_HeadhunterSqd4"
+        "name": "BAElementalBattleArmor_LaserSqd5"
       },
       {
         "chassis": "Elemental Battle Armor",
         "model": "[Laser](sqd5)",
-        "name": "BAElementalBattleArmor_HeadhunterSqd4"
+        "name": "BAElementalBattleArmor_LaserSqd5"
       },
       {
         "chassis": "Elemental Battle Armor",
         "model": "[Laser](sqd5)",
-        "name": "BAElementalBattleArmor_HeadhunterSqd4"
+        "name": "BAElementalBattleArmor_LaserSqd5"
       },
       {
         "chassis": "Elemental Battle Armor",
         "model": "[Laser](sqd5)",
-        "name": "BAElementalBattleArmor_HeadhunterSqd4"
+        "name": "BAElementalBattleArmor_LaserSqd5"
       },
       {
         "chassis": "Elemental Battle Armor",
         "model": "[Laser](sqd5)",
-        "name": "BAElementalBattleArmor_HeadhunterSqd4"
+        "name": "BAElementalBattleArmor_LaserSqd5"
       }
     ]
   },
@@ -726,7 +726,7 @@ const FORCE_PACKS: ForcePack[] = [
     ]
   },
   {
-    "name": "Somerset Strikers Force Pack",
+    "name": "1st Somerset Strikers",
     "units": [
       {
         "chassis": "Hatamoto-Chi",
@@ -1001,7 +1001,7 @@ const FORCE_PACKS: ForcePack[] = [
       {
         "chassis": "Daishi (Dire Wolf)",
         "model": "'Widowmaker",
-        "name": "BMDaishi_A"
+        "name": "BMDaishi_Widowmaker"
       },
       {
         "chassis": "Archer",
@@ -1015,7 +1015,7 @@ const FORCE_PACKS: ForcePack[] = [
       },
       {
         "chassis": "Mad Cat (Timber Wolf)",
-        "model": "(Pryde)",
+        "model": "Pryde",
         "name": "BMMadCat_Pryde"
       }
     ]
@@ -1075,7 +1075,7 @@ const FORCE_PACKS: ForcePack[] = [
       },
       {
         "chassis": "Loki Mk II (Hel)",
-        "model": "(Prime)",
+        "model": "Prime",
         "name": "BMLokiMkII_Prime"
       },
       {
@@ -1969,7 +1969,312 @@ const FORCE_PACKS: ForcePack[] = [
         "name": "SVSaviorRepairVehicle"
       }
     ]
-  }        
+  },
+  {
+    "name": "Clan Cavalry Star",
+    "units": [
+      {
+        "chassis": "Locust IIC",
+        "model": "",
+        "name": "BMLocustIIC"
+      },
+      {
+        "chassis": "Jenner IIC",
+        "model": "",
+        "name": "BMJennerIIC"
+      },
+      {
+        "chassis": "Griffin IIC",
+        "model": "",
+        "name": "BMGriffinIIC"
+      },
+	  {
+        "chassis": "Shadow Hawk IIC",
+        "model": "",
+        "name": "BMShadowHawkIIC"
+      },
+      {
+        "chassis": "Viper (Black Python)",
+        "model": "",
+        "name": "BMViper"
+      }
+    ]
+  },
+  {
+    "name": "Clan Direct Fire Star",
+    "units": [
+      {
+        "chassis": "Kraken (Bane)",
+        "model": "",
+        "name": "BMKraken"
+      },
+      {
+        "chassis": "Highlander IIC",
+        "model": "",
+        "name": "BMHighlanderIIC"
+      },
+      {
+        "chassis": "Phoenix Hawk IIC",
+        "model": "",
+        "name": "BMPhoenixHawkIIC"
+      },
+      {
+        "chassis": "Grizzly",
+        "model": "",
+        "name": "BMGrizzly"
+      },
+      {
+        "chassis": "Rifleman IIC",
+        "model": "",
+        "name": "BMRiflemanIIC"
+      }
+    ]
+  },
+  {
+    "name": "Inner Sphere Pursuit Lance",
+    "units": [
+      {
+        "chassis": "Cicada",
+        "model": "CDA-2A",
+        "name": "BMCicada_CDA2A"
+      },
+      {
+        "chassis": "Clint",
+        "model": "CLNT-2-3T",
+        "name": "BMClint_CLNT23T"
+      },
+      {
+        "chassis": "Hermes II",
+        "model": "HER-2S",
+        "name": "BMHermesII_HER2S"
+      },
+      {
+        "chassis": "Dervish",
+        "model": "DV-6M",
+        "name": "BMDervish_DV6M"
+      }
+    ]
+  },
+  {
+    "name": "Inner Sphere Security Lance",
+    "units": [
+      {
+        "chassis": "Pillager",
+        "model": "PLG-3Z",
+        "name": "BMPillager_PLG3Z"
+      },
+      {
+        "chassis": "Goliath",
+        "model": "GOL-1H",
+        "name": "BMGoliath_GOL1H"
+      },
+      {
+        "chassis": "Shogun",
+        "model": "SHG-2F",
+        "name": "BMShogun_SHG2F"
+      },
+      {
+        "chassis": "Hoplite",
+        "model": "HOP-4D",
+        "name": "BMHoplite_HOP4D"
+      }
+    ]
+  },
+  {
+    "name": "21st Centauri Lancers Command Lance",
+    "units": [
+      {
+        "chassis": "Shadow Cat",
+        "model": "Prime",
+        "name": "BMShadowCat_Prime"
+      },
+      {
+        "chassis": "Shockwave",
+        "model": "SKW-2F",
+        "name": "BMShockwave_SKW2F"
+      },
+      {
+        "chassis": "Stalker",
+        "model": "STK-8S",
+        "name": "BMStalker_STK8S"
+      },
+      {
+        "chassis": "Jade Hawk",
+        "model": "JHK-03",
+        "name": "BMJadeHawk_JHK03"
+      }
+    ]
+  },
+  {
+    "name": "Illician Lancers Command Lance",
+    "units": [
+      {
+        "chassis": "Scarabus",
+        "model": "SCB-9A",
+        "name": "BMScarabus_SCB9A"
+      },
+      {
+        "chassis": "Ostroc",
+        "model": "OSR-3M",
+        "name": "BMOstroc_OSR3M"
+      },
+      {
+        "chassis": "Ostsol",
+        "model": "OTL-9R",
+        "name": "BMOstsol_OTL9R"
+      },
+      {
+        "chassis": "Ostwar",
+        "model": "OWR-2Mb",
+        "name": "BMOstwar_OWR2Mb"
+      }
+    ]
+  },
+  {
+    "name": "House Davion Heavy Battle Lance",
+    "units": [
+      {
+        "chassis": "Templar",
+        "model": "TLR1-O",
+        "name": "BMTemplar_TLR1O"
+      },
+      {
+        "chassis": "Falconer",
+        "model": "FLC-8R",
+        "name": "BMFalconer_FLC8R"
+      },
+      {
+        "chassis": "Thanatos",
+        "model": "TNS-4S",
+        "name": "BMThanatos_TNS4S"
+      },
+      {
+        "chassis": "Thunderbolt",
+        "model": "TDR-9NAIS",
+        "name": "BMThunderbolt_TDR9NAIS"
+      }
+    ]
+  },
+  {
+    "name": "House Davion Cavalry Lance",
+    "units": [
+      {
+        "chassis": "Enforcer",
+        "model": "ENF-5D",
+        "name": "BMEnforcer_ENF5D"
+      },
+      {
+        "chassis": "Gunsmith",
+        "model": "CH11-NG",
+        "name": "BMGunsmith_CH11NG"
+      },
+      {
+        "chassis": "Hellspawn",
+        "model": "HSN-7D",
+        "name": "BMHellspawn_HSN7D"
+      },
+      {
+        "chassis": "Legionnaire",
+        "model": "LGN-2D",
+        "name": "BMLegionnaire_LGN2D"
+      }
+    ]
+  },
+  {
+    "name": "House Kurita Ranger Lance",
+    "units": [
+      {
+        "chassis": "Venom",
+        "model": "SDR-9KC",
+        "name": "BMVenom_SDR9KC"
+      },
+      {
+        "chassis": "Chimera",
+        "model": "CMA-2K",
+        "name": "BMChimera_CMA2K"
+      },
+      {
+        "chassis": "Panther",
+        "model": "PNT-9R",
+        "name": "BMPanther_PNT9R"
+      },
+      {
+        "chassis": "Avatar",
+        "model": "AV1-OJ",
+        "name": "BMAvatar_AV1OJ"
+      }
+    ]
+  },
+  {
+    "name": "House Kurita Command Lance",
+    "units": [
+      {
+        "chassis": "Rokurokubi",
+        "model": "RK-4X",
+        "name": "BMRokurokubi_RK4X"
+      },
+      {
+        "chassis": "Akuma",
+        "model": "AKU-2XC",
+        "name": "BMAkuma_AKU2XC"
+      },
+      {
+        "chassis": "Shiro",
+        "model": "SH-2P Shiro",
+        "name": "BMShiro_SH2P"
+      },
+      {
+        "chassis": "Grand Dragon",
+        "model": "DRG-10K",
+        "name": "BMGrandDragon_DRG10K"
+      }
+    ]
+  },
+  {
+    "name": "Aces: Snowblind",
+    "units": [
+      {
+        "chassis": "Dasher (Fire Moth)",
+        "model": "G",
+        "name": "BMDasher_G"
+      },
+      {
+        "chassis": "Hankyu (Arctic Cheetah)",
+        "model": "A",
+        "name": "BMHankyu_A"
+      },
+      {
+        "chassis": "Rime Otter",
+        "model": "Prime",
+        "name": "BMRimeOtter_Prime"
+      },
+      {
+        "chassis": "Grendel (Mongrel)",
+        "model": "A",
+        "name": "BMGrendel_A"
+      },
+      {
+        "chassis": "Nova Cat",
+        "model": "B",
+        "name": "BMNovaCat_B"
+      },
+      {
+        "chassis": "Kingfisher",
+        "model": "C",
+        "name": "BMKingfisher_C"
+      },
+      {
+        "chassis": "Grizzly",
+        "model": "3",
+        "name": "BMGrizzly_3"
+      },
+      {
+        "chassis": "Viking IIC",
+        "model": "",
+        "name": "BMVikingIIC"
+      }
+    ]
+  }
 ];
 
 // Sort once at module load and cache
