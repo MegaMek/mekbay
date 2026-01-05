@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Directive, input, output, computed, inject } from '@angular/core';
+import { Directive, input, output, computed, inject, signal } from '@angular/core';
 import { ASForceUnit, AbilitySelection } from '../../../models/as-force-unit.model';
 import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
 import { Era } from '../../../models/eras.model';
@@ -101,6 +101,12 @@ export abstract class AsLayoutBaseComponent {
     cardStyle = input<'colored' | 'monochrome'>('colored');
     imageUrl = input<string>('');
     interactive = input<boolean>(false);
+
+    // Image loading state (hidden on error)
+    protected imageLoadFailed = signal(false);
+    protected onImageError(): void {
+        this.imageLoadFailed.set(true);
+    }
 
     // Common outputs
     specialClick = output<SpecialAbilityClickEvent>();

@@ -121,9 +121,9 @@
         <!-- Row 3 Right: SPAs -->
         <div class="spa-container">
             <!-- Unit Image -->
-            @if (imageUrl()) {
+            @if (imageUrl() && !imageLoadFailed()) {
             <div class="fluff-image-container center-vertical">
-                <img class="fluff-image" [src]="imageUrl()" alt="Unit image" />
+                <img class="fluff-image" [src]="imageUrl()" alt="Unit image" (error)="onImageError()" />
             </div>
             }
             @let abilities = pilotAbilities();

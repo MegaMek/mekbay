@@ -1,8 +1,8 @@
 <!-- Unit Image -->
-@if (imageUrl()) {
+@if (imageUrl() && !imageLoadFailed()) {
 <div class="fluff-image-container"
     [class.center-vertical]="criticalHitsVariant() === 'none'">
-    <img class="fluff-image" [src]="imageUrl()" alt="Unit image" />
+    <img class="fluff-image" [src]="imageUrl()" alt="Unit image" (error)="onImageError()" />
 </div>
 }
 <!-- Right side: Era Icons -->
