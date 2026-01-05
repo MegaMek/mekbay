@@ -619,8 +619,9 @@ export class ASForceUnit extends ForceUnit {
         }
 
         // Get jump/sub TMM modifiers from specials
-        const jumpMod = this.getSignedSpecialModifier(stats.specials, 'JMPS', 'JMPW');
-        const subMod = this.getSignedSpecialModifier(stats.specials, 'SUBS', 'SUBW');
+        // OBSOLETE: we calculate the TMM from calculateBaseTMMFromInches which would include those modifiers alreadyy.
+        // const jumpMod = this.getSignedSpecialModifier(stats.specials, 'JMPS', 'JMPW');
+        // const subMod = this.getSignedSpecialModifier(stats.specials, 'SUBS', 'SUBW');
 
         // Calculate TMM penalty from crits
         let tmmPenalty: number;
@@ -644,11 +645,11 @@ export class ASForceUnit extends ForceUnit {
 
             // Apply mode-specific modifiers
             let modifier = 0;
-            if (mode === 'j' && jumpMod !== null) {
-                modifier = jumpMod;
-            } else if (mode === 's' && subMod !== null) {
-                modifier = subMod;
-            }
+            // if (mode === 'j' && jumpMod !== null) {
+            //     modifier = jumpMod;
+            // } else if (mode === 's' && subMod !== null) {
+            //     modifier = subMod;
+            // }
 
             // Heat penalty applies to ground movement only (not 'j')
             const heatPenalty = mode === 'j' ? 0 : heatTmmPenalty;
