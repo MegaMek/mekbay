@@ -648,8 +648,8 @@
     <div class="as-table-row">
         <div class="as-td as-td-icon"><unit-icon [unit]="unit"></unit-icon></div>
         <div class="as-td as-td-name">
-            <span class="as-td-chassis" [innerHTML]="highlight(unit.chassis)"></span>
             <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
+            <span class="as-td-chassis" [innerHTML]="highlight(unit.chassis)"></span>
         </div>
         <div class="as-td as-td-type">{{ unit.as.TP }}</div>
         <div class="as-td as-td-role">{{ unit.role !== 'None' ? unit.role : '' }}</div>
