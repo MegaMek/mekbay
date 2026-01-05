@@ -107,7 +107,7 @@ export class AsAbilityLookupService {
      * Converts an ability text to a pattern that can match database tags.
      * - Replaces numbers (including decimals) and "-" with "#"
      * - Removes "*" markers
-     * - Handles special cases like ART% pattern
+     * - Handles special cases like ART% pattern and C3 abilities
      */
     private convertToTagPattern(abilityText: string): string {
         // Remove spaces for matching
@@ -125,6 +125,16 @@ export class AsAbilityLookupService {
                 // Convert to ART%-# pattern where % is the type code
                 return 'ART%-#';
             }
+        }
+
+        // Handle C3 abilities - preserve the "3" in C3 as it's part of the ability name
+        // C3M2 -> C3M#, C3BSM4 -> C3BSM#, C3BSS -> C3BSS, C3I -> C3I, etc.
+        if (pattern.startsWith('C3')) {
+            // Replace only trailing numbers (the variable part), not the 3 in C3
+            pattern = pattern.replace(/^(C3[A-Z]*)(\d+)?$/, (_, base, num) => {
+                return num ? base + '#' : base;
+            });
+            return pattern;
         }
 
         // Replace all numbers (including decimals like 0.02, 3.5) with #
@@ -181,8 +191,9 @@ export class AsAbilityLookupService {
      * For example, FLK1/1/- should match FLK#/#/#/#
      */
     private findBaseAbility(pattern: string): ASSpecialAbility | null {
-        // Extract base name (letters before any special chars)
-        const baseMatch = pattern.match(/^([A-Z]+)/);
+        // Extract base name (letters and digits before any special chars like # or /)
+        // This handles abilities like C3M#, C3BSM# where digits are part of the name
+        const baseMatch = pattern.match(/^([A-Z\d]+?)(?=#|\/|$)/);
         if (!baseMatch) return null;
 
         const baseName = baseMatch[1];
