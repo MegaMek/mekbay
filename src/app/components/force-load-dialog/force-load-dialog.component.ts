@@ -194,7 +194,7 @@ export class ForceLoadDialogComponent {
                 return resolved;
             });
 
-            this.packs.set(resolved);
+            this.packs.set(resolved.sort((a, b) => a.name.localeCompare(b.name)));
         });
     }
 

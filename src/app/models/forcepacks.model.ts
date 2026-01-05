@@ -1459,7 +1459,7 @@ export const FORCE_PACKS: ForcePack[] = [
     ]
   },
   {
-    "name": "Beginner Box 1st Edition",
+    "name": "Beginner Box Set, 1st Edition",
     "units": [
       {
         "chassis": "Griffin",
@@ -1474,7 +1474,7 @@ export const FORCE_PACKS: ForcePack[] = [
     ]
   },
   {
-    "name": "Beginner Box 2nd Edition",
+    "name": "Beginner Box Set, 2nd Edition",
     "units": [
       {
         "chassis": "Griffin",
@@ -1499,7 +1499,7 @@ export const FORCE_PACKS: ForcePack[] = [
     ]
   },
   {
-    "name": "A Game of Armored Combat Box",
+    "name": "A Game of Armored Combat Box Set",
     "units": [
       {
         "chassis": "Awesome",
@@ -1544,7 +1544,7 @@ export const FORCE_PACKS: ForcePack[] = [
     ]
   },    
   {
-    "name": "A Game of Armored Combat Box IlClan variants",
+    "name": "A Game of Armored Combat Box Set (IlClan variants)",
     "units": [
       {
         "chassis": "Awesome",
@@ -1589,7 +1589,7 @@ export const FORCE_PACKS: ForcePack[] = [
     ]
   },
   {
-    "name": "Essentials Box",
+    "name": "Essentials Box Set",
     "units": [
       {
         "chassis": "Centurion",
@@ -1609,7 +1609,7 @@ export const FORCE_PACKS: ForcePack[] = [
     ]
   },    
   {
-    "name": "Alpha Strike Boxed Set",
+    "name": "Alpha Strike Box Set",
     "units": [
       {
         "chassis": "Archer",
@@ -1679,7 +1679,7 @@ export const FORCE_PACKS: ForcePack[] = [
     ]
   },    
   {
-    "name": "Clan Invasion Box",
+    "name": "Clan Invasion Box Set",
     "units": [
       {
         "chassis": "Puma (Adder)",
@@ -1719,7 +1719,7 @@ export const FORCE_PACKS: ForcePack[] = [
     ]
   },    
   {
-    "name": "Mercenaries Box",
+    "name": "Mercenaries Box Set",
     "units": [
       {
         "chassis": "Caesar",
