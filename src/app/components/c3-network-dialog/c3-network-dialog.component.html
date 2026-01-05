@@ -299,7 +299,16 @@
     <!-- Networks sidebar -->
     <div class="networks-sidebar framed-borders" [class.overlay]="layoutService.isMobile()"
         [class.hidden]="layoutService.isMobile() && !sidebarOpen()" [class.animate]="sidebarAnimated()">
-        <h3>Networks</h3>
+        <div class="sidebar-header">
+            <h3>Networks</h3>
+            @if (isClassicGame()) {
+            <button class="bt-button bv-toggle square-small" type="button" (click)="showBvDetails.set(!showBvDetails())"
+                [class.active]="showBvDetails()" [attr.aria-pressed]="showBvDetails()"
+                aria-label="Toggle BV details" title="Toggle BV details">
+                <span class="icon" aria-hidden="true">$</span>
+            </button>
+            }
+        </div>
 
         <div class="networks-list">
             <!-- Only show top-level networks, sub-networks are nested inside -->
@@ -311,6 +320,23 @@
             <div class="no-networks">
                 No networks configured.<br>
                 Drag from one pin to another to create a connection.
+            </div>
+            }
+
+            @if (showBvDetails() && bvTotals(); as totals) {
+            <div class="bv-totals">
+                <div class="bv-totals-row">
+                    <span>Total Units BV:</span>
+                    <span class="bv-value">{{ totals.totalBaseBv }}</span>
+                </div>
+                <div class="bv-totals-row">
+                    <span>Total C3 Tax:</span>
+                    <span class="bv-value tax">+{{ totals.totalTax }}</span>
+                </div>
+                <div class="bv-totals-row grand-total">
+                    <span>Grand Total:</span>
+                    <span class="bv-value">{{ totals.grandTotal }}</span>
+                </div>
             </div>
             }
         </div>
@@ -334,6 +360,9 @@
         <div class="network-header">
             <span class="network-type">
                 {{ vm.displayName }}
+                @if (showBvDetails() && depth === 0 && vm.networkTax !== undefined) {
+                    <span class="network-tax">Tax: +{{ vm.networkTax }}</span>
+                }
             </span>
             @if (!data.readOnly) {
                 <button class="remove-btn" (click)="removeNetwork(vm.network)" title="Delete entire network">
@@ -368,6 +397,13 @@
                         L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg></button>
                     }
                 </div>
+                @if (showBvDetails() && !member.isSelfConnection && member.baseBv !== undefined) {
+                <div class="member-bv-details">
+                    <span>{{ member.baseBv }}</span>
+                    <span class="tax">+ {{ member.c3Tax ?? 0 }}</span>
+                    <span class="total">= {{ member.baseBv + (member.c3Tax ?? 0) }}</span>
+                </div>
+                }
             </div>
             }
             }
@@ -394,6 +430,13 @@
                         L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg></button>
                     }
                 </div>
+                @if (showBvDetails() && !member.isSelfConnection && member.baseBv !== undefined) {
+                <div class="member-bv-details">
+                    <span>{{ member.baseBv }}</span>
+                    <span class="tax">+ {{ member.c3Tax ?? 0 }}</span>
+                    <span class="total">= {{ member.baseBv + (member.c3Tax ?? 0) }}</span>
+                </div>
+                }
                 <div>
                     <!-- Nested sub-network for this sub-master (if any) -->
                     @if (member.networkVm; as subVm) {

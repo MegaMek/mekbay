@@ -187,7 +187,8 @@ export class ForceBuilderViewerComponent {
             data: <C3NetworkDialogData>{
                 units: force.units,
                 networks: force.c3Networks,
-                readOnly: unit.readOnly()
+                readOnly: unit.readOnly(),
+                gameSystem: force.gameSystem
             },
             width: '100dvw',
             height: '100dvh',

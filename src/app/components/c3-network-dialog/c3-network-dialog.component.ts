@@ -48,6 +48,7 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceUnit } from '../../models/force-unit.model';
+import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { C3NetworkUtil, C3NetworkContext } from '../../utils/c3-network.util';
 import {
     C3Component,
@@ -57,6 +58,7 @@ import {
     C3_NETWORK_COLORS
 } from '../../models/c3-network.model';
 import { SerializedC3NetworkGroup } from '../../models/force-serialization';
+import { GameSystem } from '../../models/common.model';
 import { ToastService } from '../../services/toast.service';
 import { ImageStorageService } from '../../services/image-storage.service';
 import { OptionsService } from '../../services/options.service';
@@ -71,6 +73,8 @@ export interface C3NetworkDialogData {
     /** Networks configuration - can be an array or a signal for reactive updates */
     networks: SerializedC3NetworkGroup[] | Signal<SerializedC3NetworkGroup[]>;
     readOnly?: boolean;
+    /** Game system - determines if BV/tax display is available */
+    gameSystem?: GameSystem;
 }
 
 export interface C3NetworkDialogResult {
@@ -112,6 +116,8 @@ interface SidebarNetworkVm {
     displayName: string;
     members: SidebarMemberVm[];
     subNetworks: SidebarNetworkVm[];
+    /** Total C3 tax for this network tree (root networks only) */
+    networkTax?: number;
 }
 
 interface SidebarMemberVm {
@@ -124,6 +130,10 @@ interface SidebarMemberVm {
     node: C3Node | null;
     network?: SerializedC3NetworkGroup;
     networkVm?: SidebarNetworkVm;
+    /** Base BV (pilot adjusted) */
+    baseBv?: number;
+    /** C3 tax for this unit */
+    c3Tax?: number;
 }
 
 interface Vec2 {
@@ -174,7 +184,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected hasModifications = signal(false);
     protected sidebarOpen = signal(false);
     protected sidebarAnimated = signal(false);
+    protected showBvDetails = signal(false);
     protected connectionsAboveNodes = computed(() => this.optionsService.options().c3NetworkConnectionsAboveNodes);
+    protected isClassicGame = computed(() => this.data.gameSystem === GameSystem.CLASSIC);
 
     // Flag to skip initial effect trigger
     private initialized = false;
@@ -580,8 +592,18 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const nodesById = this.nodesById();
         const topLevel = C3NetworkUtil.getTopLevelNetworks(networks);
         const visited = new Set<string>();
+        const isClassic = this.isClassicGame();
+        const allUnits = isClassic ? this.nodes().map(n => n.unit as CBTForceUnit) : [];
 
-        const buildNetworkVm = (network: SerializedC3NetworkGroup): SidebarNetworkVm | null => {
+        const getUnitBvData = (node: C3Node | null): { baseBv?: number; c3Tax?: number } => {
+            if (!isClassic || !node) return {};
+            const cbtUnit = node.unit as CBTForceUnit;
+            const baseBv = cbtUnit.baseBvPilotAdjusted();
+            const c3Tax = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, baseBv, networks, allUnits);
+            return { baseBv, c3Tax };
+        };
+
+        const buildNetworkVm = (network: SerializedC3NetworkGroup, isTopLevel: boolean): SidebarNetworkVm | null => {
             if (visited.has(network.id)) return null;
             visited.add(network.id);
 
@@ -593,7 +615,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     const node = nodesById.get(id) ?? null;
                     members.push({
                         id, name: node?.unit.getUnit().chassis || 'Unknown',
-                        role: 'peer', canRemove: !this.data.readOnly, node
+                        role: 'peer', canRemove: !this.data.readOnly, node,
+                        ...getUnitBvData(node)
                     });
                 }
             } else if (network.masterId) {
@@ -601,7 +624,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 members.push({
                     id: network.masterId,
                     name: masterNode?.unit.getUnit().chassis || 'Unknown',
-                    role: 'master', canRemove: false, node: masterNode, network
+                    role: 'master', canRemove: false, node: masterNode, network,
+                    ...getUnitBvData(masterNode)
                 });
 
                 for (const memberStr of network.members ?? []) {
@@ -614,12 +638,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         const hasChildren = !!(childNet?.members?.length);
 
                         if (childNet && hasChildren) {
-                            const childVm = buildNetworkVm(childNet);
+                            const childVm = buildNetworkVm(childNet, false);
                             members.push({
                                 id: parsed.unitId,
                                 name: node?.unit.getUnit().chassis || 'Unknown',
                                 role: 'sub-master', canRemove: !this.data.readOnly, isSelfConnection,
-                                memberStr, node, network: childNet, networkVm: childVm ?? undefined
+                                memberStr, node, network: childNet, networkVm: childVm ?? undefined,
+                                ...getUnitBvData(node)
                             });
                             if (childVm) subNetworks.push(childVm);
                             continue;
@@ -629,7 +654,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     members.push({
                         id: parsed.unitId,
                         name: node?.unit.getUnit().chassis || 'Unknown',
-                        role: 'slave', canRemove: !this.data.readOnly, isSelfConnection, memberStr, node
+                        role: 'slave', canRemove: !this.data.readOnly, isSelfConnection, memberStr, node,
+                        ...getUnitBvData(node)
                     });
                 }
             }
@@ -645,10 +671,52 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 displayName = `${C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType)} (${memberCount + subNetCount} ${memberCount + subNetCount > 1 ? 'members' : 'member'})`;
             }
 
-            return { network, displayName, members, subNetworks };
+            // Calculate network tax for top-level networks only
+            let networkTax: number | undefined;
+            if (isTopLevel && isClassic) {
+                const uniqueUnitIds = new Set<string>();
+                const collectUnitIds = (vm: SidebarNetworkVm) => {
+                    for (const m of vm.members) {
+                        if (!m.isSelfConnection) uniqueUnitIds.add(m.id);
+                    }
+                    for (const sub of vm.subNetworks) collectUnitIds(sub);
+                };
+                // We need to collect from the current VM we're building
+                for (const m of members) {
+                    if (!m.isSelfConnection) uniqueUnitIds.add(m.id);
+                }
+                for (const sub of subNetworks) collectUnitIds(sub);
+                
+                // Tax is same for all units in the network, so just get it from first member
+                const firstMember = members.find(m => !m.isSelfConnection && m.c3Tax !== undefined);
+                networkTax = firstMember?.c3Tax ?? 0;
+            }
+
+            return { network, displayName, members, subNetworks, networkTax };
         };
 
-        return topLevel.map(net => buildNetworkVm(net)).filter((vm): vm is SidebarNetworkVm => vm !== null);
+        return topLevel.map(net => buildNetworkVm(net, true)).filter((vm): vm is SidebarNetworkVm => vm !== null);
+    });
+
+    /** Total BV summary for all C3 units */
+    protected bvTotals = computed(() => {
+        if (!this.isClassicGame()) return null;
+        const nodes = this.nodes();
+        const networks = this.networks();
+        const allUnits = nodes.map(n => n.unit as CBTForceUnit);
+        
+        let totalBaseBv = 0;
+        let totalTax = 0;
+        
+        for (const node of nodes) {
+            const cbtUnit = node.unit as CBTForceUnit;
+            const baseBv = cbtUnit.baseBvPilotAdjusted();
+            const tax = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, baseBv, networks, allUnits);
+            totalBaseBv += baseBv;
+            totalTax += tax;
+        }
+        
+        return { totalBaseBv, totalTax, grandTotal: totalBaseBv + totalTax };
     });
 
     protected pinConnectionState = computed(() => {

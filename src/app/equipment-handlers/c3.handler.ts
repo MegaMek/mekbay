@@ -63,7 +63,8 @@ export class C3Handler extends EquipmentInteractionHandler {
             data: <C3NetworkDialogData>{
                 units: force.units,
                 networks: force.c3Networks,
-                readOnly: equipment.owner.readOnly()
+                readOnly: equipment.owner.readOnly(),
+                gameSystem: force.gameSystem
             },
             width: '100dvw',
             height: '100dvh',
