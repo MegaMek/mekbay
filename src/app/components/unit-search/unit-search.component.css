@@ -744,11 +744,16 @@
 }
 
 @container results-container (min-width: 1200px) {
+    .results-dropdown-viewport {
+        scrollbar-gutter: stable;
+    }
+
     .as-table-header {
         display: flex;
         align-items: center;
         gap: 8px;
         padding: 8px 12px;
+        padding-right: calc(12px + 8px); /* 12px base + 8px to match scrollbar-gutter */
         background-color: #333;
         border-bottom: 2px solid #555;
         font-weight: bold;
@@ -787,8 +792,8 @@
     .as-th-mv, .as-td-mv { width: 65px; text-align: center; }
     .as-th-tmm, .as-td-tmm { width: 40px; text-align: center; }
     .as-th-dmg, .as-td-dmg { width: 60px; text-align: center; }
-    .as-th-arm, .as-td-arm { width: 30px; text-align: center; }
-    .as-th-str, .as-td-str { width: 30px; text-align: center; }
+    .as-th-arm, .as-td-arm { width: 40px; text-align: center; }
+    .as-th-str, .as-td-str { width: 40px; text-align: center; }
     .as-th-ov, .as-td-ov { width: 30px; text-align: center; }
     .as-th-specials, .as-td-specials { flex: 1 1 160px; min-width: 100px; }
     .as-th-tags, .as-td-tags { width: 160px; flex-shrink: 1; text-align: right; }
