@@ -465,6 +465,7 @@ hr {
 
 .bt-button {
     cursor: pointer;
+    white-space: nowrap;
     touch-action: none;
     display: flex;
     align-items: center;

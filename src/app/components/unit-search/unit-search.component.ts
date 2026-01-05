@@ -463,7 +463,7 @@ export class UnitSearchComponent {
             }
             return;
         }
-        if (event.key in ['ArrowDown', 'ArrowUp', 'Enter']) {
+        if (['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) {
             const items = this.filtersService.filteredUnits();
             if (items.length === 0) return;
             const currentActiveIndex = this.activeIndex();
