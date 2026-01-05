@@ -55,5 +55,6 @@ export interface Options {
     useAutomations: boolean;
     ASUseHex: boolean;
     ASCardStyle: 'colored' | 'monochrome';
+    ASPrintPageBreakOnGroups: boolean;
     c3NetworkConnectionsAboveNodes: boolean;
 }

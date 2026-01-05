@@ -101,7 +101,7 @@ export class SidebarFooterComponent {
         if (currentForce instanceof CBTForce) {
             CBTPrintUtil.multipagePrint(this.dataService, this.optionsService, currentForce.units());
         } else if (currentForce instanceof ASForce) {
-            ASPrintUtil.multipagePrint(this.appRef, this.injector, this.optionsService, currentForce.units());
+            ASPrintUtil.multipagePrint(this.appRef, this.injector, this.optionsService, currentForce.groups());
         }
     }
 

@@ -196,7 +196,7 @@ export class AlphaStrikeViewerComponent {
     onPrintRequested(): void {
         const currentForce = this.forceBuilderService.currentForce();
         if (!currentForce || currentForce instanceof ASForce === false) return;
-        ASPrintUtil.multipagePrint(this.appRef, this.injector, this.optionsService, currentForce.units());
+        ASPrintUtil.multipagePrint(this.appRef, this.injector, this.optionsService, currentForce.groups());
     }
 
     private setupEffects(): void {

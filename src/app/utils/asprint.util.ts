@@ -33,6 +33,7 @@
 
 import { ApplicationRef, ComponentRef, createComponent, EnvironmentInjector, Injector } from '@angular/core';
 import { ASForceUnit } from '../models/as-force-unit.model';
+import { UnitGroup } from '../models/force.model';
 import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-strike-card.component';
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import { OptionsService } from '../services/options.service';
@@ -44,6 +45,7 @@ import { isIOS } from './platform.util';
 interface CardRenderItem {
     forceUnit: ASForceUnit;
     cardIndex: number;
+    groupIndex: number;
 }
 
 // Card dimensions in inches (88mm x 63mm)
@@ -67,7 +69,7 @@ export class ASPrintUtil {
      * @param appRef - Angular ApplicationRef for dynamic component creation
      * @param injector - Angular Injector for dependency injection
      * @param optionsService - Options service for card style preferences
-     * @param forceUnits - Array of ASForceUnit to print
+     * @param groups - Array of UnitGroup to print
      * @param clean - If true, prints clean cards without damage state
      * @param triggerPrint - If true, triggers the browser print dialog
      */
@@ -75,11 +77,12 @@ export class ASPrintUtil {
         appRef: ApplicationRef,
         injector: Injector,
         optionsService: OptionsService,
-        forceUnits: ASForceUnit[],
+        groups: UnitGroup<ASForceUnit>[],
         clean: boolean = false,
         triggerPrint: boolean = true
     ): Promise<void> {
-        if (forceUnits.length === 0) {
+        const allUnits = groups.flatMap(g => g.units());
+        if (allUnits.length === 0) {
             console.warn('No units to export.');
             return;
         }
@@ -87,7 +90,7 @@ export class ASPrintUtil {
         // Store original heat values and set to 0 for printing
         const originalHeats = new Map<ASForceUnit, number>();
         if (!clean) {
-            for (const unit of forceUnits) {
+            for (const unit of allUnits) {
                 unit.disabledSaving = true;
                 const unitHeat = unit.getHeat();
                 originalHeats.set(unit, unitHeat);
@@ -96,13 +99,14 @@ export class ASPrintUtil {
         }
 
         // Expand units into individual cards (multi-card units become multiple entries)
-        const cardRenderItems = this.expandToCardItems(forceUnits);
+        const cardRenderItems = this.expandToCardItems(groups);
+        const pageBreakOnGroups = optionsService.options().ASPrintPageBreakOnGroups;
         
         // Create print container - use different layouts for iOS vs other platforms
         const useFixedLayout = isIOS();
         const { overlay, cardComponentRefs } = useFixedLayout
-            ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems)
-            : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems);
+            ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups)
+            : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups);
 
         // Wait for fonts and images to load
         if ((document as any).fonts?.ready) {
@@ -129,7 +133,7 @@ export class ASPrintUtil {
 
             // Restore original heat values
             if (originalHeats.size > 0) {
-                for (const unit of forceUnits) {
+                for (const unit of allUnits) {
                     const heat = originalHeats.get(unit);
                     if (heat !== undefined) {
                         unit.setHeat(heat);
@@ -151,17 +155,21 @@ export class ASPrintUtil {
     /**
      * Expands force units into individual card render items.
      * Multi-card units (like large vessels) are expanded into multiple entries.
+     * @param groups - Array of UnitGroups
      */
-    private static expandToCardItems(forceUnits: ASForceUnit[]): CardRenderItem[] {
+    private static expandToCardItems(groups: UnitGroup<ASForceUnit>[]): CardRenderItem[] {
         const items: CardRenderItem[] = [];
         
-        for (const forceUnit of forceUnits) {
-            const unitType = forceUnit.getUnit().as.TP;
-            const layout = getLayoutForUnitType(unitType);
-            const cardCount = layout.cards.length;
-            
-            for (let cardIndex = 0; cardIndex < cardCount; cardIndex++) {
-                items.push({ forceUnit, cardIndex });
+        for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+            const groupUnits = groups[groupIndex].units();
+            for (const forceUnit of groupUnits) {
+                const unitType = forceUnit.getUnit().as.TP;
+                const layout = getLayoutForUnitType(unitType);
+                const cardCount = layout.cards.length;
+                
+                for (let cardIndex = 0; cardIndex < cardCount; cardIndex++) {
+                    items.push({ forceUnit, cardIndex, groupIndex });
+                }
             }
         }
         
@@ -176,7 +184,8 @@ export class ASPrintUtil {
         appRef: ApplicationRef,
         injector: Injector,
         optionsService: OptionsService,
-        cardItems: CardRenderItem[]
+        cardItems: CardRenderItem[],
+        pageBreakOnGroups: boolean
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
@@ -191,53 +200,58 @@ export class ASPrintUtil {
         style.textContent = this.getFixedPrintStyles();
         overlay.appendChild(style);
         
-        // Create pages with fixed number of cards per page
-        const totalPages = Math.ceil(cardItems.length / CARDS_PER_PAGE);
-        
-        for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
-            const pageDiv = document.createElement('div');
-            pageDiv.className = 'as-print-page';
-            if (pageIndex === totalPages - 1) {
-                pageDiv.classList.add('last-page');
+        // Group cards by groupIndex if pageBreakOnGroups is enabled
+        if (pageBreakOnGroups) {
+            const groupedCards = this.groupCardsByGroupIndex(cardItems);
+            let isLastGroup = false;
+            
+            for (let g = 0; g < groupedCards.length; g++) {
+                const groupCards = groupedCards[g];
+                isLastGroup = g === groupedCards.length - 1;
+                const totalPagesInGroup = Math.ceil(groupCards.length / CARDS_PER_PAGE);
+                
+                for (let pageIndex = 0; pageIndex < totalPagesInGroup; pageIndex++) {
+                    const pageDiv = document.createElement('div');
+                    pageDiv.className = 'as-print-page';
+                    
+                    // Mark last page of last group
+                    const isLastPageOfGroup = pageIndex === totalPagesInGroup - 1;
+                    if (isLastGroup && isLastPageOfGroup) {
+                        pageDiv.classList.add('last-page');
+                    }
+                    
+                    const startIndex = pageIndex * CARDS_PER_PAGE;
+                    const endIndex = Math.min(startIndex + CARDS_PER_PAGE, groupCards.length);
+                    
+                    for (let i = startIndex; i < endIndex; i++) {
+                        const item = groupCards[i];
+                        this.appendCardToContainer(pageDiv, item, appRef, injector, useHex, cardStyle, componentRefs);
+                    }
+                    
+                    overlay.appendChild(pageDiv);
+                }
             }
+        } else {
+            // Simple pagination
+            const totalPages = Math.ceil(cardItems.length / CARDS_PER_PAGE);
             
-            // Get cards for this page
-            const startIndex = pageIndex * CARDS_PER_PAGE;
-            const endIndex = Math.min(startIndex + CARDS_PER_PAGE, cardItems.length);
-            
-            for (let i = startIndex; i < endIndex; i++) {
-                const item = cardItems[i];
+            for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'as-print-page';
+                if (pageIndex === totalPages - 1) {
+                    pageDiv.classList.add('last-page');
+                }
                 
-                // Create card cell
-                const cellDiv = document.createElement('div');
-                cellDiv.className = 'as-card-cell';
+                const startIndex = pageIndex * CARDS_PER_PAGE;
+                const endIndex = Math.min(startIndex + CARDS_PER_PAGE, cardItems.length);
                 
-                // Create the Alpha Strike card component
-                const environmentInjector = injector.get(EnvironmentInjector);
-                const componentRef = createComponent(AlphaStrikeCardComponent, {
-                    environmentInjector,
-                    elementInjector: injector
-                });
+                for (let i = startIndex; i < endIndex; i++) {
+                    const item = cardItems[i];
+                    this.appendCardToContainer(pageDiv, item, appRef, injector, useHex, cardStyle, componentRefs);
+                }
                 
-                // Set inputs
-                componentRef.setInput('forceUnit', item.forceUnit);
-                componentRef.setInput('cardIndex', item.cardIndex);
-                componentRef.setInput('cardStyle', 'monochrome' /* cardStyle */);
-                componentRef.setInput('useHex', useHex);
-                componentRef.setInput('isSelected', false);
-                
-                // Attach to Angular's change detection
-                appRef.attachView(componentRef.hostView);
-                
-                // Add component's DOM element to cell
-                const cardElement = componentRef.location.nativeElement as HTMLElement;
-                cellDiv.appendChild(cardElement);
-                pageDiv.appendChild(cellDiv);
-                
-                componentRefs.push(componentRef);
+                overlay.appendChild(pageDiv);
             }
-            
-            overlay.appendChild(pageDiv);
         }
         
         // Append to body
@@ -258,7 +272,8 @@ export class ASPrintUtil {
         appRef: ApplicationRef,
         injector: Injector,
         optionsService: OptionsService,
-        cardItems: CardRenderItem[]
+        cardItems: CardRenderItem[],
+        pageBreakOnGroups: boolean
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
@@ -273,41 +288,37 @@ export class ASPrintUtil {
         style.textContent = this.getFlexPrintStyles();
         overlay.appendChild(style);
         
-        // Create a single flex container for all cards
-        const flexContainer = document.createElement('div');
-        flexContainer.className = 'as-flex-container';
-        
-        for (const item of cardItems) {
-            // Create card cell
-            const cellDiv = document.createElement('div');
-            cellDiv.className = 'as-card-cell';
+        if (pageBreakOnGroups) {
+            // Create separate flex containers for each group with page breaks
+            const groupedCards = this.groupCardsByGroupIndex(cardItems);
             
-            // Create the Alpha Strike card component
-            const environmentInjector = injector.get(EnvironmentInjector);
-            const componentRef = createComponent(AlphaStrikeCardComponent, {
-                environmentInjector,
-                elementInjector: injector
-            });
+            for (let g = 0; g < groupedCards.length; g++) {
+                const groupCards = groupedCards[g];
+                const isLastGroup = g === groupedCards.length - 1;
+                
+                const flexContainer = document.createElement('div');
+                flexContainer.className = 'as-flex-container';
+                if (!isLastGroup) {
+                    flexContainer.classList.add('as-group-break');
+                }
+                
+                for (const item of groupCards) {
+                    this.appendCardToContainer(flexContainer, item, appRef, injector, useHex, cardStyle, componentRefs);
+                }
+                
+                overlay.appendChild(flexContainer);
+            }
+        } else {
+            // Simple pagination
+            const flexContainer = document.createElement('div');
+            flexContainer.className = 'as-flex-container';
             
-            // Set inputs
-            componentRef.setInput('forceUnit', item.forceUnit);
-            componentRef.setInput('cardIndex', item.cardIndex);
-            componentRef.setInput('cardStyle', 'monochrome' /* cardStyle */);
-            componentRef.setInput('useHex', useHex);
-            componentRef.setInput('isSelected', false);
+            for (const item of cardItems) {
+                this.appendCardToContainer(flexContainer, item, appRef, injector, useHex, cardStyle, componentRefs);
+            }
             
-            // Attach to Angular's change detection
-            appRef.attachView(componentRef.hostView);
-            
-            // Add component's DOM element to cell
-            const cardElement = componentRef.location.nativeElement as HTMLElement;
-            cellDiv.appendChild(cardElement);
-            flexContainer.appendChild(cellDiv);
-            
-            componentRefs.push(componentRef);
+            overlay.appendChild(flexContainer);
         }
-        
-        overlay.appendChild(flexContainer);
         
         // Append to body
         document.body.appendChild(overlay);
@@ -317,6 +328,61 @@ export class ASPrintUtil {
         appRef.tick();
         
         return { overlay, cardComponentRefs: componentRefs };
+    }
+    
+    /**
+     * Helper to group card items by their groupIndex.
+     */
+    private static groupCardsByGroupIndex(cardItems: CardRenderItem[]): CardRenderItem[][] {
+        const groups: Map<number, CardRenderItem[]> = new Map();
+        
+        for (const item of cardItems) {
+            if (!groups.has(item.groupIndex)) {
+                groups.set(item.groupIndex, []);
+            }
+            groups.get(item.groupIndex)!.push(item);
+        }
+        
+        // Return groups in order of groupIndex
+        return Array.from(groups.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([, items]) => items);
+    }
+    
+    /**
+     * Helper to create and append a card component to a container.
+     */
+    private static appendCardToContainer(
+        container: HTMLElement,
+        item: CardRenderItem,
+        appRef: ApplicationRef,
+        injector: Injector,
+        useHex: boolean,
+        cardStyle: string,
+        componentRefs: ComponentRef<AlphaStrikeCardComponent>[]
+    ): void {
+        const cellDiv = document.createElement('div');
+        cellDiv.className = 'as-card-cell';
+        
+        const environmentInjector = injector.get(EnvironmentInjector);
+        const componentRef = createComponent(AlphaStrikeCardComponent, {
+            environmentInjector,
+            elementInjector: injector
+        });
+        
+        componentRef.setInput('forceUnit', item.forceUnit);
+        componentRef.setInput('cardIndex', item.cardIndex);
+        componentRef.setInput('cardStyle', 'monochrome' /* cardStyle */);
+        componentRef.setInput('useHex', useHex);
+        componentRef.setInput('isSelected', false);
+        
+        appRef.attachView(componentRef.hostView);
+        
+        const cardElement = componentRef.location.nativeElement as HTMLElement;
+        cellDiv.appendChild(cardElement);
+        container.appendChild(cellDiv);
+        
+        componentRefs.push(componentRef);
     }
 
     /**
@@ -439,6 +505,11 @@ export class ASPrintUtil {
 
                 body.as-multipage-container-active > *:not(#as-multipage-container) {
                     display: none !important;
+                }
+                
+                .as-flex-container.as-group-break {
+                    page-break-after: always;
+                    break-after: page;
                 }
                 
                 @page {

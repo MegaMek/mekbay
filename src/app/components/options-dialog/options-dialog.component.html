@@ -156,6 +156,15 @@
                     <option value="true">Hexes</option>
                 </select>
             </div>
+            <div class="option-section-title">Printing</div>
+            <div class="option-row">
+                <label for="ASPrintPageBreakOnGroups">Split groups in pages:</label>
+                <select id="ASPrintPageBreakOnGroups" class="bt-select" [value]="optionsService.options().ASPrintPageBreakOnGroups"
+                    (change)="onASPrintPageBreakOnGroupsChange($event)">
+                    <option value="false">No (default)</option>
+                    <option value="true">Yes</option>
+                </select>
+            </div>
         </div>
         }
         <!-- Advanced options -->

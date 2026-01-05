@@ -53,6 +53,7 @@ const DEFAULT_OPTIONS: Options = {
     useAutomations: true,
     ASUseHex: false,
     ASCardStyle: 'monochrome',
+    ASPrintPageBreakOnGroups: false,
     c3NetworkConnectionsAboveNodes: false,
 };
 
@@ -73,6 +74,7 @@ export class OptionsService {
         useAutomations: DEFAULT_OPTIONS.useAutomations,
         ASUseHex: DEFAULT_OPTIONS.ASUseHex,
         ASCardStyle: DEFAULT_OPTIONS.ASCardStyle,
+        ASPrintPageBreakOnGroups: DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
         c3NetworkConnectionsAboveNodes: DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
     });
 
@@ -97,6 +99,7 @@ export class OptionsService {
             useAutomations: saved?.useAutomations ?? DEFAULT_OPTIONS.useAutomations,
             ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
             ASCardStyle: saved?.ASCardStyle ?? DEFAULT_OPTIONS.ASCardStyle,
+            ASPrintPageBreakOnGroups: saved?.ASPrintPageBreakOnGroups ?? DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
             c3NetworkConnectionsAboveNodes: saved?.c3NetworkConnectionsAboveNodes ?? DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
         });
     }
