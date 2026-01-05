@@ -624,6 +624,9 @@ export class DataService {
     }
 
     private async getRemoteETag(filename: string): Promise<string> {
+        if (!navigator.onLine) {
+            return '';
+        }
         const src = `${REMOTE_HOST}/${filename}`;
         try {
             const resp = await firstValueFrom(
@@ -657,6 +660,15 @@ export class DataService {
                     }
                 }
                 const etag = await this.getRemoteETag(`${store.key}.json`);
+                // If offline/error (empty etag), use local data if available
+                if (!etag) {
+                    if (localData) {
+                        this.data[store.key as keyof LocalStore] = localData;
+                        this.logger.info(`${store.key} loaded from cache (offline or remote unavailable).`);
+                        return;
+                    }
+                    throw new Error(`Cannot fetch ${store.key}: offline and no cached data.`);
+                }
                 if (localData && localData.etag === etag) {
                     this.data[store.key as keyof LocalStore] = localData;
                     this.logger.info(`${store.key} is up to date. (ETag: ${etag})`);
@@ -667,9 +679,7 @@ export class DataService {
             await Promise.all(updatePromises);
             this.postprocessData();
         } finally {
-            if (this.isDownloading()) {
-                this.isDownloading.set(false);
-            }
+            this.isDownloading.set(false);
         }
     }
 
@@ -683,21 +693,12 @@ export class DataService {
             this.logger.info('All data stores are ready.');
             this.isDataReady.set(true);
         } catch (error) {
-            this.logger.error('Could not check version, trying to load from cache. ' + error);
-            let allDataReady = true;
-            for (const store of this.remoteStores) {
-                let localData = await store.getFromLocalStorage();
-                if (localData) {
-                    if (store.preprocess) {
-                        localData = store.preprocess(localData);
-                    }
-                    this.data[store.key as keyof LocalStore] = localData;
-                } else {
-                    allDataReady = false;
-                }
-            }
-            this.postprocessData();
-            this.isDataReady.set(allDataReady);
+            this.logger.error('Failed to initialize data: ' + error);
+            // Check if we have any data loaded despite the error
+            const hasData = this.remoteStores.every(store => !!this.data[store.key as keyof LocalStore]);
+            this.isDataReady.set(hasData);
+        } finally {
+            this.isDownloading.set(false);
         }
     }
 
