@@ -514,4 +514,237 @@ export class ASForceUnit extends ForceUnit {
         return type === 'DA' || type === 'DS' || type === 'SC' || type === 'WS' || type === 'SS' || type === 'JS';
     });
 
+    isVehicle = computed<boolean>(() => {
+        const type = this.unit.as.TP;
+        return type === 'CV' || type === 'SV';
+    });
+
+    // ===== Movement & TMM Calculations =====
+
+    /**
+     * Get effective movement values in inches after applying crits and heat.
+     */
+    effectiveMovement = computed<{ [mode: string]: number }>(() => {
+        const mvm = this.unit.as.MVm;
+        if (!mvm) return {};
+
+        const heat = this.state.heat();
+        const heatReduction = heat * 2;
+        const mpHits = this.state.getCommittedCritHits('mp');
+        const result: { [mode: string]: number } = {};
+
+        for (const [mode, inches] of Object.entries(mvm)) {
+            if (typeof inches !== 'number' || inches <= 0) continue;
+
+            let reducedInches: number;
+            if (this.isVehicle()) {
+                reducedInches = this.applyVehicleMotiveReduction(inches);
+            } else {
+                reducedInches = this.applyMpHitsReduction(inches, mpHits);
+            }
+            // Apply heat reduction only to ground movement (not 'j')
+            if (mode !== 'j') {
+                reducedInches = Math.max(0, reducedInches - heatReduction);
+            }
+            result[mode] = reducedInches;
+        }
+
+        return result;
+    });
+
+    isShutdown = computed<boolean>(() => {
+        const heat = this.getState().heat();
+        return heat >= 4;
+    });
+
+    /**
+     * Check if unit is immobilized (all movement values are 0 or shutdown).
+     */
+    isImmobilized = computed<boolean>(() => {
+        if (this.isShutdown()) {
+            return true;
+        }
+        const movement = this.effectiveMovement();
+        const entries = Object.entries(movement);
+        if (entries.length === 0) return false;
+
+        return entries.every(([, inches]) => inches <= 0);
+    });
+
+    /**
+     * Get effective TMM values after applying crits and heat.
+     * Returns { [mode: string]: number } where:
+     * - '' (empty): base ground TMM
+     * - 'j': jump TMM (if different from base)
+     * - 's': submarine TMM (if different from base)
+     * Modes with the same TMM are merged (e.g., if ground and jump have same TMM, only '' is returned).
+     */
+    effectiveTmm = computed<{ [mode: string]: number }>(() => {
+        // Immobilized units have TMM of -4
+        if (this.isImmobilized()) {
+            return { '': -4 };
+        }
+
+        const mvm = this.unit.as.MVm;
+        if (!mvm) return {};
+
+        const entries = Object.entries(mvm);
+        if (entries.length === 0) return {};
+
+        const stats = this.unit.as;
+        // Get jump/sub TMM modifiers from specials
+        const jumpMod = this.getSignedSpecialModifier(stats.specials, 'JMPS', 'JMPW');
+        const subMod = this.getSignedSpecialModifier(stats.specials, 'SUBS', 'SUBW');
+
+        // Calculate TMM penalty from crits
+        let tmmPenalty: number;
+        if (this.isVehicle()) {
+            tmmPenalty = this.calculateVehicleTmmPenalty();
+        } else {
+            tmmPenalty = this.state.getCommittedCritHits('mp');
+        }
+
+        // Apply heat TMM penalty: -1 at heat level 2+ (only for ground movement)
+        const heat = this.state.heat();
+        const heatTmmPenalty = heat >= 2 ? 1 : 0;
+
+        // Calculate TMM for each movement mode
+        const tmmByMode: { [mode: string]: number } = {};
+
+        for (const [mode, inches] of entries) {
+            if (typeof inches !== 'number' || inches <= 0) continue;
+
+            const baseTmm = this.calculateBaseTMMFromInches(inches);
+
+            // Apply mode-specific modifiers
+            let modifier = 0;
+            if (mode === 'j' && jumpMod !== null) {
+                modifier = jumpMod;
+            } else if (mode === 's' && subMod !== null) {
+                modifier = subMod;
+            }
+
+            // Heat penalty applies to ground movement only (not 'j')
+            const heatPenalty = mode === 'j' ? 0 : heatTmmPenalty;
+
+            const effectiveTmm = Math.max(0, baseTmm + modifier - tmmPenalty - heatPenalty);
+            tmmByMode[mode] = effectiveTmm;
+        }
+
+        // Get base (ground) TMM - prefer '' key, otherwise first non-jump entry
+        const groundTmm = tmmByMode[''] ?? tmmByMode[Object.keys(tmmByMode).find(k => k !== 'j') ?? ''];
+
+        // Merge modes with same TMM as ground
+        const result: { [mode: string]: number } = { '': groundTmm };
+        for (const [mode, tmm] of Object.entries(tmmByMode)) {
+            if (mode !== '' && tmm !== groundTmm) {
+                result[mode] = tmm;
+            }
+        }
+
+        return result;
+    });
+
+    /**
+     * Applies MP hit reduction to movement.
+     * Each hit halves movement (rounded down), but always reduces by at least 2".
+     */
+    private applyMpHitsReduction(inches: number, mpHits: number): number {
+        let current = inches;
+        for (let i = 0; i < mpHits && current > 0; i++) {
+            const halved = Math.floor(current / 2);
+            const reduction = Math.max(2, current - halved);
+            current = Math.max(0, current - reduction);
+        }
+        return current;
+    }
+
+    /**
+     * Apply vehicle motive critical hits to movement value.
+     */
+    private applyVehicleMotiveReduction(baseInches: number): number {
+        const orderedCrits = this.state.getCommittedCritsOrdered();
+        let current = baseInches;
+
+        for (const crit of orderedCrits) {
+            if (current <= 0) break;
+
+            switch (crit.key) {
+                case 'motive1':
+                    current = Math.max(0, current - 2);
+                    break;
+                case 'motive2': {
+                    let newCurrent = Math.floor(current / 2);
+                    if (newCurrent > 0 && (current - newCurrent) < 2) {
+                        newCurrent = Math.max(0, current - 2);
+                    }
+                    current = newCurrent;
+                    break;
+                }
+                case 'motive3':
+                    current = 0;
+                    break;
+            }
+        }
+        return current;
+    }
+
+    /**
+     * Calculate total TMM penalty from vehicle motive critical hits.
+     */
+    private calculateVehicleTmmPenalty(): number {
+        const orderedCrits = this.state.getCommittedCritsOrdered();
+        const baseTmm = this.unit.as.TMM ?? 0;
+        let currentTmm = baseTmm;
+
+        for (const crit of orderedCrits) {
+            switch (crit.key) {
+                case 'motive1':
+                    currentTmm = Math.max(0, currentTmm - 1);
+                    break;
+                case 'motive2': {
+                    let newTmm = Math.floor(currentTmm / 2);
+                    if (newTmm > 0 && newTmm >= currentTmm) {
+                        newTmm = Math.max(0, currentTmm - 1);
+                    }
+                    currentTmm = newTmm;
+                    break;
+                }
+            }
+        }
+        return baseTmm - currentTmm;
+    }
+
+    /**
+     * Get modifier value from specials like JMPS2 or JMPW1.
+     */
+    private getSignedSpecialModifier(
+        specials: string[] | undefined,
+        addPrefix: string,
+        removePrefix: string
+    ): number | null {
+        if (!specials?.length) return null;
+
+        for (const special of specials) {
+            const addMatch = new RegExp(`^${addPrefix}(\\d+)$`).exec(special);
+            if (addMatch) return parseInt(addMatch[1], 10);
+
+            const removeMatch = new RegExp(`^${removePrefix}(\\d+)$`).exec(special);
+            if (removeMatch) return -parseInt(removeMatch[1], 10);
+        }
+        return null;
+    }
+
+    /**
+     * Calculate base TMM from movement in inches (undamaged unit starting values).
+     */
+    private calculateBaseTMMFromInches(inches: number): number {
+        // Alpha Strike TMM ranges
+        if (inches <= 4) return 0;
+        if (inches <= 8) return 1;
+        if (inches <= 12) return 2;
+        if (inches <= 18) return 3;
+        if (inches <= 34) return 4;
+        return 5;
+    }
 }

@@ -227,6 +227,66 @@ export class UnitBlockComponent {
         return unit.model.replace(/\s*\(.*?\)\s*/g, '').trim();
     });
 
+    /** Get the effective TMM for Alpha Strike units */
+    getEffectiveTmm = computed<string>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return '';
+        if (forceUnit instanceof ASForceUnit) {
+            return this.formatTmm(forceUnit.effectiveTmm());
+        }
+        return forceUnit.getUnit()?.as?.TMM?.toString() ?? '';
+    });
+
+    private formatTmm(tmm: { [mode: string]: number }): string {
+        const entries = Object.entries(tmm);
+        if (entries.length === 0) return '';
+        return entries
+            .map(([mode, value]) => `${value}${mode}`)
+            .join('/');
+    }
+
+    /** Get the effective movement display for Alpha Strike units */
+    getEffectiveMovement = computed<string>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return '';
+        if (forceUnit instanceof ASForceUnit) {
+            const effectiveMv = forceUnit.effectiveMovement();
+            const entries = this.getMovementEntries(effectiveMv);
+            if (entries.length === 0) return forceUnit.getUnit()?.as?.MV ?? '';
+            return entries
+                .map(([mode, inches]) => this.formatMovement(inches, mode))
+                .join('/');
+        }
+        return forceUnit.getUnit()?.as?.MV ?? '';
+    });
+
+    private getMovementEntries(mvm: Record<string, number> | undefined): Array<[string, number]> {
+        if (!mvm) return [];
+        const entries = Object.entries(mvm)
+            .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
+        if (entries.length === 1) {
+            switch (entries[0][0]) {
+                case '':
+                    return entries;
+                case 'j':
+                    return [['', entries[0][1]], ...entries];
+            }
+        }
+        const defaultIndex = entries.findIndex(([mode]) => mode === '');
+        if (defaultIndex >= 0) {
+            const [def] = entries.splice(defaultIndex, 1);
+            return [def, ...entries];
+        }
+        return entries;
+    }
+
+    private formatMovement(inches: number, suffix: string = ''): string {
+        if (this.optionsService.options().ASUseHex) {
+            return Math.ceil(inches / 2) + suffix;
+        }
+        return inches + '"' + suffix;
+    }
+
     bvTooltip = computed<TooltipLine[] | null>(() => {
         const forceUnit = this.forceUnit();
         const unit = this.unit();

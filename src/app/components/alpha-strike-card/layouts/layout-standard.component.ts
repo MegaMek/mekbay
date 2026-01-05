@@ -89,149 +89,53 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         return config.cards[0]?.criticalHits ?? 'none';
     });
 
-    // Check if this is a vehicle unit
-    isVehicle = computed<boolean>(() => this.asStats().TP === 'CV' || this.asStats().TP === 'SV');
-
-    // Check if unit is immobilized (all movement values are 0 after reductions)
-    isImmobilized = computed<boolean>(() => {
-        const heat = this.heatLevel();
-        if (heat >= 4) return true; // shutdown!
-        const mvm = this.asStats().MVm;
-        const entries = this.getMovementEntries(mvm);
-        if (entries.length === 0) return false;
-
-        const heatReduction = heat * 2;
-
-        for (const [mode, inches] of entries) {
-            let reducedInches: number;
-            if (this.isVehicle()) {
-                reducedInches = this.applyVehicleMotiveReduction(inches);
-            } else {
-                reducedInches = this.applyMpHitsReduction(inches, this.mpHits());
-            }
-            // Apply heat reduction only to ground movement (not 'j')
-            if (mode !== 'j') {
-                reducedInches = Math.max(0, reducedInches - heatReduction);
-            }
-            if (reducedInches > 0) return false;
-        }
-        return true;
-    });
-
-    // Movement
     movementDisplay = computed<string>(() => {
-        const mvm = this.asStats().MVm;
-        const entries = this.getMovementEntries(mvm);
+        const fu = this.forceUnit();
+        if (!fu) return this.asStats().MV ?? '';
+
+        const effectiveMv = fu.effectiveMovement();
+        const entries = this.getMovementEntries(effectiveMv);
         if (entries.length === 0) return this.asStats().MV ?? '';
 
-        const heat = this.heatLevel();
-        // Heat reduces ground movement by 2" per heat level
-        const heatReduction = heat * 2;
-
         return entries
-            .map(([mode, inches]) => {
-                let reducedInches: number;
-                if (this.isVehicle()) {
-                    reducedInches = this.applyVehicleMotiveReduction(inches);
-                } else {
-                    reducedInches = this.applyMpHitsReduction(inches, this.mpHits());
-                }
-                // Apply heat reduction only to ground movement (not 'j')
-                if (mode !== 'j') {
-                    reducedInches = Math.max(0, reducedInches - heatReduction);
-                }
-                return this.formatMovement(reducedInches, mode);
-            })
+            .map(([mode, inches]) => this.formatMovement(inches, mode))
             .join('/');
     });
 
+    // Sprint movement (x1.5 of ground movement)
     sprintMove = computed<string | null>(() => {
-        const mvm = this.asStats().MVm;
-        const entries = this.getMovementEntries(mvm);
-        // Ground entries exclude jump ('j')
+        const fu = this.forceUnit();
+        if (!fu) return null;
+
+        const effectiveMv = fu.effectiveMovement();
+        const entries = this.getMovementEntries(effectiveMv);
         const groundEntries = entries.filter(([mode]) => mode !== 'j');
         if (groundEntries.length === 0) return null;
 
-        // Sprinting is based on the unit's current ground Move (in inches), x1.5, rounded up.
-        // Prefer the default ("" key) ground move when present.
         const defaultGround = groundEntries.find(([mode]) => mode === '') ?? groundEntries[0];
-        let groundMoveInches = defaultGround[1];
-        if (groundMoveInches <= 0) return null;
-
-        // Apply MP/motive hits reduction
-        if (this.isVehicle()) {
-            groundMoveInches = this.applyVehicleMotiveReduction(groundMoveInches);
-        } else {
-            groundMoveInches = this.applyMpHitsReduction(groundMoveInches, this.mpHits());
-        }
-
-        // Apply heat reduction (2" per heat level)
-        const heat = this.heatLevel();
-        groundMoveInches = Math.max(0, groundMoveInches - (heat * 2));
-
+        const groundMoveInches = defaultGround[1];
         if (groundMoveInches <= 0) return this.formatMovement(0);
+
         const sprintInches = Math.ceil(groundMoveInches * 1.5);
         return this.formatMovement(sprintInches);
     });
 
     tmmDisplay = computed<string>(() => {
-        // Immobilized units (all movement = 0 or shutdown) have TMM of -4
-        if (this.isImmobilized()) {
-            return (-4).toString();
+        const fu = this.forceUnit();
+        if (!fu) {
+            const tmm = this.asStats().TMM;
+            return tmm !== undefined && tmm !== null ? tmm.toString() : '';
         }
-        const stats = this.asStats();
-        let baseTmm = stats.TMM;
-        if (baseTmm === undefined || baseTmm === null) return '';
-        let jumpTmm = null;
-        let subTmm = null;
-        
-        const jumpMod = this.getSignedSpecialModifier(stats.specials, 'JMPS', 'JMPW');
-        const subMod = this.getSignedSpecialModifier(stats.specials, 'SUBS', 'SUBW');
-        
-        if (jumpMod !== null) {
-            // Jump TMM is NOT affected by heat
-            jumpTmm = Math.max(0, baseTmm + jumpMod);
-        }
-
-        if (subMod !== null) {
-            subTmm = Math.max(0, baseTmm + subMod);
-        }
-
-        // Apply motive/MP hit TMM penalties
-        let tmmPenalty: number;
-        if (this.isVehicle()) {
-            tmmPenalty = this.calculateVehicleTmmPenalty();
-        } else {
-            // Each MP hit reduces TMM by 1
-            tmmPenalty = this.mpHits();
-        }
-        baseTmm = Math.max(0, baseTmm - tmmPenalty);
-
-        // Apply heat TMM penalty: -1 at heat level 2+ (ground movement only)
-        const heat = this.heatLevel();
-        const heatTmmPenalty = heat >= 2 ? 1 : 0;
-        baseTmm = Math.max(0, baseTmm - heatTmmPenalty);
-
-        const parts: string[] = [baseTmm.toString()];
-
-        if (jumpTmm !== null) {
-            jumpTmm = Math.max(0, jumpTmm - tmmPenalty);
-            // Jump TMM is NOT affected by heat
-            if (baseTmm !== jumpTmm) {
-                parts.push(`${jumpTmm}j`);
-            }
-        }
-
-        if (subTmm !== null) {
-            subTmm = Math.max(0, subTmm - tmmPenalty);
-            subTmm = Math.max(0, subTmm - heatTmmPenalty);
-            if (baseTmm !== subTmm) {
-                parts.push(`${subTmm}s`);
-            }
-        }
-
-        return parts.join('/');
+        return this.formatTmm(fu.effectiveTmm());
     });
+
+    private formatTmm(tmm: { [mode: string]: number }): string {
+        const entries = Object.entries(tmm);
+        if (entries.length === 0) return '';
+        return entries
+            .map(([mode, value]) => `${value}${mode}`)
+            .join('/');
+    }
 
     // Range distances
     rangeShort = computed<string>(() => this.useHex() ? '0~3' : '0"~6"');
@@ -329,109 +233,11 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         this.chassisSmall.set(ratio > this.statsToHostHeightThreshold);
     }
 
-    /**
-     * Applies MP hit reduction to movement.
-     * Each hit halves movement (rounded down), but always reduces by at least 2".
-     * Example: 10" → 5" (hit 1) → 2" (hit 2) → 0" (hit 3)
-     */
-    private applyMpHitsReduction(inches: number, mpHits: number): number {
-        let current = inches;
-        for (let i = 0; i < mpHits && current > 0; i++) {
-            const halved = Math.floor(current / 2);
-            // Reduce by at least 2"
-            const reduction = Math.max(2, current - halved);
-            current = Math.max(0, current - reduction);
-        }
-        return current;
-    }
-
-    /**
-     * Apply vehicle motive critical hits to movement value.
-     * Effects are applied in timestamp order (order the crits were taken).
-     * 
-     * Motive crit effects:
-     * - motive1: -2" MV each (2 pips)
-     * - motive2: ½ MV (2 pips) 
-     * - motive3: 0 MV (1 pip) - immobilized
-     */
-    private applyVehicleMotiveReduction(baseInches: number): number {
-        const fu = this.forceUnit();
-        if (!fu) return baseInches;
-
-        const orderedCrits = fu.getState().getCommittedCritsOrdered();
-        let current = baseInches;
-
-        for (const crit of orderedCrits) {
-            if (current <= 0) break;
-            
-            switch (crit.key) {
-                case 'motive1':
-                    // -2" per hit
-                    current = Math.max(0, current - 2);
-                    break;
-                case 'motive2':
-                    // ½ movement (round down). There is a minimum Move loss of 2” and TMM loss of 1.
-                    let newCurrent = Math.floor(current / 2);
-                    // Ensure at least -2" loss
-                    if (newCurrent > 0 && (current - newCurrent) < 2) {
-                        newCurrent = Math.max(0, current - 2);
-                    }
-                    current = newCurrent;
-                    break;
-                case 'motive3':
-                    // Immobilized
-                    current = 0;
-                    break;
-            }
-        }
-
-        return current;
-    }
-
-    /**
-     * Calculate total TMM penalty from vehicle motive critical hits.
-     * Effects are applied in timestamp order.
-     * 
-     * Motive TMM effects:
-     * - motive1: -1 TMM each (2 pips)
-     * - motive2: ½ TMM (round down) (2 pips)
-     * - motive3: TMM becomes -4 (1 pip)
-     */
-    private calculateVehicleTmmPenalty(): number {
-        const fu = this.forceUnit();
-        if (!fu) return 0;
-
-        const orderedCrits = fu.getState().getCommittedCritsOrdered();
-        const baseTmm = this.asStats().TMM ?? 0;
-        let currentTmm = baseTmm;
-
-        for (const crit of orderedCrits) {
-            switch (crit.key) {
-                case 'motive1':
-                    // -1 TMM per hit
-                    currentTmm = Math.max(0, currentTmm - 1);
-                    break;
-                case 'motive2':
-                    // ½ TMM (round down). There is a minimum Move loss of 2” and TMM loss of 1.
-                    let newTmm = Math.floor(currentTmm / 2);
-                    // Ensure at least -1 TMM loss
-                    if (newTmm > 0 && newTmm >= currentTmm) {
-                        newTmm = Math.max(0, currentTmm - 1);
-                    }
-                    currentTmm = newTmm;
-                    break;
-                // motive3: TMM becomes -4, is handled separately
-            }
-        }
-
-        return baseTmm - currentTmm; // Return the penalty (difference from base)
-    }
-
     private getMovementEntries(mvm: Record<string, number> | undefined): Array<[string, number]> {
         if (!mvm) return [];
 
         const entries = Object.entries(mvm)
-            .filter(([, value]) => typeof value === 'number' && value > 0) as Array<[string, number]>;
+            .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
 
         // If the unit only has jumping movement, treat it as also having a default ("" key)
         // ground movement with the same value.
@@ -453,51 +259,10 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         return entries;
     }
 
-    private getTmmForMoveInches(inches: number): number {
-        // Alpha Strike TMM ranges
-        if (inches <= 4) return 0;
-        if (inches <= 8) return 1;
-        if (inches <= 12) return 2;
-        if (inches <= 18) return 3;
-        if (inches <= 34) return 4;
-        return 5;
-    }
-
     private formatMovement(inches: number, suffix: string = ''): string {
         if (this.useHex()) {
             return Math.ceil(inches / 2) + suffix;
         }
         return inches + '"' + suffix;
-    }
-
-    private getFirstSpecialModifier(specials: string[] | undefined, prefixes: string[]): number | null {
-        if (!specials || specials.length === 0) return null;
-
-        for (const special of specials) {
-            for (const prefix of prefixes) {
-                const match = new RegExp(`^${prefix}([+-]?\\d+)$`).exec(special);
-                if (!match) continue;
-
-                const value = Number.parseInt(match[1], 10);
-                if (Number.isNaN(value)) return null;
-                return value;
-            }
-        }
-
-        return null;
-    }
-
-    private getSignedSpecialModifier(
-        specials: string[] | undefined,
-        addPrefix: string,
-        removePrefix: string
-    ): number | null {
-        const addValue = this.getFirstSpecialModifier(specials, [addPrefix]);
-        if (addValue !== null) return addValue;
-
-        const removeValue = this.getFirstSpecialModifier(specials, [removePrefix]);
-        if (removeValue !== null) return -removeValue;
-
-        return null;
     }
 }
