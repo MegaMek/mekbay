@@ -53,9 +53,7 @@ export interface SourcebookInfoDialogData {
     },
     template: `
     <base-dialog [autoHeight]="true">
-        <div dialog-header>
-            <h2 class="title">{{ data.sourcebook.title }}</h2>
-        </div>
+        <div dialog-header><div class="title">{{ data.sourcebook.title }}</div></div>
         <div dialog-body class="sourcebook-content">
             @if (data.sourcebook.image) {
                 <div class="sourcebook-image">
@@ -68,8 +66,6 @@ export interface SourcebookInfoDialogData {
                     <span class="value allow-select">{{ data.sourcebook.sku }}</span>
                 </div>
             }
-            <div class="sourcebook-links">
-            </div>
         </div>
         <div dialog-footer class="footer">
                 @if (data.sourcebook.url) {
@@ -91,7 +87,7 @@ export interface SourcebookInfoDialogData {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 16px;
+            gap: 8px;
             padding: 8px;
         }
 
