@@ -53,7 +53,7 @@ import { firstValueFrom } from 'rxjs';
 import { GameSystem, REMOTE_HOST } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
-import { Sourcebook } from '../models/sourcebook.model';
+import { Sourcebook, Sourcebooks } from '../models/sourcebook.model';
 
 /*
  * Author: Drake
@@ -253,6 +253,29 @@ export class DataService {
                     era.units = new Set(era.units) as any; // Convert to Set for faster lookups
                 }
                 return data;
+            }
+        },
+        {
+            key: 'sourcebooks',
+            url: 'assets/sourcebooks.json',
+            getFromLocalStorage: async () => (await this.dbService.getSourcebooks()) ?? null,
+            putInLocalStorage: async (data: Sourcebooks) => this.dbService.saveSourcebooks(data),
+            preprocess: (data: Sourcebooks | Sourcebook[]): Sourcebooks => {
+                // Handle both array format (from JSON file) and wrapped format (from IndexedDB)
+                let sourcebooks: Sourcebook[];
+                if (Array.isArray(data)) {
+                    sourcebooks = data;
+                } else {
+                    sourcebooks = data.sourcebooks;
+                }
+                this.sourcebooksMap.clear();
+                for (const sb of sourcebooks) {
+                    this.sourcebooksMap.set(sb.abbrev, sb);
+                }
+                return {
+                    etag: (data as any).etag || '',
+                    sourcebooks
+                };
             }
         },
     ];
@@ -637,19 +660,18 @@ export class DataService {
         };
     }
 
-    private async getRemoteETag(filename: string): Promise<string> {
+    private async getRemoteETag(url: string): Promise<string> {
         if (!navigator.onLine) {
             return '';
         }
-        const src = `${REMOTE_HOST}/${filename}`;
         try {
             const resp = await firstValueFrom(
-                this.http.head(src, { observe: 'response' as const })
+                this.http.head(url, { observe: 'response' as const })
             );
             const etag = resp.headers.get('ETag') || '';
             return etag;
         } catch (err: any) {
-            this.logger.warn(`Failed to fetch ETag via HttpClient HEAD for ${src}: ${err.message ?? err}`);
+            this.logger.warn(`Failed to fetch ETag via HttpClient HEAD for ${url}: ${err.message ?? err}`);
             return '';
         }
     }
@@ -673,15 +695,17 @@ export class DataService {
                         localData = store.preprocess(localData);
                     }
                 }
-                const etag = await this.getRemoteETag(`${store.key}.json`);
-                // If offline/error (empty etag), use local data if available
+                const etag = await this.getRemoteETag(store.url);
+                // If offline/error (empty etag), use local data if available, otherwise fetch
                 if (!etag) {
                     if (localData) {
                         this.data[store.key as keyof LocalStore] = localData;
                         this.logger.info(`${store.key} loaded from cache (offline or remote unavailable).`);
                         return;
                     }
-                    throw new Error(`Cannot fetch ${store.key}: offline and no cached data.`);
+                    // No cached data and no etag, try to fetch anyway
+                    await this.fetchFromRemote(store);
+                    return;
                 }
                 if (localData && localData.etag === etag) {
                     this.data[store.key as keyof LocalStore] = localData;
@@ -703,10 +727,7 @@ export class DataService {
         await this.dbService.waitForDbReady();
         this.logger.info('Database is ready, checking for updates...');
         try {
-            await Promise.all([
-                this.checkForUpdate(),
-                this.loadSourcebooks()
-            ]);
+            await this.checkForUpdate();
             this.logger.info('All data stores are ready.');
             this.isDataReady.set(true);
         } catch (error) {
@@ -716,22 +737,6 @@ export class DataService {
             this.isDataReady.set(hasData);
         } finally {
             this.isDownloading.set(false);
-        }
-    }
-
-    private async loadSourcebooks(): Promise<void> {
-        try {
-            const sourcebooks = await firstValueFrom(
-                this.http.get<Sourcebook[]>('assets/sourcebooks.json')
-            );
-            this.sourcebooksMap.clear();
-            for (const sb of sourcebooks) {
-                this.sourcebooksMap.set(sb.abbrev, sb);
-            }
-            this.logger.info(`Loaded ${sourcebooks.length} sourcebooks.`);
-        } catch (error) {
-            this.logger.warn('Failed to load sourcebooks: ' + error);
-            // Non-fatal, the app can continue without sourcebooks
         }
     }
 

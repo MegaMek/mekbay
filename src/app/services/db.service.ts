@@ -37,6 +37,7 @@ import { Eras } from '../models/eras.model';
 import { Factions } from '../models/factions.model';
 import { Options } from '../models/options.model';
 import { Quirks } from '../models/quirks.model';
+import { Sourcebooks } from '../models/sourcebook.model';
 import { EquipmentData } from '../models/equipment.model';
 import { Force, UnitGroup } from '../models/force.model';
 import { ForceUnit } from '../models/force-unit.model';
@@ -59,6 +60,7 @@ const UNITS_KEY = 'units';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
 const ERAS_KEY = 'eras';
+const SOURCEBOOKS_KEY = 'sourcebooks';
 const SHEETS_STORE = 'sheetsStore';
 const CANVAS_STORE = 'canvasStore';
 const FORCE_STORE = 'forceStore';
@@ -280,6 +282,14 @@ export class DbService {
 
     public async saveQuirks(quirksData: Quirks): Promise<void> {
         return await this.saveDataFromGeneralStore(quirksData, QUIRKS_KEY);
+    }
+
+    public async getSourcebooks(): Promise<Sourcebooks | null> {
+        return await this.getDataFromGeneralStore<Sourcebooks>(SOURCEBOOKS_KEY);
+    }
+
+    public async saveSourcebooks(sourcebooksData: Sourcebooks): Promise<void> {
+        return await this.saveDataFromGeneralStore(sourcebooksData, SOURCEBOOKS_KEY);
     }
 
     public async getTags(): Promise<StoredTags | null> {

@@ -43,3 +43,8 @@ export interface Sourcebook {
     mul_url?: string;
     image?: string;
 }
+
+export interface Sourcebooks {
+    etag: string;
+    sourcebooks: Sourcebook[];
+}
