@@ -99,7 +99,6 @@ export interface SourcebookInfoDialogData {
 
         .sourcebook-image img {
             width: 100%;
-            max-width: 300px;
             height: auto;
             object-fit: contain;
             border-radius: 4px;
