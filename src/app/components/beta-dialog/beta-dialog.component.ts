@@ -48,7 +48,7 @@ import { APP_VERSION_STRING } from '../../build-meta';
     BaseDialogComponent
 ],
     template: `
-    <base-dialog>
+    <base-dialog [autoHeight]="true">
         <div dialog-header><div class="title">Beta Notice</div></div>
         <div dialog-body>
             <p>Version: 

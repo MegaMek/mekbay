@@ -183,7 +183,7 @@ unit().moveType }}</strong></div>
 <div class="bottom-info">
 <div class="bottom-left">
 @if (unit().source) {
-<span class="label muted">Source: </span><strong>{{ unit().source }}</strong>
+<span class="label muted">Source: </span><a class="source-link" (click)="openSourcebookDialog(unit().source)">{{ getSourcebookTitle(unit().source) }}</a>
 }
 </div>
 <div class="bottom-right">

@@ -13,7 +13,7 @@
                         'pill-and': option.state === 'and',
                         'pill-not': option.state === 'not'
                       }">
-                    {{ option.name }}{{ (option.count > 1) ? ' (' + option.count + ')' : '' }}
+                    {{ getDisplayName(option.name) }}{{ (option.count > 1) ? ' (' + option.count + ')' : '' }}
                     <button class="remove-pill" (click)="removeOption(option.name, $event)">&#10005;</button>
                 </span>
             }
@@ -103,7 +103,7 @@
                         @if (option.img) {
                             <img [src]="option.img" class="option-img" alt="">
                         }
-                        <span [innerHTML]="highlight(option.name)"></span>
+                        <span [innerHTML]="highlight(option.displayName ?? option.name)"></span>
                         @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
                             <div class="quantity-input">
                             <input type="number" 

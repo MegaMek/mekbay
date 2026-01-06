@@ -1,0 +1,2860 @@
+[
+  {
+    "id": 274,
+    "sku": "FAS1687",
+    "abbrev": "1SS",
+    "title": "1st Somerset Strikers",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1687_SomersetStrikers220_240x.jpg?v=1494430939",
+    "url": "https://store.catalystgamelabs.com/products/battletech-1st-somerset-strikers-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/274"
+  },
+  {
+    "id": 457,
+    "sku": "CAT35236",
+    "abbrev": "2SW",
+    "title": "Second Succession War",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35236-BattleTech-Second-Succession-War_480x.jpg",
+    "url": "https://store.catalystgamelabs.com/products/battletech-second-succession-war-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/457"
+  },
+  {
+    "id": 481,
+    "sku": "",
+    "abbrev": "A Call to Arms",
+    "title": "A Call to Arms",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BattleTech-Legends-A-Call-to-Arms-Generic_1024x1024.jpg?v=1615499049",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-a-call-to-arms",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/481"
+  },
+  {
+    "id": 446,
+    "sku": "CAT35SN501",
+    "abbrev": "Arano",
+    "title": "House Arano: The Aurigan Coalition",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/f/f2/House-Arano-Cover.jpg/463px-brt6eqwfwou07f3bpzxettg74c6oihh.jpg?timestamp=20181128161647",
+    "url": "https://www.drivethrurpg.com/product/277779/BattleTech-House-Arano-The-Aurigan-Coalition",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/446"
+  },
+  {
+    "id": 413,
+    "sku": "",
+    "abbrev": "AS Lance Packs",
+    "title": "Alpha Strike Lance Packs",
+    "image": "http://cfw.sarna.net/wiki/images/b/bb/Battle_1024x1024.jpg?timestamp=20170603020514",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/413"
+  },
+  {
+    "id": 506,
+    "sku": "CAT35180",
+    "abbrev": "AToW Companion",
+    "title": "A Time of War Companion",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35180-BattleTech-A-Time-of-War-Companion220_240x.jpg?v=1494431037",
+    "url": "https://store.catalystgamelabs.com/products/battletech-a-time-of-war-companion-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/506"
+  },
+  {
+    "id": 178,
+    "sku": "",
+    "abbrev": "BattleCorps",
+    "title": "BattleCorps",
+    "image": "http://cfw.sarna.net/wiki/images/2/25/BClogo01.jpg?timestamp=20100721143657",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/178"
+  },
+  {
+    "id": 322,
+    "sku": "",
+    "abbrev": "BC:\"Birth of the King\"",
+    "title": "BC \"Birth of the King\"",
+    "image": "https://i.ibb.co/375BCdF/birth-of-the-king.png",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/322"
+  },
+  {
+    "id": 310,
+    "sku": "",
+    "abbrev": "BC:\"Black Mist Rising\"",
+    "title": "BC \"Black Mist Rising\"",
+    "image": "https://i.ibb.co/J7L3cLZ/black-mist-rising.png",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/310"
+  },
+  {
+    "id": 324,
+    "sku": "",
+    "abbrev": "BC:\"Heavy Metal Mayhem\"",
+    "title": "BC: \"Heavy Metal Mayhem\"",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/324"
+  },
+  {
+    "id": 323,
+    "sku": "",
+    "abbrev": "BC:\"Pirates of Penance\"",
+    "title": "BC \"Pirates of Penance\"",
+    "image": "https://i.ibb.co/J7L3cLZ/black-mist-rising.png",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/323"
+  },
+  {
+    "id": 318,
+    "sku": "",
+    "abbrev": "BC:\"Trial Under Fire\"",
+    "title": "BC \"Trial Under Fire\"",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/a/aa/Trial_under_Fire.jpg/280px-jfpn4n8ttejyal2rb2mdb6v3kzdjgo5.jpg?timestamp=20160126142648",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/318"
+  },
+  {
+    "id": 365,
+    "sku": "E-CAT35LP03",
+    "abbrev": "BD:BH",
+    "title": "BattleTech Dossiers: The Bounty Hunter",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35LP03-DossiersThe-Bounty-Hunter220_240x.jpg?v=1515673515",
+    "url": "https://store.catalystgamelabs.com/products/battletech-dossiers-the-bounty-hunter-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/365"
+  },
+  {
+    "id": 418,
+    "sku": "E-CAT35LP02B",
+    "abbrev": "BD:JZ",
+    "title": "BattleTech Dossiers: Jason Zaklan",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35LP02B_Dossiers_-_Jason_Zaklan220_180x.jpg?v=1515673496",
+    "url": "https://store.catalystgamelabs.com/products/battletech-dossiers-jason-zaklan-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/418"
+  },
+  {
+    "id": 173,
+    "sku": "CAT35LP01A",
+    "abbrev": "BD:LL",
+    "title": "BattleTech Dossiers: Lamenkov's Liability",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35LP01A_BattleTech_Dossiers_-_Lamenkovs_Liability220_240x.jpg?v=1515673498",
+    "url": "https://store.catalystgamelabs.com/products/battletech-dossiers-lamenkovs-liability-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/173"
+  },
+  {
+    "id": 252,
+    "sku": "CAT35LP01B",
+    "abbrev": "BD:ST",
+    "title": "BattleTech Dossiers: Salazar Tsakalotos",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35LP01B_BattleTech_Dossiers_-_Salazar_Tsakalotos220_240x.jpg?v=1515673506",
+    "url": "https://store.catalystgamelabs.com/products/battletech-dossiers-salazar-tsakalotos-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/252"
+  },
+  {
+    "id": 400,
+    "sku": "CAT35LP02A",
+    "abbrev": "BD:YZ",
+    "title": "BattleTech Dossiers: Youling Zhanshi",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35LP02A_Dossiers_-_Youling_Zhanshi220_180x.jpg?v=1515673516",
+    "url": "https://store.catalystgamelabs.com/products/battletech-dossiers-youling-zhanshi-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/400"
+  },
+  {
+    "id": 338,
+    "sku": "",
+    "abbrev": "Binding Force",
+    "title": "Binding Force",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/Binding_Force_480x.jpg?v=1521030720",
+    "url": "https://store.catalystgamelabs.com/products/battletech-novel-binding-force",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/338"
+  },
+  {
+    "id": 317,
+    "sku": "",
+    "abbrev": "Black Dragon",
+    "title": "Black Dragon",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT36012_BlackDragon_480x.jpg?v=1521030728",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-black-dragon-digital",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/317"
+  },
+  {
+    "id": 295,
+    "sku": "",
+    "abbrev": "Blood Legacy",
+    "title": "Blood Legacy",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BattleTech-Legends-Blood-Legacy-Generic_480x.jpg?v=1589683404",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legacy-blood-of-kerensky-blood-legacy",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/295"
+  },
+  {
+    "id": 444,
+    "sku": "CAT35410",
+    "abbrev": "BoT",
+    "title": "Battle of Tukayyid",
+    "image": "http://i.ibb.co/p3JrwRh/tukayyid.png",
+    "url": "https://store.catalystgamelabs.com/products/battletech-battle-of-tukayyid",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/444"
+  },
+  {
+    "id": 484,
+    "sku": "E-CAT35S003",
+    "abbrev": "BoTS",
+    "title": "Battle of Tukayyid: Supplemental",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35S003_BattleTechBattleofTukayyidSupplemental_480x.png?v=1606455033",
+    "url": "https://store.catalystgamelabs.com/products/battletech-battle-of-tukayyid-supplemental",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/484"
+  },
+  {
+    "id": 308,
+    "sku": "",
+    "abbrev": "Close Quarters",
+    "title": "Close Quarters",
+    "image": "https://store.catalystgamelabs.com/cdn/shop/files/BattleTech-Legends-Close-Quarters-Generic_150x150.jpg",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-close-quarters-digital",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/308"
+  },
+  {
+    "id": 488,
+    "sku": "CAT35261",
+    "abbrev": "CM:Kurita",
+    "title": "Combat Manual: Kurita",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35261-BattleTech-Combat-Manual-Kurita-1_e5e43c43-10f1-4dc3-9b53-d508df25376d_480x.jpg",
+    "url": "https://store.catalystgamelabs.com/products/battletech-combat-manual-kurita-book-pdf-combo",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/488"
+  },
+  {
+    "id": 487,
+    "sku": "CAT35260",
+    "abbrev": "CM:Mercs",
+    "title": "Combat Manual: Mercenaries",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35260_Combat_Manual_Mercenaries_480x.jpg",
+    "url": "https://store.catalystgamelabs.com/products/battletech-combat-manual-mercenaries-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/487"
+  },
+  {
+    "id": 517,
+    "sku": "CAT35007",
+    "abbrev": "CO",
+    "title": "Campaign Operations",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35007_BattleTechCampaignOperations3rdPrint-1_1024x1024.png?v=1644339280",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/517"
+  },
+  {
+    "id": 331,
+    "sku": "",
+    "abbrev": "CSI",
+    "title": "Cranston Snord's Irregulars",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/9/9f/Cranston_Snord%27s_Irregulars.jpg/280px-h9p8ja6omf476bf7lduabldpkmeuxfz.jpg?timestamp=20081220165317",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/331"
+  },
+  {
+    "id": 262,
+    "sku": "FAS1619",
+    "abbrev": "D&J",
+    "title": "DropShips and JumpShips",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1619.DnJ001_360x.gif?v=1515673517",
+    "url": "https://store.catalystgamelabs.com/products/battletech-dropships-jumpships-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/262"
+  },
+  {
+    "id": 325,
+    "sku": "FAS1677",
+    "abbrev": "Day of Heroes",
+    "title": "Day of Heroes",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1677.DayofHeroes_480x.gif?v=1512995563",
+    "url": "https://store.catalystgamelabs.com/products/battletech-day-of-heroes-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/325"
+  },
+  {
+    "id": 525,
+    "sku": "CAT35904",
+    "abbrev": "DD",
+    "title": "Dominions Divided",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35904_BattleTechDominionsDivided-1_480x.png?v=1674841260",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-dominions-divided",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/525"
+  },
+  {
+    "id": 345,
+    "sku": "",
+    "abbrev": "Decision At Thunder Rift",
+    "title": "Decision At Thunder Rift",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/Decision-at-Thunder-Rift-Generic_480x.jpg?v=1678217167",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-decision-at-thunder-rift-digital",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/345"
+  },
+  {
+    "id": 288,
+    "sku": "",
+    "abbrev": "Double Blind",
+    "title": "Double Blind",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/Double-Blind_480x.jpg?v=1521030776",
+    "url": "https://store.catalystgamelabs.com/products/battletech-novel-double-blind",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/288"
+  },
+  {
+    "id": 358,
+    "sku": "E-CAT35TP006",
+    "abbrev": "DTP:Liao",
+    "title": "Dark Age Turning Points: Liao",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/3/3f/Dark_Age_Turning_Points_Liao.jpg/280px-5hxemhqk27x54uzwm4b67xtvdciqdos.jpg?timestamp=20110317164048",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/358"
+  },
+  {
+    "id": 357,
+    "sku": "CAT35TP008",
+    "abbrev": "DTP:Vega",
+    "title": "Dark Age Turning Points: Vega",
+    "image": "http://cfw.sarna.net/wiki/images/1/18/Dark_Age_Turning_Points_Vega.jpg",
+    "url": "https://www.drivethrurpg.com/product/97744/BattleTech-Dark-Age-Turning-Points-Vega",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/357"
+  },
+  {
+    "id": 302,
+    "sku": "FAS1681",
+    "abbrev": "EC",
+    "title": "Explorer Corps",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1681_ExplorerCorps-220_240x.jpg?v=1515673757",
+    "url": "https://store.catalystgamelabs.com/products/battletech-explorer-corps-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/302"
+  },
+  {
+    "id": 286,
+    "sku": "CAT35ED002p",
+    "abbrev": "ED:AoW",
+    "title": "Era Digest: Age of War",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35ED002-Era-Digest-Age-of-War-220_180x.jpg?v=1515673561",
+    "url": "https://store.catalystgamelabs.com/products/battletech-era-digest-age-of-war-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/286"
+  },
+  {
+    "id": 395,
+    "sku": "CAT35ED003",
+    "abbrev": "ED:DA",
+    "title": "Era Digest: Dark Age",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35ED003-Era-Digest-Dark-Age_220_240x.jpg?v=1515673563",
+    "url": "https://store.catalystgamelabs.com/products/battletech-era-digest-golden-century-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/395"
+  },
+  {
+    "id": 174,
+    "sku": "CAT35ED001",
+    "abbrev": "ED:GC",
+    "title": "Era Digest: Golden Century",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35ED001_Golden_Century220_180x.jpg?v=1515673568",
+    "url": "https://store.catalystgamelabs.com/products/battletech-era-digest-golden-century-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/174"
+  },
+  {
+    "id": 384,
+    "sku": "CAT35222",
+    "abbrev": "ER:2750",
+    "title": "Era Report: 2750",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35222-BattleTech-Era-Report-2750-1_2b04d42e-fa73-4bf6-875a-7f94e064c45a_240x.jpg?v=1515673589",
+    "url": "https://store.catalystgamelabs.com/products/battletech-era-report-2750-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/384"
+  },
+  {
+    "id": 283,
+    "sku": "FAS1689",
+    "abbrev": "F&W",
+    "title": "The Falcon and the Wolf",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1689_The-Falcon-and-the-Wolf220_240x.jpg?v=1477279546",
+    "url": "https://store.catalystgamelabs.com/products/battletech-the-falcon-and-the-wolf-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/283"
+  },
+  {
+    "id": 287,
+    "sku": "",
+    "abbrev": "Flashpoint",
+    "title": "Flashpoint",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BT_Flashpoint220_480x.jpg?v=1521030791",
+    "url": "https://store.catalystgamelabs.com/products/battletech-novel-flashpoint",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/287"
+  },
+  {
+    "id": 184,
+    "sku": "FAS1698",
+    "abbrev": "FM:DC",
+    "title": "Field Manual: Draconis Combine",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1698p_FMDraconisCombine_240x.jpg?v=1515673826",
+    "url": "https://store.catalystgamelabs.com/products/battletech-field-manual-draconis-combine-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/184"
+  },
+  {
+    "id": 195,
+    "sku": "FAS1719",
+    "abbrev": "FM:FS",
+    "title": "Field Manual: Federated Suns",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1719.FMFederatedSuns_240x.jpg?v=1515673825",
+    "url": "https://store.catalystgamelabs.com/products/battletech-field-manual-federated-suns-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/195"
+  },
+  {
+    "id": 268,
+    "sku": "FRP10977",
+    "abbrev": "FM:M",
+    "title": "Field Manual: Mercenaries",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FPR10977.FMMercs_360x.gif?v=1477269711",
+    "url": "https://store.catalystgamelabs.com/products/battletech-field-manual-mercenaries-revised-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/268"
+  },
+  {
+    "id": 330,
+    "sku": "",
+    "abbrev": "Freebirth",
+    "title": "Freebirth",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT36060_Freebirth_480x.jpg?v=1504960033",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-freebirth-twilight-of-the-clans-vol-4",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/330"
+  },
+  {
+    "id": 401,
+    "sku": "CAT35FR010",
+    "abbrev": "FR:2765-AFFS",
+    "title": "Field Report 2765 AFFS ",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35FR010-Field-Report-2765-AFFS-220_240x.jpg?v=1515673875",
+    "url": "https://store.catalystgamelabs.com/products/battletech-field-report-2765-affs-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/401"
+  },
+  {
+    "id": 402,
+    "sku": "CAT35FR008",
+    "abbrev": "FR:2765-CCAF",
+    "title": "Field Report 2765 CCAF",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35FR008-Field-Report-2765-CCAF_220_240x.jpg?v=1515673880",
+    "url": "https://store.catalystgamelabs.com/products/battletech-field-report-2765-ccaf-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/402"
+  },
+  {
+    "id": 403,
+    "sku": "CAT35FR009",
+    "abbrev": "FR:2765-DCMS",
+    "title": "Field Report 2765 DCMS",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35FR009-Field-Report-2765-DCMS_220_240x.jpg?v=1515673888",
+    "url": "https://store.catalystgamelabs.com/products/battletech-field-report-2765-dcms-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/403"
+  },
+  {
+    "id": 404,
+    "sku": "CAT35FR011",
+    "abbrev": "FR:2765-FWLM",
+    "title": "Field Report 2765 FWLM",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35FR011-Field-Report-2765-FWLM_220_240x.jpg?v=1515673886",
+    "url": "https://store.catalystgamelabs.com/products/battletech-field-report-2765-fwlm-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/404"
+  },
+  {
+    "id": 405,
+    "sku": "CAT35FR012",
+    "abbrev": "FR:2765-LCAF",
+    "title": "Field Report 2765 LCAF ",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35FR012-Field-Report-2765-LCAF_220_240x.jpg?v=1515673895",
+    "url": "https://store.catalystgamelabs.com/products/battletech-field-report-2765-lcaf-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/405"
+  },
+  {
+    "id": 406,
+    "sku": "CAT35FR013",
+    "abbrev": "FR:2765-Periphery",
+    "title": "Field Report 2765: Periphery",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35FR013-Field-Report-2765-Periphery-220_240x.png?v=1515673897",
+    "url": "https://store.catalystgamelabs.com/products/battletech-field-report-2765-periphery-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/406"
+  },
+  {
+    "id": 329,
+    "sku": "FAS1697",
+    "abbrev": "FS",
+    "title": "First Strike!",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1697.FirstStrike_240x.jpg?v=1518352338",
+    "url": "https://store.catalystgamelabs.com/products/battletech-first-strike-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/329"
+  },
+  {
+    "id": 344,
+    "sku": "FAS1617",
+    "abbrev": "GDL",
+    "title": "Gray Death Legion",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/1/16/Gray-Death-Legion.jpg/280px-5s2567drgihug84560i821ucenmr070.jpg?timestamp=20180310171555",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/344"
+  },
+  {
+    "id": 265,
+    "sku": "FPR35024",
+    "abbrev": "HB:HD",
+    "title": "Handbook: House Davion",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FPR35024.HBHD_ce570236-6e91-4bcc-906e-4c420853ba96_480x.jpg?v=1518352409",
+    "url": "https://store.catalystgamelabs.com/products/battletech-handbook-house-davion-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/265"
+  },
+  {
+    "id": 458,
+    "sku": "CAT35205",
+    "abbrev": "HB:HK",
+    "title": "Handbook: House Kurita",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35205-BattleTech-Handbook-House-Kurita-220_1024x1024.jpg",
+    "url": "https://store.catalystgamelabs.com/products/battletech-handbook-house-kurita-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/458"
+  },
+  {
+    "id": 264,
+    "sku": "CAT35204",
+    "abbrev": "HB:HL",
+    "title": "Handbook: House Liao",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35204_HBHL220_180x.jpg?v=1518352424",
+    "url": "https://store.catalystgamelabs.com/products/battletech-handbook-house-liao-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/264"
+  },
+  {
+    "id": 269,
+    "sku": "E-FPR35019",
+    "abbrev": "HB:HM",
+    "title": "Handbook: House Marik",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/HB_HouseMarik_480x.jpg?v=1523709533",
+    "url": "https://store.catalystgamelabs.com/products/handbook-house-marik",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/269"
+  },
+  {
+    "id": 233,
+    "sku": "FPR35001",
+    "abbrev": "HB:HS",
+    "title": "Handbook: House Steiner",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FPR35001.HBHS_360x.gif?v=1518352435",
+    "url": "https://store.catalystgamelabs.com/products/battletech-handbook-house-steiner-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/233"
+  },
+  {
+    "id": 225,
+    "sku": "CAT35203",
+    "abbrev": "HB:MPS",
+    "title": "Handbook: Major Periphery States",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35203_HBMPS_98c84d76-53be-467b-8fb5-083d286c936e_480x.jpg?v=1518352444",
+    "url": "https://store.catalystgamelabs.com/products/battletech-handbook-major-periphery-states-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/225"
+  },
+  {
+    "id": 294,
+    "sku": "",
+    "abbrev": "Hearts of Chaos",
+    "title": "Hearts of Chaos",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT36009_Hearts_of_Chaos_480x.jpg?v=1521030800",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-hearts-of-chaos-digital",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/294"
+  },
+  {
+    "id": 485,
+    "sku": "",
+    "abbrev": "Heir to the Dragon",
+    "title": "Heir to the Dragon",
+    "image": "https://dtrpg-public-files.s3.us-east-2.amazonaws.com/images/2216/199963.jpg",
+    "url": "https://www.drivethrufiction.com/product/199963/BattleTech-Legends-Heir-to-the-Dragon",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/485"
+  },
+  {
+    "id": 306,
+    "sku": "FAS35014",
+    "abbrev": "His:3039",
+    "title": "Historical: War of 3039",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/35014_480x.jpg?v=1518352589",
+    "url": "https://store.catalystgamelabs.com/products/battletech-historicals-war-of-3039-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/306"
+  },
+  {
+    "id": 408,
+    "sku": "CAT35232",
+    "abbrev": "His:LoT1",
+    "title": "Historical: Liberation of Terra I",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35232-BattleTech-Liberation-of-Terra-1-220_240x.jpg?v=1518352528",
+    "url": "https://store.catalystgamelabs.com/products/battletech-historical-liberation-of-terra-vol-1-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/408"
+  },
+  {
+    "id": 394,
+    "sku": "CAT35233",
+    "abbrev": "His:LoT2",
+    "title": "Historical: Liberation of Terra II",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35233-BattleTech-Liberation-of-Terra-II-220_240x.jpg?v=1518352534",
+    "url": "https://store.catalystgamelabs.com/products/battletech-historical-liberation-of-terra-vol-2-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/394"
+  },
+  {
+    "id": 211,
+    "sku": "CAT35230",
+    "abbrev": "His:OK",
+    "title": "Historical: Operation Klondike",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35230OperationKlondike_240x.jpg?v=1518352546",
+    "url": "https://store.catalystgamelabs.com/products/battletech-historical-operation-klondike-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/211"
+  },
+  {
+    "id": 261,
+    "sku": "CAT35231",
+    "abbrev": "His:RW",
+    "title": "Historical: Reunification War",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35231_Reunification_War220_180x.jpg?v=1518352558",
+    "url": "https://store.catalystgamelabs.com/products/battletech-historical-reunification-war-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/261"
+  },
+  {
+    "id": 399,
+    "sku": "CAT35234",
+    "abbrev": "His:WotRE",
+    "title": "Historical: Wars of the Republic Era",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35234-BattleTech-Wars-of-the-Republic-Era-220_large.jpg?v=1518352577",
+    "url": "https://store.catalystgamelabs.com/products/battletech-historical-wars-of-the-republic-era-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/399"
+  },
+  {
+    "id": 340,
+    "sku": "FAS1624",
+    "abbrev": "HLSB",
+    "title": "House Liao",
+    "image": "http://cfw.sarna.net/wiki/images/6/65/HouseLiao-1624.jpg?timestamp=20071025203846",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/340"
+  },
+  {
+    "id": 292,
+    "sku": "FAS1622",
+    "abbrev": "HMSB",
+    "title": "House Marik",
+    "image": "http://cfw.sarna.net/wiki/images/e/ec/HouseMarik-1622.jpg?timestamp=20071025203900",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/292"
+  },
+  {
+    "id": 352,
+    "sku": "",
+    "abbrev": "HPP1",
+    "title": "HexPack Promotion 1",
+    "image": "http://bg.battletech.com/wp-content/uploads/2011/10/HexPack-Promotion-1_Cover_116wide.jpg",
+    "url": "http://bg.battletech.com/?page_id=27",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/352"
+  },
+  {
+    "id": 311,
+    "sku": "FAS1621",
+    "abbrev": "HSSB",
+    "title": "House Steiner",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1621_HouseSteiner_180x.jpg?v=1518352605",
+    "url": "https://store.catalystgamelabs.com/products/battletech-house-steiner-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/311"
+  },
+  {
+    "id": 407,
+    "sku": "CAT35TP010",
+    "abbrev": "HTP:Antallos",
+    "title": "Historical Turning Points: Antallos",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TP010-HTP-Antallos-1220_1024x1024.jpg?v=1518352501",
+    "url": "https://store.catalystgamelabs.com/products/battletech-historical-turning-points-antallos-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/407"
+  },
+  {
+    "id": 218,
+    "sku": "CAT35620p",
+    "abbrev": "HTP:Galtor",
+    "title": "Historical Turning Points: Galtor",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35620_HTP_Galtor_480x.jpg?v=1518352501",
+    "url": "https://store.catalystgamelabs.com/products/battletech-historical-turning-points-galtor-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/218"
+  },
+  {
+    "id": 197,
+    "sku": "CAT35TP002p",
+    "abbrev": "HTP:Glengarry",
+    "title": "Historical Turning Points: Glengarry",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35TP002_HTP_Glengarry_180x.jpg?v=1518352505",
+    "url": "https://store.catalystgamelabs.com/products/battletech-historical-turning-points-glengarry-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/197"
+  },
+  {
+    "id": 383,
+    "sku": "E-CAT35TP009",
+    "abbrev": "HTP:Luzerne",
+    "title": "Historical Turning Points: Luzerne",
+    "image": "http://bg.battletech.com/wp-content/uploads/2012/04/CAT35TP009_HTP-Luzerne_Cover_190wide.jpg",
+    "url": "http://bg.battletech.com/?wpsc-product=historical-turning-points-luzerne",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/383"
+  },
+  {
+    "id": 213,
+    "sku": "CAT35621p",
+    "abbrev": "HTP:Misery",
+    "title": "Historical Turning Points: Misery",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35621_HTP_Misery220_240x.jpg?v=1518352514",
+    "url": "https://store.catalystgamelabs.com/products/battletech-historical-turning-points-misery-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/213"
+  },
+  {
+    "id": 398,
+    "sku": "CAT35TP012",
+    "abbrev": "HTP:New Dallas",
+    "title": "Historical Turning Points: New Dallas",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TP012-HTP-New-Dallas-220_240x.jpg?v=1518352520",
+    "url": "https://store.catalystgamelabs.com/products/battletech-historical-turning-points-new-dallas-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/398"
+  },
+  {
+    "id": 412,
+    "sku": "E-CAT35TP015",
+    "abbrev": "HTP:Tortuga",
+    "title": "Historical Turning Points: Tortuga",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TP015-Tortuga-220_240x.jpg?v=1518352522",
+    "url": "https://store.catalystgamelabs.com/products/battletech-touring-the-stars-tortuga-prime",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/412"
+  },
+  {
+    "id": 495,
+    "sku": "CAT35902",
+    "abbrev": "IC",
+    "title": "ilClan",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35902_BattleTechIlClan_1024x1024.png?v=1628221080",
+    "url": "https://store.catalystgamelabs.com/products/battletech-ilclan?variant=39648974569506",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/495"
+  },
+  {
+    "id": 468,
+    "sku": "",
+    "abbrev": "Ideal War",
+    "title": "Ideal War",
+    "image": "https://dtrpg-public-files.s3.us-east-2.amazonaws.com/images/2216/91242.jpg",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-ideal-war",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/468"
+  },
+  {
+    "id": 370,
+    "sku": "CAT35308",
+    "abbrev": "IE:ISP3",
+    "title": "Interstellar Expeditions: Interstellar Players 3",
+    "image": "http://bg.battletech.com/wp-content/uploads/2012/11/E-CAT35308-Interstellar-Expeditions_Cover_190wide.jpg",
+    "url": "http://bg.battletech.com/?wpsc-product=interstellar-expeditions-interstellar-players-3",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/370"
+  },
+  {
+    "id": 277,
+    "sku": "",
+    "abbrev": "Illusions of Victory",
+    "title": "Illusions of Victory",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT36039_Illusions-of-Victory_480x.jpg?v=1521030810",
+    "url": "http://store.catalystgamelabs.com/products/battletech-legends-illusions-of-victory-digital",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/277"
+  },
+  {
+    "id": 479,
+    "sku": "",
+    "abbrev": "Imminent Crisis",
+    "title": "Imminent Crisis",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT36043_Imminent-Crisis_480x.jpg",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-imminent-crisis",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/479"
+  },
+  {
+    "id": 171,
+    "sku": "FPR35003p",
+    "abbrev": "ISP",
+    "title": "Interstellar Players",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FPR.35003.Interstellarplaye_480x.jpg?v=1518352661",
+    "url": "http://store.catalystgamelabs.com/products/battletech-interstellar-players-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/171"
+  },
+  {
+    "id": 220,
+    "sku": "CAT35303c",
+    "abbrev": "ISP2",
+    "title": "Jihad Conspiracies: Interstellar Players 2",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35303_JihadConspiracies_1024x1024.jpg",
+    "url": "http://store.catalystgamelabs.com/products/battletech-interstellar-players-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/220"
+  },
+  {
+    "id": 305,
+    "sku": "CAT35307",
+    "abbrev": "JFR",
+    "title": "Jihad: Final Reckoning",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35307_Jihad_Final_Reckoning220_240x.jpg?v=1521030680",
+    "url": "http://store.catalystgamelabs.com/products/battletech-jihad-final-reckoning-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/305"
+  },
+  {
+    "id": 244,
+    "sku": "CAT35304c",
+    "abbrev": "JHS:3076",
+    "title": "Jihad Hot Spots: 3076",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35304_JHS3076_480x.jpg?v=1518352719",
+    "url": "http://store.catalystgamelabs.com/products/battletech-jihad-hot-spots-3076-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/244"
+  },
+  {
+    "id": 183,
+    "sku": "CAT35305",
+    "abbrev": "JHS:Terra",
+    "title": "Jihad Hot Spots: Terra",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35305_JHS_Terra220_240x.jpg?v=1518352726",
+    "url": "http://store.catalystgamelabs.com/products/battletech-jihad-hot-spots-terra-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/183"
+  },
+  {
+    "id": 210,
+    "sku": "CAT35303X",
+    "abbrev": "JSBD",
+    "title": "Jihad Secrets: The Blake Documents",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35303X_JihadSecrets_e087e0dc-7dce-4374-abf4-3c8d5d415608_480x.jpg?v=1518352730",
+    "url": "http://store.catalystgamelabs.com/products/battletech-jihad-secrets-the-blake-documents-pdf-only",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/210"
+  },
+  {
+    "id": 234,
+    "sku": "CAT35605",
+    "abbrev": "JTP:Atreus",
+    "title": "Jihad Turning Points: Atreus",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35605_Jihad-Turning-Points-Atreus_480x.jpg?v=1494430988",
+    "url": "http://store.catalystgamelabs.com/products/05-battletech-jihad-turning-points-atreus-pdf-exclusive",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/234"
+  },
+  {
+    "id": 355,
+    "sku": "",
+    "abbrev": "JTP:AtreusBC",
+    "title": "Jihad Turning Points: Atreus BC exclusive",
+    "image": "https://i.ibb.co/5kxvScr/JTP-Atreus-BC.png",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/355"
+  },
+  {
+    "id": 193,
+    "sku": "35606p",
+    "abbrev": "JTP:Dieron",
+    "title": "Jihad Turning Points: Dieron",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35606_JTPDieron_240x.jpg?v=1494430995",
+    "url": "http://store.catalystgamelabs.com/products/06-battletech-jihad-turning-points-dieron-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/193"
+  },
+  {
+    "id": 397,
+    "sku": "CAT35TP011",
+    "abbrev": "JTP:Hesperus II",
+    "title": "Jihad Turning Points: Hesperus II",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/4/40/JTP_Hesperus_II.jpg/280px-n91xmypss6151q3nztwxei2g5v6rc2n.jpg?timestamp=20130217164847",
+    "url": "https://www.drivethrurpg.com/product/111345/BattleTech-Jihad-Turning-Points-Hesperus-II",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/397"
+  },
+  {
+    "id": 203,
+    "sku": "CAT35601",
+    "abbrev": "JTP:Luthien",
+    "title": "Jihad Turning Points: Luthien",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35601_TurningPointsLuthien_480x.jpg?v=1494430972",
+    "url": "https://store.catalystgamelabs.com/products/01-battletech-jihad-turning-points-luthien-pdf-exclusive",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/203"
+  },
+  {
+    "id": 176,
+    "sku": "CAT35602",
+    "abbrev": "JTP:NewAvalon",
+    "title": "Jihad Turning Points: New Avalon ",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35602_Turning-Points-New-Avalon-1_480x.jpg?v=1494430981",
+    "url": "https://store.catalystgamelabs.com/products/02-battletech-jihad-turning-points-new-avalon-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/176"
+  },
+  {
+    "id": 175,
+    "sku": "CAT35604",
+    "abbrev": "JTP:Sian",
+    "title": "Jihad Turning Points: Sian",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35604_Jihad-Turning-Points-Sian_480x.jpg?v=1494430981",
+    "url": "http://store.catalystgamelabs.com/products/04-battletech-jihad-turning-points-sian-pdf-exclusive",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/175"
+  },
+  {
+    "id": 169,
+    "sku": "CAT35603",
+    "abbrev": "JTP:Tharkad",
+    "title": "Jihad Turning Points: Tharkad",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35603_JTPTharkad_480x.jpg?v=1494430980",
+    "url": "https://store.catalystgamelabs.com/products/03-battletech-jihad-turning-points-tharkad-pdf-exclusive",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/169"
+  },
+  {
+    "id": 319,
+    "sku": "",
+    "abbrev": "Lethal Heritage",
+    "title": "Lethal Heritage",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BattleTech-Legends-Lethal-Heritage-Generic_480x.jpg?v=1584077344",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-lethal-heritage-blood-of-kerensky-book-one",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/319"
+  },
+  {
+    "id": 530,
+    "sku": "",
+    "abbrev": "LethalLessons",
+    "title": "Lethal Lessons",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/BattleTech-Lethal-Lessons-Genericcopy_720x.jpg?v=1674854510",
+    "url": "https://store.catalystgamelabs.com/products/battletech-lethal-lessons?_pos=1&_sid=b9bf90640&_ss=r",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/530"
+  },
+  {
+    "id": 320,
+    "sku": "",
+    "abbrev": "LL",
+    "title": "Living Legends",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/c/c6/Living_Legends_Cover.jpg/280px-74r4sodzunq9shii0dk1643htipggfy.png?timestamp=20130501173018",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/320"
+  },
+  {
+    "id": 284,
+    "sku": "",
+    "abbrev": "Lost Destiny",
+    "title": "Lost Destiny",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BattleTech-Legends-Lost-Destiny-Generic_480x.jpg?v=1612657260",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-novel-blood-of-kerensky-lost-destiny",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/284"
+  },
+  {
+    "id": 282,
+    "sku": "CAT35240",
+    "abbrev": "M&M",
+    "title": "Masters and Minions: The StarCorps Dossiers",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35240_Masters_Minions_480x.jpg?v=1526402828",
+    "url": "https://store.catalystgamelabs.com/products/battletech-masters-minions-the-starcorps-dossiers-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/282"
+  },
+  {
+    "id": 353,
+    "sku": "FAS1669",
+    "abbrev": "MAC",
+    "title": "McCarron's Armored Cavalry",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/McCarronsArmoredCav_240x.jpg?v=1526402848",
+    "url": "http://store.catalystgamelabs.com/products/battletech-mccarrons-armored-cavalry-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/353"
+  },
+  {
+    "id": 316,
+    "sku": "",
+    "abbrev": "Mercenary's Star",
+    "title": "Mercenary's Star",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/Mercenarys-Star-Generic_150x150.jpg?v=1678217392",
+    "url": "http://store.catalystgamelabs.com/products/battletech-legends-mercenarys-star",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/316"
+  },
+  {
+    "id": 335,
+    "sku": "FASA1616",
+    "abbrev": "MH",
+    "title": "Mercenary's Handbook (1987)",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1616.MercsHB_480x.gif?v=1477267089",
+    "url": "https://store.catalystgamelabs.com/products/battletech-the-mercenarys-handbook-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/335"
+  },
+  {
+    "id": 238,
+    "sku": "FAS1670",
+    "abbrev": "MH55",
+    "title": "Mercenary's Handbook: 3055",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1670_Mercenarys-Handbook-3055220_240x.jpg?v=1526402885",
+    "url": "https://store.catalystgamelabs.com/products/battletech-mercenarys-handbook-3055-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/238"
+  },
+  {
+    "id": 328,
+    "sku": "FPR35025",
+    "abbrev": "MSII",
+    "title": "Mercenaries Supplemental II",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FPR35025.MercSupp2_480x.jpg?v=1526402873",
+    "url": "https://store.catalystgamelabs.com/products/battletech-mercenaries-supplemental-ii-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/328"
+  },
+  {
+    "id": 258,
+    "sku": "",
+    "abbrev": "MW1e",
+    "title": "MechWarrior: The BattleTech Role Playing Game",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/258"
+  },
+  {
+    "id": 204,
+    "sku": "FAS1671",
+    "abbrev": "MWC",
+    "title": "MechWarrior Companion",
+    "image": "http://cfw.sarna.net/wiki/images/f/f7/MechWarrior_Companion.jpg?timestamp=20101116054719",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/204"
+  },
+  {
+    "id": 359,
+    "sku": "",
+    "abbrev": "OP:Ice Storm 1",
+    "title": "Operation Ice Storm: Part One, The Frost Advances",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/IS220_240x.jpg?v=1526403099",
+    "url": "http://store.catalystgamelabs.com/products/battletech-novella-operation-ice-storm-part-1",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/359"
+  },
+  {
+    "id": 313,
+    "sku": "FAS1665",
+    "abbrev": "OR",
+    "title": "Objective Raids",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1665.objraids_360x.gif?v=1476806498",
+    "url": "http://store.catalystgamelabs.com/products/battletech-objective-raids-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/313"
+  },
+  {
+    "id": 247,
+    "sku": "CAT35TP003p",
+    "abbrev": "OTP:DTM",
+    "title": "Operational Turning Points: Death to Mercenaries",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35TP003_Death_to_Mercenaries220_240x.jpg",
+    "url": "http://store.catalystgamelabs.com/products/battletech-operational-turning-points-death-to-mercenaries-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/247"
+  },
+  {
+    "id": 281,
+    "sku": "CAT35TP004",
+    "abbrev": "OTP:FI",
+    "title": "Operational Turning Points: Falcon Incursion",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35TP004_Falcon_Incursion220_240x.jpg",
+    "url": "http://store.catalystgamelabs.com/products/battletech-operational-turning-points-falcon-incursion-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/281"
+  },
+  {
+    "id": 451,
+    "sku": "CAT35T020",
+    "abbrev": "OTP:FR",
+    "title": "Operational Turning Points: Fronc Reaches",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/OperationalTurningPointsFroncReaches_480x.png?v=1552676412",
+    "url": "https://store.catalystgamelabs.com/products/operational-turning-points-fronc-reaches",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/451"
+  },
+  {
+    "id": 461,
+    "sku": "E-CAT35P025",
+    "abbrev": "OTP:HC",
+    "title": "Operational Turning Points: Hanseatic Crusade",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TP025_BattleTechOperationalTurningPointsHanseaticCrusade_480x.png",
+    "url": "https://store.catalystgamelabs.com/products/battletech-operational-turning-points-hanseatic-crusade",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/461"
+  },
+  {
+    "id": 188,
+    "sku": "CAT35607p",
+    "abbrev": "OTP:RC",
+    "title": "Operational Turning Points: The Red Corsair",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/RedCorsair220_240x.jpg?v=1529081035",
+    "url": "http://store.catalystgamelabs.com/products/battletech-operational-turning-points-the-red-corsair-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/188"
+  },
+  {
+    "id": 410,
+    "sku": "E-CAT35TP014",
+    "abbrev": "OTP:WA",
+    "title": "Operational Turning Points: Widowmaker Absorption",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TP014-OTP-Widowmaker-Absorbtion-220_240x.jpg?v=1529081038",
+    "url": "https://store.catalystgamelabs.com/products/battletech-operational-turning-points-widowmaker-absorption-p",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/410"
+  },
+  {
+    "id": 327,
+    "sku": "",
+    "abbrev": "Path of Glory",
+    "title": "Path of Glory",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT36014_Path_of_Glory_480x.jpg?v=1523709999",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-path-of-glory-digital",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/327"
+  },
+  {
+    "id": 298,
+    "sku": "",
+    "abbrev": "PC1",
+    "title": "Proliferation Cycle, Part 1: Break-Away",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BattleTech-Break-Away-Generic_1024x1024.jpg?v=1568946304",
+    "url": "https://store.catalystgamelabs.com/products/battletech-break-away-proliferation-cycle-1",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/298"
+  },
+  {
+    "id": 303,
+    "sku": "",
+    "abbrev": "PC2",
+    "title": "Proliferation Cycle, Part 2: Prometheus Unbound",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/Prometheus_Unbound_Proliferation_2_EPUB_cover_480x.png?v=1568950039",
+    "url": "https://store.catalystgamelabs.com/products/battletech-prometheus-unbound-proliferation-cycle-2",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/303"
+  },
+  {
+    "id": 343,
+    "sku": "",
+    "abbrev": "PC4",
+    "title": "Proliferation Cycle, Part 4: Fall Down...",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BattleTech-Fall-Down-Seven-Times-Get-Up-Eight-Generic_480x.jpg?v=1568953297",
+    "url": "https://store.catalystgamelabs.com/products/battletech-fall-down-seven-times-get-up-eight-proliferation-cycle-4",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/343"
+  },
+  {
+    "id": 478,
+    "sku": "",
+    "abbrev": "PC7",
+    "title": "Proliferation Cycle, Part 7: The Trickster",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BattleTech-The-Trickster-Kindle_480x.jpg?v=1619755740",
+    "url": "https://store.catalystgamelabs.com/collections/battletech-new-arrivals/products/battletech-the-trickster-the-proliferation-cycle-part-vii",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/478"
+  },
+  {
+    "id": 312,
+    "sku": "",
+    "abbrev": "Price of Glory",
+    "title": "Price of Glory",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/The-Price-of-Glory-Generic_480x.jpg?v=1678217904",
+    "url": "http://store.catalystgamelabs.com/products/battletech-legends-the-price-of-glory-digital",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/312"
+  },
+  {
+    "id": 239,
+    "sku": "FAS1676",
+    "abbrev": "R&R",
+    "title": "Royalty and Rogues",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/d/d0/Royalty_and_Rogues.jpg/280px-b5ep9ktn2slno67k2qa9mmiftzfq4m1.png?timestamp=20130501170434",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/239"
+  },
+  {
+    "id": 307,
+    "sku": "FAS1675",
+    "abbrev": "Recognition Cards",
+    "title": "Recognition Cards",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/8/82/BT_Recognition_Cards.jpg/280px-j44171w4bx1zhdu0az9fycb1dpq1rqa.jpg?timestamp=20200203224335",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/307"
+  },
+  {
+    "id": 504,
+    "sku": "",
+    "abbrev": "Redemption & Malice",
+    "title": "Redemption and Malice",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/Redeption_and_Malice_Epub_Cover_2-4b_large.png?v=1580845606",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/504"
+  },
+  {
+    "id": 425,
+    "sku": "E-CAT35TR101",
+    "abbrev": "RG01",
+    "title": "Recognition Guide: ilClan Vol. 01",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR101_BattleTechRecognitionGuideIlClanVol01_480x.png",
+    "url": "https://store.catalystgamelabs.com/products/battletech-recognition-guide-ilclan-vol-1",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/425"
+  },
+  {
+    "id": 426,
+    "sku": "E-CAT35TR102",
+    "abbrev": "RG02",
+    "title": "Recognition Guide: ilClan Vol. 02",
+    "image": "https://i.ibb.co/z5wwMGP/rgic02.png",
+    "url": "https://store.catalystgamelabs.com/products/battletech-recognition-guide-ilclan-vol-2",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/426"
+  },
+  {
+    "id": 431,
+    "sku": "E-CAT35TR103",
+    "abbrev": "RG03",
+    "title": "Recognition Guide: ilClan Vol. 03",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/CAT35TR103_BattleTechRecognitionGuideIlClanVol03_480x.png?v=1595011050",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/copy-of-battletech-recognition-guide-ilclan-vol-3",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/431"
+  },
+  {
+    "id": 432,
+    "sku": "E-CAT35TR104",
+    "abbrev": "RG04",
+    "title": "Recognition Guide: ilClan Vol. 04",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/39A27746-DDE5-487A-A1C7-C533D5CBAC8A_480x.png?v=1596214919",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-4",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/432"
+  },
+  {
+    "id": 433,
+    "sku": "E-CAT35TR05",
+    "abbrev": "RG05",
+    "title": "Recognition Guide: ilClan Vol. 05",
+    "image": "https://i.ibb.co/H2rvDzX/rgic05.png",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-5",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/433"
+  },
+  {
+    "id": 434,
+    "sku": "E-CAT35TR106",
+    "abbrev": "RG06",
+    "title": "Recognition Guide: ilClan Vol. 06",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR106_BattleTechRecognitionGuideIlClanVol06_480x.png?v=1598638591",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-6",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/434"
+  },
+  {
+    "id": 442,
+    "sku": "E-CAT35TR107",
+    "abbrev": "RG07",
+    "title": "Recognition Guide: ilClan Vol. 07",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR107_BattleTechRecognitionGuideIlClanVol07-1_480x.png?v=1604468421",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-7",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/442"
+  },
+  {
+    "id": 438,
+    "sku": "E-CAT35TR108",
+    "abbrev": "RG08",
+    "title": "Recognition Guide: ilClan Vol. 08",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR108_BattleTechRecognitionGuideIlClanVol08-1_480x.png?v=1605893015",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-8",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/438"
+  },
+  {
+    "id": 453,
+    "sku": "E-CAT35TR109",
+    "abbrev": "RG09",
+    "title": "Recognition Guide: ilClan Vol. 09",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR109_BattleTechRecognitionGuideIlClanVol09-1_480x.png?v=1607055336",
+    "url": "https://store.catalystgamelabs.com/products/battletech-recognition-guide-ilclan-vol-9?variant=32993730494498",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/453"
+  },
+  {
+    "id": 454,
+    "sku": "E-CAT35TR110",
+    "abbrev": "RG10",
+    "title": "Recognition Guide: ilClan Vol. 10",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR110_BattleTechRecognitionGuideIlClanVol10-1_480x.png?v=1608269668",
+    "url": "https://store.catalystgamelabs.com/products/battletech-recognition-guide-ilclan-vol-10",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/454"
+  },
+  {
+    "id": 455,
+    "sku": "E-CAT35TR111",
+    "abbrev": "RG11",
+    "title": "Recognition Guide: ilClan Vol. 11",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR111_BattleTechRecognitionGuideIlClanVol11-1_480x.png?v=1610728079",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-11",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/455"
+  },
+  {
+    "id": 456,
+    "sku": "E-CAT35TR112",
+    "abbrev": "RG12",
+    "title": "Recognition Guide: ilClan Vol. 12",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR112_BattleTechRecognitionGuideIlClanVol12-1_480x.png?v=1611938995",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-12",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/456"
+  },
+  {
+    "id": 471,
+    "sku": "E-CAT35TR113",
+    "abbrev": "RG13",
+    "title": "Recognition Guide: ilClan Vol. 13",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR113_BattleTechRecognitionGuideIlClanVol13_480x.png?v=1617991851",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-13?variant=39302829342754",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/471"
+  },
+  {
+    "id": 472,
+    "sku": "E-CAT35TR114",
+    "abbrev": "RG14",
+    "title": "Recognition Guide: ilClan Vol. 14",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR114_BattleTechRecognitionGuideIlClanVol14-1_480x.png?v=1619199884",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-14",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/472"
+  },
+  {
+    "id": 473,
+    "sku": "E-CAT35TR115",
+    "abbrev": "RG15",
+    "title": "Recognition Guide: ilClan Vol. 15",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR115_BattleTechRecognitionGuideIlClanVol15_480x.png?v=1620360215",
+    "url": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR115_BattleTechRecognitionGuideIlClanVol15_480x.png?v=1620360215",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/473"
+  },
+  {
+    "id": 474,
+    "sku": "E-CAT35TR116",
+    "abbrev": "RG16",
+    "title": "Recognition Guide: ilClan Vol. 16",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR116_BattleTechRecognitionGuideIlClanVol16_480x.png?v=1621569550",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-16?variant=39348049346594",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/474"
+  },
+  {
+    "id": 475,
+    "sku": "E-CAT35TR117",
+    "abbrev": "RG17",
+    "title": "Recognition Guide: ilClan Vol. 17",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR117_BattleTechRecognitionGuideIlClanVol17_480x.png?v=1622687236",
+    "url": "https://store.catalystgamelabs.com/collections/battletech-new-arrivals/products/battletech-recognition-guide-ilclan-vol-17?variant=39358762680354",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/475"
+  },
+  {
+    "id": 476,
+    "sku": "E-CAT35TR118",
+    "abbrev": "RG18",
+    "title": "Recognition Guide: ilClan Vol. 18",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR118_BattleTechRecognitionGuideIlClanVol18_480x.png?v=1624036289",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-18",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/476"
+  },
+  {
+    "id": 489,
+    "sku": "E-CAT35TR119",
+    "abbrev": "RG19",
+    "title": "Recognition Guide: ilClan Vol. 19",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR119_BattleTechRecognitionGuideIlClanVol19_480x.png",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-19",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/489"
+  },
+  {
+    "id": 490,
+    "sku": "E-CAT35TR119",
+    "abbrev": "RG20",
+    "title": "Recognition Guide: ilClan Vol. 20",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR120_BattleTechRecognitionGuideIlClanVol20_480x.png?v=1635488034",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-20?variant=39770248839202",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/490"
+  },
+  {
+    "id": 491,
+    "sku": "E-CAT35TR121",
+    "abbrev": "RG21",
+    "title": "Recognition Guide: ilClan Vol. 21",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR121_BattleTechRecognitionGuideIlClanVol21_480x.png",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-21",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/491"
+  },
+  {
+    "id": 492,
+    "sku": "E-CAT35TR122",
+    "abbrev": "RG22",
+    "title": "Recognition Guide: ilClan Vol. 22",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR122_BattleTech_Recognition_Guide_IlClan_Vol_22_480x.png?v=1637944600",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-22?variant=39854148124706",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/492"
+  },
+  {
+    "id": 493,
+    "sku": "E-CAT35TR123",
+    "abbrev": "RG23",
+    "title": "Recognition Guide: ilClan Vol. 23",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/Recog-Guide-Cover-23_480x.jpg?v=1640363373",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-24?variant=39947901370402",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/493"
+  },
+  {
+    "id": 494,
+    "sku": "E-CAT35TR124",
+    "abbrev": "RG24",
+    "title": "Recognition Guide: ilClan Vol. 24",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/Recog-Guide-Cover-24_480x.jpg?v=1640363361",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-24?variant=39947901370402",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/494"
+  },
+  {
+    "id": 515,
+    "sku": "E-CAT35TR125",
+    "abbrev": "RG25",
+    "title": "Recognition Guide: ilClan Vol. 25",
+    "image": "https://i.ibb.co/MBF5bG1/rgic25.png",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-25",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/515"
+  },
+  {
+    "id": 516,
+    "sku": "E-CAT35TR126",
+    "abbrev": "RG26",
+    "title": "Recognition Guide: ilClan Vol. 26",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR126_BattleTech_Recognition_Guide_IlClan_Vol_26-1_480x.png?v=1668189947",
+    "url": "https://store.catalystgamelabs.com/products/battletech-recognition-guide-ilclan-vol-26",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/516"
+  },
+  {
+    "id": 518,
+    "sku": "E-CAT35TR127",
+    "abbrev": "RG27",
+    "title": "Recognition Guide: ilClan Vol. 27",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/Recog-Guide-Cover-27_360x.jpg?v=1669390591",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-27",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/518"
+  },
+  {
+    "id": 519,
+    "sku": "E-CAT35TR128",
+    "abbrev": "RG28",
+    "title": "Recognition Guide: ilClan Vol. 28",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR128_BattleTech_Recognition_Guide_IlClan_Vol_28_480x.png?v=1670531345",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-28",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/519"
+  },
+  {
+    "id": 520,
+    "sku": "E-CAT35TR129",
+    "abbrev": "RG29",
+    "title": "Recognition Guide: ilClan Vol. 29",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR129_BattleTech_Recognition_Guide_IlClan_Vol_29_480x.png?v=1672980829",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-29",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/520"
+  },
+  {
+    "id": 521,
+    "sku": "E-CAT35TR130",
+    "abbrev": "RG30",
+    "title": "Recognition Guide: ilClan Vol. 30",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR130_BattleTech_Recognition_Guide_IlClan_Vol_30_360x.png?v=1674235210",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-30",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/521"
+  },
+  {
+    "id": 522,
+    "sku": "E-CAT35TR131",
+    "abbrev": "RG31",
+    "title": "Recognition Guide: ilClan Vol. 31",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR131_BattleTech_Recognition_Guide_IlClan_Vol_31-1_480x.png?v=1675400432",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-31",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/522"
+  },
+  {
+    "id": 523,
+    "sku": "E-CAT35TR132",
+    "abbrev": "RG32",
+    "title": "Recognition Guide: ilClan Vol. 32",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR132_BattleTech_Recognition_Guide_IlClan_Vol_32_480x.png?v=1676609359",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-ilclan-vol-32",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/523"
+  },
+  {
+    "id": 543,
+    "sku": "E-CAT35TR133",
+    "abbrev": "RG33",
+    "title": "Recognition Guide: ilClan Vol. 33",
+    "image": "https://store.catalystgamelabs.com/cdn/shop/files/E-CAT35TR133_BattleTech_Recognition_Guide_IlClan_Vol_33-1_480x.png?v=1703129000",
+    "url": "https://store.catalystgamelabs.com/collections/battletech-new-arrivals/products/battletech-recognition-guide-ilclan-vol-33",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/543"
+  },
+  {
+    "id": 539,
+    "sku": "CAT35131",
+    "abbrev": "RGv1",
+    "title": "Recognition Guide, Vol. 1: Classics",
+    "image": "https://store.catalystgamelabs.com/cdn/shop/files/E-CAT35139_BattleTechRecognitionGuideVol1CLASSICS-1_480x.png?v=1689977963",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-recognition-guide-vol-1-classics-1",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/539"
+  },
+  {
+    "id": 185,
+    "sku": "FAS1643",
+    "abbrev": "RI",
+    "title": "Rhonda's Irregulars",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1643_RhondasIrregulars220_180x.jpg?v=1529081391",
+    "url": "https://store.catalystgamelabs.com/products/battletech-rhonda-s-irregulars-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/185"
+  },
+  {
+    "id": 301,
+    "sku": "FAS1667",
+    "abbrev": "RS5",
+    "title": "Record Sheets Vol 5",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/1/13/Rs-vol5-vehicles.jpg/280px-i5idegvx7hwra308y09hw2vj8xh33hl.jpg?timestamp=20110510121614",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/301"
+  },
+  {
+    "id": 526,
+    "sku": "",
+    "abbrev": "RSFP:ELH",
+    "title": "Record Sheets: BattleTech ForcePack - Eridani Light Horse",
+    "image": "https://bg.battletech.com/wp-content/uploads/2023/02/ForcePack_ELH_Cover.png",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/526"
+  },
+  {
+    "id": 540,
+    "sku": "",
+    "abbrev": "RSFP:GDL",
+    "title": "Record Sheets: BattleTech ForcePack - Gray Death Legion",
+    "image": "https://bg.battletech.com/wp-content/uploads/2023/07/ForcePack-Record-Sheets-Gray-Death-Legion.png",
+    "url": "https://www.barnesandnoble.com/w/battletech-gray-death-legion-heavy-battle-lance-catalyst-games-lab/1143546033?ean=0810038457383",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/540"
+  },
+  {
+    "id": 527,
+    "sku": "",
+    "abbrev": "RSFP:HRR",
+    "title": "Record Sheets: BattleTech ForcePack - Hansen's Roughriders",
+    "image": "https://bg.battletech.com/wp-content/uploads/2023/02/ForcePack_HR_Cover.png",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/527"
+  },
+  {
+    "id": 528,
+    "sku": "",
+    "abbrev": "RSFP:KH",
+    "title": "Record Sheets: BattleTech ForcePack - Kell Hounds",
+    "image": "https://bg.battletech.com/wp-content/uploads/2023/02/ForcePack_KH_Cover.png",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/528"
+  },
+  {
+    "id": 529,
+    "sku": "",
+    "abbrev": "RSFP:NWH",
+    "title": "Record Sheets: BattleTech ForcePack - Northwind Highlanders",
+    "image": "https://bg.battletech.com/wp-content/uploads/2023/02/ForcePack_NH_Cover.png",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/529"
+  },
+  {
+    "id": 531,
+    "sku": "",
+    "abbrev": "RSFP:SI",
+    "title": "Record Sheets: BattleTech ForcePack - Snord's Irregulars",
+    "image": "https://bg.battletech.com/wp-content/uploads/2023/03/ForcePack_SI_Cover.png",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/531"
+  },
+  {
+    "id": 532,
+    "sku": "",
+    "abbrev": "RSFP:Urbies",
+    "title": "Record Sheets: BattleTech ForcePack - UrbanMech Lance",
+    "image": "https://bg.battletech.com/wp-content/uploads/2023/03/ForcePack_ULM_Cover.png",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/532"
+  },
+  {
+    "id": 510,
+    "sku": "",
+    "abbrev": "RSFP:Wave 1",
+    "title": "Record Sheets: BattleTech ForcePacks Wave 1",
+    "image": "https://bg.battletech.com/wp-content/uploads/2021/02/BT_ForecPack_RS_WaveOne.png",
+    "url": "https://bg.battletech.com/downloads/",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/510"
+  },
+  {
+    "id": 511,
+    "sku": "",
+    "abbrev": "RSFP:Wave 2",
+    "title": "Record Sheets: BattleTech ForcePacks Wave 2",
+    "image": "https://bg.battletech.com/wp-content/uploads/2022/02/BATTLETECH-ForcePacks-Record-Sheets-Wave-Two.png",
+    "url": "https://bg.battletech.com/downloads/",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/511"
+  },
+  {
+    "id": 500,
+    "sku": "",
+    "abbrev": "RSFP:WD",
+    "title": "Record Sheets: BattleTech ForcePack - Wolf's Dragoons",
+    "image": "https://bg.battletech.com/wp-content/uploads/2022/02/BATTLETECH-ForcePacks-Record-Sheets-Wolfs-Dragoons.png",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/500"
+  },
+  {
+    "id": 241,
+    "sku": "BC-212",
+    "abbrev": "RS:3039u",
+    "title": "Record Sheets: 3039 Unabridged",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BC-212-RS3039-Unabridged220_240x.jpg?v=1529081190",
+    "url": "http://store.catalystgamelabs.com/products/battletech-record-sheet-3039-unabridged-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/241"
+  },
+  {
+    "id": 194,
+    "sku": "BC-205",
+    "abbrev": "RS:3050Uu-C",
+    "title": "Record Sheets: 3050 Upgrade Unabridged, Clan and Star League",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BC205_RS3050U-ClanStar-League220_240x.jpg?v=1529081202",
+    "url": "http://store.catalystgamelabs.com/products/battletech-record-sheet-3050u-unabridged-clan-sl-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/194"
+  },
+  {
+    "id": 200,
+    "sku": "BC-204Bp",
+    "abbrev": "RS:3050Uu-I",
+    "title": "Record Sheets: 3050 Upgrade Unabridged, Inner Sphere",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BC204_RS3050U_InnerSphere220_large.jpg?v=1529081207",
+    "url": "http://store.catalystgamelabs.com/products/battletech-record-sheet-3050u-unabridged-inner-sphere-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/200"
+  },
+  {
+    "id": 230,
+    "sku": "BC-209",
+    "abbrev": "RS:3055Uu",
+    "title": "Record Sheets: 3055 Upgrade Unabridged",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BC209_RS3055U_480x.jpg?v=1529081304",
+    "url": "http://store.catalystgamelabs.com/products/battletech-record-sheet-total-warfare-style-3055-upgrade-unab",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/230"
+  },
+  {
+    "id": 255,
+    "sku": "BC-203Ap",
+    "abbrev": "RS:3058Uu-C",
+    "title": "Record Sheets: 3058 Upgrade Unabridged, Clan",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BC203A_RS3058Clan_240x.jpg?v=1529081308",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheet-total-warfare-style-3058-clan-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/255"
+  },
+  {
+    "id": 254,
+    "sku": "BC-203Bp",
+    "abbrev": "RS:3058Uu-I",
+    "title": "Record Sheets: 3058 Upgrade Unabridged, Inner Sphere",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BC203B_RS3058IS_240x.jpg?v=1529081312",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheet-total-warfare-style-3058-is-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/254"
+  },
+  {
+    "id": 222,
+    "sku": "BC-211p",
+    "abbrev": "RS:3060u",
+    "title": "Record Sheets: 3060 Unabridged",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/RecordSheets3060Unabridged_240x.jpg?v=1529081314",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheet-total-warfare-style-3060-unabr-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/222"
+  },
+  {
+    "id": 367,
+    "sku": "E-CAT35RS216",
+    "abbrev": "RS:3067u",
+    "title": "Record Sheets: 3067 Unabridged",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35RS216_RS3067-Unabridged220_240x.jpg?v=1529081371",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheets-3067-unabridged-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/367"
+  },
+  {
+    "id": 228,
+    "sku": "BC-210",
+    "abbrev": "RS:3075u-AW",
+    "title": "Record Sheets: 3075 Unabridged - Age of War",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CATRS210a-RS3075-Unabridged-Age-of-War-220_240x.jpg?v=1529081322",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheet-total-warfare-style-3075-age-of-war",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/228"
+  },
+  {
+    "id": 396,
+    "sku": "E-CATRS210b",
+    "abbrev": "RS:3075u-CE",
+    "title": "Record Sheets: 3075 Unabridged - The Cutting Edge",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CATRS210b-RS3075-Unabridged-The-Cutting-Edge-220_240x.jpg?v=1529081327",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheet-total-warfare-style-3075-cutting-edge",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/396"
+  },
+  {
+    "id": 253,
+    "sku": "BC213p",
+    "abbrev": "RS:3085u-CE",
+    "title": "Record Sheets: 3085 Unabridged — Cutting Edge",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BC213_RS3085_Unabridged_-_The_Cutting_Edge220_240x.jpg?v=1529081332",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheet-total-warfare-style-3085-cutting-edg",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/253"
+  },
+  {
+    "id": 257,
+    "sku": "BC215p",
+    "abbrev": "RS:3085u-ONN",
+    "title": "Record Sheets: 3085 Unabridged — Old is the New New",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BC215_RS3085_Unabridged_-_Old_is_the_New_New220_180x.jpg?v=1529081334",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheet-total-warfare-style-3085-old-is-the",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/257"
+  },
+  {
+    "id": 266,
+    "sku": "BC214p",
+    "abbrev": "RS:3085u-PP",
+    "title": "Record Sheets: 3085 Unabridged — Project Phoenix",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BC214_RS3085_Unabridged_-_Project_Phoenix220_180x.jpg?v=1529081299",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheet-total-warfare-style-3085-project-phoe",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/266"
+  },
+  {
+    "id": 393,
+    "sku": "E-CATRS217",
+    "abbrev": "RS:3145-NTNU",
+    "title": "Record Sheets: 3145 New Tech New Upgrades",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CATRS218-RS3145-New-Tech-New-Upgrades_220_240x.jpg?v=1529081375",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheets-3145-new-tech-new-upgrades-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/393"
+  },
+  {
+    "id": 536,
+    "sku": "E-CAT35RS224",
+    "abbrev": "RS:3145",
+    "title": "Record Sheets: 3145",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35RS224_BattleTechRecordSheets3145_480x.png?v=1670638484",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheets-3145",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/536"
+  },
+  {
+    "id": 439,
+    "sku": "E-CATRS217",
+    "abbrev": "RS:3145u",
+    "title": "Record Sheets: 3145 Unabridged",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CATRS217-RS3145-Unabridged_220_240x.jpg?v=1529081378",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheets-3145-unabridged-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/439"
+  },
+  {
+    "id": 467,
+    "sku": "E-CAT35RS225",
+    "abbrev": "RS:3150",
+    "title": "Record Sheets: 3150",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35RS225_BattleTechRecordSheets3150_480x.png?v=1670639378",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheets-3150",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/467"
+  },
+  {
+    "id": 437,
+    "sku": "E-CAT35RS221",
+    "abbrev": "RS:CI",
+    "title": "Record Sheets: Clan Invasion",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35RS221_BattleTechRecordSheetsClanInvasion_480x.png?v=1585336838",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheets-clan-invasion",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/437"
+  },
+  {
+    "id": 535,
+    "sku": "E-CAT35RS223",
+    "abbrev": "RS:DA",
+    "title": "Record Sheets: Dark Age",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35RS223_BattleTechRecordSheetsDarkAge_480x.png?v=1670639155",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheets-dark-age",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/535"
+  },
+  {
+    "id": 512,
+    "sku": "",
+    "abbrev": "RS:GoAC",
+    "title": "Record Sheets & Counters: A Game of Armored Combat Box Set",
+    "image": "https://bg.battletech.com/wp-content/uploads/2019/02/AGoAC-RecordSheets.jpg",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/512"
+  },
+  {
+    "id": 534,
+    "sku": "E-CAT35RS222",
+    "abbrev": "RS:J",
+    "title": "Record Sheets: Jihad",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35RS222_BattleTechRecordSheetsJihad_480x.png?v=1670638870",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheets-jihad",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/534"
+  },
+  {
+    "id": 482,
+    "sku": "",
+    "abbrev": "RS:MWDA",
+    "title": "Record Sheets: MechWarrior Dark Age I",
+    "image": "https://cfw.sarna.net/wiki/images/1/1b/RSMWDAI.jpg?timestamp=20110402090703",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/482"
+  },
+  {
+    "id": 187,
+    "sku": "35230ap",
+    "abbrev": "RS:OK",
+    "title": "Record Sheets: Operation Klondike",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/e/e7/Record_Sheets_Operation_Klondike.jpg/280px-t882k9quskjo1d8fzmainybxcq2c1rv.jpg?timestamp=20190419133616",
+    "url": "https://www.drivethrurpg.com/product/79681/BattleTech-Record-Sheets-Operation-Klondike",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/187"
+  },
+  {
+    "id": 428,
+    "sku": "CAT35170",
+    "abbrev": "RS:Proto",
+    "title": "Record Sheets: Prototypes",
+    "image": "http://cfw.sarna.net/wiki/images/8/8a/Record-Sheets-Prototypes_Cover.jpg?timestamp=20120307171703",
+    "url": "https://www.drivethrurpg.com/product/98458/BattleTech-Record-Sheets-Prototypes",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/428"
+  },
+  {
+    "id": 423,
+    "sku": "E-CAT35RS220",
+    "abbrev": "RS:SW",
+    "title": "Record Sheets: Succession Wars",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35RS220_BattleTech-Record-Sheets-Succession-Wars_480x.jpg?v=1550540210",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheets-succession-wars",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/423"
+  },
+  {
+    "id": 216,
+    "sku": "",
+    "abbrev": "RS:UF",
+    "title": "Record Sheets: Unique Fighters",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/b/ba/RS_Unique_Fighters.jpg/280px-24fbxhrkkhzwoo7v2b1hm75jtrkwg3x.jpg?timestamp=20120722144518",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/216"
+  },
+  {
+    "id": 236,
+    "sku": "BC-200",
+    "abbrev": "RS:UM",
+    "title": "Record Sheets: Unique 'Mechs",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/0/01/RS_Unique_Mechs.jpg/280px-jhn07coeckqvjnv8f69vg4wg1c9au09.jpg?timestamp=20110327153112",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/236"
+  },
+  {
+    "id": 409,
+    "sku": "E-CAT35RS217",
+    "abbrev": "RS:VA",
+    "title": "Record Sheets: Vehicle Annex, IndustrialMechs & Exoskeletons",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/Pages_from_E-CAT35RS217A_RSVA_IndustrialMechs_Exoskeletons_480x.jpg?v=1529081359",
+    "url": "https://store.catalystgamelabs.com/products/battletech-record-sheet-vehicle-annex-industrialmechs-exosk",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/409"
+  },
+  {
+    "id": 205,
+    "sku": "CAT35100",
+    "abbrev": "SB:S&D",
+    "title": "Starterbook: Sword and Dragon",
+    "image": "https://www.drivethrurpg.com/images/2216/96091.jpg",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/205"
+  },
+  {
+    "id": 208,
+    "sku": "CAT35101",
+    "abbrev": "SB:W&B",
+    "title": "Starterbook: Wolf & Blake",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35101_WolfAndBlake_73b3b708-c85c-4d27-a56d-8903fced114f_480x.jpg?v=1477273687",
+    "url": "https://store.catalystgamelabs.com/products/battletech-starterbook-wolf-blake-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/208"
+  },
+  {
+    "id": 466,
+    "sku": "CAT35900",
+    "abbrev": "SF",
+    "title": "Shattered Fortress",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35900-BattleTech-Shattered-Fortress-1_34153cb2-a5e1-4ad7-a788-f761fa80bbbc_480x.jpg?v=1542420626",
+    "url": "https://store.catalystgamelabs.com/products/battletech-shattered-fortress-book-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/466"
+  },
+  {
+    "id": 450,
+    "sku": "CAT36091",
+    "abbrev": "Shrap02",
+    "title": "Shrapnel #2",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/Shrapnel-2-Generic_480x.jpg?v=1600727164",
+    "url": "https://store.catalystgamelabs.com/products/battletech-shrapnel-issue-2",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/450"
+  },
+  {
+    "id": 452,
+    "sku": "CAT35092",
+    "abbrev": "Shrap03",
+    "title": "Shrapnel #3",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/Shrapnel-3-Generic_480x.jpg?v=1608059967",
+    "url": "https://store.catalystgamelabs.com/products/battletech-shrapnel-issue-3",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/452"
+  },
+  {
+    "id": 462,
+    "sku": "CAT36093",
+    "abbrev": "Shrap04",
+    "title": "Shrapnel #4",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/Shrapnel-4-Generic_480x.jpg?v=1615851141",
+    "url": "https://store.catalystgamelabs.com/products/battletech-shrapnel-issue-4-the-official-battletech-magazine",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/462"
+  },
+  {
+    "id": 483,
+    "sku": "",
+    "abbrev": "Shrap05",
+    "title": "Shrapnel #5",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/Shrapnel-5-Generic_1024x1024.jpg?v=1623804165",
+    "url": "https://store.catalystgamelabs.com/products/battletech-shrapnel-issue-5-the-official-battletech-magazine",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/483"
+  },
+  {
+    "id": 497,
+    "sku": "",
+    "abbrev": "Shrap06",
+    "title": "Shrapnel #6",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/BattleTech-Shrapnel-6-Generic_480x.jpg",
+    "url": "https://store.catalystgamelabs.com/collections/battletech-new-arrivals/products/battletech-shrapnel-issue-6-the-official-battletech-magazine",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/497"
+  },
+  {
+    "id": 501,
+    "sku": "CAT35096",
+    "abbrev": "Shrap07",
+    "title": "Shrapnel #7",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/Shrapnel-7-Generic_480x.jpg?v=1639615648",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-shrapnel-issue-7-the-official-battletech-magazine",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/501"
+  },
+  {
+    "id": 503,
+    "sku": "CAT35097",
+    "abbrev": "Shrap08",
+    "title": "Shrapnel #8",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/BattleTech-Shrapnel-8-Generic_480x.jpg?v=1647367307",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-shrapnel-issue-8-the-official-battletech-magazine",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/503"
+  },
+  {
+    "id": 508,
+    "sku": "CAT35098",
+    "abbrev": "Shrap09",
+    "title": "Shrapnel #9",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/Shrapnel-9-Generic_480x.jpg?v=1655267470",
+    "url": "https://store.catalystgamelabs.com/products/battletech-shrapnel-issue-9-the-official-battletech-magazine",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/508"
+  },
+  {
+    "id": 513,
+    "sku": "CAT35099",
+    "abbrev": "Shrap10",
+    "title": "Shrapnel #10",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/Shrapnel-10-Generic_480x.jpg?v=1663211128",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-shrapnel-issue-10-the-official-battletech-magazine",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/513"
+  },
+  {
+    "id": 524,
+    "sku": "",
+    "abbrev": "Shrap11",
+    "title": "Shrapnel #11",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/Shrapnel-11-Generic_480x.jpg?v=1671083120",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-shrapnel-issue-11-the-official-battletech-magazine",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/524"
+  },
+  {
+    "id": 533,
+    "sku": "",
+    "abbrev": "Shrap12",
+    "title": "Shrapnel #12",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/Shrapnel-12-Generic_480x.jpg?v=1678841525",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-shrapnel-issue-12-the-official-battletech-magazine",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/533"
+  },
+  {
+    "id": 538,
+    "sku": "",
+    "abbrev": "Shrap13",
+    "title": "Shrapnel #13",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/files/Shrapnel-13-Generic_480x.jpg?v=1686782900",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-shrapnel-issue-13-the-official-battletech-magazine",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/538"
+  },
+  {
+    "id": 541,
+    "sku": "",
+    "abbrev": "Shrap14",
+    "title": "Shrapnel #14",
+    "image": "https://store.catalystgamelabs.com/cdn/shop/files/Shrapnel-14-Generic_480x.jpg?v=1694499013",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-shrapnel-issue-14-the-official-battletech-magazine",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/541"
+  },
+  {
+    "id": 542,
+    "sku": "",
+    "abbrev": "Shrap15",
+    "title": "Shrapnel #15",
+    "image": "https://store.catalystgamelabs.com/cdn/shop/files/Shrapnel-15-Generic_480x.jpg?v=1702412462",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-shrapnel-issue-15-the-official-battletech-magazine",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/542"
+  },
+  {
+    "id": 544,
+    "sku": "",
+    "abbrev": "Shrap16",
+    "title": "Shrapnel #16",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/544/shrapnel-16"
+  },
+  {
+    "sku": "",
+    "abbrev": "Shrap17",
+    "title": "Shrapnel #17",
+    "mul_url": "https://battletech.com/shrapnel/"
+  },
+  {
+    "sku": "",
+    "abbrev": "Shrap19",
+    "title": "Shrapnel #19",
+    "mul_url": "https://battletech.com/shrapnel/"
+  },
+  {
+    "sku": "",
+    "abbrev": "Shrap20",
+    "title": "Shrapnel #20",
+    "mul_url": "https://battletech.com/shrapnel/"
+  },
+  {
+    "sku": "",
+    "abbrev": "Shrap21",
+    "title": "Shrapnel #21",
+    "mul_url": "https://battletech.com/shrapnel/"
+  },
+  {
+    "sku": "",
+    "abbrev": "Shrap22",
+    "title": "Shrapnel #22",
+    "mul_url": "https://battletech.com/shrapnel/"
+  },
+  {
+    "sku": "",
+    "abbrev": "Shrap23",
+    "title": "Shrapnel #23",
+    "mul_url": "https://battletech.com/shrapnel/"
+  },
+  {
+    "sku": "",
+    "abbrev": "Shrap24",
+    "title": "Shrapnel #24",
+    "mul_url": "https://battletech.com/shrapnel/"
+  },
+  {
+    "id": 464,
+    "sku": "",
+    "abbrev": "ShrapRS",
+    "title": "Shrapnel Website",
+    "image": "https://i.ibb.co/q0tJrFF/shrapnel-logo.png",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/464"
+  },
+  {
+    "id": 285,
+    "sku": "FAS1630",
+    "abbrev": "SLSB",
+    "title": "Star League",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1630.StarLeague_1024x1024.jpg?v=1477275224",
+    "url": "https://store.catalystgamelabs.com/products/battletech-star-league-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/285"
+  },
+  {
+    "id": 270,
+    "sku": "",
+    "abbrev": "SO",
+    "title": "Strategic Operations: Advanced Aerospace Rules",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35004_BattleTech-Strategic-Operations-4th-Printing_480x.png?v=1645053853",
+    "url": "https://store.catalystgamelabs.com/products/battletech-strategic-operations",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/270"
+  },
+  {
+    "id": 447,
+    "sku": "E-CAT35SN104",
+    "abbrev": "SO:HH",
+    "title": "Spotlight On: Holt's Hilltoppers",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35SN104-Spotlight-On-Holt_s-Hilltoppers-1_480x.jpg?v=1542411419",
+    "url": "https://store.catalystgamelabs.com/products/battletech-spotlight-on-holts-hilltoppers",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/447"
+  },
+  {
+    "id": 505,
+    "sku": "E-CAT35SN114",
+    "abbrev": "SO:HK",
+    "title": "Spotlight On: Hellion Keshik",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35SN114_BattleTech-Spotlight-On-Hellion-Keshik-1_1024x1024.jpg?v=1632282774",
+    "url": "https://store.catalystgamelabs.com/products/battletech-spotlight-on-hellion-keshik",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/505"
+  },
+  {
+    "id": 424,
+    "sku": "E-CAT35SN109",
+    "abbrev": "SO:TP",
+    "title": "Spotlight On: Thermo Police",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35SN109_Spotlight-On-Thermo-Police-1_480x.png?v=1595608402",
+    "url": "https://store.catalystgamelabs.com/products/battletech-spotlight-on-thermo-police",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/424"
+  },
+  {
+    "id": 448,
+    "sku": "E-CAT35SN107",
+    "abbrev": "SO:UF",
+    "title": "Spotlight On: Unending Faith",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35SN107-Spotlight-On-Unending-Faith-1_480x.jpg?v=1540538877",
+    "url": "https://store.catalystgamelabs.com/products/spotlight-on-unending-faith",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/448"
+  },
+  {
+    "id": 291,
+    "sku": "",
+    "abbrev": "Tactics of Duty",
+    "title": "Tactics of Duty",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT36027_Tactics-of-Duty_480x.jpg?v=1507638503",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-tactics-of-duty",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/291"
+  },
+  {
+    "id": 290,
+    "sku": "",
+    "abbrev": "Threads of Ambition",
+    "title": "Threads of Ambition",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35016_Threads-of-Ambition_480x.jpg?v=1523710043",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-threads-of-ambition-capellan-solution-v-1",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/290"
+  },
+  {
+    "id": 296,
+    "sku": "CAT35002c",
+    "abbrev": "TM",
+    "title": "TechManual",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35002_BattleTech-TechManual-6th-Printing-1_480x.png?v=1645055433",
+    "url": "https://store.catalystgamelabs.com/products/battletech-techmanual-book-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/296"
+  },
+  {
+    "id": 419,
+    "sku": "E-CAT35400",
+    "abbrev": "Total Chaos",
+    "title": "Total Chaos",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35400_Total-Chaos220_240x.jpg?v=1477279212",
+    "url": "https://store.catalystgamelabs.com/products/battletech-total-chaos-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/419"
+  },
+  {
+    "id": 337,
+    "sku": "FAS1605",
+    "abbrev": "TotBWC",
+    "title": "Tales of the Black Widow Company",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/FAS1605.blackwidow_360x.gif?v=1476806493",
+    "url": "https://store.catalystgamelabs.com/products/battletech-tales-of-the-black-widow-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/337"
+  },
+  {
+    "id": 272,
+    "sku": "CAT35003VB",
+    "abbrev": "TO:AUE",
+    "title": "Tactical Operations: Advanced Units and Equipment",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35003VB_BattleTechTacticalOperationsAdvancedUnitsandEquipment6thP_480x.jpg?v=1665117632",
+    "url": "https://store.catalystgamelabs.com/products/battletech-tactical-operations-advanced-units-equipement",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/272"
+  },
+  {
+    "id": 459,
+    "sku": "CAT35TP022",
+    "abbrev": "TP:39V",
+    "title": "Turning Points: War of 3039 - Vega",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/Vega-cover_1024x1024.jpg?v=1556315468",
+    "url": "https://store.catalystgamelabs.com/products/turning-points-war-of-3039-vega",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/459"
+  },
+  {
+    "id": 414,
+    "sku": "E-CAT35TP017",
+    "abbrev": "TP:Arcturus",
+    "title": "Turning Points: Arcturus ",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TP017-Battletech-Turning-Points-Arcturus_220_240x.jpg?v=1477281870",
+    "url": "https://store.catalystgamelabs.com/products/battletech-turning-points-arcturus-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/414"
+  },
+  {
+    "id": 421,
+    "sku": "E-CAT35TP018",
+    "abbrev": "TP:CC",
+    "title": "Turning Points: Capellan Crusades",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35TP018-OTP-Capellan-Crusades-220_240x.jpg?v=1529081018",
+    "url": "https://store.catalystgamelabs.com/products/battletech-operational-turning-points-capellan-crusades-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/421"
+  },
+  {
+    "id": 420,
+    "sku": "E-CAT35TP019",
+    "abbrev": "TP:EE",
+    "title": "Turning Points: Epsilon Eridani",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TP019-Battletech-Turning-Points-Epsilon-Eridani-220_240x.jpg?v=1477282261",
+    "url": "https://store.catalystgamelabs.com/products/battletech-turning-points-epsilon-eridani-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/420"
+  },
+  {
+    "id": 507,
+    "sku": "E-CAT35TP027",
+    "abbrev": "TP:Foster",
+    "title": "Turning Points: Foster",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TP027_BattleTechTurningPointsFoster-1_480x.png?v=1655480568",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-turning-points-foster",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/507"
+  },
+  {
+    "id": 496,
+    "sku": "E-CAT35TP026",
+    "abbrev": "TP:Helm",
+    "title": "Turning Points: Helm",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TP026_BattleTechTurningPointsHelm_480x.png",
+    "url": "https://store.catalystgamelabs.com/products/battletech-turning-points-helm",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/496"
+  },
+  {
+    "id": 411,
+    "sku": "E-CAT35TP016",
+    "abbrev": "TP:Irian",
+    "title": "Turning Points: Irian ",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TP016-Battletech-Turning-Points-Irian-220_240x.jpg?v=1477281736",
+    "url": "https://store.catalystgamelabs.com/products/battletech-turning-points-irian-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/411"
+  },
+  {
+    "id": 209,
+    "sku": "FAS8613p",
+    "abbrev": "TR:2750",
+    "title": "Technical Readout: 2750",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/8/82/TRO_2750.jpg/280px-bm7rj82x5sagwwwx261vy6jap6rjci2.png?timestamp=20130501174908",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-2750-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/209"
+  },
+  {
+    "id": 201,
+    "sku": "FAS8603",
+    "abbrev": "TR:3025",
+    "title": "Technical Readout: 3025",
+    "image": "https://i.ibb.co/bFk0kLQ/tr3025-fasa.png",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3025-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/201"
+  },
+  {
+    "id": 321,
+    "sku": "FAS8603",
+    "abbrev": "TR:3025r",
+    "title": "Technical Readout: 3025 Revised",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/0/0a/TRO_3025r.JPG/280px-14q9hiadaora3isvxie43823b6fwbgp.png?timestamp=20130501174237",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/321"
+  },
+  {
+    "id": 334,
+    "sku": "FAS8606",
+    "abbrev": "TR:3026",
+    "title": "Technical Readout 3026",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/6/64/TRO_3026.jpg/280px-n1e6e4w6poo841yrbpd9rtuxbl2p0j6.jpg?timestamp=20061024193908",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/334"
+  },
+  {
+    "id": 289,
+    "sku": "FRP10992",
+    "abbrev": "TR:3026r",
+    "title": "Technical Readout: 3026 Revised",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/a/a0/TRO_3026r.JPG/280px-p4s3ymmyrxubeawjf2ucoc80x4hpbyh.png?timestamp=20130501174539",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3026-revised-edition-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/289"
+  },
+  {
+    "id": 180,
+    "sku": "CAT35121c",
+    "abbrev": "TR:3039",
+    "title": "Technical Readout: 3039",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/8/8e/Tro3039.gif/280px-2gok6wb1zeuhmwnrw9p8httxri2m0a9.gif?timestamp=20081201032700",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3039-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/180"
+  },
+  {
+    "id": 221,
+    "sku": "FAS8614",
+    "abbrev": "TR:3050",
+    "title": "Technical Readout: 3050",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/3/3e/TRO_3050.JPG/280px-bekz31twgu5ixf8vhoc36n7julyh17c.jpg?timestamp=20061025130735",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/221"
+  },
+  {
+    "id": 231,
+    "sku": "CAT35122",
+    "abbrev": "TR:3050U",
+    "title": "Technical Readout: 3050 Upgrade",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/e/e5/TRO3050U.gif/280px-kem03un5jwnk4l3jffis1kb0e96zz7g.gif?timestamp=20081201022437",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3050-upgrade-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/231"
+  },
+  {
+    "id": 237,
+    "sku": "CAT35123p",
+    "abbrev": "TR:3055U",
+    "title": "Technical Readout: 3055 Upgrade",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/9/96/TRO_3055U_Reprint.jpg/779px-l2brgvsqosilhvqlhve8e7orzr1ylus.jpg?timestamp=20141127011306",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3055-upgrade-pdf-1",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/237"
+  },
+  {
+    "id": 256,
+    "sku": "FPR35007p",
+    "abbrev": "TR:3057r",
+    "title": "Technical Readout: 3057 (Revised Edition)",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/a/a6/TRO_3057r.JPG/280px-fkgbrqxvc2kba66vlln4uihvphcpw0n.png?timestamp=20130501175225",
+    "url": "http://www.battlecorps.com/catalog/product_info.php?products_id=56",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/256"
+  },
+  {
+    "id": 240,
+    "sku": "CAT35125p",
+    "abbrev": "TR:3058U",
+    "title": "Technical Readout: 3058 Upgrade",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/b/b2/3058u_cgl_2ndcorrprint.png/778px-6n8kw940s7dagwkx02k902ycr47ro4h.png?timestamp=20170616203603",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3058-upgrade-pdf-1",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/240"
+  },
+  {
+    "id": 229,
+    "sku": "CAT35126",
+    "abbrev": "TR:3060",
+    "title": "Technical Readout: 3060",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/d/db/CAT35126_Technical-Readout-3060.gif/280px-3mu7fvhim2o8su160y0vijz5ewzfgr5.gif?timestamp=20091231041804",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3060-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/229"
+  },
+  {
+    "id": 246,
+    "sku": "FPR35009p",
+    "abbrev": "TR:3067",
+    "title": "Technical Readout: 3067",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35127-BattleTech-Technical-Readout-3067-220_240x.jpg?v=1477279043",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3067-pdf-1",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/246"
+  },
+  {
+    "id": 189,
+    "sku": "CAT35130",
+    "abbrev": "TR:3075",
+    "title": "Technical Readout: 3075",
+    "image": "http://cfw.sarna.net/wiki/images/7/73/Tro3075.jpg?timestamp=20081121045448",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3075-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/189"
+  },
+  {
+    "id": 202,
+    "sku": "CAT35131",
+    "abbrev": "TR:3085",
+    "title": "Technical Readout: 3085",
+    "image": "http://cfw.sarna.net/wiki/images/2/22/TRO3085.jpg?timestamp=20100730121712",
+    "url": "http://bg.battletech.com/?wpsc-product=technical-readout-3085",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/202"
+  },
+  {
+    "id": 226,
+    "sku": "CAT35S001p",
+    "abbrev": "TR:3085S",
+    "title": "Technical Readout: 3085 Supplemental",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/2/22/TRO3085.jpg/280px-j9ikirzhh8ub0fe8bxa8j8jnw3nh5ri.jpg?timestamp=20100730121712",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3085-supplemental-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/226"
+  },
+  {
+    "id": 440,
+    "sku": "CAT35133",
+    "abbrev": "TR:3145",
+    "title": "Technical Readout: 3145",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/0/00/TRO3145.jpg/280px-aehcroru1se3cgk0rmmgeg451t73x2t.jpg?timestamp=20130929205855",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3145-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/440"
+  },
+  {
+    "id": -1,
+    "sku": "",
+    "abbrev": "TR:3145:C",
+    "title": "Technical Readout: 3145 The Clans",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/0/00/TRO3145.jpg/280px-aehcroru1se3cgk0rmmgeg451t73x2t.jpg?timestamp=20130929205855",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3145-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/440"
+  },
+  {
+    "id": -1,
+    "sku": "",
+    "abbrev": "TR:3145:CC",
+    "title": "Technical Readout: 3145 Capellan Confederation",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/0/00/TRO3145.jpg/280px-aehcroru1se3cgk0rmmgeg451t73x2t.jpg?timestamp=20130929205855",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3145-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/440"
+  },
+  {
+    "id": -1,
+    "sku": "",
+    "abbrev": "TR:3145:DC",
+    "title": "Technical Readout: 3145 Draconis Combine",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/0/00/TRO3145.jpg/280px-aehcroru1se3cgk0rmmgeg451t73x2t.jpg?timestamp=20130929205855",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3145-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/440"
+  },
+  {
+    "id": -1,
+    "sku": "",
+    "abbrev": "TR:3145:FS",
+    "title": "Technical Readout: 3145 Federated Suns",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/0/00/TRO3145.jpg/280px-aehcroru1se3cgk0rmmgeg451t73x2t.jpg?timestamp=20130929205855",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3145-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/440"
+  },
+  {
+    "id": -1,
+    "sku": "",
+    "abbrev": "TR:3145:FWL",
+    "title": "Technical Readout: 3145 Free Worlds League",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/0/00/TRO3145.jpg/280px-aehcroru1se3cgk0rmmgeg451t73x2t.jpg?timestamp=20130929205855",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3145-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/440"
+  },
+  {
+    "id": -1,
+    "sku": "",
+    "abbrev": "TR:3145:LC",
+    "title": "Technical Readout: 3145 Lyran Commonwealth",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/0/00/TRO3145.jpg/280px-aehcroru1se3cgk0rmmgeg451t73x2t.jpg?timestamp=20130929205855",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3145-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/440"
+  },
+  {
+    "id": -1,
+    "sku": "",
+    "abbrev": "TR:3145:Merc",
+    "title": "Technical Readout: 3145 Mercenaries",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/0/00/TRO3145.jpg/280px-aehcroru1se3cgk0rmmgeg451t73x2t.jpg?timestamp=20130929205855",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3145-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/440"
+  },
+  {
+    "id": -1,
+    "sku": "",
+    "abbrev": "TR:3145:RotS",
+    "title": "Technical Readout: 3145 Republic of the Sphere",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/0/00/TRO3145.jpg/280px-aehcroru1se3cgk0rmmgeg451t73x2t.jpg?timestamp=20130929205855",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3145-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/440"
+  },
+  {
+    "id": 441,
+    "sku": "CAT35134",
+    "abbrev": "TR:3150",
+    "title": "Technical Readout: 3150",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/8/8e/TRO3150.JPG/280px-9bzqly71cvfpr8toj0ysykqth9hvjo4.jpg?timestamp=20150721005258",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-3150-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/441"
+  },
+  {
+    "id": 436,
+    "sku": "CAT35136",
+    "abbrev": "TR:CI",
+    "title": "Technical Readout: Clan Invasion",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35136_BatleTech_Technical_Readout_Clan_Invasion_480x.jpg?v=1562651508",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-clan-invasion",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/436"
+  },
+  {
+    "id": 514,
+    "sku": "CAT35138",
+    "abbrev": "TR:DA",
+    "title": "Technical Readout: Dark Age",
+    "image": "https://i.ibb.co/fQfxdFw/trda.png",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-technical-readout-dark-age",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/514"
+  },
+  {
+    "id": 445,
+    "sku": "CAT35TRO10",
+    "abbrev": "TR:GC",
+    "title": "Technical Readout: Golden Century",
+    "image": "https://i.ibb.co/dbSWkDh/trogoldencentury.png",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-golden-century",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/445"
+  },
+  {
+    "id": 460,
+    "sku": "E-CAT35TR011",
+    "abbrev": "TR:I",
+    "title": "Technical Readout: Irregulars",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR011_BattleTechTechnicalReadoutIrregulars-1_480x.png?v=1612851300",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-irregulars",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/460"
+  },
+  {
+    "id": 463,
+    "sku": "CAT35137",
+    "abbrev": "TR:J",
+    "title": "Technical Readout: Jihad",
+    "image": "https://cfw.sarna.net/wiki/images/thumb/5/5d/Technical-Readout-Jihad_%28COVER%29.png/280px-2qslye7of9zn676fkt6pn4c2hdhko0q.png?timestamp=20200328015341",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-jihad?variant=31544986042402",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/463"
+  },
+  {
+    "id": 199,
+    "sku": "FPR35032p",
+    "abbrev": "TR:PP",
+    "title": "Technical Readout: Project Phoenix",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/1/13/TRO_PP.JPG/280px-42615zlyfaeprinw3vx3mrtb089jtd5.png?timestamp=20130501175514",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-project-phoenix-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/199"
+  },
+  {
+    "id": 260,
+    "sku": "CAT35132",
+    "abbrev": "TR:Proto",
+    "title": "Technical Readout: Prototypes",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35132_TROPrototypes220_240x.jpg?v=1477277987",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-prototypes-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/260"
+  },
+  {
+    "id": 422,
+    "sku": "CAT35135",
+    "abbrev": "TR:SW",
+    "title": "Technical Readout: Succession Wars",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/b/b7/TRO-SU.jpg/280px-ijcjiaquw9zxvn13hg7bzd0lxaewe7j.png?timestamp=20170725172142",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-succession-wars",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/422"
+  },
+  {
+    "id": 248,
+    "sku": "E-CAT35022X",
+    "abbrev": "TR:VAr",
+    "title": "Technical Readout: Vehicle Annex, Revised",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35022X-Battletech-Technical-Readout-Vehicle-Annex220_1024x1024.jpg",
+    "url": "https://store.catalystgamelabs.com/products/battletech-technical-readout-vehicle-annex-revised-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/248"
+  },
+  {
+    "id": 498,
+    "sku": "E-CAT35SN230",
+    "abbrev": "TtS:Granada",
+    "title": "Touring the Stars: Granada",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35SN230_BattleTechTouringtheStarsGranada-1_480x.png",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-touring-the-stars-granada",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/498"
+  },
+  {
+    "id": 477,
+    "sku": "E-CAT35SN230",
+    "abbrev": "TtS:Gulf",
+    "title": "Touring the Stars: Gulf Breeze",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35SN230_BattleTech-Touring-the-Stars-Gulf-Breeze-1_480x.jpg?v=1587093034",
+    "url": "https://store.catalystgamelabs.com/products/battletech-touring-the-stars-gulf-breeze",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/477"
+  },
+  {
+    "id": 509,
+    "sku": "E-CAT35SN231",
+    "abbrev": "TtS:Kandersteg",
+    "title": "Touring the Stars: Kandersteg",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35SN231_BattleTechTouringtheStarsKandersteg_480x.png?v=1634066184",
+    "url": "https://store.catalystgamelabs.com/products/battletech-touring-the-stars-kandersteg",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/509"
+  },
+  {
+    "id": 429,
+    "sku": "35SN227",
+    "abbrev": "TtS:Kaumberg",
+    "title": "Touring the Stars: Kaumberg",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35SN227_BattleTech-Touring-the-Stars-Kaumberg-1_480x.png?v=1595609409",
+    "url": "https://store.catalystgamelabs.com/collections/battletech/products/battletech-touring-the-stars-kaumberg",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/429"
+  },
+  {
+    "id": 469,
+    "sku": "E-CAT35SN225",
+    "abbrev": "TtS:Stotzing",
+    "title": "Touring the Stars: Stotzing",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35SN225-BattleTech-Touring-the-Stars-Stotzing_480x.jpg",
+    "url": "https://store.catalystgamelabs.com/products/battletech-touring-the-stars-stotzing",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/469"
+  },
+  {
+    "id": 449,
+    "sku": "E-CAT35SN222",
+    "abbrev": "TtS:Tortuga",
+    "title": "Touring the Stars: Tortuga Prime",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35SN222-BattleTech-Touring-the-Stars-Tortuga-1_480x.jpg?v=1544182637",
+    "url": "https://store.catalystgamelabs.com/products/battletech-touring-the-stars-tortuga-prime",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/449"
+  },
+  {
+    "id": 430,
+    "sku": "CAT35SN299",
+    "abbrev": "TtS:Valencia",
+    "title": "Touring the Stars: Valencia",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35SN229_BattleTechTouringtheStarsValencia_480x.png?v=1598028372",
+    "url": "https://store.catalystgamelabs.com/products/battletech-touring-the-stars-valencia",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/430"
+  },
+  {
+    "id": 198,
+    "sku": "CAT35001",
+    "abbrev": "TW",
+    "title": "Total Warfare",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35001V_BattleTechTotalWarfare7thPrt-1_large.png",
+    "url": "https://store.catalystgamelabs.com/products/battletech-total-warfare-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/198"
+  },
+  {
+    "id": 300,
+    "sku": "FASA1656",
+    "abbrev": "Unbound",
+    "title": "Unbound",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/8/8c/Unbound.jpg/468px-thelf98i8ijgrw60fq1yssj01be7rq8.jpg?timestamp=20080831153655",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/300"
+  },
+  {
+    "id": 309,
+    "sku": "",
+    "abbrev": "Warrior: En Garde",
+    "title": "Warrior: En Garde",
+    "image": "https://store.catalystgamelabs.com/cdn/shop/files/BattleTech-Legends-Warrior-En-Garde-Generic_480x.jpg?v=1685671874",
+    "url": "https://store.catalystgamelabs.com/products/battletech-legends-warrior-en-garde-the-warrior-trilogy-book-one",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/309"
+  },
+  {
+    "id": 339,
+    "sku": "",
+    "abbrev": "Way of the Clans",
+    "title": "Way of the Clans",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/BattleTech-Legends-Way-of-the-Clans-Generic_480x.jpg?v=1614380997",
+    "url": "http://store.catalystgamelabs.com/products/battletech-legends-the-way-of-the-clans-jade-phoenix-vol-1",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/339"
+  },
+  {
+    "id": 304,
+    "sku": "FAS1631",
+    "abbrev": "WD",
+    "title": "Wolf's Dragoons",
+    "image": "http://cfw.sarna.net/wiki/images/5/55/Wolf%27sDragoons_.jpg?timestamp=20081208025117",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/304"
+  },
+  {
+    "id": 486,
+    "sku": "",
+    "abbrev": "Wolf Hunters",
+    "title": "Wolf Hunters",
+    "image": "https://cdn.shopify.com/s/files/1/1540/0075/products/BattleTech-Legends-Wolf-Hunters-Generic_480x.jpg?v=1643319307",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/486"
+  },
+  {
+    "id": 279,
+    "sku": "CAT35306",
+    "abbrev": "WoR",
+    "title": "Wars of Reaving",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35306_The_Wars_of_Reaving220_180x.jpg?v=1477278085",
+    "url": "https://store.catalystgamelabs.com/products/battletech-the-wars-of-reaving-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/279"
+  },
+  {
+    "id": 366,
+    "sku": "E-CAT35S002",
+    "abbrev": "WoRS",
+    "title": "Wars of Reaving Supplemental",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35S002-The-Wars-of-Reaving-Supplemental220_240x.jpg?v=1477279017",
+    "url": "https://store.catalystgamelabs.com/products/battletech-the-wars-of-reaving-supplemental-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/366"
+  },
+  {
+    "id": 207,
+    "sku": "CAT35644",
+    "abbrev": "XTR:Boondocks",
+    "title": "Experimental Technical Readout: Boondocks",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/boondocks220_240x.jpg?v=1515673647",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-boondocks-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/207"
+  },
+  {
+    "id": 382,
+    "sku": "E-CAT35XT017",
+    "abbrev": "XTR:Boondoggles",
+    "title": "Experimental Technical Readout: Boondoggles",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35XT017-XTRO-Boondoggles220_240x.jpg?v=1515673647",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-boondoggles-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/382"
+  },
+  {
+    "id": 470,
+    "sku": "E-CAT35TR011",
+    "abbrev": "XTR:Caveat",
+    "title": "Experimental Technical Readout: Caveat Emptor",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35TR011_BattleTechXTROCaveatEmptor-1_480x.png",
+    "url": "https://store.catalystgamelabs.com/collections/battletech-new-arrivals/products/battletech-experimental-technical-readout-caveat-emptor",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/470"
+  },
+  {
+    "id": 263,
+    "sku": "CAT35XT009",
+    "abbrev": "XTR:Clans",
+    "title": "Experimental Technical Readout: The Clans",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/35XT009_XTRO_Clans220_360x.jpg?v=1515673753",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-the-clans-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/263"
+  },
+  {
+    "id": 360,
+    "sku": "E-CAT35XT011",
+    "abbrev": "XTR:Comstar",
+    "title": "Experimental Technical Readout: Comstar",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35XT011_XTRO-ComStar220_360x.jpg?v=1515673655",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-comstar-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/360"
+  },
+  {
+    "id": 219,
+    "sku": "CAT35643p",
+    "abbrev": "XTR:Corps",
+    "title": "Experimental Technical Readout: Corporations",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35643_XTROCorps220_240x.jpg?v=1515673659",
+    "url": "http://bg.battletech.com/?wpsc-product=experimental-tech-readout-corporations",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/219"
+  },
+  {
+    "id": 190,
+    "sku": "CAT35645",
+    "abbrev": "XTR:Davion",
+    "title": "Experimental Technical Readout: Davion",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35645_XTRO_Davion220_240x.jpg?v=1515673659",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-davion-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/190"
+  },
+  {
+    "id": 377,
+    "sku": "",
+    "abbrev": "XTR:DP",
+    "title": "Experimental Technical Readout: Deep Periphery",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/377"
+  },
+  {
+    "id": 179,
+    "sku": "CAT35642p",
+    "abbrev": "XTR:Gladiators",
+    "title": "Experimental Technical Readout: Gladiators",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/80252_240x.jpg?v=1515673663",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-gladiators-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/179"
+  },
+  {
+    "id": 378,
+    "sku": "E-CAT35XT013",
+    "abbrev": "XTR:Gunslingers",
+    "title": "Experimental Technical Readout: Gunslingers",
+    "image": "http://cfw.sarna.net/wiki/images/8/80/XTRO_Gunslingers.jpg?timestamp=20201209215433",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-gunslingers-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/378"
+  },
+  {
+    "id": 212,
+    "sku": "CAT35XT001p",
+    "abbrev": "XTR:Kurita",
+    "title": "Experimental Technical Readout: Kurita",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35XT001_XTROKurita220_360x.jpg?v=1515673672",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-kurita-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/212"
+  },
+  {
+    "id": 196,
+    "sku": "CAT35XT003",
+    "abbrev": "XTR:Liao",
+    "title": "Experimental Technical Readout: Liao",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35XT003_XTROLiao220_240x.jpg?v=1515673676",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-liao-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/196"
+  },
+  {
+    "id": 223,
+    "sku": "CAT35XT005v",
+    "abbrev": "XTR:Marik",
+    "title": "Experimental Technical Readout: Marik",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35XT005_XTROMarik220_240x.jpg?v=1515673682",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-marik-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/223"
+  },
+  {
+    "id": 186,
+    "sku": "CAT35640",
+    "abbrev": "XTR:Mercs",
+    "title": "Experimental Technical Readout: Mercs",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/5/5e/XTROMercs.jpg/280px-io3fgsi6d9m1em15bpieeotku9au3kk.jpg?timestamp=20091225095028",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-mercs-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/186"
+  },
+  {
+    "id": 369,
+    "sku": "E-CAT35XT019",
+    "abbrev": "XTR:Most Wanted",
+    "title": "Experimental Technical Readout: Most Wanted",
+    "image": "http://bg.battletech.com/wp-content/uploads/2014/11/E-CAT35XT019-XTRO-Most-Wanted-cover.jpg",
+    "url": "http://bg.battletech.com/test/product-categohttp:/bg.battletech.com/test/epubs/battletech-experimental-technical-readout-most-wanted/",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/369"
+  },
+  {
+    "id": 361,
+    "sku": "E-CAT35XT010",
+    "abbrev": "XTR:Periphery",
+    "title": "Experimental Technical Readout: Periphery",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35XT010_XTRO_Periphery220_360x.jpg?v=1515673696",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-periphery-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/361"
+  },
+  {
+    "id": 362,
+    "sku": "E-CAT35XT014",
+    "abbrev": "XTR:Phantoms",
+    "title": "Experimental Technical Readout: Phantoms",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35XT014-XTRO-Phantoms-1220_240x.jpg?v=1515673700",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-phantoms-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/362"
+  },
+  {
+    "id": 170,
+    "sku": "CAT35641",
+    "abbrev": "XTR:Pirates",
+    "title": "Experimental Technical Readout: Pirates",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35641_XTRO_Pirates_240x.jpg?v=1515673698",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-pirates-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/170"
+  },
+  {
+    "id": 172,
+    "sku": "CAT35646",
+    "abbrev": "XTR:Primitives I",
+    "title": "Experimental Technical Readout: Primitives Vol 1",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/CAT35646_XTROPrimitivesVol1220_240x.jpg?v=1515673714",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-primitives-vol-1-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/172"
+  },
+  {
+    "id": 276,
+    "sku": "E-CAT35XT002",
+    "abbrev": "XTR:Primitives II",
+    "title": "Experimental Technical Readout: Primitives Vol 2",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/35XT002-XTRO-Primitives-II-220_240x.jpg?v=1515673719",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-primitives-vol-2-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/276"
+  },
+  {
+    "id": 363,
+    "sku": "E-CAT35XT004",
+    "abbrev": "XTR:Primitives III",
+    "title": "Experimental Technical Readout: Primitives Vol 3",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35XT004-XTRO-Primitives-III-1_240x.jpg?v=1515673724",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-primitives-vol-3",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/363"
+  },
+  {
+    "id": 379,
+    "sku": "E-CAT35XT006",
+    "abbrev": "XTR:Primitives IV",
+    "title": "Experimental Technical Readout: Primitives Vol 4",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/9/95/XTRO_Primitives_IV.jpeg/280px-m1e3cz1562rjrqtgvasrozbxeqpvkhw.jpg?timestamp=20141108033114",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-primitives-iv-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/379"
+  },
+  {
+    "id": 380,
+    "sku": "E-CAT35XT015",
+    "abbrev": "XTR:Primitives V",
+    "title": "Experimental Technical Readout: Primitives Vol 5",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/E-CAT35XT015-XTRO-Primitives-V-1_480x.jpg?v=1515673711",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-primitives-v-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/380"
+  },
+  {
+    "id": 278,
+    "sku": "CAT35XT007",
+    "abbrev": "XTR:RetroTech",
+    "title": "Experimental Technical Readout: RetroTech",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/35XT008_XTRO_RetroTech220_240x.jpg?v=1515673739",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-retrotech-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/278"
+  },
+  {
+    "id": 375,
+    "sku": "E-CAT35XT021",
+    "abbrev": "XTR:RotS 1",
+    "title": "Experimental Technical Readout: Republic Volume I",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/2/26/XTRO_Republic_I.jpg/280px-iqklnq4kojjspkcpmgi33mq6z4jx1s7.jpg?timestamp=20150312231404",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-republic-volume-i-p",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/375"
+  },
+  {
+    "id": 415,
+    "sku": "E-CAT35XT025",
+    "abbrev": "XTR:RotS 2",
+    "title": "Experimental Technical Readout: Republic Volume II",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/6/64/XTRO_Republic_II.JPG/280px-slmod5tbw1eh6yy8txnnhc1074oryit.jpg?timestamp=20150605150048",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-republic-ii-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/415"
+  },
+  {
+    "id": 417,
+    "sku": "E-CAT35XT026",
+    "abbrev": "XTR:RotS 3",
+    "title": "Experimental Technical Readout: Republic Volume III",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/9/90/XTRO_Republic_III.JPG/280px-fkabjuazti1fqud5e5xihrujkxhk8qx.jpg?timestamp=20151024022157",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-republic-iii-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/417"
+  },
+  {
+    "id": 499,
+    "sku": "E-CAT35APR22",
+    "abbrev": "XTR:Royal Fantasy",
+    "title": "Experimental Technical Readout: Royal Fantasy",
+    "image": "https://i.ibb.co/YW95kzD/xtr-royal-fantasy.png",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-royal-fantasy-pdf?variant=28800081042",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/499"
+  },
+  {
+    "id": 275,
+    "sku": "CAT35XT005",
+    "abbrev": "XTR:Steiner",
+    "title": "Experimental Technical Readout: Steiner",
+    "image": "http://cdn.shopify.com/s/files/1/1540/0075/products/35XT007_XTRO_Steiner220_240x.jpg?v=1515673742",
+    "url": "https://store.catalystgamelabs.com/products/battletech-experimental-technical-readout-steiner-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/275"
+  },
+  {
+    "id": 368,
+    "sku": "E-CAT35XT016",
+    "abbrev": "XTR:SW",
+    "title": "Experimental Technical Readout: Succession Wars I",
+    "image": "http://cfw.sarna.net/wiki/images/thumb/3/3c/XTRO_Succession_Wars_Volume_1.jpg/280px-06mo3ln4m2gb5w59lgg439sdj75ez0w.jpg?timestamp=20121125202454",
+    "url": "https://store.catalystgamelabs.com/products/experimental-technical-readout-succession-wars-pdf",
+    "mul_url": "http://www.masterunitlist.info/Source/Details/368"
+  }
+]

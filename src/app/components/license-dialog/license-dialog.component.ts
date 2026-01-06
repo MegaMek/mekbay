@@ -47,7 +47,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
     BaseDialogComponent
 ],
     template: `
-    <base-dialog>
+    <base-dialog [autoHeight]="true">
       <div dialog-header><div class="title">License & Legal Notice</div></div>
       <div dialog-body>
         <p>

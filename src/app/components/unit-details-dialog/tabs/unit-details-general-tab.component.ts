@@ -36,12 +36,14 @@ import { CommonModule } from '@angular/common';
 import { Unit, UnitComponent } from '../../../models/units.model';
 import { weaponTypes, getWeaponTypeCSSClass } from '../../../utils/equipment.util';
 import { DataService } from '../../../services/data.service';
+import { DialogsService } from '../../../services/dialogs.service';
 import { LayoutService } from '../../../services/layout.service';
 import { StatBarSpecsPipe } from '../../../pipes/stat-bar-specs.pipe';
 import { FilterAmmoPipe } from '../../../pipes/filter-ammo.pipe';
 import { UnitComponentItemComponent } from '../../unit-component-item/unit-component-item.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import { BVCalculatorUtil } from '../../../utils/bv-calculator.util';
+import { SourcebookInfoDialogComponent, SourcebookInfoDialogData } from '../../sourcebook-info-dialog/sourcebook-info-dialog.component';
 
 // Matrix layout types
 type SlotSpec = string | string[];
@@ -91,6 +93,7 @@ const MATRIX_ALIGNMENT: Record<string, MatrixSpec> = {
 })
 export class UnitDetailsGeneralTabComponent {
     private dataService = inject(DataService);
+    private dialogsService = inject(DialogsService);
     private layoutService = inject(LayoutService);
 
     // Inputs
@@ -185,6 +188,20 @@ export class UnitDetailsGeneralTabComponent {
     getQuirkDesc(quirk: string): string {
         const q = this.dataService.getQuirkByName(quirk);
         return q?.description || '';
+    }
+
+    getSourcebookTitle(abbrev: string): string {
+        return this.dataService.getSourcebookTitle(abbrev);
+    }
+
+    openSourcebookDialog(abbrev: string): void {
+        const sourcebook = this.dataService.getSourcebookByAbbrev(abbrev);
+        if (!sourcebook) return;
+        
+        this.dialogsService.createDialog<void, SourcebookInfoDialogComponent, SourcebookInfoDialogData>(
+            SourcebookInfoDialogComponent,
+            { data: { sourcebook } }
+        );
     }
 
     getAreaLabel(areaName: string): string {

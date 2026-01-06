@@ -41,6 +41,7 @@ import { highlightMatches, matchesSearch, parseSearchQuery } from '../../utils/s
  */
 export interface DropdownOption {
     name: string;
+    displayName?: string;
     img?: string;
     available?: boolean;
     count?: number;
@@ -86,6 +87,20 @@ export class MultiSelectDropdownComponent {
     showUnavailableToggle = computed(() => this.multistate() && this.options().some(o => o.available === false));
     isOpen = signal(false);
     filterText = signal('');
+
+    private displayNameMap = computed(() => {
+        const map = new Map<string, string>();
+        for (const opt of this.options()) {
+            if (opt.displayName) {
+                map.set(opt.name, opt.displayName);
+            }
+        }
+        return map;
+    });
+
+    getDisplayName(name: string): string {
+        return this.displayNameMap().get(name) ?? name;
+    }
 
     selectedOptions = computed(() => {
         if (this.multistate()) {

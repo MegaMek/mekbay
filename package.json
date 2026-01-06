@@ -4,7 +4,7 @@
   "scripts": {
     "ng": "ng",
     "gen-meta": "node scripts/generate-build-meta.js",
-    "gen-assets": "node scripts/compress-assets.js",
+    "gen-assets": "node scripts/generate-assets.js",
     "prerun": "npm run gen-meta && npm run gen-assets",
     "start": "ng serve --host 0.0.0.0",
     "build": "npm run prerun && ng build --configuration=production",
@@ -32,6 +32,7 @@
     "@types/jasmine": "^5.1.13",
     "@types/jszip": "^3.4.0",
     "jasmine-core": "^5.13.0",
+    "js-yaml": "^4.1.1",
     "karma": "^6.4.4",
     "karma-chrome-launcher": "^3.2.0",
     "karma-coverage": "^2.2.1",

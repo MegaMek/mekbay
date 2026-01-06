@@ -59,10 +59,10 @@ const OVERFLOW_OVERLAY_KEY = 'tab-overflow-menu';
     selector: 'base-dialog',
     imports: [CommonModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    styleUrls: ['./base-dialog.component.css'],
+    styleUrls: ['./base-dialog.component.scss'],
     template: `
     <div class="modal-flex-center">
-      <div class="modal tv-fade" [ngClass]="modalClassFromTab()">
+      <div class="modal tv-fade" [class.auto-height]="autoHeight()" [ngClass]="modalClassFromTab()">
         <div class="modal-header" [class.tabbed]="isTabbed()">
           <ng-content select="[dialog-header]"></ng-content>
           @if (isTabbed()) {
@@ -121,6 +121,7 @@ export class BaseDialogComponent implements AfterViewInit {
     tabs = input<string[]>([]);
     activeTab = input<string>();
     overflowToDropdown = input<boolean>(false);
+    autoHeight = input<boolean>(false);
     isTabbed = computed(() => this.tabs().length > 0);
     activeTabChange = output<string>();
 

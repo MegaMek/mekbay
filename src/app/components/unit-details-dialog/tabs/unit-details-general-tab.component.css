@@ -364,13 +364,16 @@
     white-space: nowrap;
 }
 
-.bottom-info a {
+.bottom-info a,
+.bottom-info .source-link {
     color: var(--text-color);
     font-weight: bold;
     text-decoration: underline dotted;
+    cursor: pointer;
 }
 
-.bottom-info a:hover {
+.bottom-info a:hover,
+.bottom-info .source-link:hover {
     text-decoration: underline;
 }
 

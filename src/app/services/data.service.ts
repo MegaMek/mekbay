@@ -53,6 +53,7 @@ import { firstValueFrom } from 'rxjs';
 import { GameSystem, REMOTE_HOST } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
+import { Sourcebook } from '../models/sourcebook.model';
 
 /*
  * Author: Drake
@@ -129,6 +130,7 @@ export class DataService {
     public filterIndexes: Record<string, Map<string | number, Set<number>>> = {};
     private unitTypeMaxStats: UnitTypeMaxStats = {};
     private quirksMap = new Map<string, Quirk>();
+    private sourcebooksMap = new Map<string, Sourcebook>();
 
     public tagsVersion = signal(0);
 
@@ -369,6 +371,18 @@ export class DataService {
 
     public getQuirkByName(name: string): Quirk | undefined {
         return this.quirksMap.get(name);
+    }
+
+    public getSourcebookByAbbrev(abbrev: string): Sourcebook | undefined {
+        return this.sourcebooksMap.get(abbrev);
+    }
+
+    /**
+     * Get the display title for a sourcebook abbreviation.
+     * Falls back to the abbreviation itself if not found.
+     */
+    public getSourcebookTitle(abbrev: string): string {
+        return this.sourcebooksMap.get(abbrev)?.title ?? abbrev;
     }
 
     private sumWeaponDamageNoPhysical(unit: Unit, components: UnitComponent[], ignoreOneshots: boolean = false): number {
@@ -689,7 +703,10 @@ export class DataService {
         await this.dbService.waitForDbReady();
         this.logger.info('Database is ready, checking for updates...');
         try {
-            await this.checkForUpdate();
+            await Promise.all([
+                this.checkForUpdate(),
+                this.loadSourcebooks()
+            ]);
             this.logger.info('All data stores are ready.');
             this.isDataReady.set(true);
         } catch (error) {
@@ -699,6 +716,22 @@ export class DataService {
             this.isDataReady.set(hasData);
         } finally {
             this.isDownloading.set(false);
+        }
+    }
+
+    private async loadSourcebooks(): Promise<void> {
+        try {
+            const sourcebooks = await firstValueFrom(
+                this.http.get<Sourcebook[]>('assets/sourcebooks.json')
+            );
+            this.sourcebooksMap.clear();
+            for (const sb of sourcebooks) {
+                this.sourcebooksMap.set(sb.abbrev, sb);
+            }
+            this.logger.info(`Loaded ${sourcebooks.length} sourcebooks.`);
+        } catch (error) {
+            this.logger.warn('Failed to load sourcebooks: ' + error);
+            // Non-fatal, the app can continue without sourcebooks
         }
     }
 

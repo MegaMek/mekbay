@@ -1030,7 +1030,16 @@ export class UnitSearchFiltersService {
                         .map(u => getProperty(u, conf.key))
                         .filter(v => v != null && v !== '')));
                     const sortedOptions = sortAvailableDropdownOptions(allOptions, conf.sortOptions);
-                    availableOptions = sortedOptions.map(name => ({ name }));
+                    
+                    // For source filter, add displayName from sourcebook lookup
+                    if (conf.key === 'source') {
+                        availableOptions = sortedOptions.map(name => ({
+                            name,
+                            displayName: this.dataService.getSourcebookTitle(name)
+                        }));
+                    } else {
+                        availableOptions = sortedOptions.map(name => ({ name }));
+                    }
                 }
                 result[conf.key] = {
                     type: 'dropdown',
