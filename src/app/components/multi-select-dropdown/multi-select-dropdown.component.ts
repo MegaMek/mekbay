@@ -123,7 +123,10 @@ export class MultiSelectDropdownComponent {
 
     filteredOptions = computed(() => {
         const searchTokens = parseSearchQuery(this.filterText());
-        const nameFiltered = this.options().filter(option => matchesSearch(option.name, searchTokens, true));
+        const nameFiltered = this.options().filter(option => 
+            matchesSearch(option.name, searchTokens, true) || 
+            (option.displayName && matchesSearch(option.displayName, searchTokens, true))
+        );
 
         // if the toggle is off, hide unavailable items
         if (!this.showUnavailable()) {
