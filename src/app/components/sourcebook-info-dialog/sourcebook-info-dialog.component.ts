@@ -65,7 +65,7 @@ export interface SourcebookInfoDialogData {
             @if (data.sourcebook.sku) {
                 <div class="sourcebook-sku">
                     <span class="label">SKU:</span>
-                    <span class="value">{{ data.sourcebook.sku }}</span>
+                    <span class="value allow-select">{{ data.sourcebook.sku }}</span>
                 </div>
             }
             <div class="sourcebook-links">
