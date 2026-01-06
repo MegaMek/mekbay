@@ -194,6 +194,10 @@ export class UnitDetailsGeneralTabComponent {
         return this.dataService.getSourcebookTitle(abbrev);
     }
 
+    hasSourcebook(abbrev: string): boolean {
+        return !!this.dataService.getSourcebookByAbbrev(abbrev);
+    }
+
     openSourcebookDialog(abbrev: string): void {
         const sourcebook = this.dataService.getSourcebookByAbbrev(abbrev);
         if (!sourcebook) return;

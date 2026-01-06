@@ -183,7 +183,11 @@ unit().moveType }}</strong></div>
 <div class="bottom-info">
 <div class="bottom-left">
 @if (unit().source) {
-<span class="label muted">Source: </span><a class="source-link" (click)="openSourcebookDialog(unit().source)">{{ getSourcebookTitle(unit().source) }}</a>
+<span class="label muted">Source: </span>@if (hasSourcebook(unit().source)) {
+<a class="source-link" (click)="openSourcebookDialog(unit().source)">{{ getSourcebookTitle(unit().source) }}</a>
+} @else {
+<span>{{ unit().source }}</span>
+}
 }
 </div>
 <div class="bottom-right">
