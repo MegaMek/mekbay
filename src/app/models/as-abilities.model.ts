@@ -1033,6 +1033,17 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         type: SpecialAbilityType.Optional,
     },
     {
+        tag: "LPRB",
+        name: "Light Active Probe",
+        summary: [
+            "Light active probes function in the same way as standard active probes, but only have an effective range of 12”. As with standard probes, light probes automatically confer the Recon (RCN) special ability upon their users, and enable them to detect hidden units (see Hidden Units, p. 168), identify incoming sensor blips, or discover the capabilities of unknown hostile units that fall within this range (see Concealing Unit Data, p. 157)",
+            "Hostile ECM systems, including Angel ECM (AECM) and standard ECM (ECM) will overwhelm the light active probe’s abilities."
+        ],
+        rulesBook: ASRulebook.ASCE,
+        rulesPage: 86,
+        type: SpecialAbilityType.Standard,
+    },
+    {
         tag: "LTAG",
         name: "Light Target Acquisition Gear",
         summary: [
