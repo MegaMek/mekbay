@@ -35,7 +35,7 @@
                                         [useHex]="useHex()" 
                                         [cardStyle]="cardStyle()" 
                                         [isSelected]="unit()?.id === forceUnit.id"
-                                        [interactive]="forceUnit?.readOnly() !== false"
+                                        [interactive]="!!forceUnit?.readOnly()"
                                         [updatePickerPositionTrigger]="updatePickerPositionTrigger()"
                                         (editPilot)="onEditPilot($event)" />
                                     <page-canvas-overlay [unit]="cardItem.forceUnit" [width]="336" [height]="240"></page-canvas-overlay>
