@@ -328,9 +328,12 @@
     height: 100%;
     color: #fff;
     font-size: 3.5em;
-    cursor: pointer;
     transition: background-color 0.2s;
     border-right: .06em solid #000;
+
+    :host(.interactive) & {
+        cursor: pointer;
+    }
 
     &:last-child {
         border-right: none;
