@@ -129,6 +129,7 @@ export interface SourcebookInfoDialogData {
             display: flex;
             justify-content: center;
             width: 100%;
+            max-height: 400px;
         }
 
         .sourcebook-image img {
@@ -171,7 +172,7 @@ export interface SourcebookInfoDialogData {
         .sourcebook-separator {
             width: 80%;
             border: none;
-            border-top: 1px solid var(--border-color, #ccc);
+            border-top: 1px solid var(--border-color);
             margin: 8px 0;
         }
 
