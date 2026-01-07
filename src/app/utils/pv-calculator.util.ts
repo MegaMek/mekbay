@@ -36,24 +36,50 @@
  * Author: Drake
  */
 export class PVCalculatorUtil {
-    private static readonly SKILL_MODIFIERS: Record<number, number> = {
-        0: 2.4,
-        1: 1.9,
-        2: 1.5,
-        3: 1.2,
-        4: 1.0,
-        5: 0.9,
-        6: 0.8,
-        7: 0.7,
-        8: 0.6
-    };
-
+    /**
+     * Calculates the adjusted PV based on the unit's base PV and pilot skill rating.
+     * Skill 4 is the default baseline with no adjustment.
+     * 
+     * @param basePV The base Point Value at skill 4
+     * @param skill The pilot's skill rating (0-8)
+     * @returns The adjusted PV (minimum 1)
+     */
     static calculateAdjustedPV(basePV: number, skill: number): number {
-        // PV adjustment based on skill (skill 4 is baseline)
-        const modifier = this.SKILL_MODIFIERS[skill] ?? 1.0;
-        if (modifier === 1.0) {
+        if (skill === 4) {
             return basePV;
         }
-        return Math.round(basePV * modifier);
+
+        const skillDiff = skill - 4;
+        let pvChange: number;
+
+        if (skillDiff > 0) {
+            // Less experienced (skill 5+): decrease PV
+            pvChange = -this.getPVModifierPerRating(basePV, 10) * skillDiff;
+        } else {
+            // More experienced (skill 3-): increase PV
+            pvChange = this.getPVModifierPerRating(basePV, 5) * Math.abs(skillDiff);
+        }
+
+        const adjustedPV = basePV + pvChange;
+        return Math.max(1, adjustedPV); // Minimum PV is always 1
+    }
+
+    /**
+     * Determines the PV modifier per rating based on base PV and bracket size.
+     * 
+     * @param basePV The base Point Value
+     * @param bracketSize The PV bracket size (10 for decreases, 5 for increases)
+     * @returns The modifier per skill rating point
+     */
+    private static getPVModifierPerRating(basePV: number, bracketSize: number): number {
+        if (bracketSize === 10) {
+            // Low-skill decrease: 0-14=1, 15-24=2, 25-34=3, etc.
+            if (basePV <= 14) return 1;
+            return Math.floor((basePV - 15) / 10) + 2;
+        } else {
+            // Improved-skill increase: 0-7=1, 8-12=2, 13-17=3, etc.
+            if (basePV <= 7) return 1;
+            return Math.floor((basePV - 8) / 5) + 2;
+        }
     }
 }
