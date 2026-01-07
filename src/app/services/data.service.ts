@@ -54,6 +54,7 @@ import { GameSystem, REMOTE_HOST } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
 import { Sourcebook, Sourcebooks } from '../models/sourcebook.model';
+import { MULUnitSources, MULUnitSourcesData } from '../models/mul-unit-sources.model';
 
 /*
  * Author: Drake
@@ -131,6 +132,7 @@ export class DataService {
     private unitTypeMaxStats: UnitTypeMaxStats = {};
     private quirksMap = new Map<string, Quirk>();
     private sourcebooksMap = new Map<string, Sourcebook>();
+    private mulUnitSourcesMap = new Map<number, string[]>();
 
     public tagsVersion = signal(0);
 
@@ -158,6 +160,25 @@ export class DataService {
                         }
                     }
                     unit._era = foundEra; // Attach era object for fast lookup
+
+                    // Merge sources from original data and unit_sources.json
+                    const originalSource = unit.source;
+                    const sourcesSet = new Set<string>();
+
+                    // Add original source(s)
+                    if (Array.isArray(originalSource)) {
+                        originalSource.forEach(s => sourcesSet.add(s));
+                    } else if (originalSource) {
+                        sourcesSet.add(originalSource);
+                    }
+
+                    // Add sources from unit_sources.json (by MUL ID)
+                    const mulSources = this.mulUnitSourcesMap.get(unit.id);
+                    if (mulSources) {
+                        mulSources.forEach(s => sourcesSet.add(s));
+                    }
+
+                    unit.source = Array.from(sourcesSet);
                 }
                 this.loadUnitTags(data.units);
                 return data;
@@ -253,6 +274,31 @@ export class DataService {
                     era.units = new Set(era.units) as any; // Convert to Set for faster lookups
                 }
                 return data;
+            }
+        }, {
+            key: 'units_sources',
+            url: `${REMOTE_HOST}/units_sources.json`,
+            getFromLocalStorage: async () => (await this.dbService.getMULUnitSources()) ?? null,
+            putInLocalStorage: async (data: MULUnitSources) => this.dbService.saveMULUnitSources(data),
+            preprocess: (data: MULUnitSources | MULUnitSourcesData): MULUnitSources => {
+                // Handle both raw object format (from JSON file) and wrapped format (from IndexedDB)
+                let sources: MULUnitSourcesData;
+                if ('sources' in data && 'etag' in data && typeof data.sources === 'object' && !Array.isArray(data.sources)) {
+                    sources = data.sources as MULUnitSourcesData;
+                } else {
+                    sources = data as MULUnitSourcesData;
+                }
+                this.mulUnitSourcesMap.clear();
+                for (const [mulIdStr, sourceAbbrevs] of Object.entries(sources)) {
+                    const mulId = parseInt(mulIdStr, 10);
+                    if (!isNaN(mulId)) {
+                        this.mulUnitSourcesMap.set(mulId, sourceAbbrevs);
+                    }
+                }
+                return {
+                    etag: (data as any).etag || '',
+                    sources
+                };
             }
         },
         {
@@ -406,6 +452,15 @@ export class DataService {
      */
     public getSourcebookTitle(abbrev: string): string {
         return this.sourcebooksMap.get(abbrev)?.title ?? abbrev;
+    }
+
+    /**
+     * Get the sourcebook abbreviations for a unit by its MUL ID.
+     * @param mulId The Master Unit List ID of the unit
+     * @returns Array of sourcebook abbreviations, or undefined if not found
+     */
+    public getUnitSourcesByMulId(mulId: number): string[] | undefined {
+        return this.mulUnitSourcesMap.get(mulId);
     }
 
     private sumWeaponDamageNoPhysical(unit: Unit, components: UnitComponent[], ignoreOneshots: boolean = false): number {

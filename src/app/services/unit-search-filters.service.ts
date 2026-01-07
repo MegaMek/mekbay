@@ -1026,9 +1026,20 @@ export class UnitSearchFiltersService {
                     };
                     continue;
                 } else {
-                    const allOptions = Array.from(new Set(contextUnits
-                        .map(u => getProperty(u, conf.key))
-                        .filter(v => v != null && v !== '')));
+                    let allOptions: string[];
+                    // For source filter, flatten the array of sources per unit
+                    if (conf.key === 'source') {
+                        allOptions = Array.from(new Set(contextUnits
+                            .flatMap(u => {
+                                const val = getProperty(u, conf.key);
+                                return Array.isArray(val) ? val : (val ? [val] : []);
+                            })
+                            .filter(v => v != null && v !== '')));
+                    } else {
+                        allOptions = Array.from(new Set(contextUnits
+                            .map(u => getProperty(u, conf.key))
+                            .filter(v => v != null && v !== '')));
+                    }
                     const sortedOptions = sortAvailableDropdownOptions(allOptions, conf.sortOptions);
                     
                     // For source filter, add displayName from sourcebook lookup

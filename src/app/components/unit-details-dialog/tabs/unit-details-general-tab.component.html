@@ -182,11 +182,14 @@ unit().moveType }}</strong></div>
 <div class="spanner"></div>
 <div class="bottom-info">
 <div class="bottom-left">
-@if (unit().source) {
-<span class="label muted">Source: </span>@if (hasSourcebook(unit().source)) {
-<a class="source-link" (click)="openSourcebookDialog(unit().source)">{{ getSourcebookTitle(unit().source) }}</a>
+@if (unit().source && unit().source.length > 0) {
+<span class="label muted">Sources:</span>
+@for (src of unit().source; let index = $index; track src) {
+@if (hasSourcebook(src)) {
+<a class="source-link" (click)="openSourcebooksDialog(index)">{{ getSourcebookTitle(src) }}</a>
 } @else {
-<span>{{ unit().source }}</span>
+<span>{{ src }}</span>
+}
 }
 }
 </div>

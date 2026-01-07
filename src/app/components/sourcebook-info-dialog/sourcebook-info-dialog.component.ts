@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { Sourcebook } from '../../models/sourcebook.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
@@ -41,7 +41,9 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
  * Author: Drake
  */
 export interface SourcebookInfoDialogData {
-    sourcebook: Sourcebook;
+    sourcebooks: Sourcebook[];
+    unknownSources: string[];
+    selectedIndex?: number;
 }
 
 @Component({
@@ -53,31 +55,49 @@ export interface SourcebookInfoDialogData {
     },
     template: `
     <base-dialog [autoHeight]="true">
-        <div dialog-header><div class="title">{{ data.sourcebook.title }}</div></div>
-        <div dialog-body class="sourcebook-content">
-            @if (data.sourcebook.image) {
-                <div class="sourcebook-image">
-                    <img [src]="data.sourcebook.image" [alt]="data.sourcebook.title" />
+        <div dialog-header><div class="title">SOURCES</div></div>
+        <div dialog-body class="sourcebook-content" #scrollContainer>
+            @for (sourcebook of data.sourcebooks; let i = $index; let last = $last; track sourcebook.id) {
+                <div class="sourcebook-entry" [attr.data-index]="i">
+                    @if (sourcebook.image) {
+                        <div class="sourcebook-image">
+                            <img [src]="sourcebook.image" [alt]="sourcebook.title" (error)="onImageError($event)" />
+                        </div>
+                    }
+                    <div class="sourcebook-title">{{ sourcebook.title }}</div>
+                    @if (sourcebook.sku) {
+                        <div class="sourcebook-sku">
+                            <span class="label">SKU:</span>
+                            <span class="value allow-select">{{ sourcebook.sku }}</span>
+                        </div>
+                    }
+                    <div class="sourcebook-buttons">
+                        @if (sourcebook.url) {
+                            <a class="modal-btn bt-button primary" [href]="sourcebook.url" target="_blank" rel="noopener">
+                                BUY
+                            </a>
+                        }
+                        @if (sourcebook.mul_url) {
+                            <a class="modal-btn bt-button" [href]="sourcebook.mul_url" target="_blank" rel="noopener">
+                                MUL
+                            </a>
+                        }
+                    </div>
                 </div>
+                @if (!last) {
+                    <hr class="sourcebook-separator" />
+                }
             }
-            @if (data.sourcebook.sku) {
-                <div class="sourcebook-sku">
-                    <span class="label">SKU:</span>
-                    <span class="value allow-select">{{ data.sourcebook.sku }}</span>
+            @for (unknown of data.unknownSources; let last = $last; track unknown) {
+                @if (data.sourcebooks.length > 0 || !$first) {
+                    <hr class="sourcebook-separator" />
+                }
+                <div class="sourcebook-entry unknown">
+                    <div class="sourcebook-title">{{ unknown }}</div>
                 </div>
             }
         </div>
         <div dialog-footer class="footer">
-                @if (data.sourcebook.url) {
-                    <a class="modal-btn bt-button primary" [href]="data.sourcebook.url" target="_blank" rel="noopener">
-                        BUY
-                    </a>
-                }
-                @if (data.sourcebook.mul_url) {
-                    <a class="modal-btn bt-button" [href]="data.sourcebook.mul_url" target="_blank" rel="noopener">
-                        MUL
-                    </a>
-                }
             <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
         </div>
     </base-dialog>
@@ -89,6 +109,20 @@ export interface SourcebookInfoDialogData {
             align-items: center;
             gap: 8px;
             padding: 8px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .sourcebook-entry {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .sourcebook-entry.unknown {
+            opacity: 0.7;
         }
 
         .sourcebook-image {
@@ -102,6 +136,12 @@ export interface SourcebookInfoDialogData {
             height: auto;
             object-fit: contain;
             border-radius: 4px;
+        }
+
+        .sourcebook-title {
+            font-weight: 600;
+            font-size: 1.1em;
+            text-align: center;
         }
 
         .sourcebook-sku {
@@ -118,22 +158,58 @@ export interface SourcebookInfoDialogData {
             font-weight: 500;
         }
 
+        .sourcebook-buttons {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .sourcebook-buttons a {
+            text-decoration: none;
+        }
+
+        .sourcebook-separator {
+            width: 80%;
+            border: none;
+            border-top: 1px solid var(--border-color, #ccc);
+            margin: 8px 0;
+        }
+
         .footer {
             width: 100%;
             display: flex;
-            justify-content: space-around;
+            justify-content: center;
             flex-direction: row;
             gap: 8px;
         }
-        
-        [dialog-footer] a {
-            text-decoration: none;
-        }
     `]
 })
-export class SourcebookInfoDialogComponent {
+export class SourcebookInfoDialogComponent implements AfterViewInit {
     private dialogRef = inject(DialogRef);
     readonly data: SourcebookInfoDialogData = inject(DIALOG_DATA);
+    
+    private scrollContainer = viewChild<ElementRef<HTMLElement>>('scrollContainer');
+
+    ngAfterViewInit(): void {
+        const idx = this.data.selectedIndex;
+        if (idx == null || idx < 0) return;
+        
+        // Small delay to ensure DOM is fully rendered
+        requestAnimationFrame(() => {
+            const container = this.scrollContainer()?.nativeElement;
+            if (!container) return;
+            
+            const entry = container.querySelector(`[data-index="${idx}"]`) as HTMLElement;
+            if (entry) {
+                entry.scrollIntoView({ behavior: 'instant', block: 'start' });
+            }
+        });
+    }
+
+    onImageError(event: Event): void {
+        const img = event.target as HTMLImageElement;
+        img.style.display = 'none';
+    }
 
     close() {
         this.dialogRef.close();

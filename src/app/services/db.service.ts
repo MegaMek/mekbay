@@ -38,6 +38,7 @@ import { Factions } from '../models/factions.model';
 import { Options } from '../models/options.model';
 import { Quirks } from '../models/quirks.model';
 import { Sourcebooks } from '../models/sourcebook.model';
+import { MULUnitSources } from '../models/mul-unit-sources.model';
 import { EquipmentData } from '../models/equipment.model';
 import { Force, UnitGroup } from '../models/force.model';
 import { ForceUnit } from '../models/force-unit.model';
@@ -68,6 +69,7 @@ const TAGS_STORE = 'tagsStore';
 const OPTIONS_KEY = 'options';
 const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
+const MUL_UNIT_SOURCES_KEY = 'mulUnitSources';
 
 const MAX_SHEET_CACHE_COUNT = 5000; // Max number of sheets to cache
 
@@ -290,6 +292,14 @@ export class DbService {
 
     public async saveSourcebooks(sourcebooksData: Sourcebooks): Promise<void> {
         return await this.saveDataFromGeneralStore(sourcebooksData, SOURCEBOOKS_KEY);
+    }
+
+    public async getMULUnitSources(): Promise<MULUnitSources | null> {
+        return await this.getDataFromGeneralStore<MULUnitSources>(MUL_UNIT_SOURCES_KEY);
+    }
+
+    public async saveMULUnitSources(data: MULUnitSources): Promise<void> {
+        return await this.saveDataFromGeneralStore(data, MUL_UNIT_SOURCES_KEY);
     }
 
     public async getTags(): Promise<StoredTags | null> {

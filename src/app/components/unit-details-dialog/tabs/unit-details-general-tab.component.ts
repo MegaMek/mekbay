@@ -44,6 +44,7 @@ import { UnitComponentItemComponent } from '../../unit-component-item/unit-compo
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import { BVCalculatorUtil } from '../../../utils/bv-calculator.util';
 import { SourcebookInfoDialogComponent, SourcebookInfoDialogData } from '../../sourcebook-info-dialog/sourcebook-info-dialog.component';
+import { Sourcebook } from '../../../models/sourcebook.model';
 
 // Matrix layout types
 type SlotSpec = string | string[];
@@ -194,18 +195,31 @@ export class UnitDetailsGeneralTabComponent {
         return this.dataService.getSourcebookTitle(abbrev);
     }
 
-    hasSourcebook(abbrev: string): boolean {
-        return !!this.dataService.getSourcebookByAbbrev(abbrev);
-    }
 
-    openSourcebookDialog(abbrev: string): void {
-        const sourcebook = this.dataService.getSourcebookByAbbrev(abbrev);
-        if (!sourcebook) return;
+    openSourcebooksDialog(index: number): void {
+        const sources = this.unit().source;
+        if (!sources || sources.length === 0) return;
+        
+        const sourcebooks: Sourcebook[] = [];
+        const unknownSources: string[] = [];
+        
+        for (const abbrev of sources) {
+            const sourcebook = this.dataService.getSourcebookByAbbrev(abbrev);
+            if (sourcebook) {
+                sourcebooks.push(sourcebook);
+            } else {
+                unknownSources.push(abbrev);
+            }
+        }
         
         this.dialogsService.createDialog<void, SourcebookInfoDialogComponent, SourcebookInfoDialogData>(
             SourcebookInfoDialogComponent,
-            { data: { sourcebook } }
+            { data: { sourcebooks, unknownSources, selectedIndex: index } }
         );
+    }
+
+    hasSourcebook(abbrev: string): boolean {
+        return !!this.dataService.getSourcebookByAbbrev(abbrev);
     }
 
     getAreaLabel(areaName: string): string {

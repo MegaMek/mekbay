@@ -85,7 +85,7 @@ export interface Unit {
     omni: number;
     engine: string;
     engineRating: number;
-    source: string;
+    source: string[];
     role: string;
     armorType: string;
     structureType: string;
