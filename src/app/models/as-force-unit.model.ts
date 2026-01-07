@@ -664,7 +664,10 @@ export class ASForceUnit extends ForceUnit {
         const groundTmm = tmmByMode[''];
 
         // Build result with '' always first, merging modes with same TMM as ground
-        const result: { [mode: string]: number } = { '': groundTmm };
+        const result: { [mode: string]: number } = {};
+        if (groundTmm !== undefined) {
+            result[''] = groundTmm;
+        }
         for (const [mode, tmm] of Object.entries(tmmByMode)) {
             // Skip '' (already added) and modes with same TMM as ground
             if (mode === '' || tmm === groundTmm) continue;
