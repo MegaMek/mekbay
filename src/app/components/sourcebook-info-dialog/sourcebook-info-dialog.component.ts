@@ -74,7 +74,7 @@ export interface SourcebookInfoDialogData {
                     <div class="sourcebook-buttons">
                         @if (sourcebook.url) {
                             <a class="modal-btn bt-button primary" [href]="sourcebook.url" target="_blank" rel="noopener">
-                                BUY
+                                GET
                             </a>
                         }
                         @if (sourcebook.mul_url) {
