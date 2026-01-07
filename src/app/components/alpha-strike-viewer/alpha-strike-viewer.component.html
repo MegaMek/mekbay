@@ -35,7 +35,7 @@
                                         [useHex]="useHex()" 
                                         [cardStyle]="cardStyle()" 
                                         [isSelected]="unit()?.id === forceUnit.id"
-                                        [interactive]="true"
+                                        [interactive]="forceUnit?.readOnly() !== false"
                                         [updatePickerPositionTrigger]="updatePickerPositionTrigger()"
                                         (editPilot)="onEditPilot($event)" />
                                     <page-canvas-overlay [unit]="cardItem.forceUnit" [width]="336" [height]="240"></page-canvas-overlay>
@@ -55,7 +55,9 @@
     <as-interaction-overlay [force]="force()"></as-interaction-overlay>
 
     <!-- Canvas controls -->
-    <page-viewer-canvas-controls [unit]="unit()" (clearRequested)="onCanvasClearRequested()" (printRequested)="onPrintRequested()"></page-viewer-canvas-controls>
+    @if (force()?.owned() !== false) {
+        <page-viewer-canvas-controls [unit]="unit()" (clearRequested)="onCanvasClearRequested()" (printRequested)="onPrintRequested()"></page-viewer-canvas-controls>
+    }
 
     <div class="toggle-buttons screen-only">
         <button class="bt-button square" [class.active]="useHex()" (click)="toggleHexMode()" title="Toggle Hex/Inches">
