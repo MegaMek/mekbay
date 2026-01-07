@@ -547,7 +547,7 @@ export class AlphaStrikeCardComponent {
         
         // Store anchor element for position updates on scroll
         this.pickerAnchorElement = config.anchorElement;
-        const position = this.calculatePickerPosition(config.anchorElement);
+        const position = this.calculatePickerPosition(config.anchorElement, true);
         
         const compRef = createComponent(RotatingPickerComponent, {
             environmentInjector: this.envInjector,
@@ -584,7 +584,7 @@ export class AlphaStrikeCardComponent {
         this.removePicker();
         
         this.pickerAnchorElement = config.anchorElement;
-        const position = this.calculatePickerPosition(config.anchorElement);
+        const position = this.calculatePickerPosition(config.anchorElement, false);
         
         const compRef = createComponent(LinearPickerComponent, {
             environmentInjector: this.envInjector,
@@ -612,11 +612,11 @@ export class AlphaStrikeCardComponent {
         };
     }
     
-    private calculatePickerPosition(element: HTMLElement): PickerPosition {
+    private calculatePickerPosition(element: HTMLElement, centerVertically: boolean): PickerPosition {
         const rect = element.getBoundingClientRect();
         return {
             x: rect.left + rect.width / 2,
-            y: rect.top
+            y: centerVertically ? rect.top + rect.height / 2 : rect.top
         };
     }
     
@@ -629,7 +629,8 @@ export class AlphaStrikeCardComponent {
             return;
         }
         
-        const position = this.calculatePickerPosition(this.pickerAnchorElement);
+        const isRotating = this.pickerRef.componentRef.instance instanceof RotatingPickerComponent;
+        const position = this.calculatePickerPosition(this.pickerAnchorElement, isRotating);
         this.pickerRef.componentRef.setInput('position', position);
     }
     
