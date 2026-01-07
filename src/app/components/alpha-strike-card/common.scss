@@ -51,11 +51,11 @@
     paint-order: stroke fill;
     position: relative;
     font-weight: 900;
-
+    color: #000;
+    
     :host:not(.monochrome) & {
         // color: #d22027;
         // -webkit-text-stroke: 0.08em #ECD24B;
-        color: #000;
         -webkit-text-stroke: 0.08em #fff;
     }
 }
@@ -70,10 +70,8 @@
     font-weight: 900;
     color: var(--as-red);
 
-    :host:has(.monochrome) & {
+    @media print {
         color: #000;
-        // -webkit-text-stroke: 0.1em #fff;
-        // paint-order: stroke fill;
     }
 }
 
@@ -187,10 +185,10 @@
     width: 5.8em;
     padding-right: 0.2em;
     letter-spacing: -0.03em;
-    color: #000;
+    color: var(--as-red);
 
-    :host(:not(.monochrome)) & {
-        color: var(--as-red);
+    @media print {
+        color: #000;
     }
 
     .critical-row.centered-row & {
