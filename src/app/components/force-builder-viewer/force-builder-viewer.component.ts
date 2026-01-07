@@ -371,7 +371,7 @@ export class ForceBuilderViewerComponent {
 
     dropForNewGroup(event: CdkDragDrop<any, any, any>) {
         const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce || !currentForce.owned()) return;
+        if (!currentForce || currentForce.readOnly()) return;
 
         // Create the group first (force.addGroup already updates force.groups())
         const newGroup = currentForce.addGroup('New Group');

@@ -125,7 +125,7 @@ export class ForceBuilderService {
     });
 
     readOnlyForce = computed<boolean>(() => {
-        return this.currentForce()?.owned() === false;
+        return this.currentForce()?.readOnly() ?? false;
     });
 
     setForce(newForce: Force | null) {

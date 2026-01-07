@@ -107,6 +107,10 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         this.injector = injector;
     }
 
+    readOnly = computed<boolean>(() => {
+        return !this.owned();
+    });
+
     units = computed<TUnit[]>(() => {
         return this.groups().flatMap(g => g.units());
     });

@@ -45,12 +45,14 @@
                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
         </button>
+        @if (!forceBuilderService.readOnlyForce()) {
         <button class="bt-button square" [cdkMenuTriggerFor]="addToForcePopupMenu" title="Add to Force">
             <svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                 <path fill-rule="evenodd" clip-rule="evenodd"
                     d="M11.25 12.75V18H12.75V12.75H18V11.25H12.75V6H11.25V11.25H6V12.75H11.25Z" />
             </svg>
         </button>
+        }
         <!-- <button class="bt-button square opfor-btn" title="OpFor">
                 <svg fill="currentColor" version="1.1" width="24px" height="24px" viewBox="0 0 96 96"
                     xmlns="http://www.w3.org/2000/svg">
@@ -109,7 +111,8 @@
                         <rect x="7" y="12" width="10" height="1.5" rx="0.75" fill="white" opacity="0.15" />
                         <rect x="7" y="15" width="6" height="1.5" rx="0.75" fill="white" opacity="0.15" />
                     </svg></span> New Force</button>
-            <button class="menu-item" [hidden]="forceBuilderService.readOnlyForce()" cdkMenuItem
+            @if (!forceBuilderService.readOnlyForce()) {
+            <button class="menu-item" cdkMenuItem
                 (click)="requestRepairAll()">
                 <span class="icon"><svg fill="currentColor" height="32px" width="32px" version="1.1"
                         xmlns="http://www.w3.org/2000/svg" viewBox="0 0 143.734 143.734" xml:space="preserve">
@@ -125,6 +128,7 @@ l29.84,29.84c-0.37,5.43,1.438,10.985,5.585,15.126c7.608,7.62,19.971,7.62,27.585,
 C130.728,104.719,125.173,102.917,119.743,103.298z M25.311,132.56l-9.923-2.649l-2.643-9.923l7.25-7.262l9.923,2.655l2.655,9.917
 L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.655l7.268,7.262L128.335,129.929z" />
                     </svg></span> Repair Force</button>
+                }
             <button class="menu-item" cdkMenuItem (click)="requestCloneForce()">
                 <span class="icon"><svg width="32px" height="32px" viewBox="0 0 16 16" fill="none"
                         xmlns="http://www.w3.org/2000/svg">
@@ -142,12 +146,14 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                     </svg></span> Load Force...</button>
                 
             @if (singleButton()) {
+                @if (!forceBuilderService.readOnlyForce()) {
                 <button class="menu-item" cdkMenuItem [cdkMenuTriggerFor]="addToForcePopupMenu" title="Add to Force">
                     <span class="icon"><svg width="32px" height="32px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                         <path fill-rule="evenodd" clip-rule="evenodd"
                             d="M11.25 12.75V18H12.75V12.75H18V11.25H12.75V6H11.25V11.25H6V12.75H11.25Z" />
                     </svg></span> Add to Force
                 </button>
+                }
                 <button class="menu-item" cdkMenuItem (click)="shareForce()" title="Share Force">
                     <span class="icon"><svg width="32px" height="32px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                         <path fill-rule="evenodd" clip-rule="evenodd"
