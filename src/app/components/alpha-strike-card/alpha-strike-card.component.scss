@@ -129,14 +129,18 @@
 
     :host(.monochrome) & {
         // bottom: 15%;
+        .logo-text {
+            fill: #000;
+        }
+    }
 
+    @media print {
         svg path {
             fill: #000 !important;
             stroke-width: 0 !important;
         }
-        
         .logo-text {
-                fill: #000;
+            fill: #000;
         }
     }
 }

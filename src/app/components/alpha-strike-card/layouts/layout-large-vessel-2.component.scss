@@ -92,10 +92,10 @@
     font-weight: 900;
     text-transform: uppercase;
     white-space: nowrap;
-    color: #000;
-
-    :host:not(.monochrome) & {
-        color: var(--as-red);
+    color: var(--as-red);
+    
+    @media print {
+        color: #000;
     }
 }
 
