@@ -33,6 +33,7 @@
 
 import { inject, Injectable } from '@angular/core';
 import { AS_SPECIAL_ABILITIES, ASSpecialAbility } from '../models/as-abilities.model';
+import { Unit } from '../models/units.model';
 import { LoggerService } from './logger.service';
 
 /**
@@ -392,5 +393,65 @@ export class AsAbilityLookupService {
         }
 
         return abilities;
+    }
+
+    /**
+     * Validates all Alpha Strike abilities from all units and logs any that couldn't be matched.
+     * This is called at startup to help identify missing ability definitions.
+     */
+    validateAllAbilities(units: Unit[]): void {
+        const unmatchedAbilities = new Map<string, string[]>(); // ability text -> unit names
+        let totalAbilities = 0;
+        let matchedAbilities = 0;
+
+        for (const unit of units) {
+            if (!unit.as?.specials) continue;
+
+            for (const abilityText of unit.as.specials) {
+                totalAbilities++;
+                const parsed = this.parseAbility(abilityText);
+
+                // Check if main ability was matched
+                if (!parsed.ability) {
+                    const existing = unmatchedAbilities.get(abilityText) || [];
+                    existing.push(unit.name);
+                    unmatchedAbilities.set(abilityText, existing);
+                } else {
+                    matchedAbilities++;
+                }
+
+                // Also check sub-abilities (e.g., inside TUR)
+                if (parsed.subAbilities) {
+                    for (const sub of parsed.subAbilities) {
+                        if (!sub.ability && sub.originalText) {
+                            // Only log if it's not a damage pattern
+                            if (!this.isDamagePattern(sub.originalText)) {
+                                const key = `${abilityText} -> ${sub.originalText}`;
+                                const existing = unmatchedAbilities.get(key) || [];
+                                existing.push(unit.name);
+                                unmatchedAbilities.set(key, existing);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Log summary
+        this.logger.info(`[AsAbilityLookupService] Ability validation complete: ${matchedAbilities}/${totalAbilities} abilities matched`);
+
+        if (unmatchedAbilities.size > 0) {
+            this.logger.warn(`[AsAbilityLookupService] ${unmatchedAbilities.size} unmatched ability patterns found:`);
+
+            // Sort by number of occurrences (most common first)
+            const sorted = Array.from(unmatchedAbilities.entries())
+                .sort((a, b) => b[1].length - a[1].length);
+
+            for (const [abilityText, unitNames] of sorted) {
+                const exampleUnits = unitNames.slice(0, 3).join(', ');
+                const moreCount = unitNames.length > 3 ? ` (+${unitNames.length - 3} more)` : '';
+                this.logger.warn(`  - "${abilityText}" (${unitNames.length} units): ${exampleUnits}${moreCount}`);
+            }
+        }
     }
 }

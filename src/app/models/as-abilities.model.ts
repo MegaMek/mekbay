@@ -1594,7 +1594,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         type: SpecialAbilityType.Optional
     },
     {
-        tag: "TSEMP#-O#",
+        tag: ["TSEMP-O#", "TSEMP#-O#"],
         name: "Tight-stream Electromagnetic Pulse Weapons",
         summary: [
             "A unit with this special ability carries tight-stream EMP weapons (TSEMPs), which function much like an energy-based version of the taser (see above).",
