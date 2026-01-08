@@ -1713,25 +1713,17 @@ export class DataService {
     /**
      * Show conflict resolution dialog when local and cloud tags are out of sync.
      */
-    private async showTagConflictDialog(): Promise<'cloud' | 'merge' | 'local'> {
-        const { ConfirmDialogComponent } = await import('../components/confirm-dialog/confirm-dialog.component');
-        
-        const ref = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
-            disableClose: true,
-            panelClass: 'tag-conflict-dialog',
-            data: {
-                title: 'Tag Sync Conflict',
-                message: 'Your local tag changes conflict with changes made on another device. How would you like to resolve this?',
-                buttons: [
-                    { label: 'USE CLOUD', value: 'cloud' },
-                    { label: 'MERGE (KEEP BOTH)', value: 'merge' },
-                    { label: 'USE LOCAL', value: 'local' }
-                ]
-            }
-        });
-
-        const result = await firstValueFrom(ref.closed);
-        return (result as 'cloud' | 'merge' | 'local') ?? 'merge'; // Default to merge if dialog dismissed
+    private showTagConflictDialog(): Promise<'cloud' | 'merge' | 'local'> {
+        return this.dialogsService.choose(
+            'Tag Sync Conflict',
+            'Your local tag changes conflict with changes made on another device. How would you like to resolve this?',
+            [
+                { label: 'USE CLOUD', value: 'cloud' as const },
+                { label: 'MERGE (KEEP BOTH)', value: 'merge' as const },
+                { label: 'USE LOCAL', value: 'local' as const }
+            ],
+            'merge'
+        );
     }
 
     /**

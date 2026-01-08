@@ -221,4 +221,33 @@ export class DialogsService {
         const result = await firstValueFrom(ref.closed);
         return result ?? null;
     }
+
+    /**
+     * Show a dialog with arbitrary buttons and return the chosen value.
+     * @param title Dialog title
+     * @param message Dialog message (plain text)
+     * @param buttons Array of buttons with labels and values
+     * @param defaultValue Value to return if dialog is dismissed without selection
+     * @param opts Additional dialog options (panelClass, messageHtml, etc.)
+     */
+    async choose<T>(
+        title: string,
+        message: string,
+        buttons: { label: string; value: T; class?: string }[],
+        defaultValue: T,
+        opts?: { panelClass?: string; messageHtml?: string }
+    ): Promise<T> {
+        const ref = this.createDialog<T>(ConfirmDialogComponent, {
+            disableClose: true,
+            panelClass: opts?.panelClass,
+            data: <ConfirmDialogData<T>>{
+                title,
+                message: opts?.messageHtml ? undefined : message,
+                messageHtml: opts?.messageHtml,
+                buttons
+            }
+        });
+        const result = await firstValueFrom(ref.closed);
+        return result ?? defaultValue;
+    }
 }
