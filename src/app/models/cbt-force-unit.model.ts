@@ -86,7 +86,9 @@ export class CBTForceUnit extends ForceUnit {
         };
 
         const crew: CrewMember[] = [];
-        for (let i = 0; i < this.unit.crewSize; i++) {
+        // Safeguard: ensure at least 1 crew member for all units except Handheld Weapons
+        const crewSize = (this.unit.crewSize === 0 && this.unit.type !== 'Handheld Weapon') ? 1 : this.unit.crewSize;
+        for (let i = 0; i < crewSize; i++) {
             crew[i] = new CrewMember(i, this);
         }
         this.state.crew.set(crew);
@@ -423,11 +425,15 @@ export class CBTForceUnit extends ForceUnit {
     public baseBvPilotAdjusted = computed<number>(() => {
         this.state.crew(); // Track crew changes
         const pilot = this.getCrewMember(0);
+        if (!pilot) return this.unit.bv; // Return base BV if no pilot
         let gunnery = pilot.getSkill('gunnery');
         let piloting = pilot.getSkill('piloting');
         let bv = this.unit.bv;
         if (this.unit.crewSize > 1) {
-            gunnery = this.getCrewMember(1).getSkill('gunnery');
+            const gunner = this.getCrewMember(1);
+            if (gunner) {
+                gunnery = gunner.getSkill('gunnery');
+            }
         }
         let adjustedBv = BVCalculatorUtil.calculateAdjustedBV(
             bv,
@@ -653,7 +659,7 @@ export class CBTForceUnit extends ForceUnit {
 
     PSRTargetRoll = computed<number>(() => {
         const pilot = this.getCrewMember(0);
-        const piloting = pilot.getSkill('piloting');
+        const piloting = pilot?.getSkill('piloting') ?? 5; // Default to 5 if no pilot
         const modifiers = this.PSRModifiers();
         return piloting + modifiers.modifier;
     });
