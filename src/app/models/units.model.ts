@@ -67,7 +67,7 @@ export interface UnitComponent {
     eq?: Equipment; // linked equipment data
 }
 export interface Unit {
-    name: string;
+    name: string; // Internal unique name
     id: number; // MUL id (unique)
     chassis: string;
     model: string;
