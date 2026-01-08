@@ -85,6 +85,27 @@ export interface StoredTags {
     [unitName: string]: string[];
 }
 
+/**
+ * Chassis tags are stored by chassis+type key to apply to all variants of a chassis.
+ * Key format: `${chassis}|${type}` e.g. "Atlas|Mek"
+ */
+export interface StoredChassisTags {
+    [chassisTypeKey: string]: string[];
+}
+
+/**
+ * Combined tag data structure for cloud sync.
+ * Contains both name-specific and chassis-wide tags.
+ */
+export interface TagData {
+    /** Tags keyed by unit name */
+    nameTags: StoredTags;
+    /** Tags keyed by chassis|type */
+    chassisTags: StoredChassisTags;
+    /** Timestamp of last modification for sync purposes */
+    timestamp: number;
+}
+
 export interface UserData {
     uuid: string;
     tabSubs?: string[];
@@ -308,6 +329,68 @@ export class DbService {
 
     public async saveTags(tags: StoredTags): Promise<void> {
         return await this.saveDataToStore(tags, 'main', TAGS_STORE);
+    }
+
+    public async getChassisTags(): Promise<StoredChassisTags | null> {
+        return await this.getDataFromStore<StoredChassisTags>('chassis', TAGS_STORE);
+    }
+
+    public async saveChassisTags(tags: StoredChassisTags): Promise<void> {
+        return await this.saveDataToStore(tags, 'chassis', TAGS_STORE);
+    }
+
+    public async getTagsTimestamp(): Promise<number | null> {
+        return await this.getDataFromStore<number>('timestamp', TAGS_STORE);
+    }
+
+    public async saveTagsTimestamp(timestamp: number): Promise<void> {
+        return await this.saveDataToStore(timestamp, 'timestamp', TAGS_STORE);
+    }
+
+    /**
+     * Get all tag data (name tags, chassis tags, and timestamp) in a single read transaction.
+     */
+    public async getAllTagData(): Promise<TagData | null> {
+        const db = await this.dbPromise;
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(TAGS_STORE, 'readonly');
+            const store = transaction.objectStore(TAGS_STORE);
+
+            const nameTags: StoredTags = {};
+            const chassisTags: StoredChassisTags = {};
+            let timestamp = 0;
+
+            const mainRequest = store.get('main');
+            const chassisRequest = store.get('chassis');
+            const timestampRequest = store.get('timestamp');
+
+            transaction.oncomplete = () => {
+                resolve({
+                    nameTags: mainRequest.result || {},
+                    chassisTags: chassisRequest.result || {},
+                    timestamp: timestampRequest.result || 0
+                });
+            };
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /**
+     * Save all tag data (name tags, chassis tags, and timestamp) in a single write transaction.
+     */
+    public async saveAllTagData(data: TagData): Promise<void> {
+        const db = await this.dbPromise;
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(TAGS_STORE, 'readwrite');
+            const store = transaction.objectStore(TAGS_STORE);
+
+            store.put(data.nameTags, 'main');
+            store.put(data.chassisTags, 'chassis');
+            store.put(data.timestamp, 'timestamp');
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
     }
 
     public async getForce(instanceId: string): Promise<SerializedForce | null> {

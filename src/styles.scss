@@ -844,23 +844,6 @@ hr.divider {
     justify-content: flex-end;
 }
 
-.tags-counter {
-    font-size: 0.75em;
-    color: var(--bt-yellow);
-}
-
-.tag {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    background-color: #FFF3;
-    border: 1px solid var(--text-color-secondary);
-    border-radius: 12px;
-    font-size: 0.75em;
-    color: #fff;
-    white-space: nowrap;
-}
-
 .add-tag-btn {
     display: inline-flex;
     align-items: center;

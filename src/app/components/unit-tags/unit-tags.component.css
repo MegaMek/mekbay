@@ -11,12 +11,25 @@
 
 /* Tag pills for full mode */
 .tag {
-    background-color: rgba(0, 0, 0, 0.3);
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.75em;
+    background-color: #FFF3;
     color: var(--text-color);
+    border: 1px solid var(--text-color-secondary);
     padding: 2px 6px;
     font-size: 0.75em;
-    border-radius: 2px;
     white-space: nowrap;
+}
+
+/* Name-specific tags (yellow tint) */
+.tag-name {
+    background-color: rgba(255, 193, 7, 0.2);
+}
+
+/* Chassis-wide tags (teal tint) */
+.tag-chassis {
+    background-color: rgba(78, 201, 176, 0.2);
 }
 
 /* Add tag button */

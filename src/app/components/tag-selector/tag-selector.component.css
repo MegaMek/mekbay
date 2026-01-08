@@ -3,15 +3,21 @@
     color: white;
     min-width: 200px;
     max-width: 300px;
-    max-height: 400px;
+    max-height: 450px;
     display: flex;
     flex-direction: column;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    overflow-y: auto;
 }
 
-.tag-selector-list {
+.tag-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.tag-list {
+    max-height: 180px;
     overflow-y: auto;
-    max-height: 350px;
 }
 
 .tag-option {
@@ -23,7 +29,6 @@
     text-align: left;
     cursor: pointer;
     font-size: 0.9em;
-    border-bottom: 1px solid #444;
     transition: background-color 0.2s;
     display: flex;
     align-items: center;
@@ -43,12 +48,30 @@
     font-weight: 500;
 }
 
+.tag-option-chassis-item.tag-assigned {
+    color: var(--bt-teal, #4ec9b0);
+}
+
 .tag-option.tag-assigned {
     color: var(--bt-yellow);
 }
 
 .tag-option.tag-assigned:hover {
     cursor: default;
+}
+
+.tag-option.tag-covered {
+    color: #666;
+    cursor: default;
+    opacity: 0.6;
+}
+
+.tag-option.tag-covered:hover {
+    background-color: transparent;
+}
+
+.tag-option.tag-partial:hover {
+    cursor: pointer;
 }
 
 .tag-label {
@@ -96,6 +119,6 @@
     font-size: 0.9em;
 }
 
-.tag-option:last-child {
+.tag-list .tag-option:last-child {
     border-bottom: none;
 }

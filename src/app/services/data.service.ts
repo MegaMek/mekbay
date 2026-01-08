@@ -36,7 +36,7 @@ import { HttpClient } from '@angular/common/http';
 import { Unit, UnitComponent, Units } from '../models/units.model';
 import { Faction, Factions } from '../models/factions.model';
 import { Era, Eras } from '../models/eras.model';
-import { DbService, StoredTags } from './db.service';
+import { DbService, StoredTags, StoredChassisTags, TagData } from './db.service';
 import { ADVANCED_FILTERS, AdvFilterType, SerializedSearchFilter } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
@@ -356,7 +356,34 @@ export class DataService {
                     flushOnUnload();
                 }
             });
+
+            // Handle network online event to sync tags from cloud
+            window.addEventListener('online', () => {
+                // Small delay to let WS reconnect first
+                setTimeout(() => this.syncTagsFromCloud(), 1000);
+            });
         }
+
+        // Register WS message handlers for tag sync
+        this.setupTagSyncHandlers();
+    }
+
+    /**
+     * Set up WebSocket handlers for tag synchronization.
+     */
+    private setupTagSyncHandlers(): void {
+        // Handle remote tag updates from other sessions of the same user
+        this.wsService.registerMessageHandler('updatedTags', async (msg) => {
+            if (msg.data) {
+                await this.handleRemoteTagUpdate(msg.data);
+            }
+        });
+
+        // Handle userState response after register (includes tag sync trigger)
+        this.wsService.registerMessageHandler('userState', async (msg) => {
+            // After registration, sync tags from cloud
+            await this.syncTagsFromCloud();
+        });
     }
 
     public notifyStoreUpdated(action: BroadcastPayload['action'], store?: string, meta?: any) {
@@ -373,20 +400,34 @@ export class DataService {
             const action = msg.action;
             const context = msg.context;
             if (action === 'update' && context === 'tags') {
-                this.loadUnitTags(this.getUnits());
+                await this.loadUnitTags(this.getUnits());
             }
         } catch (err) {
             this.logger.error('Error handling store update broadcast: ' + err);
         }
     }
 
+    /**
+     * Generates the chassis tag key for a unit.
+     * Format: `${chassis}|${type}` to uniquely identify a chassis across types.
+     */
+    public static getChassisTagKey(unit: Unit): string {
+        return `${unit.chassis}|${unit.type}`;
+    }
+
+    /**
+     * Load tags from IndexedDB and apply them to units.
+     * Tags are stored separately as _nameTags and _chassisTags on each unit.
+     */
     private async loadUnitTags(units: Unit[]): Promise<void> {
-        const storedTags = await this.dbService.getTags();
-        if (!storedTags) return;
+        const tagData = await this.dbService.getAllTagData();
+        const nameTags = tagData?.nameTags || {};
+        const chassisTags = tagData?.chassisTags || {};
 
         for (const unit of units) {
-            const tags = storedTags[unit.name];
-            unit._tags = tags ?? [];
+            const chassisKey = DataService.getChassisTagKey(unit);
+            unit._nameTags = nameTags[unit.name] ?? [];
+            unit._chassisTags = chassisTags[chassisKey] ?? [];
         }
         this.tagsVersion.set(this.tagsVersion() + 1);
     }
@@ -1229,15 +1270,298 @@ export class DataService {
      * Tags
      */
 
+    /** Cached tag data for detecting changes during save */
+    private cachedTagData: TagData | null = null;
+
+    /**
+     * Save unit tags to local storage.
+     * This is the legacy method that only saves name-based tags.
+     * For new code, use modifyTag() instead.
+     * @deprecated Use modifyTag() for new implementations
+     */
     public async saveUnitTags(units: Unit[]): Promise<void> {
         const tagsToSave: StoredTags = {};
         for (const unit of units) {
-            if (unit._tags && unit._tags.length > 0) {
-                tagsToSave[unit.name] = unit._tags;
+            if (unit._nameTags && unit._nameTags.length > 0) {
+                tagsToSave[unit.name] = unit._nameTags;
             }
         }
         await this.dbService.saveTags(tagsToSave);
         this.notifyStoreUpdated('update', 'tags');
+    }
+
+    /**
+     * Add or remove a tag from units, with support for chassis-wide tagging.
+     * @param units The units to tag
+     * @param tag The tag to add
+     * @param tagType 'name' for unit-specific or 'chassis' for chassis-wide
+     * @param action 'add' to add the tag, 'remove' to remove it
+     */
+    public async modifyTag(
+        units: Unit[], 
+        tag: string, 
+        tagType: 'name' | 'chassis',
+        action: 'add' | 'remove'
+    ): Promise<void> {
+        const tagData = await this.dbService.getAllTagData() ?? {
+            nameTags: {},
+            chassisTags: {},
+            timestamp: 0
+        };
+
+        const trimmedTag = tag.trim();
+        const lowerTag = trimmedTag.toLowerCase();
+
+        for (const unit of units) {
+            if (tagType === 'chassis') {
+                const chassisKey = DataService.getChassisTagKey(unit);
+
+                if (action === 'add') {
+                    // When adding a chassis tag, remove any existing name tag with the same value
+                    // This "expands" the tag from unit-specific to chassis-wide
+                    if (tagData.nameTags[unit.name]) {
+                        tagData.nameTags[unit.name] = tagData.nameTags[unit.name]
+                            .filter(t => t.toLowerCase() !== lowerTag);
+                        if (tagData.nameTags[unit.name].length === 0) {
+                            delete tagData.nameTags[unit.name];
+                        }
+                    }
+
+                    // Add to chassis tags if not already present
+                    if (!tagData.chassisTags[chassisKey]) {
+                        tagData.chassisTags[chassisKey] = [];
+                    }
+                    if (!tagData.chassisTags[chassisKey].some(t => t.toLowerCase() === lowerTag)) {
+                        tagData.chassisTags[chassisKey].push(trimmedTag);
+                    }
+                } else {
+                    // Remove from chassis tags
+                    if (tagData.chassisTags[chassisKey]) {
+                        tagData.chassisTags[chassisKey] = tagData.chassisTags[chassisKey]
+                            .filter(t => t.toLowerCase() !== lowerTag);
+                        if (tagData.chassisTags[chassisKey].length === 0) {
+                            delete tagData.chassisTags[chassisKey];
+                        }
+                    }
+                }
+            } else {
+                // Name-based tagging
+                if (action === 'add') {
+                    if (!tagData.nameTags[unit.name]) {
+                        tagData.nameTags[unit.name] = [];
+                    }
+                    if (!tagData.nameTags[unit.name].some(t => t.toLowerCase() === lowerTag)) {
+                        tagData.nameTags[unit.name].push(trimmedTag);
+                    }
+                } else {
+                    if (tagData.nameTags[unit.name]) {
+                        tagData.nameTags[unit.name] = tagData.nameTags[unit.name]
+                            .filter(t => t.toLowerCase() !== lowerTag);
+                        if (tagData.nameTags[unit.name].length === 0) {
+                            delete tagData.nameTags[unit.name];
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update timestamp
+        tagData.timestamp = Date.now();
+
+        // Save to local storage
+        await this.dbService.saveAllTagData(tagData);
+
+        // Update cached data
+        this.cachedTagData = tagData;
+
+        // Reload tags on all units to reflect merged state
+        await this.loadUnitTags(this.getUnits());
+
+        // Notify other tabs
+        this.notifyStoreUpdated('update', 'tags');
+
+        // Sync to cloud
+        this.syncTagsToCloud(tagData);
+    }
+
+    /**
+     * Remove a tag from units. Removes from both name and chassis tags.
+     */
+    public async removeTagFromUnits(units: Unit[], tag: string): Promise<void> {
+        const tagData = await this.dbService.getAllTagData() ?? {
+            nameTags: {},
+            chassisTags: {},
+            timestamp: 0
+        };
+
+        const lowerTag = tag.toLowerCase();
+
+        for (const unit of units) {
+            const chassisKey = DataService.getChassisTagKey(unit);
+
+            // Remove from name tags
+            if (tagData.nameTags[unit.name]) {
+                tagData.nameTags[unit.name] = tagData.nameTags[unit.name]
+                    .filter(t => t.toLowerCase() !== lowerTag);
+                if (tagData.nameTags[unit.name].length === 0) {
+                    delete tagData.nameTags[unit.name];
+                }
+            }
+
+            // Remove from chassis tags
+            if (tagData.chassisTags[chassisKey]) {
+                tagData.chassisTags[chassisKey] = tagData.chassisTags[chassisKey]
+                    .filter(t => t.toLowerCase() !== lowerTag);
+                if (tagData.chassisTags[chassisKey].length === 0) {
+                    delete tagData.chassisTags[chassisKey];
+                }
+            }
+        }
+
+        // Update timestamp
+        tagData.timestamp = Date.now();
+
+        // Save to local storage
+        await this.dbService.saveAllTagData(tagData);
+
+        // Update cached data
+        this.cachedTagData = tagData;
+
+        // Reload tags on all units
+        await this.loadUnitTags(this.getUnits());
+
+        // Notify other tabs
+        this.notifyStoreUpdated('update', 'tags');
+
+        // Sync to cloud
+        this.syncTagsToCloud(tagData);
+    }
+
+    /**
+     * Check if a tag is assigned at the chassis level for any of the given units.
+     */
+    public async isChassisTag(units: Unit[], tag: string): Promise<boolean> {
+        const tagData = await this.dbService.getAllTagData();
+        if (!tagData) return false;
+
+        const lowerTag = tag.toLowerCase();
+        for (const unit of units) {
+            const chassisKey = DataService.getChassisTagKey(unit);
+            const chassisTags = tagData.chassisTags[chassisKey] ?? [];
+            if (chassisTags.some(t => t.toLowerCase() === lowerTag)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get the tag type for a specific tag on a unit.
+     * Returns 'chassis' if it's a chassis-wide tag, 'name' if unit-specific, or null if not found.
+     */
+    public async getTagType(unit: Unit, tag: string): Promise<'chassis' | 'name' | null> {
+        const tagData = await this.dbService.getAllTagData();
+        if (!tagData) return null;
+
+        const lowerTag = tag.toLowerCase();
+        const chassisKey = DataService.getChassisTagKey(unit);
+
+        // Check chassis tags first
+        const chassisTags = tagData.chassisTags[chassisKey] ?? [];
+        if (chassisTags.some(t => t.toLowerCase() === lowerTag)) {
+            return 'chassis';
+        }
+
+        // Check name tags
+        const nameTags = tagData.nameTags[unit.name] ?? [];
+        if (nameTags.some(t => t.toLowerCase() === lowerTag)) {
+            return 'name';
+        }
+
+        return null;
+    }
+
+    /**
+     * Sync tags to cloud storage.
+     */
+    private syncTagsToCloud(tagData: TagData): void {
+        const ws = this.wsService.getWebSocket();
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+        const uuid = this.userStateService.uuid();
+        if (!uuid) return;
+
+        this.wsService.send({
+            action: 'saveTags',
+            uuid,
+            data: tagData
+        });
+    }
+
+    /**
+     * Fetch tags from cloud and merge with local if needed.
+     * Called on login/register and when coming back online.
+     */
+    public async syncTagsFromCloud(): Promise<void> {
+        const ws = await this.canUseCloud();
+        if (!ws) return;
+
+        const uuid = this.userStateService.uuid();
+        if (!uuid) return;
+
+        try {
+            const response = await this.wsService.sendAndWaitForResponse({
+                action: 'getTags',
+                uuid
+            });
+
+            if (!response || response.action === 'error') return;
+
+            const cloudData = response.data as TagData | null;
+            const localData = await this.dbService.getAllTagData();
+
+            // Handle first-time cloud sync (no cloud data exists)
+            if (!cloudData || (!cloudData.nameTags && !cloudData.chassisTags)) {
+                // If we have local data, push it to the cloud
+                if (localData && (Object.keys(localData.nameTags).length > 0 || Object.keys(localData.chassisTags).length > 0)) {
+                    this.syncTagsToCloud(localData);
+                }
+                return;
+            }
+
+            const localTimestamp = localData?.timestamp ?? 0;
+            const cloudTimestamp = cloudData.timestamp ?? 0;
+
+            if (cloudTimestamp > localTimestamp) {
+                // Cloud is newer, use cloud data
+                await this.dbService.saveAllTagData(cloudData);
+                this.cachedTagData = cloudData;
+                await this.loadUnitTags(this.getUnits());
+                this.notifyStoreUpdated('update', 'tags');
+            } else if (localTimestamp > cloudTimestamp && localData) {
+                // Local is newer, push to cloud
+                this.syncTagsToCloud(localData);
+            }
+            // If timestamps are equal, no action needed
+        } catch (err) {
+            this.logger.error('Failed to sync tags from cloud: ' + err);
+        }
+    }
+
+    /**
+     * Handle remote tag updates from other sessions.
+     */
+    public async handleRemoteTagUpdate(tagData: TagData): Promise<void> {
+        const localData = await this.dbService.getAllTagData();
+        const localTimestamp = localData?.timestamp ?? 0;
+
+        // Only update if remote is newer
+        if (tagData.timestamp > localTimestamp) {
+            await this.dbService.saveAllTagData(tagData);
+            this.cachedTagData = tagData;
+            await this.loadUnitTags(this.getUnits());
+            this.notifyStoreUpdated('update', 'tags');
+        }
     }
 
     private async getTagsCloud(instanceId: string): Promise<StoredTags | null> {

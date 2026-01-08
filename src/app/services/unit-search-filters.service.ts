@@ -144,8 +144,23 @@ function sortAvailableDropdownOptions(options: string[], predefinedOrder?: strin
     return options.sort(naturalCompare);
 }
 
+/**
+ * Get merged tags (name + chassis) for a unit.
+ * Returns a deduplicated array combining both tag types.
+ */
+function getMergedTags(unit: Unit): string[] {
+    const nameTags = unit._nameTags ?? [];
+    const chassisTags = unit._chassisTags ?? [];
+    // Merge and deduplicate
+    return Array.from(new Set([...chassisTags, ...nameTags]));
+}
+
 function getProperty(obj: any, key?: string) {
     if (!obj || !key) return undefined;
+    // Special handling for _tags: merge _nameTags and _chassisTags
+    if (key === '_tags') {
+        return getMergedTags(obj as Unit);
+    }
     // If key does not contain dot, fast path
     if (key.indexOf('.') === -1) return (obj as any)[key];
     const parts = key.split('.');
@@ -1479,17 +1494,50 @@ export class UnitSearchFiltersService {
         this.pilotPilotingSkill.set(5);
     }
 
-    // Collect all unique tags from all units
+    // Collect all unique tags from all units (merged name + chassis)
     getAllTags(): string[] {
         const allUnits = this.dataService.getUnits();
         const existingTags = new Set<string>();
 
         for (const u of allUnits) {
-            if (u._tags) {
-                u._tags.forEach(tag => existingTags.add(tag));
+            if (u._nameTags) {
+                u._nameTags.forEach(tag => existingTags.add(tag));
+            }
+            if (u._chassisTags) {
+                u._chassisTags.forEach(tag => existingTags.add(tag));
             }
         }
         // Convert to sorted array
+        return Array.from(existingTags).sort((a, b) =>
+            a.toLowerCase().localeCompare(b.toLowerCase())
+        );
+    }
+
+    // Collect all unique name-specific tags
+    getAllNameTags(): string[] {
+        const allUnits = this.dataService.getUnits();
+        const existingTags = new Set<string>();
+
+        for (const u of allUnits) {
+            if (u._nameTags) {
+                u._nameTags.forEach(tag => existingTags.add(tag));
+            }
+        }
+        return Array.from(existingTags).sort((a, b) =>
+            a.toLowerCase().localeCompare(b.toLowerCase())
+        );
+    }
+
+    // Collect all unique chassis-wide tags
+    getAllChassisTags(): string[] {
+        const allUnits = this.dataService.getUnits();
+        const existingTags = new Set<string>();
+
+        for (const u of allUnits) {
+            if (u._chassisTags) {
+                u._chassisTags.forEach(tag => existingTags.add(tag));
+            }
+        }
         return Array.from(existingTags).sort((a, b) =>
             a.toLowerCase().localeCompare(b.toLowerCase())
         );

@@ -685,6 +685,12 @@ export class UnitSearchComponent {
             unitsToTag = [unit];
         }
 
+        // Toggle: close if already open, otherwise open
+        if (this.overlayManager.has('tagSelector')) {
+            this.overlayManager.closeManagedOverlay('tagSelector');
+            return;
+        }
+
         // Get anchor element for positioning
         const evtTarget = (event.currentTarget as HTMLElement) || (event.target as HTMLElement);
         const anchorEl = (evtTarget.closest('.add-tag-btn') as HTMLElement) || evtTarget;

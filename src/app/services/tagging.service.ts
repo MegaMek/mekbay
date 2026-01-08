@@ -39,8 +39,9 @@ import { Unit } from '../models/units.model';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { OverlayManagerService } from './overlay-manager.service';
 import { DialogsService } from './dialogs.service';
-import { TagSelectorComponent } from '../components/tag-selector/tag-selector.component';
+import { TagSelectorComponent, TagSelectionEvent } from '../components/tag-selector/tag-selector.component';
 import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
+import { DataService } from './data.service';
 
 const PRECONFIGURED_TAGS = ['Favorites', 'My Collection'];
 
@@ -53,6 +54,7 @@ const PRECONFIGURED_TAGS = ['Favorites', 'My Collection'];
 })
 export class TaggingService {
     private filtersService = inject(UnitSearchFiltersService);
+    private dataService = inject(DataService);
     private overlayManager = inject(OverlayManagerService);
     private dialogsService = inject(DialogsService);
     private overlay = inject(Overlay);
@@ -60,7 +62,7 @@ export class TaggingService {
 
     /**
      * Opens the tag selector for the given units.
-     * Supports both single and multi-unit tagging.
+     * Supports both single and multi-unit tagging with name or chassis scope.
      * 
      * @param units Array of units to tag
      * @param anchorElement Optional element to anchor the popup to. If null, uses centered overlay.
@@ -69,11 +71,17 @@ export class TaggingService {
     async openTagSelector(units: Unit[], anchorElement?: HTMLElement | null): Promise<void> {
         if (units.length === 0) return;
 
-        // Collect all unique tags from all units
-        const tagOptions = this.filtersService.getAllTags();
+        // Get all unique tags from all units (for both sections)
+        const allNameTags = this.filtersService.getAllNameTags();
+        const allChassisTags = this.filtersService.getAllChassisTags();
+
+        // Add preconfigured tags to both sections if not present
         for (const preconfiguredTag of PRECONFIGURED_TAGS) {
-            if (!tagOptions.includes(preconfiguredTag)) {
-                tagOptions.unshift(preconfiguredTag);
+            if (!allNameTags.includes(preconfiguredTag)) {
+                allNameTags.unshift(preconfiguredTag);
+            }
+            if (!allChassisTags.includes(preconfiguredTag)) {
+                allChassisTags.unshift(preconfiguredTag);
             }
         }
 
@@ -83,7 +91,7 @@ export class TaggingService {
             anchorElement ?? null,
             portal,
             {
-                scrollStrategy: this.overlay.scrollStrategies.reposition(),
+                scrollStrategy: this.overlay.scrollStrategies.close(),
                 hasBackdrop: !anchorElement,
                 backdropClass: anchorElement ? undefined : 'cdk-overlay-dark-backdrop',
                 panelClass: 'tag-selector-overlay'
@@ -91,50 +99,58 @@ export class TaggingService {
         );
 
         // Pass data to the component
-        componentRef.instance.tags = tagOptions;
+        componentRef.instance.nameTags.set(allNameTags);
+        componentRef.instance.chassisTags.set(allChassisTags);
 
-        // Show tags that are common to all selected units
-        const commonTags = units
-            .map(u => u._tags || [])
-            .reduce((a, b) => a.filter(tag => b.includes(tag)), units[0]._tags || []);
-        componentRef.instance.assignedTags = commonTags;
+        // Calculate tag states for all selected units
+        const updateTagStates = () => {
+            const { fullyAssigned: nameFullyAssigned, partiallyAssigned: namePartiallyAssigned } = 
+                this.calculateTagStates(units, 'name');
+            const { fullyAssigned: chassisFullyAssigned, partiallyAssigned: chassisPartiallyAssigned } = 
+                this.calculateTagStates(units, 'chassis');
+            
+            // Update signals to trigger reactivity
+            componentRef.instance.assignedNameTags.set([...nameFullyAssigned]);
+            componentRef.instance.partialNameTags.set([...namePartiallyAssigned]);
+            componentRef.instance.assignedChassisTags.set([...chassisFullyAssigned]);
+            componentRef.instance.partialChassisTags.set([...chassisPartiallyAssigned]);
+        };
 
-        // Handle tag removal for all selected units
-        componentRef.instance.tagRemoved.subscribe(async (tagToRemove: string) => {
-            for (const u of units) {
-                if (u._tags) {
-                    const index = u._tags.findIndex(t => t.toLowerCase() === tagToRemove.toLowerCase());
-                    if (index !== -1) {
-                        u._tags.splice(index, 1);
-                    }
-                }
-            }
-            // Update the component's assigned tags
-            const updatedCommon = units
-                .map(u => u._tags || [])
-                .reduce((a, b) => a.filter(tag => b.includes(tag)), units[0]._tags || []);
-            componentRef.instance.assignedTags = updatedCommon;
+        updateTagStates();
 
-            await this.filtersService.saveTagsToStorage();
+        // Handle tag removal
+        componentRef.instance.tagRemoved.subscribe(async (event: TagSelectionEvent) => {
+            await this.dataService.modifyTag(units, event.tag, event.tagType, 'remove');
+            updateTagStates();
             this.filtersService.invalidateTagsCache();
         });
 
-        // Handle tag selection for all selected units
-        componentRef.instance.tagSelected.subscribe(async (selectedTag: string) => {
-            this.overlayManager.closeManagedOverlay('tagSelector');
+        // Handle tag selection
+        componentRef.instance.tagSelected.subscribe(async (event: TagSelectionEvent) => {
+            let selectedTag = event.tag;
+            const tagType = event.tagType;
 
             // If "Add new tag..." was selected, show text input dialog
             if (selectedTag === '__new__') {
-                const newTagRef = this.dialogsService.createDialog<string | null>(InputDialogComponent, {
-                    data: {
-                        title: 'Add New Tag',
-                        inputType: 'text',
-                        defaultValue: '',
-                        placeholder: 'Enter tag...'
-                    } as InputDialogData
-                });
-
-                const newTag = await firstValueFrom(newTagRef.closed);
+                let newTag : string | null | undefined;
+                // Block tag selector from closing while input dialog is open
+                this.overlayManager.blockCloseUntil('tagSelector');
+                try {
+                    const newTagRef = this.dialogsService.createDialog<string | null>(InputDialogComponent, {
+                        data: {
+                            title: tagType === 'chassis' ? 'Add New Tag to Chassis' : 'Add New Tag to Unit',
+                            inputType: 'text',
+                            defaultValue: '',
+                            placeholder: 'Enter tag...'
+                        } as InputDialogData
+                    });
+    
+                    newTag = await firstValueFrom(newTagRef.closed);
+                } finally {
+                    // Unblock after small delay to prevent immediate close from residual events
+                    setTimeout(() => this.overlayManager.unblockClose('tagSelector'), 100);
+                }
+                
 
                 // User cancelled or entered empty string
                 if (!newTag || newTag.trim().length === 0) {
@@ -145,23 +161,69 @@ export class TaggingService {
                     return;
                 }
 
-                selectedTag = newTag;
+                selectedTag = newTag.trim();
+
+                // Add the new tag to the appropriate list if not already present
+                if (tagType === 'name') {
+                    if (!componentRef.instance.nameTags().some(t => t.toLowerCase() === selectedTag.toLowerCase())) {
+                        componentRef.instance.nameTags.update(tags => [selectedTag, ...tags]);
+                    }
+                } else {
+                    if (!componentRef.instance.chassisTags().some(t => t.toLowerCase() === selectedTag.toLowerCase())) {
+                        componentRef.instance.chassisTags.update(tags => [selectedTag, ...tags]);
+                    }
+                }
             }
 
-            const trimmedTag = selectedTag.trim();
-
-            for (const u of units) {
-                if (!u._tags) {
-                    u._tags = [];
-                }
-                if (!u._tags.some(tag => tag.toLowerCase() === trimmedTag.toLowerCase())) {
-                    u._tags.push(trimmedTag);
-                }
-            }
-
-            await this.filtersService.saveTagsToStorage();
+            await this.dataService.modifyTag(units, selectedTag, tagType, 'add');
+            updateTagStates();
             this.filtersService.invalidateTagsCache();
         });
+    }
+
+    /**
+     * Calculate which tags are fully assigned (to all units) vs partially assigned (to some units).
+     */
+    private calculateTagStates(units: Unit[], tagType: 'name' | 'chassis'): { 
+        fullyAssigned: string[]; 
+        partiallyAssigned: string[]; 
+    } {
+        if (units.length === 0) return { fullyAssigned: [], partiallyAssigned: [] };
+
+        // Collect all tags and count how many units have each
+        const tagCounts = new Map<string, number>();
+        
+        for (const unit of units) {
+            const tags = tagType === 'name' ? (unit._nameTags || []) : (unit._chassisTags || []);
+            for (const tag of tags) {
+                const lowerTag = tag.toLowerCase();
+                tagCounts.set(lowerTag, (tagCounts.get(lowerTag) || 0) + 1);
+            }
+        }
+
+        const fullyAssigned: string[] = [];
+        const partiallyAssigned: string[] = [];
+
+        for (const [lowerTag, count] of tagCounts) {
+            // Find original casing from the first unit that has this tag
+            let originalTag = lowerTag;
+            for (const unit of units) {
+                const tags = tagType === 'name' ? (unit._nameTags || []) : (unit._chassisTags || []);
+                const found = tags.find(t => t.toLowerCase() === lowerTag);
+                if (found) {
+                    originalTag = found;
+                    break;
+                }
+            }
+
+            if (count === units.length) {
+                fullyAssigned.push(originalTag);
+            } else {
+                partiallyAssigned.push(originalTag);
+            }
+        }
+
+        return { fullyAssigned, partiallyAssigned };
     }
 
     /**

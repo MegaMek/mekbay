@@ -31,43 +31,110 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, output, signal } from '@angular/core';
 
 
 /*
  * Author: Drake
  */
+
+/** Event data for tag selection with type information */
+export interface TagSelectionEvent {
+    tag: string;
+    tagType: 'name' | 'chassis';
+}
+
 @Component({
     selector: 'tag-selector',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [],
     templateUrl: './tag-selector.component.html',
     styleUrl: './tag-selector.component.css'
 })
 export class TagSelectorComponent {
-    @Input() tags: string[] = [];
-    @Input() assignedTags: string[] = [];
-    @Output() tagSelected = new EventEmitter<string>();
-    @Output() tagRemoved = new EventEmitter<string>();
+    /** All unique tags available for unit-specific tagging */
+    nameTags = signal<string[]>([]);
+    /** All unique tags available for chassis-wide tagging */
+    chassisTags = signal<string[]>([]);
+    /** Tags assigned to ALL selected units via name */
+    assignedNameTags = signal<string[]>([]);
+    /** Tags assigned to SOME (but not all) selected units via name */
+    partialNameTags = signal<string[]>([]);
+    /** Tags assigned to ALL selected units via chassis */
+    assignedChassisTags = signal<string[]>([]);
+    /** Tags assigned to SOME (but not all) selected units via chassis */
+    partialChassisTags = signal<string[]>([]);
+    
+    tagSelected = output<TagSelectionEvent>();
+    tagRemoved = output<TagSelectionEvent>();
 
-    onTagClick(tag: string) {
-        // Only emit selection if tag is not already assigned
-        if (!this.isTagAssigned(tag)) {
-            this.tagSelected.emit(tag);
+    onNameTagClick(tag: string) {
+        // Don't allow clicking if covered by chassis tag or already fully assigned
+        if (this.isNameTagCoveredByChassis(tag) || this.isNameTagFullyAssigned(tag)) {
+            return;
+        }
+        this.tagSelected.emit({ tag, tagType: 'name' });
+    }
+
+    onChassisTagClick(tag: string) {
+        // Allow clicking if not fully assigned (adds to all units)
+        if (!this.isChassisTagFullyAssigned(tag)) {
+            this.tagSelected.emit({ tag, tagType: 'chassis' });
         }
     }
 
-    onRemoveClick(tag: string, event: MouseEvent) {
+    onRemoveNameTag(tag: string, event: MouseEvent) {
         event.stopPropagation();
-        this.tagRemoved.emit(tag);
+        this.tagRemoved.emit({ tag, tagType: 'name' });
     }
 
-    onAddNewClick() {
-        this.tagSelected.emit('__new__');
+    onRemoveChassisTag(tag: string, event: MouseEvent) {
+        event.stopPropagation();
+        this.tagRemoved.emit({ tag, tagType: 'chassis' });
     }
 
-    isTagAssigned(tag: string): boolean {
-        return this.assignedTags.some(t => t.toLowerCase() === tag.toLowerCase());
+    onAddNewNameTag() {
+        this.tagSelected.emit({ tag: '__new__', tagType: 'name' });
+    }
+
+    onAddNewChassisTag() {
+        this.tagSelected.emit({ tag: '__new__', tagType: 'chassis' });
+    }
+
+    /** Tag is assigned to ALL selected units */
+    isNameTagFullyAssigned(tag: string): boolean {
+        return this.assignedNameTags().some(t => t.toLowerCase() === tag.toLowerCase());
+    }
+
+    /** Tag is assigned to SOME but not all selected units */
+    isNameTagPartiallyAssigned(tag: string): boolean {
+        return this.partialNameTags().some(t => t.toLowerCase() === tag.toLowerCase());
+    }
+
+    /** Tag is assigned to at least one unit (show remove button) */
+    isNameTagAssignedToAny(tag: string): boolean {
+        return this.isNameTagFullyAssigned(tag) || this.isNameTagPartiallyAssigned(tag);
+    }
+
+    /** Tag is already covered by a chassis tag (should be grayed out and not clickable) */
+    isNameTagCoveredByChassis(tag: string): boolean {
+        const lowerTag = tag.toLowerCase();
+        return this.assignedChassisTags().some(t => t.toLowerCase() === lowerTag) ||
+               this.partialChassisTags().some(t => t.toLowerCase() === lowerTag);
+    }
+
+    /** Tag is assigned to ALL selected units */
+    isChassisTagFullyAssigned(tag: string): boolean {
+        return this.assignedChassisTags().some(t => t.toLowerCase() === tag.toLowerCase());
+    }
+
+    /** Tag is assigned to SOME but not all selected units */
+    isChassisTagPartiallyAssigned(tag: string): boolean {
+        return this.partialChassisTags().some(t => t.toLowerCase() === tag.toLowerCase());
+    }
+
+    /** Tag is assigned to at least one unit (show remove button) */
+    isChassisTagAssignedToAny(tag: string): boolean {
+        return this.isChassisTagFullyAssigned(tag) || this.isChassisTagPartiallyAssigned(tag);
     }
 }

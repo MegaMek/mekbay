@@ -432,6 +432,27 @@ export class OverlayManagerService {
     }
 
     /**
+     * Block closing for a specific overlay until the given time.
+     * Use Infinity to block indefinitely until unblockClose is called.
+     */
+    blockCloseUntil(key: string, untilMs: number = Infinity) {
+        const entry = this.managed.get(key);
+        if (entry) {
+            entry.closeBlockUntil = untilMs === Infinity ? Infinity : performance.now() + untilMs;
+        }
+    }
+
+    /**
+     * Unblock closing for a specific overlay.
+     */
+    unblockClose(key: string) {
+        const entry = this.managed.get(key);
+        if (entry) {
+            entry.closeBlockUntil = undefined;
+        }
+    }
+
+    /**
      * Close all managed overlays whose key starts with the given prefix.
      */
     closeOverlaysByKeyPrefix(prefix: string) {
