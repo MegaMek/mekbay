@@ -371,7 +371,9 @@ export class UnitSearchFiltersService {
     private totalRangesCache: Record<string, [number, number]> = {};
     private availableNamesCache = new Map<string, string[]>();
     private urlStateInitialized = false;
-    private tagsCacheKey = signal('');
+    
+    /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
+    readonly tagsVersion = signal(0);
 
     constructor() {
         // Register as a URL state consumer - must call markConsumerReady when done reading URL
@@ -827,7 +829,7 @@ export class UnitSearchFiltersService {
 
         const result: Record<string, AdvFilterOptions> = {};
         const state = this.filterState();
-        const _tagsCacheKey = this.tagsCacheKey();
+        const _tagsVersion = this.tagsVersion();
 
         let baseUnits = this.filteredUnitsBySearchTextTokens();
         const activeFilters = Object.entries(state)
@@ -903,7 +905,7 @@ export class UnitSearchFiltersService {
                         Object.values(currentFilter.value as MultiStateSelection).some(selection => selection.count > 1);
 
                     const namesCacheKey = isTagsFilter
-                        ? `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}-${_tagsCacheKey}`
+                        ? `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}-${_tagsVersion}`
                         : `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}`;
 
                     let availableNames = this.availableNamesCache.get(namesCacheKey);
@@ -1494,8 +1496,8 @@ export class UnitSearchFiltersService {
     }
 
     public invalidateTagsCache(): void {
-        // Update cache key to trigger recomputation of advOptions
-        this.tagsCacheKey.set(Date.now().toString());
+        // Increment version to trigger recomputation of tag-dependent computed signals
+        this.tagsVersion.update(v => v + 1);
 
         // Clear any cached tag-related data
         for (const [key] of this.availableNamesCache) {

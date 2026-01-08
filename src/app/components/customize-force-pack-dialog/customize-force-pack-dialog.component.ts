@@ -42,12 +42,14 @@ import { GameService } from '../../services/game.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { LayoutService } from '../../services/layout.service';
-import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { TaggingService } from '../../services/tagging.service';
+import { UnitCardCompactComponent } from '../unit-card-compact/unit-card-compact.component';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { VariantDropdownPanelComponent } from './variant-dropdown-panel.component';
 import { Unit } from '../../models/units.model';
 import { PackUnitEntry, ResolvedPack } from '../../utils/force-pack.util';
 import { compareUnitsByName } from '../../utils/sort.util';
+import { TagClickEvent } from '../unit-tags/unit-tags.component';
 
 /*
  * Author: Drake
@@ -69,7 +71,7 @@ interface CustomizableUnit extends PackUnitEntry {
 @Component({
     selector: 'customize-force-pack-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, UnitIconComponent, VariantDropdownPanelComponent],
+    imports: [CommonModule, BaseDialogComponent, UnitCardCompactComponent, VariantDropdownPanelComponent],
     templateUrl: './customize-force-pack-dialog.component.html',
     styleUrls: ['./customize-force-pack-dialog.component.css']
 })
@@ -81,6 +83,7 @@ export class CustomizeForcePackDialogComponent {
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
+    private taggingService = inject(TaggingService);
     layoutService = inject(LayoutService);
     gameService = inject(GameService);
 
@@ -289,8 +292,7 @@ export class CustomizeForcePackDialogComponent {
     }
 
     /** Open unit details for a unit in the force pack view - ADD is hidden */
-    async onForcePackUnitInfo(event: Event, unitIndex: number): Promise<void> {
-        event.stopPropagation();
+    async onForcePackUnitInfo(unitIndex: number): Promise<void> {
         this.closeDropdown();
         
         const units = this.customizableUnits()
@@ -324,5 +326,12 @@ export class CustomizeForcePackDialogComponent {
         );
 
         await firstValueFrom(ref.closed);
+    }
+
+    /** Handle tag click on a unit */
+    async onAddTag({ unit, event }: TagClickEvent): Promise<void> {
+        const evtTarget = (event.currentTarget as HTMLElement) || (event.target as HTMLElement);
+        const anchorEl = (evtTarget.closest('.add-tag-btn') as HTMLElement) || evtTarget;
+        await this.taggingService.openTagSelectorForUnit(unit, anchorEl);
     }
 }

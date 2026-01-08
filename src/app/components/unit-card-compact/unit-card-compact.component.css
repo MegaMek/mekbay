@@ -1,0 +1,214 @@
+:host {
+    display: block;
+}
+
+.unit-card-compact {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    padding: 8px 4px;
+    box-sizing: border-box;
+    min-height: 75px;
+    cursor: pointer;
+    align-items: center;
+    border: 1px solid transparent;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.unit-card-compact:hover {
+    border-color: var(--border-color);
+    background: var(--background-highlight);
+}
+
+.unit-card-compact.selected {
+    border-color: var(--bt-yellow);
+    background: var(--bt-yellow-background);
+}
+
+/* Missing unit state - red border with NO UNIT message */
+.unit-card-compact.missing {
+    border-color: var(--danger);
+    justify-content: center;
+}
+
+.no-unit-message {
+    color: var(--danger);
+    font-weight: bold;
+    font-size: 0.9em;
+    text-transform: uppercase;
+}
+
+/* Unit icon container */
+.unit-image-container {
+    max-height: 56px;
+    width: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.unit-image-container img {
+    height: 100%;
+    width: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+/* Data container */
+.unit-data-container {
+    display: flow-root;
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+}
+
+.primary-info {
+    container-type: inline-size;
+    flex-grow: 1;
+}
+
+.secondary-info {
+    display: flex;
+    flex-grow: 1;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    color: var(--text-color-secondary);
+    font-size: 0.8em;
+    gap: 8px;
+    min-height: 8px;
+}
+
+.secondary-info .model {
+    flex-grow: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.secondary-info .role {
+    flex-shrink: 0;
+    color: var(--text-color-tertiary);
+}
+
+.chassis {
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.third-info {
+    clear: both;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    align-items: center;
+}
+
+.spanner {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+}
+
+.third-info .info-area {
+    flex-wrap: wrap;
+    align-items: stretch;
+}
+
+.info-area {
+    display: flex;
+    justify-content: start;
+    align-items: center;
+    margin-top: 4px;
+    gap: 4px;
+    font-size: 0.8em;
+    font-weight: normal;
+    color: white;
+}
+
+.info-slot {
+    position: relative;
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 2px 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 40px;
+    justify-content: start;
+}
+
+.info-slot.centered {
+    justify-content: center;
+}
+
+.info-slot.numeric {
+    justify-content: end;
+}
+
+.info-slot.slim {
+    min-width: auto;
+}
+
+.info-slot .icon {
+    width: 12px;
+    height: 12px;
+}
+
+.info-slot .era-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* Modified state triangle indicator */
+.modified-indicator {
+    position: absolute;
+    display: block;
+    width: 0;
+    height: 0;
+    bottom: 0;
+    right: 0;
+    z-index: 1;
+    border-style: solid;
+    border-width: 0 0 20px 20px;
+    border-color: transparent transparent var(--border-color) transparent;
+    pointer-events: none;
+}
+
+/* Original unit star indicator */
+.original-star {
+    color: var(--bt-yellow);
+    font-size: 0.9em;
+    margin-left: 4px;
+}
+
+/* Info button */
+.info-btn {
+    background: transparent;
+    border: none;
+    border-left: 1px solid var(--border-color);
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    padding: 4px 4px 4px 8px;
+    margin-left: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    transition: color 0.2s;
+    flex-shrink: 0;
+}
+
+.info-btn:hover {
+    color: var(--text-color);
+}
+
+.info-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}

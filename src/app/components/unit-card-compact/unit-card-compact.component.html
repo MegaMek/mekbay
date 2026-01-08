@@ -1,0 +1,78 @@
+@if (unit(); as u) {
+<div class="unit-card-compact" 
+     [class.selected]="isSelected()"
+     (click)="onCardClick()">
+    
+    @if (isModified()) {
+        <div class="modified-indicator"></div>
+    }
+
+    <div class="unit-image-container">
+        <unit-icon [unit]="u"></unit-icon>
+    </div>
+
+    <div class="unit-data-container">
+        <div class="secondary-info">
+            <div class="model">{{ u.model }}</div>
+            @if (u.role && u.role !== 'None') {
+                <div class="role">{{ u.role }}</div>
+            }
+        </div>
+        <div class="primary-info">
+            <div class="chassis">
+                {{ u.chassis }}
+                @if (isOriginal()) {
+                    <span class="original-star" title="Original unit">★</span>
+                }
+            </div>
+        </div>
+        <div class="third-info">
+            <div class="info-area">
+                @if (gameService.isAlphaStrike()) {
+                    <div class="info-slot centered slim">
+                        <span class="value">PV: {{ u.as.PV | adjustedPV:gunnery() | formatNumber:true:true }}</span>
+                    </div>
+                    <div class="info-slot centered slim">
+                        <span class="value">SZ: {{ u.as.SZ }}</span>
+                    </div>
+                    <div class="info-slot centered slim">
+                        <span class="value">TMM: {{ u.as.TMM }}</span>
+                    </div>
+                } @else {
+                    <div class="info-slot numeric">
+                        <span class="value">BV: {{ u.bv | adjustedBV:gunnery():piloting() | formatNumber:true:true }}</span>
+                    </div>
+                    <div class="info-slot numeric">
+                        <span class="value">{{ u.tons | formatTons }}</span>
+                        <img src="/images/weight.svg" class="icon" alt="Tonnage">
+                    </div>
+                }
+                <div class="info-slot">
+                    <span class="value">{{ u.year }}</span>
+                    @if (u._era; as era) {
+                        @if (era.img) {
+                            <img [src]="era.img" class="icon era-icon" alt="Era" [title]="era.name" />
+                        }
+                    }
+                </div>
+            </div>
+            @if (showTags()) {
+                <span class="spanner"></span>
+                <unit-tags [unit]="u" mode="compact" (tagClick)="onTagClick($event)"></unit-tags>
+            }
+        </div>
+    </div>
+
+    @if (showInfoButton()) {
+        <button class="info-btn" (click)="onInfoClick($event)" title="Unit info">
+            <svg stroke="currentColor" width="20px" height="20px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+        </button>
+    }
+</div>
+} @else {
+<div class="unit-card-compact missing" (click)="onCardClick()">
+    <div class="no-unit-message">NO UNIT</div>
+</div>
+}

@@ -42,8 +42,6 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
-import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
-import { TagSelectorComponent } from '../tag-selector/tag-selector.component';
 import { firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
 import { getWeaponTypeCSSClass, weaponTypes } from '../../utils/equipment.util';
@@ -62,9 +60,11 @@ import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ShareSearchDialogComponent } from './share-search.component';
 import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
 import { RangeModel, UnitSearchFilterRangeDialogComponent, UnitSearchFilterRangeDialogData } from '../unit-search-filter-range-dialog/unit-search-filter-range-dialog.component';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
+import { TaggingService } from '../../services/tagging.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 
@@ -95,13 +95,10 @@ export class ExpandedComponentsPipe implements PipeTransform {
     }
 }
 
-const PRECONFIGURED_TAGS = ['Favorites', 'My Collection'];
-
 @Component({
     selector: 'unit-search',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.css',
 })
@@ -119,6 +116,7 @@ export class UnitSearchComponent {
     private cdr = inject(ChangeDetectorRef);
     private abilityLookup = inject(AsAbilityLookupService);
     private optionsService = inject(OptionsService);
+    private taggingService = inject(TaggingService);
 
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
 
@@ -671,7 +669,7 @@ export class UnitSearchComponent {
         return getWeaponTypeCSSClass(typeCode);
     }
 
-    async onAddTag(unit: Unit, event: MouseEvent) {
+    async onAddTag({ unit, event }: TagClickEvent) {
         event.stopPropagation();
 
         // Determine which units to tag: selected units if any.
@@ -687,100 +685,12 @@ export class UnitSearchComponent {
             unitsToTag = [unit];
         }
 
-        // Collect all unique tags from all units
-        const tagOptions = this.filtersService.getAllTags();
-        for (const preconfiguredTag of PRECONFIGURED_TAGS) {
-            if (!tagOptions.includes(preconfiguredTag)) {
-                tagOptions.unshift(preconfiguredTag);
-            }
-        }
-
-        // Create overlay positioned near the clicked button
+        // Get anchor element for positioning
         const evtTarget = (event.currentTarget as HTMLElement) || (event.target as HTMLElement);
         const anchorEl = (evtTarget.closest('.add-tag-btn') as HTMLElement) || evtTarget;
 
-        const portal = new ComponentPortal(TagSelectorComponent, null, this.injector);
-        const componentRef = this.overlayManager.createManagedOverlay('tagSelector', anchorEl, portal, {
-            scrollStrategy: this.overlay.scrollStrategies.reposition(),
-            hasBackdrop: false,
-            panelClass: 'tag-selector-overlay'
-        });
-
-        // Pass data to the component
-        componentRef.instance.tags = tagOptions;
-
-        // Show tags that are common to all selected units
-        const commonTags = unitsToTag
-            .map(u => u._tags || [])
-            .reduce((a, b) => a.filter(tag => b.includes(tag)), unitsToTag[0]._tags || []);
-        componentRef.instance.assignedTags = commonTags;
-
-        // Handle tag removal for all selected units
-        componentRef.instance.tagRemoved.subscribe(async (tagToRemove: string) => {
-            for (const u of unitsToTag) {
-                if (u._tags) {
-                    const index = u._tags.findIndex(t => t.toLowerCase() === tagToRemove.toLowerCase());
-                    if (index !== -1) {
-                        u._tags.splice(index, 1);
-                    }
-                }
-            }
-            // Update the component's assigned tags
-            const updatedCommon = unitsToTag
-                .map(u => u._tags || [])
-                .reduce((a, b) => a.filter(tag => b.includes(tag)), unitsToTag[0]._tags || []);
-            componentRef.instance.assignedTags = updatedCommon;
-
-            await this.filtersService.saveTagsToStorage();
-            this.filtersService.invalidateTagsCache();
-            this.cdr.markForCheck();
-        });
-
-        // Handle tag selection for all selected units
-        componentRef.instance.tagSelected.subscribe(async (selectedTag: string) => {
-            this.overlayManager.closeManagedOverlay('tagSelector');
-
-            // If "Add new tag..." was selected, show text input dialog
-            if (selectedTag === '__new__') {
-                const newTagRef = this.dialogsService.createDialog<string | null>(InputDialogComponent, {
-                    data: {
-                        title: 'Add New Tag',
-                        inputType: 'text',
-                        defaultValue: '',
-                        placeholder: 'Enter tag...'
-                    } as InputDialogData
-                });
-
-                const newTag = await firstValueFrom(newTagRef.closed);
-
-                // User cancelled or entered empty string
-                if (!newTag || newTag.trim().length === 0) {
-                    return;
-                }
-                if (newTag.length > 16) {
-                    await this.dialogsService.showError('Tag is too long. Maximum length is 16 characters.', 'Invalid Tag');
-                    return;
-                }
-
-                selectedTag = newTag;
-            }
-
-            const trimmedTag = selectedTag.trim();
-
-            for (const u of unitsToTag) {
-                if (!u._tags) {
-                    u._tags = [];
-                }
-                if (!u._tags.some(tag => tag.toLowerCase() === trimmedTag.toLowerCase())) {
-                    u._tags.push(trimmedTag);
-                }
-            }
-            this.cdr.markForCheck();
-
-            await this.filtersService.saveTagsToStorage();
-            this.filtersService.invalidateTagsCache();
-            this.cdr.markForCheck();
-        });
+        await this.taggingService.openTagSelector(unitsToTag, anchorEl);
+        this.cdr.markForCheck();
     }
 
     setPilotSkill(type: 'gunnery' | 'piloting', value: number) {

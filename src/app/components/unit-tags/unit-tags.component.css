@@ -1,0 +1,51 @@
+:host {
+    display: flex;
+}
+
+.unit-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Tag pills for full mode */
+.tag {
+    background-color: rgba(0, 0, 0, 0.3);
+    color: var(--text-color);
+    padding: 2px 6px;
+    font-size: 0.75em;
+    border-radius: 2px;
+    white-space: nowrap;
+}
+
+/* Add tag button */
+.add-tag-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-color-secondary);
+    transition: color 0.15s ease;
+    position: relative;
+    width: auto;
+}
+
+.add-tag-btn:hover {
+    color: var(--bt-yellow);
+}
+
+.add-tag-btn svg {
+    display: block;
+}
+
+/* Tags counter badge */
+.tags-counter {
+    font-size: .75em;
+    color: var(--bt-yellow);
+}
+
+.unit-tags.small .tag {
+    font-size: 0.65em;
+    padding: 1px 4px;
+}
