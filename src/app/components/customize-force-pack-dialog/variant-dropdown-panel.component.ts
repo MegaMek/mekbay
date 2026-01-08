@@ -76,22 +76,21 @@ import { TagClickEvent } from '../unit-tags/unit-tags.component';
             box-sizing: border-box;
             overflow-y: auto;
             scrollbar-width: thin;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 6px 4px;
         }
 
         /* When used as overlay (centered), constrain size */
         :host-context(.variant-dropdown-overlay) .dropdown-panel {
-            width: 350px;
-            max-width: calc(100vw - 32px);
+            width: 380px;
+            max-width: 100vw;
             max-height: calc(100vh - 32px);
         }
 
-        /* Style the unit cards within the dropdown */
         .dropdown-panel unit-card-compact {
-            border-bottom: 1px solid #333;
-        }
-
-        .dropdown-panel unit-card-compact:last-child {
-            border-bottom: none;
+            background: #0003;
         }
     `]
 })
