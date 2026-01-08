@@ -26,15 +26,13 @@
                          [class.selected]="isOpen"
                          [class.missing]="!cu.unit"
                          (click)="onUnitClick(i)">
+                        @if (isModified) {
+                            <div class="modified-state"></div>
+                        }
                         <unit-icon [unit]="cu.unit"></unit-icon>
                         <div class="unit-info">
                             <div class="unit-model">{{ cu.unit?.model || cu.model || '' }}</div>
-                            <div class="unit-chassis">
-                                {{ cu.unit?.chassis || cu.chassis }}
-                                @if (isModified) {
-                                    <span class="modified-indicator" title="Modified from original">●</span>
-                                }
-                            </div>
+                            <div class="unit-chassis">{{ cu.unit?.chassis || cu.chassis }}</div>
                         </div>
                         <div class="unit-value">
                             @if (gameService.isAlphaStrike()) {

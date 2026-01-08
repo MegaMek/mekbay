@@ -87,6 +87,7 @@
 }
 
 .unit-entry {
+    position: relative;
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -151,10 +152,19 @@
     text-align: right;
 }
 
-.modified-indicator {
-    color: var(--bt-yellow);
-    font-size: 0.8em;
-    margin-left: 4px;
+/* Modified state triangle indicator */
+.modified-state {
+    position: absolute;
+    display: block;
+    width: 0;
+    height: 0;
+    bottom: 0;
+    right: 0;
+    z-index: 1;
+    border-style: solid;
+    border-width: 0 0 20px 20px;
+    border-color: transparent transparent var(--border-color) transparent;
+    pointer-events: none;
 }
 
 /* Info button */
