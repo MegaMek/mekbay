@@ -34,6 +34,7 @@
 import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, output, viewChild, ElementRef, afterNextRender, Injector } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
+import { firstValueFrom } from 'rxjs';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -43,7 +44,8 @@ import { OptionsService } from '../../services/options.service';
 import { GameService } from '../../services/game.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
+import { PackUnitEntry, ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
+import { CustomizeForcePackDialogComponent, CustomizeForcePackDialogData, CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
 
 /*
  * Author: Drake
@@ -204,10 +206,36 @@ export class ForceLoadDialogComponent {
         return (type || GameSystem.CLASSIC) === GameSystem.ALPHA_STRIKE ? 'AS' : 'CBT';
     }
 
-    onLoad() {
-        const force = this.selectedForce() || this.selectedPack();
-        if (!force) return;
-        this.load.emit(force);
+    async onLoad() {
+        const force = this.selectedForce();
+        const pack = this.selectedPack();
+        
+        if (force) {
+            // Loading a saved force - emit directly
+            this.load.emit(force);
+            return;
+        }
+        
+        if (pack) {
+            // Loading a force pack - open customize dialog first
+            const ref = this.dialogsService.createDialog<CustomizeForcePackDialogResult | null>(
+                CustomizeForcePackDialogComponent,
+                {
+                    data: { pack } as CustomizeForcePackDialogData
+                }
+            );
+
+            const result = await firstValueFrom(ref.closed);
+            if (result?.units) {
+                // User confirmed - emit the customized pack with units
+                const customizedPack: ResolvedPack = {
+                    ...pack,
+                    units: result.units
+                };
+                this.load.emit(customizedPack);
+            }
+            // If dismissed (null), stay on this dialog
+        }
     }
 
     async onDelete() {

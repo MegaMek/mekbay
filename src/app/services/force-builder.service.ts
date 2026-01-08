@@ -951,6 +951,13 @@ export class ForceBuilderService {
                 }
                 this.loadForce(requestedForce);
             } else {
+                // Force pack with customized units from ForceLoadDialogComponent
+                // Check if user wants to save current force before creating new one
+                const canProceed = await this.promptSaveForceIfNeeded();
+                if (!canProceed) {
+                    return;
+                }
+
                 if (force && force.units && force.units.length > 0) {
                     await this.createNewForce();
                     const group = this.addGroup();

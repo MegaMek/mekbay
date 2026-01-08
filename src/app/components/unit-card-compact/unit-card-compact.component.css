@@ -172,11 +172,11 @@
     width: 0;
     height: 0;
     bottom: 0;
-    right: 0;
+    left: 0;
     z-index: 1;
     border-style: solid;
-    border-width: 0 0 20px 20px;
-    border-color: transparent transparent var(--border-color) transparent;
+    border-width: 20px 0 0 20px;
+    border-color: transparent transparent transparent var(--border-color);
     pointer-events: none;
 }
 
