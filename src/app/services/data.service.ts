@@ -907,7 +907,8 @@ export class DataService {
     }
 
     private async fetchSheetETag(sheetFileName: string): Promise<string> {
-        return this.getRemoteETag(`sheets/${sheetFileName}`);
+        const src = `${REMOTE_HOST}/sheets/${sheetFileName}`;
+        return this.getRemoteETag(src);
     }
 
     private async fetchAndCacheSheet(sheetFileName: string): Promise<SVGSVGElement> {
