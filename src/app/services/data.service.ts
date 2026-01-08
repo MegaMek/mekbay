@@ -1605,6 +1605,8 @@ export class DataService {
             const syncState = await this.dbService.getTagSyncState();
             const localData = await this.dbService.getAllTagData();
             const hasPendingOps = syncState.pendingOps.length > 0;
+            const hasLocalTags = localData && 
+                (Object.keys(localData.nameTags).length > 0 || Object.keys(localData.chassisTags).length > 0);
 
             // Request server state info (timestamp) and any ops since our last sync
             const response = await this.wsService.sendAndWaitForResponse({
@@ -1616,6 +1618,14 @@ export class DataService {
             if (!response || response.action === 'error') return;
 
             const serverTs: number = response.serverTs ?? 0;
+
+            // Migration case: local has tags but server has no data
+            // Push local state to cloud to preserve existing tags
+            if (hasLocalTags && serverTs === 0 && !response.fullState && (!response.ops || response.ops.length === 0)) {
+                this.logger.info('Migrating local tags to cloud (first sync)');
+                await this.pushFullStateToCloud();
+                return;
+            }
 
             // Conflict detection: we have pending ops AND server has changed since our last sync
             // (but not if serverTs is 0, meaning server has no data yet)
