@@ -4,6 +4,7 @@
     overflow-y: scroll;
     background: var(--background-color);
     box-sizing: border-box;
+    padding-bottom: 48px;
 }
 
 .groups-container {
@@ -83,6 +84,12 @@
 
     @media print {
         display: none;
+    }
+
+    :host-context(.layout-phone) & {
+        left: unset;
+        width: 100%;
+        justify-content: center;
     }
 }
 

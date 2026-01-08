@@ -124,6 +124,19 @@ export class LayoutService {
                 this.menuOpenRatio.set(this.isMenuOpen() ? 1 : 0);
             }
         });
+
+        // Add layout mode classes to document element
+        effect((onCleanup) => {
+            const classList = document.documentElement.classList;
+            classList.toggle('layout-phone', this.isPhone());
+            classList.toggle('layout-tablet', this.isTablet());
+            classList.toggle('layout-mobile', this.isMobile());
+            classList.toggle('layout-desktop', this.isDesktop());
+
+            onCleanup(() => {
+                classList.remove('layout-phone', 'layout-tablet', 'layout-mobile', 'layout-desktop');
+            });
+        });
     }
 
     /** Toggles the mobile menu's open/closed state. */
