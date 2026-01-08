@@ -662,16 +662,25 @@ export class UnitSearchFiltersService {
         // Handle forcePack filter (chassis-based)
         const selectedForcePackNames = activeFilters['forcePack'] as string[] || [];
         if (selectedForcePackNames.length > 0) {
-            const chassisSet = new Set<string>();
+            const chassisTypeSet = new Set<string>();
             for (const packName of selectedForcePackNames) {
                 const pack = getForcePacks().find(p => p.name === packName);
                 if (pack) {
-                    for (const unit of pack.units) {
-                        chassisSet.add(unit.chassis);
+                    for (const packUnit of pack.units) {
+                        // Find the full Unit object by name to get its type
+                        const fullUnit = this.units.find(u => u.name === packUnit.name);
+                        if (fullUnit) {
+                            // Create a composite key of chassis + type
+                            const key = `${fullUnit.chassis}|${fullUnit.type}`;
+                            chassisTypeSet.add(key);
+                        }
                     }
                 }
             }
-            results = results.filter(u => chassisSet.has(u.chassis));
+            results = results.filter(u => {
+                const key = `${u.chassis}|${u.type}`;
+                return chassisTypeSet.has(key);
+            });
         }
 
         // Handle standard (property-based) filters
