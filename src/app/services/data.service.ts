@@ -125,6 +125,7 @@ export class DataService {
     public isCloudForceLoading = signal(false);
 
     private data: LocalStore = {};
+    private unitNameMap = new Map<string, Unit>();
     private eraNameMap = new Map<string, Era>();
     private eraIdMap = new Map<number, Era>();
     private factionNameMap = new Map<string, Faction>();
@@ -143,6 +144,10 @@ export class DataService {
             getFromLocalStorage: async () => (await this.dbService.getUnits()) ?? null,
             putInLocalStorage: async (data: Units) => this.dbService.saveUnits(data),
             preprocess: (data: Units): Units => {
+                this.unitNameMap.clear();
+                for (const unit of data.units) {
+                    this.unitNameMap.set(unit.name, unit);
+                }
                 this.buildFilterIndexes(data.units); // Build all indexes
                 return data;
             },
@@ -411,7 +416,7 @@ export class DataService {
     }
 
     public getUnitByName(name: string): Unit | undefined {
-        return this.getUnits().find(u => u.name === name);
+        return this.unitNameMap.get(name);
     }
 
     public getEquipment(unitType: string): EquipmentUnitType {

@@ -18,7 +18,12 @@
             @for (pack of filteredPacks(); let i = $index; track i) {
             <div class="pack-entry" [class.selected]="selectedPack() === pack" (click)="selectPack(pack)" tabindex="0">
                 <div class="force-header">
-                    <span class="force-name">{{ pack.name }}</span>
+                    <span class="force-name">
+                        {{ pack.name }}
+                        @if (pack.variantName) {
+                            <span class="variant-name"> ({{ pack.variantName }} variant)</span>
+                        }
+                    </span>
                         <div class="force-info">
                             @if (gameService.isAlphaStrike()) {
                                 <span class="force-bv">PV: {{ pack.pv | number }}</span>

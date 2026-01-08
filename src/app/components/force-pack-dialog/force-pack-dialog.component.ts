@@ -37,26 +37,12 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { GameService } from '../../services/game.service';
-import { getForcePacks } from '../../models/forcepacks.model';
-import { Unit } from '../../models/units.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
 
 /*
  * Author: Drake
  */
-type PackUnitEntry = {
-    chassis: string;
-    model?: string;
-    unit?: Unit | null;
-};
-
-type ResolvedPack = {
-    name: string;
-    units: PackUnitEntry[];
-    _searchText: string;
-    bv: number;
-    pv: number;
-};
 
 
 @Component({
@@ -92,43 +78,8 @@ export class ForcePackDialogComponent {
     });
 
     constructor() {
-        // Resolve pack units against the available units from dataService
         (async () => {
-            const resolved: ResolvedPack[] = getForcePacks().map(p => {
-                const entries: PackUnitEntry[] = p.units.map(u => {
-
-                    // We search the unit by "name", should be a straight 1:1 match if we have no issues with the data
-                    let found = this.dataService.getUnitByName(u.name);
-
-                    if (!found) {
-                        const allUnits = this.dataService.getUnits();
-                        // In case we failed, find unit by matching chassis and model (model may be empty, but "" is a valid model)
-                        found = allUnits.find(unit => {
-                            if ((unit.chassis || '').trim().toLowerCase() !== u.chassis.toLowerCase()) return false;
-                            if (u.model === undefined) {
-                                return true; // no model defined, we pick the first matching chassis
-                            }
-                            return (unit.model === u.model);
-                        });
-                        // fallback: match only on chassis if exact model match not found
-                        if (!found) {
-                            found = allUnits.find(unit => (unit.chassis || '').trim().toLowerCase() === u.chassis.toLowerCase());
-                        }
-                    }
-
-                    return { chassis: u.chassis, model: u.model, unit: found ?? null } as PackUnitEntry;
-                });
-                const resolved: ResolvedPack = { name: p.name, 
-                        units: entries, 
-                        bv: entries.reduce((sum, e) => sum + (e.unit?.bv || 0), 0),
-                        pv: entries.reduce((sum, e) => sum + (e.unit?.as.PV || 0), 0),
-                        _searchText:  p.name.toLowerCase() + ' ' + entries.map(e => [e.chassis, e.model].filter(Boolean).join(' ')).join(' ').toLowerCase() }
-                return resolved;
-            });
-
-            this.packs.set(resolved);
-
-            // focus search if present
+            this.packs.set(resolveForcePacks(this.dataService));
             afterNextRender(() => this.searchInput()?.nativeElement?.focus(), { injector: this.injector });
         })();
     }

@@ -895,10 +895,13 @@ export class UnitSearchFiltersService {
                             })
                             .map(faction => ({ name: faction.name, img: faction.img }));
                     } else if (conf.key === 'forcePack') {
-                        // Build a set of chassis from context units for quick lookup
-                        const contextChassis = new Set(contextUnits.map(u => u.chassis));
+                        // Build a set of unit names from context units for quick lookup
+                        const contextUnitNames = new Set(contextUnits.map(u => u.name));
                         availableOptions = getForcePacks()
-                            .filter(pack => pack.units.some(pu => contextChassis.has(pu.chassis)))
+                            .filter(pack => pack.units.some(pu => {
+                                const unit = this.dataService.getUnitByName(pu.name);
+                                return unit && contextUnitNames.has(unit.name);
+                            }))
                             .map(pack => ({ name: pack.name }));
                     }
                 }

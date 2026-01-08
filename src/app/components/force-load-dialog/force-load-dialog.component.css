@@ -118,6 +118,13 @@
     font-size: 1.1em;
 }
 
+.variant-name {
+    font-weight: normal;
+    font-size: 0.9em;
+    color: var(--text-color-secondary);
+    font-style: italic;
+}
+
 .force-bv {
     color: var(--text-color-secondary);
     font-size: 0.8em;
