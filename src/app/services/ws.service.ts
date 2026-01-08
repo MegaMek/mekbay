@@ -81,11 +81,16 @@ export class WsService {
     constructor() {
         this.initializeService();
         
-        // Watch for uuid changes and re-register when it becomes available
+        // Watch for uuid - connect when available, re-register if uuid changes
         effect(() => {
             const uuid = this.userStateService.uuid();
-            if (uuid && uuid !== this.lastRegisteredUuid && this.wsConnected()) {
-                this.lastRegisteredUuid = uuid;
+            if (!uuid) return;
+            
+            if (!this.wsConnected() && !this.isConnecting) {
+                // UUID available, not connected yet - connect now
+                this.connect();
+            } else if (uuid !== this.lastRegisteredUuid && this.wsConnected()) {
+                // UUID changed while connected - re-register
                 this.registerSession();
             }
         });
@@ -96,7 +101,7 @@ export class WsService {
      */
     private initializeService(): void {
         this.setupNetworkMonitoring();
-        this.connect();
+        // Connection is triggered by the effect when uuid becomes available
     }
 
     /**
