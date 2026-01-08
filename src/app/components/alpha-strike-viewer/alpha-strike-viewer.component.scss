@@ -9,8 +9,8 @@
 .groups-container {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 16px;
+    gap: 8px;
+    padding: 8px;
 
     @media print {
         padding: 0;

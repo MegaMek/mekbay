@@ -58,7 +58,7 @@ export interface CardRenderItem {
 const BASE_CELL_WIDTH = 350;
 const MIN_CELL_WIDTH = 280;
 const CELL_GAP = 4;
-const CONTAINER_PADDING = 16 * 2; // left + right padding
+const CONTAINER_PADDING = 8 * 2; // left + right padding
 
 // Pinch zoom threshold: computed from container/viewport diagonal.
 // Using a ratio keeps gesture sensitivity consistent across device sizes.
