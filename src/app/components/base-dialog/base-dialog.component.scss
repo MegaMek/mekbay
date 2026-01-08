@@ -193,3 +193,7 @@
     border-top: 2px solid var(--border-color);
     font-size: 1em;
 }
+
+.modal.wide {
+    max-width: 900px;
+}
