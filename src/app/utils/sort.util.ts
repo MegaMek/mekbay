@@ -31,6 +31,8 @@
  * affiliated with Microsoft.
  */
 
+import { Unit } from "../models/units.model";
+
 /*
  * Author: Drake
  */
@@ -138,6 +140,17 @@ export function naturalCompare(a: string, b: string, isModel: boolean = false): 
     // Fallback to locale compare if all tokens equal
     return a.localeCompare(b);
 }
+
+export function compareUnitsByName(a: Unit, b: Unit) {
+    let comparison = naturalCompare(a.chassis || '', b.chassis || '');
+    if (comparison === 0) {
+        comparison = naturalCompare(a.model || '', b.model || '', true);
+        if (comparison === 0) {
+            comparison = (a.year || 0) - (b.year || 0);
+        }
+    }
+    return comparison;
+};
 
 type RelevanceNormalizedText = {
     lower: string;

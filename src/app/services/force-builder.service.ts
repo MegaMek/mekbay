@@ -966,12 +966,12 @@ export class ForceBuilderService {
 
     showForcePackDialog(): void {
         const ref = this.dialogsService.createDialog(ForcePackDialogComponent);
-        ref.componentInstance?.add.subscribe(async (pack) => {
-            if (pack) {
+        ref.componentInstance?.add.subscribe(async (units) => {
+            if (units) {
                 const group = this.addGroup();
-                for (const unit of pack.units) {
-                    if (!unit?.unit) continue;
-                    this.addUnit(unit.unit, undefined, undefined, group);
+                for (const entry of units) {
+                    if (!entry?.unit) continue;
+                    this.addUnit(entry.unit, undefined, undefined, group);
                 }
             }
             ref.close();

@@ -38,7 +38,7 @@ import { MultiState, MultiStateSelection } from '../components/multi-select-drop
 import { ActivatedRoute, Router } from '@angular/router';
 import { getForcePacks } from '../models/forcepacks.model';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { computeRelevanceScore, naturalCompare } from '../utils/sort.util';
+import { computeRelevanceScore, naturalCompare, compareUnitsByName } from '../utils/sort.util';
 import { parseSearchQuery, SearchTokensGroup } from '../utils/search.util';
 import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
@@ -762,17 +762,6 @@ export class UnitSearchFiltersService {
 
         const sorted = [...results];
 
-        const compareByName = (a: Unit, b: Unit) => {
-            let comparison = naturalCompare(a.chassis || '', b.chassis || '');
-            if (comparison === 0) {
-                comparison = naturalCompare(a.model || '', b.model || '', true);
-                if (comparison === 0) {
-                    comparison = (a.year || 0) - (b.year || 0);
-                }
-            }
-            return comparison;
-        };
-
         // Precompute relevance scores once per sort (avoids recomputing inside comparator).
         let relevanceScores: WeakMap<Unit, number> | null = null;
         if (sortKey === '') {
@@ -797,10 +786,10 @@ export class UnitSearchFiltersService {
                 comparison = bScore - aScore;
 
                 if (comparison === 0) {
-                    comparison = compareByName(a, b);
+                    comparison = compareUnitsByName(a, b);
                 }
             } else if (sortKey === 'name') {
-                comparison = compareByName(a, b);
+                comparison = compareUnitsByName(a, b);
             } else if (sortKey === 'bv') {
                 // Use adjusted BV for sorting
                 const aBv = this.getAdjustedBV(a);

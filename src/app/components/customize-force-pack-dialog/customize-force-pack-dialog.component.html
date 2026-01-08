@@ -1,0 +1,76 @@
+<base-dialog modalClass="wide">
+    <div dialog-header>
+        <div class="title">{{ pack.name }}
+            @if (pack.variantName) {
+                <span class="variant-name">({{ pack.variantName }})</span>
+            }
+        </div>
+    </div>
+
+    <div dialog-body>
+        <div class="pack-info">
+            @if (gameService.isAlphaStrike()) {
+                <span class="pack-value">PV: {{ totalPV() | number }}</span>
+            } @else {
+                <span class="pack-value">BV: {{ totalBV() | number }}</span>
+            }
+        </div>
+
+        <div class="units-container" [class.has-panel]="openDropdownIndex() !== null && !layoutService.isPhone()">
+            <!-- Force pack units list -->
+            <div class="unit-list">
+                @for (cu of customizableUnits(); let i = $index; track i) {
+                    @let isOpen = openDropdownIndex() === i;
+                    @let isModified = cu.unit?.name !== cu.originalUnit?.name;
+                    <div class="unit-entry" 
+                         [class.selected]="isOpen"
+                         [class.missing]="!cu.unit"
+                         (click)="onUnitClick(i)">
+                        <unit-icon [unit]="cu.unit"></unit-icon>
+                        <div class="unit-info">
+                            <div class="unit-model">{{ cu.unit?.model || cu.model || '' }}</div>
+                            <div class="unit-chassis">
+                                {{ cu.unit?.chassis || cu.chassis }}
+                                @if (isModified) {
+                                    <span class="modified-indicator" title="Modified from original">●</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="unit-value">
+                            @if (gameService.isAlphaStrike()) {
+                                {{ cu.unit?.as?.PV || 0 }}
+                            } @else {
+                                {{ cu.unit?.bv || 0 }}
+                            }
+                        </div>
+                        <button class="info-btn" (click)="onForcePackUnitInfo($event, i)" title="Unit info" [disabled]="!cu.unit">
+                            <svg stroke="currentColor" width="20px" height="20px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <!-- Docked variant picker (non-phone layouts) -->
+            @if (openDropdownIndex() !== null && !layoutService.isPhone()) {
+                @let selectedUnit = customizableUnits()[openDropdownIndex()!];
+                <div class="docked-panel-container">
+                    <variant-dropdown-panel
+                        [variants]="variantsForSelected()"
+                        [originalUnitName]="selectedUnit?.originalUnit?.name ?? null"
+                        [currentUnitName]="selectedUnit?.unit?.name ?? null"
+                        (selected)="onDockedVariantSelect($event)"
+                        (infoRequested)="onDockedVariantInfo($event)">
+                    </variant-dropdown-panel>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div dialog-footer class="footer">
+        <button class="modal-btn bt-button" (click)="onAdd()">ADD</button>
+        <button class="modal-btn bt-button" (click)="onReset()" [disabled]="!hasChanges()">RESET</button>
+        <button class="modal-btn bt-button" (click)="onDismiss()">DISMISS</button>
+    </div>
+</base-dialog>

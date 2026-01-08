@@ -63,6 +63,9 @@ export interface UnitDetailsDialogData {
     unitIndex: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
+    hideAddButton?: boolean;
+    /** When true, ADD only emits the unit without adding to force */
+    selectMode?: boolean;
 }
 
 @Component({
@@ -83,6 +86,7 @@ export class UnitDetailsDialogComponent {
     router = inject(Router);
     floatingOverlayService = inject(FloatingOverlayService);
     add = output<Unit>();
+    select = output<Unit>();
     indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
     incomingPanelRef = viewChild<ElementRef>('incomingPanel');
@@ -314,6 +318,14 @@ export class UnitDetailsDialogComponent {
             this.incomingUnit.set(null);
         });
     }
+
+    async onSelect() {
+        const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
+        this.select.emit(selectedUnit);
+        this.onClose();
+        return;
+    }
+
 
     async onAdd() {
         const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;

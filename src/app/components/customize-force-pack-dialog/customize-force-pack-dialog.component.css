@@ -1,0 +1,186 @@
+:host ::ng-deep .modal-body {
+    padding: 0px !important;
+}
+
+:host ::ng-deep div[dialog-body] {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.title {
+    font-weight: bold;
+    font-size: 1.2em;
+}
+
+.variant-name {
+    font-weight: normal;
+    font-size: 0.85em;
+    color: var(--text-color-secondary);
+    font-style: italic;
+    margin-left: 8px;
+}
+
+.footer {
+    width: 100%;
+    display: flex;
+    justify-content: space-around;
+    flex-direction: row;
+    gap: 8px;
+}
+
+.pack-info {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.pack-value {
+    font-weight: bold;
+    color: var(--bt-yellow);
+}
+
+/* Container for units list and docked panel */
+.units-container {
+    display: flex;
+    flex-direction: row;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Unit list */
+.unit-list {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 200px;
+    padding: 8px;
+    gap: 4px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+/* When panel is open, constrain unit list width */
+.units-container.has-panel .unit-list {
+    flex: 0 1 50%;
+    max-width: 400px;
+}
+
+/* Docked panel container */
+.docked-panel-container {
+    flex: 1 1 50%;
+    min-width: 250px;
+    border-left: 1px solid var(--border-color);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.docked-panel-container variant-dropdown-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.unit-entry {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: #0003;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.unit-entry:hover {
+    border-color: var(--border-color);
+    background: var(--background-highlight);
+}
+
+.unit-entry.selected {
+    border-color: var(--bt-yellow);
+    background: var(--bt-yellow-background);
+}
+
+.unit-entry.missing {
+    opacity: 0.5;
+}
+
+.unit-entry unit-icon {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+}
+
+.unit-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.unit-model {
+    font-size: 0.8em;
+    color: var(--text-color-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.unit-chassis {
+    font-size: 0.9em;
+    font-weight: bold;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.unit-value {
+    font-size: 0.85em;
+    color: var(--text-color-secondary);
+    flex-shrink: 0;
+    min-width: 50px;
+    text-align: right;
+}
+
+.modified-indicator {
+    color: var(--bt-yellow);
+    font-size: 0.8em;
+    margin-left: 4px;
+}
+
+/* Info button */
+.info-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+    flex-shrink: 0;
+}
+
+.info-btn:hover {
+    color: var(--text-color);
+}
+
+.info-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.modal-btn[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

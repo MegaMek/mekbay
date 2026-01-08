@@ -34,11 +34,14 @@
 import { Component, inject, signal, ChangeDetectionStrategy, output, viewChild, ElementRef, Injector, afterNextRender, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
+import { firstValueFrom } from 'rxjs';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { GameService } from '../../services/game.service';
+import { DialogsService } from '../../services/dialogs.service';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
+import { PackUnitEntry, ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
+import { CustomizeForcePackDialogComponent, CustomizeForcePackDialogData, CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
 
 /*
  * Author: Drake
@@ -47,7 +50,6 @@ import { ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
 
 @Component({
     selector: 'force-pack-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule, BaseDialogComponent, UnitIconComponent],
     templateUrl: './force-pack-dialog.component.html',
@@ -57,9 +59,10 @@ export class ForcePackDialogComponent {
     dialogRef = inject(DialogRef<unknown>);
     dataService = inject(DataService);
     gameService = inject(GameService);
+    dialogsService = inject(DialogsService);
     injector = inject(Injector);
 
-    add = output<ResolvedPack | null>();
+    add = output<PackUnitEntry[] | null>();
 
     packs = signal<ResolvedPack[]>([]);
     selectedPack = signal<ResolvedPack | null>(null);
@@ -97,9 +100,24 @@ export class ForcePackDialogComponent {
         this.selectedPack.set(p);
     }
 
-    onAdd() {
-        const p = this.selectedPack();
-        this.add.emit(p ?? null);
+    async onAdd() {
+        const pack = this.selectedPack();
+        if (!pack) return;
+
+        // Open the customize dialog as a sub-dialog
+        const ref = this.dialogsService.createDialog<CustomizeForcePackDialogResult | null>(
+            CustomizeForcePackDialogComponent,
+            {
+                data: { pack } as CustomizeForcePackDialogData
+            }
+        );
+
+        const result = await firstValueFrom(ref.closed);
+        if (result?.units) {
+            // User confirmed - emit the customized units and close
+            this.add.emit(result.units);
+        }
+        // If dismissed (null), stay on this dialog
     }
 
     onClose() {
