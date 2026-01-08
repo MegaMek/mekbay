@@ -1416,8 +1416,8 @@ export class DataService {
         // Notify other tabs
         this.notifyStoreUpdated('update', 'tags');
 
-        // Sync operations to cloud (incremental)
-        this.syncTagOpsToCloud(ops);
+        // Sync operations to cloud (incremental, fire-and-forget)
+        void this.syncTagOpsToCloud(ops);
     }
 
     /**
@@ -1484,8 +1484,8 @@ export class DataService {
         // Notify other tabs
         this.notifyStoreUpdated('update', 'tags');
 
-        // Sync operations to cloud (incremental)
-        this.syncTagOpsToCloud(ops);
+        // Sync operations to cloud (incremental, fire-and-forget)
+        void this.syncTagOpsToCloud(ops);
     }
 
     /**
@@ -1538,7 +1538,7 @@ export class DataService {
      */
     private static readonly TAG_OPS_CHUNK_SIZE = 1000;
 
-    private syncTagOpsToCloud(ops: TagOp[]): void {
+    private async syncTagOpsToCloud(ops: TagOp[]): Promise<void> {
         const ws = this.wsService.getWebSocket();
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
@@ -1548,11 +1548,20 @@ export class DataService {
         // Chunk large batches to stay within server limits
         for (let i = 0; i < ops.length; i += DataService.TAG_OPS_CHUNK_SIZE) {
             const chunk = ops.slice(i, i + DataService.TAG_OPS_CHUNK_SIZE);
-            this.wsService.send({
-                action: 'tagOps',
-                uuid,
-                ops: chunk
-            });
+            try {
+                const response = await this.wsService.sendAndWaitForResponse({
+                    action: 'tagOps',
+                    uuid,
+                    ops: chunk
+                });
+                // Clear pending ops after successful sync
+                if (response?.serverTs) {
+                    await this.dbService.clearPendingTagOps(response.serverTs);
+                }
+            } catch (err) {
+                this.logger.error('Failed to sync tag ops to cloud: ' + err);
+                // Keep pending ops for retry on next sync
+            }
         }
     }
 
@@ -1634,8 +1643,8 @@ export class DataService {
             // No conflict: either no pending ops, or timestamps match (safe to sync)
             if (hasPendingOps) {
                 // Timestamps match - safe to just upload our pending ops
-                this.syncTagOpsToCloud(syncState.pendingOps);
-                await this.dbService.clearPendingTagOps(serverTs || Date.now());
+                // syncTagOpsToCloud will clear pending ops on success
+                await this.syncTagOpsToCloud(syncState.pendingOps);
             } else {
                 // No pending ops - apply any cloud changes
                 await this.applyCloudState(response, serverTs);
