@@ -138,7 +138,7 @@ export class TaggingService {
                 try {
                     const newTagRef = this.dialogsService.createDialog<string | null>(InputDialogComponent, {
                         data: {
-                            title: tagType === 'chassis' ? 'Add New Tag to Chassis' : 'Add New Tag to Unit',
+                            title: tagType === 'chassis' ? 'Add New Tag to all variants' : 'Add New Tag to Unit',
                             inputType: 'text',
                             defaultValue: '',
                             placeholder: 'Enter tag...'
