@@ -1609,7 +1609,8 @@ export class DataService {
             const serverTs: number = response.serverTs ?? 0;
 
             // Conflict detection: we have pending ops AND server has changed since our last sync
-            if (hasPendingOps && syncState.lastSyncTs !== serverTs) {
+            // (but not if serverTs is 0, meaning server has no data yet)
+            if (hasPendingOps && serverTs > 0 && syncState.lastSyncTs !== serverTs) {
                 // Potential conflict - ask user how to resolve
                 const resolution = await this.showTagConflictDialog();
                 
@@ -1680,16 +1681,33 @@ export class DataService {
      * Merge cloud state with local pending operations.
      */
     private async mergeCloudAndLocal(response: any, pendingOps: TagOp[], serverTs: number): Promise<void> {
-        // Start with current local state or empty
-        let tagData = await this.dbService.getAllTagData() ?? { 
+        // Start with current local state
+        const tagData = await this.dbService.getAllTagData() ?? { 
             nameTags: {}, 
             chassisTags: {}, 
             timestamp: 0 
         };
 
-        // If server sent full state, use it as base
+        // Apply cloud changes first (server ops or full state)
         if (response.fullState) {
-            tagData = response.fullState as TagData;
+            // Merge cloud state into local: cloud additions get added, but don't remove local tags
+            const cloudData = response.fullState as TagData;
+            for (const [key, tags] of Object.entries(cloudData.nameTags || {})) {
+                if (!tagData.nameTags[key]) tagData.nameTags[key] = [];
+                for (const tag of tags) {
+                    if (!tagData.nameTags[key].some(t => t.toLowerCase() === tag.toLowerCase())) {
+                        tagData.nameTags[key].push(tag);
+                    }
+                }
+            }
+            for (const [key, tags] of Object.entries(cloudData.chassisTags || {})) {
+                if (!tagData.chassisTags[key]) tagData.chassisTags[key] = [];
+                for (const tag of tags) {
+                    if (!tagData.chassisTags[key].some(t => t.toLowerCase() === tag.toLowerCase())) {
+                        tagData.chassisTags[key].push(tag);
+                    }
+                }
+            }
         } else if (response.ops && response.ops.length > 0) {
             // Apply server's incremental ops first
             this.applyTagOps(tagData, response.ops);
