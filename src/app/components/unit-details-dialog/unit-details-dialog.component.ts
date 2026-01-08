@@ -54,6 +54,8 @@ import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab
 import { UnitDetailsSheetTabComponent } from './tabs/unit-details-sheet-tab.component';
 import { GameService } from '../../services/game.service';
 import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
+import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
+import { TaggingService } from '../../services/tagging.service';
 
 /*
  * Author: Drake
@@ -72,7 +74,7 @@ export interface UnitDetailsDialogData {
     selector: 'unit-details-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, SwipeDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent],
+    imports: [CommonModule, BaseDialogComponent, SwipeDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitTagsComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css']
 })
@@ -85,6 +87,7 @@ export class UnitDetailsDialogComponent {
     toastService = inject(ToastService);
     router = inject(Router);
     floatingOverlayService = inject(FloatingOverlayService);
+    private taggingService = inject(TaggingService);
     add = output<Unit>();
     select = output<Unit>();
     indexChange = output<number>();
@@ -381,6 +384,12 @@ export class UnitDetailsDialogComponent {
             copyTextToClipboard(shareText);
             this.toastService.show('Unit link copied to clipboard.', 'success');
         }
+    }
+
+    async onTagClick({ unit, event }: TagClickEvent) {
+        event.stopPropagation();
+        const anchorEl = (event.currentTarget as HTMLElement) || (event.target as HTMLElement);
+        await this.taggingService.openTagSelector([unit], anchorEl);
     }
 
     public shouldBlockSwipe = (): boolean => {

@@ -69,13 +69,6 @@ export class UnitTagsComponent {
      */
     mode = input<'compact' | 'full'>('compact');
 
-    /**
-     * Icon size:
-     * - 'normal': 24px icons (default)
-     * - 'small': 16px icons (for dense table views)
-     */
-    size = input<'normal' | 'small'>('normal');
-
     /** Emitted when the add/edit tag button is clicked. Passes both the unit and MouseEvent for overlay positioning. */
     tagClick = output<TagClickEvent>();
 

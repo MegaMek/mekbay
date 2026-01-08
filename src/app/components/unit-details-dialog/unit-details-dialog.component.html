@@ -20,6 +20,7 @@
         <img src="/images/weight.svg" class="icon" alt="tons">
       </div>
     </div>
+    <unit-tags class="header-tags" [unit]="headerUnit()" [mode]="'full'" (tagClick)="onTagClick($event)"></unit-tags>
   </div>
 </div>
 <div tab-actions>

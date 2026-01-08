@@ -13,12 +13,11 @@
 .tag {
     display: inline-flex;
     align-items: center;
-    font-size: 0.75em;
+    font-size: 12px;
     background-color: #FFF3;
     color: var(--text-color);
     border: 1px solid var(--text-color-secondary);
     padding: 2px 6px;
-    font-size: 0.75em;
     white-space: nowrap;
 }
 
@@ -56,9 +55,4 @@
 .tags-counter {
     font-size: .75em;
     color: var(--bt-yellow);
-}
-
-.unit-tags.small .tag {
-    font-size: 0.65em;
-    padding: 1px 4px;
 }
