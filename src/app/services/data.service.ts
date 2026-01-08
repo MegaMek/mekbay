@@ -36,7 +36,7 @@ import { HttpClient } from '@angular/common/http';
 import { Unit, UnitComponent, Units } from '../models/units.model';
 import { Faction, Factions } from '../models/factions.model';
 import { Era, Eras } from '../models/eras.model';
-import { DbService, StoredTags, StoredChassisTags, TagData } from './db.service';
+import { DbService, StoredTags, StoredChassisTags, TagData, TagOp, TagSyncState } from './db.service';
 import { ADVANCED_FILTERS, AdvFilterType, SerializedSearchFilter } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
@@ -49,6 +49,7 @@ import { UnitInitializerService } from './unit-initializer.service';
 import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
+import { DialogsService } from './dialogs.service';
 import { firstValueFrom } from 'rxjs';
 import { GameSystem, REMOTE_HOST } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
@@ -112,6 +113,7 @@ export type BroadcastPayload = {
 })
 export class DataService {
     private logger = inject(LoggerService);
+    private dialogsService = inject(DialogsService);
     private broadcast?: BroadcastChannel;
     private injector = inject(Injector);
     private http = inject(HttpClient);
@@ -372,7 +374,21 @@ export class DataService {
      * Set up WebSocket handlers for tag synchronization.
      */
     private setupTagSyncHandlers(): void {
-        // Handle remote tag updates from other sessions of the same user
+        // Handle remote tag operations from other sessions of the same user
+        this.wsService.registerMessageHandler('tagOps', async (msg) => {
+            if (msg.ops) {
+                await this.handleRemoteTagOps(msg.ops);
+            }
+        });
+
+        // Handle state reset notification - another session did a full state replacement
+        this.wsService.registerMessageHandler('tagStateReset', async (msg) => {
+            // Clear our pending ops and re-sync from server
+            await this.dbService.clearPendingTagOps(0); // Reset lastSyncTs to force full sync
+            await this.syncTagsFromCloud();
+        });
+
+        // Legacy handler for backwards compatibility during migration
         this.wsService.registerMessageHandler('updatedTags', async (msg) => {
             if (msg.data) {
                 await this.handleRemoteTagUpdate(msg.data);
@@ -1311,20 +1327,30 @@ export class DataService {
 
         const trimmedTag = tag.trim();
         const lowerTag = trimmedTag.toLowerCase();
+        const now = Date.now();
+        const ops: TagOp[] = [];
+
+        // Track processed keys to avoid duplicate operations
+        const processedKeys = new Set<string>();
 
         for (const unit of units) {
             if (tagType === 'chassis') {
                 const chassisKey = DataService.getChassisTagKey(unit);
 
+                // Skip if already processed this chassis
+                if (processedKeys.has(`c:${chassisKey}`)) continue;
+                processedKeys.add(`c:${chassisKey}`);
+
                 if (action === 'add') {
                     // When adding a chassis tag, remove any existing name tag with the same value
                     // This "expands" the tag from unit-specific to chassis-wide
-                    if (tagData.nameTags[unit.name]) {
+                    if (tagData.nameTags[unit.name]?.some(t => t.toLowerCase() === lowerTag)) {
                         tagData.nameTags[unit.name] = tagData.nameTags[unit.name]
                             .filter(t => t.toLowerCase() !== lowerTag);
                         if (tagData.nameTags[unit.name].length === 0) {
                             delete tagData.nameTags[unit.name];
                         }
+                        ops.push({ k: unit.name, t: trimmedTag, c: 0, a: 0, ts: now });
                     }
 
                     // Add to chassis tags if not already present
@@ -1333,43 +1359,53 @@ export class DataService {
                     }
                     if (!tagData.chassisTags[chassisKey].some(t => t.toLowerCase() === lowerTag)) {
                         tagData.chassisTags[chassisKey].push(trimmedTag);
+                        ops.push({ k: chassisKey, t: trimmedTag, c: 1, a: 1, ts: now });
                     }
                 } else {
                     // Remove from chassis tags
-                    if (tagData.chassisTags[chassisKey]) {
+                    if (tagData.chassisTags[chassisKey]?.some(t => t.toLowerCase() === lowerTag)) {
                         tagData.chassisTags[chassisKey] = tagData.chassisTags[chassisKey]
                             .filter(t => t.toLowerCase() !== lowerTag);
                         if (tagData.chassisTags[chassisKey].length === 0) {
                             delete tagData.chassisTags[chassisKey];
                         }
+                        ops.push({ k: chassisKey, t: trimmedTag, c: 1, a: 0, ts: now });
                     }
                 }
             } else {
-                // Name-based tagging
+                // Name-based tagging - skip if already processed
+                if (processedKeys.has(`n:${unit.name}`)) continue;
+                processedKeys.add(`n:${unit.name}`);
+
                 if (action === 'add') {
                     if (!tagData.nameTags[unit.name]) {
                         tagData.nameTags[unit.name] = [];
                     }
                     if (!tagData.nameTags[unit.name].some(t => t.toLowerCase() === lowerTag)) {
                         tagData.nameTags[unit.name].push(trimmedTag);
+                        ops.push({ k: unit.name, t: trimmedTag, c: 0, a: 1, ts: now });
                     }
                 } else {
-                    if (tagData.nameTags[unit.name]) {
+                    if (tagData.nameTags[unit.name]?.some(t => t.toLowerCase() === lowerTag)) {
                         tagData.nameTags[unit.name] = tagData.nameTags[unit.name]
                             .filter(t => t.toLowerCase() !== lowerTag);
                         if (tagData.nameTags[unit.name].length === 0) {
                             delete tagData.nameTags[unit.name];
                         }
+                        ops.push({ k: unit.name, t: trimmedTag, c: 0, a: 0, ts: now });
                     }
                 }
             }
         }
 
-        // Update timestamp
-        tagData.timestamp = Date.now();
+        // No actual changes made
+        if (ops.length === 0) return;
 
-        // Save to local storage
-        await this.dbService.saveAllTagData(tagData);
+        // Update timestamp
+        tagData.timestamp = now;
+
+        // Save state and operations atomically
+        await this.dbService.appendTagOps(ops, tagData);
 
         // Update cached data
         this.cachedTagData = tagData;
@@ -1380,8 +1416,8 @@ export class DataService {
         // Notify other tabs
         this.notifyStoreUpdated('update', 'tags');
 
-        // Sync to cloud
-        this.syncTagsToCloud(tagData);
+        // Sync operations to cloud (incremental)
+        this.syncTagOpsToCloud(ops);
     }
 
     /**
@@ -1395,34 +1431,49 @@ export class DataService {
         };
 
         const lowerTag = tag.toLowerCase();
+        const now = Date.now();
+        const ops: TagOp[] = [];
+
+        // Track processed keys to avoid duplicate operations
+        const processedNameKeys = new Set<string>();
+        const processedChassisKeys = new Set<string>();
 
         for (const unit of units) {
             const chassisKey = DataService.getChassisTagKey(unit);
 
             // Remove from name tags
-            if (tagData.nameTags[unit.name]) {
+            if (!processedNameKeys.has(unit.name) && tagData.nameTags[unit.name]?.some(t => t.toLowerCase() === lowerTag)) {
+                processedNameKeys.add(unit.name);
+                const originalTag = tagData.nameTags[unit.name].find(t => t.toLowerCase() === lowerTag) || tag;
                 tagData.nameTags[unit.name] = tagData.nameTags[unit.name]
                     .filter(t => t.toLowerCase() !== lowerTag);
                 if (tagData.nameTags[unit.name].length === 0) {
                     delete tagData.nameTags[unit.name];
                 }
+                ops.push({ k: unit.name, t: originalTag, c: 0, a: 0, ts: now });
             }
 
             // Remove from chassis tags
-            if (tagData.chassisTags[chassisKey]) {
+            if (!processedChassisKeys.has(chassisKey) && tagData.chassisTags[chassisKey]?.some(t => t.toLowerCase() === lowerTag)) {
+                processedChassisKeys.add(chassisKey);
+                const originalTag = tagData.chassisTags[chassisKey].find(t => t.toLowerCase() === lowerTag) || tag;
                 tagData.chassisTags[chassisKey] = tagData.chassisTags[chassisKey]
                     .filter(t => t.toLowerCase() !== lowerTag);
                 if (tagData.chassisTags[chassisKey].length === 0) {
                     delete tagData.chassisTags[chassisKey];
                 }
+                ops.push({ k: chassisKey, t: originalTag, c: 1, a: 0, ts: now });
             }
         }
 
-        // Update timestamp
-        tagData.timestamp = Date.now();
+        // No actual changes made
+        if (ops.length === 0) return;
 
-        // Save to local storage
-        await this.dbService.saveAllTagData(tagData);
+        // Update timestamp
+        tagData.timestamp = now;
+
+        // Save state and operations atomically
+        await this.dbService.appendTagOps(ops, tagData);
 
         // Update cached data
         this.cachedTagData = tagData;
@@ -1433,8 +1484,8 @@ export class DataService {
         // Notify other tabs
         this.notifyStoreUpdated('update', 'tags');
 
-        // Sync to cloud
-        this.syncTagsToCloud(tagData);
+        // Sync operations to cloud (incremental)
+        this.syncTagOpsToCloud(ops);
     }
 
     /**
@@ -1482,25 +1533,57 @@ export class DataService {
     }
 
     /**
-     * Sync tags to cloud storage.
+     * Sync tag operations to cloud (incremental).
+     * Sends only the operations, not the full state.
      */
-    private syncTagsToCloud(tagData: TagData): void {
+    private static readonly TAG_OPS_CHUNK_SIZE = 1000;
+
+    private syncTagOpsToCloud(ops: TagOp[]): void {
+        const ws = this.wsService.getWebSocket();
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+        const uuid = this.userStateService.uuid();
+        if (!uuid || ops.length === 0) return;
+
+        // Chunk large batches to stay within server limits
+        for (let i = 0; i < ops.length; i += DataService.TAG_OPS_CHUNK_SIZE) {
+            const chunk = ops.slice(i, i + DataService.TAG_OPS_CHUNK_SIZE);
+            this.wsService.send({
+                action: 'tagOps',
+                uuid,
+                ops: chunk
+            });
+        }
+    }
+
+    /**
+     * Push full local state to cloud, replacing server state.
+     */
+    private async pushFullStateToCloud(): Promise<void> {
         const ws = this.wsService.getWebSocket();
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
         const uuid = this.userStateService.uuid();
         if (!uuid) return;
 
-        this.wsService.send({
-            action: 'saveTags',
+        const localData = await this.dbService.getAllTagData();
+        if (!localData) return;
+
+        const response = await this.wsService.sendAndWaitForResponse({
+            action: 'setTagState',
             uuid,
-            data: tagData
+            data: localData
         });
+
+        if (response && response.serverTs) {
+            await this.dbService.clearPendingTagOps(response.serverTs);
+        }
     }
 
     /**
      * Fetch tags from cloud and merge with local if needed.
      * Called on login/register and when coming back online.
+     * Uses incremental sync with conflict detection.
      */
     public async syncTagsFromCloud(): Promise<void> {
         const ws = await this.canUseCloud();
@@ -1510,46 +1593,225 @@ export class DataService {
         if (!uuid) return;
 
         try {
+            const syncState = await this.dbService.getTagSyncState();
+            const localData = await this.dbService.getAllTagData();
+            const hasPendingOps = syncState.pendingOps.length > 0;
+
+            // Request server state info (timestamp) and any ops since our last sync
             const response = await this.wsService.sendAndWaitForResponse({
-                action: 'getTags',
-                uuid
+                action: 'getTagOps',
+                uuid,
+                since: syncState.lastSyncTs
             });
 
             if (!response || response.action === 'error') return;
 
-            const cloudData = response.data as TagData | null;
-            const localData = await this.dbService.getAllTagData();
+            const serverTs: number = response.serverTs ?? 0;
 
-            // Handle first-time cloud sync (no cloud data exists)
-            if (!cloudData || (!cloudData.nameTags && !cloudData.chassisTags)) {
-                // If we have local data, push it to the cloud
-                if (localData && (Object.keys(localData.nameTags).length > 0 || Object.keys(localData.chassisTags).length > 0)) {
-                    this.syncTagsToCloud(localData);
+            // Conflict detection: we have pending ops AND server has changed since our last sync
+            if (hasPendingOps && syncState.lastSyncTs !== serverTs) {
+                // Potential conflict - ask user how to resolve
+                const resolution = await this.showTagConflictDialog();
+                
+                switch (resolution) {
+                    case 'cloud':
+                        // Drop local pending, use cloud state
+                        await this.applyCloudState(response, serverTs);
+                        break;
+                    case 'merge':
+                        // Apply cloud changes first, then re-apply our pending ops on top
+                        await this.mergeCloudAndLocal(response, syncState.pendingOps, serverTs);
+                        break;
+                    case 'local':
+                        // Push our full local state to cloud
+                        await this.pushFullStateToCloud();
+                        break;
                 }
                 return;
             }
 
-            const localTimestamp = localData?.timestamp ?? 0;
-            const cloudTimestamp = cloudData.timestamp ?? 0;
-
-            if (cloudTimestamp > localTimestamp) {
-                // Cloud is newer, use cloud data
-                await this.dbService.saveAllTagData(cloudData);
-                this.cachedTagData = cloudData;
-                await this.loadUnitTags(this.getUnits());
-                this.notifyStoreUpdated('update', 'tags');
-            } else if (localTimestamp > cloudTimestamp && localData) {
-                // Local is newer, push to cloud
-                this.syncTagsToCloud(localData);
+            // No conflict: either no pending ops, or timestamps match (safe to sync)
+            if (hasPendingOps) {
+                // Timestamps match - safe to just upload our pending ops
+                this.syncTagOpsToCloud(syncState.pendingOps);
+                await this.dbService.clearPendingTagOps(serverTs || Date.now());
+            } else {
+                // No pending ops - apply any cloud changes
+                await this.applyCloudState(response, serverTs);
             }
-            // If timestamps are equal, no action needed
         } catch (err) {
             this.logger.error('Failed to sync tags from cloud: ' + err);
         }
     }
 
     /**
+     * Apply cloud state (either full state or incremental ops).
+     */
+    private async applyCloudState(response: any, serverTs: number): Promise<void> {
+        if (response.fullState) {
+            // Server sent full state (migration or first sync)
+            const cloudData = response.fullState as TagData;
+            await this.dbService.saveAllTagData(cloudData);
+            await this.dbService.clearPendingTagOps(serverTs);
+            this.cachedTagData = cloudData;
+            await this.loadUnitTags(this.getUnits());
+            this.notifyStoreUpdated('update', 'tags');
+        } else if (response.ops && response.ops.length > 0) {
+            // Apply incremental operations
+            const localData = await this.dbService.getAllTagData() ?? { 
+                nameTags: {}, 
+                chassisTags: {}, 
+                timestamp: 0 
+            };
+            this.applyTagOps(localData, response.ops);
+            localData.timestamp = serverTs;
+            await this.dbService.saveAllTagData(localData);
+            await this.dbService.clearPendingTagOps(serverTs);
+            this.cachedTagData = localData;
+            await this.loadUnitTags(this.getUnits());
+            this.notifyStoreUpdated('update', 'tags');
+        } else {
+            // No new ops, just update sync timestamp
+            await this.dbService.clearPendingTagOps(serverTs);
+        }
+    }
+
+    /**
+     * Merge cloud state with local pending operations.
+     */
+    private async mergeCloudAndLocal(response: any, pendingOps: TagOp[], serverTs: number): Promise<void> {
+        // Start with current local state or empty
+        let tagData = await this.dbService.getAllTagData() ?? { 
+            nameTags: {}, 
+            chassisTags: {}, 
+            timestamp: 0 
+        };
+
+        // If server sent full state, use it as base
+        if (response.fullState) {
+            tagData = response.fullState as TagData;
+        } else if (response.ops && response.ops.length > 0) {
+            // Apply server's incremental ops first
+            this.applyTagOps(tagData, response.ops);
+        }
+
+        // Now apply our pending ops on top (they win in merge)
+        this.applyTagOps(tagData, pendingOps);
+        tagData.timestamp = Date.now();
+
+        // Save merged state locally
+        await this.dbService.saveAllTagData(tagData);
+        this.cachedTagData = tagData;
+        await this.loadUnitTags(this.getUnits());
+
+        // Push merged state to cloud
+        await this.pushFullStateToCloud();
+        
+        this.notifyStoreUpdated('update', 'tags');
+    }
+
+    /**
+     * Show conflict resolution dialog when local and cloud tags are out of sync.
+     */
+    private async showTagConflictDialog(): Promise<'cloud' | 'merge' | 'local'> {
+        const { ConfirmDialogComponent } = await import('../components/confirm-dialog/confirm-dialog.component');
+        
+        const ref = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
+            disableClose: true,
+            panelClass: 'tag-conflict-dialog',
+            data: {
+                title: 'Tag Sync Conflict',
+                message: 'Your local tag changes conflict with changes made on another device. How would you like to resolve this?',
+                buttons: [
+                    { label: 'USE CLOUD', value: 'cloud' },
+                    { label: 'MERGE (KEEP BOTH)', value: 'merge' },
+                    { label: 'USE LOCAL', value: 'local' }
+                ]
+            }
+        });
+
+        const result = await firstValueFrom(ref.closed);
+        return (result as 'cloud' | 'merge' | 'local') ?? 'merge'; // Default to merge if dialog dismissed
+    }
+
+    /**
+     * Apply tag operations to tag data.
+     */
+    private applyTagOps(tagData: TagData, ops: TagOp[]): void {
+        for (const op of ops) {
+            const { k: key, t: tag, c: category, a: action } = op;
+            const lowerTag = tag.toLowerCase();
+
+            if (category === 1) {
+                // Chassis tag
+                if (action === 1) {
+                    // Add
+                    if (!tagData.chassisTags[key]) {
+                        tagData.chassisTags[key] = [];
+                    }
+                    if (!tagData.chassisTags[key].some(t => t.toLowerCase() === lowerTag)) {
+                        tagData.chassisTags[key].push(tag);
+                    }
+                } else {
+                    // Remove
+                    if (tagData.chassisTags[key]) {
+                        tagData.chassisTags[key] = tagData.chassisTags[key]
+                            .filter(t => t.toLowerCase() !== lowerTag);
+                        if (tagData.chassisTags[key].length === 0) {
+                            delete tagData.chassisTags[key];
+                        }
+                    }
+                }
+            } else {
+                // Name tag
+                if (action === 1) {
+                    // Add
+                    if (!tagData.nameTags[key]) {
+                        tagData.nameTags[key] = [];
+                    }
+                    if (!tagData.nameTags[key].some(t => t.toLowerCase() === lowerTag)) {
+                        tagData.nameTags[key].push(tag);
+                    }
+                } else {
+                    // Remove
+                    if (tagData.nameTags[key]) {
+                        tagData.nameTags[key] = tagData.nameTags[key]
+                            .filter(t => t.toLowerCase() !== lowerTag);
+                        if (tagData.nameTags[key].length === 0) {
+                            delete tagData.nameTags[key];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Handle remote tag updates from other sessions.
+     * Now receives operations instead of full state.
+     */
+    public async handleRemoteTagOps(ops: TagOp[]): Promise<void> {
+        if (!ops || ops.length === 0) return;
+
+        const localData = await this.dbService.getAllTagData() ?? {
+            nameTags: {},
+            chassisTags: {},
+            timestamp: 0
+        };
+
+        // Apply operations
+        this.applyTagOps(localData, ops);
+        localData.timestamp = Math.max(localData.timestamp, ...ops.map(op => op.ts));
+
+        await this.dbService.saveAllTagData(localData);
+        this.cachedTagData = localData;
+        await this.loadUnitTags(this.getUnits());
+        this.notifyStoreUpdated('update', 'tags');
+    }
+
+    /**
+     * @deprecated Use handleRemoteTagOps for new code.
+     * Kept for backwards compatibility during migration.
      */
     public async handleRemoteTagUpdate(tagData: TagData): Promise<void> {
         const localData = await this.dbService.getAllTagData();
@@ -1562,19 +1824,6 @@ export class DataService {
             await this.loadUnitTags(this.getUnits());
             this.notifyStoreUpdated('update', 'tags');
         }
-    }
-
-    private async getTagsCloud(instanceId: string): Promise<StoredTags | null> {
-        const ws = await this.canUseCloud();
-        if (!ws) return null;
-        const uuid = this.userStateService.uuid();
-        const payload = {
-            action: 'getTags',
-            uuid,
-            instanceId,
-        };
-        const response = await this.wsService.sendAndWaitForResponse(payload);
-        return response.data || null;
     }
 
     /* ----------------------------------------------------------

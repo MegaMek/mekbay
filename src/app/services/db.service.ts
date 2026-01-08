@@ -94,7 +94,24 @@ export interface StoredChassisTags {
 }
 
 /**
- * Combined tag data structure for cloud sync.
+ * Minimal tag operation for incremental sync.
+ * Uses short property names for wire efficiency.
+ */
+export interface TagOp {
+    /** Key: unit name (for name tags) or chassis|type (for chassis tags) */
+    k: string;
+    /** Tag name */
+    t: string;
+    /** Category: 0=name, 1=chassis */
+    c: 0 | 1;
+    /** Action: 0=remove, 1=add */
+    a: 0 | 1;
+    /** Timestamp in milliseconds */
+    ts: number;
+}
+
+/**
+ * Combined tag data structure for local storage and cloud sync.
  * Contains both name-specific and chassis-wide tags.
  */
 export interface TagData {
@@ -104,6 +121,16 @@ export interface TagData {
     chassisTags: StoredChassisTags;
     /** Timestamp of last modification for sync purposes */
     timestamp: number;
+}
+
+/**
+ * Local tag sync state stored in IndexedDB.
+ */
+export interface TagSyncState {
+    /** Pending operations not yet confirmed by server */
+    pendingOps: TagOp[];
+    /** Timestamp of last successful sync with server */
+    lastSyncTs: number;
 }
 
 export interface UserData {
@@ -387,6 +414,90 @@ export class DbService {
             store.put(data.nameTags, 'main');
             store.put(data.chassisTags, 'chassis');
             store.put(data.timestamp, 'timestamp');
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /**
+     * Get tag sync state (pending operations and last sync timestamp).
+     */
+    public async getTagSyncState(): Promise<TagSyncState> {
+        const db = await this.dbPromise;
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(TAGS_STORE, 'readonly');
+            const store = transaction.objectStore(TAGS_STORE);
+
+            const pendingRequest = store.get('pendingOps');
+            const lastSyncRequest = store.get('lastSyncTs');
+
+            transaction.oncomplete = () => {
+                resolve({
+                    pendingOps: pendingRequest.result || [],
+                    lastSyncTs: lastSyncRequest.result || 0
+                });
+            };
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /**
+     * Save tag sync state.
+     */
+    public async saveTagSyncState(state: TagSyncState): Promise<void> {
+        const db = await this.dbPromise;
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(TAGS_STORE, 'readwrite');
+            const store = transaction.objectStore(TAGS_STORE);
+
+            store.put(state.pendingOps, 'pendingOps');
+            store.put(state.lastSyncTs, 'lastSyncTs');
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /**
+     * Append operations to pending queue and update state atomically.
+     */
+    public async appendTagOps(ops: TagOp[], tagData: TagData): Promise<void> {
+        const db = await this.dbPromise;
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(TAGS_STORE, 'readwrite');
+            const store = transaction.objectStore(TAGS_STORE);
+
+            // Get current pending ops
+            const pendingRequest = store.get('pendingOps');
+
+            pendingRequest.onsuccess = () => {
+                const currentPending: TagOp[] = pendingRequest.result || [];
+                const newPending = [...currentPending, ...ops];
+                
+                // Save all in one transaction
+                store.put(tagData.nameTags, 'main');
+                store.put(tagData.chassisTags, 'chassis');
+                store.put(tagData.timestamp, 'timestamp');
+                store.put(newPending, 'pendingOps');
+            };
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /**
+     * Clear pending operations after successful sync.
+     */
+    public async clearPendingTagOps(syncTs: number): Promise<void> {
+        const db = await this.dbPromise;
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(TAGS_STORE, 'readwrite');
+            const store = transaction.objectStore(TAGS_STORE);
+
+            store.put([], 'pendingOps');
+            store.put(syncTs, 'lastSyncTs');
 
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
