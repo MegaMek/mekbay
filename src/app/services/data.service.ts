@@ -396,9 +396,12 @@ export class DataService {
         });
 
         // Handle userState response after register (includes tag sync trigger)
-        this.wsService.registerMessageHandler('userState', async (msg) => {
-            // After registration, sync tags from cloud
-            await this.syncTagsFromCloud();
+        this.wsService.registerMessageHandler('userState', async () => {
+            // After registration, sync tags from cloud (only if we have a uuid)
+            const uuid = this.userStateService.uuid();
+            if (uuid) {
+                await this.syncTagsFromCloud();
+            }
         });
     }
 

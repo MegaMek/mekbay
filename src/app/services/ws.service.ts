@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { inject, Injectable, signal } from '@angular/core';
+import { effect, inject, Injectable, signal } from '@angular/core';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import { SerializedForce } from '../models/force-serialization';
@@ -76,9 +76,19 @@ export class WsService {
     public wsConnected = signal<boolean>(false);
     private userStateService = inject(UserStateService);
     private globalErrorHandler: ((message: string) => void) | null = null;
+    private lastRegisteredUuid = '';
 
     constructor() {
         this.initializeService();
+        
+        // Watch for uuid changes and re-register when it becomes available
+        effect(() => {
+            const uuid = this.userStateService.uuid();
+            if (uuid && uuid !== this.lastRegisteredUuid && this.wsConnected()) {
+                this.lastRegisteredUuid = uuid;
+                this.registerSession();
+            }
+        });
     }
 
     /**
@@ -251,7 +261,9 @@ export class WsService {
      * Register this session with the server
      */
     private registerSession(): void {
-        const uuid = this.userStateService.uuid(); try {
+        const uuid = this.userStateService.uuid();
+        this.lastRegisteredUuid = uuid;
+        try {
             this.send({ action: 'register', sessionId: this.wsSessionId, uuid });
         } catch (error) {
             this.logger.error(`Failed to register session: ${error}`);
