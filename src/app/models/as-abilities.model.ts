@@ -2222,7 +2222,7 @@ export const AS_PILOT_ABILITIES: ASPilotAbility[] = [
     {
         id: "terrain_master_drag_racer",
         name: "Terrain Master (Drag Racer)",
-        cost: 3,
+        cost: 1,
         rulesBook: ASRulebook.ASCE,
         rulesPage: 100,
         summary: ["Ground vehicle unit gains extra speed on ice or pavement; avoids skidding better"],
