@@ -54,6 +54,7 @@
     max-width: 100%;
     height: min(500px, 50vh);
     display: block;
+    object-fit: contain;
     filter: invert(1) sepia(1) hue-rotate(160deg) saturate(0.3) brightness(0.9) contrast(1.15);
     mix-blend-mode: lighten;
     opacity: 1;
