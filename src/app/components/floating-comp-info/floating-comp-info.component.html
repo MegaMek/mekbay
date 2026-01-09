@@ -3,7 +3,6 @@
     #floatingDialog
     class="floating-comp-info allow-select {{ typeClass }}" [class.visible]="comp()">
     <div class="caption">{{ name }}</div>
-    @if(desc){<div class="desc">{{ desc }}</div>}
     <div><span class="muted">Type: </span>{{ typeLabel }}</div>
     @if(range){<div><span class="muted">Range: </span>@if(minRange && minRange > 0){[{{ minRange }}] }{{ range }}</div>}
     @if(damage !== null){<div><span class="muted">Damage: </span>{{ damage }}</div>}

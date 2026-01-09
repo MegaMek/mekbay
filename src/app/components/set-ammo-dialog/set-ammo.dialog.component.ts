@@ -71,8 +71,8 @@ export interface SetAmmoDialogData {
                         [value]="ammo.internalName"
                         [selected]="ammo.internalName === data.currentAmmo.internalName"
                     >
-                    @if (mixedTechBase() && ammo.base !== 'All') {
-                        [{{ ammo.base === 'IS' ? 'IS' : ammo.base === 'Clan' ? 'CL' : '*' }}]&nbsp;
+                    @if (mixedTechBase() && ammo.techBase !== 'All') {
+                        [{{ ammo.techBase === 'IS' ? 'IS' : ammo.techBase === 'Clan' ? 'CL' : '*' }}]&nbsp;
                     }
                     {{ ammo.shortName }}
                     @if (data.ammoOptions.length > 1 
@@ -217,8 +217,8 @@ export class SetAmmoDialogComponent {
     // Add a signal to track the currently selected ammo
     private selectedAmmoName = signal(this.data.currentAmmo.internalName);
     mixedTechBase = computed(() => {
-        return this.data.ammoOptions.some(ammo => ammo.base === 'Clan') &&
-            this.data.ammoOptions.some(ammo => ammo.base === 'IS');
+        return this.data.ammoOptions.some(ammo => ammo.techBase === 'Clan') &&
+            this.data.ammoOptions.some(ammo => ammo.techBase === 'IS');
     });
     
     // Computed property for current max quantity

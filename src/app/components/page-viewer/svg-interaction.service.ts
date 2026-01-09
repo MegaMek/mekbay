@@ -632,8 +632,8 @@ export class SvgInteractionService {
                                 const compatibleAmmo = Object.values(equipmentList)
                                     .filter((e): e is AmmoEquipment => (e instanceof AmmoEquipment) && (originalAmmo.compatibleAmmo(e, unitBlueprint)))
                                     .sort((a, b) => {
-                                        const ao = baseOrder[(a.base || '')] ?? 3;
-                                        const bo = baseOrder[(b.base || '')] ?? 3;
+                                        const ao = baseOrder[(a.techBase || '')] ?? 3;
+                                        const bo = baseOrder[(b.techBase || '')] ?? 3;
                                         if (ao !== bo) return ao - bo;
                                         if (!a.baseAmmo && b.baseAmmo) {
                                             return -1;

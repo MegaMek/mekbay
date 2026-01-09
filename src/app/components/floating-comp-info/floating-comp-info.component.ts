@@ -36,7 +36,9 @@ import { Component, input, signal, effect, inject, ChangeDetectionStrategy } fro
 import { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { Unit } from '../../models/units.model';
+import { Equipment, WeaponEquipment } from '../../models/equipment.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
+import { W } from '@angular/cdk/keycodes';
 
 /*
  * Author: Drake
@@ -59,7 +61,7 @@ export class FloatingCompInfoComponent {
     comp = input<UnitComponent | null>(null);
 
     pos = signal<{ x: number, y: number }>({ x: 0, y: 0 });
-    equipment = signal<any>(null);
+    equipment = signal<Equipment | null>(null);
     positioned = false;
     equipmentDisplay: Array<{ group: string, items: Array<{ label: string, value: any }> }> = [];
     
@@ -96,10 +98,6 @@ export class FloatingCompInfoComponent {
         return this.equipment()?.name ?? this.comp()?.n ?? '';
     }
 
-    get desc(): string {
-        return this.equipment()?.desc ?? '';
-    }
-
     get typeClass(): string {
         return getWeaponTypeCSSClass(this.comp()?.t ?? '');
     }
@@ -109,15 +107,30 @@ export class FloatingCompInfoComponent {
     }
 
     get rackSize(): number | null {
-        return this.equipment()?.rackSize ?? null;
+        if (this.equipment() instanceof WeaponEquipment) {
+            return (this.equipment() as WeaponEquipment).rackSize;
+        }
+        return null;
     }
 
     get range(): string | null {
-        return this.comp()?.r ?? this.equipment()?.range ?? null;
+        if (this.comp()?.r) {
+            const eq = this.equipment();
+            if (eq instanceof WeaponEquipment) {
+                const ranges = eq.ranges; 
+                // Ranges has 5 entries: 0: min, 1: short, 2: medium, 3: long, 4: extreme
+                return `${ranges[1]}/${ranges[2]}/${ranges[3]}`;
+            }
+        }
+        return null;
     }
 
     get minRange(): number | null {
-        return this.equipment()?.minr ?? null;
+        const eq = this.equipment();
+        if (eq instanceof WeaponEquipment) {
+            return eq.ranges[0];
+        }
+        return null;
     }
 
     get damage(): string | null {
@@ -125,11 +138,21 @@ export class FloatingCompInfoComponent {
         if (currentComp?.d && currentComp.md && Number(currentComp.md) !== Number(currentComp.d)) {
             return currentComp.d + (currentComp.md ? ` (${currentComp.md})` : '');
         }
-        return currentComp?.d ?? this.equipment()?.damage ?? null;
+        if (currentComp?.d) {
+            const eq = this.equipment();
+            if (eq instanceof WeaponEquipment) {
+                return eq.damage;
+            }
+        }
+        return null;
     }
 
     get heat(): number | null {
-        return this.equipment()?.heat ?? null;
+        const eq = this.equipment();
+        if (eq instanceof WeaponEquipment) {
+            return eq.heat;
+        }
+        return null;
     }
 
     computeEquipmentDisplay(): Array<{ group: string, items: Array<{ label: string, value: any }> }> {
@@ -162,13 +185,14 @@ export class FloatingCompInfoComponent {
                 break;
         }
 
-        const historyItems = [
+        const historyItems: Array<{ label: string, value: string }> = [
             { label: 'Prototype', value: dates.t },
             { label: 'Production', value: dates.p },
             { label: 'Common', value: dates.c },
             { label: 'Extinction', value: dates.x },
             { label: 'Reintroduction', value: dates.r },
-        ].filter(item => item.value !== undefined && item.value !== null && item.value !== '' && item.value !== '-')
+        ].filter((item): item is { label: string, value: string } => 
+            item.value !== undefined && item.value !== null && item.value !== '' && item.value !== '-')
         .sort((a, b) => {
             const aYear = parseYear(a.value);
             const bYear = parseYear(b.value);
@@ -177,17 +201,23 @@ export class FloatingCompInfoComponent {
             return aYear - bYear;
         });
 
-        const ratingString = `${eq.base} | ${unit.techBase == 'Clan' ? eq.rating.clan : eq.rating.is}`;
+        let slots = eq.critSlots;
+        if (eq.svSlots > -1) {
+            slots = eq.svSlots;
+        } else if (eq.tankSlots > -1) {
+            slots = eq.tankSlots;
+        }
+
+        const ratingString = `${eq.techBase} | ${unit.techBase == 'Clan' ? eq.rating.clan : eq.rating.is}`;
         const result = [
             {
                 group: 'General',
                 items: [
                     { label: 'BV', value: eq.bv },
                     { label: 'Cost', value: eq.cost },
-                    { label: 'Weight', value: eq.weight },
-                    { label: 'Criticals', value: eq.crit },
-                    { label: 'Special', value: eq.special },
-                    { label: 'Reference', value: eq.reference }
+                    { label: 'Tonnage', value: eq.tonnage },
+                    { label: 'Criticals', value: slots },
+                    { label: 'Reference', value: eq.rulesRefs }
                 ]
             },
             {

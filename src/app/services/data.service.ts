@@ -299,7 +299,10 @@ export class DataService {
                 for (const [mulIdStr, sourceAbbrevs] of Object.entries(sources)) {
                     const mulId = parseInt(mulIdStr, 10);
                     if (!isNaN(mulId)) {
-                        this.mulUnitSourcesMap.set(mulId, sourceAbbrevs);
+                        const filteredAbbrevs = sourceAbbrevs.filter(abbrev => abbrev !== 'None');
+                        if (filteredAbbrevs.length > 0) {
+                            this.mulUnitSourcesMap.set(mulId, filteredAbbrevs);
+                        }
                     }
                 }
                 return {

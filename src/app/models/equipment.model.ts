@@ -65,22 +65,17 @@ export class Equipment {
     name: string;
     shortName: string;
     type: EquipmentType;
-    heat: string;
-    damage: string;
     cost: string;
     level: string;
     rating: EquipmentRating;
     dates: EquipmentDates;
-    range: string;
-    weight: string;
-    crew: string;
-    special: string;
-    reference: string;
-    divisor: string;
-    minr: string;
-    bv: number;
-    crit: number;
-    base: TechBase;
+    tonnage: string;
+    rulesRefs: string;
+    bv: number | string;
+    critSlots: number | string;
+    svSlots: number;
+    tankSlots: number;
+    techBase: TechBase;
     hittable: boolean;
     spreadable: boolean;
     flags: Set<string>;
@@ -93,20 +88,15 @@ export class Equipment {
         
         // Simple fields with defaults
         this.shortName = data.shortName ?? data.name;
-        this.heat = data.heat ?? '-';
-        this.damage = data.damage ?? '-';
         this.cost = data.cost ?? '0';
         this.level = data.level ?? 'Standard';
-        this.range = data.range ?? '-';
-        this.weight = data.weight ?? '0';
-        this.crew = data.crew ?? '';
-        this.special = data.special ?? '';
-        this.reference = data.reference ?? '';
-        this.divisor = data.divisor ?? '-';
-        this.minr = data.minr ?? '-';
+        this.tonnage = data.tonnage ?? '0';
+        this.rulesRefs = data.rulesRefs ?? '';
         this.bv = data.bv ?? 0;
-        this.crit = data.crit ?? 0;
-        this.base = data.base ?? 'IS';
+        this.critSlots = data.critSlots ?? 0;
+        this.svSlots = data.svSlots ?? -1;
+        this.tankSlots = data.tankSlots ?? -1;
+        this.techBase = data.techBase ?? 'IS';
         this.hittable = data.hittable ?? true;
         this.spreadable = data.spreadable ?? false;
         
@@ -130,19 +120,51 @@ export class Equipment {
 }
 
 export class MiscEquipment extends Equipment {
+    damageDivisor: number;
+
     constructor(data: Partial<MiscEquipment> & { internalName: string; name: string }) {
         super({ ...data, type: 'misc' });
+        this.damageDivisor = data.damageDivisor ?? 0;
     }
 }
 
 export class WeaponEquipment extends Equipment {
+    heat: number;
+    damage: string;
     rackSize: number;
     ammoType: string;
+    ranges: number[];
+    wRanges: number[];
+    maxRange: number;
+    av: number[];
+    capital: boolean;
+    subCapital: boolean;
 
     constructor(data: Partial<WeaponEquipment> & { internalName: string; name: string }) {
         super({ ...data, type: 'weapon' });
+        this.heat = data.heat ?? 0;
+        this.damage = data.damage ?? '-';
         this.rackSize = data.rackSize ?? 0;
         this.ammoType = data.ammoType ?? '';
+        this.ranges = WeaponEquipment.normalizeArray(data.ranges, 5);
+        this.wRanges = WeaponEquipment.normalizeArray(data.wRanges, 5);
+        this.maxRange = data.maxRange ?? 0;
+        this.av = WeaponEquipment.normalizeArray(data.av, 4);
+        this.capital = data.capital ?? false;
+        this.subCapital = data.subCapital ?? false;
+    }
+
+    private static normalizeArray(arr: number[] | undefined, length: number): number[] {
+        const source = Array.isArray(arr) ? arr : [];
+        const result = new Array<number>(length).fill(0);
+        for (let i = 0; i < Math.min(source.length, length); i++) {
+            result[i] = source[i];
+        }
+        return result;
+    }
+
+    hasNoRange(): boolean {
+        return this.ranges.every(range => range === 0);
     }
 }
 
@@ -199,12 +221,12 @@ export class AmmoEquipment extends Equipment {
         if (this.ammoType !== other.ammoType) return false;
         
         // Check base compatibility
-        if (this.base !== other.base) {
+        if (this.techBase !== other.techBase) {
             if (!unit) {
-                if (this.base !== 'All' && other.base !== 'All') return false;
+                if (this.techBase !== 'All' && other.techBase !== 'All') return false;
             } else if (unit.techBase !== 'Mixed') {
-                if (unit.techBase === 'Clan' && this.base === 'IS') return false;
-                if (unit.techBase === 'Inner Sphere' && this.base === 'Clan') return false;
+                if (unit.techBase === 'Clan' && this.techBase === 'IS') return false;
+                if (unit.techBase === 'Inner Sphere' && this.techBase === 'Clan') return false;
             }
         }
         
