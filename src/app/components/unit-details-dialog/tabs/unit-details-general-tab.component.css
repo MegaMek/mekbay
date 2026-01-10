@@ -377,6 +377,7 @@
     text-decoration: underline;
 }
 
+.features-list,
 .grav-list,
 .ammo-list {
     margin-bottom: 8px;

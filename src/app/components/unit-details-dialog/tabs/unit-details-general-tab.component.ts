@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, inject, effect, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, effect, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit, UnitComponent } from '../../../models/units.model';
 import { weaponTypes, getWeaponTypeCSSClass } from '../../../utils/equipment.util';
@@ -240,6 +240,14 @@ export class UnitDetailsGeneralTabComponent {
     areaHasBays(areaName: string): boolean {
         return (this.baysForArea.get(areaName)?.length || 0) > 0;
     }
+
+    features = computed<string[]>(() => {
+        const u = this.unit();
+        if (!u) return [];
+        if (!u.features || u.features.length === 0) return [];
+        // We skip Bays, we have dedicated visualization for them
+        return u.features.filter(f => f && !f.startsWith("Bay:")).sort();
+    });
 
     // Matrix layout methods
     private normalizeLoc(loc: string): string {
