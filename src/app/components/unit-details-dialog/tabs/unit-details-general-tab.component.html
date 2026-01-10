@@ -153,14 +153,6 @@ unit().moveType }}</strong></div>
 }
 }
 }
-@if (features().length > 0) {
-<div class="features-list allow-select">
-<span class="muted">Features: </span>
-@for (feature of features(); let i = $index; track i) {
-    <span class="feature-item">{{ feature }}</span>
-}
-</div>
-}   
 @if (unit().capital; as capital) {
   @if (capital.gravDecks && capital.gravDecks.length > 0) {
 <div class="grav-list allow-select">
@@ -186,6 +178,13 @@ unit().moveType }}</strong></div>
 </div>
 </div>
 }
+}@if (features().length > 0) {
+<div class="features-list allow-select">
+<span class="muted">Features: </span>
+@for (feature of features(); let last = $last; let i = $index; track i) {
+    <span class="feature-item">{{ feature }}</span>@if (!last) {, }
+}
+</div>
 }
 <div class="spanner"></div>
 <div class="bottom-info">
