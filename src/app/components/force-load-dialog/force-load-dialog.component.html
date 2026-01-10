@@ -70,7 +70,7 @@
                                 <div class="group-name">{{ group.name }}</div>
                                 <div class="units">
                                     @for (unitEntry of group.units; let i = $index; track i) {
-                                    <div class="unit-square compact-mode" [class.destroyed]="unitEntry.destroyed">
+                                    <div class="unit-square compact-mode" [class.destroyed]="unitEntry.destroyed" [class.missing]="!unitEntry.unit">
                                         <unit-icon [unit]="unitEntry.unit"></unit-icon>
                                         @if (unitDisplayName === 'chassisModel' 
                                             || unitDisplayName === 'both'

@@ -1,6 +1,7 @@
 @let unitDisplayName = optionsService.options().unitDisplayName;
+@let fu = forceUnit();
 @if (compactMode()) {
-<div class="unit-square compact-mode" [class.destroyed]="forceUnit()?.destroyed">
+<div class="unit-square compact-mode" [class.destroyed]="fu?.destroyed" [class.missing]="!unit()">
     @if (dirty()) {
         @let phase = unitPhase();
         <div class="dirty-state" 
@@ -14,19 +15,19 @@
     <unit-icon [unit]="unit()"></unit-icon>
     @if (unitDisplayName === 'chassisModel'
     || unitDisplayName === 'both'
-    || !forceUnit()?.alias()) {
+    || !fu?.alias()) {
     <div class="unit-model">{{ cleanedModel() }}</div>
     <div class="unit-chassis">{{ unit()?.chassis }}</div>
     }
     @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
-    <div class="unit-alias">{{ forceUnit()?.alias() }}</div>
+    <div class="unit-alias">{{ fu?.alias() }}</div>
     }
     <div class="pilot-info info-slot numeric slim">
-        <span class="value">{{ forceUnit()?.getPilotStats() }}</span>
+        <span class="value">{{ fu?.getPilotStats() }}</span>
     </div>
 </div>
 } @else {
-<div class="unit-card" [class.destroyed]="forceUnit()?.destroyed">
+<div class="unit-card" [class.destroyed]="fu?.destroyed" [class.missing]="!unit()">
     @if (dirty()) {
         @let phase = unitPhase();
         <div class="dirty-state" 
@@ -53,7 +54,7 @@
                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
             </button>
-            @if (!forceUnit()?.readOnly()) {
+            @if (!fu?.readOnly()) {
 
             <!-- <button class="info-btn" [cdkMenuTriggerFor]="generalMenu" title="Menu" (click)="$event.stopPropagation()">
                 <svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor"
@@ -99,7 +100,7 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
             }
         </div>
         <div class="secondary-info">
-            @let alias = forceUnit()?.alias();
+            @let alias = fu?.alias();
             @let model = unit()?.model;
             @let chassis = unit()?.chassis;
             @if (unitDisplayName === 'chassisModel'
@@ -128,7 +129,7 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
             <div class="info-area">
                 @if (gameService.isAlphaStrike()) {
                     <div class="info-slot centered slim">
-                        <span class="value">PV: {{ forceUnit()?.getBv() | formatNumber:true }}</span>
+                        <span class="value">PV: {{ fu?.getBv() | formatNumber:true }}</span>
                     </div>
                     <div class="info-slot centered slim">
                         <span class="value">TMM: {{ getEffectiveTmm() }}</span>
@@ -137,19 +138,19 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                         <span class="value">MV: {{ getEffectiveMovement() }}</span>
                     </div>
                     <div class="info-slot centered slim pilot-info interactive" (click)="editPilot($event)" title="Edit Pilot">
-                        <span class="value">{{ forceUnit()?.getPilotStats() }}</span>
+                        <span class="value">{{ fu?.getPilotStats() }}</span>
                         <img src="/images/helmet.svg" class="icon" alt="Pilot">
                     </div>
                 } @else {
                     <div class="info-slot numeric" [tooltip]="bvTooltip()">
-                        <span class="value">BV: {{ forceUnit()?.getBv() | formatNumber:true }}</span>
+                        <span class="value">BV: {{ fu?.getBv() | formatNumber:true }}</span>
                     </div>
                     <div class="info-slot numeric">
                         <span class="value">{{ unit()?.tons | formatTons }}</span>
                         <img src="/images/weight.svg" class="icon" alt="Tonnage">
                     </div>
                     <div class="info-slot numeric pilot-info interactive" (click)="editPilot($event)" title="Edit Pilot">
-                        <span class="value">{{ forceUnit()?.getPilotStats() }}</span>
+                        <span class="value">{{ fu?.getPilotStats() }}</span>
                         <img src="/images/helmet.svg" class="icon" alt="Pilot">
                     </div>
                 }
