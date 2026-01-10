@@ -1078,7 +1078,7 @@ const FORCE_PACKS: ForcePack[] = [
     "name": "Essentials Box Set",
     "units": [
       {
-        "name": "BMCenturion_CN9-A"
+        "name": "BMCenturion_CN9A"
       },
       {
         "name": "BMRifleman_RFL3N"
