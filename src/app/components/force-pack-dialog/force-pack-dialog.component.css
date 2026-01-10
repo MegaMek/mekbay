@@ -126,6 +126,10 @@
     overflow: hidden;
     box-sizing: border-box;
     
+    &.missing {
+        background-color: #F003;
+    }
+
     unit-icon {
         width: 32px;
         height: 32px;

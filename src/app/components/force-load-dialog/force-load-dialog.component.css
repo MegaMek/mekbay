@@ -218,6 +218,10 @@
             #300A 24px
         );
     }
+
+    &.missing {
+        background-color: #F003;
+    }
     
     unit-icon {
         width: 32px;
