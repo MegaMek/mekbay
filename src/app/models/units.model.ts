@@ -108,6 +108,7 @@ export interface Unit {
     su: number;
     crewSize: number;
     quirks: string[];
+    features: string[];
     icon: string;
     fluff?: {
         img?: string;

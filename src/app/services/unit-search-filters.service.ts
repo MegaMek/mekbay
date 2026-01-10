@@ -289,6 +289,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'as.MV', label: 'Move', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.ALPHA_STRIKE },
     { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: GameSystem.CLASSIC },
+    { key: 'features', label: 'Features', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
     { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
     { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
     { key: 'forcePack', label: 'Force Packs', type: AdvFilterType.DROPDOWN, external: true },
