@@ -246,7 +246,7 @@ export class UnitDetailsGeneralTabComponent {
         if (!u) return [];
         if (!u.features || u.features.length === 0) return [];
         // We skip Bays, we have dedicated visualization for them
-        return u.features.filter(f => f && !f.startsWith("Bay:")).sort();
+        return u.features.filter(f => f && !f.startsWith("Bay:")).map((value) => value.replaceAll("Chassis Mod:", "")).sort();
     });
 
     // Matrix layout methods
