@@ -159,11 +159,7 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     });
 
     // Damage values affected by weapon critical hits: -1 per hit
-    // Check if this is a vehicle type (CV or SV)
-    private isVehicle = computed<boolean>(() => {
-        const tp = this.asStats().TP;
-        return tp === 'CV' || tp === 'SV';
-    });
+    // isVehicle is now inherited from base class
 
     effectiveDamageS = computed<string>(() => {
         const base = this.asStats().dmg.dmgS;
@@ -205,7 +201,7 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     /**
      * Vehicle damage reduction using ordered crits:
      *   - Engine hit: 50% of current damage value (floor, min 0)
-     *   - Weapon hit: -1 per hit
+     *   - Weapon hit: -1 per hit using position scale (1→0*→0)
      * Order matters - effects are applied sequentially.
      */
     private calculateVehicleDamageReduction(base: string): string {
@@ -215,34 +211,43 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         // Handle special cases
         if (base === '-' || base === '') return base;
 
-        // Convert to numeric value
-        let value: number;
-        if (base === '0' || base === '0*') {
-            value = 0;
-        } else {
-            value = parseInt(base, 10);
-            if (isNaN(value) || value < 0) return base;
-        }
+        // Track as string to handle 0* properly
+        let current = base;
 
         // Process crits in order
         const orderedCrits = fu.getState().getCommittedCritsOrdered();
 
         for (const crit of orderedCrits) {
-            if (value <= 0) break;
+            if (current === '0') break; // Already at minimum
 
             switch (crit.key) {
                 case 'engine':
-                    // Engine hit: 50% reduction
-                    value = Math.floor(value / 2);
+                    // Engine hit: 50% reduction (convert to number, reduce, convert back)
+                    current = this.applyEngineHitToValue(current);
                     break;
                 case 'weapons':
-                    // Weapon hit: -1
-                    value = Math.max(0, value - 1);
+                    // Weapon hit: use position scale (1→0*→0)
+                    current = this.reduceDamageValue(current, 1);
                     break;
             }
         }
 
-        return value.toString();
+        return current;
+    }
+
+    /**
+     * Apply engine hit reduction (50%, floor) to a single damage value.
+     * Handles 0* specially: 0* → 0
+     */
+    private applyEngineHitToValue(value: string): string {
+        if (value === '0' || value === '-' || value === '') return value;
+        if (value === '0*') return '0';
+        
+        const numericValue = parseInt(value, 10);
+        if (isNaN(numericValue) || numericValue < 0) return value;
+        
+        const reduced = Math.floor(numericValue / 2);
+        return reduced.toString();
     }
 
     /**
