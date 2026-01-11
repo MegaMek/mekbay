@@ -526,6 +526,25 @@ hr {
         }
     }
 
+    &.warning {
+        color: rgb(222, 144, 0);
+        background-image:
+            linear-gradient(rgb(222, 144, 0), rgb(222, 144, 0)), linear-gradient(rgb(222, 144, 0), rgb(222, 144, 0)),
+            linear-gradient(rgb(222, 144, 0), rgb(222, 144, 0)), linear-gradient(rgb(222, 144, 0), rgb(222, 144, 0)),
+            linear-gradient(rgb(222, 144, 0), rgb(222, 144, 0)), linear-gradient(rgb(222, 144, 0), rgb(222, 144, 0)),
+            linear-gradient(rgb(222, 144, 0), rgb(222, 144, 0)), linear-gradient(rgb(222, 144, 0), rgb(222, 144, 0));
+
+        &:hover {
+            background-color: #352300;
+            color: var(--bt-yellow);
+            background-image:
+                linear-gradient(var(--bt-yellow), var(--bt-yellow)), linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+                linear-gradient(var(--bt-yellow), var(--bt-yellow)), linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+                linear-gradient(var(--bt-yellow), var(--bt-yellow)), linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+                linear-gradient(var(--bt-yellow), var(--bt-yellow)), linear-gradient(var(--bt-yellow), var(--bt-yellow));
+        }
+    }
+
     &.primary {
         color: rgb(154, 154, 255);
         background-image:

@@ -118,10 +118,10 @@
         <div class="critical-hits-container">
             @switch (criticalHitsVariant()) {
             @case ('aerospace-1') {
-            <as-critical-hits-aerospace-1 [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" />
+            <as-critical-hits-aerospace-1 [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
             }
             @case ('dropship-1') {
-            <as-critical-hits-dropship-1 [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" />
+            <as-critical-hits-dropship-1 [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
             }
             }
         </div>

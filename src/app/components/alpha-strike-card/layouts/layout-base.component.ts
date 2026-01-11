@@ -111,6 +111,7 @@ export abstract class AsLayoutBaseComponent {
     // Common outputs
     specialClick = output<SpecialAbilityClickEvent>();
     editPilotClick = output<void>();
+    rollCriticalClick = output<void>();
 
     // Derived from unit
     asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
@@ -566,5 +567,9 @@ export abstract class AsLayoutBaseComponent {
 
     onEditPilotClick(): void {
         this.editPilotClick.emit();
+    }
+
+    onRollCriticalClick(): void {
+        this.rollCriticalClick.emit();
     }
 }

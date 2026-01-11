@@ -1,6 +1,15 @@
+.dice-roller-root {
+    &.small .dice-row {
+        gap: 4px;
+    }
+
+    &:not(.small) .dice-row {
+        gap: 1rem;
+    }
+}
+
 .dice-row {
     display: flex;
-    gap: 4px;
     align-items: center;
 }
 
@@ -15,9 +24,26 @@
     background: #fff;
     color: #111;
     border-radius: 2px;
-    cursor: pointer;
     user-select: none;
     box-sizing: border-box;
+
+    &.interactive {    
+        cursor: pointer;
+    }
+}
+
+.sum.large {
+    font-size: 32px;
+    font-weight: bold;
+    color: #fff;
+}
+
+.plus-sign {
+    .dice-roller-root:not(.small) & {
+        font-size: 24px;
+        font-weight: bold;
+        color: #fff;
+    }
 }
 
 /* overlay */

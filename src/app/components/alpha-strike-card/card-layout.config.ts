@@ -31,6 +31,8 @@
  * affiliated with Microsoft.
  */
 
+import { ASUnitTypeCode } from "../../models/units.model";
+
 /*
  * Author: Drake
  * 
@@ -47,6 +49,7 @@ export type CriticalHitsVariant =
     | 'mek'
     | 'vehicle'
     | 'protomek'
+    | 'emplacement'
     | 'aerofighter'
     | 'aerospace-1'
     | 'aerospace-2'
@@ -102,7 +105,7 @@ export interface UnitTypeLayoutConfig {
  * - DS: DropShip (Spheroid)
  * - MS: Mobile Structure
  */
-export const UNIT_TYPE_LAYOUTS: Record<string, UnitTypeLayoutConfig> = {
+export const UNIT_TYPE_LAYOUTS: Record<ASUnitTypeCode, UnitTypeLayoutConfig> = {
     // Mek
     'BM': {
         cards: [{
@@ -122,6 +125,13 @@ export const UNIT_TYPE_LAYOUTS: Record<string, UnitTypeLayoutConfig> = {
         cards: [{
             design: 'standard',
             criticalHits: 'protomek'
+        }]
+    },
+
+    'BD': {
+        cards: [{
+            design: 'standard',
+            criticalHits: 'emplacement'
         }]
     },
     
@@ -254,6 +264,13 @@ export const UNIT_TYPE_LAYOUTS: Record<string, UnitTypeLayoutConfig> = {
             }
         ]
     },
+
+    'MS': {
+        cards: [{
+            design: 'standard',
+            criticalHits: 'none'
+        }]
+    },
 };
 
 /**
@@ -271,7 +288,7 @@ export const DEFAULT_LAYOUT: UnitTypeLayoutConfig = {
  * @param unitType The Alpha Strike unit type code (e.g., 'BM', 'CV', 'WS')
  * @returns The layout configuration for that unit type
  */
-export function getLayoutForUnitType(unitType: string): UnitTypeLayoutConfig {
+export function getLayoutForUnitType(unitType: ASUnitTypeCode): UnitTypeLayoutConfig {
     return UNIT_TYPE_LAYOUTS[unitType] ?? DEFAULT_LAYOUT;
 }
 
@@ -280,7 +297,7 @@ export function getLayoutForUnitType(unitType: string): UnitTypeLayoutConfig {
  * @param unitType The Alpha Strike unit type code
  * @returns The number of cards (1 or 2 for current implementations)
  */
-export function getCardCountForUnitType(unitType: string): number {
+export function getCardCountForUnitType(unitType: ASUnitTypeCode): number {
     return getLayoutForUnitType(unitType).cards.length;
 }
 
@@ -289,6 +306,6 @@ export function getCardCountForUnitType(unitType: string): number {
  * @param unitType The Alpha Strike unit type code
  * @returns True if the unit type uses more than one card
  */
-export function isMultiCardUnit(unitType: string): boolean {
+export function isMultiCardUnit(unitType: ASUnitTypeCode): boolean {
     return getCardCountForUnitType(unitType) > 1;
 }

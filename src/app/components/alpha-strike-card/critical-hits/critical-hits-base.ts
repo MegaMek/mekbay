@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output } from '@angular/core';
 import { ASForceUnit } from '../../../models/as-force-unit.model';
 
 /*
@@ -48,6 +48,15 @@ export class AsCriticalHitsBase {
     forceUnit = input<ASForceUnit>();
     cardStyle = input<'colored' | 'monochrome'>('colored');
     useHex = input<boolean>(false);
+    interactive = input<boolean>(false);
+    
+    /** Emits when the random roll button is clicked */
+    rollCritical = output<void>();
+    
+    onRollCriticalClick(event: MouseEvent): void {
+        event.stopPropagation();
+        this.rollCritical.emit();
+    }
     
     range(count: number): number[] {
         return Array.from({ length: count }, (_, i) => i);

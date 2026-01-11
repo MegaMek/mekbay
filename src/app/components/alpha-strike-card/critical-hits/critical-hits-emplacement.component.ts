@@ -37,11 +37,11 @@ import { AsCriticalHitsBase } from './critical-hits-base';
 /*
  * Author: Drake
  * 
- * Critical Hits component for Protomek (PM).
+ * Critical Hits component for Emplacement (BD).
  */
 
 @Component({
-    selector: 'as-critical-hits-protomek',
+    selector: 'as-critical-hits-emplacement',
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         '[class.monochrome]': 'cardStyle() === "monochrome"',
@@ -54,34 +54,6 @@ import { AsCriticalHitsBase } from './critical-hits-base';
             }
             <div class="frame-content">
                 <div class="critical-title frame-title-background">CRITICAL HITS</div>
-
-                <div class="critical-row" data-crit="fire-control">
-                    <span class="critical-name">FIRE CONTROL</span>
-                    <div class="critical-pips">
-                        @for (i of range(4); track i) {
-                        <svg class="pip" 
-                             [class.damaged]="isCritPipDamaged('fire-control', i)"
-                             [class.pending-damage]="isCritPipPendingDamage('fire-control', i)"
-                             [class.pending-heal]="isCritPipPendingHeal('fire-control', i)"
-                             viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
-                        }
-                    </div>
-                    <span class="critical-desc">+2 To-Hit Each</span>
-                </div>
-
-                <div class="critical-row" data-crit="mp">
-                    <span class="critical-name">MP</span>
-                    <div class="critical-pips">
-                        @for (i of range(4); track i) {
-                        <svg class="pip" 
-                             [class.damaged]="isCritPipDamaged('mp', i)"
-                             [class.pending-damage]="isCritPipPendingDamage('mp', i)"
-                             [class.pending-heal]="isCritPipPendingHeal('mp', i)"
-                             viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
-                        }
-                    </div>
-                    <span class="critical-desc">½ MV Each</span>
-                </div>
 
                 <div class="critical-row" data-crit="weapons">
                     <span class="critical-name">WEAPONS</span>
@@ -101,4 +73,4 @@ import { AsCriticalHitsBase } from './critical-hits-base';
     `,
     styleUrl: './../common.scss'
 })
-export class AsCriticalHitsProtomekComponent extends AsCriticalHitsBase {}
+export class AsCriticalHitsEmplacementComponent extends AsCriticalHitsBase {}

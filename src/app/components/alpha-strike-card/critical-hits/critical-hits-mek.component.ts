@@ -49,6 +49,9 @@ import { AsCriticalHitsBase } from './critical-hits-base';
     template: `
         <div class="critical-hits-box frame">
             <div class="frame-background"></div>
+            @if (interactive()) {
+                <button class="crit-roll-button" (click)="onRollCriticalClick($event)" aria-label="Roll critical hit"></button>
+            }
             <div class="frame-content">
                 <div class="critical-title frame-title-background">CRITICAL HITS</div>
 

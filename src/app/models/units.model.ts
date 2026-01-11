@@ -155,8 +155,10 @@ export interface Units {
     units: Unit[];
 }
 
+export type ASUnitTypeCode = 'BM' | 'IM' | 'CV' | 'SV' | 'PM' | 'BA' | 'CI' | 'AF' | 'CF' | 'SC' | 'WS' | 'SS' | 'JS' | 'DA' | 'DS' | 'MS' | 'BD';
+
 export interface AlphaStrikeUnitStats {
-    TP: 'AF' | 'BA' | 'BM' | 'CF' | 'CI' | 'CV' | 'DA' | 'DS' | 'IM' | 'JS' | 'PM' | 'SC' | 'SS' | 'SV' | 'WS' | 'MS';
+    TP: ASUnitTypeCode;
     PV: number;
     SZ: number;
     TMM: number;

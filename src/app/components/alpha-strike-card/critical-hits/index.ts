@@ -36,4 +36,5 @@ export { AsCriticalHitsVehicleComponent } from './critical-hits-vehicle.componen
 export { AsCriticalHitsAerospace1Component } from './critical-hits-aerospace-1.component';
 export { AsCriticalHitsDropship1Component } from './critical-hits-dropship-1.component';
 export { AsCriticalHitsProtomekComponent } from './critical-hits-protomek.component';
+export { AsCriticalHitsEmplacementComponent } from './critical-hits-emplacement.component';
 export { AsCriticalHitsAerofighterComponent } from './critical-hits-aerofighter';

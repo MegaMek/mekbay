@@ -35,7 +35,7 @@ import { computed, Injector, signal, Signal } from '@angular/core';
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
-import { ASSerializedState, ASSerializedUnit, C3_POSITION_SCHEMA, AS_SERIALIZED_STATE_SCHEMA, AS_SERIALIZED_UNIT_SCHEMA } from './force-serialization';
+import { ASSerializedState, ASSerializedUnit, AS_SERIALIZED_UNIT_SCHEMA } from './force-serialization';
 import { ASForce } from './as-force.model';
 import { ForceUnit } from './force-unit.model';
 import { Sanitizer } from '../utils/sanitizer.util';
@@ -705,6 +705,7 @@ export class ASForceUnit extends ForceUnit {
                 case 'motive1':
                     current = Math.max(0, current - 2);
                     break;
+                case 'engine':
                 case 'motive2': {
                     let newCurrent = Math.floor(current / 2);
                     if (newCurrent > 0 && (current - newCurrent) < 2) {
@@ -734,6 +735,7 @@ export class ASForceUnit extends ForceUnit {
                 case 'motive1':
                     currentTmm = Math.max(0, currentTmm - 1);
                     break;
+                case 'engine':
                 case 'motive2': {
                     let newTmm = Math.floor(currentTmm / 2);
                     if (newTmm > 0 && newTmm >= currentTmm) {
@@ -745,26 +747,6 @@ export class ASForceUnit extends ForceUnit {
             }
         }
         return baseTmm - currentTmm;
-    }
-
-    /**
-     * Get modifier value from specials like JMPS2 or JMPW1.
-     */
-    private getSignedSpecialModifier(
-        specials: string[] | undefined,
-        addPrefix: string,
-        removePrefix: string
-    ): number | null {
-        if (!specials?.length) return null;
-
-        for (const special of specials) {
-            const addMatch = new RegExp(`^${addPrefix}(\\d+)$`).exec(special);
-            if (addMatch) return parseInt(addMatch[1], 10);
-
-            const removeMatch = new RegExp(`^${removePrefix}(\\d+)$`).exec(special);
-            if (removeMatch) return -parseInt(removeMatch[1], 10);
-        }
-        return null;
     }
 
     /**

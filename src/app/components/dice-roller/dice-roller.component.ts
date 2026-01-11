@@ -39,16 +39,21 @@ import { Component, computed, effect, input, output, signal } from '@angular/cor
 @Component({
     selector: 'dice-roller',
     templateUrl: './dice-roller.component.html',
-    styleUrls: ['./dice-roller.component.css']
+    styleUrls: ['./dice-roller.component.scss']
 })
 export class DiceRollerComponent {
     diceCount = input<number>(2);
+    diceSides = input<number>(6);
     modifier = input<number>(0);
+    /** Use small dice instead of large (default) */
+    small = input<boolean>(false);
+    rollOnDieClick = input<boolean>(false);
     rollDurationMs = input<number>(500);
     animationIntervalMs = input<number>(50);
     freezeOnRollEnd = input<number>(0);
     rolled = signal<boolean>(false);
     diceSum = signal<number>(0);
+    showOverlay = input<boolean>(false);
 
     // outputs
     finished = output<{ results: number[]; sum: number }>();
@@ -84,7 +89,7 @@ export class DiceRollerComponent {
 
         this.rolled.set(false);
         this.isRolling.set(true);
-        this.overlayVisible.set(true);
+        this.overlayVisible.set(this.showOverlay());
         this._canCloseOverlay = false;
         this._clearTimers();
 
@@ -126,6 +131,9 @@ export class DiceRollerComponent {
     }
 
     onDieClick() {
+        if (!this.rollOnDieClick()) {
+            return;
+        }
         this.roll();
     }
 
@@ -160,7 +168,7 @@ export class DiceRollerComponent {
     }
 
     private _randomFace() {
-        return Math.floor(Math.random() * 6) + 1;
+        return Math.floor(Math.random() * this.diceSides()) + 1;
     }
 
     private _clearTimers() {

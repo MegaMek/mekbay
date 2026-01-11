@@ -1,17 +1,17 @@
-<div class="dice-roller-root">
+<div class="dice-roller-root" [class.small]="small()">
     <div class="row dice-row">
-        @for (value of diceResults(); let i = $index; track i) {
-        <div class="die" tabindex="0" (click)="onDieClick()" [class.rolling]="isRolling()">
+        @for (value of diceResults(); let i = $index; let last = $last; track i) {
+        <div class="die" [class.large]="!small()" tabindex="0" (click)="onDieClick()" [class.interactive]="rollOnDieClick()" [class.rolling]="isRolling()">
             <span>{{ value === null ? '?' : value }}</span>
-        </div>
+        </div>@if (!last) {<span class="plus-sign"> + </span>}
         }
         @if (modifier() !== 0) {
-        <div class="modifier">
+        <div class="modifier" [class.large]="!small()">
             <span>{{ modifier() > 0 ? '+' : '' }}{{ modifier() }}</span>
         </div>
         }
         @if (rollFinished()) {
-        <div class="sum"> = {{ diceSum() }}</div>
+        <div class="sum" [class.large]="!small()"> = {{ diceSum() }}</div>
         }
     </div>
 

@@ -217,16 +217,19 @@
             <!-- Critical Hits Box - Rendered based on unit type -->
             @switch (criticalHitsVariant()) {
                 @case ('mek') {
-                    <as-critical-hits-mek [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" />
+                    <as-critical-hits-mek [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
                 }
                 @case ('vehicle') {
-                    <as-critical-hits-vehicle [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" />
+                    <as-critical-hits-vehicle [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
                 }
                 @case ('protomek') {
-                    <as-critical-hits-protomek [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" />
+                    <as-critical-hits-protomek [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
                 }
                 @case ('aerofighter') {
-                    <as-critical-hits-aerofighter [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" />
+                    <as-critical-hits-aerofighter [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
+                }
+                @case ('emplacement') {
+                    <as-critical-hits-emplacement [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
                 }
             }
         </div>

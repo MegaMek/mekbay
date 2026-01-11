@@ -152,6 +152,35 @@
     }
 }
 
+// Critical Hit Roll Button
+.crit-roll-button {
+    position: absolute;
+    top: 0.2em;
+    right: 0.2em;
+    height: 5em;
+    width: 5em;
+    padding: 0;
+    border: none;
+    background: transparent url('/images/random-black.svg') no-repeat;
+    background-size: contain;
+    cursor: pointer;
+    transition: opacity 0.2s ease-in-out;
+    z-index: 2;
+    font-size: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover,
+    &:focus {
+        filter: invert(0.4);
+    }
+
+    @media print {
+        display: none;
+    }
+}
+
 .critical-title {
     font-size: 2.86em;
     font-weight: 700;

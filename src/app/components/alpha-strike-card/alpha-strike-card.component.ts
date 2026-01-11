@@ -32,13 +32,14 @@
  */
 
 import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, ApplicationRef, EnvironmentInjector, createComponent, ComponentRef, Injector } from '@angular/core';
-import { Unit } from '../../models/units.model';
+import { ASUnitTypeCode, Unit } from '../../models/units.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { AsAbilityLookupService, ParsedAbility } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 import { CardConfig, CardLayoutDesign, CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
 import { SpecialAbilityState, SpecialAbilityClickEvent } from './layouts/layout-base.component';
+import { CriticalHitRollDialogComponent, CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
 import {
     AsLayoutStandardComponent,
     AsLayoutLargeVessel1Component,
@@ -125,7 +126,7 @@ export class AlphaStrikeCardComponent {
     resolvedUnit = computed<Unit | undefined>(() => this.forceUnit()?.getUnit() ?? this.unit());
     
     /** Get the Alpha Strike unit type (BM, IM, CV, CI, WS, etc.) */
-    unitType = computed<string>(() => this.resolvedUnit()?.as.TP ?? '');
+    unitType = computed<ASUnitTypeCode>(() => this.resolvedUnit()?.as.TP || 'BM');
     
     /** Get the layout configuration for this unit type */
     layoutConfig = computed(() => getLayoutForUnitType(this.unitType()));
@@ -139,6 +140,9 @@ export class AlphaStrikeCardComponent {
     
     /** Get the layout design for the current card */
     currentDesign = computed<CardLayoutDesign>(() => this.currentCardConfig().design);
+    
+    /** Get the critical hits variant for the current card */
+    currentCriticalHitsVariant = computed<CriticalHitsVariant>(() => this.currentCardConfig().criticalHits);
 
     /** Check if the force unit has uncommitted changes */
     isDirty = computed<boolean>(() => {
@@ -340,6 +344,25 @@ export class AlphaStrikeCardComponent {
         if (fu) {
             this.editPilot.emit(fu);
         }
+    }
+
+    // Handle roll critical click - shows the critical hit roll dialog
+    onRollCriticalClick(): void {
+        const fu = this.forceUnit();
+        if (!fu) return;
+        
+        const unitType = fu.getUnit().as.TP;
+        if (!unitType) return;
+        
+        this.dialogs.createDialog<void, CriticalHitRollDialogComponent, CriticalHitRollDialogData>(
+            CriticalHitRollDialogComponent,
+            {
+                data: { 
+                    unitType,
+                    forceUnit: fu
+                }
+            }
+        );
     }
     
     // ===== Interaction Logic =====

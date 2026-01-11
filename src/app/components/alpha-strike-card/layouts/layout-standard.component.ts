@@ -49,6 +49,7 @@ import {
     AsCriticalHitsVehicleComponent,
     AsCriticalHitsProtomekComponent,
     AsCriticalHitsAerofighterComponent,
+    AsCriticalHitsEmplacementComponent,
 } from '../critical-hits';
 import { AsLayoutBaseComponent } from './layout-base.component';
 
@@ -66,7 +67,8 @@ import { AsLayoutBaseComponent } from './layout-base.component';
         AsCriticalHitsMekComponent,
         AsCriticalHitsProtomekComponent,
         AsCriticalHitsVehicleComponent,
-        AsCriticalHitsAerofighterComponent
+        AsCriticalHitsAerofighterComponent,
+        AsCriticalHitsEmplacementComponent,
     ],
     templateUrl: './layout-standard.component.html',
     styleUrls: ['./layout-standard.component.scss'],
@@ -157,27 +159,97 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     });
 
     // Damage values affected by weapon critical hits: -1 per hit
+    // Check if this is a vehicle type (CV or SV)
+    private isVehicle = computed<boolean>(() => {
+        const tp = this.asStats().TP;
+        return tp === 'CV' || tp === 'SV';
+    });
+
     effectiveDamageS = computed<string>(() => {
         const base = this.asStats().dmg.dmgS;
-        return this.calculateReducedDamage(base, this.weaponHits());
+        return this.calculateReducedDamage(base);
     });
 
     effectiveDamageM = computed<string>(() => {
         const base = this.asStats().dmg.dmgM;
-        return this.calculateReducedDamage(base, this.weaponHits());
+        return this.calculateReducedDamage(base);
     });
 
     effectiveDamageL = computed<string>(() => {
         const base = this.asStats().dmg.dmgL;
-        return this.calculateReducedDamage(base, this.weaponHits());
+        return this.calculateReducedDamage(base);
     });
 
     effectiveDamageE = computed<string>(() => {
         const base = this.asStats().dmg.dmgE;
-        return this.calculateReducedDamage(base, this.weaponHits());
+        return this.calculateReducedDamage(base);
     });
 
-    private calculateReducedDamage(base: string, weaponHits: number): string {
+    /**
+     * Calculate reduced damage after applying critical hit effects.
+     * 
+     * For vehicles (order matters):
+     *   1. Engine Hit: 50% reduction (floor, min 0)
+     *   2. Weapon Hits: -1 per hit
+     * 
+     * For non-vehicles:
+     *   - Weapon Hits: -1 per hit using position scale (9 8 7 6 5 4 3 2 1 0* 0)
+     */
+    private calculateReducedDamage(base: string): string {
+        if (this.isVehicle()) {
+            return this.calculateVehicleDamageReduction(base);
+        }
+        return this.calculateNonVehicleDamageReduction(base, this.weaponHits());
+    }
+
+    /**
+     * Vehicle damage reduction using ordered crits:
+     *   - Engine hit: 50% of current damage value (floor, min 0)
+     *   - Weapon hit: -1 per hit
+     * Order matters - effects are applied sequentially.
+     */
+    private calculateVehicleDamageReduction(base: string): string {
+        const fu = this.forceUnit();
+        if (!fu) return base;
+
+        // Handle special cases
+        if (base === '-' || base === '') return base;
+
+        // Convert to numeric value
+        let value: number;
+        if (base === '0' || base === '0*') {
+            value = 0;
+        } else {
+            value = parseInt(base, 10);
+            if (isNaN(value) || value < 0) return base;
+        }
+
+        // Process crits in order
+        const orderedCrits = fu.getState().getCommittedCritsOrdered();
+
+        for (const crit of orderedCrits) {
+            if (value <= 0) break;
+
+            switch (crit.key) {
+                case 'engine':
+                    // Engine hit: 50% reduction
+                    value = Math.floor(value / 2);
+                    break;
+                case 'weapons':
+                    // Weapon hit: -1
+                    value = Math.max(0, value - 1);
+                    break;
+            }
+        }
+
+        return value.toString();
+    }
+
+    /**
+     * Non-vehicle damage reduction using position-based scale.
+     * Scale: 9 8 7 6 5 4 3 2 1 0* 0
+     */
+    private calculateNonVehicleDamageReduction(base: string, weaponHits: number): string {
         if (weaponHits <= 0) return base;
 
         // Determine the position in the sequence: 9 8 7 6 5 4 3 2 1 0* 0
