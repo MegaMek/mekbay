@@ -6,6 +6,10 @@
   <div class="header-content">
     <div class="header-row header-row-top">
       <div class="header-model allow-select">{{ headerUnit().model }}</div>
+      <unit-tags class="header-tags" [unit]="headerUnit()" [mode]="'full'" (tagClick)="onTagClick($event)"></unit-tags>
+    </div>
+    <div class="header-row header-row-bottom">
+      <div class="header-chassis allow-select">{{ headerUnit().chassis }}</div>
       <div class="header-details">
         @if (headerUnit().role && headerUnit().role != 'None') {
           <div class="role"><strong>{{ headerUnit().role }}</strong></div>
@@ -15,10 +19,6 @@
           <img src="/images/weight.svg" class="icon" alt="tons">
         </div>
       </div>
-    </div>
-    <div class="header-row header-row-bottom">
-      <div class="header-chassis allow-select">{{ headerUnit().chassis }}</div>
-      <unit-tags class="header-tags" [unit]="headerUnit()" [mode]="'full'" (tagClick)="onTagClick($event)"></unit-tags>
     </div>
   </div>
 </div>

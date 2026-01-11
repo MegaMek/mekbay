@@ -165,7 +165,7 @@
     gap: 0.5em;
     text-wrap: nowrap;
     margin-left: auto;
-    margin-right: 28px;
+    margin-right: 8px;
 }
 
 .header-details .role {
@@ -175,7 +175,7 @@
 
 .header-tags {
     margin-left: auto;
-    margin-right: 8px;
+    margin-right: 28px;
 }
 
 .basic-info-block .era-icon {
@@ -265,9 +265,12 @@
         font-size: 1em;
     }
 
+    .header-tags {
+        margin-right: 36px;
+    }
+
     .header-details {
         font-size: 0.8em;
-        margin-right: 36px;
 
         .icon {
             width: 14px;
