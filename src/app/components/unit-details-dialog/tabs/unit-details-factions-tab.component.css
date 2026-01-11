@@ -42,6 +42,19 @@
     line-height: 1.6;
 }
 
+.faction-item {
+    display: inline-flex;
+    align-items: baseline;
+}
+
+.faction-icon {
+    height: 1.2em;
+    width: 1.2em;
+    align-self: center;
+    margin-right: 2px;
+    object-fit: contain;
+}
+
 .no-factions {
     text-align: center;
     color: var(--text-color-secondary);

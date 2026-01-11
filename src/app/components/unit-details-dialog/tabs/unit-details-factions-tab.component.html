@@ -13,7 +13,12 @@
                 </div>
                 <div class="faction-list">
                     @for (faction of era.factions; let isLast = $last; track faction.name) {
-                        <span>{{ faction.name }}{{ !isLast ? ', ' : '' }}</span>
+                        <span class="faction-item">
+                            @if (faction.img) {
+                                <img [src]="faction.img" class="faction-icon" [alt]="faction.name" />
+                            }
+                            {{ faction.name }}{{ !isLast ? ',&nbsp; ' : '' }}
+                        </span>
                     }
                 </div>
             }
