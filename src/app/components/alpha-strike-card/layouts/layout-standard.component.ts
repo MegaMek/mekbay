@@ -141,6 +141,7 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     rangeShort = computed<string>(() => this.useHex() ? '0~3' : '0"~6"');
     rangeMedium = computed<string>(() => this.useHex() ? '4~12' : '>6"~24"');
     rangeLong = computed<string>(() => this.useHex() ? '13~21' : '>24"~42"');
+    rangeExtreme = computed<string>(() => this.useHex() ? '22+' : '>42"');
 
     // Pending heat change (delta: 0 = no change)
     pendingHeat = computed<number>(() => {
@@ -160,6 +161,11 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
 
     effectiveDamageL = computed<string>(() => {
         const base = this.asStats().dmg.dmgL;
+        return this.calculateReducedDamage(base, this.weaponHits());
+    });
+
+    effectiveDamageE = computed<string>(() => {
+        const base = this.asStats().dmg.dmgE;
         return this.calculateReducedDamage(base, this.weaponHits());
     });
 

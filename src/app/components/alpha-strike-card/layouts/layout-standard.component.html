@@ -77,7 +77,7 @@
                     <div class="damage-ranges">
                         <!-- Short Range -->
                         <div class="damage-range">
-                            <div class="range-header range-header-background left">S (0 | {{ toHitShort() }}+)</div>
+                            <div class="range-header range-header-background left" [class.thin]="hasExtremeRange()">S (0 | {{ toHitShort() }}+)</div>
                             <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageS() }}</div>
                             <div class="range-distance">{{ rangeShort() }}</div>
                         </div>
@@ -91,10 +91,19 @@
 
                         <!-- Long Range -->
                         <div class="damage-range">
-                            <div class="range-header range-header-background right">L (+4 | {{ toHitLong() }}+)</div>
+                            <div class="range-header range-header-background" [class.right]="!hasExtremeRange()">L (+4 | {{ toHitLong() }}+)</div>
                             <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageL() }}</div>
                             <div class="range-distance">{{ rangeLong() }}</div>
                         </div>
+
+                        @if (hasExtremeRange()) {
+                            <!-- Extreme Range -->
+                            <div class="damage-range">
+                                <div class="range-header range-header-background right thin">E (+6 | {{ toHitExtreme() }}+)</div>
+                                <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageE() }}</div>
+                                <div class="range-distance">{{ rangeExtreme() }}</div>
+                            </div>
+                        }
                     </div>
                 </div>
             </div>

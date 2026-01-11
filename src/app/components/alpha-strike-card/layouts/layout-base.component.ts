@@ -339,6 +339,12 @@ export abstract class AsLayoutBaseComponent {
     toHitLong = computed<number>(() => this.skill() + 4 + this.heatLevel() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
     toHitExtreme = computed<number>(() => this.skill() + 6 + this.heatLevel() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
 
+    hasExtremeRange = computed<boolean>(() => {
+        const tp = this.asStats().TP;
+        return tp === 'AF' || tp === 'CF';
+    });
+
+
     // Heat level (committed)
     heatLevel = computed<number>(() => {
         return this.forceUnit()?.getHeat() ?? 0;

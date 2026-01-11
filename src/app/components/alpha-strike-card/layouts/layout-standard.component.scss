@@ -270,9 +270,17 @@
 
         &.left {        
             background: linear-gradient(to right, transparent 0%, #5B504E 1.5em, #5B504E 100%);
+
+            &.thin {
+                background: linear-gradient(to right, transparent 0%, #5B504E 0.5em, #5B504E 100%);
+            }
         }
         &.right {
             background: linear-gradient(to right, #5B504E 0%, #5B504E calc(100% - 1.5em), transparent 100%);
+
+            &.thin {
+                background: linear-gradient(to right, #5B504E 0%, #5B504E calc(100% - 0.5em), transparent 100%);
+            }
         }
     }
 }
