@@ -1,6 +1,4 @@
 :host {
-    // --as-red: #7c2422;
-    // --as-red-bright: #b31816;
     --as-red: #7b0000;
     --as-red-bright: #cd0000;
 }
@@ -44,19 +42,6 @@
         font-weight: bold;
         padding-left: 0.7em;
         padding-right: 0.7em;
-    }
-}
-
-.alphastrike-text {
-    paint-order: stroke fill;
-    position: relative;
-    font-weight: 900;
-    color: #000;
-    
-    :host:not(.monochrome) & {
-        // color: #d22027;
-        // -webkit-text-stroke: 0.08em #ECD24B;
-        -webkit-text-stroke: 0.08em #fff;
     }
 }
 

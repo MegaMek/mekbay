@@ -605,6 +605,27 @@ hr {
     }
 }
 
+.alphastrike-text {
+    font-family: 'Roboto Condensed', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    paint-order: stroke fill;
+    position: relative;
+    font-weight: 900;
+    color: #000;
+    
+    &.stroked {
+        // color: #d22027;
+        // -webkit-text-stroke: 0.08em #ECD24B;
+        -webkit-text-stroke: 0.1em #fff;
+
+        &.colored {
+            color: #d22027;
+            -webkit-text-stroke: 0.1em #ECD24B;
+        }
+    }
+}
+
 span {
     &.danger {
         color: var(--danger);

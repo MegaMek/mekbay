@@ -149,7 +149,7 @@ const CRIT_TABLE_AEROSPACE: Record<number, CritTableEntry> = {
 const CRIT_TABLE_JUMPSHIP: Record<number, CritTableEntry> = {
     2: { critType: 'Door Hit', description: 'Random cargo bay doors damaged. Units cannot enter/exit.', pipKey: null },
     3: { critType: 'Dock Hit', description: '-1 DT capacity. No DT# or reduced to 0 = cannot dock DropShips.', pipKey: null },
-    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
+    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
     5: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     6: { critType: 'Weapon Hit', description: '-25% Damage in random arc/column.', pipKey: null, requiresArcRoll: true },
     7: { critType: 'Weapon Hit', description: '-25% Damage in random arc/column.', pipKey: null, requiresArcRoll: true },
@@ -164,7 +164,7 @@ const CRIT_TABLE_DROPSHIP: Record<number, CritTableEntry> = {
     2: { critType: 'KF Boom Hit', description: 'Cannot be transported via JumpShip.', pipKey: 'kf-boom', maxHits: 1},
     3: { critType: 'Docking Collar Hit', description: 'Cannot dock with a JumpShip.', pipKey: 'dock-collar', maxHits: 1 },
     4: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
-    5: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
+    5: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
     6: { critType: 'Weapon Hit', description: '-25% Damage in random arc/column.', pipKey: null, requiresArcRoll: true },
     7: { critType: 'Thruster Hit', description: '-1 Thrust. If 0 Thrust, crash. Only once per unit.', pipKey: 'thruster', maxHits: 1 },
     8: { critType: 'Weapon Hit', description: '-25% Damage in random arc/column.', pipKey: null, requiresArcRoll: true },
@@ -214,6 +214,9 @@ function getTableForUnitType(unitType: ASUnitTypeCode): Record<number, CritTable
     template: `
     <div class="content">
         <h2 dialog-title>CRITICAL HIT ROLL</h2>
+        @if (unitDisplayName()) {
+            <div class="unit-name alphastrike-text stroked colored">{{ unitDisplayName() }}</div>
+        }
         <div dialog-content>
             <div class="dice-roller-container">
             <!-- 2D6 roll -->
@@ -272,6 +275,10 @@ function getTableForUnitType(unitType: ASUnitTypeCode): Record<number, CritTable
         h2 {
             margin-top: 8px;
             margin-bottom: 8px;
+        }
+
+        .unit-name {
+            font-size: 1.8em;
         }
 
         [dialog-content] {
@@ -361,6 +368,15 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
     readonly randomArc = signal<ArcLabel | null>(null);
     readonly randomColumn = signal<string | null>(null);
     readonly currentEntry = signal<CritTableEntry | null>(null);
+
+    /** Display name combining chassis, model, and optional alias */
+    readonly unitDisplayName = computed(() => {
+        if (!this.forceUnit) return null;
+        const unit = this.forceUnit.getUnit();
+        const chassisModel = `${unit.chassis} ${unit.model}`;
+        const alias = this.forceUnit.alias();
+        return alias ? `${chassisModel} (${alias})` : chassisModel;
+    });
 
     /** Reason why the crit cannot be applied, or null if it can */
     readonly cannotApplyReason = computed(() => {
