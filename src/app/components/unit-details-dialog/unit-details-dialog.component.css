@@ -98,30 +98,48 @@
 /* Header */
 .header {
     display: flex;
-    justify-content: left;
-    align-items: stretch;
     flex-direction: row;
-    gap: 0px 8px;
+    gap: 8px;
     position: relative;
     min-height: 48px;
-    flex-wrap: wrap;
     padding: 8px;
     font-weight: bold;
     font-size: 1.3em;
 }
 
-.header-group {
+.header-icon-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.header-icon-container unit-icon {
+    height: 48px;
+    vertical-align: middle;
+}
+
+.header-content {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    min-width: 0;
+    gap: 2px;
+}
+
+.header-row {
     display: flex;
     flex-direction: row;
     align-items: center;
-    justify-content: center;
     gap: 8px;
 }
 
-.header-name-group {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
+.header-row-top {
+    flex-wrap: wrap-reverse;
+}
+
+.header-row-bottom {
+    flex-wrap: wrap;
 }
 
 .header-model {
@@ -129,7 +147,7 @@
     font-weight: normal;
     color: var(--text-color-secondary);
     text-transform: none;
-    margin-right: 20px;
+    margin-right: 8px;
 }
 
 .header-chassis {
@@ -140,50 +158,28 @@
     margin-right: 8px;
 }
 
-.header-icon-container {
+.header-details {
     display: flex;
-    justify-content: center;
+    flex-direction: row;
     align-items: center;
-}
-
-.header-icon-container unit-icon {
-    height: 48px;
-    vertical-align: middle;
-}
-
-.basic-info-block .era-icon {
-    height: 19px;
-}
-
-
-.header-details-container {
-    margin-right: 12px;
-    display: flex;
-    flex-direction: column;
+    gap: 0.5em;
+    text-wrap: nowrap;
     margin-left: auto;
-    align-items: flex-end;
-    min-width: 0;
+    margin-right: 28px;
 }
 
-.header-details-container .role {
+.header-details .role {
     font-size: 0.9em;
     text-transform: none;
 }
 
-.header-details {
-    display: flex;
-    flex-direction: row;
-    align-items: flex-end;
-    gap: 0.5em;
-    text-wrap: nowrap;
-    position: relative;
-    top: -0.2em;
-    margin-top: 0.2em;
-    margin-right: 19px;
+.header-tags {
+    margin-left: auto;
+    margin-right: 8px;
 }
 
-.header-tags {
-    justify-content: flex-end;
+.basic-info-block .era-icon {
+    height: 19px;
 }
 
 .info-slot {
@@ -271,5 +267,11 @@
 
     .header-details {
         font-size: 0.8em;
+        margin-right: 36px;
+
+        .icon {
+            width: 14px;
+            height: 14px;
+        }
     }
 }
