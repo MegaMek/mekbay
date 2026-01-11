@@ -47,6 +47,7 @@ import { ASForceUnit } from '../../../models/as-force-unit.model';
 export class AsCriticalHitsBase {
     forceUnit = input<ASForceUnit>();
     cardStyle = input<'colored' | 'monochrome'>('colored');
+    useHex = input<boolean>(false);
     
     range(count: number): number[] {
         return Array.from({ length: count }, (_, i) => i);

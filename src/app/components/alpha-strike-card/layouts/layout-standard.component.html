@@ -1,7 +1,8 @@
 <!-- Unit Image -->
 @if (imageUrl() && !imageLoadFailed()) {
 <div class="fluff-image-container"
-    [class.center-vertical]="criticalHitsVariant() === 'none'">
+    [class.center-vertical]="verticallyCenterImage()"
+    [class.reduced-height]="reducedHeightImage()">
     <img class="fluff-image" [src]="imageUrl()" alt="Unit image" (error)="onImageError()" />
 </div>
 }
@@ -216,16 +217,16 @@
             <!-- Critical Hits Box - Rendered based on unit type -->
             @switch (criticalHitsVariant()) {
                 @case ('mek') {
-                    <as-critical-hits-mek [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" />
+                    <as-critical-hits-mek [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" />
                 }
                 @case ('vehicle') {
-                    <as-critical-hits-vehicle [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" />
+                    <as-critical-hits-vehicle [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" />
                 }
                 @case ('protomek') {
-                    <as-critical-hits-protomek [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" />
+                    <as-critical-hits-protomek [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" />
                 }
                 @case ('aerofighter') {
-                    <as-critical-hits-aerofighter [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" />
+                    <as-critical-hits-aerofighter [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" />
                 }
             }
         </div>

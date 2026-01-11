@@ -89,6 +89,14 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         return config.cards[0]?.criticalHits ?? 'none';
     });
 
+    verticallyCenterImage = computed<boolean>(() => {
+        return this.criticalHitsVariant() !== 'mek';
+    });
+
+    reducedHeightImage = computed<boolean>(() => {
+        return this.criticalHitsVariant() === 'vehicle' || this.criticalHitsVariant() === 'aerofighter';
+    });
+
     movementDisplay = computed<string>(() => {
         const fu = this.forceUnit();
         if (!fu) return this.asStats().MV ?? '';

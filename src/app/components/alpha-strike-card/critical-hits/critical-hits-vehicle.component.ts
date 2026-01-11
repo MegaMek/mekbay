@@ -106,7 +106,7 @@ import { AsCriticalHitsBase } from './critical-hits-base';
                                 viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
                             }
                         </div>
-                        <span class="critical-desc">-2 MV</span>
+                        <span class="critical-desc">{{ useHex() ? '-1 MV' : '-2" MV' }}</span>
                     </div>
                     <div class="critical-row centered-row" data-crit="motive2">
                         <div class="critical-pips">
