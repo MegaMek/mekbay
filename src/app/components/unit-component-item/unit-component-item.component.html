@@ -21,7 +21,7 @@
             @if (displayStyle() === 'normal') {
                 @if (unit().techBase == 'Mixed' && componentTechBase != 'All') {
                     <div class="tech-base tech-{{ componentTechBase | lowercase }}">
-                        {{ componentTechBase == 'IS' ? 'IS' : 'C' }}
+                        {{ componentTechBase == 'Clan' ? 'C' : 'IS' }}
                     </div>
                 }
             }
