@@ -247,6 +247,17 @@ function getTableForUnitType(unitType: ASUnitTypeCode): Record<number, CritTable
                 
             }
             
+            <!-- Ammo hit mitigation message -->
+            @if (ammoHitMitigation() === 'case') {
+                <div class="mitigation-message case">
+                    CASE reduces Ammo Hit to +1 damage.
+                </div>
+            } @else if (ammoHitMitigation() === 'immune') {
+                <div class="mitigation-message immune">
+                    CASEII/ENE negates Ammo Hit. No effect.
+                </div>
+            }
+            
             <!-- Cannot apply warning -->
             @if (cannotApplyReason()) {
                 <div class="cannot-apply-warning">
@@ -327,6 +338,24 @@ function getTableForUnitType(unitType: ASUnitTypeCode): Record<number, CritTable
             background: rgba(0, 0, 0, 0.3);
         }
 
+        .mitigation-message {
+            padding: 12px 16px;
+            font-size: 1.1em;
+            font-weight: bold;
+
+            &.case {
+                background: rgba(255, 200, 0, 0.2);
+                border: 1px solid rgba(255, 200, 0, 0.5);
+                color: #ffcc00;
+            }
+
+            &.immune {
+                background: rgba(0, 200, 100, 0.2);
+                border: 1px solid rgba(0, 200, 100, 0.5);
+                color: #44ff88;
+            }
+        }
+
         .cannot-apply-warning {
             padding: 12px 16px;
             background: rgba(255, 100, 0, 0.2);
@@ -368,6 +397,23 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
     readonly randomArc = signal<ArcLabel | null>(null);
     readonly randomColumn = signal<string | null>(null);
     readonly currentEntry = signal<CritTableEntry | null>(null);
+
+    /** Ammo hit mitigation status based on unit specials */
+    readonly ammoHitMitigation = computed<'none' | 'case' | 'immune'>(() => {
+        const res = this.result();
+        if (!res || res.critType !== 'Ammo Hit' || !this.forceUnit) return 'none';
+
+        const specials = this.forceUnit.getUnit().as.specials;
+        if (!specials) return 'none';
+
+        // CASEII or ENE = complete immunity
+        if (specials.some(s => s === 'CASEII' || s === 'ENE')) return 'immune';
+
+        // CASE = reduced to +1 damage
+        if (specials.includes('CASE')) return 'case';
+
+        return 'none';
+    });
 
     /** Display name combining chassis, model, and optional alias */
     readonly unitDisplayName = computed(() => {
@@ -433,7 +479,9 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
 
     /** Whether to show "ADD 1 DAMAGE" button instead of apply */
     readonly showAddDamage = computed(() => {
-        const entry = this.currentEntry();
+        // CASE mitigates Ammo Hit to +1 damage
+        if (this.ammoHitMitigation() === 'case') return true;
+
         return !!this.cannotApplyReason() && !!this.forceUnit;
     });
 
