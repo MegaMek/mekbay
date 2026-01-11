@@ -599,7 +599,9 @@ export class CBTForceUnit extends ForceUnit {
                 });
             }
         }
-        const hasSmallOrTorsoCockpit = critSlots.some(slot => slot.name && slot.loc && slot.name.includes('Cockpit') && slot.name.includes('Small')) 
+        const hasSmallOrTorsoCockpit = critSlots.some(slot => slot.name && slot.loc 
+            && ((slot.name.includes('Cockpit') && slot.name.includes('Small'))
+                || (slot.name.includes('Command') && slot.name.includes('Small'))) ) 
             || critSlots.some(slot => slot.name && slot.loc && slot.loc === 'CT' && slot.name.includes('Cockpit'));
         if (hasSmallOrTorsoCockpit) {
             preExisting += 1; // Small or Torso cockpit gives +1 modifier
