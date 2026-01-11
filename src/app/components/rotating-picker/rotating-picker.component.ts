@@ -32,7 +32,7 @@
  */
 
 
-import { Component, ElementRef, AfterViewInit, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, HostListener, viewChild, DestroyRef, inject } from '@angular/core';
+import { Component, ElementRef, AfterViewInit, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, viewChild, DestroyRef, inject } from '@angular/core';
 import { PickerComponent, PickerChoice, PickerValue, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { LayoutService } from '../../services/layout.service';
@@ -51,9 +51,12 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
 
 @Component({
     selector: 'rotating-picker',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [],
+    host: {
+        '(keydown)': 'onKeyDown($event)',
+        '(wheel)': 'onWheel($event)'
+    },
     template: `
         <div #container class="rotating-picker-container"
             [class.light-theme]="lightTheme()"
@@ -482,7 +485,6 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
     }
 
     // Keyboard event handlers
-    @HostListener('keydown', ['$event'])
     onKeyDown(event: KeyboardEvent): void {
         if (this.isDragging) return; // Don't handle keyboard input while dragging
 
@@ -527,7 +529,6 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
         }
     }
 
-    @HostListener('wheel', ['$event'])
     onWheel(event: WheelEvent): void {
         if (this.isDragging) return; // Don't handle wheel input while dragging
 

@@ -31,11 +31,18 @@
  * affiliated with Microsoft.
  */
 
-import { Directive, HostListener, input, effect, output, ElementRef, inject } from '@angular/core';
+import { Directive, input, effect, output, ElementRef, inject } from '@angular/core';
 
 @Directive({
     selector: '[longPress]',
-    standalone: true
+    host: {
+        '(pointerdown)': 'onPointerDown($event)',
+        '(pointermove)': 'onPointerMove($event)',
+        '(pointerup)': 'onPointerUp($event)',
+        '(click)': 'onClick($event)',
+        '(contextmenu)': 'onContextMenu($event)',
+        '(pointercancel)': 'onPointerCancel()'
+    }
 })
 export class LongPressDirective {
     longPressDuration = input<number>(300); // ms
@@ -58,7 +65,6 @@ export class LongPressDirective {
         });
     }
 
-    @HostListener('pointerdown', ['$event'])
     onPointerDown(event: PointerEvent) {
         // Only left button
         if (event.button && event.button !== 0) return;
@@ -85,7 +91,6 @@ export class LongPressDirective {
         }, this.longPressDuration());
     }
 
-    @HostListener('pointermove', ['$event'])
     onPointerMove(event: PointerEvent) {
         if (!this.timeoutId) return;
         const dx = event.clientX - this.startX;
@@ -95,12 +100,10 @@ export class LongPressDirective {
         }
     }
 
-    @HostListener('pointerup', ['$event'])
     onPointerUp(event: PointerEvent) {
         this.clearTimer();
     }
 
-    @HostListener('click', ['$event'])
     onClick(event: MouseEvent) {
         event.preventDefault();
         event.stopPropagation();
@@ -113,7 +116,6 @@ export class LongPressDirective {
         }
     }
 
-    @HostListener('contextmenu', ['$event'])
     onContextMenu(event: Event) {
         event.preventDefault();
         event.stopPropagation();
@@ -127,7 +129,6 @@ export class LongPressDirective {
         }
     }
 
-    @HostListener('pointercancel')
     onPointerCancel() {
         this.clearTimer();
     }

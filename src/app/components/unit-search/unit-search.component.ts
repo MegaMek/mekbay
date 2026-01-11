@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, ElementRef, computed, HostListener, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, Pipe, PipeTransform, DestroyRef } from '@angular/core';
+import { Component, signal, ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, Pipe, PipeTransform, DestroyRef } from '@angular/core';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
@@ -101,6 +101,9 @@ export class ExpandedComponentsPipe implements PipeTransform {
     imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.css',
+    host: {
+        '(keydown)': 'onKeydown($event)'
+    }
 })
 export class UnitSearchComponent {
     layoutService = inject(LayoutService);
@@ -433,7 +436,6 @@ export class UnitSearchComponent {
         return Object.values(state).some(s => s.interactedWith);
     }
 
-    @HostListener('keydown', ['$event'])
     onKeydown(event: KeyboardEvent) {
         const searchInput = this.searchInput();
         // SELECT ALL

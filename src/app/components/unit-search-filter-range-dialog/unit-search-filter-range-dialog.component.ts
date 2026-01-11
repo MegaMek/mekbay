@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, Directive, ElementRef, HostListener, inject, Input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Directive, ElementRef, inject, input, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { Field, form } from '@angular/forms/signals';
 
@@ -61,17 +61,15 @@ export interface UnitSearchFilterRangeDialogData {
  */
 @Directive({
     selector: 'input[numericInput]',
-    standalone: true
+    host: {
+        '(keydown)': 'onKeyDown($event)',
+        '(input)': 'onInput($event)'
+    }
 })
 export class NumericInputDirective {
-    @Input() allowFloatingValues = false;
-    private el: HTMLInputElement;
+    allowFloatingValues = input(false);
+    private el = inject(ElementRef<HTMLInputElement>).nativeElement;
 
-    constructor(private elementRef: ElementRef) {
-        this.el = this.elementRef.nativeElement;
-    }
-
-    @HostListener('keydown', ['$event'])
     onKeyDown(event: KeyboardEvent) {
         const key = event.key;
         const value = this.el.value;
@@ -110,7 +108,7 @@ export class NumericInputDirective {
 
         // Handle Decimal Point
         if (key === '.') {
-            if (this.allowFloatingValues && !value.includes('.')) {
+            if (this.allowFloatingValues() && !value.includes('.')) {
                 return;
             }
             event.preventDefault();
@@ -123,7 +121,6 @@ export class NumericInputDirective {
         }
     }
 
-    @HostListener('input', ['$event'])
     onInput(event: Event) {
         // Logic to maintain cursor position relative to "logical" digits
         // This prevents the cursor from jumping wildly when commas are added/removed.
@@ -177,7 +174,7 @@ export class NumericInputDirective {
 
     // Removes commas, keeps digits, dot, and minus
     private parseToCleanString(val: string): string {
-        if (!this.allowFloatingValues) {
+        if (!this.allowFloatingValues()) {
             const dotIndex = val.indexOf('.');
             if (dotIndex !== -1) {
                 val = val.substring(0, dotIndex);
@@ -207,7 +204,6 @@ export class NumericInputDirective {
 
 @Component({
     selector: 'unit-search-filter-range-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [Field, NumericInputDirective],
     host: {

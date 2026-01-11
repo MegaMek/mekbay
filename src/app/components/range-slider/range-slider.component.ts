@@ -32,18 +32,21 @@
  */
 
 
-import { Component, signal, computed, ElementRef, input, output, effect, ChangeDetectionStrategy, HostListener, viewChild } from '@angular/core';
+import { Component, signal, computed, ElementRef, input, output, effect, ChangeDetectionStrategy, viewChild } from '@angular/core';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 /*
  * Author: Drake
  */
 @Component({
     selector: 'range-slider',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [FormatNumberPipe],
     templateUrl: './range-slider.component.html',
     styleUrl: './range-slider.component.css',
+    host: {
+        '(keydown)': 'onKeyDown($event)',
+        '(wheel)': 'onWheel($event)'
+    }
 })
 export class RangeSliderComponent {
     private readonly DEBOUNCE_TIME_MS = 150;
@@ -175,7 +178,6 @@ export class RangeSliderComponent {
         this.focusedThumb.set(null);
     }
 
-    @HostListener('keydown', ['$event'])
     onKeyDown(event: KeyboardEvent) {
         const focused = this.focusedThumb();
         if (!focused) return;
@@ -225,7 +227,6 @@ export class RangeSliderComponent {
         }
     }
  
-    @HostListener('wheel', ['$event'])
     onWheel(event: WheelEvent) {
         const focused = this.focusedThumb();
         if (!focused) return;

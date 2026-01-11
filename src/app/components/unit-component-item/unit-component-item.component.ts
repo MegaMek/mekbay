@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ChangeDetectionStrategy, input, signal, afterNextRender, Injector, inject, computed, ElementRef, viewChild, HostBinding } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, computed, ElementRef, viewChild } from '@angular/core';
 import { Unit, UnitComponent } from '../../models/units.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
@@ -44,14 +44,15 @@ type ComponentDisplayStyle = 'normal' | 'small' | 'tiny' | 'text';
  */
 @Component({
     selector: 'unit-component-item',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule],
     templateUrl: './unit-component-item.component.html',
-    styleUrls: ['./unit-component-item.component.css']
+    styleUrls: ['./unit-component-item.component.css'],
+    host: {
+        '[style.display]': 'hostDisplay'
+    }
 })
 export class UnitComponentItemComponent {
-    injector = inject(Injector);
     public floatingOverlayService = inject(FloatingOverlayService);
     unit = input.required<Unit>();
     damaged = input<boolean>(false);
@@ -63,9 +64,7 @@ export class UnitComponentItemComponent {
         return getWeaponTypeCSSClass(this.comp()?.t ?? '');
     });
 
-    @HostBinding('style.display') get hostDisplay() {
-        return this.displayStyle?.() === 'text' ? 'inline' : 'block';
-    }
+    hostDisplay = computed(() => this.displayStyle() === 'text' ? 'inline' : 'block');
 
     constructor() {}
 

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, signal, HostListener, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector, untracked, DestroyRef } from '@angular/core';
+import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
 
 import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
@@ -72,7 +72,6 @@ import { UrlStateService } from './services/url-state.service';
  */
 @Component({
     selector: 'app-root',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
     ToastsComponent,
@@ -86,7 +85,11 @@ import { UrlStateService } from './services/url-state.service';
     PortalModule
 ],
     templateUrl: './app.html',
-    styleUrl: './app.scss'
+    styleUrl: './app.scss',
+    host: {
+        '(window:online)': 'onOnline()',
+        '(window:focus)': 'onFocus()'
+    }
 })
 export class App {
     logger = inject(LoggerService);
@@ -226,12 +229,10 @@ export class App {
         return this.forceBuilderService.currentForce() as ASForce | null;
     });
 
-    @HostListener('window:online')
     onOnline() {
         this.checkForUpdate();
     }
 
-    @HostListener('window:focus')
     onFocus() {
         this.checkForUpdate();
     }

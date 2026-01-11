@@ -98,6 +98,9 @@ const SWIPE_VELOCITY_THRESHOLD = 300; // px/s for flick gesture
     changeDetection: ChangeDetectionStrategy.OnPush,
     providers: [PageViewerZoomPanService, PageViewerCanvasService],
     imports: [HeatDiffMarkerComponent, PageViewerCanvasControlsComponent],
+    host: {
+        '(window:keydown)': 'onWindowKeyDown($event)'
+    },
     templateUrl: './page-viewer.component.html',
     styleUrls: ['./page-viewer.component.scss']
 })
@@ -163,6 +166,14 @@ export class PageViewerComponent implements AfterViewInit {
     effectiveVisiblePageCount = computed(() => 
         Math.min(this.visiblePageCount(), this.maxVisiblePageCount())
     );
+
+    // Navigation computed properties for keyboard and button navigation
+    hasPrev = computed(() => this.viewStartIndex() > 0);
+    hasNext = computed(() => {
+        const totalPages = this.getTotalPageCount();
+        const visiblePages = this.effectiveVisiblePageCount();
+        return this.viewStartIndex() + visiblePages < totalPages;
+    });
 
     // Swipe is allowed only when total pages > effective visible pages and not in canvas paint mode
     swipeAllowed = computed(() => {
@@ -1377,6 +1388,47 @@ export class PageViewerComponent implements AfterViewInit {
             this.closeInteractionOverlays();
             this.displayUnit();
         }
+    }
+
+    // ========== Keyboard Navigation ==========
+
+    onWindowKeyDown(event: KeyboardEvent): void {
+        // Ignore if typing in an input/textarea/contentEditable
+        const target = event.target as HTMLElement | null;
+        if (target) {
+            const tag = target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) {
+                return;
+            }
+        }
+        // Ignore with modifiers
+        if (event.ctrlKey || event.altKey || event.metaKey) return;
+
+        if (event.key === 'ArrowLeft') {
+            if (this.hasPrev()) {
+                this.onPrev();
+                event.preventDefault();
+            }
+        } else if (event.key === 'ArrowRight') {
+            if (this.hasNext()) {
+                this.onNext();
+                event.preventDefault();
+            }
+        }
+    }
+
+    onPrev(): void {
+        if (!this.hasPrev() || this.isSwiping) return;
+        this.closeInteractionOverlays();
+        this.viewStartIndex.update(idx => idx - 1);
+        this.displayUnit();
+    }
+
+    onNext(): void {
+        if (!this.hasNext() || this.isSwiping) return;
+        this.closeInteractionOverlays();
+        this.viewStartIndex.update(idx => idx + 1);
+        this.displayUnit();
     }
 
     // ========== Unit Display ==========

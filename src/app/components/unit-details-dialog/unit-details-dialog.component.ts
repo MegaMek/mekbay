@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, ElementRef, signal, HostListener, ChangeDetectionStrategy, output, viewChild, effect, computed, HostBinding, Injector } from '@angular/core';
+import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { Unit } from '../../models/units.model';
@@ -72,11 +72,15 @@ export interface UnitDetailsDialogData {
 
 @Component({
     selector: 'unit-details-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule, BaseDialogComponent, SwipeDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitTagsComponent],
     templateUrl: './unit-details-dialog.component.html',
-    styleUrls: ['./unit-details-dialog.component.css']
+    styleUrls: ['./unit-details-dialog.component.css'],
+    host: {
+        '[class.fluff-background]': 'hostHasFluff',
+        '[style.--fluff-bg]': 'hostFluffBg',
+        '(window:keydown)': 'onWindowKeyDown($event)'
+    }
 })
 export class UnitDetailsDialogComponent {
     dataService = inject(DataService);
@@ -172,12 +176,10 @@ export class UnitDetailsDialogComponent {
         return currentUnit;
     }
 
-    @HostBinding('class.fluff-background')
     get hostHasFluff(): boolean {
         return !!this.headerFluffImageUrl();
     }
 
-    @HostBinding('style.--fluff-bg')
     get hostFluffBg(): string | null {
         const url = this.headerFluffImageUrl();
         return url ? `url("${url}")` : null;
@@ -216,7 +218,6 @@ export class UnitDetailsDialogComponent {
     }
 
     // Keyboard navigation (Left/Right)
-    @HostListener('window:keydown', ['$event'])
     onWindowKeyDown(event: KeyboardEvent) {
         // Ignore if typing in an input/textarea/contentEditable
         const target = event.target as HTMLElement | null;
