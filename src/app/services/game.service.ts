@@ -132,12 +132,13 @@ export class GameService {
         });
     }
 
-    /**
-     * Sets a temporary game system override without affecting user options.
-     * The override is automatically cleared when a force is loaded.
-     */
     setOverride(gameSystem: GameSystem | null): void {
         this.gameSystemOverride.set(gameSystem);
+    }
+
+    setMode(gameSystem: GameSystem): void {
+        this.gameSystemOverride.set(null); // Clear any temporary override
+        this.optionsService.setOption('gameSystem', gameSystem);
     }
 
     isAlphaStrike = computed(() => {

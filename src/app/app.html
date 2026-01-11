@@ -44,7 +44,7 @@
                     </div>
                     <div class="gameSystemSelector" [class.loading]="!this.dataService.isDataReady()">
                         <div class="battletech-logo" [class.inactive]="gameService.isAlphaStrike()"
-                            (click)="this.dataService.isDataReady() && gameService.setOverride(GameSystem.CLASSIC)">
+                            (click)="this.dataService.isDataReady() && gameService.setMode(GameSystem.CLASSIC)">
                             <svg fill="#fff" version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 100">
                                 <g>
                                     <path class="logo-text"
@@ -60,13 +60,13 @@
                             </svg>
                         </div>
                         <div class="game-system-switch"
-                            (click)="this.dataService.isDataReady() && gameService.setOverride(gameService.isAlphaStrike() ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE)">
+                            (click)="this.dataService.isDataReady() && gameService.setMode(gameService.isAlphaStrike() ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE)">
                             <div class="switch-track" [class.as-active]="gameService.isAlphaStrike()">
                                 <div class="switch-thumb"></div>
                             </div>
                         </div>
                         <div class="as-logo" [class.inactive]="!gameService.isAlphaStrike()"
-                            (click)="this.dataService.isDataReady() && gameService.setOverride(GameSystem.ALPHA_STRIKE)">
+                            (click)="this.dataService.isDataReady() && gameService.setMode(GameSystem.ALPHA_STRIKE)">
                             <svg viewBox="0 0 88 14" xmlns="http://www.w3.org/2000/svg">
                                 <g>
                                     <path style="fill:none;stroke:#fff200;stroke-width:0.8;stroke-miterlimit:3.226"
