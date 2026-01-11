@@ -259,6 +259,18 @@ export class ForceNamerUtil {
         return `${factionName} ${forceType}`;
     }
 
+    static generateForceNameForFaction(units: ForceUnit[], factionName: string): string {
+        if (!units || units.length === 0) return 'Unnamed Force';
+        let forceType: string;
+        if (factionName === 'ComStar' || factionName === 'Word of Blake') {
+            forceType = getForceType(units, '', factionName);
+        } else {
+            const majorityTechBase = this.getTechBase(units);
+            forceType = getForceType(units, majorityTechBase, factionName);
+        }
+        return `${factionName} ${forceType}`;
+    }
+
     static generateFormationName({ units, allUnits, forceName }: GroupNameOptions): string {
         if (!units || units.length === 0) return 'Unnamed Formation';
         let forceType: string;

@@ -76,7 +76,11 @@ export interface RenameGroupDialogData {
         @if (formationsText) {
           <details class="faction-accordion">
             <summary>Formations ({{ formationsText.length }})</summary>
-            <p>{{ formationsText.join(', ') }}</p>
+            <div class="formation-list">
+              @for (formation of formationsText; let isLast = $last; track formation) {
+                <span class="formation-item" (click)="selectFormation(formation)">{{ formation }}</span>@if (!isLast) {<span class="formation-separator">, </span>}
+              }
+            </div>
           </details>
         }
       </div>
@@ -193,6 +197,26 @@ export interface RenameGroupDialogData {
             font-size: 0.95em;
             line-height: 1.4;
         }
+
+        .formation-list {
+            padding: 0 16px 12px;
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+
+        .formation-item {
+            display: inline;
+            cursor: pointer;
+            transition: opacity 0.2s ease-in-out;
+        }
+
+        .formation-item:hover {
+            opacity: 0.7;
+        }
+
+        .formation-separator {
+            margin-right: 4px;
+        }
     `]
 })
 
@@ -225,6 +249,13 @@ export class RenameGroupDialogComponent {
         const sel = window.getSelection();
         sel?.removeAllRanges();
         sel?.addRange(range);
+    }
+
+    selectFormation(formationName: string) {
+        const nativeEl = this.inputRef().nativeElement;
+        if (!nativeEl) return;
+        nativeEl.textContent = formationName;
+        nativeEl.focus();
     }
 
     private computeFormationsText(): string[] | null {

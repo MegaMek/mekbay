@@ -35,7 +35,15 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
+import { DataService } from '../../services/data.service';
 import { Force, UnitGroup } from '../../models/force.model';
+import { ForceNamerUtil } from '../../utils/force-namer.util';
+
+interface FactionDisplay {
+    name: string;
+    img: string;
+    percentage: number;
+}
 
 
 /*
@@ -74,10 +82,19 @@ export interface RenameForceDialogData {
             aria-label="Generate random force name"
           ></button>
         </div>
-        @if (factionsText) {
+        @if (factionsData) {
           <details class="faction-accordion">
-            <summary>Factions ({{ factionsText.length }})</summary>
-            <p>{{ factionsText.join(', ') }}</p>
+            <summary>Factions ({{ factionsData.length }})</summary>
+            <div class="faction-list">
+              @for (faction of factionsData; let isLast = $last; track faction.name) {
+                <span class="faction-item" (click)="selectFaction(faction.name)">
+                  @if (faction.img) {
+                    <img [src]="faction.img" class="faction-icon" [alt]="faction.name" />
+                  }
+                  {{ faction.name }}@if (faction.percentage < 100) { ({{ faction.percentage }}%)}@if (!isLast) {,}
+                </span>{{ !isLast ? ' ' : '' }}
+              }
+            </div>
           </details>
         }
       </div>
@@ -197,6 +214,36 @@ export interface RenameForceDialogData {
             font-size: 0.95em;
             line-height: 1.4;
         }
+
+        .faction-list {
+            padding: 0 16px 12px;
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+
+        .faction-item {
+            display: inline-flex;
+            align-items: baseline;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: opacity 0.2s ease-in-out;
+        }
+
+        .faction-item:hover {
+            opacity: 0.7;
+        }
+
+        .faction-icon {
+            height: 1.2em;
+            width: 1.2em;
+            align-self: center;
+            margin-right: 2px;
+            object-fit: contain;
+        }
+
+        .faction-separator {
+            margin-right: 4px;
+        }
     `]
 })
 
@@ -205,7 +252,8 @@ export class RenameForceDialogComponent {
     public dialogRef: DialogRef<string | number | null, RenameForceDialogComponent> = inject(DialogRef);
     readonly data: RenameForceDialogData = inject(DIALOG_DATA);
     private forceBuilder = inject(ForceBuilderService);
-    factionsText = this.computeFactionsText();
+    private dataService = inject(DataService);
+    factionsData = this.computeFactionsData();
 
     constructor() {}
 
@@ -231,20 +279,32 @@ export class RenameForceDialogComponent {
         sel?.addRange(range);
     }
 
-    private computeFactionsText(): string[] | null {
+    selectFaction(factionName: string) {
+        const units = this.forceBuilder.forceUnits();
+        if (!units) return;
+        const forceName = ForceNamerUtil.generateForceNameForFaction(units, factionName);
+        const nativeEl = this.inputRef().nativeElement;
+        if (!nativeEl) return;
+        nativeEl.textContent = forceName;
+        nativeEl.focus();
+    }
+
+    private computeFactionsData(): FactionDisplay[] | null {
         const factions = this.forceBuilder.getAllFactionsAvailable();
         const totalUnits = this.forceBuilder.forceUnits()?.length;
         if (!totalUnits || !factions || factions.size === 0) {
             return null;
         }
-        const formatted = Array.from(factions.entries()).sort((a, b) => b[1] - a[1]).map(([name, percentage]) => {
-            const percent = Math.round(percentage * 100);
-            if (percent < 100) {
-                return `${name} (${percent}%)`;
-            } else {
-                return name;
-            }
-        });
+        const allFactions = this.dataService.getFactions();
+        const factionMap = new Map(allFactions.map(f => [f.name, f.img]));
+        
+        const formatted = Array.from(factions.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([name, percentage]) => ({
+                name,
+                img: factionMap.get(name) || '',
+                percentage: Math.round(percentage * 100)
+            }));
         return formatted;
     }
 
