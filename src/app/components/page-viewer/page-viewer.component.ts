@@ -1405,30 +1405,152 @@ export class PageViewerComponent implements AfterViewInit {
         if (event.ctrlKey || event.altKey || event.metaKey) return;
 
         if (event.key === 'ArrowLeft') {
-            if (this.hasPrev()) {
-                this.onPrev();
-                event.preventDefault();
-            }
+            this.handleArrowNavigation('left');
+            event.preventDefault();
         } else if (event.key === 'ArrowRight') {
-            if (this.hasNext()) {
-                this.onNext();
-                event.preventDefault();
+            this.handleArrowNavigation('right');
+            event.preventDefault();
+        }
+    }
+
+    /**
+     * Handle arrow key navigation.
+     * First tries to move selection within visible pages.
+     * Only navigates to new pages when selection is at the boundary.
+     * Supports looping from first to last page and vice versa.
+     */
+    private handleArrowNavigation(direction: 'left' | 'right'): void {
+        if (this.isSwiping) return;
+        
+        const currentUnit = this.unit();
+        if (!currentUnit) return;
+        
+        const force = this.forceBuilder.currentForce();
+        const allUnits = force?.units() ?? [];
+        const totalUnits = allUnits.length;
+        if (totalUnits === 0) return;
+        
+        // Find the index of the current selected unit within displayed units
+        const selectedIndex = this.displayedUnits.findIndex(u => u.id === currentUnit.id);
+        
+        if (direction === 'left') {
+            // Can we move selection left within visible pages?
+            if (selectedIndex > 0) {
+                // Select the previous visible unit
+                this.forceBuilder.selectUnit(this.displayedUnits[selectedIndex - 1]);
+            } else if (this.hasPrev()) {
+                // At left boundary with more pages before, navigate to previous page
+                this.navigateByDirection('left');
+            } else if (totalUnits > this.effectiveVisiblePageCount()) {
+                // At left boundary and at the start of the list, loop to the end
+                this.navigateByDirection('left');
+            }
+        } else {
+            // Can we move selection right within visible pages?
+            if (selectedIndex >= 0 && selectedIndex < this.displayedUnits.length - 1) {
+                // Select the next visible unit
+                this.forceBuilder.selectUnit(this.displayedUnits[selectedIndex + 1]);
+            } else if (this.hasNext()) {
+                // At right boundary with more pages after, navigate to next page
+                this.navigateByDirection('right');
+            } else if (totalUnits > this.effectiveVisiblePageCount()) {
+                // At right boundary and at the end of the list, loop to the start
+                this.navigateByDirection('right');
             }
         }
     }
 
-    onPrev(): void {
-        if (!this.hasPrev() || this.isSwiping) return;
+    /**
+     * Navigate one page in the given direction with animation.
+     * Used by keyboard navigation and shadow page clicks.
+     * Supports looping from first to last page and vice versa.
+     */
+    navigateByDirection(direction: 'left' | 'right'): void {
+        if (this.isSwiping) return;
+        
+        const force = this.forceBuilder.currentForce();
+        const allUnits = force?.units() ?? [];
+        const totalUnits = allUnits.length;
+        if (totalUnits === 0) return;
+        
+        const effectiveVisible = this.effectiveVisiblePageCount();
+        // Don't navigate if all units fit on screen
+        if (totalUnits <= effectiveVisible) return;
+        
+        const currentStartIndex = this.viewStartIndex();
+        const pagesToMove = direction === 'right' ? 1 : -1;
+        
+        // Calculate target unit index with wrap-around (the one that will slide in)
+        const targetIndex = direction === 'left' 
+            ? (currentStartIndex - 1 + totalUnits) % totalUnits
+            : (currentStartIndex + effectiveVisible) % totalUnits;
+        const targetUnit = allUnits[targetIndex] as CBTForceUnit;
+        if (!targetUnit) return;
+        
+        // Check if there's an existing shadow page we can use
+        const existingShadow = this.shadowPageElements.find(
+            el => el.dataset['shadowDirection'] === direction
+        );
+        
+        if (existingShadow) {
+            // Use the existing shadow page navigation
+            this.navigateToShadowPage(targetUnit, targetIndex);
+            return;
+        }
+        
+        // No shadow page exists - create temporary one and animate
         this.closeInteractionOverlays();
-        this.viewStartIndex.update(idx => idx - 1);
-        this.displayUnit();
-    }
-
-    onNext(): void {
-        if (!this.hasNext() || this.isSwiping) return;
-        this.closeInteractionOverlays();
-        this.viewStartIndex.update(idx => idx + 1);
-        this.displayUnit();
+        
+        // Load target unit first
+        targetUnit.load().then(() => {
+            const svg = targetUnit.svg();
+            if (!svg) {
+                // Fallback to instant navigation if no SVG
+                this.viewStartIndex.set(currentStartIndex + pagesToMove);
+                this.displayUnit();
+                return;
+            }
+            
+            const scale = this.zoomPanService.scale();
+            const scaledPageStep = (PAGE_WIDTH + PAGE_GAP) * scale;
+            const content = this.contentRef().nativeElement;
+            
+            // Get position for the incoming page
+            const displayedPositions = this.zoomPanService.getPagePositions(effectiveVisible);
+            const basePosition = direction === 'left'
+                ? (displayedPositions[0] ?? 0) * scale - scaledPageStep
+                : ((displayedPositions[effectiveVisible - 1] ?? 0) * scale) + scaledPageStep;
+            
+            // Create temporary page wrapper with cloned SVG
+            const tempWrapper = this.renderer.createElement('div') as HTMLDivElement;
+            this.renderer.addClass(tempWrapper, 'page-wrapper');
+            this.renderer.addClass(tempWrapper, 'shadow-page');
+            tempWrapper.dataset['unitId'] = targetUnit.id;
+            tempWrapper.dataset['unitIndex'] = String(targetIndex);
+            tempWrapper.dataset['shadowDirection'] = direction;
+            
+            const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
+            clonedSvg.style.transform = `scale(${scale})`;
+            clonedSvg.style.transformOrigin = 'top left';
+            clonedSvg.style.pointerEvents = 'none';
+            
+            tempWrapper.style.width = `${PAGE_WIDTH * scale}px`;
+            tempWrapper.style.height = `${PAGE_HEIGHT * scale}px`;
+            tempWrapper.style.position = 'absolute';
+            tempWrapper.style.left = `${basePosition}px`;
+            tempWrapper.style.top = '0';
+            tempWrapper.appendChild(clonedSvg);
+            
+            // Apply fluff visibility
+            const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
+            this.applyFluffImageVisibilityToSvg(clonedSvg, centerContent === 'fluffImage');
+            
+            content.appendChild(tempWrapper);
+            this.shadowPageElements.push(tempWrapper);
+            
+            // Now navigate using the shadow page mechanism
+            this.navigateToShadowPage(targetUnit, targetIndex);
+        });
     }
 
     // ========== Unit Display ==========
