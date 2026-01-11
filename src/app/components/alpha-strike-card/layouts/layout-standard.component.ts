@@ -195,7 +195,7 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         if (this.isVehicle()) {
             return this.calculateVehicleDamageReduction(base);
         }
-        return this.calculateNonVehicleDamageReduction(base, this.weaponHits());
+        return this.reduceDamageValue(base, this.weaponHits());
     }
 
     /**
@@ -248,38 +248,6 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         
         const reduced = Math.floor(numericValue / 2);
         return reduced.toString();
-    }
-
-    /**
-     * Non-vehicle damage reduction using position-based scale.
-     * Scale: 9 8 7 6 5 4 3 2 1 0* 0
-     */
-    private calculateNonVehicleDamageReduction(base: string, weaponHits: number): string {
-        if (weaponHits <= 0) return base;
-
-        // Determine the position in the sequence: 9 8 7 6 5 4 3 2 1 0* 0
-        let position: number;
-
-        if (base === '0*') {
-            position = 1;
-        } else if (base === '0') {
-            position = 0;
-        } else {
-            const numericValue = parseInt(base, 10);
-            if (isNaN(numericValue) || numericValue < 0) {
-                // Non-numeric (like "-"), return as-is
-                return base;
-            }
-            position = numericValue + 1;
-        }
-
-        // Reduce position
-        const newPosition = Math.max(0, position - weaponHits);
-
-        // Convert back to string
-        if (newPosition === 0) return '0';
-        if (newPosition === 1) return '0*';
-        return (newPosition - 1).toString();
     }
 
     constructor() {
