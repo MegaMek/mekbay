@@ -55,7 +55,7 @@ const DEFAULT_OPTIONS: Options = {
     ASCardStyle: 'monochrome',
     ASPrintPageBreakOnGroups: true,
     c3NetworkConnectionsAboveNodes: false,
-    useSemanticFilters: false,
+    useSemanticFilters: true,
 };
 
 @Injectable({ providedIn: 'root' })
