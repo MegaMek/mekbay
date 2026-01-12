@@ -2279,8 +2279,10 @@ export class UnitSearchFiltersService {
      * Format a value for semantic text output, adding quotes if needed.
      */
     private formatSemanticValue(value: string): string {
-        if (/[\s,=!<>]/.test(value)) {
-            const escaped = value.replace(/"/g, '\\"');
+        // Add quotes if value contains spaces, commas, special chars, or quotes
+        if (/[\s,=!<>"']/.test(value)) {
+            // Escape backslashes and double quotes
+            const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
             return `"${escaped}"`;
         }
         return value;

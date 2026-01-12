@@ -226,6 +226,7 @@ function formatRangeSegments(segments: [number, number][]): string {
  * Parse a single value string that may contain:
  * - Comma-separated values
  * - Quoted values with spaces
+ * - Escaped quotes within quoted values (\")
  */
 function parseValues(valueStr: string): string[] {
     const values: string[] = [];
@@ -237,6 +238,15 @@ function parseValues(valueStr: string): string[] {
         const char = valueStr[i];
 
         if (inQuote) {
+            if (char === '\\' && i + 1 < valueStr.length) {
+                // Escaped character - include the next char literally
+                const nextChar = valueStr[i + 1];
+                if (nextChar === '"' || nextChar === "'" || nextChar === '\\') {
+                    current += nextChar;
+                    i += 2;
+                    continue;
+                }
+            }
             if (char === inQuote) {
                 // End of quoted string
                 inQuote = null;
@@ -1110,10 +1120,10 @@ export function filterStateToSemanticText(
  * Format a value for output, adding quotes if needed.
  */
 function formatValue(value: string): string {
-    // Add quotes if value contains spaces, commas, or special chars
-    if (/[\s,=!<>]/.test(value)) {
-        // Use double quotes, escape any internal double quotes
-        const escaped = value.replace(/"/g, '\\"');
+    // Add quotes if value contains spaces, commas, special chars, or quotes
+    if (/[\s,=!<>"']/.test(value)) {
+        // Use double quotes, escape any internal double quotes and backslashes
+        const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         return `"${escaped}"`;
     }
     return value;
