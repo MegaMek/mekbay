@@ -7,8 +7,9 @@
     @if (excludeRanges()?.length) {
         @for (range of excludeRanges(); track $index) {
             <div class="slider-exclude" 
-                [style.left.%]="valueToPercent(range[0])" 
-                [style.right.%]="100 - valueToPercent(range[1])">
+                [class.with-thumbs]="!disabled()"
+                [style.left.%]="disabled() ? rangeBandLeft(range[0]) : valueToPercent(range[0])" 
+                [style.right.%]="disabled() ? rangeBandRight(range[1]) : 100 - valueToPercent(range[1])">
             </div>
         }
     }
@@ -17,15 +18,16 @@
     @if (includeRanges()?.length) {
         @for (range of includeRanges(); track $index) {
             <div class="slider-include" 
-                [style.left.%]="valueToPercent(range[0])" 
-                [style.right.%]="100 - valueToPercent(range[1])">
+                [class.with-thumbs]="!disabled()"
+                [style.left.%]="disabled() ? rangeBandLeft(range[0]) : valueToPercent(range[0])" 
+                [style.right.%]="disabled() ? rangeBandRight(range[1]) : 100 - valueToPercent(range[1])">
             </div>
         }
     }
 
     <!-- Left Thumb -->
     <div #leftThumb class="thumb thumb-left" [style.left.%]="valueToPercent(left())"
-        [class.active]="isLeftThumbActive()" [class.focused]="focusedThumb() === 'min'"
+        [class.active]="isLeftThumbActive()" [class.clamped]="isLeftThumbClamped()" [class.focused]="focusedThumb() === 'min'"
         (pointerdown)="startDrag('min', $event)" (focus)="onThumbFocus('min')"
         (blur)="onThumbBlur()" (dblclick)="resetThumb('min', $event)" (dbltap)="resetThumb('min', $event)" [attr.tabindex]="disabled() ? -1 : 0">
         @if (dragging() === 'min' || focusedThumb() === 'min') {
@@ -37,7 +39,7 @@
 
     <!-- Right Thumb -->
     <div #rightThumb class="thumb thumb-right" [style.left.%]="valueToPercent(right())"
-        [class.active]="isRightThumbActive()" [class.focused]="focusedThumb() === 'max'"
+        [class.active]="isRightThumbActive()" [class.clamped]="isRightThumbClamped()" [class.focused]="focusedThumb() === 'max'"
         (pointerdown)="startDrag('max', $event)" (focus)="onThumbFocus('max')"
         (blur)="onThumbBlur()" (dblclick)="resetThumb('max', $event)" (dbltap)="resetThumb('max', $event)" [attr.tabindex]="disabled() ? -1 : 0">
         @if (dragging() === 'max' || focusedThumb() === 'max') {

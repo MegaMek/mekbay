@@ -85,6 +85,24 @@ export class RangeSliderComponent {
         return this.dragging() === 'max' || this.right() < availableMax;
     });
 
+    /** Left thumb is clamped: has a set value below the available min */
+    isLeftThumbClamped = computed(() => {
+        const ranges = this.includeRanges();
+        if (!ranges || ranges.length === 0) return false;
+        const [availableMin,] = this.availableRange() ?? [this.min(), this.max()];
+        // Check if any include range starts below the available min
+        return ranges.some(r => r[0] < availableMin);
+    });
+
+    /** Right thumb is clamped: has a set value above the available max */
+    isRightThumbClamped = computed(() => {
+        const ranges = this.includeRanges();
+        if (!ranges || ranges.length === 0) return false;
+        const [, availableMax] = this.availableRange() ?? [this.min(), this.max()];
+        // Check if any include range ends above the available max
+        return ranges.some(r => r[1] > availableMax);
+    });
+
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     leftThumbRef = viewChild.required<ElementRef<HTMLDivElement>>('leftThumb');
     rightThumbRef = viewChild.required<ElementRef<HTMLDivElement>>('rightThumb');
@@ -136,6 +154,26 @@ export class RangeSliderComponent {
             const t = (value - this.min()) / (this.max() - this.min());
             const curved = Math.pow(t, this.curve());
             return curved * 100;
+    }
+
+    /**
+     * Get the left percentage for a range band visualization.
+     * Extends the range by half a step to the left, clamped to min.
+     */
+    rangeBandLeft(value: number): number {
+        const step = this.stepSize();
+        const adjusted = Math.max(this.min(), value - step / 2);
+        return this.valueToPercent(adjusted);
+    }
+
+    /**
+     * Get the right percentage for a range band visualization.
+     * Extends the range by half a step to the right, clamped to max.
+     */
+    rangeBandRight(value: number): number {
+        const step = this.stepSize();
+        const adjusted = Math.min(this.max(), value + step / 2);
+        return 100 - this.valueToPercent(adjusted);
     }
 
     private percentToValue(percent: number): number {
