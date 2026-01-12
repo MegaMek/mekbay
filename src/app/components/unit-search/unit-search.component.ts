@@ -58,6 +58,7 @@ import { LongPressDirective } from '../../directives/long-press.directive';
 import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ShareSearchDialogComponent } from './share-search.component';
+import { SemanticGuideDialogComponent } from '../semantic-guide-dialog/semantic-guide-dialog.component';
 import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
@@ -882,6 +883,7 @@ export class UnitSearchComponent {
 
     openSemanticGuide(event: MouseEvent) {
         event.stopPropagation();
+        this.dialogsService.createDialog(SemanticGuideDialogComponent);
     }
 
     /* ------------------------------------------

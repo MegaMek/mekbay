@@ -1,0 +1,132 @@
+:host ::ng-deep .modal.semantic-guide {
+    max-width: 600px;
+    max-height: 80vh;
+}
+
+:host ::ng-deep .modal-body {
+    overflow-y: auto;
+}
+
+.title {
+    font-weight: bold;
+    font-size: 1.2em;
+}
+
+.footer {
+    display: flex;
+    justify-content: center;
+}
+
+.guide-content {
+    padding: 0 8px;
+}
+
+.guide-section {
+    margin-bottom: 16px;
+}
+
+.guide-section h3 {
+    color: var(--bt-yellow);
+    font-size: 1em;
+    margin: 0 0 8px 0;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 4px;
+}
+
+.guide-section h4 {
+    color: var(--text-color-secondary);
+    font-size: 0.9em;
+    margin: 12px 0 6px 0;
+}
+
+.guide-section p {
+    margin: 0 0 8px 0;
+    font-size: 0.9em;
+    color: var(--text-color-secondary);
+}
+
+code {
+    background: var(--background-color-light);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 1.1em;
+    color: var(--semantic-color);
+}
+
+.operators-table {
+    width: 100%;
+    font-size: 0.9em;
+}
+
+.operators-table td {
+    padding: 4px 8px;
+}
+
+.operators-table td:first-child {
+    width: 60px;
+    text-align: center;
+}
+
+.examples {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.example {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+}
+
+.example code {
+    min-width: 180px;
+}
+
+.example .desc {
+    color: var(--text-color-secondary);
+    font-size: 0.85em;
+}
+
+.filter-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.filter-list.inline {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.filter-list.inline code {
+    margin: 0;
+}
+
+.filter-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--background-color-light);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.filter-item code {
+    background: transparent;
+    padding: 0;
+}
+
+.filter-label {
+    color: var(--text-color-secondary);
+    font-size: 0.85em;
+}
+
+.fields-section {
+    margin-top: 24px;
+}

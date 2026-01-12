@@ -62,7 +62,8 @@ export interface SortOption {
 
 export enum AdvFilterType {
     DROPDOWN = 'dropdown',
-    RANGE = 'range'
+    RANGE = 'range',
+    SEMANTIC = 'semantic' // Semantic-only filters (not shown in UI, no advOptions entry)
 }
 export interface AdvFilterConfig {
     game?: GameSystem;
@@ -77,8 +78,6 @@ export interface AdvFilterConfig {
     countable?: boolean; // if true, show amount next to options
     stepSize?: number; // for range sliders, defines the step size
     semanticKey?: string; // Simplified key for semantic filter mode (e.g., 'tmm' instead of 'as.TMM')
-    invisible?: boolean; // If true, this filter is only available via semantic mode (not shown in UI)
-    textMatch?: boolean; // If true, this filter uses substring matching instead of exact match
 }
 
 /** Wildcard pattern for dropdown filter matching */
@@ -494,10 +493,10 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'as.Str', semanticKey: 's', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
 
     /* Invisible filters (semantic mode only) */
-    { key: 'name', semanticKey: 'name', label: 'Name', type: AdvFilterType.DROPDOWN, invisible: true, textMatch: true },
-    { key: 'id', semanticKey: 'id', label: 'ID', type: AdvFilterType.RANGE, invisible: true },
-    { key: 'chassis', semanticKey: 'chassis', label: 'Chassis', type: AdvFilterType.DROPDOWN, invisible: true, textMatch: true },
-    { key: 'model', semanticKey: 'model', label: 'Model', type: AdvFilterType.DROPDOWN, invisible: true, textMatch: true },
+    { key: 'name', semanticKey: 'name', label: 'Internal Name', type: AdvFilterType.SEMANTIC },
+    { key: 'id', semanticKey: 'mul', label: 'MUL ID', type: AdvFilterType.SEMANTIC },
+    { key: 'chassis', semanticKey: 'chassis', label: 'Chassis', type: AdvFilterType.SEMANTIC },
+    { key: 'model', semanticKey: 'model', label: 'Model', type: AdvFilterType.SEMANTIC },
 ];
 
 export const SORT_OPTIONS: SortOption[] = [
@@ -987,16 +986,52 @@ export class UnitSearchFiltersService {
                 }
             }
 
-            // Handle text matching filters (invisible filters like name, chassis, model)
-            if (conf.type === AdvFilterType.DROPDOWN && conf.textMatch && val) {
+            // Handle semantic-only filters (exact match, with optional wildcards, AND, and NOT support)
+            if (conf.type === AdvFilterType.SEMANTIC) {
                 const searchTerms: string[] = Array.isArray(val) ? val : (typeof val === 'object' ? Object.keys(val) : [String(val)]);
-                if (searchTerms.length > 0) {
+                const hasSearchTerms = searchTerms.length > 0;
+                const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
+                
+                // Separate include, exclude, and AND patterns
+                const includePatterns = wildcardPatterns?.filter(p => p.state === 'or') || [];
+                const excludePatterns = wildcardPatterns?.filter(p => p.state === 'not') || [];
+                const andPatterns = wildcardPatterns?.filter(p => p.state === 'and') || [];
+                
+                if (hasSearchTerms || hasWildcards) {
                     results = results.filter(u => {
                         const unitValue = getProperty(u, conf.key);
-                        if (!unitValue) return false;
+                        if (unitValue == null) return false;
                         const unitStr = String(unitValue).toLowerCase();
-                        // Any of the search terms must match (substring, case-insensitive)
-                        return searchTerms.some(term => unitStr.includes(term.toLowerCase()));
+
+                        // Check NOT patterns first - if any match, exclude this unit
+                        for (const p of excludePatterns) {
+                            const regex = wildcardToRegex(p.pattern);
+                            if (regex.test(unitStr)) return false;
+                        }
+
+                        // Check AND patterns - ALL must match
+                        for (const p of andPatterns) {
+                            const regex = wildcardToRegex(p.pattern);
+                            if (!regex.test(unitStr)) return false;
+                        }
+
+                        // If we only have exclude/and patterns (no includes), include all remaining
+                        if (!hasSearchTerms && includePatterns.length === 0) {
+                            return true;
+                        }
+
+                        // Check exact matches (OR logic)
+                        for (const term of searchTerms) {
+                            if (unitStr === term.toLowerCase()) return true;
+                        }
+
+                        // Check include wildcard patterns (OR logic)
+                        for (const p of includePatterns) {
+                            const regex = wildcardToRegex(p.pattern);
+                            if (regex.test(unitStr)) return true;
+                        }
+
+                        return false;
                     });
                 }
                 continue;
@@ -1188,8 +1223,8 @@ export class UnitSearchFiltersService {
             .map(([name, _]) => name);
 
         for (const conf of ADVANCED_FILTERS) {
-            // Skip invisible filters (they're only available via semantic mode)
-            if (conf.invisible) continue;
+            // Skip semantic-only filters (they're only available via semantic mode)
+            if (conf.type === AdvFilterType.SEMANTIC) continue;
 
             let label = conf.label;
             if (conf.key === 'internal') {

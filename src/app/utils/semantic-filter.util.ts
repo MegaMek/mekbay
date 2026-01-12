@@ -33,7 +33,7 @@
 
 import { GameSystem } from '../models/common.model';
 import { ADVANCED_FILTERS, AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
-import { CountOperator, MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import { CountOperator, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 
 /*
  * Author: Drake
@@ -560,6 +560,7 @@ function tryParseFilter(
     
     // Validate operator for filter type
     // Dropdown filters only support: =, !=, &=
+    // Semantic filters support: =, !=, &=
     // Range filters support all operators
     // Virtual keys (like 'dmg') are treated as range filters
     if (conf && conf.type === AdvFilterType.DROPDOWN) {
@@ -570,8 +571,8 @@ function tryParseFilter(
         }
     }
     
-    // &= is only valid for dropdown filters (multistate)
-    if (operator === '&=' && conf && conf.type !== AdvFilterType.DROPDOWN) {
+    // &= is only valid for dropdown and semantic filters
+    if (operator === '&=' && conf && conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC) {
         return null;
     }
     
@@ -958,6 +959,48 @@ export function tokensToFilterState(
                         semanticOnly: wildcardPatterns.length > 0 ? true : undefined
                     };
                 }
+            }
+        } else if (conf.type === AdvFilterType.SEMANTIC) {
+            // Handle semantic-only filters (exact match text search with wildcards support)
+            // These support: =, !=, &=, and wildcards
+            const orValues: string[] = [];
+            const andValues: string[] = [];
+            const wildcardPatterns: WildcardPattern[] = [];
+
+            for (const token of fieldTokens) {
+                const state: 'or' | 'and' | 'not' = token.operator === '!=' ? 'not' : (token.operator === '&=' ? 'and' : 'or');
+                
+                for (const val of token.values) {
+                    if (val.includes('*')) {
+                        // Wildcard pattern
+                        wildcardPatterns.push({ pattern: val, state });
+                    } else {
+                        // Exact value
+                        if (state === 'not') {
+                            // Store NOT as wildcard pattern for uniform handling
+                            wildcardPatterns.push({ pattern: val, state: 'not' });
+                        } else if (state === 'and') {
+                            andValues.push(val);
+                        } else {
+                            orValues.push(val);
+                        }
+                    }
+                }
+            }
+
+            // Combine OR and AND values into the value array, with AND values as patterns
+            const allPatterns = [...wildcardPatterns];
+            for (const andVal of andValues) {
+                allPatterns.push({ pattern: andVal, state: 'and' });
+            }
+
+            if (orValues.length > 0 || allPatterns.length > 0) {
+                filterState[conf.key] = {
+                    value: [...new Set(orValues)], // Deduplicate OR values
+                    interactedWith: true,
+                    wildcardPatterns: allPatterns.length > 0 ? allPatterns : undefined,
+                    semanticOnly: true // SEMANTIC filters are always semantic-only
+                };
             }
         }
     }
