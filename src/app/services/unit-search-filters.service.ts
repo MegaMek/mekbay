@@ -1712,12 +1712,19 @@ export class UnitSearchFiltersService {
         if (!conf) return;
 
         let interacted = true;
+        let atLeftBoundary = false;
+        let atRightBoundary = false;
 
         if (conf.type === AdvFilterType.RANGE) {
-            // For range filters, if the value matches the full available range, it's not interacted.
+            // For range filters, check which boundaries the value matches.
             const availableRange = this.advOptions()[key]?.options;
-            if (availableRange && value[0] === availableRange[0] && value[1] === availableRange[1]) {
-                interacted = false;
+            if (availableRange) {
+                atLeftBoundary = value[0] === availableRange[0];
+                atRightBoundary = value[1] === availableRange[1];
+                // Only "not interacted" if BOTH boundaries match
+                if (atLeftBoundary && atRightBoundary) {
+                    interacted = false;
+                }
             }
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             if (conf.multistate) {
@@ -1777,11 +1784,18 @@ export class UnitSearchFiltersService {
             });
             
             // Build new semantic text with updated filter
+            // For range filters, always generate token text to handle partial boundaries
+            // (generateSemanticTokenText will return empty if both boundaries match)
+            // For other filter types, only generate if interacted
             let newTokenText = '';
             
-            if (interacted) {
+            if (conf.type === AdvFilterType.RANGE || interacted) {
                 // Generate the new token text for this filter
-                newTokenText = this.generateSemanticTokenText(key, value, conf);
+                // For range filters, use the available range (context-filtered) for boundary detection
+                const availableRange = conf.type === AdvFilterType.RANGE 
+                    ? this.advOptions()[key]?.options as [number, number] | undefined
+                    : undefined;
+                newTokenText = this.generateSemanticTokenText(key, value, conf, availableRange);
             }
             
             // Rebuild the search text: text search + other tokens + new token (if any)
@@ -1816,26 +1830,29 @@ export class UnitSearchFiltersService {
 
     /**
      * Generate semantic token text for a filter value.
-     * E.g., for PV range [50, 100] with total [0, 200], generates "pv>=50 pv<=100" or "pv=50-100"
+     * E.g., for PV range [50, 100] with available [0, 200], generates "pv>=50 pv<=100" or "pv=50-100"
+     * @param availableRange For range filters, the context-filtered available range for boundary detection
      */
-    private generateSemanticTokenText(key: string, value: any, conf: AdvFilterConfig): string {
+    private generateSemanticTokenText(key: string, value: any, conf: AdvFilterConfig, availableRange?: [number, number]): string {
         const semanticKey = conf.semanticKey || conf.key;
         const parts: string[] = [];
         
         if (conf.type === AdvFilterType.RANGE) {
             const [min, max] = value as [number, number];
-            const totalRange = this.totalRangesCache[key] || [0, 100];
+            // Use available range (context-filtered) for boundary detection
+            // This ensures dragging to the visible boundary removes the constraint
+            const boundaryRange = availableRange || this.totalRangesCache[key] || [0, 100];
             
             if (min === max) {
                 parts.push(`${semanticKey}=${min}`);
-            } else if (min !== totalRange[0] && max !== totalRange[1]) {
+            } else if (min !== boundaryRange[0] && max !== boundaryRange[1]) {
                 parts.push(`${semanticKey}=${min}-${max}`);
-            } else if (min !== totalRange[0]) {
+            } else if (min !== boundaryRange[0]) {
                 parts.push(`${semanticKey}>=${min}`);
-            } else if (max !== totalRange[1]) {
+            } else if (max !== boundaryRange[1]) {
                 parts.push(`${semanticKey}<=${max}`);
             }
-            // If both match total range, nothing to add
+            // If both match available range, nothing to add (filter removed)
             
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             if (conf.multistate) {
