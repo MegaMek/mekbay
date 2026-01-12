@@ -78,6 +78,8 @@ export class MultiSelectDropdownComponent {
     multiselect = input<boolean>(true);
     multistate = input<boolean>(false);
     countable = input<boolean>(false);
+    disabled = input<boolean>(false);
+    displayText = input<string | undefined>();  // Text to display instead of pills when in semantic-only mode
     options = input<readonly DropdownOption[]>([]);
     selected = input<MultiStateSelection | string[]>([]);
     
@@ -186,6 +188,7 @@ export class MultiSelectDropdownComponent {
     }
 
     toggleDropdown() {
+        if (this.disabled()) return;
         this.isOpen.set(!this.isOpen());
         if (this.isOpen()) {
             // notify other instances

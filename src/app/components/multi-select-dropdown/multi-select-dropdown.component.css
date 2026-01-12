@@ -272,3 +272,25 @@
     color: var(--text-color);
     text-align: center;
 }
+
+/* Semantic-only mode */
+.multi-select-container.disabled {
+    cursor: default;
+}
+
+.multi-select-container.disabled .display-area {
+    cursor: default;
+}
+
+.label.disabled {
+    color: var(--text-color-secondary);
+}
+
+.semantic-display-text {
+    color: var(--bt-yellow);
+    font-size: 0.85em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+}

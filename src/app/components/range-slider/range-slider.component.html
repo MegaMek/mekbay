@@ -7,7 +7,6 @@
     @if (excludeRanges()?.length) {
         @for (range of excludeRanges(); track $index) {
             <div class="slider-exclude" 
-                [class.with-thumbs]="!disabled()"
                 [style.left.%]="disabled() ? rangeBandLeft(range[0]) : valueToPercent(range[0])" 
                 [style.right.%]="disabled() ? rangeBandRight(range[1]) : 100 - valueToPercent(range[1])">
             </div>
@@ -18,7 +17,6 @@
     @if (includeRanges()?.length) {
         @for (range of includeRanges(); track $index) {
             <div class="slider-include" 
-                [class.with-thumbs]="!disabled()"
                 [style.left.%]="disabled() ? rangeBandLeft(range[0]) : valueToPercent(range[0])" 
                 [style.right.%]="disabled() ? rangeBandRight(range[1]) : 100 - valueToPercent(range[1])">
             </div>

@@ -136,6 +136,8 @@
     position: absolute;
     top: 50%;
     height: 4px;
+    margin-left: -11px;
+    margin-right: -11px;
     transform: translateY(-50%);
     background-color: #dc3545;
     background-image: repeating-linear-gradient(
@@ -149,16 +151,13 @@
     pointer-events: none;
 }
 
-.slider-exclude.with-thumbs {
-    margin-left: -11px;
-    margin-right: -11px;
-}
-
 /* Include range indicator (semantic filter includes) */
 .slider-include {
     position: absolute;
     top: 50%;
     height: 4px;
+    margin-left: -11px;
+    margin-right: -11px;
     transform: translateY(-50%);
     background-color: #17a2b8;
     background-image: repeating-linear-gradient(
@@ -170,10 +169,5 @@
     );
     z-index: 2;
     pointer-events: none;
-}
-
-.slider-include.with-thumbs {
-    margin-left: -11px;
-    margin-right: -11px;
 }
 

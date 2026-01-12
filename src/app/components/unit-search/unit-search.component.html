@@ -304,10 +304,11 @@
         @for (conf of ADVANCED_FILTERS; let i = $index; track i) {
         @if ((!conf.game || conf.game === gameSystem()) && this.filtersService.advOptions()[conf.key]; as optionsData) {
         @if (optionsData.type === 'dropdown') {
-        <div class="filter-row">
+        <div class="filter-row" [class.semantic-only]="optionsData.semanticOnly">
             <multi-select-dropdown class="dropdown" [label]="optionsData.label" [options]="optionsData.options"
                 [selected]="optionsData.value" [multistate]="conf.multistate ?? false"
-                [countable]="conf.countable ?? false" (selectionChange)="setAdvFilter(conf.key, $event)">
+                [countable]="conf.countable ?? false" [disabled]="optionsData.semanticOnly ?? false"
+                [displayText]="optionsData.displayText" (selectionChange)="setAdvFilter(conf.key, $event)">
             </multi-select-dropdown>
         </div>
         }

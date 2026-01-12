@@ -328,56 +328,32 @@ export function parseSemanticQuery(input: string, gameSystem: GameSystem): Parse
     const tokens: SemanticToken[] = [];
     const textParts: string[] = [];
 
-    // Regex to match field + operator + value
-    // Field: word characters (a-z, 0-9, _)
-    // Operator: = != >= <= > <
-    // Value: everything until next whitespace or field=, handling quotes
-    const tokenRegex = /(\w+)(!=|>=|<=|=|>|<)("[^"]*"|'[^']*'|[^\s]+)/g;
+    // Parse the input character by character to properly handle quotes
+    let i = 0;
+    let textBuffer = '';
 
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-
-    // First pass: find all potential filter expressions
-    const matches: Array<{ match: RegExpExecArray; isFilter: boolean; isVirtual: boolean }> = [];
-
-    while ((match = tokenRegex.exec(input)) !== null) {
-        const field = match[1].toLowerCase();
-
-        // Check if this field exists in our semantic map OR is a virtual key
-        const conf = semanticKeyMap.get(field);
-        const isVirtual = field in VIRTUAL_SEMANTIC_KEYS;
-
-        matches.push({
-            match,
-            isFilter: !!conf || isVirtual,
-            isVirtual
-        });
-    }
-
-    // Reset and rebuild with proper text extraction
-    lastIndex = 0;
-    for (const { match: m, isFilter, isVirtual } of matches) {
-        // Add text before this match
-        if (m.index > lastIndex) {
-            const textBefore = input.slice(lastIndex, m.index).trim();
-            if (textBefore) {
-                textParts.push(textBefore);
+    while (i < input.length) {
+        // Try to match a filter expression: field + operator + value
+        const filterMatch = tryParseFilter(input, i, semanticKeyMap);
+        
+        if (filterMatch) {
+            // Add any accumulated text before this filter
+            if (textBuffer.trim()) {
+                textParts.push(textBuffer.trim());
             }
-        }
+            textBuffer = '';
 
-        if (isFilter) {
-            const field = m[1].toLowerCase();
-            const operator = m[2] as SemanticOperator;
-            const rawValue = m[3];
+            const { field, operator, rawValue, endIndex, isVirtual } = filterMatch;
 
-            // Remove outer quotes if present
+            // Remove outer quotes if the entire value is a single quoted string
             let cleanValue = rawValue;
-            if ((rawValue.startsWith('"') && rawValue.endsWith('"')) ||
-                (rawValue.startsWith("'") && rawValue.endsWith("'"))) {
+            if ((rawValue.startsWith('"') && rawValue.endsWith('"') && !rawValue.slice(1, -1).includes('"')) ||
+                (rawValue.startsWith("'") && rawValue.endsWith("'") && !rawValue.slice(1, -1).includes("'"))) {
                 cleanValue = rawValue.slice(1, -1);
             }
 
             const values = parseValues(cleanValue);
+            const rawText = input.slice(i, endIndex);
 
             // Handle virtual keys by expanding them to multiple tokens
             if (isVirtual && field in VIRTUAL_SEMANTIC_KEYS) {
@@ -385,15 +361,15 @@ export function parseSemanticQuery(input: string, gameSystem: GameSystem): Parse
                 if (virtualConfig.format === 'slash') {
                     // Parse slash-separated values: dmg=3/2/1 or dmg=3/*/1
                     const parts = cleanValue.split('/');
-                    for (let i = 0; i < virtualConfig.keys.length && i < parts.length; i++) {
-                        const part = parts[i].trim();
+                    for (let j = 0; j < virtualConfig.keys.length && j < parts.length; j++) {
+                        const part = parts[j].trim();
                         if (part === '*' || part === '') continue; // Skip wildcards
                         
                         tokens.push({
-                            field: virtualConfig.keys[i],
+                            field: virtualConfig.keys[j],
                             operator,
                             values: [part],
-                            rawText: m[0]
+                            rawText
                         });
                     }
                 }
@@ -402,28 +378,113 @@ export function parseSemanticQuery(input: string, gameSystem: GameSystem): Parse
                     field,
                     operator,
                     values,
-                    rawText: m[0]
+                    rawText
                 });
             }
-        } else {
-            // Not a recognized filter, treat as text search
-            textParts.push(m[0]);
-        }
 
-        lastIndex = m.index + m[0].length;
+            i = endIndex;
+        } else {
+            // Not a filter, accumulate as text
+            textBuffer += input[i];
+            i++;
+        }
     }
 
-    // Add remaining text after last match
-    if (lastIndex < input.length) {
-        const remaining = input.slice(lastIndex).trim();
-        if (remaining) {
-            textParts.push(remaining);
-        }
+    // Add remaining text
+    if (textBuffer.trim()) {
+        textParts.push(textBuffer.trim());
     }
 
     return {
         textSearch: textParts.join(' ').trim(),
         tokens
+    };
+}
+
+/**
+ * Try to parse a filter expression starting at position `start` in the input.
+ * Returns the parsed filter info or null if no valid filter found.
+ */
+function tryParseFilter(
+    input: string, 
+    start: number, 
+    semanticKeyMap: Map<string, AdvFilterConfig>
+): { field: string; operator: SemanticOperator; rawValue: string; endIndex: number; isVirtual: boolean } | null {
+    // Match field name (word characters)
+    let i = start;
+    while (i < input.length && /\w/.test(input[i])) {
+        i++;
+    }
+    
+    if (i === start) return null; // No field found
+    
+    const field = input.slice(start, i).toLowerCase();
+    
+    // Check if this field exists in our semantic map OR is a virtual key
+    const conf = semanticKeyMap.get(field);
+    const isVirtual = field in VIRTUAL_SEMANTIC_KEYS;
+    
+    if (!conf && !isVirtual) return null; // Not a recognized filter
+    
+    // Match operator
+    let operator: SemanticOperator | null = null;
+    if (input.slice(i, i + 2) === '!=') {
+        operator = '!=';
+        i += 2;
+    } else if (input.slice(i, i + 2) === '>=') {
+        operator = '>=';
+        i += 2;
+    } else if (input.slice(i, i + 2) === '<=') {
+        operator = '<=';
+        i += 2;
+    } else if (input[i] === '=') {
+        operator = '=';
+        i += 1;
+    } else if (input[i] === '>') {
+        operator = '>';
+        i += 1;
+    } else if (input[i] === '<') {
+        operator = '<';
+        i += 1;
+    }
+    
+    if (!operator) return null; // No operator found
+    
+    // Parse value, respecting quotes
+    const valueStart = i;
+    let inQuote: '"' | "'" | null = null;
+    
+    while (i < input.length) {
+        const char = input[i];
+        
+        if (inQuote) {
+            // Inside quotes, only end quote terminates
+            if (char === inQuote) {
+                inQuote = null;
+            }
+            i++;
+        } else if (char === '"' || char === "'") {
+            // Start of quoted section
+            inQuote = char;
+            i++;
+        } else if (/\s/.test(char)) {
+            // Whitespace ends the value (unless in quotes)
+            break;
+        } else {
+            i++;
+        }
+    }
+    
+    if (i === valueStart) return null; // No value found
+    
+    const rawValue = input.slice(valueStart, i);
+    
+    return {
+        field,
+        operator,
+        rawValue,
+        endIndex: i,
+        isVirtual
     };
 }
 
@@ -537,13 +598,16 @@ export function tokensToFilterState(
             const mergedRanges = mergeAndSortRanges(includeRanges);
             const hasExclusions = mergedExcludeRanges.length > 0;
             const hasMultipleRanges = mergedRanges.length > 1;
+            
+            // If we only have exclusions (no explicit includes), the implicit include is the full range
+            const effectiveIncludeRanges = mergedRanges.length > 0 ? mergedRanges : [totalRange as [number, number]];
 
             if (hasMultipleRanges || hasExclusions) {
                 semanticOnly = true;
                 
                 // Apply exclusions to each include range
                 let effectiveSegments: [number, number][] = [];
-                for (const range of mergedRanges) {
+                for (const range of effectiveIncludeRanges) {
                     // Get exclude ranges that overlap with this include range
                     const relevantExcludes = mergedExcludeRanges.filter(
                         ex => ex[1] >= range[0] && ex[0] <= range[1]

@@ -102,9 +102,11 @@ interface FilterState {
 type DropdownFilterOptions = {
     type: 'dropdown';
     label: string;
-    options: { name: string, img?: string }[];
+    options: { name: string, img?: string, displayName?: string }[];
     value: string[];
     interacted: boolean;
+    semanticOnly?: boolean;  // True if this filter has semantic-only constraints (values not in options)
+    displayText?: string;    // Display text for semantic-only values
 };
 
 type RangeFilterOptions = {
@@ -1297,12 +1299,64 @@ export class UnitSearchFiltersService {
                         availableOptions = sortedOptions.map(name => ({ name }));
                     }
                 }
+                
+                // Get the filter state value
+                const filterStateEntry = state[conf.key];
+                const isInteracted = filterStateEntry?.interactedWith ?? false;
+                const filterValue = isInteracted ? filterStateEntry.value : [];
+                
+                // Check for semantic-only: values in the filter that aren't in available options,
+                // OR if there are wildcard patterns (which are always semantic-only)
+                let semanticOnly = filterStateEntry?.semanticOnly ?? false;
+                let displayText: string | undefined;
+                const availableOptionNames = new Set(availableOptions.map(o => o.name));
+                const wildcardPatterns = filterStateEntry?.wildcardPatterns;
+                
+                // If there are wildcard patterns, this is semantic-only
+                if (wildcardPatterns && wildcardPatterns.length > 0) {
+                    semanticOnly = true;
+                    displayText = wildcardPatterns.map(wp => {
+                        const prefix = wp.state === 'not' ? '!' : '';
+                        return prefix + wp.pattern;
+                    }).join(', ');
+                } else if (conf.multistate) {
+                    // For multistate dropdowns, check MultiStateSelection
+                    const selection = filterValue as MultiStateSelection;
+                    if (selection && typeof selection === 'object') {
+                        const activeSelections = Object.entries(selection)
+                            .filter(([_, sel]) => sel.state !== false);
+                        const unavailableSelections = activeSelections
+                            .filter(([name, _]) => !availableOptionNames.has(name));
+                        if (unavailableSelections.length > 0 && unavailableSelections.length === activeSelections.length) {
+                            // All selected values are unavailable - semantic only mode
+                            semanticOnly = true;
+                            displayText = unavailableSelections.map(([name, sel]) => {
+                                const prefix = sel.state === 'not' ? '!' : '';
+                                return prefix + name;
+                            }).join(', ');
+                        }
+                    }
+                } else {
+                    // For regular dropdowns, check string array
+                    const selectedValues = filterValue as string[];
+                    if (selectedValues && Array.isArray(selectedValues) && selectedValues.length > 0) {
+                        const unavailableValues = selectedValues.filter(v => !availableOptionNames.has(v));
+                        if (unavailableValues.length > 0 && unavailableValues.length === selectedValues.length) {
+                            // All selected values are unavailable - semantic only mode
+                            semanticOnly = true;
+                            displayText = unavailableValues.join(', ');
+                        }
+                    }
+                }
+                
                 result[conf.key] = {
                     type: 'dropdown',
                     label,
                     options: availableOptions,
-                    value: state[conf.key]?.interactedWith ? state[conf.key].value : [],
-                    interacted: state[conf.key]?.interactedWith ?? false
+                    value: filterValue,
+                    interacted: isInteracted,
+                    semanticOnly,
+                    displayText
                 };
             }
             else if (conf.type === AdvFilterType.RANGE) {
