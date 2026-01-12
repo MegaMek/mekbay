@@ -147,7 +147,7 @@
         rgba(0, 0, 0, 0.2) 2px,
         rgba(0, 0, 0, 0.2) 4px
     );
-    z-index: 2;
+    z-index: 3;
     pointer-events: none;
 }
 
