@@ -1361,13 +1361,34 @@ export class UnitSearchFiltersService {
                         return option;
                     });
 
-                    // Check for semantic-only mode (advanced quantity constraints)
-                    const currentFilterValue = state[conf.key]?.interactedWith ? state[conf.key].value : {};
+                    // Check for semantic-only mode (advanced quantity constraints or wildcard patterns)
+                    const filterStateEntry = state[conf.key];
+                    const currentFilterValue = filterStateEntry?.interactedWith ? filterStateEntry.value : {};
                     const currentSelection = currentFilterValue as MultiStateSelection;
+                    const wildcardPatternsMultistate = filterStateEntry?.wildcardPatterns;
                     let semanticOnlyMultistate = false;
                     let displayTextMultistate: string | undefined;
                     
-                    if (currentSelection && typeof currentSelection === 'object') {
+                    // Check for wildcard patterns first
+                    if (wildcardPatternsMultistate && wildcardPatternsMultistate.length > 0) {
+                        semanticOnlyMultistate = true;
+                        const wildcardTexts = wildcardPatternsMultistate.map(wp => {
+                            const prefix = wp.state === 'not' ? '!' : (wp.state === 'and' ? '&' : '');
+                            return prefix + wp.pattern;
+                        });
+                        // Also include any regular selections
+                        if (currentSelection && typeof currentSelection === 'object') {
+                            const selectionTexts = Object.entries(currentSelection)
+                                .filter(([_, sel]) => sel.state !== false)
+                                .map(([name, sel]) => {
+                                    const prefix = sel.state === 'not' ? '!' : (sel.state === 'and' ? '&' : '');
+                                    return prefix + name;
+                                });
+                            displayTextMultistate = [...wildcardTexts, ...selectionTexts].join(', ');
+                        } else {
+                            displayTextMultistate = wildcardTexts.join(', ');
+                        }
+                    } else if (currentSelection && typeof currentSelection === 'object') {
                         const activeSelections = Object.entries(currentSelection)
                             .filter(([_, sel]) => sel.state !== false);
                         
@@ -1442,7 +1463,7 @@ export class UnitSearchFiltersService {
                         label,
                         options: optionsWithAvailability,
                         value: currentFilterValue,
-                        interacted: state[conf.key]?.interactedWith ?? false,
+                        interacted: filterStateEntry?.interactedWith ?? false,
                         semanticOnly: semanticOnlyMultistate,
                         displayText: displayTextMultistate
                     };
