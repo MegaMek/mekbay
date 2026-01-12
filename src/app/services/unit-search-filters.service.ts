@@ -47,7 +47,7 @@ import { GameSystem } from '../models/common.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
-import { applySemanticQuery, filterStateToSemanticText, ParsedSemanticQuery, parseSemanticQuery } from '../utils/semantic-filter.util';
+import { applySemanticQuery, filterStateToSemanticText, generateVirtualKeyText, getVirtualKeyInfo, ParsedSemanticQuery, parseSemanticQuery, SemanticOperator } from '../utils/semantic-filter.util';
 
 /*
  * Author: Drake
@@ -99,6 +99,12 @@ interface FilterState {
     };
 }
 
+/** Display item for semantic-only mode with state information */
+export interface SemanticDisplayItem {
+    text: string;
+    state: 'or' | 'and' | 'not';
+}
+
 type DropdownFilterOptions = {
     type: 'dropdown';
     label: string;
@@ -106,7 +112,8 @@ type DropdownFilterOptions = {
     value: string[];
     interacted: boolean;
     semanticOnly?: boolean;  // True if this filter has semantic-only constraints (values not in options)
-    displayText?: string;    // Display text for semantic-only values
+    displayText?: string;    // Display text for semantic-only values (plain string fallback)
+    displayItems?: SemanticDisplayItem[];  // Structured display items with state for proper styling
 };
 
 type RangeFilterOptions = {
@@ -1367,26 +1374,31 @@ export class UnitSearchFiltersService {
                     const currentSelection = currentFilterValue as MultiStateSelection;
                     const wildcardPatternsMultistate = filterStateEntry?.wildcardPatterns;
                     let semanticOnlyMultistate = false;
-                    let displayTextMultistate: string | undefined;
+                    let displayItemsMultistate: SemanticDisplayItem[] | undefined;
                     
                     // Check for wildcard patterns first
                     if (wildcardPatternsMultistate && wildcardPatternsMultistate.length > 0) {
                         semanticOnlyMultistate = true;
-                        const wildcardTexts = wildcardPatternsMultistate.map(wp => {
-                            const prefix = wp.state === 'not' ? '!' : (wp.state === 'and' ? '&' : '');
-                            return prefix + wp.pattern;
-                        });
+                        displayItemsMultistate = [];
+                        
+                        // Add wildcard patterns
+                        for (const wp of wildcardPatternsMultistate) {
+                            displayItemsMultistate.push({
+                                text: wp.pattern,
+                                state: wp.state
+                            });
+                        }
+                        
                         // Also include any regular selections
                         if (currentSelection && typeof currentSelection === 'object') {
-                            const selectionTexts = Object.entries(currentSelection)
-                                .filter(([_, sel]) => sel.state !== false)
-                                .map(([name, sel]) => {
-                                    const prefix = sel.state === 'not' ? '!' : (sel.state === 'and' ? '&' : '');
-                                    return prefix + name;
-                                });
-                            displayTextMultistate = [...wildcardTexts, ...selectionTexts].join(', ');
-                        } else {
-                            displayTextMultistate = wildcardTexts.join(', ');
+                            for (const [name, sel] of Object.entries(currentSelection)) {
+                                if (sel.state !== false) {
+                                    displayItemsMultistate.push({
+                                        text: name,
+                                        state: sel.state as 'or' | 'and' | 'not'
+                                    });
+                                }
+                            }
                         }
                     } else if (currentSelection && typeof currentSelection === 'object') {
                         const activeSelections = Object.entries(currentSelection)
@@ -1407,8 +1419,7 @@ export class UnitSearchFiltersService {
                         
                         if (hasAdvancedQuantity) {
                             semanticOnlyMultistate = true;
-                            displayTextMultistate = activeSelections.map(([name, sel]) => {
-                                const prefix = sel.state === 'not' ? '!' : '';
+                            displayItemsMultistate = activeSelections.map(([name, sel]) => {
                                 let suffix = '';
                                 
                                 // For single constraint, prefer showing original operator/count
@@ -1453,8 +1464,11 @@ export class UnitSearchFiltersService {
                                     suffix = `:${sel.count}`;
                                 }
                                 
-                                return prefix + name + suffix;
-                            }).join(', ');
+                                return {
+                                    text: name + suffix,
+                                    state: sel.state as 'or' | 'and' | 'not'
+                                };
+                            });
                         }
                     }
 
@@ -1465,7 +1479,7 @@ export class UnitSearchFiltersService {
                         value: currentFilterValue,
                         interacted: filterStateEntry?.interactedWith ?? false,
                         semanticOnly: semanticOnlyMultistate,
-                        displayText: displayTextMultistate
+                        displayItems: displayItemsMultistate
                     };
                     continue;
                 } else {
@@ -2065,6 +2079,7 @@ export class UnitSearchFiltersService {
     /**
      * Update the semantic text to reflect a filter value change.
      * This replaces/adds/removes the token for the specified filter key.
+     * Handles virtual keys (like 'dmg') by combining related filters into one token.
      */
     private updateSemanticTextForFilter(key: string, value: any, interacted: boolean, conf: AdvFilterConfig): void {
         if (this.isSyncingToText) return; // Prevent re-entry
@@ -2078,8 +2093,23 @@ export class UnitSearchFiltersService {
             // Parse current query to get text search and existing tokens
             const parsed = parseSemanticQuery(currentText, gameSystem);
             
-            // Filter out any existing tokens for this filter key
+            // Check if this key is part of a virtual key group
+            const virtualInfo = getVirtualKeyInfo(semanticKey);
+            const virtualGroupKeys = virtualInfo ? new Set(virtualInfo.config.keys) : null;
+            
+            // Filter out tokens we'll be replacing:
+            // - The current key's token
+            // - If part of virtual group: all tokens from that group AND the virtual key itself
             const otherTokens = parsed.tokens.filter(t => {
+                // Remove virtual key token (e.g., 'dmg=3/2/1')
+                if (virtualInfo && t.field === virtualInfo.virtualKey) {
+                    return false;
+                }
+                // Remove any token from the virtual group
+                if (virtualGroupKeys && virtualGroupKeys.has(t.field)) {
+                    return false;
+                }
+                // Remove the current key's token
                 const tokenConf = ADVANCED_FILTERS.find(f => 
                     (f.semanticKey || f.key) === t.field &&
                     (!f.game || f.game === gameSystem)
@@ -2094,12 +2124,23 @@ export class UnitSearchFiltersService {
             let newTokenText = '';
             
             if (conf.type === AdvFilterType.RANGE || interacted) {
-                // Generate the new token text for this filter
-                // For range filters, use the available range (context-filtered) for boundary detection
-                const availableRange = conf.type === AdvFilterType.RANGE 
-                    ? this.advOptions()[key]?.options as [number, number] | undefined
-                    : undefined;
-                newTokenText = this.generateSemanticTokenText(key, value, conf, availableRange);
+                if (virtualInfo && conf.type === AdvFilterType.RANGE) {
+                    // This key is part of a virtual group - generate combined format
+                    newTokenText = this.generateVirtualKeyTokenText(
+                        virtualInfo.virtualKey,
+                        virtualInfo.config.keys,
+                        semanticKey,
+                        value,
+                        parsed.tokens,
+                        gameSystem
+                    );
+                } else {
+                    // Generate the new token text for this filter (non-virtual or non-range)
+                    const availableRange = conf.type === AdvFilterType.RANGE 
+                        ? this.advOptions()[key]?.options as [number, number] | undefined
+                        : undefined;
+                    newTokenText = this.generateSemanticTokenText(key, value, conf, availableRange);
+                }
             }
             
             // Rebuild the search text: text search + other tokens + new token (if any)
@@ -2130,6 +2171,76 @@ export class UnitSearchFiltersService {
         } finally {
             this.isSyncingToText = false;
         }
+    }
+
+    /**
+     * Generate semantic text for a virtual key group (e.g., 'dmg=3/2/1').
+     * Combines values from existing tokens with the new value being set.
+     */
+    private generateVirtualKeyTokenText(
+        virtualKey: string,
+        groupKeys: string[],
+        updatedSemanticKey: string,
+        newValue: [number, number],
+        existingTokens: { field: string; operator: SemanticOperator; values: string[] }[],
+        gameSystem: GameSystem
+    ): string {
+        // Build a map of semantic key -> formatted value
+        const valuesByKey: Record<string, string> = {};
+        
+        // First, gather values from existing tokens (other keys in the group)
+        for (const semanticKey of groupKeys) {
+            if (semanticKey === updatedSemanticKey) continue; // We'll use the new value for this one
+            
+            // Find existing token for this key
+            const existingToken = existingTokens.find(t => t.field === semanticKey);
+            if (existingToken && existingToken.values.length > 0) {
+                // Reconstruct the value with operator if needed
+                // For range values, the operator is already embedded (e.g., '>=', '<=')
+                // For '=' with range syntax (e.g., '2-5'), the value already contains the range
+                const val = existingToken.values[0];
+                if (existingToken.operator === '=' || existingToken.operator === '!=') {
+                    // Value is as-is (might be exact, range like '2-5', or include ranges)
+                    valuesByKey[semanticKey] = val;
+                } else {
+                    // Prefix with operator (e.g., '>=2' or '<=5')
+                    valuesByKey[semanticKey] = `${existingToken.operator}${val}`;
+                }
+            }
+        }
+        
+        // Now add the new value for the updated key
+        const conf = ADVANCED_FILTERS.find(f => 
+            (f.semanticKey || f.key) === updatedSemanticKey &&
+            (!f.game || f.game === gameSystem)
+        );
+        if (conf && conf.type === AdvFilterType.RANGE) {
+            const [min, max] = newValue;
+            const filterKey = conf.key;
+            const availableRange = this.advOptions()[filterKey]?.options as [number, number] | undefined;
+            const boundaryRange = availableRange || this.totalRangesCache[filterKey] || [0, 100];
+            
+            // Only include if different from full range
+            const isAtMin = min === boundaryRange[0];
+            const isAtMax = max === boundaryRange[1];
+            
+            if (!isAtMin || !isAtMax) {
+                if (min === max) {
+                    valuesByKey[updatedSemanticKey] = `${min}`;
+                } else if (!isAtMin && !isAtMax) {
+                    valuesByKey[updatedSemanticKey] = `${min}-${max}`;
+                } else if (!isAtMin) {
+                    valuesByKey[updatedSemanticKey] = `>=${min}`;
+                } else if (!isAtMax) {
+                    valuesByKey[updatedSemanticKey] = `<=${max}`;
+                }
+            }
+            // If at full range, don't add to valuesByKey (it will be omitted/wildcard)
+        }
+        
+        // Generate the combined virtual key text
+        const result = generateVirtualKeyText(virtualKey, valuesByKey);
+        return result || '';
     }
 
     /**

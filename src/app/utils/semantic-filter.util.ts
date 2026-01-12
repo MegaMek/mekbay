@@ -113,15 +113,109 @@ export interface WildcardPattern {
 }
 
 /**
+ * Virtual semantic key configuration.
+ * - keys: Individual semantic keys that form the virtual key
+ * - format: How values are combined ('slash' = value1/value2/...)
+ * - implicit: Keys that are omitted unless explicitly set (use wildcard in their place)
+ */
+interface VirtualSemanticKeyConfig {
+    keys: string[];
+    format: 'slash';
+    implicit?: string[];  // Keys to omit if no value (use * placeholder)
+}
+
+/**
  * Virtual semantic keys that map to multiple actual filters.
  * For example, 'dmg' maps to dmgS, dmgM, dmgL, dmgE.
  */
-const VIRTUAL_SEMANTIC_KEYS: Record<string, { keys: string[], format: 'slash' }> = {
+const VIRTUAL_SEMANTIC_KEYS: Record<string, VirtualSemanticKeyConfig> = {
     'dmg': { 
         keys: ['dmgs', 'dmgm', 'dmgl', 'dmge'], 
-        format: 'slash' 
+        format: 'slash',
+        implicit: ['dmge']  // Extreme range omitted by default
     }
 };
+
+/**
+ * Reverse lookup: from individual semantic key to virtual key info.
+ */
+const REVERSE_VIRTUAL_KEY_MAP: Map<string, { virtualKey: string; config: VirtualSemanticKeyConfig }> = (() => {
+    const map = new Map<string, { virtualKey: string; config: VirtualSemanticKeyConfig }>();
+    for (const [virtualKey, config] of Object.entries(VIRTUAL_SEMANTIC_KEYS)) {
+        for (const key of config.keys) {
+            map.set(key, { virtualKey, config });
+        }
+    }
+    return map;
+})();
+
+/**
+ * Check if a semantic key is part of a virtual key group.
+ */
+export function getVirtualKeyInfo(semanticKey: string): { virtualKey: string; config: VirtualSemanticKeyConfig } | null {
+    return REVERSE_VIRTUAL_KEY_MAP.get(semanticKey) || null;
+}
+
+/**
+ * Get all semantic keys that belong to the same virtual key group.
+ */
+export function getVirtualKeyGroup(semanticKey: string): string[] | null {
+    const info = REVERSE_VIRTUAL_KEY_MAP.get(semanticKey);
+    return info ? info.config.keys : null;
+}
+
+/**
+ * Generate semantic text for a virtual key group.
+ * Combines multiple filter values into a single virtual key format.
+ * 
+ * @param virtualKey The virtual key name (e.g., 'dmg')
+ * @param valuesBySemanticKey Map of semantic key to its formatted value (e.g., { 'dmgs': '>=2', 'dmgm': '3' })
+ * @returns The combined semantic text (e.g., 'dmg=>=2/3/*') or null if no values
+ * 
+ * Rules:
+ * - Uses slash format: dmg=value1/value2/value3/value4
+ * - Implicit keys (like 'dmge') are omitted from output unless they have a value
+ * - Trailing wildcards are removed
+ * - Returns null if no non-implicit keys have values
+ */
+export function generateVirtualKeyText(
+    virtualKey: string,
+    valuesBySemanticKey: Record<string, string>
+): string | null {
+    const config = VIRTUAL_SEMANTIC_KEYS[virtualKey];
+    if (!config) return null;
+    
+    const parts: string[] = [];
+    const implicitSet = new Set(config.implicit || []);
+    let lastNonWildcardIndex = -1;
+    let hasAnyValue = false;
+    
+    for (let i = 0; i < config.keys.length; i++) {
+        const key = config.keys[i];
+        const value = valuesBySemanticKey[key];
+        
+        if (value) {
+            parts.push(value);
+            lastNonWildcardIndex = i;
+            hasAnyValue = true;
+        } else if (implicitSet.has(key)) {
+            // Implicit key with no value - we'll trim these at the end
+            parts.push('*');
+        } else {
+            // Required key with no value - use wildcard
+            parts.push('*');
+        }
+    }
+    
+    if (!hasAnyValue) return null;
+    
+    // Trim trailing wildcards (including implicit ones)
+    const trimmedParts = parts.slice(0, lastNonWildcardIndex + 1);
+    
+    if (trimmedParts.length === 0) return null;
+    
+    return `${virtualKey}=${trimmedParts.join('/')}`;
+}
 
 // Build a lookup map from semanticKey to config
 function buildSemanticKeyMap(gameSystem: GameSystem): Map<string, AdvFilterConfig> {

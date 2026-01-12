@@ -28,6 +28,7 @@
 .pills-container {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 4px;
     flex: 1;
     margin-top: 6px;
@@ -293,4 +294,25 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 200px;
+}
+
+/* Semantic-only display items with state-based styling */
+.semantic-item {
+    font-size: 0.85em;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+}
+
+.semantic-item.semantic-or {
+    color: var(--bt-yellow);
+}
+
+.semantic-item.semantic-and {
+    color: #2e8b57;
+}
+
+.semantic-item.semantic-not {
+    color: #c00;
 }

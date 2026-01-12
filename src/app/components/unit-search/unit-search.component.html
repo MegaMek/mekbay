@@ -314,7 +314,8 @@
             <multi-select-dropdown class="dropdown" [label]="optionsData.label" [options]="optionsData.options"
                 [selected]="optionsData.value" [multistate]="conf.multistate ?? false"
                 [countable]="conf.countable ?? false" [semanticOnly]="optionsData.semanticOnly ?? false"
-                [displayText]="optionsData.displayText" (selectionChange)="setAdvFilter(conf.key, $event)">
+                [displayText]="optionsData.displayText" [displayItems]="optionsData.displayItems" 
+                (selectionChange)="setAdvFilter(conf.key, $event)">
             </multi-select-dropdown>
         </div>
         }

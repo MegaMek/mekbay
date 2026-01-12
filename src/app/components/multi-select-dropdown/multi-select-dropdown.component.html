@@ -2,8 +2,18 @@
     <div class="display-area" (click)="toggleDropdown()">
         <span class="label" [class.semantic-only]="semanticOnly()">{{ label() }}</span>
         <div class="pills-container">
-            @if (semanticOnly() && displayText()) {
-                <!-- Semantic-only mode: show display text -->
+            @if (semanticOnly() && displayItems()?.length) {
+                <!-- Semantic-only mode with structured items: show styled items -->
+                @for (item of displayItems(); track item.state + ':' + item.text) {
+                    <span class="semantic-item" [class.semantic-or]="item.state === 'or'" [class.semantic-and]="item.state === 'and'" [class.semantic-not]="item.state === 'not'">
+                        @if (item.state === 'or') { ✓ }
+                        @else if (item.state === 'and') { &amp; }
+                        @else if (item.state === 'not') { ! }
+                        {{ item.text }}
+                    </span>
+                }
+            } @else if (semanticOnly() && displayText()) {
+                <!-- Semantic-only mode fallback: show plain text -->
                 <span class="semantic-display-text">✓ {{ displayText() }}</span>
             } @else if (selectedOptions().length === 0) {
                 <span class="placeholder">Any</span>

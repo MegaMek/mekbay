@@ -90,7 +90,8 @@ export class MultiSelectDropdownComponent {
     multistate = input<boolean>(false);
     countable = input<boolean>(false);
     semanticOnly = input<boolean>(false);
-    displayText = input<string | undefined>();  // Text to display instead of pills when in semantic-only mode
+    displayText = input<string | undefined>();  // Text to display instead of pills when in semantic-only mode (fallback)
+    displayItems = input<{ text: string; state: 'or' | 'and' | 'not' }[] | undefined>();  // Structured display items with state
     options = input<readonly DropdownOption[]>([]);
     selected = input<MultiStateSelection | string[]>([]);
     
