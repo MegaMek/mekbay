@@ -1324,18 +1324,26 @@ export class UnitSearchFiltersService {
 
                 const availableRange = vals.length ? [Math.min(...vals), Math.max(...vals)] : totalRange;
 
-                let currentValue = state[conf.key]?.interactedWith ? state[conf.key].value : availableRange;
+                // Get the original filter value (before clamping) for visualization
+                const filterStateEntry = state[conf.key];
+                const isInteracted = filterStateEntry?.interactedWith ?? false;
+                const originalValue: [number, number] = isInteracted ? filterStateEntry.value : availableRange;
 
-                // Clamp both min and max to the available range, and ensure min <= max
-                let clampedMin = Math.max(availableRange[0], Math.min(currentValue[0], availableRange[1]));
-                let clampedMax = Math.min(availableRange[1], Math.max(currentValue[1], availableRange[0]));
+                // Clamp both min and max to the available range for thumb positions
+                let clampedMin = Math.max(availableRange[0], Math.min(originalValue[0], availableRange[1]));
+                let clampedMax = Math.min(availableRange[1], Math.max(originalValue[1], availableRange[0]));
                 if (clampedMin > clampedMax) [clampedMin, clampedMax] = [clampedMax, clampedMin];
-                currentValue = [clampedMin, clampedMax];
+                const clampedValue: [number, number] = [clampedMin, clampedMax];
 
                 // Get semantic-only properties from filter state
-                const filterStateEntry = state[conf.key];
                 const semanticOnly = filterStateEntry?.semanticOnly ?? false;
-                const includeRanges = filterStateEntry?.includeRanges;
+                
+                // For visualization: show the ORIGINAL set range (before clamping) as includeRanges
+                // If semantic has multiple disjoint ranges, use those; otherwise use original value
+                const semanticIncludeRanges = filterStateEntry?.includeRanges;
+                const includeRanges: [number, number][] | undefined = 
+                    semanticIncludeRanges ?? (isInteracted ? [originalValue] : undefined);
+                
                 const excludeRanges = filterStateEntry?.excludeRanges;
                 const displayText = filterStateEntry?.displayText;
 
@@ -1344,8 +1352,8 @@ export class UnitSearchFiltersService {
                     label,
                     totalRange: totalRange,
                     options: availableRange as [number, number],
-                    value: currentValue,
-                    interacted: state[conf.key]?.interactedWith ?? false,
+                    value: clampedValue,
+                    interacted: isInteracted,
                     semanticOnly,
                     includeRanges,
                     excludeRanges,

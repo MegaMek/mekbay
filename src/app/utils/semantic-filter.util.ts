@@ -565,6 +565,8 @@ export function tokensToFilterState(
                     finalExcludeRanges = mergedExcludeRanges;
                 }
             }
+            // Note: For single contiguous ranges, includeRanges is not set here.
+            // advOptions will set includeRanges based on the current value for visualization.
 
             // Compute the overall min/max for UI display (covers all include ranges)
             let min = totalRange[0];
