@@ -1573,7 +1573,11 @@ export class UnitSearchFiltersService {
         }
     }
 
-    public clearFilters() {
+    public resetFilters() {
+        this.clearFilters();
+    }
+
+    private clearFilters() {
         this.searchText.set('');
         this.filterState.set({});
         this.selectedSort.set('');

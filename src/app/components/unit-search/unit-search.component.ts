@@ -427,7 +427,7 @@ export class UnitSearchComponent {
     }
 
     clearAdvFilters() {
-        this.filtersService.clearFilters();
+        this.filtersService.resetFilters();
         this.activeIndex.set(null);
     }
 
