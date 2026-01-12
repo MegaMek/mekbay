@@ -51,7 +51,7 @@ code {
     border-radius: 4px;
     font-family: monospace;
     font-size: 1.1em;
-    color: var(--semantic-color);
+    color: var(--semantic-color-highlight);
 }
 
 .operators-table {
