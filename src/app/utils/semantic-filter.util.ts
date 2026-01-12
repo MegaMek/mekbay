@@ -152,53 +152,6 @@ function buildSemanticKeyMap(gameSystem: GameSystem): Map<string, AdvFilterConfi
 }
 
 /**
- * Check if an array of numbers forms a contiguous range (each value differs by 1).
- */
-function isContiguousRange(values: number[]): boolean {
-    if (values.length <= 1) return true;
-    const sorted = [...values].sort((a, b) => a - b);
-    for (let i = 1; i < sorted.length; i++) {
-        if (sorted[i] - sorted[i - 1] !== 1) {
-            return false;
-        }
-    }
-    return true;
-}
-
-/**
- * Format the effective ranges after applying exclusions.
- * E.g., range [0,99] with excludes [4] → "0-3, 5-99"
- */
-function formatEffectiveRanges(min: number, max: number, excludes: number[]): string {
-    if (excludes.length === 0) {
-        return min === max ? `${min}` : `${min}-${max}`;
-    }
-
-    // Build list of included segments
-    const segments: [number, number][] = [];
-    let segmentStart = min;
-    const sortedExcludes = [...new Set(excludes)].sort((a, b) => a - b);
-
-    for (const ex of sortedExcludes) {
-        if (ex > segmentStart && ex <= max) {
-            // End current segment before the exclusion
-            if (segmentStart <= ex - 1) {
-                segments.push([segmentStart, ex - 1]);
-            }
-            segmentStart = ex + 1;
-        }
-    }
-    
-    // Add final segment after last exclusion
-    if (segmentStart <= max) {
-        segments.push([segmentStart, max]);
-    }
-
-    // Format segments
-    return segments.map(([s, e]) => s === e ? `${s}` : `${s}-${e}`).join(', ');
-}
-
-/**
  * Merge and sort an array of ranges. Overlapping or adjacent ranges are combined.
  */
 function mergeAndSortRanges(ranges: [number, number][]): [number, number][] {
