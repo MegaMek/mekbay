@@ -148,6 +148,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('unitDisplayName', value);
     }
 
+    onUseSemanticFiltersChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('useSemanticFilters', value);
+    }
+
     onQuickActionsChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'enabled' | 'disabled';
         this.optionsService.setOption('quickActions', value);

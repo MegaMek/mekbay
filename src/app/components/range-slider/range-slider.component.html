@@ -1,13 +1,23 @@
-<div #container class="slider-container">
+<div #container class="slider-container" [class.disabled]="disabled()">
     <div class="slider-track" [class.active]="interacted()"></div>
     <div class="slider-range" [style.left.%]="valueToPercent(left())" [style.right.%]="100 - valueToPercent(right())">
     </div>
+
+    <!-- Exclude range indicators (semantic-only) -->
+    @if (excludeRanges()?.length) {
+        @for (range of excludeRanges(); track $index) {
+            <div class="slider-exclude" 
+                [style.left.%]="valueToPercent(range[0])" 
+                [style.right.%]="100 - valueToPercent(range[1])">
+            </div>
+        }
+    }
 
     <!-- Left Thumb -->
     <div #leftThumb class="thumb thumb-left" [style.left.%]="valueToPercent(left())"
         [class.active]="isLeftThumbActive()" [class.focused]="focusedThumb() === 'min'"
         (pointerdown)="startDrag('min', $event)" (focus)="onThumbFocus('min')"
-        (blur)="onThumbBlur()" (dblclick)="resetThumb('min', $event)" (dbltap)="resetThumb('min', $event)" tabindex="0">
+        (blur)="onThumbBlur()" (dblclick)="resetThumb('min', $event)" (dbltap)="resetThumb('min', $event)" [attr.tabindex]="disabled() ? -1 : 0">
         @if (dragging() === 'min' || focusedThumb() === 'min') {
         <div class="thumb-label">
             {{ left() | formatNumber}}
@@ -19,7 +29,7 @@
     <div #rightThumb class="thumb thumb-right" [style.left.%]="valueToPercent(right())"
         [class.active]="isRightThumbActive()" [class.focused]="focusedThumb() === 'max'"
         (pointerdown)="startDrag('max', $event)" (focus)="onThumbFocus('max')"
-        (blur)="onThumbBlur()" (dblclick)="resetThumb('max', $event)" (dbltap)="resetThumb('max', $event)" tabindex="0">
+        (blur)="onThumbBlur()" (dblclick)="resetThumb('max', $event)" (dbltap)="resetThumb('max', $event)" [attr.tabindex]="disabled() ? -1 : 0">
         @if (dragging() === 'max' || focusedThumb() === 'max') {
         <div class="thumb-label">
             {{ right() | formatNumber }}

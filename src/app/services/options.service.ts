@@ -55,6 +55,7 @@ const DEFAULT_OPTIONS: Options = {
     ASCardStyle: 'monochrome',
     ASPrintPageBreakOnGroups: true,
     c3NetworkConnectionsAboveNodes: false,
+    useSemanticFilters: false,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -76,6 +77,7 @@ export class OptionsService {
         ASCardStyle: DEFAULT_OPTIONS.ASCardStyle,
         ASPrintPageBreakOnGroups: DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
         c3NetworkConnectionsAboveNodes: DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
+        useSemanticFilters: DEFAULT_OPTIONS.useSemanticFilters,
     });
 
     constructor() {
@@ -101,6 +103,7 @@ export class OptionsService {
             ASCardStyle: saved?.ASCardStyle ?? DEFAULT_OPTIONS.ASCardStyle,
             ASPrintPageBreakOnGroups: saved?.ASPrintPageBreakOnGroups ?? DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
             c3NetworkConnectionsAboveNodes: saved?.c3NetworkConnectionsAboveNodes ?? DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
+            useSemanticFilters: saved?.useSemanticFilters ?? DEFAULT_OPTIONS.useSemanticFilters,
         });
     }
 

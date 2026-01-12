@@ -62,6 +62,9 @@ export class RangeSliderComponent {
     interacted = input<boolean>(false);
     curve = input<number>(1); // 1 = linear, >1 = log-like, <1 = exp-like
     stepSize = input<number>(1);
+    disabled = input<boolean>(false);
+    /** Display excluded ranges (values that are filtered OUT) */
+    excludeRanges = input<[number, number][] | undefined>();
     
     valueChange = output<[number, number]>();
 
@@ -179,6 +182,7 @@ export class RangeSliderComponent {
     }
 
     onKeyDown(event: KeyboardEvent) {
+        if (this.disabled()) return;
         const focused = this.focusedThumb();
         if (!focused) return;
 
@@ -228,6 +232,7 @@ export class RangeSliderComponent {
     }
  
     onWheel(event: WheelEvent) {
+        if (this.disabled()) return;
         const focused = this.focusedThumb();
         if (!focused) return;
  
@@ -278,6 +283,7 @@ export class RangeSliderComponent {
     }
 
     startDrag(which: 'min' | 'max', event: PointerEvent) {
+        if (this.disabled()) return;
         event.preventDefault();
         this.dragging.set(which);
         this.focusedThumb.set(which);

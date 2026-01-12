@@ -57,4 +57,5 @@ export interface Options {
     ASCardStyle: 'colored' | 'monochrome';
     ASPrintPageBreakOnGroups: boolean;
     c3NetworkConnectionsAboveNodes: boolean;
+    useSemanticFilters: boolean;
 }

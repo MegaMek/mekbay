@@ -317,17 +317,25 @@
         @for (conf of ADVANCED_FILTERS; let i = $index; track i) {
         @if ((!conf.game || conf.game === gameSystem()) && this.filtersService.advOptions()[conf.key]; as optionsData) {
         @if (optionsData.type === 'range') {
-        <div class="filter-row">
+        <div class="filter-row" [class.semantic-only]="optionsData.semanticOnly">
             <div class="range">
-                <label class="range-label" (click)="openRangeValueDialog(conf.key, optionsData.value, optionsData.options)">{{ optionsData.label }}
-                    <span class="range-values">
-                        (<span class="range-value-min">{{ optionsData.value[0] | formatNumber:false:true }}</span>~<span
-                            class="range-value-max">{{ optionsData.value[1] | formatNumber:false:true }}</span>)
-                    </span>
+                <label class="range-label" [class.disabled]="optionsData.semanticOnly" 
+                    (click)="!optionsData.semanticOnly && openRangeValueDialog(conf.key, optionsData.value, optionsData.options)">{{ optionsData.label }}
+                    @if (optionsData.displayText) {
+                        <span class="effective-range" title="Effective range after exclusions">
+                            ✓ {{ optionsData.displayText }}
+                        </span>
+                    } @else {
+                        <span class="range-values">
+                            (<span class="range-value-min">{{ optionsData.value[0] | formatNumber:false:true }}</span>~<span
+                                class="range-value-max">{{ optionsData.value[1] | formatNumber:false:true }}</span>)
+                        </span>
+                    }
                 </label>
                 <range-slider [min]="optionsData.totalRange[0]" [max]="optionsData.totalRange[1]"
                     [value]="optionsData.value" [availableRange]="optionsData.options"
                     [interacted]="optionsData.interacted" [curve]="conf.curve ?? 1" [stepSize]="conf.stepSize ?? 1"
+                    [disabled]="optionsData.semanticOnly ?? false" [excludeRanges]="optionsData.excludeRanges"
                     (valueChange)="setAdvFilter(conf.key, $event)">
                 </range-slider>
             </div>

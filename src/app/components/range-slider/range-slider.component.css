@@ -99,3 +99,31 @@
     z-index: 1002;
 }
 
+/* Disabled state */
+.slider-container.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.slider-container.disabled .thumb {
+    cursor: not-allowed;
+}
+
+/* Exclude range indicator (semantic-only feature) */
+.slider-exclude {
+    position: absolute;
+    top: 50%;
+    height: 4px;
+    transform: translateY(-50%);
+    background-color: var(--danger-color, #dc3545);
+    background-image: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.2) 2px,
+        rgba(0, 0, 0, 0.2) 4px
+    );
+    z-index: 2;
+    pointer-events: none;
+}
+

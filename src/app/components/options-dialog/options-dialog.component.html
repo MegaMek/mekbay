@@ -22,6 +22,20 @@
                     <option value="both">Chassis, model and pilot</option>
                 </select>
             </div>
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="useSemanticFilters">Semantic search:</label>
+                    <select id="useSemanticFilters" class="bt-select" [value]="optionsService.options().useSemanticFilters"
+                        (change)="onUseSemanticFiltersChange($event)">
+                        <option value="false">Disabled (default)</option>
+                        <option value="true">Enabled</option>
+                    </select>
+                </div>
+                <div class="description">
+                    <p>When enabled, you can type filter expressions directly in the search bar.</p>
+                    <p>Examples: <code>crab tmm=2</code>, <code>bv=1000-2000</code>, <code>faction=ComStar</code></p>
+                </div>
+            </div>
             <hr />
             <div class="option-col">
                 <label for="userUuid">User identifier:</label>

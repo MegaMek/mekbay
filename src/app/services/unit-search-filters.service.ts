@@ -47,6 +47,7 @@ import { GameSystem } from '../models/common.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
+import { applySemanticQuery, filterStateToSemanticText, ParsedSemanticQuery, parseSemanticQuery } from '../utils/semantic-filter.util';
 
 /*
  * Author: Drake
@@ -75,12 +76,16 @@ export interface AdvFilterConfig {
     multistate?: boolean; // if true, the filter (dropdown) can have multiple states (OR, AND, NOT)
     countable?: boolean; // if true, show amount next to options
     stepSize?: number; // for range sliders, defines the step size
+    semanticKey?: string; // Simplified key for semantic filter mode (e.g., 'tmm' instead of 'as.TMM')
 }
 
 interface FilterState {
     [key: string]: {
         value: any;
         interactedWith: boolean;
+        excludeRanges?: [number, number][];  // For range filters: ranges to exclude (semantic-only)
+        displayText?: string;                // For range filters: formatted effective ranges (e.g., "0-3, 5-99")
+        semanticOnly?: boolean;              // True if this filter can't be shown in UI
     };
 }
 
@@ -100,6 +105,9 @@ type RangeFilterOptions = {
     value: [number, number];
     interacted: boolean;
     curve?: number;
+    semanticOnly?: boolean;  // True if this filter has semantic-only constraints
+    excludeRanges?: [number, number][];  // Ranges to exclude (for display/filtering)
+    displayText?: string;  // Formatted effective ranges (e.g., "0-3, 5-99")
 };
 
 export interface SerializedSearchFilter {
@@ -266,64 +274,64 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
 }
 
 export const ADVANCED_FILTERS: AdvFilterConfig[] = [
-    { key: 'era', label: 'Era', type: AdvFilterType.DROPDOWN, external: true },
-    { key: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true, multistate: true },
-    { key: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
-    { key: 'as.TP', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
-    { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'era', semanticKey: 'era', label: 'Era', type: AdvFilterType.DROPDOWN, external: true },
+    { key: 'faction', semanticKey: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true, multistate: true },
+    { key: 'type', semanticKey: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'as.TP', semanticKey: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
+    { key: 'subtype', semanticKey: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
     {
-        key: 'techBase', label: 'Tech', type: AdvFilterType.DROPDOWN,
+        key: 'techBase', semanticKey: 'tech', label: 'Tech', type: AdvFilterType.DROPDOWN,
         sortOptions: ['Inner Sphere', 'Clan', 'Mixed']
     },
-    { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN },
+    { key: 'role', semanticKey: 'role', label: 'Role', type: AdvFilterType.DROPDOWN },
     {
-        key: 'weightClass', label: 'Weight Class', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
+        key: 'weightClass', semanticKey: 'weight', label: 'Weight Class', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
         sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*']
     },
     {
-        key: 'level', label: 'Rules', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
+        key: 'level', semanticKey: 'rules', label: 'Rules', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
         sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial']
     },
-    { key: 'c3', label: 'Network', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
-    { key: 'moveType', label: 'Motive', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
-    { key: 'as.MV', label: 'Move', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.ALPHA_STRIKE },
-    { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: GameSystem.CLASSIC },
-    { key: 'features', label: 'Features', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
-    { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
-    { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
-    { key: 'forcePack', label: 'Force Packs', type: AdvFilterType.DROPDOWN, external: true },
-    { key: '_tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
-    { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'as.PV', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.ALPHA_STRIKE },
-    { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: GameSystem.CLASSIC },
-    { key: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'armorPer', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'internal', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: '_mdSumNoPhysical', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
-    { key: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
-    { key: '_dissipationEfficiency', label: 'Heat Efficiency', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.CLASSIC },
-    { key: '_maxRange', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'umu', label: 'UMU MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
-    { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'c3', semanticKey: 'network', label: 'Network', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'moveType', semanticKey: 'motive', label: 'Motive', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'as.MV', semanticKey: 'move', label: 'Move', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.specials', semanticKey: 'specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.ALPHA_STRIKE },
+    { key: 'componentName', semanticKey: 'equipment', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: GameSystem.CLASSIC },
+    { key: 'features', semanticKey: 'features', label: 'Features', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
+    { key: 'quirks', semanticKey: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
+    { key: 'source', semanticKey: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
+    { key: 'forcePack', semanticKey: 'pack', label: 'Force Packs', type: AdvFilterType.DROPDOWN, external: true },
+    { key: '_tags', semanticKey: 'tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
+    { key: 'bv', semanticKey: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'as.PV', semanticKey: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.ALPHA_STRIKE },
+    { key: 'tons', semanticKey: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: GameSystem.CLASSIC },
+    { key: 'armor', semanticKey: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'armorPer', semanticKey: 'armorpct', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'internal', semanticKey: 'structure', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: '_mdSumNoPhysical', semanticKey: 'firepower', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'dpt', semanticKey: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'heat', semanticKey: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
+    { key: 'dissipation', semanticKey: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
+    { key: '_dissipationEfficiency', semanticKey: 'efficiency', label: 'Heat Efficiency', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.CLASSIC },
+    { key: '_maxRange', semanticKey: 'range', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'walk', semanticKey: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'run', semanticKey: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'jump', semanticKey: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'umu', semanticKey: 'umu', label: 'UMU MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'year', semanticKey: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
+    { key: 'cost', semanticKey: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
 
     /* Alpha Strike specific filters (but some are above) */
-    { key: 'as.SZ', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.TMM', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.OV', label: 'Overheat Value', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.Th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgS', label: 'Damage (Short)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgM', label: 'Damage (Medium)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgL', label: 'Damage (Long)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgE', label: 'Damage (Extreme)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.Arm', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.Str', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.SZ', semanticKey: 'sz', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.TMM', semanticKey: 'tmm', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.OV', semanticKey: 'ov', label: 'Overheat Value', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.Th', semanticKey: 'th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgS', semanticKey: 'dmgs', label: 'Damage (Short)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgM', semanticKey: 'dmgm', label: 'Damage (Medium)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgL', semanticKey: 'dmgl', label: 'Damage (Long)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgE', semanticKey: 'dmge', label: 'Damage (Extreme)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.Arm', semanticKey: 'a', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.Str', semanticKey: 's', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
 ];
 
 export const SORT_OPTIONS: SortOption[] = [
@@ -391,6 +399,59 @@ export class UnitSearchFiltersService {
     /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
     readonly tagsVersion = signal(0);
 
+    /** Whether semantic filter mode is enabled */
+    readonly useSemanticFilters = computed(() => this.optionsService.options().useSemanticFilters);
+
+    /** Parsed semantic query when semantic mode is enabled */
+    private readonly semanticParsed = computed((): ParsedSemanticQuery | null => {
+        if (!this.useSemanticFilters()) return null;
+        return parseSemanticQuery(this.searchText(), this.gameService.currentGameSystem());
+    });
+
+    /** 
+     * Effective text search - in semantic mode, this is the extracted text portion;
+     * in normal mode, this is the full searchText.
+     */
+    readonly effectiveTextSearch = computed(() => {
+        const parsed = this.semanticParsed();
+        if (parsed) {
+            return parsed.textSearch;
+        }
+        return this.searchText();
+    });
+
+    /**
+     * Semantic filter state derived from parsed tokens.
+     * Only populated when semantic mode is enabled.
+     */
+    private readonly semanticFilterState = computed((): FilterState => {
+        const parsed = this.semanticParsed();
+        if (!parsed || parsed.tokens.length === 0) return {};
+        
+        const result = applySemanticQuery(
+            this.searchText(),
+            this.gameService.currentGameSystem(),
+            this.totalRangesCache
+        );
+        return result.filterState;
+    });
+
+    /**
+     * Effective filter state - combines manual filterState with semantic filters.
+     * Semantic filters override manual filters for the same keys.
+     */
+    readonly effectiveFilterState = computed((): FilterState => {
+        const manual = this.filterState();
+        const semantic = this.semanticFilterState();
+        
+        if (!this.useSemanticFilters() || Object.keys(semantic).length === 0) {
+            return manual;
+        }
+        
+        // Semantic filters take precedence
+        return { ...manual, ...semantic };
+    });
+
     constructor() {
         // Register as a URL state consumer - must call markConsumerReady when done reading URL
         this.urlStateService.registerConsumer('unit-search-filters');
@@ -432,7 +493,7 @@ export class UnitSearchFiltersService {
     });
 
     searchTokens = computed((): SearchTokensGroup[] => {
-        return parseSearchQuery(this.searchText());
+        return parseSearchQuery(this.effectiveTextSearch());
     });
 
     private recalculateBVRange() {
@@ -731,15 +792,25 @@ export class UnitSearchFiltersService {
             }
 
             if (conf.type === AdvFilterType.RANGE && Array.isArray(val)) {
+                const excludeRanges = filterState.excludeRanges;
+                
+                // Helper function to check if value is in any exclude range
+                const isExcluded = (v: number): boolean => {
+                    if (!excludeRanges) return false;
+                    return excludeRanges.some(([exMin, exMax]) => v >= exMin && v <= exMax);
+                };
+                
                 // Special handling for BV range to use adjusted values
                 if (conf.key === 'bv') {
                     results = results.filter(u => {
                         const adjustedBV = this.getAdjustedBV(u);
+                        if (isExcluded(adjustedBV)) return false;
                         return adjustedBV >= val[0] && adjustedBV <= val[1];
                     });
                 } else if (conf.key === 'as.PV') {
                     results = results.filter(u => {
                         const adjustedPV = this.getAdjustedPV(u);
+                        if (isExcluded(adjustedPV)) return false;
                         return adjustedPV >= val[0] && adjustedPV <= val[1];
                     });
                 } else {
@@ -749,6 +820,7 @@ export class UnitSearchFiltersService {
                             if (val[0] === 0) return true; // If the range starts at 0, we allow -1 values
                             return false; // Ignore this unit if it has an ignored value
                         }
+                        if (isExcluded(unitValue)) return false;
                         return unitValue != null && unitValue >= val[0] && unitValue <= val[1];
                     });
                 }
@@ -773,7 +845,7 @@ export class UnitSearchFiltersService {
         if (!this.isDataReady()) return [];
 
         let results = this.filteredUnitsBySearchTextTokens();
-        results = this.applyFilters(results, this.filterState());
+        results = this.applyFilters(results, this.effectiveFilterState());
 
         const sortKey = this.selectedSort();
         const sortDirection = this.selectedSortDirection();
@@ -844,7 +916,7 @@ export class UnitSearchFiltersService {
         if (!this.isDataReady()) return {};
 
         const result: Record<string, AdvFilterOptions> = {};
-        const state = this.filterState();
+        const state = this.effectiveFilterState();
         const _tagsVersion = this.tagsVersion();
 
         let baseUnits = this.filteredUnitsBySearchTextTokens();
@@ -1106,13 +1178,22 @@ export class UnitSearchFiltersService {
                 if (clampedMin > clampedMax) [clampedMin, clampedMax] = [clampedMax, clampedMin];
                 currentValue = [clampedMin, clampedMax];
 
+                // Get semantic-only properties from filter state
+                const filterStateEntry = state[conf.key];
+                const semanticOnly = filterStateEntry?.semanticOnly ?? false;
+                const excludeRanges = filterStateEntry?.excludeRanges;
+                const displayText = filterStateEntry?.displayText;
+
                 result[conf.key] = {
                     type: 'range',
                     label,
                     totalRange: totalRange,
                     options: availableRange as [number, number],
                     value: currentValue,
-                    interacted: state[conf.key]?.interactedWith ?? false
+                    interacted: state[conf.key]?.interactedWith ?? false,
+                    semanticOnly,
+                    excludeRanges,
+                    displayText
                 };
             }
         }
@@ -1484,6 +1565,12 @@ export class UnitSearchFiltersService {
             ...current,
             [key]: { value, interactedWith: interacted }
         }));
+
+        // In semantic mode, sync the search text to reflect the updated filter state
+        if (this.useSemanticFilters()) {
+            // Use setTimeout to allow the filterState signal to propagate first
+            setTimeout(() => this.syncSearchTextFromFilters(), 0);
+        }
     }
 
     public clearFilters() {
@@ -1493,6 +1580,36 @@ export class UnitSearchFiltersService {
         this.selectedSortDirection.set('asc');
         this.pilotGunnerySkill.set(4);
         this.pilotPilotingSkill.set(5);
+    }
+
+    /**
+     * Get the total ranges cache for semantic filter conversion.
+     */
+    public getTotalRanges(): Record<string, [number, number]> {
+        return this.totalRangesCache;
+    }
+
+    /**
+     * Convert current filter state to semantic text.
+     * Used to sync the search input when filters are changed via UI in semantic mode.
+     */
+    public getSemanticText(): string {
+        return filterStateToSemanticText(
+            this.effectiveFilterState(),
+            this.effectiveTextSearch(),
+            this.gameService.currentGameSystem(),
+            this.totalRangesCache
+        );
+    }
+
+    /**
+     * Update search text with semantic text representation of current filters.
+     * Only works when semantic mode is enabled.
+     */
+    public syncSearchTextFromFilters(): void {
+        if (!this.useSemanticFilters()) return;
+        const semanticText = this.getSemanticText();
+        this.searchText.set(semanticText);
     }
 
     // Collect all unique tags from all units (merged name + chassis)
