@@ -111,8 +111,8 @@
                 <h3>Boolean Logic &amp; Grouping</h3>
                 <p>Use <code>OR</code> and <code>AND</code> keywords with parentheses for complex queries:</p>
                 <div class="examples">
-                    <div class="example"><code class="allow-select">type=BM bv>1000</code><span class="desc">→ BattleMechs AND bv>1000 (implicit AND)</span></div>
-                    <div class="example"><code class="allow-select">(type=BM bv>1000) OR (type=CV bv<500)</code><span class="desc">→ Meks with bv &gt; 1000 OR Vehicles with bv &lt; 500</span></div>
+                    <div class="example"><code class="allow-select">type=BM pv>50</code><span class="desc">→ BattleMechs AND pv>50 (implicit AND)</span></div>
+                    <div class="example"><code class="allow-select">(type=BM pv>50) OR (type=CV pv<10)</code><span class="desc">→ Meks with pv &gt; 50 OR Vehicles with pv &lt; 10</span></div>
                 </div>
                 <p class="note"><strong>Note:</strong> Filters at the same level are AND'd by default. Use <code>OR</code> to combine groups.</p>
             </section>
