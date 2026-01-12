@@ -96,7 +96,6 @@
             </section>
 
             <!-- Virtual Keys -->
-            @if (isAlphaStrike()) {
             <section class="guide-section">
                 <h3>Virtual Keys</h3>
                 <p>Combine related filters with slash notation:</p>
@@ -106,7 +105,17 @@
                     <div class="example"><code class="allow-select">dmg=*/*/*/3</code><span class="desc">→ dmgE=3 (any short/medium/long)</span></div>
                 </div>
             </section>
-            }
+
+            <!-- Boolean Logic & Grouping -->
+            <section class="guide-section">
+                <h3>Boolean Logic &amp; Grouping</h3>
+                <p>Use <code>OR</code> and <code>AND</code> keywords with parentheses for complex queries:</p>
+                <div class="examples">
+                    <div class="example"><code class="allow-select">type=BM bv>1000</code><span class="desc">→ BattleMechs AND bv>1000 (implicit AND)</span></div>
+                    <div class="example"><code class="allow-select">(type=BM bv>1000) OR (type=CV bv<500)</code><span class="desc">→ Meks with bv &gt; 1000 OR Vehicles with bv &lt; 500</span></div>
+                </div>
+                <p class="note"><strong>Note:</strong> Filters at the same level are AND'd by default. Use <code>OR</code> to combine groups.</p>
+            </section>
 
             <!-- Available Fields - Classic BattleTech -->
             <section class="guide-section fields-section">

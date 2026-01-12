@@ -97,7 +97,16 @@ export class SemanticGuideDialogComponent {
     /** Filters available for Alpha Strike */
     asFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.ALPHA_STRIKE));
     asDropdownFilters = computed(() => this.asFilters().filter(f => f.type === 'dropdown'));
-    asRangeFilters = computed(() => this.asFilters().filter(f => f.type === 'range'));
+    asRangeFilters = computed(() => {
+        const ranges = this.asFilters().filter(f => f.type === 'range');
+        // Add virtual 'dmg' filter for damage shorthand (dmg=2/3/1/0)
+        ranges.push({
+            key: 'dmg',
+            label: 'Damage (S/M/L/E)',
+            type: 'range'
+        });
+        return ranges.sort((a, b) => a.key.localeCompare(b.key));
+    });
 
     /** Semantic-only filters (shared across game systems) */
     semanticFilters = computed(() => {

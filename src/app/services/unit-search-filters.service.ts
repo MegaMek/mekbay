@@ -47,7 +47,8 @@ import { GameSystem } from '../models/common.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
-import { applySemanticQuery, filterStateToSemanticText, ParsedSemanticQuery, parseSemanticQuery } from '../utils/semantic-filter.util';
+import { filterStateToSemanticText, tokensToFilterState } from '../utils/semantic-filter.util';
+import { parseSemanticQueryAST, ParseResult, ParseError, filterUnitsWithAST, EvaluatorContext, isComplexQuery, getMatchingTextForUnit } from '../utils/semantic-filter-ast.util';
 
 /*
  * Author: Drake
@@ -575,26 +576,47 @@ export class UnitSearchFiltersService {
      */
     private isSyncingToText = false;
 
-    /** Parsed semantic query */
-    private readonly semanticParsed = computed((): ParsedSemanticQuery | null => {
-        return parseSemanticQuery(this.searchText(), this.gameService.currentGameSystem());
+    /** 
+     * Parsed semantic query as AST (supports nested brackets and OR operators).
+     * Primary parser for all semantic query processing.
+     */
+    private readonly semanticParsedAST = computed((): ParseResult => {
+        return parseSemanticQueryAST(this.searchText(), this.gameService.currentGameSystem());
+    });
+
+    /**
+     * Parse errors from the semantic query.
+     * Used for validation display with error highlighting.
+     */
+    readonly parseErrors = computed((): ParseError[] => {
+        return this.semanticParsedAST().errors;
+    });
+
+    /**
+     * Whether the query is too complex to represent in flat UI filters.
+     * Complex queries include: OR operators, nested brackets, etc.
+     * When true, the filter dropdowns should be hidden in favor of the query.
+     */
+    readonly isComplexQuery = computed((): boolean => {
+        return isComplexQuery(this.semanticParsedAST().ast);
     });
 
     /** 
      * Effective text search - extracts the text portion from semantic query.
+     * Used for relevance scoring and display, not for filtering (AST handles that).
      */
     readonly effectiveTextSearch = computed(() => {
-        const parsed = this.semanticParsed();
-        return parsed?.textSearch ?? this.searchText();
+        return this.semanticParsedAST().textSearch || '';
     });
 
     /**
      * Set of filter keys that currently have semantic representation in the search text.
+     * Uses AST parser to properly handle brackets and boolean operators.
      * Used to determine which filters are "linked" (UI changes should update text).
      */
     readonly semanticFilterKeys = computed((): Set<string> => {
-        const parsed = this.semanticParsed();
-        if (!parsed || parsed.tokens.length === 0) return new Set();
+        const parsed = this.semanticParsedAST();
+        if (parsed.tokens.length === 0) return new Set();
         
         const keys = new Set<string>();
         const gameSystem = this.gameService.currentGameSystem();
@@ -614,18 +636,18 @@ export class UnitSearchFiltersService {
 
     /**
      * Semantic filter state derived from parsed tokens in the search text.
+     * Uses AST parser to properly handle brackets and boolean operators.
      * This is ALWAYS computed - semantic text is the source of truth for filters it contains.
      */
     private readonly semanticFilterState = computed((): FilterState => {
-        const parsed = this.semanticParsed();
-        if (!parsed || parsed.tokens.length === 0) return {};
+        const parsed = this.semanticParsedAST();
+        if (parsed.tokens.length === 0) return {};
         
-        const result = applySemanticQuery(
-            this.searchText(),
+        return tokensToFilterState(
+            parsed.tokens,
             this.gameService.currentGameSystem(),
             this.totalRangesCache
         );
-        return result.filterState;
     });
 
     /**
@@ -1122,22 +1144,27 @@ export class UnitSearchFiltersService {
         return results;
     }
 
-    filteredUnitsBySearchTextTokens = computed(() => {
-        if (!this.isDataReady()) return [];
-        const searchTokens = this.searchTokens();
-        if (searchTokens.length === 0) return this.units;
-
-        return this.units.filter(unit =>
-            matchesSearch(`${unit._chassis ?? ''} ${unit._model ?? ''}`, searchTokens, true)
-        );
-    });
-
-    // All filters applied
+    // All filters applied using AST-based filtering
     filteredUnits = computed(() => {
         if (!this.isDataReady()) return [];
 
-        let results = this.filteredUnitsBySearchTextTokens();
-        results = this.applyFilters(results, this.effectiveFilterState());
+        // AST handles all filtering: text search, semantic filters, and boolean logic
+        const ast = this.semanticParsedAST();
+        const context: EvaluatorContext = {
+            getProperty,
+            getAdjustedBV: (unit: Unit) => this.getAdjustedBV(unit),
+            getAdjustedPV: (unit: Unit) => this.getAdjustedPV(unit),
+            totalRanges: this.totalRangesCache,
+            gameSystem: this.gameService.currentGameSystem(),
+            matchesText: (unit: Unit, text: string) => {
+                const chassis = (unit._chassis ?? unit.chassis ?? '') as string;
+                const model = (unit._model ?? unit.model ?? '') as string;
+                const searchableText = `${chassis} ${model}`;
+                const tokens = parseSearchQuery(text);
+                return matchesSearch(searchableText, tokens, true);
+            }
+        };
+        let results = filterUnitsWithAST(this.units, ast.ast, context);
 
         const sortKey = this.selectedSort();
         const sortDirection = this.selectedSortDirection();
@@ -1148,11 +1175,36 @@ export class UnitSearchFiltersService {
         let relevanceScores: WeakMap<Unit, number> | null = null;
         if (sortKey === '') {
             const tokens = this.searchTokens();
+            const isComplex = isComplexQuery(ast.ast);
             relevanceScores = new WeakMap<Unit, number>();
+            
             for (const u of sorted) {
                 const chassis = (u._chassis ?? u.chassis ?? '') as string;
                 const model = (u._model ?? u.model ?? '') as string;
-                relevanceScores.set(u, computeRelevanceScore(chassis, model, tokens));
+                
+                if (isComplex) {
+                    // For complex queries (OR, nested brackets), get the matching text for this unit
+                    const matchingTexts = getMatchingTextForUnit(ast.ast, u, context);
+                    if (matchingTexts.length > 0) {
+                        // Parse each matching text and score, take the best
+                        let bestScore = 0;
+                        for (const text of matchingTexts) {
+                            const textTokens = parseSearchQuery(text);
+                            const score = computeRelevanceScore(chassis, model, textTokens);
+                            if (score > bestScore) bestScore = score;
+                        }
+                        // Also try scoring with all matching texts combined
+                        const combinedTokens = parseSearchQuery(matchingTexts.join(' '));
+                        const combinedScore = computeRelevanceScore(chassis, model, combinedTokens);
+                        relevanceScores.set(u, Math.max(bestScore, combinedScore));
+                    } else {
+                        // No text nodes matched, just use filter match (base score)
+                        relevanceScores.set(u, 0);
+                    }
+                } else {
+                    // Simple query - use normal token scoring
+                    relevanceScores.set(u, computeRelevanceScore(chassis, model, tokens));
+                }
             }
         }
 
@@ -1211,7 +1263,7 @@ export class UnitSearchFiltersService {
         const state = this.effectiveFilterState();
         const _tagsVersion = this.tagsVersion();
 
-        let baseUnits = this.filteredUnitsBySearchTextTokens();
+        let baseUnits = this.units;
         const activeFilters = Object.entries(state)
             .filter(([, s]) => s.interactedWith)
             .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
@@ -2124,8 +2176,8 @@ export class UnitSearchFiltersService {
             const currentText = this.searchText();
             const gameSystem = this.gameService.currentGameSystem();
             
-            // Parse current query to get text search and existing tokens
-            const parsed = parseSemanticQuery(currentText, gameSystem);
+            // Parse current query using AST parser to get text search and existing tokens
+            const parsed = parseSemanticQueryAST(currentText, gameSystem);
             
             // Filter out any existing tokens for this filter key
             const otherTokens = parsed.tokens.filter(t => {

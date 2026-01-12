@@ -34,7 +34,18 @@
         }
     </button>
     <div class="searchbar-input-container">
-        <input #searchInput class="bt-input searchbar" type="text" [disabled]="!this.filtersService.isDataReady()"
+        @if (hasParseErrors()) {
+        <div class="searchbar-error-overlay" aria-hidden="true">
+            @for (segment of errorHighlightedSegments(); track $index) {
+                @if (segment.isError) {
+                    <span class="error-segment" [title]="segment.message || 'Parse error'">{{ segment.text }}</span>
+                } @else {
+                    <span class="normal-segment">{{ segment.text }}</span>
+                }
+            }
+        </div>
+        }
+        <input #searchInput class="bt-input searchbar" [class.has-errors]="hasParseErrors()" type="text" [disabled]="!this.filtersService.isDataReady()"
             [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
             [value]="this.filtersService.searchText()" (input)="setSearch(searchInput.value)"
             (focus)="focused.set(true)" id="unit-search-input" autocomplete="off" />
@@ -306,6 +317,12 @@
         </div>
     </div>
     <div class="adv-panel-content" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
+        @if (isComplexQuery()) {
+        <!-- Complex query message - filters controlled by search query -->
+        <div class="complex-query-notice">
+            <span class="notice-text">Filters controlled by search query</span>
+        </div>
+        } @else {
         <!-- Dropdown filters -->
         @for (conf of ADVANCED_FILTERS; let i = $index; track i) {
         @if ((!conf.game || conf.game === gameSystem()) && this.filtersService.advOptions()[conf.key]; as optionsData) {
@@ -349,6 +366,7 @@
                 </range-slider>
             </div>
         </div>
+        }
         }
         }
         }

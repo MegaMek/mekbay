@@ -37,6 +37,7 @@ import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrollin
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { UnitSearchFiltersService, ADVANCED_FILTERS, SORT_OPTIONS, AdvFilterType, SortOption, SerializedSearchFilter } from '../../services/unit-search-filters.service';
+import { ParseError } from '../../utils/semantic-filter-ast.util';
 import { Unit, UnitComponent } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
@@ -173,6 +174,71 @@ export class UnitSearchComponent {
         return (this.focused() || this.advOpen() || this.unitDetailsDialogOpen()) &&
             (this.filtersService.searchText() || this.isAdvActive());
     });
+
+    /**
+     * Parse errors for display in the search input.
+     * Used to highlight errors in red in the search text.
+     */
+    readonly parseErrors = computed((): ParseError[] => {
+        return this.filtersService.parseErrors();
+    });
+
+    /**
+     * Whether there are any parse errors.
+     */
+    readonly hasParseErrors = computed((): boolean => {
+        return this.parseErrors().length > 0;
+    });
+
+    /**
+     * Get the text segments with error highlighting info.
+     * Returns an array of { text, isError, message } for rendering.
+     */
+    readonly errorHighlightedSegments = computed((): Array<{ text: string; isError: boolean; message?: string }> => {
+        const text = this.filtersService.searchText();
+        const errors = this.parseErrors();
+        
+        if (errors.length === 0 || !text) {
+            return [{ text, isError: false }];
+        }
+
+        // Sort errors by start position
+        const sortedErrors = [...errors].sort((a, b) => a.start - b.start);
+        const segments: Array<{ text: string; isError: boolean; message?: string }> = [];
+        let pos = 0;
+
+        for (const error of sortedErrors) {
+            // Skip overlapping errors
+            if (error.start < pos) continue;
+            
+            // Add normal text before error
+            if (error.start > pos) {
+                segments.push({ text: text.slice(pos, error.start), isError: false });
+            }
+            
+            // Add error segment
+            segments.push({
+                text: text.slice(error.start, error.end),
+                isError: true,
+                message: error.message
+            });
+            
+            pos = error.end;
+        }
+
+        // Add remaining text
+        if (pos < text.length) {
+            segments.push({ text: text.slice(pos), isError: false });
+        }
+
+        return segments;
+    });
+
+    /**
+     * Whether the query is too complex to represent in flat UI filters.
+     * When true, filter dropdowns are hidden in favor of the query.
+     */
+    readonly isComplexQuery = computed(() => this.filtersService.isComplexQuery());
 
     itemSize = signal(75);
 

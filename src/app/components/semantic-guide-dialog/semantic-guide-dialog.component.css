@@ -23,12 +23,15 @@
 
 .guide-section {
     margin-bottom: 16px;
+    gap: 0.5em;
+    display: flex;
+    flex-direction: column;
 }
 
 .guide-section h3 {
     color: var(--bt-yellow);
     font-size: 1em;
-    margin: 0 0 8px 0;
+    margin: 4px 0 4px 0;
     border-bottom: 1px solid var(--border-color);
     padding-bottom: 4px;
 }
@@ -40,7 +43,7 @@
 }
 
 .guide-section p {
-    margin: 0 0 8px 0;
+    margin: 4px 0 4px 0;
     font-size: 0.9em;
     color: var(--text-color-secondary);
 }
@@ -82,7 +85,7 @@ code {
 }
 
 .example code {
-    min-width: 180px;
+    width: 180px;
 }
 
 .example .desc {
