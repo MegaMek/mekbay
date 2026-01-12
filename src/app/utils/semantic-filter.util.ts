@@ -33,7 +33,7 @@
 
 import { GameSystem } from '../models/common.model';
 import { ADVANCED_FILTERS, AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
-import { MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import { CountOperator, MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 
 /*
  * Author: Drake
@@ -317,6 +317,106 @@ function parseRange(value: string): [number, number] | null {
         }
     }
     return null;
+}
+
+/**
+ * Parsed quantity constraint from value string.
+ * Supports: :N, :=N, :>N, :>=N, :<N, :<=N, :!N, :!=N, :N-M, :!N-M, :!=N-M
+ */
+interface QuantityConstraint {
+    operator: CountOperator;
+    count: number;
+    countMax?: number;  // For range constraints like :2-5
+}
+
+/**
+ * Parse quantity constraint from value suffix.
+ * Format: value:constraint where constraint is one of:
+ *   N or =N      → exactly N
+ *   >N           → more than N
+ *   >=N          → at least N
+ *   <N           → less than N
+ *   <=N          → at most N
+ *   !N or !=N    → not equal to N
+ *   N-M          → range from N to M (inclusive)
+ *   !N-M or !=N-M → not in range N to M
+ * 
+ * Returns { name, constraint } or { name, constraint: null } if no quantity suffix
+ */
+function parseValueWithQuantity(value: string): { name: string; constraint: QuantityConstraint | null } {
+    // Find the last colon that's followed by a valid quantity pattern
+    const colonIndex = value.lastIndexOf(':');
+    if (colonIndex === -1 || colonIndex === value.length - 1) {
+        return { name: value, constraint: null };
+    }
+
+    const namePart = value.slice(0, colonIndex);
+    const quantityPart = value.slice(colonIndex + 1);
+
+    // Try to parse quantity constraint
+    let operator: CountOperator = '=';
+    let numStr = quantityPart;
+
+    // Check for operators at the start
+    if (quantityPart.startsWith('>=')) {
+        operator = '>=';
+        numStr = quantityPart.slice(2);
+    } else if (quantityPart.startsWith('<=')) {
+        operator = '<=';
+        numStr = quantityPart.slice(2);
+    } else if (quantityPart.startsWith('!=')) {
+        operator = '!=';
+        numStr = quantityPart.slice(2);
+    } else if (quantityPart.startsWith('>')) {
+        operator = '>';
+        numStr = quantityPart.slice(1);
+    } else if (quantityPart.startsWith('<')) {
+        operator = '<';
+        numStr = quantityPart.slice(1);
+    } else if (quantityPart.startsWith('!')) {
+        operator = '!=';
+        numStr = quantityPart.slice(1);
+    } else if (quantityPart.startsWith('=')) {
+        operator = '=';
+        numStr = quantityPart.slice(1);
+    }
+
+    // Check for range (N-M)
+    const rangeMatch = numStr.match(/^(\d+)-(\d+)$/);
+    if (rangeMatch) {
+        const min = parseInt(rangeMatch[1], 10);
+        const max = parseInt(rangeMatch[2], 10);
+        if (!isNaN(min) && !isNaN(max)) {
+            // For ranges, operator can only be = (include) or != (exclude)
+            // Other operators don't make sense with ranges
+            if (operator !== '=' && operator !== '!=') {
+                operator = '=';  // Default to include for ranges
+            }
+            return {
+                name: namePart,
+                constraint: {
+                    operator,
+                    count: Math.min(min, max),
+                    countMax: Math.max(min, max)
+                }
+            };
+        }
+    }
+
+    // Parse single number
+    const num = parseInt(numStr, 10);
+    if (isNaN(num) || num < 0) {
+        // Not a valid quantity, treat colon as part of the name
+        return { name: value, constraint: null };
+    }
+
+    return {
+        name: namePart,
+        constraint: {
+            operator,
+            count: num
+        }
+    };
 }
 
 /**
@@ -605,7 +705,7 @@ export function tokensToFilterState(
             if (hasMultipleRanges || hasExclusions) {
                 semanticOnly = true;
                 
-                // Apply exclusions to each include range
+                // Apply exclusions to each include range to compute effective segments for displayText
                 let effectiveSegments: [number, number][] = [];
                 for (const range of effectiveIncludeRanges) {
                     // Get exclude ranges that overlap with this include range
@@ -620,7 +720,9 @@ export function tokensToFilterState(
                 effectiveSegments = mergeAndSortRanges(effectiveSegments);
                 
                 if (effectiveSegments.length > 0) {
-                    finalIncludeRanges = effectiveSegments;
+                    // For visualization: store the ORIGINAL include ranges (before exclusions)
+                    // The slider will show these in cyan, with red overlays for exclusions
+                    finalIncludeRanges = effectiveIncludeRanges;
                     displayText = formatRangeSegments(effectiveSegments);
                 }
                 
@@ -651,9 +753,10 @@ export function tokensToFilterState(
 
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             if (conf.multistate) {
-                // Handle multistate dropdowns (supports include/exclude and wildcards)
+                // Handle multistate dropdowns (supports include/exclude, wildcards, and quantity constraints)
                 const selection: MultiStateSelection = {};
                 const wildcardPatterns: WildcardPattern[] = [];
+                let semanticOnly = false;
 
                 for (const token of fieldTokens) {
                     const state: 'or' | 'not' = token.operator === '!=' ? 'not' : 'or';
@@ -662,8 +765,39 @@ export function tokensToFilterState(
                         // Check if this is a wildcard pattern
                         if (val.includes('*')) {
                             wildcardPatterns.push({ pattern: val, state });
+                            semanticOnly = true;
+                        } else if (conf.countable) {
+                            // For countable filters, parse quantity constraint (e.g., "AC/2:>1")
+                            const { name, constraint } = parseValueWithQuantity(val);
+                            
+                            if (constraint) {
+                                // Has quantity constraint
+                                const existing = selection[name];
+                                if (existing && state === 'not') {
+                                    existing.state = 'not';
+                                } else if (!existing) {
+                                    selection[name] = {
+                                        name,
+                                        state,
+                                        count: constraint.count,
+                                        countOperator: constraint.operator,
+                                        countMax: constraint.countMax
+                                    };
+                                    // Only exact equality (:N or :=N) without range is representable in UI
+                                    if (constraint.operator !== '=' || constraint.countMax !== undefined) {
+                                        semanticOnly = true;
+                                    }
+                                }
+                            } else {
+                                // No quantity constraint, default to count: 1
+                                if (selection[name] && state === 'not') {
+                                    selection[name].state = 'not';
+                                } else if (!selection[name]) {
+                                    selection[name] = { name, state, count: 1 };
+                                }
+                            }
                         } else {
-                            // Regular value
+                            // Regular value (non-countable)
                             // If already exists as 'or' and we're adding as 'or', keep it
                             // If adding as 'not', it overrides
                             if (selection[val] && state === 'not') {
@@ -680,7 +814,7 @@ export function tokensToFilterState(
                         value: selection,
                         interactedWith: true,
                         wildcardPatterns: wildcardPatterns.length > 0 ? wildcardPatterns : undefined,
-                        semanticOnly: wildcardPatterns.length > 0 ? true : undefined
+                        semanticOnly: semanticOnly || undefined
                     };
                 }
 
@@ -780,10 +914,16 @@ export function filterStateToSemanticText(
                 const excludeValues: string[] = [];
 
                 for (const [name, sel] of Object.entries(selection)) {
+                    // Format value with quantity constraint if present
+                    let formattedValue = name;
+                    if (conf.countable && (sel.count > 1 || sel.countOperator || sel.countMax !== undefined)) {
+                        formattedValue = formatValueWithQuantity(name, sel.countOperator, sel.count, sel.countMax);
+                    }
+                    
                     if (sel.state === 'not') {
-                        excludeValues.push(name);
+                        excludeValues.push(formattedValue);
                     } else if (sel.state === 'or' || sel.state === 'and') {
-                        includeValues.push(name);
+                        includeValues.push(formattedValue);
                     }
                 }
 
@@ -820,6 +960,50 @@ function formatValue(value: string): string {
         return `"${escaped}"`;
     }
     return value;
+}
+
+/**
+ * Format a value with quantity constraint suffix.
+ * E.g., "AC/2" with count=3, operator=">" → "AC/2:>3"
+ */
+function formatValueWithQuantity(
+    name: string,
+    operator: CountOperator | undefined,
+    count: number,
+    countMax?: number
+): string {
+    const formattedName = formatValue(name);
+    
+    // Range constraint
+    if (countMax !== undefined) {
+        const rangeStr = `${count}-${countMax}`;
+        if (operator === '!=') {
+            return `${formattedName}:!${rangeStr}`;
+        }
+        return `${formattedName}:${rangeStr}`;
+    }
+    
+    // Single value constraint
+    const op = operator ?? '=';
+    if (op === '=' && count === 1) {
+        // Default case, no suffix needed
+        return formattedName;
+    }
+    
+    // Format operator
+    let opStr: string;
+    switch (op) {
+        case '=':
+            opStr = '';  // Implicit
+            break;
+        case '!=':
+            opStr = '!';  // Shorthand
+            break;
+        default:
+            opStr = op;
+    }
+    
+    return `${formattedName}:${opStr}${count}`;
 }
 
 /**

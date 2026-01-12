@@ -884,17 +884,24 @@
 /* Semantic-only filter indicator */
 .filter-row.semantic-only {
     position: relative;
+
+    .range-label {
+        color: var(--semantic-color-highlight);
+    }
+
+    .label {
+        color: var(--semantic-color-highlight);
+    }
 }
 
-.filter-row.semantic-only::after {
+.filter-row.semantic-only:has(range-slider)::after {
     content: "Semantic Only";
     position: absolute;
     right: 8px;
     top: 50%;
     transform: translateY(-50%);
     font-size: 0.7em;
-    color: var(--bt-yellow);
-    background-color: rgba(0, 0, 0, 0.5);
+    color: #17a2b8;
     padding: 2px 6px;
     border-radius: 3px;
 }

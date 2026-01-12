@@ -49,10 +49,17 @@ export interface DropdownOption {
 
 export type MultiState = false | 'or' | 'and' | 'not';
 
+/** Operators for quantity constraints on countable filters */
+export type CountOperator = '=' | '!=' | '>' | '<' | '>=' | '<=';
+
 export interface MultiStateOption {
     name: string;
     state: MultiState;
     count: number;
+    /** Operator for quantity constraint (default is '=' for exact match) */
+    countOperator?: CountOperator;
+    /** Max value for range constraints (e.g., count=2, countMax=5 means 2-5) */
+    countMax?: number;
 }
 
 export interface MultiStateSelection {
@@ -78,7 +85,7 @@ export class MultiSelectDropdownComponent {
     multiselect = input<boolean>(true);
     multistate = input<boolean>(false);
     countable = input<boolean>(false);
-    disabled = input<boolean>(false);
+    semanticOnly = input<boolean>(false);
     displayText = input<string | undefined>();  // Text to display instead of pills when in semantic-only mode
     options = input<readonly DropdownOption[]>([]);
     selected = input<MultiStateSelection | string[]>([]);
@@ -188,7 +195,7 @@ export class MultiSelectDropdownComponent {
     }
 
     toggleDropdown() {
-        if (this.disabled()) return;
+        if (this.semanticOnly()) return;
         this.isOpen.set(!this.isOpen());
         if (this.isOpen()) {
             // notify other instances

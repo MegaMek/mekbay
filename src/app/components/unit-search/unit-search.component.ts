@@ -100,7 +100,7 @@ export class ExpandedComponentsPipe implements PipeTransform {
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent],
     templateUrl: './unit-search.component.html',
-    styleUrl: './unit-search.component.css',
+    styleUrl: './unit-search.component.scss',
     host: {
         '(keydown)': 'onKeydown($event)'
     }

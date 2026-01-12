@@ -282,8 +282,8 @@
     cursor: default;
 }
 
-.label.disabled {
-    color: var(--text-color-secondary);
+.label.semantic-only {
+    color: var(--semantic-color);
 }
 
 .semantic-display-text {

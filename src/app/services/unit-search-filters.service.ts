@@ -34,7 +34,7 @@
 import { Injectable, signal, computed, effect, inject } from '@angular/core';
 import { Unit } from '../models/units.model';
 import { DataService } from './data.service';
-import { MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import { CountOperator, MultiState, MultiStateSelection, MultiStateOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { ActivatedRoute, Router } from '@angular/router';
 import { getForcePacks } from '../models/forcepacks.model';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
@@ -205,30 +205,64 @@ function getProperty(obj: any, key?: string) {
     return cur;
 }
 
+/**
+ * Check if a unit's count satisfies a quantity constraint.
+ */
+function checkQuantityConstraint(
+    unitCount: number,
+    operator: CountOperator | undefined,
+    count: number,
+    countMax?: number
+): boolean {
+    const op = operator ?? '=';
+    
+    // Range constraint (count to countMax)
+    if (countMax !== undefined) {
+        const inRange = unitCount >= count && unitCount <= countMax;
+        return op === '!=' ? !inRange : inRange;
+    }
+    
+    // Single value constraint
+    switch (op) {
+        case '=':
+            return unitCount >= count;  // For '=' we use >= to maintain backwards compatibility
+        case '!=':
+            return unitCount !== count;
+        case '>':
+            return unitCount > count;
+        case '>=':
+            return unitCount >= count;
+        case '<':
+            return unitCount < count;
+        case '<=':
+            return unitCount <= count;
+        default:
+            return unitCount >= count;
+    }
+}
+
 function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiStateSelection, wildcardPatterns?: WildcardPattern[]): Unit[] {
-    const orList: Array<{ name: string, count: number }> = [];
-    const andList: Array<{ name: string, count: number }> = [];
-    const notSet = new Set<string>();
+    const orList: MultiStateOption[] = [];
+    const andList: MultiStateOption[] = [];
+    const notList: MultiStateOption[] = [];
 
     for (const [name, selectionValue] of Object.entries(selection)) {
-        const { state, count } = selectionValue;
-        if (state === 'or') orList.push({ name, count });
-        else if (state === 'and') andList.push({ name, count });
-        else if (state === 'not') notSet.add(name);
+        if (selectionValue.state === 'or') orList.push(selectionValue);
+        else if (selectionValue.state === 'and') andList.push(selectionValue);
+        else if (selectionValue.state === 'not') notList.push(selectionValue);
     }
 
     // Early return if no filters
     const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
-    if (orList.length === 0 && andList.length === 0 && notSet.size === 0 && !hasWildcards) {
+    if (orList.length === 0 && andList.length === 0 && notList.length === 0 && !hasWildcards) {
         return units;
     }
 
-    const needsQuantityCounting = [...orList, ...andList].some(item => item.count > 1);
+    // Check if we need quantity counting (any non-default constraint)
+    const needsQuantityCounting = [...orList, ...andList, ...notList].some(
+        item => item.count > 1 || item.countOperator || item.countMax !== undefined
+    );
     const isComponentFilter = key === 'componentName';
-
-    // Pre-create Sets for faster lookup
-    const orMap = new Map(orList.map(item => [item.name, item.count]));
-    const andMap = new Map(andList.map(item => [item.name, item.count]));
 
     return units.filter(unit => {
         let unitData: { names: Set<string>; counts?: Map<string, number> };
@@ -287,42 +321,58 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
             }
         }
 
-        if (notSet.size > 0) {
-            for (const notName of notSet) {
-                if (unitData.names.has(notName)) return false;
+        // NOT: Exclude if any NOT constraint is satisfied
+        if (notList.length > 0) {
+            for (const item of notList) {
+                if (!unitData.names.has(item.name)) continue;  // Item not present, OK
+                
+                // Item is present - check quantity constraint
+                if (needsQuantityCounting && unitData.counts) {
+                    const unitCount = unitData.counts.get(item.name) || 0;
+                    // For NOT, we exclude if the quantity constraint IS satisfied
+                    // e.g., equipment!=AC/2:2 means exclude units with exactly 2 AC/2s
+                    if (checkQuantityConstraint(unitCount, item.countOperator, item.count, item.countMax)) {
+                        return false;
+                    }
+                } else {
+                    // No quantity constraint or not counting - just presence check
+                    return false;
+                }
             }
         }
 
-        // AND: Must have all items with sufficient quantity
-        if (andMap.size > 0) {
-            if (needsQuantityCounting && unitData.counts) {
-                for (const [name, requiredCount] of andMap) {
-                    if ((unitData.counts.get(name) || 0) < requiredCount) return false;
-                }
-            } else {
-                for (const [name] of andMap) {
-                    if (!unitData.names.has(name)) return false;
+        // AND: Must have all items with satisfied quantity constraints
+        if (andList.length > 0) {
+            for (const item of andList) {
+                if (!unitData.names.has(item.name)) return false;  // Must have item
+                
+                if (needsQuantityCounting && unitData.counts) {
+                    const unitCount = unitData.counts.get(item.name) || 0;
+                    if (!checkQuantityConstraint(unitCount, item.countOperator, item.count, item.countMax)) {
+                        return false;
+                    }
                 }
             }
         }
 
-        // OR: Must have at least one with sufficient quantity
-        if (orMap.size > 0) {
-            if (needsQuantityCounting && unitData.counts) {
-                for (const [name, requiredCount] of orMap) {
-                    if ((unitData.counts.get(name) || 0) >= requiredCount) {
-                        return true;
+        // OR: Must have at least one with satisfied quantity constraint
+        if (orList.length > 0) {
+            let hasMatch = false;
+            for (const item of orList) {
+                if (!unitData.names.has(item.name)) continue;
+                
+                if (needsQuantityCounting && unitData.counts) {
+                    const unitCount = unitData.counts.get(item.name) || 0;
+                    if (checkQuantityConstraint(unitCount, item.countOperator, item.count, item.countMax)) {
+                        hasMatch = true;
+                        break;
                     }
+                } else {
+                    hasMatch = true;
+                    break;
                 }
-                return false;
-            } else {
-                for (const [name] of orMap) {
-                    if (unitData.names.has(name)) {
-                        return true;
-                    }
-                }
-                return false;
             }
+            if (!hasMatch) return false;
         }
 
         return true;
@@ -1264,12 +1314,50 @@ export class UnitSearchFiltersService {
                         return option;
                     });
 
+                    // Check for semantic-only mode (advanced quantity constraints)
+                    const currentFilterValue = state[conf.key]?.interactedWith ? state[conf.key].value : {};
+                    const currentSelection = currentFilterValue as MultiStateSelection;
+                    let semanticOnlyMultistate = false;
+                    let displayTextMultistate: string | undefined;
+                    
+                    if (currentSelection && typeof currentSelection === 'object') {
+                        const activeSelections = Object.entries(currentSelection)
+                            .filter(([_, sel]) => sel.state !== false);
+                        
+                        // Check for quantity constraints that can't be shown in UI
+                        // This includes != operator, ranges, or comparison operators other than =
+                        const hasAdvancedQuantity = activeSelections.some(([_, sel]) => 
+                            (sel.countOperator && sel.countOperator !== '=') || sel.countMax !== undefined
+                        );
+                        
+                        if (hasAdvancedQuantity) {
+                            semanticOnlyMultistate = true;
+                            displayTextMultistate = activeSelections.map(([name, sel]) => {
+                                const prefix = sel.state === 'not' ? '!' : '';
+                                let suffix = '';
+                                if (sel.count > 1 || sel.countOperator || sel.countMax !== undefined) {
+                                    if (sel.countMax !== undefined) {
+                                        const rangePrefix = sel.countOperator === '!=' ? '!' : '';
+                                        suffix = `:${rangePrefix}${sel.count}-${sel.countMax}`;
+                                    } else if (sel.countOperator && sel.countOperator !== '=') {
+                                        suffix = `:${sel.countOperator}${sel.count}`;
+                                    } else if (sel.count > 1) {
+                                        suffix = `:${sel.count}`;
+                                    }
+                                }
+                                return prefix + name + suffix;
+                            }).join(', ');
+                        }
+                    }
+
                     result[conf.key] = {
                         type: 'dropdown',
                         label,
                         options: optionsWithAvailability,
-                        value: state[conf.key]?.interactedWith ? state[conf.key].value : {},
-                        interacted: state[conf.key]?.interactedWith ?? false
+                        value: currentFilterValue,
+                        interacted: state[conf.key]?.interactedWith ?? false,
+                        semanticOnly: semanticOnlyMultistate,
+                        displayText: displayTextMultistate
                     };
                     continue;
                 } else {
@@ -1327,12 +1415,28 @@ export class UnitSearchFiltersService {
                             .filter(([_, sel]) => sel.state !== false);
                         const unavailableSelections = activeSelections
                             .filter(([name, _]) => !availableOptionNames.has(name));
-                        if (unavailableSelections.length > 0 && unavailableSelections.length === activeSelections.length) {
-                            // All selected values are unavailable - semantic only mode
+                        
+                        // Check for quantity constraints that can't be shown in UI
+                        const hasAdvancedQuantity = activeSelections.some(([_, sel]) => 
+                            sel.countOperator && sel.countOperator !== '=' || sel.countMax !== undefined
+                        );
+                        
+                        if ((unavailableSelections.length > 0 && unavailableSelections.length === activeSelections.length) || hasAdvancedQuantity) {
+                            // Semantic only mode - either unavailable values or advanced quantity constraints
                             semanticOnly = true;
-                            displayText = unavailableSelections.map(([name, sel]) => {
+                            displayText = activeSelections.map(([name, sel]) => {
                                 const prefix = sel.state === 'not' ? '!' : '';
-                                return prefix + name;
+                                let suffix = '';
+                                if (conf.countable && (sel.count > 1 || sel.countOperator || sel.countMax !== undefined)) {
+                                    if (sel.countMax !== undefined) {
+                                        suffix = `:${sel.count}-${sel.countMax}`;
+                                    } else if (sel.countOperator && sel.countOperator !== '=') {
+                                        suffix = `:${sel.countOperator}${sel.count}`;
+                                    } else if (sel.count > 1) {
+                                        suffix = `:${sel.count}`;
+                                    }
+                                }
+                                return prefix + name + suffix;
                             }).join(', ');
                         }
                     }
@@ -1915,10 +2019,29 @@ export class UnitSearchFiltersService {
                 const excludeValues: string[] = [];
                 
                 for (const [name, sel] of Object.entries(selection)) {
+                    // Format value with quantity if countable and count > 1
+                    let formattedName = name;
+                    if (conf.countable && sel.count > 1) {
+                        // Format with quantity suffix
+                        if (sel.countOperator && sel.countOperator !== '=') {
+                            formattedName = `${name}:${sel.countOperator}${sel.count}`;
+                        } else if (sel.countMax !== undefined) {
+                            formattedName = `${name}:${sel.count}-${sel.countMax}`;
+                        } else {
+                            formattedName = `${name}:${sel.count}`;
+                        }
+                    } else if (conf.countable && sel.countOperator && sel.countOperator !== '=') {
+                        // Non-equality operator with count 1
+                        formattedName = `${name}:${sel.countOperator}${sel.count}`;
+                    } else if (conf.countable && sel.countMax !== undefined) {
+                        // Range constraint
+                        formattedName = `${name}:${sel.count}-${sel.countMax}`;
+                    }
+                    
                     if (sel.state === 'not') {
-                        excludeValues.push(name);
+                        excludeValues.push(formattedName);
                     } else if (sel.state === 'or' || sel.state === 'and') {
-                        includeValues.push(name);
+                        includeValues.push(formattedName);
                     }
                 }
                 

@@ -29,6 +29,8 @@
     color: white;
     scrollbar-color: #666 rgba(0, 0, 0, 0);
     -webkit-tap-highlight-color: transparent;
+    --semantic-color: #17a2b8;
+    --semantic-color-highlight: #8fe7ed;
 
     --highlight-color: #8885;
 
@@ -234,6 +236,18 @@ hr {
             linear-gradient(white, white);
         background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
         background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    }
+
+    &.semantic-only {
+        background-image:
+            linear-gradient(var(--semantic-color), var(--semantic-color)),
+            linear-gradient(var(--semantic-color), var(--semantic-color)),
+            linear-gradient(var(--semantic-color), var(--semantic-color)),
+            linear-gradient(var(--semantic-color), var(--semantic-color)),
+            linear-gradient(var(--semantic-color), var(--semantic-color)),
+            linear-gradient(var(--semantic-color), var(--semantic-color)),
+            linear-gradient(var(--semantic-color), var(--semantic-color)),
+            linear-gradient(var(--semantic-color), var(--semantic-color));
     }
 }
 

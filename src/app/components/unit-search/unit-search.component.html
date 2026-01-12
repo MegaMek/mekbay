@@ -307,7 +307,7 @@
         <div class="filter-row" [class.semantic-only]="optionsData.semanticOnly">
             <multi-select-dropdown class="dropdown" [label]="optionsData.label" [options]="optionsData.options"
                 [selected]="optionsData.value" [multistate]="conf.multistate ?? false"
-                [countable]="conf.countable ?? false" [disabled]="optionsData.semanticOnly ?? false"
+                [countable]="conf.countable ?? false" [semanticOnly]="optionsData.semanticOnly ?? false"
                 [displayText]="optionsData.displayText" (selectionChange)="setAdvFilter(conf.key, $event)">
             </multi-select-dropdown>
         </div>
