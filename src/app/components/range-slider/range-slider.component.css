@@ -114,6 +114,8 @@
     position: absolute;
     top: 50%;
     height: 4px;
+    margin-left: -11px;
+    margin-right: -11px;
     transform: translateY(-50%);
     background-color: var(--danger-color, #dc3545);
     background-image: repeating-linear-gradient(
@@ -132,6 +134,8 @@
     position: absolute;
     top: 50%;
     height: 4px;
+    margin-left: -11px;
+    margin-right: -11px;
     transform: translateY(-50%);
     background-color: var(--info-color, #17a2b8);
     background-image: repeating-linear-gradient(
