@@ -67,7 +67,7 @@ import { CountOperator, MultiState, MultiStateSelection } from '../components/mu
  *   bv>=1000 bv<=2000              -> BV range 1000-2000
  */
 
-export type SemanticOperator = '=' | '!=' | '>' | '<' | '>=' | '<=';
+export type SemanticOperator = '=' | '!=' | '&=' | '>' | '<' | '>=' | '<=';
 
 export interface SemanticToken {
     field: string;           // The semantic key (e.g., 'tmm', 'faction')
@@ -109,7 +109,7 @@ export interface SemanticFilterState extends FilterState {
  */
 export interface WildcardPattern {
     pattern: string;    // Original pattern (e.g., "AC*")
-    state: 'or' | 'not';  // Include or exclude
+    state: 'or' | 'and' | 'not';  // Include (OR), require all (AND), or exclude (NOT)
 }
 
 /**
@@ -420,6 +420,38 @@ function parseValueWithQuantity(value: string): { name: string; constraint: Quan
 }
 
 /**
+ * Convert a quantity constraint to a range [min, max].
+ * For operators like > or >=, the max will be Infinity.
+ * For operators like < or <=, the min will be 0 or 1.
+ */
+function constraintToRange(constraint: QuantityConstraint): [number, number] {
+    const { operator, count, countMax } = constraint;
+    
+    // Range constraint
+    if (countMax !== undefined) {
+        return [count, countMax];
+    }
+    
+    // Single value or comparison operators
+    switch (operator) {
+        case '=':
+            return [count, count];
+        case '!=':
+            return [count, count];  // Will be added to exclude list
+        case '>':
+            return [count + 1, Infinity];
+        case '>=':
+            return [count, Infinity];
+        case '<':
+            return [0, count - 1];
+        case '<=':
+            return [0, count];
+        default:
+            return [count, count];
+    }
+}
+
+/**
  * Parse semantic query from input text.
  * Extracts filter expressions and returns remaining text search.
  */
@@ -452,8 +484,14 @@ export function parseSemanticQuery(input: string, gameSystem: GameSystem): Parse
                 cleanValue = rawValue.slice(1, -1);
             }
 
-            const values = parseValues(cleanValue);
+            const values = parseValues(cleanValue).filter(v => v.trim() !== '');
             const rawText = input.slice(i, endIndex);
+            
+            // Skip tokens with no valid values (e.g., "type=" with nothing after)
+            if (values.length === 0) {
+                i = endIndex;
+                continue;
+            }
 
             // Handle virtual keys by expanding them to multiple tokens
             if (isVirtual && field in VIRTUAL_SEMANTIC_KEYS) {
@@ -528,8 +566,12 @@ function tryParseFilter(
     
     // Match operator
     let operator: SemanticOperator | null = null;
+    const operatorStart = i;
     if (input.slice(i, i + 2) === '!=') {
         operator = '!=';
+        i += 2;
+    } else if (input.slice(i, i + 2) === '&=') {
+        operator = '&=';
         i += 2;
     } else if (input.slice(i, i + 2) === '>=') {
         operator = '>=';
@@ -549,6 +591,23 @@ function tryParseFilter(
     }
     
     if (!operator) return null; // No operator found
+    
+    // Validate operator for filter type
+    // Dropdown filters only support: =, !=, &=
+    // Range filters support all operators
+    // Virtual keys (like 'dmg') are treated as range filters
+    if (conf && conf.type === AdvFilterType.DROPDOWN) {
+        const validDropdownOperators: SemanticOperator[] = ['=', '!=', '&='];
+        if (!validDropdownOperators.includes(operator)) {
+            // Invalid operator for dropdown - don't parse as filter
+            return null;
+        }
+    }
+    
+    // &= is only valid for dropdown filters (multistate)
+    if (operator === '&=' && conf && conf.type !== AdvFilterType.DROPDOWN) {
+        return null;
+    }
     
     // Parse value, respecting quotes
     const valueStart = i;
@@ -575,8 +634,7 @@ function tryParseFilter(
         }
     }
     
-    if (i === valueStart) return null; // No value found
-    
+    // Allow empty value - caller will handle it (e.g., "type=" with no value)
     const rawValue = input.slice(valueStart, i);
     
     return {
@@ -757,9 +815,15 @@ export function tokensToFilterState(
                 const selection: MultiStateSelection = {};
                 const wildcardPatterns: WildcardPattern[] = [];
                 let semanticOnly = false;
+                
+                // For countable filters, collect all constraints per name first, then merge
+                const countableConstraints = new Map<string, {
+                    state: 'or' | 'and' | 'not';
+                    constraints: QuantityConstraint[];
+                }>();
 
                 for (const token of fieldTokens) {
-                    const state: 'or' | 'not' = token.operator === '!=' ? 'not' : 'or';
+                    const state: 'or' | 'and' | 'not' = token.operator === '!=' ? 'not' : (token.operator === '&=' ? 'and' : 'or');
 
                     for (const val of token.values) {
                         // Check if this is a wildcard pattern
@@ -770,41 +834,125 @@ export function tokensToFilterState(
                             // For countable filters, parse quantity constraint (e.g., "AC/2:>1")
                             const { name, constraint } = parseValueWithQuantity(val);
                             
-                            if (constraint) {
-                                // Has quantity constraint
-                                const existing = selection[name];
-                                if (existing && state === 'not') {
-                                    existing.state = 'not';
-                                } else if (!existing) {
-                                    selection[name] = {
-                                        name,
-                                        state,
-                                        count: constraint.count,
-                                        countOperator: constraint.operator,
-                                        countMax: constraint.countMax
-                                    };
-                                    // Only exact equality (:N or :=N) without range is representable in UI
-                                    if (constraint.operator !== '=' || constraint.countMax !== undefined) {
-                                        semanticOnly = true;
-                                    }
-                                }
+                            // Get or create constraint entry for this name
+                            let entry = countableConstraints.get(name);
+                            if (!entry) {
+                                entry = { state, constraints: [] };
+                                countableConstraints.set(name, entry);
                             } else {
-                                // No quantity constraint, default to count: 1
-                                if (selection[name] && state === 'not') {
-                                    selection[name].state = 'not';
-                                } else if (!selection[name]) {
-                                    selection[name] = { name, state, count: 1 };
+                                // Update state if this token has a different state
+                                // Priority: not > and > or
+                                if (state === 'not') {
+                                    entry.state = 'not';
+                                } else if (state === 'and' && entry.state === 'or') {
+                                    entry.state = 'and';
                                 }
                             }
+                            
+                            if (constraint) {
+                                entry.constraints.push(constraint);
+                            }
+                            // If no constraint, it means "has at least one" which is the default
                         } else {
                             // Regular value (non-countable)
-                            // If already exists as 'or' and we're adding as 'or', keep it
-                            // If adding as 'not', it overrides
-                            if (selection[val] && state === 'not') {
-                                selection[val].state = 'not';
-                            } else if (!selection[val]) {
+                            // If already exists, update state with priority: not > and > or
+                            if (selection[val]) {
+                                if (state === 'not') {
+                                    selection[val].state = 'not';
+                                } else if (state === 'and' && selection[val].state === 'or') {
+                                    selection[val].state = 'and';
+                                }
+                            } else {
                                 selection[val] = { name: val, state, count: 1 };
                             }
+                        }
+                    }
+                }
+                
+                // Convert collected countable constraints to selection entries
+                for (const [name, entry] of countableConstraints) {
+                    const constraints = entry.constraints;
+                    
+                    // Determine if this is a simple UI-representable case
+                    // UI can represent: no constraint (>=1) or single >= constraint
+                    const isUIRepresentable = constraints.length === 0 || 
+                        (constraints.length === 1 && constraints[0].operator === '>=');
+                    
+                    if (isUIRepresentable) {
+                        // Simple case - no merging needed
+                        if (constraints.length === 0) {
+                            // No constraint means "has at least one"
+                            selection[name] = {
+                                name,
+                                state: entry.state,
+                                count: 1
+                            };
+                        } else {
+                            // Single >= constraint
+                            const c = constraints[0];
+                            selection[name] = {
+                                name,
+                                state: entry.state,
+                                count: c.count,
+                                countOperator: '>='
+                            };
+                        }
+                    } else {
+                        // Complex case - need to merge constraints into ranges
+                        semanticOnly = true;
+                        
+                        const includeRanges: [number, number][] = [];
+                        const excludeRanges: [number, number][] = [];
+                        
+                        // If there are any include constraints, use them; otherwise implicit include is 1+
+                        let hasInclude = false;
+                        for (const c of constraints) {
+                            const range = constraintToRange(c);
+                            if (c.operator === '!=') {
+                                excludeRanges.push(range);
+                            } else {
+                                includeRanges.push(range);
+                                hasInclude = true;
+                            }
+                        }
+                        
+                        if (!hasInclude && excludeRanges.length > 0) {
+                            // Only exclusions, implicit include is 1+
+                            includeRanges.push([1, Infinity]);
+                        }
+                        
+                        const mergedIncludes = mergeAndSortRanges(includeRanges);
+                        const mergedExcludes = mergeAndSortRanges(excludeRanges);
+                        
+                        // Apply exclusions to includes to get effective ranges
+                        let effectiveRanges: [number, number][] = [];
+                        for (const incRange of mergedIncludes) {
+                            const segments = applyExclusionsToRange(incRange[0], incRange[1], mergedExcludes);
+                            effectiveRanges.push(...segments);
+                        }
+                        effectiveRanges = mergeAndSortRanges(effectiveRanges);
+                        
+                        // For single constraint cases, preserve the original operator
+                        if (constraints.length === 1) {
+                            const c = constraints[0];
+                            selection[name] = {
+                                name,
+                                state: entry.state,
+                                count: c.count,
+                                countOperator: c.operator,
+                                countMax: c.countMax,
+                                countIncludeRanges: mergedIncludes.length > 0 ? mergedIncludes : undefined,
+                                countExcludeRanges: mergedExcludes.length > 0 ? mergedExcludes : undefined
+                            };
+                        } else {
+                            // Multiple constraints - use effective ranges for display
+                            selection[name] = {
+                                name,
+                                state: entry.state,
+                                count: effectiveRanges[0]?.[0] ?? 1,
+                                countIncludeRanges: mergedIncludes.length > 0 ? mergedIncludes : undefined,
+                                countExcludeRanges: mergedExcludes.length > 0 ? mergedExcludes : undefined
+                            };
                         }
                     }
                 }

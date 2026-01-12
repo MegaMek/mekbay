@@ -880,6 +880,10 @@ export class UnitSearchComponent {
         this.dialogsService.createDialog(ShareSearchDialogComponent);
     }
 
+    openSemanticGuide(event: MouseEvent) {
+        event.stopPropagation();
+    }
+
     /* ------------------------------------------
      * Favorites overlay/menu
      */

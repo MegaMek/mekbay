@@ -84,7 +84,7 @@ export interface AdvFilterConfig {
 /** Wildcard pattern for dropdown filter matching */
 interface WildcardPattern {
     pattern: string;    // Pattern with * wildcards (e.g., "AC*")
-    state: 'or' | 'not';  // Include or exclude
+    state: 'or' | 'and' | 'not';  // Include (OR), require all (AND), or exclude (NOT)
 }
 
 interface FilterState {
@@ -207,14 +207,46 @@ function getProperty(obj: any, key?: string) {
 
 /**
  * Check if a unit's count satisfies a quantity constraint.
+ * Supports include/exclude ranges for merged constraints.
  */
 function checkQuantityConstraint(
     unitCount: number,
-    operator: CountOperator | undefined,
-    count: number,
-    countMax?: number
+    item: MultiStateOption
 ): boolean {
-    const op = operator ?? '=';
+    const { count, countOperator, countMax, countIncludeRanges, countExcludeRanges } = item;
+    
+    // If we have merged ranges, use those
+    if (countIncludeRanges || countExcludeRanges) {
+        // Check exclude ranges first
+        if (countExcludeRanges) {
+            for (const [min, max] of countExcludeRanges) {
+                if (unitCount >= min && unitCount <= max) {
+                    return false;  // Excluded
+                }
+            }
+        }
+        
+        // Check include ranges
+        if (countIncludeRanges && countIncludeRanges.length > 0) {
+            for (const [min, max] of countIncludeRanges) {
+                if (unitCount >= min && unitCount <= max) {
+                    return true;  // Included
+                }
+            }
+            return false;  // Not in any include range
+        }
+        
+        // Only excludes, no includes - implicit include is 1+
+        return unitCount >= 1;
+    }
+    
+    // Single constraint handling
+    const op = countOperator;
+    
+    // No operator means "at least N" (what UI does)
+    if (!op) {
+        return unitCount >= count;
+    }
     
     // Range constraint (count to countMax)
     if (countMax !== undefined) {
@@ -222,10 +254,10 @@ function checkQuantityConstraint(
         return op === '!=' ? !inRange : inRange;
     }
     
-    // Single value constraint
+    // Single value constraint with explicit operator
     switch (op) {
         case '=':
-            return unitCount >= count;  // For '=' we use >= to maintain backwards compatibility
+            return unitCount === count;  // Exact match
         case '!=':
             return unitCount !== count;
         case '>':
@@ -260,7 +292,8 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
 
     // Check if we need quantity counting (any non-default constraint)
     const needsQuantityCounting = [...orList, ...andList, ...notList].some(
-        item => item.count > 1 || item.countOperator || item.countMax !== undefined
+        item => item.count > 1 || item.countOperator || item.countMax !== undefined || 
+                item.countIncludeRanges || item.countExcludeRanges
     );
     const isComponentFilter = key === 'componentName';
 
@@ -294,6 +327,7 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
         // Check wildcard patterns
         if (hasWildcards) {
             const orPatterns = wildcardPatterns!.filter(p => p.state === 'or');
+            const andPatterns = wildcardPatterns!.filter(p => p.state === 'and');
             const notPatterns = wildcardPatterns!.filter(p => p.state === 'not');
             
             // Check NOT patterns - exclude if any value matches a NOT pattern
@@ -302,6 +336,19 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
                 for (const name of unitData.names) {
                     if (regex.test(name)) return false;
                 }
+            }
+            
+            // Check AND patterns - must have at least one match for EACH AND pattern
+            for (const p of andPatterns) {
+                const regex = wildcardToRegex(p.pattern);
+                let hasMatch = false;
+                for (const name of unitData.names) {
+                    if (regex.test(name)) {
+                        hasMatch = true;
+                        break;
+                    }
+                }
+                if (!hasMatch) return false;
             }
             
             // Check OR patterns - if we have OR wildcard patterns and no regular OR, need at least one match
@@ -331,7 +378,7 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
                     const unitCount = unitData.counts.get(item.name) || 0;
                     // For NOT, we exclude if the quantity constraint IS satisfied
                     // e.g., equipment!=AC/2:2 means exclude units with exactly 2 AC/2s
-                    if (checkQuantityConstraint(unitCount, item.countOperator, item.count, item.countMax)) {
+                    if (checkQuantityConstraint(unitCount, item)) {
                         return false;
                     }
                 } else {
@@ -348,7 +395,7 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
                 
                 if (needsQuantityCounting && unitData.counts) {
                     const unitCount = unitData.counts.get(item.name) || 0;
-                    if (!checkQuantityConstraint(unitCount, item.countOperator, item.count, item.countMax)) {
+                    if (!checkQuantityConstraint(unitCount, item)) {
                         return false;
                     }
                 }
@@ -363,7 +410,7 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
                 
                 if (needsQuantityCounting && unitData.counts) {
                     const unitCount = unitData.counts.get(item.name) || 0;
-                    if (checkQuantityConstraint(unitCount, item.countOperator, item.count, item.countMax)) {
+                    if (checkQuantityConstraint(unitCount, item)) {
                         hasMatch = true;
                         break;
                     }
@@ -1325,26 +1372,66 @@ export class UnitSearchFiltersService {
                             .filter(([_, sel]) => sel.state !== false);
                         
                         // Check for quantity constraints that can't be shown in UI
-                        // This includes != operator, ranges, or comparison operators other than =
-                        const hasAdvancedQuantity = activeSelections.some(([_, sel]) => 
-                            (sel.countOperator && sel.countOperator !== '=') || sel.countMax !== undefined
-                        );
+                        // UI can only represent: no operator (implicit >=1) or >= operator
+                        // Semantic-only: =, !=, >, <, <=, ranges, merged ranges
+                        const hasAdvancedQuantity = activeSelections.some(([_, sel]) => {
+                            // Has merged ranges → semantic-only
+                            if (sel.countIncludeRanges || sel.countExcludeRanges) return true;
+                            // Has countMax (range) → semantic-only
+                            if (sel.countMax !== undefined) return true;
+                            // Has operator that isn't >= → semantic-only
+                            if (sel.countOperator && sel.countOperator !== '>=') return true;
+                            return false;
+                        });
                         
                         if (hasAdvancedQuantity) {
                             semanticOnlyMultistate = true;
                             displayTextMultistate = activeSelections.map(([name, sel]) => {
                                 const prefix = sel.state === 'not' ? '!' : '';
                                 let suffix = '';
-                                if (sel.count > 1 || sel.countOperator || sel.countMax !== undefined) {
+                                
+                                // For single constraint, prefer showing original operator/count
+                                // Only use ranges for display when there are multiple merged constraints
+                                if (sel.countOperator && sel.countOperator !== '=') {
+                                    // Single constraint with operator - show as written
                                     if (sel.countMax !== undefined) {
+                                        // Range constraint like :3-5
                                         const rangePrefix = sel.countOperator === '!=' ? '!' : '';
                                         suffix = `:${rangePrefix}${sel.count}-${sel.countMax}`;
-                                    } else if (sel.countOperator && sel.countOperator !== '=') {
+                                    } else {
+                                        // Operator constraint like :>3 or :>=4
                                         suffix = `:${sel.countOperator}${sel.count}`;
-                                    } else if (sel.count > 1) {
-                                        suffix = `:${sel.count}`;
                                     }
+                                } else if (sel.countIncludeRanges || sel.countExcludeRanges) {
+                                    // Multiple merged constraints - use ranges for display
+                                    const parts: string[] = [];
+                                    if (sel.countIncludeRanges) {
+                                        for (const [min, max] of sel.countIncludeRanges) {
+                                            if (min === max) {
+                                                parts.push(`${min}`);
+                                            } else if (max === Infinity) {
+                                                parts.push(`>=${min}`);
+                                            } else {
+                                                parts.push(`${min}-${max}`);
+                                            }
+                                        }
+                                    }
+                                    if (sel.countExcludeRanges) {
+                                        for (const [min, max] of sel.countExcludeRanges) {
+                                            if (min === max) {
+                                                parts.push(`!${min}`);
+                                            } else {
+                                                parts.push(`!${min}-${max}`);
+                                            }
+                                        }
+                                    }
+                                    if (parts.length > 0) {
+                                        suffix = `:${parts.join(',')}`;
+                                    }
+                                } else if (sel.count > 1) {
+                                    suffix = `:${sel.count}`;
                                 }
+                                
                                 return prefix + name + suffix;
                             }).join(', ');
                         }
@@ -1417,9 +1504,13 @@ export class UnitSearchFiltersService {
                             .filter(([name, _]) => !availableOptionNames.has(name));
                         
                         // Check for quantity constraints that can't be shown in UI
-                        const hasAdvancedQuantity = activeSelections.some(([_, sel]) => 
-                            sel.countOperator && sel.countOperator !== '=' || sel.countMax !== undefined
-                        );
+                        // UI can only represent: no operator (implicit >=1) or >= operator
+                        const hasAdvancedQuantity = activeSelections.some(([_, sel]) => {
+                            if (sel.countIncludeRanges || sel.countExcludeRanges) return true;
+                            if (sel.countMax !== undefined) return true;
+                            if (sel.countOperator && sel.countOperator !== '>=') return true;
+                            return false;
+                        });
                         
                         if ((unavailableSelections.length > 0 && unavailableSelections.length === activeSelections.length) || hasAdvancedQuantity) {
                             // Semantic only mode - either unavailable values or advanced quantity constraints
@@ -1427,11 +1518,45 @@ export class UnitSearchFiltersService {
                             displayText = activeSelections.map(([name, sel]) => {
                                 const prefix = sel.state === 'not' ? '!' : '';
                                 let suffix = '';
-                                if (conf.countable && (sel.count > 1 || sel.countOperator || sel.countMax !== undefined)) {
-                                    if (sel.countMax !== undefined) {
-                                        suffix = `:${sel.count}-${sel.countMax}`;
-                                    } else if (sel.countOperator && sel.countOperator !== '=') {
-                                        suffix = `:${sel.countOperator}${sel.count}`;
+                                if (conf.countable) {
+                                    // For single constraint, prefer showing original operator/count
+                                    // Only use ranges for display when there are multiple merged constraints
+                                    if (sel.countOperator && sel.countOperator !== '=') {
+                                        // Single constraint with operator - show as written
+                                        if (sel.countMax !== undefined) {
+                                            // Range constraint like :3-5
+                                            const rangePrefix = sel.countOperator === '!=' ? '!' : '';
+                                            suffix = `:${rangePrefix}${sel.count}-${sel.countMax}`;
+                                        } else {
+                                            // Operator constraint like :>3 or :>=4
+                                            suffix = `:${sel.countOperator}${sel.count}`;
+                                        }
+                                    } else if (sel.countIncludeRanges || sel.countExcludeRanges) {
+                                        // Multiple merged constraints - use ranges for display
+                                        const parts: string[] = [];
+                                        if (sel.countIncludeRanges) {
+                                            for (const [min, max] of sel.countIncludeRanges) {
+                                                if (min === max) {
+                                                    parts.push(`${min}`);
+                                                } else if (max === Infinity) {
+                                                    parts.push(`>=${min}`);
+                                                } else {
+                                                    parts.push(`${min}-${max}`);
+                                                }
+                                            }
+                                        }
+                                        if (sel.countExcludeRanges) {
+                                            for (const [min, max] of sel.countExcludeRanges) {
+                                                if (min === max) {
+                                                    parts.push(`!${min}`);
+                                                } else {
+                                                    parts.push(`!${min}-${max}`);
+                                                }
+                                            }
+                                        }
+                                        if (parts.length > 0) {
+                                            suffix = `:${parts.join(',')}`;
+                                        }
                                     } else if (sel.count > 1) {
                                         suffix = `:${sel.count}`;
                                     }
@@ -2015,43 +2140,59 @@ export class UnitSearchFiltersService {
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             if (conf.multistate) {
                 const selection = value as MultiStateSelection;
-                const includeValues: string[] = [];
-                const excludeValues: string[] = [];
+                const orValues: string[] = [];
+                const andValues: string[] = [];
+                const notValues: string[] = [];
                 
                 for (const [name, sel] of Object.entries(selection)) {
-                    // Format value with quantity if countable and count > 1
-                    let formattedName = name;
+                    // Format: quote the name if needed, then append quantity suffix outside quotes
+                    const quotedName = this.formatSemanticValue(name);
+                    let quantitySuffix = '';
+                    
                     if (conf.countable && sel.count > 1) {
                         // Format with quantity suffix
+                        // UI spinner represents "at least N", so use >= unless there's a specific operator
                         if (sel.countOperator && sel.countOperator !== '=') {
-                            formattedName = `${name}:${sel.countOperator}${sel.count}`;
+                            quantitySuffix = `:${sel.countOperator}${sel.count}`;
                         } else if (sel.countMax !== undefined) {
-                            formattedName = `${name}:${sel.count}-${sel.countMax}`;
+                            quantitySuffix = `:${sel.count}-${sel.countMax}`;
+                        } else if (sel.countOperator === '=') {
+                            // Explicit exact match
+                            quantitySuffix = `:${sel.count}`;
                         } else {
-                            formattedName = `${name}:${sel.count}`;
+                            // No operator = UI spinner = "at least N"
+                            quantitySuffix = `:>=${sel.count}`;
                         }
                     } else if (conf.countable && sel.countOperator && sel.countOperator !== '=') {
                         // Non-equality operator with count 1
-                        formattedName = `${name}:${sel.countOperator}${sel.count}`;
+                        quantitySuffix = `:${sel.countOperator}${sel.count}`;
                     } else if (conf.countable && sel.countMax !== undefined) {
                         // Range constraint
-                        formattedName = `${name}:${sel.count}-${sel.countMax}`;
+                        quantitySuffix = `:${sel.count}-${sel.countMax}`;
                     }
                     
+                    const formattedName = quotedName + quantitySuffix;
+                    
                     if (sel.state === 'not') {
-                        excludeValues.push(formattedName);
-                    } else if (sel.state === 'or' || sel.state === 'and') {
-                        includeValues.push(formattedName);
+                        notValues.push(formattedName);
+                    } else if (sel.state === 'and') {
+                        andValues.push(formattedName);
+                    } else if (sel.state === 'or') {
+                        orValues.push(formattedName);
                     }
                 }
                 
-                if (includeValues.length > 0) {
-                    const formatted = includeValues.map(v => this.formatSemanticValue(v)).join(',');
-                    parts.push(`${semanticKey}=${formatted}`);
+                if (orValues.length > 0) {
+                    // OR uses = operator
+                    parts.push(`${semanticKey}=${orValues.join(',')}`);
                 }
-                if (excludeValues.length > 0) {
-                    const formatted = excludeValues.map(v => this.formatSemanticValue(v)).join(',');
-                    parts.push(`${semanticKey}!=${formatted}`);
+                if (andValues.length > 0) {
+                    // AND uses &= operator
+                    parts.push(`${semanticKey}&=${andValues.join(',')}`);
+                }
+                if (notValues.length > 0) {
+                    // NOT uses != operator
+                    parts.push(`${semanticKey}!=${notValues.join(',')}`);
                 }
             } else {
                 const values = value as string[];

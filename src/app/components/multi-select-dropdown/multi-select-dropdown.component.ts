@@ -60,6 +60,10 @@ export interface MultiStateOption {
     countOperator?: CountOperator;
     /** Max value for range constraints (e.g., count=2, countMax=5 means 2-5) */
     countMax?: number;
+    /** Include ranges for quantity (merged from multiple constraints) */
+    countIncludeRanges?: [number, number][];
+    /** Exclude ranges for quantity (merged from multiple constraints) */
+    countExcludeRanges?: [number, number][];
 }
 
 export interface MultiStateSelection {
