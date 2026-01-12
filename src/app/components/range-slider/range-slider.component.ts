@@ -65,6 +65,8 @@ export class RangeSliderComponent {
     disabled = input<boolean>(false);
     /** Display excluded ranges (values that are filtered OUT) */
     excludeRanges = input<[number, number][] | undefined>();
+    /** Display included ranges from semantic filters (highlighted in cyan) */
+    includeRanges = input<[number, number][] | undefined>();
     
     valueChange = output<[number, number]>();
 

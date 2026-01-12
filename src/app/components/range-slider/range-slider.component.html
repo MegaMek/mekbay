@@ -13,6 +13,16 @@
         }
     }
 
+    <!-- Include range indicators (semantic filters) -->
+    @if (includeRanges()?.length) {
+        @for (range of includeRanges(); track $index) {
+            <div class="slider-include" 
+                [style.left.%]="valueToPercent(range[0])" 
+                [style.right.%]="100 - valueToPercent(range[1])">
+            </div>
+        }
+    }
+
     <!-- Left Thumb -->
     <div #leftThumb class="thumb thumb-left" [style.left.%]="valueToPercent(left())"
         [class.active]="isLeftThumbActive()" [class.focused]="focusedThumb() === 'min'"

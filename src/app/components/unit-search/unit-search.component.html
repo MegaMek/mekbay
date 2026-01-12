@@ -336,6 +336,7 @@
                     [value]="optionsData.value" [availableRange]="optionsData.options"
                     [interacted]="optionsData.interacted" [curve]="conf.curve ?? 1" [stepSize]="conf.stepSize ?? 1"
                     [disabled]="optionsData.semanticOnly ?? false" [excludeRanges]="optionsData.excludeRanges"
+                    [includeRanges]="optionsData.includeRanges"
                     (valueChange)="setAdvFilter(conf.key, $event)">
                 </range-slider>
             </div>

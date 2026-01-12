@@ -127,3 +127,21 @@
     pointer-events: none;
 }
 
+/* Include range indicator (semantic filter includes) */
+.slider-include {
+    position: absolute;
+    top: 50%;
+    height: 4px;
+    transform: translateY(-50%);
+    background-color: var(--info-color, #17a2b8);
+    background-image: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 2px,
+        rgba(255, 255, 255, 0.3) 2px,
+        rgba(255, 255, 255, 0.3) 4px
+    );
+    z-index: 2;
+    pointer-events: none;
+}
+

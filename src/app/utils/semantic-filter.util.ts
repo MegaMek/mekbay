@@ -100,8 +100,28 @@ export interface SemanticFilterState extends FilterState {
         excludeRanges?: [number, number][];  // For range filters: multiple exclude ranges
         displayText?: string;                // For range filters: formatted effective ranges (e.g., "0-10, 20-30")
         semanticOnly?: boolean;              // True if this filter can't be shown in UI
+        wildcardPatterns?: WildcardPattern[];  // For dropdown filters: wildcard patterns (e.g., "AC*")
     };
 }
+
+/**
+ * Represents a wildcard pattern for dropdown filter matching.
+ */
+export interface WildcardPattern {
+    pattern: string;    // Original pattern (e.g., "AC*")
+    state: 'or' | 'not';  // Include or exclude
+}
+
+/**
+ * Virtual semantic keys that map to multiple actual filters.
+ * For example, 'dmg' maps to dmgS, dmgM, dmgL, dmgE.
+ */
+const VIRTUAL_SEMANTIC_KEYS: Record<string, { keys: string[], format: 'slash' }> = {
+    'dmg': { 
+        keys: ['dmgs', 'dmgm', 'dmgl', 'dmge'], 
+        format: 'slash' 
+    }
+};
 
 // Build a lookup map from semanticKey to config
 function buildSemanticKeyMap(gameSystem: GameSystem): Map<string, AdvFilterConfig> {
@@ -318,23 +338,25 @@ export function parseSemanticQuery(input: string, gameSystem: GameSystem): Parse
     let match: RegExpExecArray | null;
 
     // First pass: find all potential filter expressions
-    const matches: Array<{ match: RegExpExecArray; isFilter: boolean }> = [];
+    const matches: Array<{ match: RegExpExecArray; isFilter: boolean; isVirtual: boolean }> = [];
 
     while ((match = tokenRegex.exec(input)) !== null) {
         const field = match[1].toLowerCase();
 
-        // Check if this field exists in our semantic map
+        // Check if this field exists in our semantic map OR is a virtual key
         const conf = semanticKeyMap.get(field);
+        const isVirtual = field in VIRTUAL_SEMANTIC_KEYS;
 
         matches.push({
             match,
-            isFilter: !!conf
+            isFilter: !!conf || isVirtual,
+            isVirtual
         });
     }
 
     // Reset and rebuild with proper text extraction
     lastIndex = 0;
-    for (const { match: m, isFilter } of matches) {
+    for (const { match: m, isFilter, isVirtual } of matches) {
         // Add text before this match
         if (m.index > lastIndex) {
             const textBefore = input.slice(lastIndex, m.index).trim();
@@ -357,12 +379,32 @@ export function parseSemanticQuery(input: string, gameSystem: GameSystem): Parse
 
             const values = parseValues(cleanValue);
 
-            tokens.push({
-                field,
-                operator,
-                values,
-                rawText: m[0]
-            });
+            // Handle virtual keys by expanding them to multiple tokens
+            if (isVirtual && field in VIRTUAL_SEMANTIC_KEYS) {
+                const virtualConfig = VIRTUAL_SEMANTIC_KEYS[field];
+                if (virtualConfig.format === 'slash') {
+                    // Parse slash-separated values: dmg=3/2/1 or dmg=3/*/1
+                    const parts = cleanValue.split('/');
+                    for (let i = 0; i < virtualConfig.keys.length && i < parts.length; i++) {
+                        const part = parts[i].trim();
+                        if (part === '*' || part === '') continue; // Skip wildcards
+                        
+                        tokens.push({
+                            field: virtualConfig.keys[i],
+                            operator,
+                            values: [part],
+                            rawText: m[0]
+                        });
+                    }
+                }
+            } else {
+                tokens.push({
+                    field,
+                    operator,
+                    values,
+                    rawText: m[0]
+                });
+            }
         } else {
             // Not a recognized filter, treat as text search
             textParts.push(m[0]);
@@ -422,31 +464,33 @@ export function tokensToFilterState(
             let comparisonMax = totalRange[1];
 
             for (const token of fieldTokens) {
-                const value = token.values[0]; // Range filters use first value
-
                 if (token.operator === '=' || token.operator === '!=') {
-                    // Check if value is a range (e.g., "2-5") - only for = and !=
-                    const range = parseRange(value);
-                    if (range) {
-                        if (token.operator === '=') {
-                            includeRanges.push(range);
-                        } else {
-                            excludeRanges.push(range);
+                    // For = and != operators, support comma-separated values (already parsed into token.values)
+                    for (const value of token.values) {
+                        // Check if value is a range (e.g., "2-5") - only for = and !=
+                        const range = parseRange(value);
+                        if (range) {
+                            if (token.operator === '=') {
+                                includeRanges.push(range);
+                            } else {
+                                excludeRanges.push(range);
+                            }
+                            continue;
                         }
-                        continue;
-                    }
 
-                    // Parse as single number (treat as single-value range)
-                    const num = parseFloat(value);
-                    if (isNaN(num)) continue;
+                        // Parse as single number (treat as single-value range)
+                        const num = parseFloat(value);
+                        if (isNaN(num)) continue;
 
-                    if (token.operator === '=') {
-                        includeRanges.push([num, num]);
-                    } else {
-                        excludeValues.push(num);
+                        if (token.operator === '=') {
+                            includeRanges.push([num, num]);
+                        } else {
+                            excludeValues.push(num);
+                        }
                     }
                 } else {
-                    // Comparison operators (>, <, >=, <=)
+                    // Comparison operators (>, <, >=, <=) - use first value only
+                    const value = token.values[0];
                     hasComparisonOps = true;
                     const num = parseFloat(value);
                     if (isNaN(num)) continue;
@@ -541,45 +585,63 @@ export function tokensToFilterState(
 
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             if (conf.multistate) {
-                // Handle multistate dropdowns (supports include/exclude)
+                // Handle multistate dropdowns (supports include/exclude and wildcards)
                 const selection: MultiStateSelection = {};
+                const wildcardPatterns: WildcardPattern[] = [];
 
                 for (const token of fieldTokens) {
-                    const state: MultiState = token.operator === '!=' ? 'not' : 'or';
+                    const state: 'or' | 'not' = token.operator === '!=' ? 'not' : 'or';
 
                     for (const val of token.values) {
-                        // If already exists as 'or' and we're adding as 'or', keep it
-                        // If adding as 'not', it overrides
-                        if (selection[val] && state === 'not') {
-                            selection[val].state = 'not';
-                        } else if (!selection[val]) {
-                            selection[val] = { name: val, state, count: 1 };
+                        // Check if this is a wildcard pattern
+                        if (val.includes('*')) {
+                            wildcardPatterns.push({ pattern: val, state });
+                        } else {
+                            // Regular value
+                            // If already exists as 'or' and we're adding as 'or', keep it
+                            // If adding as 'not', it overrides
+                            if (selection[val] && state === 'not') {
+                                selection[val].state = 'not';
+                            } else if (!selection[val]) {
+                                selection[val] = { name: val, state, count: 1 };
+                            }
                         }
                     }
                 }
 
-                if (Object.keys(selection).length > 0) {
+                if (Object.keys(selection).length > 0 || wildcardPatterns.length > 0) {
                     filterState[conf.key] = {
                         value: selection,
-                        interactedWith: true
+                        interactedWith: true,
+                        wildcardPatterns: wildcardPatterns.length > 0 ? wildcardPatterns : undefined,
+                        semanticOnly: wildcardPatterns.length > 0 ? true : undefined
                     };
                 }
 
             } else {
                 // Handle regular dropdowns (only include, no exclude)
                 const values: string[] = [];
+                const wildcardPatterns: WildcardPattern[] = [];
 
                 for (const token of fieldTokens) {
                     if (token.operator === '=') {
-                        values.push(...token.values);
+                        for (const val of token.values) {
+                            if (val.includes('*')) {
+                                wildcardPatterns.push({ pattern: val, state: 'or' });
+                            } else {
+                                values.push(val);
+                            }
+                        }
                     }
                     // != for non-multistate dropdowns is not supported in UI
                 }
 
-                if (values.length > 0) {
+                if (values.length > 0 || wildcardPatterns.length > 0) {
                     filterState[conf.key] = {
                         value: [...new Set(values)], // Deduplicate
-                        interactedWith: true
+                        interactedWith: true,
+                        wildcardPatterns: wildcardPatterns.length > 0 ? wildcardPatterns : undefined,
+                        semanticOnly: wildcardPatterns.length > 0 ? true : undefined
                     };
                 }
             }

@@ -77,15 +77,25 @@ export interface AdvFilterConfig {
     countable?: boolean; // if true, show amount next to options
     stepSize?: number; // for range sliders, defines the step size
     semanticKey?: string; // Simplified key for semantic filter mode (e.g., 'tmm' instead of 'as.TMM')
+    invisible?: boolean; // If true, this filter is only available via semantic mode (not shown in UI)
+    textMatch?: boolean; // If true, this filter uses substring matching instead of exact match
+}
+
+/** Wildcard pattern for dropdown filter matching */
+interface WildcardPattern {
+    pattern: string;    // Pattern with * wildcards (e.g., "AC*")
+    state: 'or' | 'not';  // Include or exclude
 }
 
 interface FilterState {
     [key: string]: {
         value: any;
         interactedWith: boolean;
+        includeRanges?: [number, number][];  // For range filters: specific ranges to include (OR logic)
         excludeRanges?: [number, number][];  // For range filters: ranges to exclude (semantic-only)
         displayText?: string;                // For range filters: formatted effective ranges (e.g., "0-3, 5-99")
         semanticOnly?: boolean;              // True if this filter can't be shown in UI
+        wildcardPatterns?: WildcardPattern[];  // For dropdown filters: wildcard patterns
     };
 }
 
@@ -106,6 +116,7 @@ type RangeFilterOptions = {
     interacted: boolean;
     curve?: number;
     semanticOnly?: boolean;  // True if this filter has semantic-only constraints
+    includeRanges?: [number, number][];  // Semantic include ranges (for display)
     excludeRanges?: [number, number][];  // Ranges to exclude (for display/filtering)
     displayText?: string;  // Formatted effective ranges (e.g., "0-3, 5-99")
 };
@@ -163,6 +174,18 @@ function getMergedTags(unit: Unit): string[] {
     return Array.from(new Set([...chassisTags, ...nameTags]));
 }
 
+/**
+ * Convert a wildcard pattern (e.g., "AC*" or "*/3/*") to a RegExp.
+ * Supports * as a wildcard for any characters.
+ */
+function wildcardToRegex(pattern: string): RegExp {
+    // Escape special regex characters except *
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+    // Replace * with .*
+    const regexStr = '^' + escaped.replace(/\*/g, '.*') + '$';
+    return new RegExp(regexStr, 'i'); // Case insensitive
+}
+
 function getProperty(obj: any, key?: string) {
     if (!obj || !key) return undefined;
     // Special handling for _tags: merge _nameTags and _chassisTags
@@ -180,7 +203,7 @@ function getProperty(obj: any, key?: string) {
     return cur;
 }
 
-function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiStateSelection): Unit[] {
+function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiStateSelection, wildcardPatterns?: WildcardPattern[]): Unit[] {
     const orList: Array<{ name: string, count: number }> = [];
     const andList: Array<{ name: string, count: number }> = [];
     const notSet = new Set<string>();
@@ -193,7 +216,8 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
     }
 
     // Early return if no filters
-    if (orList.length === 0 && andList.length === 0 && notSet.size === 0) {
+    const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
+    if (orList.length === 0 && andList.length === 0 && notSet.size === 0 && !hasWildcards) {
         return units;
     }
 
@@ -228,6 +252,36 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
                     }
                 }
                 unitData.counts = counts;
+            }
+        }
+
+        // Check wildcard patterns
+        if (hasWildcards) {
+            const orPatterns = wildcardPatterns!.filter(p => p.state === 'or');
+            const notPatterns = wildcardPatterns!.filter(p => p.state === 'not');
+            
+            // Check NOT patterns - exclude if any value matches a NOT pattern
+            for (const p of notPatterns) {
+                const regex = wildcardToRegex(p.pattern);
+                for (const name of unitData.names) {
+                    if (regex.test(name)) return false;
+                }
+            }
+            
+            // Check OR patterns - if we have OR wildcard patterns and no regular OR, need at least one match
+            if (orPatterns.length > 0 && orList.length === 0) {
+                let hasMatch = false;
+                for (const p of orPatterns) {
+                    const regex = wildcardToRegex(p.pattern);
+                    for (const name of unitData.names) {
+                        if (regex.test(name)) {
+                            hasMatch = true;
+                            break;
+                        }
+                    }
+                    if (hasMatch) break;
+                }
+                if (!hasMatch) return false;
             }
         }
 
@@ -332,6 +386,12 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     { key: 'as.dmg._dmgE', semanticKey: 'dmge', label: 'Damage (Extreme)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.Arm', semanticKey: 'a', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
     { key: 'as.Str', semanticKey: 's', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+
+    /* Invisible filters (semantic mode only) */
+    { key: 'name', semanticKey: 'name', label: 'Name', type: AdvFilterType.DROPDOWN, invisible: true, textMatch: true },
+    { key: 'id', semanticKey: 'id', label: 'ID', type: AdvFilterType.RANGE, invisible: true },
+    { key: 'chassis', semanticKey: 'chassis', label: 'Chassis', type: AdvFilterType.DROPDOWN, invisible: true, textMatch: true },
+    { key: 'model', semanticKey: 'model', label: 'Model', type: AdvFilterType.DROPDOWN, invisible: true, textMatch: true },
 ];
 
 export const SORT_OPTIONS: SortOption[] = [
@@ -399,30 +459,57 @@ export class UnitSearchFiltersService {
     /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
     readonly tagsVersion = signal(0);
 
-    /** Whether semantic filter mode is enabled */
-    readonly useSemanticFilters = computed(() => this.optionsService.options().useSemanticFilters);
+    /** Whether to automatically convert UI filter changes to semantic text */
+    readonly autoConvertToSemantic = computed(() => 
+        this.optionsService.options().automaticallyConvertFiltersToSemantic
+    );
 
-    /** Parsed semantic query when semantic mode is enabled */
+    /** 
+     * Flag to prevent feedback loops when programmatically updating search text.
+     * Non-reactive to avoid triggering recomputation.
+     */
+    private isSyncingToText = false;
+
+    /** Parsed semantic query */
     private readonly semanticParsed = computed((): ParsedSemanticQuery | null => {
-        if (!this.useSemanticFilters()) return null;
         return parseSemanticQuery(this.searchText(), this.gameService.currentGameSystem());
     });
 
     /** 
-     * Effective text search - in semantic mode, this is the extracted text portion;
-     * in normal mode, this is the full searchText.
+     * Effective text search - extracts the text portion from semantic query.
      */
     readonly effectiveTextSearch = computed(() => {
         const parsed = this.semanticParsed();
-        if (parsed) {
-            return parsed.textSearch;
-        }
-        return this.searchText();
+        return parsed?.textSearch ?? this.searchText();
     });
 
     /**
-     * Semantic filter state derived from parsed tokens.
-     * Only populated when semantic mode is enabled.
+     * Set of filter keys that currently have semantic representation in the search text.
+     * Used to determine which filters are "linked" (UI changes should update text).
+     */
+    readonly semanticFilterKeys = computed((): Set<string> => {
+        const parsed = this.semanticParsed();
+        if (!parsed || parsed.tokens.length === 0) return new Set();
+        
+        const keys = new Set<string>();
+        const gameSystem = this.gameService.currentGameSystem();
+        
+        for (const token of parsed.tokens) {
+            // Find the config for this semantic key
+            const conf = ADVANCED_FILTERS.find(f => 
+                (f.semanticKey || f.key) === token.field &&
+                (!f.game || f.game === gameSystem)
+            );
+            if (conf) {
+                keys.add(conf.key);
+            }
+        }
+        return keys;
+    });
+
+    /**
+     * Semantic filter state derived from parsed tokens in the search text.
+     * This is ALWAYS computed - semantic text is the source of truth for filters it contains.
      */
     private readonly semanticFilterState = computed((): FilterState => {
         const parsed = this.semanticParsed();
@@ -438,18 +525,31 @@ export class UnitSearchFiltersService {
 
     /**
      * Effective filter state - combines manual filterState with semantic filters.
-     * Semantic filters override manual filters for the same keys.
+     * - For filters in semantic text: semantic state is used (it's the source of truth)
+     * - For filters only in UI: filterState is used
+     * - UI filterState for linked filters is kept in sync for display purposes
      */
     readonly effectiveFilterState = computed((): FilterState => {
         const manual = this.filterState();
         const semantic = this.semanticFilterState();
+        const semanticKeys = this.semanticFilterKeys();
         
-        if (!this.useSemanticFilters() || Object.keys(semantic).length === 0) {
-            return manual;
+        // Start with manual filters that are NOT in semantic text
+        const result: FilterState = {};
+        
+        for (const [key, state] of Object.entries(manual)) {
+            if (!semanticKeys.has(key)) {
+                // This filter is UI-only, use it as-is
+                result[key] = state;
+            }
         }
         
-        // Semantic filters take precedence
-        return { ...manual, ...semantic };
+        // Add all semantic filters - they take precedence
+        for (const [key, state] of Object.entries(semantic)) {
+            result[key] = state;
+        }
+        
+        return result;
     });
 
     constructor() {
@@ -772,32 +872,83 @@ export class UnitSearchFiltersService {
             if (!filterState || !filterState.interactedWith) continue;
 
             const val = filterState.value;
+            const wildcardPatterns = filterState.wildcardPatterns;
 
             if (conf.type === AdvFilterType.DROPDOWN && conf.multistate && val && typeof val === 'object') {
                 if (!conf.external) {
-                    results = filterUnitsByMultiState(results, conf.key, val);
+                    results = filterUnitsByMultiState(results, conf.key, val, wildcardPatterns);
                     continue;
                 }
             }
 
-            if (conf.type === AdvFilterType.DROPDOWN && Array.isArray(val) && val.length > 0) {
-                results = results.filter(u => {
-                    const v = getProperty(u, conf.key);
-                    if (Array.isArray(v)) {
-                        return v.some((vv: any) => val.includes(vv));
-                    }
-                    return val.includes(v);
-                });
+            // Handle text matching filters (invisible filters like name, chassis, model)
+            if (conf.type === AdvFilterType.DROPDOWN && conf.textMatch && val) {
+                const searchTerms: string[] = Array.isArray(val) ? val : (typeof val === 'object' ? Object.keys(val) : [String(val)]);
+                if (searchTerms.length > 0) {
+                    results = results.filter(u => {
+                        const unitValue = getProperty(u, conf.key);
+                        if (!unitValue) return false;
+                        const unitStr = String(unitValue).toLowerCase();
+                        // Any of the search terms must match (substring, case-insensitive)
+                        return searchTerms.some(term => unitStr.includes(term.toLowerCase()));
+                    });
+                }
+                continue;
+            }
+
+            if (conf.type === AdvFilterType.DROPDOWN && (Array.isArray(val) || wildcardPatterns?.length)) {
+                // Handle regular dropdown with possible wildcards
+                const hasRegularValues = Array.isArray(val) && val.length > 0;
+                const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
+                
+                if (hasRegularValues || hasWildcards) {
+                    results = results.filter(u => {
+                        const v = getProperty(u, conf.key);
+                        const unitValues = Array.isArray(v) ? v : [v];
+                        
+                        // Check regular values first
+                        if (hasRegularValues) {
+                            for (const uv of unitValues) {
+                                if (val.includes(uv)) return true;
+                            }
+                        }
+                        
+                        // Check wildcard patterns
+                        if (hasWildcards) {
+                            for (const p of wildcardPatterns!) {
+                                if (p.state === 'or') {
+                                    const regex = wildcardToRegex(p.pattern);
+                                    for (const uv of unitValues) {
+                                        if (uv && regex.test(String(uv))) return true;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        return false;
+                    });
+                }
                 continue;
             }
 
             if (conf.type === AdvFilterType.RANGE && Array.isArray(val)) {
                 const excludeRanges = filterState.excludeRanges;
+                const includeRanges = filterState.includeRanges;
                 
                 // Helper function to check if value is in any exclude range
                 const isExcluded = (v: number): boolean => {
                     if (!excludeRanges) return false;
                     return excludeRanges.some(([exMin, exMax]) => v >= exMin && v <= exMax);
+                };
+
+                // Helper function to check if value is in any include range (when specified)
+                const isIncluded = (v: number): boolean => {
+                    if (!includeRanges) {
+                        // No specific include ranges, use the min/max from value
+                        return v >= val[0] && v <= val[1];
+                    }
+                    // Check if value is in any of the include ranges
+                    return includeRanges.some(([incMin, incMax]) => v >= incMin && v <= incMax);
                 };
                 
                 // Special handling for BV range to use adjusted values
@@ -805,13 +956,13 @@ export class UnitSearchFiltersService {
                     results = results.filter(u => {
                         const adjustedBV = this.getAdjustedBV(u);
                         if (isExcluded(adjustedBV)) return false;
-                        return adjustedBV >= val[0] && adjustedBV <= val[1];
+                        return isIncluded(adjustedBV);
                     });
                 } else if (conf.key === 'as.PV') {
                     results = results.filter(u => {
                         const adjustedPV = this.getAdjustedPV(u);
                         if (isExcluded(adjustedPV)) return false;
-                        return adjustedPV >= val[0] && adjustedPV <= val[1];
+                        return isIncluded(adjustedPV);
                     });
                 } else {
                     results = results.filter(u => {
@@ -821,7 +972,7 @@ export class UnitSearchFiltersService {
                             return false; // Ignore this unit if it has an ignored value
                         }
                         if (isExcluded(unitValue)) return false;
-                        return unitValue != null && unitValue >= val[0] && unitValue <= val[1];
+                        return unitValue != null && isIncluded(unitValue);
                     });
                 }
                 continue;
@@ -931,6 +1082,9 @@ export class UnitSearchFiltersService {
             .map(([name, _]) => name);
 
         for (const conf of ADVANCED_FILTERS) {
+            // Skip invisible filters (they're only available via semantic mode)
+            if (conf.invisible) continue;
+
             let label = conf.label;
             if (conf.key === 'internal') {
                 label = this.dynamicInternalLabel();
@@ -1181,6 +1335,7 @@ export class UnitSearchFiltersService {
                 // Get semantic-only properties from filter state
                 const filterStateEntry = state[conf.key];
                 const semanticOnly = filterStateEntry?.semanticOnly ?? false;
+                const includeRanges = filterStateEntry?.includeRanges;
                 const excludeRanges = filterStateEntry?.excludeRanges;
                 const displayText = filterStateEntry?.displayText;
 
@@ -1192,6 +1347,7 @@ export class UnitSearchFiltersService {
                     value: currentValue,
                     interacted: state[conf.key]?.interactedWith ?? false,
                     semanticOnly,
+                    includeRanges,
                     excludeRanges,
                     displayText
                 };
@@ -1218,7 +1374,7 @@ export class UnitSearchFiltersService {
                 // Use UrlStateService to get initial URL params (captured before any routing effects)
                 let hasFilters = false;
                 
-                // Load search query
+                // Load search query (may contain semantic filters)
                 const searchParam = this.urlStateService.getInitialParam('q');
                 if (searchParam) {
                     this.searchText.set(decodeURIComponent(searchParam));
@@ -1236,7 +1392,7 @@ export class UnitSearchFiltersService {
                     this.selectedSortDirection.set(sortDirParam);
                 }
 
-                // Load filters
+                // Load UI filters from filters param (these are separate from semantic filters in q)
                 const filtersParam = this.urlStateService.getInitialParam('filters');
                 if (filtersParam) {
                     hasFilters = true;
@@ -1351,6 +1507,7 @@ export class UnitSearchFiltersService {
     queryParameters = computed(() => {
         const search = this.searchText();
         const filterState = this.filterState();
+        const semanticKeys = this.semanticFilterKeys();
         const selectedSort = this.selectedSort();
         const selectedSortDirection = this.selectedSortDirection();
         const expanded = this.expandedView();
@@ -1359,10 +1516,18 @@ export class UnitSearchFiltersService {
 
         const queryParams: any = {};
 
-        // Add search query if present
+        // Add search query if present (contains semantic filters)
         queryParams.q = search.trim() ? encodeURIComponent(search.trim()) : null;
-        // Add filters if any are active
-        const filtersParam = this.generateCompactFiltersParam(filterState);
+        
+        // UI-only filters (not in semantic text) are saved in filters param
+        // Exclude any filters that are represented in semantic text
+        const uiOnlyFilters: FilterState = {};
+        for (const [key, state] of Object.entries(filterState)) {
+            if (!semanticKeys.has(key)) {
+                uiOnlyFilters[key] = state;
+            }
+        }
+        const filtersParam = this.generateCompactFiltersParam(uiOnlyFilters);
         queryParams.filters = filtersParam ? filtersParam : null;
 
         // Add sort if not default
@@ -1561,16 +1726,152 @@ export class UnitSearchFiltersService {
             }
         }
 
-        this.filterState.update(current => ({
-            ...current,
-            [key]: { value, interactedWith: interacted }
-        }));
+        // Determine if we should sync this filter to semantic text:
+        // 1. If autoConvertToSemantic is enabled: always sync
+        // 2. If this filter already exists in semantic text: sync to keep them linked
+        const shouldSyncToText = this.autoConvertToSemantic() || this.semanticFilterKeys().has(key);
 
-        // In semantic mode, sync the search text to reflect the updated filter state
-        if (this.useSemanticFilters()) {
-            // Use setTimeout to allow the filterState signal to propagate first
-            setTimeout(() => this.syncSearchTextFromFilters(), 0);
+        if (shouldSyncToText) {
+            // Update the semantic text for this specific filter
+            this.updateSemanticTextForFilter(key, value, interacted, conf);
+        } else {
+            // Just update filterState (UI-only filter)
+            this.filterState.update(current => ({
+                ...current,
+                [key]: { value, interactedWith: interacted }
+            }));
         }
+    }
+
+    /**
+     * Update the semantic text to reflect a filter value change.
+     * This replaces/adds/removes the token for the specified filter key.
+     */
+    private updateSemanticTextForFilter(key: string, value: any, interacted: boolean, conf: AdvFilterConfig): void {
+        if (this.isSyncingToText) return; // Prevent re-entry
+        
+        this.isSyncingToText = true;
+        try {
+            const semanticKey = conf.semanticKey || conf.key;
+            const currentText = this.searchText();
+            const gameSystem = this.gameService.currentGameSystem();
+            
+            // Parse current query to get text search and existing tokens
+            const parsed = parseSemanticQuery(currentText, gameSystem);
+            
+            // Filter out any existing tokens for this filter key
+            const otherTokens = parsed.tokens.filter(t => {
+                const tokenConf = ADVANCED_FILTERS.find(f => 
+                    (f.semanticKey || f.key) === t.field &&
+                    (!f.game || f.game === gameSystem)
+                );
+                return tokenConf?.key !== key;
+            });
+            
+            // Build new semantic text with updated filter
+            let newTokenText = '';
+            
+            if (interacted) {
+                // Generate the new token text for this filter
+                newTokenText = this.generateSemanticTokenText(key, value, conf);
+            }
+            
+            // Rebuild the search text: text search + other tokens + new token (if any)
+            const parts: string[] = [];
+            
+            if (parsed.textSearch) {
+                parts.push(parsed.textSearch);
+            }
+            
+            // Add back other filter tokens
+            for (const token of otherTokens) {
+                parts.push(token.rawText);
+            }
+            
+            // Add the new/updated token
+            if (newTokenText) {
+                parts.push(newTokenText);
+            }
+            
+            this.searchText.set(parts.join(' ').trim());
+            
+            // Also clear the filterState for this key since semantic is now the source of truth
+            this.filterState.update(current => {
+                const updated = { ...current };
+                delete updated[key];
+                return updated;
+            });
+        } finally {
+            this.isSyncingToText = false;
+        }
+    }
+
+    /**
+     * Generate semantic token text for a filter value.
+     * E.g., for PV range [50, 100] with total [0, 200], generates "pv>=50 pv<=100" or "pv=50-100"
+     */
+    private generateSemanticTokenText(key: string, value: any, conf: AdvFilterConfig): string {
+        const semanticKey = conf.semanticKey || conf.key;
+        const parts: string[] = [];
+        
+        if (conf.type === AdvFilterType.RANGE) {
+            const [min, max] = value as [number, number];
+            const totalRange = this.totalRangesCache[key] || [0, 100];
+            
+            if (min === max) {
+                parts.push(`${semanticKey}=${min}`);
+            } else if (min !== totalRange[0] && max !== totalRange[1]) {
+                parts.push(`${semanticKey}=${min}-${max}`);
+            } else if (min !== totalRange[0]) {
+                parts.push(`${semanticKey}>=${min}`);
+            } else if (max !== totalRange[1]) {
+                parts.push(`${semanticKey}<=${max}`);
+            }
+            // If both match total range, nothing to add
+            
+        } else if (conf.type === AdvFilterType.DROPDOWN) {
+            if (conf.multistate) {
+                const selection = value as MultiStateSelection;
+                const includeValues: string[] = [];
+                const excludeValues: string[] = [];
+                
+                for (const [name, sel] of Object.entries(selection)) {
+                    if (sel.state === 'not') {
+                        excludeValues.push(name);
+                    } else if (sel.state === 'or' || sel.state === 'and') {
+                        includeValues.push(name);
+                    }
+                }
+                
+                if (includeValues.length > 0) {
+                    const formatted = includeValues.map(v => this.formatSemanticValue(v)).join(',');
+                    parts.push(`${semanticKey}=${formatted}`);
+                }
+                if (excludeValues.length > 0) {
+                    const formatted = excludeValues.map(v => this.formatSemanticValue(v)).join(',');
+                    parts.push(`${semanticKey}!=${formatted}`);
+                }
+            } else {
+                const values = value as string[];
+                if (values.length > 0) {
+                    const formatted = values.map(v => this.formatSemanticValue(v)).join(',');
+                    parts.push(`${semanticKey}=${formatted}`);
+                }
+            }
+        }
+        
+        return parts.join(' ');
+    }
+
+    /**
+     * Format a value for semantic text output, adding quotes if needed.
+     */
+    private formatSemanticValue(value: string): string {
+        if (/[\s,=!<>]/.test(value)) {
+            const escaped = value.replace(/"/g, '\\"');
+            return `"${escaped}"`;
+        }
+        return value;
     }
 
     public resetFilters() {
@@ -1595,7 +1896,7 @@ export class UnitSearchFiltersService {
 
     /**
      * Convert current filter state to semantic text.
-     * Used to sync the search input when filters are changed via UI in semantic mode.
+     * @deprecated Use updateSemanticTextForFilter for targeted updates instead.
      */
     public getSemanticText(): string {
         return filterStateToSemanticText(
@@ -1608,12 +1909,17 @@ export class UnitSearchFiltersService {
 
     /**
      * Update search text with semantic text representation of current filters.
-     * Only works when semantic mode is enabled.
+     * @deprecated Use updateSemanticTextForFilter for targeted updates instead.
      */
     public syncSearchTextFromFilters(): void {
-        if (!this.useSemanticFilters()) return;
-        const semanticText = this.getSemanticText();
-        this.searchText.set(semanticText);
+        if (this.isSyncingToText) return;
+        this.isSyncingToText = true;
+        try {
+            const semanticText = this.getSemanticText();
+            this.searchText.set(semanticText);
+        } finally {
+            this.isSyncingToText = false;
+        }
     }
 
     // Collect all unique tags from all units (merged name + chassis)
