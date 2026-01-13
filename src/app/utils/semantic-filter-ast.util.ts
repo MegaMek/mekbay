@@ -53,7 +53,7 @@
 
 import { GameSystem } from '../models/common.model';
 import { ADVANCED_FILTERS, AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
-import { SemanticOperator, SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues } from './semantic-filter.util';
+import { SemanticOperator, SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, QuantityConstraint } from './semantic-filter.util';
 import { wildcardToRegex } from './string.util';
 
 // ============================================================================
@@ -971,6 +971,8 @@ export interface EvaluatorContext {
     gameSystem: GameSystem;
     /** Match text against a unit's searchable text (chassis, model, etc.) */
     matchesText?: (unit: any, text: string) => boolean;
+    /** Get component counts for a unit (name -> count mapping) */
+    getComponentCounts?: (unit: any) => Map<string, number>;
 }
 
 /**
@@ -1003,6 +1005,10 @@ function evaluateFilter(
         unitValue = context.getAdjustedBV(unit);
     } else if (conf.key === 'as.PV' && context.getAdjustedPV) {
         unitValue = context.getAdjustedPV(unit);
+    } else if (conf.countable && context.getComponentCounts) {
+        // For countable filters (equipment), get names from component counts
+        const counts = context.getComponentCounts(unit);
+        unitValue = Array.from(counts.keys());
     } else {
         unitValue = context.getProperty(unit, conf.key);
     }
@@ -1011,7 +1017,7 @@ function evaluateFilter(
     if (conf.type === AdvFilterType.RANGE) {
         return evaluateRangeFilter(unitValue, operator, values, conf);
     } else if (conf.type === AdvFilterType.DROPDOWN) {
-        return evaluateDropdownFilter(unitValue, operator, values, conf);
+        return evaluateDropdownFilter(unit, unitValue, operator, values, conf, context);
     } else if (conf.type === AdvFilterType.SEMANTIC) {
         return evaluateSemanticFilter(unitValue, operator, values);
     }
@@ -1086,13 +1092,57 @@ function evaluateRangeFilter(
 }
 
 /**
- * Evaluate a dropdown filter (string matching).
+ * Check if a unit count satisfies a quantity constraint.
+ */
+function checkQuantityConstraint(
+    unitCount: number,
+    constraint: QuantityConstraint | null,
+    isNot: boolean
+): boolean {
+    // No constraint means "at least 1"
+    if (!constraint) {
+        return unitCount >= 1;
+    }
+    
+    const { operator, count, countMax } = constraint;
+    
+    // Range constraint (count to countMax)
+    if (countMax !== undefined) {
+        const inRange = unitCount >= count && unitCount <= countMax;
+        // For != (NOT), we want to exclude if IN range
+        // For = (include), we want to include if IN range
+        return operator === '!=' ? !inRange : inRange;
+    }
+    
+    // Single value constraint with explicit operator
+    switch (operator) {
+        case '=':
+            return unitCount === count;
+        case '!=':
+            return unitCount !== count;
+        case '>':
+            return unitCount > count;
+        case '>=':
+            return unitCount >= count;
+        case '<':
+            return unitCount < count;
+        case '<=':
+            return unitCount <= count;
+        default:
+            return unitCount >= count;
+    }
+}
+
+/**
+ * Evaluate a dropdown filter (string matching with quantity support).
  */
 function evaluateDropdownFilter(
+    unit: any,
     unitValue: any,
     operator: SemanticOperator,
     values: string[],
-    conf: AdvFilterConfig
+    conf: AdvFilterConfig,
+    context: EvaluatorContext
 ): boolean {
     if (unitValue == null) return operator === '!=';
     
@@ -1100,23 +1150,113 @@ function evaluateDropdownFilter(
     const unitValues = Array.isArray(unitValue) ? unitValue : [unitValue];
     const unitStrings = unitValues.map(v => String(v).toLowerCase());
     
-    // Check each filter value
+    // Check if we need component counting (for countable filters like equipment)
+    const needsQuantityCounting = conf.countable && context.getComponentCounts;
+    const componentCounts = needsQuantityCounting ? context.getComponentCounts!(unit) : null;
+    
+    // For &= (AND) operator, ALL values must match
+    if (operator === '&=') {
+        for (const val of values) {
+            const { name, constraint } = parseValueWithQuantity(val);
+            const lowerName = name.toLowerCase();
+            const isWildcard = name.includes('*');
+            
+            let matchFound = false;
+            let matchCount = 0;
+            
+            if (isWildcard) {
+                const regex = wildcardToRegex(name);
+                for (const uv of unitStrings) {
+                    if (regex.test(uv)) {
+                        matchFound = true;
+                        if (componentCounts) {
+                            // Sum counts for all matching components
+                            for (const [compName, count] of componentCounts) {
+                                if (regex.test(compName.toLowerCase())) {
+                                    matchCount += count;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            } else {
+                matchFound = unitStrings.some(uv => uv === lowerName);
+                if (matchFound && componentCounts) {
+                    // Find the count for this specific component (case-insensitive)
+                    for (const [compName, count] of componentCounts) {
+                        if (compName.toLowerCase() === lowerName) {
+                            matchCount = count;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (!matchFound) return false; // AND requires all to be present
+            
+            // Check quantity constraint if we have counts
+            if (needsQuantityCounting && constraint) {
+                if (!checkQuantityConstraint(matchCount, constraint, false)) {
+                    return false;
+                }
+            }
+        }
+        return true; // All AND values matched
+    }
+    
+    // For = (OR) and != operators
     for (const val of values) {
-        const lowerVal = val.toLowerCase();
-        const isWildcard = val.includes('*');
+        const { name, constraint } = parseValueWithQuantity(val);
+        const lowerName = name.toLowerCase();
+        const isWildcard = name.includes('*');
         
-        let matches = false;
+        let matchFound = false;
+        let matchCount = 0;
+        
         if (isWildcard) {
-            const regex = wildcardToRegex(val);
-            matches = unitStrings.some(uv => regex.test(uv));
+            const regex = wildcardToRegex(name);
+            for (const uv of unitStrings) {
+                if (regex.test(uv)) {
+                    matchFound = true;
+                    if (componentCounts) {
+                        // Sum counts for all matching components
+                        for (const [compName, count] of componentCounts) {
+                            if (regex.test(compName.toLowerCase())) {
+                                matchCount += count;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
         } else {
-            matches = unitStrings.some(uv => uv === lowerVal);
+            matchFound = unitStrings.some(uv => uv === lowerName);
+            if (matchFound && componentCounts) {
+                // Find the count for this specific component (case-insensitive)
+                for (const [compName, count] of componentCounts) {
+                    if (compName.toLowerCase() === lowerName) {
+                        matchCount = count;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Handle quantity constraint
+        let quantityMatch = true;
+        if (needsQuantityCounting && matchFound) {
+            // If no explicit constraint, default to "at least 1"
+            const effectiveConstraint = constraint ?? { operator: '>=', count: 1 } as QuantityConstraint;
+            quantityMatch = checkQuantityConstraint(matchCount, effectiveConstraint, operator === '!=');
         }
         
         if (operator === '!=') {
-            if (matches) return false; // Exclude if any value matches
-        } else if (operator === '=' || operator === '&=') {
-            if (matches) return true; // Include if any value matches
+            // Exclude if name matches AND quantity constraint is satisfied
+            if (matchFound && quantityMatch) return false;
+        } else {
+            // Include if name matches AND quantity constraint is satisfied
+            if (matchFound && quantityMatch) return true;
         }
     }
     

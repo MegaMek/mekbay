@@ -1136,7 +1136,8 @@ export class UnitSearchFiltersService {
                 const searchableText = `${chassis} ${model}`;
                 const tokens = parseSearchQuery(text);
                 return matchesSearch(searchableText, tokens, true);
-            }
+            },
+            getComponentCounts: (unit: Unit) => getUnitComponentData(unit).componentCounts
         };
         let results = filterUnitsWithAST(this.units, ast.ast, context);
 

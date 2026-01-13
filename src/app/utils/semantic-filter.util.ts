@@ -319,7 +319,7 @@ function parseRange(value: string): [number, number] | null {
  * Parsed quantity constraint from value string.
  * Supports: :N, :=N, :>N, :>=N, :<N, :<=N, :!N, :!=N, :N-M, :!N-M, :!=N-M
  */
-interface QuantityConstraint {
+export interface QuantityConstraint {
     operator: CountOperator;
     count: number;
     countMax?: number;  // For range constraints like :2-5
@@ -339,7 +339,7 @@ interface QuantityConstraint {
  * 
  * Returns { name, constraint } or { name, constraint: null } if no quantity suffix
  */
-function parseValueWithQuantity(value: string): { name: string; constraint: QuantityConstraint | null } {
+export function parseValueWithQuantity(value: string): { name: string; constraint: QuantityConstraint | null } {
     // Find the last colon that's followed by a valid quantity pattern
     const colonIndex = value.lastIndexOf(':');
     if (colonIndex === -1 || colonIndex === value.length - 1) {
