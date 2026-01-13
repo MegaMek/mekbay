@@ -48,26 +48,35 @@
     
     // Syntax highlighting colors
     .hl-key {
-        color: #7cb9e8; // Light blue for keys
+        color: var(--semantic-color-highlight); // Light blue for keys
     }
     .hl-operator {
-        color: #a5d6a7; // Light green for operators
+        color: #fff; // Operators (=, :, >, <, etc..)
     }
     .hl-value {
-        color: #ffe082; // Light amber for values
+        color: rgb(255, 180, 40); // Light amber for values
     }
     .hl-keyword {
-        color: #ce93d8; // Light purple for keywords (AND, OR)
+        color: #ce93d8; // Keywords (AND, OR)
         font-weight: 600;
     }
     .hl-paren {
-        color: #b0bec5; // Gray for parentheses
+        color: #ce93d8; // Parentheses
     }
     .hl-text {
-        color: #e0e0e0; // Light gray for plain text
+        color: #fff; // Regular text
     }
     .hl-whitespace {
         // Invisible but takes up space
+    }
+    .hl-rangeoperator {
+        color: #fff; // Range dash (100-200)
+    }
+    .hl-qtyseparator {
+        color: #fff; // Quantity separator (:)
+    }
+    .hl-suboperator {
+        color: #fff; // Sub-operator (>=, <=, >, <) after Quantity separator
     }
     .hl-error {
         color: #ef9a9a; // Light red text
@@ -93,11 +102,6 @@
     
     &::placeholder {
         color: #666;
-    }
-    
-    &.has-errors {
-        border-color: #ff4444;
-        box-shadow: 0 0 0 1px rgba(255, 68, 68, 0.3);
     }
 }
 

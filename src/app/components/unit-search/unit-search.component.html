@@ -35,12 +35,12 @@
     </button>
     <div class="searchbar-input-container">
         <div #searchMirror class="searchbar-mirror" aria-hidden="true">@for (token of highlightTokens(); track $index) {<span class="hl-{{token.type}}" [title]="token.errorMessage || ''">{{token.value}}</span>}&#8203;</div>
-        <input #searchInput class="bt-input searchbar" [class.has-errors]="hasParseErrors()" type="text" [disabled]="!this.filtersService.isDataReady()"
+        <input #searchInput class="bt-input searchbar" [class.error]="hasParseErrors()" type="text" [disabled]="!this.filtersService.isDataReady()"
             [title]="errorTooltip()"
             [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
             [value]="this.filtersService.searchText()" (input)="setSearch(searchInput.value)"
             (scroll)="syncMirrorScroll()"
-            (focus)="focused.set(true)" id="unit-search-input" autocomplete="off" />
+            (focus)="focused.set(true)" id="unit-search-input" autocomplete="off" spellcheck="false" />
         @if (this.filtersService.searchText().length > 0) {
         <button class="searchbar-cancel-btn" type="button" (click)="clearSearch()" title="Clear search"
             aria-label="Clear search" tabindex="-1">

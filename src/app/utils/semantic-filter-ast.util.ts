@@ -458,8 +458,9 @@ class Parser {
 
     /**
      * Parse a parenthesized group.
+     * Returns null for empty groups (they are ignored as if not there).
      */
-    private parseGroup(): GroupASTNode {
+    private parseGroup(): GroupASTNode | null {
         const openParen = this.advance(); // consume '('
         const groupStart = openParen.start;
         const children: ASTNode[] = [];
@@ -480,6 +481,11 @@ class Parser {
             // Missing closing parenthesis
             this.addError('Missing closing parenthesis', groupStart, groupStart + 1);
             groupEnd = this.current().end;
+        }
+
+        // Empty groups are ignored (return null as if they weren't there)
+        if (children.length === 0) {
+            return null;
         }
 
         return this.combineWithOperators(children, groupStart, groupEnd);
@@ -644,7 +650,7 @@ export function validateSemanticQuery(input: string, gameSystem: GameSystem): Pa
 }
 
 /** Token type for syntax highlighting */
-export type HighlightTokenType = 'key' | 'operator' | 'value' | 'keyword' | 'paren' | 'text' | 'error' | 'whitespace';
+export type HighlightTokenType = 'key' | 'operator' | 'value' | 'keyword' | 'paren' | 'text' | 'error' | 'whitespace' | 'rangeoperator' | 'qtyseparator' | 'suboperator';
 
 /** Token for syntax highlighting with position info */
 export interface HighlightToken {
@@ -656,8 +662,110 @@ export interface HighlightToken {
 }
 
 /**
+ * Tokenize the value part of a filter for sub-components.
+ * Handles:
+ * - Range operator: `-` in `100-200`
+ * - Qty separator: `:` in `AC/2:>=2`
+ * - Sub-operator: `>=`, `>`, `<=`, `<` after `:` in quantity expressions
+ */
+function tokenizeValuePart(input: string, start: number, end: number, tokens: HighlightToken[]): void {
+    const valueStr = input.slice(start, end);
+    let pos = 0;
+    
+    // Check for qty separator `:` pattern (e.g., "AC/2:>=2" or "PPC:3")
+    const qtySepIndex = valueStr.lastIndexOf(':');
+    if (qtySepIndex > 0 && qtySepIndex < valueStr.length - 1) {
+        // Has qty separator - split into item name, separator, and qty expression
+        const itemPart = valueStr.slice(0, qtySepIndex);
+        const qtyPart = valueStr.slice(qtySepIndex + 1);
+        
+        // Item name (may contain ranges itself, but typically just the name)
+        tokens.push({
+            type: 'value',
+            value: itemPart,
+            start: start,
+            end: start + qtySepIndex
+        });
+        
+        // Qty separator
+        tokens.push({
+            type: 'qtyseparator',
+            value: ':',
+            start: start + qtySepIndex,
+            end: start + qtySepIndex + 1
+        });
+        
+        // Qty expression - check for sub-operator
+        const qtyStart = start + qtySepIndex + 1;
+        const subOpMatch = qtyPart.match(/^(>=|<=|>|<)/);
+        if (subOpMatch) {
+            tokens.push({
+                type: 'suboperator',
+                value: subOpMatch[0],
+                start: qtyStart,
+                end: qtyStart + subOpMatch[0].length
+            });
+            if (qtyPart.length > subOpMatch[0].length) {
+                tokens.push({
+                    type: 'value',
+                    value: qtyPart.slice(subOpMatch[0].length),
+                    start: qtyStart + subOpMatch[0].length,
+                    end: end
+                });
+            }
+        } else {
+            tokens.push({
+                type: 'value',
+                value: qtyPart,
+                start: qtyStart,
+                end: end
+            });
+        }
+        return;
+    }
+    
+    // Check for range operator `-` pattern (e.g., "100-200")
+    // Must have digits on both sides to be a range (not negative number or text with hyphen)
+    const rangeMatch = valueStr.match(/^(\d+)-(\d+)$/);
+    if (rangeMatch) {
+        const dashPos = rangeMatch[1].length;
+        // First number
+        tokens.push({
+            type: 'value',
+            value: rangeMatch[1],
+            start: start,
+            end: start + dashPos
+        });
+        // Range operator
+        tokens.push({
+            type: 'rangeoperator',
+            value: '-',
+            start: start + dashPos,
+            end: start + dashPos + 1
+        });
+        // Second number
+        tokens.push({
+            type: 'value',
+            value: rangeMatch[2],
+            start: start + dashPos + 1,
+            end: end
+        });
+        return;
+    }
+    
+    // Default: entire value as single token
+    tokens.push({
+        type: 'value',
+        value: valueStr,
+        start: start,
+        end: end
+    });
+}
+
+/**
  * Tokenize input for syntax highlighting.
  * Returns tokens covering the entire input string (including whitespace).
+ * Includes error detection for invalid syntax.
  */
 export function tokenizeForHighlight(input: string, gameSystem: GameSystem): HighlightToken[] {
     if (!input) return [];
@@ -720,12 +828,8 @@ export function tokenizeForHighlight(input: string, gameSystem: GameSystem): Hig
                 end: valueStart
             });
             if (valueStart < token.end) {
-                highlightTokens.push({
-                    type: 'value',
-                    value: input.slice(valueStart, token.end),
-                    start: valueStart,
-                    end: token.end
-                });
+                // Parse value part for sub-components (ranges, qty separator, sub-operators)
+                tokenizeValuePart(input, valueStart, token.end, highlightTokens);
             }
         } else if (token.type === 'OR' || token.type === 'AND') {
             highlightTokens.push({

@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, Pipe, PipeTransform, DestroyRef } from '@angular/core';
+import { Component, signal, ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, Pipe, PipeTransform, DestroyRef, untracked } from '@angular/core';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
@@ -131,6 +131,8 @@ export class UnitSearchComponent {
 
     private searchDebounceTimer: any;
     private readonly SEARCH_DEBOUNCE_MS = 300;
+    /** Immediate input value for instant highlighting (not debounced). */
+    readonly immediateSearchText = signal('');
 
     viewport = viewChild(CdkVirtualScrollViewport);
     searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
@@ -179,9 +181,10 @@ export class UnitSearchComponent {
     /**
      * Tokenized search text for syntax highlighting.
      * Uses the AST lexer to produce tokens with type info.
+     * Uses immediateSearchText for instant feedback (no debounce).
      */
     readonly highlightTokens = computed((): HighlightToken[] => {
-        const text = this.filtersService.searchText();
+        const text = this.immediateSearchText();
         if (!text) return [];
         return tokenizeForHighlight(text, this.gameService.currentGameSystem());
     });
@@ -216,6 +219,16 @@ export class UnitSearchComponent {
     private advPanelDragStartWidth = 0;
 
     constructor() {
+        // Sync immediateSearchText when searchText changes externally (favorites, etc.)
+        // We use untracked to avoid re-triggering when we set immediateSearchText
+        effect(() => {
+            const text = this.filtersService.searchText();
+            untracked(() => {
+                if (this.immediateSearchText() !== text) {
+                    this.immediateSearchText.set(text);
+                }
+            });
+        });
         effect(() => {
             if (this.advOpen()) {
                 this.layoutService.windowWidth();
@@ -336,6 +349,9 @@ export class UnitSearchComponent {
     }
 
     setSearch(val: string) {
+        // Update immediately for instant highlighting
+        this.immediateSearchText.set(val);
+        // Debounce the actual search/filtering
         if (this.searchDebounceTimer) {
             clearTimeout(this.searchDebounceTimer);
         }
@@ -918,6 +934,7 @@ export class UnitSearchComponent {
     }
 
     clearSearch() {
+        this.immediateSearchText.set('');
         this.filtersService.searchText.set('');
         this.activeIndex.set(null);
         this.focusInput();
