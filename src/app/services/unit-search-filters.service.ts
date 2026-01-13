@@ -1277,6 +1277,8 @@ export class UnitSearchFiltersService {
         for (const conf of ADVANCED_FILTERS) {
             // Skip semantic-only filters (they're only available via semantic mode)
             if (conf.type === AdvFilterType.SEMANTIC) continue;
+            // Skip filters for other game modes (no UI to display them, saves computation)
+            if (conf.game && conf.game !== this.gameService.currentGameSystem()) continue;
 
             let label = conf.label;
             if (conf.key === 'internal') {
