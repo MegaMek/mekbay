@@ -74,7 +74,7 @@ export interface HighlightToken {
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="syntax-input-container">
-            <pre #highlighting class="syntax-highlighting" aria-hidden="true"><code>@for (token of tokens(); track $index) {<span class="hl-{{token.type}}" [title]="token.errorMessage || ''">{{token.value}}</span>}</code></pre>
+            <pre #highlighting class="syntax-highlighting" aria-hidden="true"><code>@for (token of tokens(); track token.start) {<span class="hl-{{token.type}}" [title]="token.errorMessage || ''">{{token.value}}</span>}</code></pre>
             <input
                 #inputEl
                 class="bt-input syntax-input"
