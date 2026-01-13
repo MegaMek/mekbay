@@ -384,6 +384,29 @@ export class PageViewerComponent implements AfterViewInit {
             }
         });
 
+        // Watch for allowMultipleActiveSheets option changes
+        let previousAllowMultiple: boolean | undefined;
+        effect(() => {
+            const allowMultiple = this.optionsService.options().allowMultipleActiveSheets;
+            
+            // Skip initial run or if value hasn't changed
+            if (previousAllowMultiple === undefined) {
+                previousAllowMultiple = allowMultiple;
+                return;
+            }
+            
+            if (allowMultiple !== previousAllowMultiple) {
+                previousAllowMultiple = allowMultiple;
+                
+                // Re-display units with new effective visible count
+                if (this.viewInitialized && !this.isSwiping) {
+                    untracked(() => {
+                        this.displayUnit();
+                    });
+                }
+            }
+        });
+
         inject(DestroyRef).onDestroy(() => this.cleanup());
     }
 
