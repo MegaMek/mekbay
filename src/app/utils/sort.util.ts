@@ -32,6 +32,7 @@
  */
 
 import { Unit } from "../models/units.model";
+import { escapeRegExp, removeAccents } from './string.util';
 
 /*
  * Author: Drake
@@ -160,28 +161,16 @@ type RelevanceNormalizedText = {
 const relevanceNormalizeCache = new Map<string, RelevanceNormalizedText>();
 const relevanceFlexRegexCache = new Map<string, RegExp>();
 
-function removeAccentsLite(s: string): string {
-    try {
-        return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    } catch {
-        return s;
-    }
-}
-
 function normalizeForRelevance(text: string): RelevanceNormalizedText {
     const token = (typeof text === 'string') ? text : (text == null ? '' : String(text));
     const cached = relevanceNormalizeCache.get(token);
     if (cached) return cached;
 
-    const lower = removeAccentsLite(token).toLowerCase();
+    const lower = removeAccents(token).toLowerCase();
     const alphaNum = lower.replace(/[^a-z0-9]/gi, '');
     const entry = { lower, alphaNum };
     relevanceNormalizeCache.set(token, entry);
     return entry;
-}
-
-function escapeRegExp(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function getFlexTokenRegex(tokenAlphaNum: string): RegExp {
@@ -224,7 +213,7 @@ function scoreTokenInText(
     const rawToken = token.token ?? '';
     if (!rawToken) return 0;
 
-    const tokenLower = removeAccentsLite(rawToken).toLowerCase();
+    const tokenLower = removeAccents(rawToken).toLowerCase();
     const tokenAlpha = tokenLower.replace(/[^a-z0-9]/gi, '');
 
     // Exact tokens: prioritize whole-token matches with boundaries.
@@ -298,7 +287,7 @@ function sequentialMatchBonus(
     let matchCount = 0;
     
     for (const t of tokens) {
-        const tokenAlpha = removeAccentsLite(t.token).toLowerCase().replace(/[^a-z0-9]/gi, '');
+        const tokenAlpha = removeAccents(t.token).toLowerCase().replace(/[^a-z0-9]/gi, '');
         if (!tokenAlpha) continue;
         
         const idx = textAlphaNum.indexOf(tokenAlpha, lastEnd);

@@ -29,7 +29,8 @@
     display: flex;
 }
 
-.searchbar-error-overlay {
+// Mirror div for syntax highlighting - positioned behind the input
+.searchbar-mirror {
     position: absolute;
     top: 0;
     left: 0;
@@ -37,22 +38,41 @@
     bottom: 0;
     padding-left: 12px;
     font-size: 1rem;
+    font-family: inherit;
     line-height: 40px;
     white-space: pre;
     overflow: hidden;
     pointer-events: none;
     z-index: 1;
-    color: transparent;
+    border: 1px solid transparent; // Match input border for alignment
     
-    .normal-segment {
-        color: transparent;
+    // Syntax highlighting colors
+    .hl-key {
+        color: #7cb9e8; // Light blue for keys
     }
-    
-    .error-segment {
-        color: transparent;
-        background-color: rgba(255, 80, 80, 0.4);
-        border-bottom: 2px solid #ff4444;
-        border-radius: 2px;
+    .hl-operator {
+        color: #a5d6a7; // Light green for operators
+    }
+    .hl-value {
+        color: #ffe082; // Light amber for values
+    }
+    .hl-keyword {
+        color: #ce93d8; // Light purple for keywords (AND, OR)
+        font-weight: 600;
+    }
+    .hl-paren {
+        color: #b0bec5; // Gray for parentheses
+    }
+    .hl-text {
+        color: #e0e0e0; // Light gray for plain text
+    }
+    .hl-whitespace {
+        // Invisible but takes up space
+    }
+    .hl-error {
+        color: #ef9a9a; // Light red text
+        background-color: rgba(255, 80, 80, 0.25);
+        border-bottom: 2px wavy #ff4444;
         cursor: help;
         pointer-events: auto;
     }
@@ -64,12 +84,20 @@
     height: 40px;
     padding-left: 12px;
     padding-right: 32px;
+    // Make input text transparent so mirror shows through
+    color: transparent;
+    caret-color: #fff; // Keep cursor visible
+    background-color: transparent;
+    position: relative;
+    z-index: 2;
+    
+    &::placeholder {
+        color: #666;
+    }
     
     &.has-errors {
-        // Make background transparent so error overlay shows through
-        background-color: transparent;
-        position: relative;
-        z-index: 2;
+        border-color: #ff4444;
+        box-shadow: 0 0 0 1px rgba(255, 68, 68, 0.3);
     }
 }
 

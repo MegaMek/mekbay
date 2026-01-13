@@ -47,8 +47,9 @@ import { GameSystem } from '../models/common.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
-import { filterStateToSemanticText, tokensToFilterState } from '../utils/semantic-filter.util';
+import { filterStateToSemanticText, tokensToFilterState, SemanticFilterState, WildcardPattern } from '../utils/semantic-filter.util';
 import { parseSemanticQueryAST, ParseResult, ParseError, filterUnitsWithAST, EvaluatorContext, isComplexQuery, getMatchingTextForUnit } from '../utils/semantic-filter-ast.util';
+import { wildcardToRegex } from '../utils/string.util';
 
 /*
  * Author: Drake
@@ -81,23 +82,8 @@ export interface AdvFilterConfig {
     semanticKey?: string; // Simplified key for semantic filter mode (e.g., 'tmm' instead of 'as.TMM')
 }
 
-/** Wildcard pattern for dropdown filter matching */
-interface WildcardPattern {
-    pattern: string;    // Pattern with * wildcards (e.g., "AC*")
-    state: 'or' | 'and' | 'not';  // Include (OR), require all (AND), or exclude (NOT)
-}
-
-interface FilterState {
-    [key: string]: {
-        value: any;
-        interactedWith: boolean;
-        includeRanges?: [number, number][];  // For range filters: specific ranges to include (OR logic)
-        excludeRanges?: [number, number][];  // For range filters: ranges to exclude (semantic-only)
-        displayText?: string;                // For range filters: formatted effective ranges (e.g., "0-3, 5-99")
-        semanticOnly?: boolean;              // True if this filter can't be shown in UI
-        wildcardPatterns?: WildcardPattern[];  // For dropdown filters: wildcard patterns
-    };
-}
+// Use SemanticFilterState from semantic-filter.util as our FilterState
+type FilterState = SemanticFilterState;
 
 /** Display item for semantic-only mode with state information */
 export interface SemanticDisplayItem {
@@ -181,18 +167,6 @@ function getMergedTags(unit: Unit): string[] {
     const chassisTags = unit._chassisTags ?? [];
     // Merge and deduplicate
     return Array.from(new Set([...chassisTags, ...nameTags]));
-}
-
-/**
- * Convert a wildcard pattern (e.g., "AC*" or "*/3/*") to a RegExp.
- * Supports * as a wildcard for any characters.
- */
-function wildcardToRegex(pattern: string): RegExp {
-    // Escape special regex characters except *
-    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
-    // Replace * with .*
-    const regexStr = '^' + escaped.replace(/\*/g, '.*') + '$';
-    return new RegExp(regexStr, 'i'); // Case insensitive
 }
 
 function getProperty(obj: any, key?: string) {

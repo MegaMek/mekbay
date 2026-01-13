@@ -56,6 +56,7 @@ import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
 import { Sourcebook, Sourcebooks } from '../models/sourcebook.model';
 import { MULUnitSources, MULUnitSourcesData } from '../models/mul-unit-sources.model';
+import { removeAccents } from '../utils/string.util';
 
 /*
  * Author: Drake
@@ -462,16 +463,7 @@ export class DataService {
     }
 
     public static removeAccents(str: string): string {
-        if (!str) return '';
-        // Decompose combined characters, then remove diacritical marks.
-        let s = str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        // Handle specific characters that are not decomposed.
-        s = s.replace(/ł/g, 'l').replace(/Ł/g, 'L');
-        s = s.replace(/ø/g, 'o').replace(/Ø/g, 'O');
-        s = s.replace(/ß/g, 'ss');
-        s = s.replace(/æ/g, 'ae').replace(/Æ/g, 'AE');
-        s = s.replace(/œ/g, 'oe').replace(/Œ/g, 'OE');
-        return s;
+        return removeAccents(str);
     }
 
     public getUnits(): Unit[] {

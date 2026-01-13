@@ -37,7 +37,7 @@ import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrollin
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { UnitSearchFiltersService, ADVANCED_FILTERS, SORT_OPTIONS, AdvFilterType, SortOption, SerializedSearchFilter } from '../../services/unit-search-filters.service';
-import { ParseError } from '../../utils/semantic-filter-ast.util';
+import { HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { Unit, UnitComponent } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
@@ -134,6 +134,7 @@ export class UnitSearchComponent {
 
     viewport = viewChild(CdkVirtualScrollViewport);
     searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
+    searchMirror = viewChild<ElementRef<HTMLElement>>('searchMirror');
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
     favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
@@ -176,62 +177,30 @@ export class UnitSearchComponent {
     });
 
     /**
-     * Parse errors for display in the search input.
-     * Used to highlight errors in red in the search text.
+     * Tokenized search text for syntax highlighting.
+     * Uses the AST lexer to produce tokens with type info.
      */
-    readonly parseErrors = computed((): ParseError[] => {
-        return this.filtersService.parseErrors();
+    readonly highlightTokens = computed((): HighlightToken[] => {
+        const text = this.filtersService.searchText();
+        if (!text) return [];
+        return tokenizeForHighlight(text, this.gameService.currentGameSystem());
     });
 
     /**
      * Whether there are any parse errors.
      */
     readonly hasParseErrors = computed((): boolean => {
-        return this.parseErrors().length > 0;
+        return this.highlightTokens().some(t => t.type === 'error');
     });
 
     /**
-     * Get the text segments with error highlighting info.
-     * Returns an array of { text, isError, message } for rendering.
+     * Tooltip text for the search input when there are parse errors.
+     * Shows all error messages joined by newlines.
      */
-    readonly errorHighlightedSegments = computed((): Array<{ text: string; isError: boolean; message?: string }> => {
-        const text = this.filtersService.searchText();
-        const errors = this.parseErrors();
-        
-        if (errors.length === 0 || !text) {
-            return [{ text, isError: false }];
-        }
-
-        // Sort errors by start position
-        const sortedErrors = [...errors].sort((a, b) => a.start - b.start);
-        const segments: Array<{ text: string; isError: boolean; message?: string }> = [];
-        let pos = 0;
-
-        for (const error of sortedErrors) {
-            // Skip overlapping errors
-            if (error.start < pos) continue;
-            
-            // Add normal text before error
-            if (error.start > pos) {
-                segments.push({ text: text.slice(pos, error.start), isError: false });
-            }
-            
-            // Add error segment
-            segments.push({
-                text: text.slice(error.start, error.end),
-                isError: true,
-                message: error.message
-            });
-            
-            pos = error.end;
-        }
-
-        // Add remaining text
-        if (pos < text.length) {
-            segments.push({ text: text.slice(pos), isError: false });
-        }
-
-        return segments;
+    readonly errorTooltip = computed((): string => {
+        const errors = this.highlightTokens().filter(t => t.type === 'error' && t.errorMessage);
+        if (errors.length === 0) return '';
+        return errors.map(e => e.errorMessage).join('\n');
     });
 
     /**
@@ -374,6 +343,18 @@ export class UnitSearchComponent {
             this.filtersService.searchText.set(val);
             this.activeIndex.set(null);
         }, this.SEARCH_DEBOUNCE_MS);
+    }
+
+    /**
+     * Sync the scroll position of the mirror div with the input.
+     * Called on input scroll events.
+     */
+    syncMirrorScroll() {
+        const input = this.searchInput()?.nativeElement;
+        const mirror = this.searchMirror()?.nativeElement;
+        if (input && mirror) {
+            mirror.scrollLeft = input.scrollLeft;
+        }
     }
 
     closeAdvPanel() {

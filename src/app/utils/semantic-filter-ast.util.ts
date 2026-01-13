@@ -53,7 +53,8 @@
 
 import { GameSystem } from '../models/common.model';
 import { ADVANCED_FILTERS, AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
-import { SemanticOperator, SemanticToken } from './semantic-filter.util';
+import { SemanticOperator, SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues } from './semantic-filter.util';
+import { wildcardToRegex } from './string.util';
 
 // ============================================================================
 // Types
@@ -128,87 +129,6 @@ export interface ParseResult {
     textSearch: string;     // Extracted text portions
     tokens: SemanticToken[]; // Flat list of all filter tokens (for compatibility)
     errors: ParseError[];
-}
-
-// ============================================================================
-// Virtual Semantic Keys (copied from semantic-filter.util.ts for DRY)
-// ============================================================================
-
-interface VirtualSemanticKeyConfig {
-    keys: string[];
-    format: 'slash';
-    implicit?: string[];
-}
-
-const VIRTUAL_SEMANTIC_KEYS: Record<string, VirtualSemanticKeyConfig> = {
-    'dmg': { 
-        keys: ['dmgs', 'dmgm', 'dmgl', 'dmge'], 
-        format: 'slash',
-        implicit: ['dmge']
-    }
-};
-
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-/** Build a lookup map from semanticKey to config */
-function buildSemanticKeyMap(gameSystem: GameSystem): Map<string, AdvFilterConfig> {
-    const map = new Map<string, AdvFilterConfig>();
-    for (const conf of ADVANCED_FILTERS) {
-        if (conf.game && conf.game !== gameSystem) continue;
-        const key = conf.semanticKey || conf.key;
-        if (!map.has(key)) {
-            map.set(key, conf);
-        }
-    }
-    return map;
-}
-
-/**
- * Parse a single value string that may contain comma-separated values and quotes.
- */
-function parseValues(valueStr: string): string[] {
-    const values: string[] = [];
-    let current = '';
-    let inQuote: '"' | "'" | null = null;
-    let i = 0;
-
-    while (i < valueStr.length) {
-        const char = valueStr[i];
-
-        if (inQuote) {
-            if (char === '\\' && i + 1 < valueStr.length) {
-                const nextChar = valueStr[i + 1];
-                if (nextChar === '"' || nextChar === "'" || nextChar === '\\') {
-                    current += nextChar;
-                    i += 2;
-                    continue;
-                }
-            }
-            if (char === inQuote) {
-                inQuote = null;
-            } else {
-                current += char;
-            }
-        } else if (char === '"' || char === "'") {
-            inQuote = char;
-        } else if (char === ',') {
-            if (current.trim()) {
-                values.push(current.trim());
-            }
-            current = '';
-        } else {
-            current += char;
-        }
-        i++;
-    }
-
-    if (current.trim()) {
-        values.push(current.trim());
-    }
-
-    return values;
 }
 
 // ============================================================================
@@ -723,6 +643,130 @@ export function validateSemanticQuery(input: string, gameSystem: GameSystem): Pa
     return result.errors;
 }
 
+/** Token type for syntax highlighting */
+export type HighlightTokenType = 'key' | 'operator' | 'value' | 'keyword' | 'paren' | 'text' | 'error' | 'whitespace';
+
+/** Token for syntax highlighting with position info */
+export interface HighlightToken {
+    type: HighlightTokenType;
+    value: string;
+    start: number;
+    end: number;
+    errorMessage?: string;
+}
+
+/**
+ * Tokenize input for syntax highlighting.
+ * Returns tokens covering the entire input string (including whitespace).
+ */
+export function tokenizeForHighlight(input: string, gameSystem: GameSystem): HighlightToken[] {
+    if (!input) return [];
+    
+    const semanticKeyMap = buildSemanticKeyMap(gameSystem);
+    const lexTokens = tokenize(input, semanticKeyMap);
+    const result = parseSemanticQueryAST(input, gameSystem);
+    const errors = result.errors;
+    
+    // Build error range lookup
+    const errorRanges = errors.map(e => ({ start: e.start, end: e.end, message: e.message }));
+    
+    const highlightTokens: HighlightToken[] = [];
+    let pos = 0;
+    
+    for (const token of lexTokens) {
+        if (token.type === 'EOF') break;
+        
+        // Add whitespace between tokens
+        if (token.start > pos) {
+            highlightTokens.push({
+                type: 'whitespace',
+                value: input.slice(pos, token.start),
+                start: pos,
+                end: token.start
+            });
+        }
+        
+        // Check if this token overlaps with an error
+        const overlappingError = errorRanges.find(e => 
+            e.start < token.end && e.end > token.start
+        );
+        
+        if (overlappingError) {
+            // Mark entire token as error
+            highlightTokens.push({
+                type: 'error',
+                value: token.value,
+                start: token.start,
+                end: token.end,
+                errorMessage: overlappingError.message
+            });
+        } else if (token.type === 'FILTER' && token.filter) {
+            // Split filter into key, operator, value
+            const field = token.filter.field;
+            const op = token.filter.operator;
+            const opStart = token.start + field.length;
+            const valueStart = opStart + op.length;
+            
+            highlightTokens.push({
+                type: 'key',
+                value: input.slice(token.start, opStart),
+                start: token.start,
+                end: opStart
+            });
+            highlightTokens.push({
+                type: 'operator',
+                value: op,
+                start: opStart,
+                end: valueStart
+            });
+            if (valueStart < token.end) {
+                highlightTokens.push({
+                    type: 'value',
+                    value: input.slice(valueStart, token.end),
+                    start: valueStart,
+                    end: token.end
+                });
+            }
+        } else if (token.type === 'OR' || token.type === 'AND') {
+            highlightTokens.push({
+                type: 'keyword',
+                value: token.value,
+                start: token.start,
+                end: token.end
+            });
+        } else if (token.type === 'LPAREN' || token.type === 'RPAREN') {
+            highlightTokens.push({
+                type: 'paren',
+                value: token.value,
+                start: token.start,
+                end: token.end
+            });
+        } else {
+            // TEXT token
+            highlightTokens.push({
+                type: 'text',
+                value: token.value,
+                start: token.start,
+                end: token.end
+            });
+        }
+        
+        pos = token.end;
+    }
+    
+    // Add any trailing whitespace
+    if (pos < input.length) {
+        highlightTokens.push({
+            type: 'whitespace',
+            value: input.slice(pos),
+            start: pos,
+            end: input.length
+        });
+    }
+    
+    return highlightTokens;
+}
+
 /**
  * Get error ranges for highlighting in UI.
  * Returns array of [start, end] positions that should be colored red.
@@ -803,10 +847,16 @@ function evaluateFilter(
     unit: any,
     context: EvaluatorContext
 ): boolean {
-    const conf = ADVANCED_FILTERS.find(f => 
-        (f.semanticKey || f.key) === filter.field &&
-        (!f.game || f.game === context.gameSystem)
+    // Find matching filter config, preferring current game mode but allowing cross-game filters
+    // This allows queries like "pv=16 and bv<50" to work in any game mode
+    const matchingFilters = ADVANCED_FILTERS.filter(f => 
+        (f.semanticKey || f.key) === filter.field
     );
+    
+    // Prefer: 1) current game mode, 2) game-agnostic, 3) other game mode
+    const conf = matchingFilters.find(f => f.game === context.gameSystem) 
+        ?? matchingFilters.find(f => !f.game) 
+        ?? matchingFilters[0];
     
     if (!conf) return true; // Unknown filter - pass through
     
@@ -970,15 +1020,6 @@ function evaluateSemanticFilter(
     }
     
     return operator === '!=';
-}
-
-/**
- * Convert a wildcard pattern to a RegExp.
- */
-function wildcardToRegex(pattern: string): RegExp {
-    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
-    const regexStr = '^' + escaped.replace(/\*/g, '.*') + '$';
-    return new RegExp(regexStr, 'i');
 }
 
 /**

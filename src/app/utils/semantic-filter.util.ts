@@ -76,23 +76,11 @@ export interface SemanticToken {
     rawText: string;         // Original text for this token
 }
 
-export interface ParsedSemanticQuery {
-    textSearch: string;      // Remaining text that doesn't match filter syntax
-    tokens: SemanticToken[]; // Parsed filter tokens
-}
-
-export interface FilterState {
-    [key: string]: {
-        value: any;
-        interactedWith: boolean;
-    };
-}
-
 /**
- * Extended filter state that includes exclusion ranges for semantic-only filters.
- * These are filters that can't be represented in the standard UI.
+ * Filter state that includes all filter properties including semantic-only features.
+ * Stores current filter values with metadata about interaction and special ranges.
  */
-export interface SemanticFilterState extends FilterState {
+export interface SemanticFilterState {
     [key: string]: {
         value: any;
         interactedWith: boolean;
@@ -118,7 +106,7 @@ export interface WildcardPattern {
  * - format: How values are combined ('slash' = value1/value2/...)
  * - implicit: Keys that are omitted unless explicitly set (use wildcard in their place)
  */
-interface VirtualSemanticKeyConfig {
+export interface VirtualSemanticKeyConfig {
     keys: string[];
     format: 'slash';
     implicit?: string[];  // Keys to omit if no value (use * placeholder)
@@ -128,7 +116,7 @@ interface VirtualSemanticKeyConfig {
  * Virtual semantic keys that map to multiple actual filters.
  * For example, 'dmg' maps to dmgS, dmgM, dmgL, dmgE.
  */
-const VIRTUAL_SEMANTIC_KEYS: Record<string, VirtualSemanticKeyConfig> = {
+export const VIRTUAL_SEMANTIC_KEYS: Record<string, VirtualSemanticKeyConfig> = {
     'dmg': { 
         keys: ['dmgs', 'dmgm', 'dmgl', 'dmge'], 
         format: 'slash',
@@ -136,18 +124,40 @@ const VIRTUAL_SEMANTIC_KEYS: Record<string, VirtualSemanticKeyConfig> = {
     }
 };
 
-// Build a lookup map from semanticKey to config
-function buildSemanticKeyMap(gameSystem: GameSystem): Map<string, AdvFilterConfig> {
+/**
+ * Build a lookup map from semanticKey to config.
+ * Includes all filters regardless of game mode for semantic filtering,
+ * but gives priority to filters matching the current game mode when there are duplicates.
+ */
+export function buildSemanticKeyMap(gameSystem: GameSystem): Map<string, AdvFilterConfig> {
     const map = new Map<string, AdvFilterConfig>();
+    
+    // First pass: add all filters without a game restriction
     for (const conf of ADVANCED_FILTERS) {
-        // Only include filters for current game system or filters without game system
-        if (conf.game && conf.game !== gameSystem) continue;
+        if (conf.game) continue; // Skip game-specific filters in first pass
         const key = conf.semanticKey || conf.key;
-        // If key already exists, the first one wins (game-specific takes priority)
         if (!map.has(key)) {
             map.set(key, conf);
         }
     }
+    
+    // Second pass: add game-specific filters (non-current game mode)
+    // These will fill in any gaps but won't override existing entries
+    for (const conf of ADVANCED_FILTERS) {
+        if (!conf.game || conf.game === gameSystem) continue;
+        const key = conf.semanticKey || conf.key;
+        if (!map.has(key)) {
+            map.set(key, conf);
+        }
+    }
+    
+    // Third pass: add/override with current game mode filters (highest priority)
+    for (const conf of ADVANCED_FILTERS) {
+        if (conf.game !== gameSystem) continue;
+        const key = conf.semanticKey || conf.key;
+        map.set(key, conf); // Always set, overriding any previous
+    }
+    
     return map;
 }
 
@@ -228,7 +238,7 @@ function formatRangeSegments(segments: [number, number][]): string {
  * - Quoted values with spaces
  * - Escaped quotes within quoted values (\")
  */
-function parseValues(valueStr: string): string[] {
+export function parseValues(valueStr: string): string[] {
     const values: string[] = [];
     let current = '';
     let inQuote: '"' | "'" | null = null;
@@ -425,202 +435,6 @@ function constraintToRange(constraint: QuantityConstraint): [number, number] {
         default:
             return [count, count];
     }
-}
-
-/**
- * Parse semantic query from input text.
- * Extracts filter expressions and returns remaining text search.
- */
-export function parseSemanticQuery(input: string, gameSystem: GameSystem): ParsedSemanticQuery {
-    const semanticKeyMap = buildSemanticKeyMap(gameSystem);
-    const tokens: SemanticToken[] = [];
-    const textParts: string[] = [];
-
-    // Parse the input character by character to properly handle quotes
-    let i = 0;
-    let textBuffer = '';
-
-    while (i < input.length) {
-        // Try to match a filter expression: field + operator + value
-        const filterMatch = tryParseFilter(input, i, semanticKeyMap);
-        
-        if (filterMatch) {
-            // Add any accumulated text before this filter
-            if (textBuffer.trim()) {
-                textParts.push(textBuffer.trim());
-            }
-            textBuffer = '';
-
-            const { field, operator, rawValue, endIndex, isVirtual } = filterMatch;
-
-            // Remove outer quotes if the entire value is a single quoted string
-            let cleanValue = rawValue;
-            if ((rawValue.startsWith('"') && rawValue.endsWith('"') && !rawValue.slice(1, -1).includes('"')) ||
-                (rawValue.startsWith("'") && rawValue.endsWith("'") && !rawValue.slice(1, -1).includes("'"))) {
-                cleanValue = rawValue.slice(1, -1);
-            }
-
-            const values = parseValues(cleanValue).filter(v => v.trim() !== '');
-            const rawText = input.slice(i, endIndex);
-            
-            // Skip tokens with no valid values (e.g., "type=" with nothing after)
-            if (values.length === 0) {
-                i = endIndex;
-                continue;
-            }
-
-            // Handle virtual keys by expanding them to multiple tokens
-            if (isVirtual && field in VIRTUAL_SEMANTIC_KEYS) {
-                const virtualConfig = VIRTUAL_SEMANTIC_KEYS[field];
-                if (virtualConfig.format === 'slash') {
-                    // Parse slash-separated values: dmg=3/2/1 or dmg=3/*/1
-                    const parts = cleanValue.split('/');
-                    for (let j = 0; j < virtualConfig.keys.length && j < parts.length; j++) {
-                        const part = parts[j].trim();
-                        if (part === '*' || part === '') continue; // Skip wildcards
-                        
-                        tokens.push({
-                            field: virtualConfig.keys[j],
-                            operator,
-                            values: [part],
-                            rawText
-                        });
-                    }
-                }
-            } else {
-                tokens.push({
-                    field,
-                    operator,
-                    values,
-                    rawText
-                });
-            }
-
-            i = endIndex;
-        } else {
-            // Not a filter, accumulate as text
-            textBuffer += input[i];
-            i++;
-        }
-    }
-
-    // Add remaining text
-    if (textBuffer.trim()) {
-        textParts.push(textBuffer.trim());
-    }
-
-    return {
-        textSearch: textParts.join(' ').trim(),
-        tokens
-    };
-}
-
-/**
- * Try to parse a filter expression starting at position `start` in the input.
- * Returns the parsed filter info or null if no valid filter found.
- */
-function tryParseFilter(
-    input: string, 
-    start: number, 
-    semanticKeyMap: Map<string, AdvFilterConfig>
-): { field: string; operator: SemanticOperator; rawValue: string; endIndex: number; isVirtual: boolean } | null {
-    // Match field name (word characters)
-    let i = start;
-    while (i < input.length && /\w/.test(input[i])) {
-        i++;
-    }
-    
-    if (i === start) return null; // No field found
-    
-    const field = input.slice(start, i).toLowerCase();
-    
-    // Check if this field exists in our semantic map OR is a virtual key
-    const conf = semanticKeyMap.get(field);
-    const isVirtual = field in VIRTUAL_SEMANTIC_KEYS;
-    
-    if (!conf && !isVirtual) return null; // Not a recognized filter
-    
-    // Match operator
-    let operator: SemanticOperator | null = null;
-    const operatorStart = i;
-    if (input.slice(i, i + 2) === '!=') {
-        operator = '!=';
-        i += 2;
-    } else if (input.slice(i, i + 2) === '&=') {
-        operator = '&=';
-        i += 2;
-    } else if (input.slice(i, i + 2) === '>=') {
-        operator = '>=';
-        i += 2;
-    } else if (input.slice(i, i + 2) === '<=') {
-        operator = '<=';
-        i += 2;
-    } else if (input[i] === '=') {
-        operator = '=';
-        i += 1;
-    } else if (input[i] === '>') {
-        operator = '>';
-        i += 1;
-    } else if (input[i] === '<') {
-        operator = '<';
-        i += 1;
-    }
-    
-    if (!operator) return null; // No operator found
-    
-    // Validate operator for filter type
-    // Dropdown filters only support: =, !=, &=
-    // Semantic filters support: =, !=, &=
-    // Range filters support all operators
-    // Virtual keys (like 'dmg') are treated as range filters
-    if (conf && conf.type === AdvFilterType.DROPDOWN) {
-        const validDropdownOperators: SemanticOperator[] = ['=', '!=', '&='];
-        if (!validDropdownOperators.includes(operator)) {
-            // Invalid operator for dropdown - don't parse as filter
-            return null;
-        }
-    }
-    
-    // &= is only valid for dropdown and semantic filters
-    if (operator === '&=' && conf && conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC) {
-        return null;
-    }
-    
-    // Parse value, respecting quotes
-    const valueStart = i;
-    let inQuote: '"' | "'" | null = null;
-    
-    while (i < input.length) {
-        const char = input[i];
-        
-        if (inQuote) {
-            // Inside quotes, only end quote terminates
-            if (char === inQuote) {
-                inQuote = null;
-            }
-            i++;
-        } else if (char === '"' || char === "'") {
-            // Start of quoted section
-            inQuote = char;
-            i++;
-        } else if (/\s/.test(char)) {
-            // Whitespace ends the value (unless in quotes)
-            break;
-        } else {
-            i++;
-        }
-    }
-    
-    // Allow empty value - caller will handle it (e.g., "type=" with no value)
-    const rawValue = input.slice(valueStart, i);
-    
-    return {
-        field,
-        operator,
-        rawValue,
-        endIndex: i,
-        isVirtual
-    };
 }
 
 /**
@@ -1023,7 +837,7 @@ export function tokensToFilterState(
  * Used to sync the text input with current filter settings.
  */
 export function filterStateToSemanticText(
-    filterState: FilterState | SemanticFilterState,
+    filterState: SemanticFilterState,
     textSearch: string,
     gameSystem: GameSystem,
     totalRanges: Record<string, [number, number]>
@@ -1040,7 +854,7 @@ export function filterStateToSemanticText(
 
         const conf = ADVANCED_FILTERS.find(f => f.key === key);
         if (!conf) continue;
-        if (conf.game && conf.game !== gameSystem) continue;
+        // Allow all filters to be serialized - semantic mode works across game modes
 
         const semanticKey = conf.semanticKey || conf.key;
 
@@ -1171,30 +985,4 @@ function formatValueWithQuantity(
     }
     
     return `${formattedName}:${opStr}${count}`;
-}
-
-/**
- * Merge semantic filter changes with existing filters.
- * Clears filters not present in the semantic query.
- */
-export function applySemanticQuery(
-    input: string,
-    gameSystem: GameSystem,
-    totalRanges: Record<string, [number, number]>
-): { textSearch: string; filterState: SemanticFilterState } {
-    const parsed = parseSemanticQuery(input, gameSystem);
-    const filterState = tokensToFilterState(parsed.tokens, gameSystem, totalRanges);
-
-    return {
-        textSearch: parsed.textSearch,
-        filterState
-    };
-}
-
-/**
- * Check if a filter state entry has semantic-only features that can't be shown in UI.
- */
-export function isSemanticOnly(state: FilterState[string]): boolean {
-    const extState = state as SemanticFilterState[string];
-    return !!extState.semanticOnly || (!!extState.excludeRanges && extState.excludeRanges.length > 0);
 }
