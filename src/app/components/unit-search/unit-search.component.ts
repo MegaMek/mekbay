@@ -237,6 +237,11 @@ export class UnitSearchComponent {
                 }
             });
         });
+        // Auto-refresh favorites overlay when saved searches change (e.g., from cloud sync)
+        effect(() => {
+            this.savedSearchesService.version(); // Subscribe to changes
+            untracked(() => this.refreshFavoritesOverlay());
+        });
         effect(() => {
             if (this.advOpen()) {
                 this.layoutService.windowWidth();
