@@ -971,8 +971,8 @@ export interface EvaluatorContext {
     gameSystem: GameSystem;
     /** Match text against a unit's searchable text (chassis, model, etc.) */
     matchesText?: (unit: any, text: string) => boolean;
-    /** Get component counts for a unit (name -> count mapping) */
-    getComponentCounts?: (unit: any) => Map<string, number>;
+    /** Get item counts for a countable filter (e.g., equipment). Returns name -> count mapping. */
+    getCountableValues?: (unit: any, filterKey: string) => Map<string, number> | null;
 }
 
 /**
@@ -1005,10 +1005,10 @@ function evaluateFilter(
         unitValue = context.getAdjustedBV(unit);
     } else if (conf.key === 'as.PV' && context.getAdjustedPV) {
         unitValue = context.getAdjustedPV(unit);
-    } else if (conf.countable && context.getComponentCounts) {
-        // For countable filters (equipment), get names from component counts
-        const counts = context.getComponentCounts(unit);
-        unitValue = Array.from(counts.keys());
+    } else if (conf.countable && context.getCountableValues) {
+        // For countable filters (equipment, etc.), get names from counts
+        const counts = context.getCountableValues(unit, conf.key);
+        unitValue = counts ? Array.from(counts.keys()) : [];
     } else {
         unitValue = context.getProperty(unit, conf.key);
     }
@@ -1150,9 +1150,9 @@ function evaluateDropdownFilter(
     const unitValues = Array.isArray(unitValue) ? unitValue : [unitValue];
     const unitStrings = unitValues.map(v => String(v).toLowerCase());
     
-    // Check if we need component counting (for countable filters like equipment)
-    const needsQuantityCounting = conf.countable && context.getComponentCounts;
-    const componentCounts = needsQuantityCounting ? context.getComponentCounts!(unit) : null;
+    // Check if we need quantity counting (for countable filters like equipment)
+    const needsQuantityCounting = conf.countable && context.getCountableValues;
+    const countableValues = needsQuantityCounting ? context.getCountableValues!(unit, conf.key) : null;
     
     // For &= (AND) operator, ALL values must match
     if (operator === '&=') {
@@ -1169,10 +1169,10 @@ function evaluateDropdownFilter(
                 for (const uv of unitStrings) {
                     if (regex.test(uv)) {
                         matchFound = true;
-                        if (componentCounts) {
-                            // Sum counts for all matching components
-                            for (const [compName, count] of componentCounts) {
-                                if (regex.test(compName.toLowerCase())) {
+                        if (countableValues) {
+                            // Sum counts for all matching items
+                            for (const [itemName, count] of countableValues) {
+                                if (regex.test(itemName.toLowerCase())) {
                                     matchCount += count;
                                 }
                             }
@@ -1182,10 +1182,10 @@ function evaluateDropdownFilter(
                 }
             } else {
                 matchFound = unitStrings.some(uv => uv === lowerName);
-                if (matchFound && componentCounts) {
-                    // Find the count for this specific component (case-insensitive)
-                    for (const [compName, count] of componentCounts) {
-                        if (compName.toLowerCase() === lowerName) {
+                if (matchFound && countableValues) {
+                    // Find the count for this specific item (case-insensitive)
+                    for (const [itemName, count] of countableValues) {
+                        if (itemName.toLowerCase() === lowerName) {
                             matchCount = count;
                             break;
                         }
@@ -1219,10 +1219,10 @@ function evaluateDropdownFilter(
             for (const uv of unitStrings) {
                 if (regex.test(uv)) {
                     matchFound = true;
-                    if (componentCounts) {
-                        // Sum counts for all matching components
-                        for (const [compName, count] of componentCounts) {
-                            if (regex.test(compName.toLowerCase())) {
+                    if (countableValues) {
+                        // Sum counts for all matching items
+                        for (const [itemName, count] of countableValues) {
+                            if (regex.test(itemName.toLowerCase())) {
                                 matchCount += count;
                             }
                         }
@@ -1232,10 +1232,10 @@ function evaluateDropdownFilter(
             }
         } else {
             matchFound = unitStrings.some(uv => uv === lowerName);
-            if (matchFound && componentCounts) {
-                // Find the count for this specific component (case-insensitive)
-                for (const [compName, count] of componentCounts) {
-                    if (compName.toLowerCase() === lowerName) {
+            if (matchFound && countableValues) {
+                // Find the count for this specific item (case-insensitive)
+                for (const [itemName, count] of countableValues) {
+                    if (itemName.toLowerCase() === lowerName) {
                         matchCount = count;
                         break;
                     }

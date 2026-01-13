@@ -1137,7 +1137,16 @@ export class UnitSearchFiltersService {
                 const tokens = parseSearchQuery(text);
                 return matchesSearch(searchableText, tokens, true);
             },
-            getComponentCounts: (unit: Unit) => getUnitComponentData(unit).componentCounts
+            getCountableValues: (unit: Unit, filterKey: string) => {
+                // Map filter keys to their countable data sources
+                // Add new countable filters here as they are created
+                switch (filterKey) {
+                    case 'componentName':
+                        return getUnitComponentData(unit).componentCounts;
+                    default:
+                        return null;
+                }
+            }
         };
         let results = filterUnitsWithAST(this.units, ast.ast, context);
 
