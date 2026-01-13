@@ -45,8 +45,8 @@
             <section class="guide-section">
                 <h3>Dropdown Filters</h3>
                 <div class="examples">
-                    <div class="example"><code class="allow-select">type=BM</code><span class="desc">→ BattleMechs only</span></div>
-                    <div class="example"><code class="allow-select">type=BM,CV</code><span class="desc">→ BattleMechs OR Combat Vehicles</span></div>
+                    <div class="example"><code class="allow-select">type=BM</code><span class="desc">→ Meks only</span></div>
+                    <div class="example"><code class="allow-select">type=BM,CV</code><span class="desc">→ Meks OR Combat Vehicles</span></div>
                     <div class="example"><code class="allow-select">type!=BA</code><span class="desc">→ Exclude Battle Armor</span></div>
                     <div class="example"><code class="allow-select">faction="Draconis Combine"</code><span class="desc">→ Use quotes for spaces</span></div>
                 </div>
@@ -111,7 +111,8 @@
                 <h3>Boolean Logic &amp; Grouping</h3>
                 <p>Use <code>OR</code> and <code>AND</code> keywords with parentheses for complex queries:</p>
                 <div class="examples">
-                    <div class="example"><code class="allow-select">type=BM pv>50</code><span class="desc">→ BattleMechs AND pv>50 (implicit AND)</span></div>
+                    <div class="example"><code class="allow-select">type=BM pv>50</code><span class="desc">→ Meks AND pv>50 (implicit AND)</span></div>
+                    <div class="example"><code class="allow-select">crab or ares</code><span class="desc">→ Meks OR Ares</span></div>
                     <div class="example"><code class="allow-select">(type=BM pv>50) OR (type=CV pv<10)</code><span class="desc">→ Meks with pv &gt; 50 OR Vehicles with pv &lt; 10</span></div>
                 </div>
                 <p class="note"><strong>Note:</strong> Filters at the same level are AND'd by default. Use <code>OR</code> to combine groups.</p>
