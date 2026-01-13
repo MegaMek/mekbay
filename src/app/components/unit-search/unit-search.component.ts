@@ -69,6 +69,7 @@ import { OptionsService } from '../../services/options.service';
 import { TaggingService } from '../../services/tagging.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
+import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 
 
 
@@ -100,7 +101,7 @@ export class ExpandedComponentsPipe implements PipeTransform {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {
@@ -135,8 +136,7 @@ export class UnitSearchComponent {
     readonly immediateSearchText = signal('');
 
     viewport = viewChild(CdkVirtualScrollViewport);
-    searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
-    searchMirror = viewChild<ElementRef<HTMLElement>>('searchMirror');
+    syntaxInput = viewChild<SyntaxInputComponent>('syntaxInput');
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
     favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
@@ -229,12 +229,6 @@ export class UnitSearchComponent {
                 }
             });
         });
-        // Sync mirror scroll position when highlight tokens change (after DOM update)
-        effect(() => {
-            this.highlightTokens(); // Track dependency
-            // Use requestAnimationFrame to sync after Angular renders the new content
-            requestAnimationFrame(() => this.syncMirrorScroll());
-        });
         effect(() => {
             if (this.advOpen()) {
                 this.layoutService.windowWidth();
@@ -255,9 +249,9 @@ export class UnitSearchComponent {
         effect(() => {
             if (this.autoFocus() &&
                 this.filtersService.isDataReady() &&
-                this.searchInput().nativeElement) {
+                this.syntaxInput()) {
                 afterNextRender(() => {
-                    this.searchInput().nativeElement.focus();
+                    this.syntaxInput()?.focus();
                 }, { injector: this.injector });
             }
         });
@@ -346,12 +340,12 @@ export class UnitSearchComponent {
 
     focusInput() {
         afterNextRender(() => {
-            try { this.searchInput()?.nativeElement.focus(); } catch { /* ignore */ }
+            try { this.syntaxInput()?.focus(); } catch { /* ignore */ }
         }, { injector: this.injector });
     }
 
     blurInput() {
-        try { this.searchInput()?.nativeElement.blur(); } catch { /* ignore */ }
+        try { this.syntaxInput()?.blur(); } catch { /* ignore */ }
     }
 
     setSearch(val: string) {
@@ -367,18 +361,6 @@ export class UnitSearchComponent {
         }, this.SEARCH_DEBOUNCE_MS);
     }
 
-    /**
-     * Sync the scroll position of the mirror div with the input.
-     * Called on input scroll events.
-     */
-    syncMirrorScroll() {
-        const input = this.searchInput()?.nativeElement;
-        const mirror = this.searchMirror()?.nativeElement;
-        if (input && mirror) {
-            mirror.scrollLeft = input.scrollLeft;
-        }
-    }
-
     closeAdvPanel() {
         this.advOpen.set(false);
     }
@@ -386,7 +368,7 @@ export class UnitSearchComponent {
     toggleAdv() {
         this.advOpen.set(!this.advOpen());
         if (!this.advOpen()) {
-            this.searchInput().nativeElement.focus();
+            this.syntaxInput()?.focus();
         } else {
             this.focused.set(true);
         }
@@ -507,7 +489,6 @@ export class UnitSearchComponent {
     }
 
     onKeydown(event: KeyboardEvent) {
-        const searchInput = this.searchInput();
         // SELECT ALL
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
             const isInInput = event.target instanceof HTMLElement && Boolean(event.target.closest('input, textarea, select, [contenteditable]'));
@@ -521,7 +502,7 @@ export class UnitSearchComponent {
             event.stopPropagation();
             if (this.advOpen()) {
                 this.closeAdvPanel();
-                searchInput.nativeElement.focus();
+                this.syntaxInput()?.focus();
                 return;
             } else {
                 if (this.expandedView()) {
@@ -552,7 +533,7 @@ export class UnitSearchComponent {
                         this.scrollToIndex(prevIndex);
                     } else {
                         this.activeIndex.set(null);
-                        searchInput.nativeElement.focus();
+                        this.syntaxInput()?.focus();
                     }
                     break;
                 case 'Enter':
@@ -943,7 +924,6 @@ export class UnitSearchComponent {
         this.immediateSearchText.set('');
         this.filtersService.searchText.set('');
         this.activeIndex.set(null);
-        this.focusInput();
     }
 
     openShareSearch(event: MouseEvent) {

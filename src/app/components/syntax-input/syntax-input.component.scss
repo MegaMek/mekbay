@@ -1,0 +1,176 @@
+/*
+ * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ */
+
+:host {
+    display: block;
+    width: 100%;
+}
+
+.syntax-input-container {
+    position: relative;
+    width: 100%;
+    height: 40px;
+}
+
+// Shared styling for BOTH textarea and highlighting - must be IDENTICAL
+@mixin shared-styling {
+    // Typography - must match exactly
+    font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16px;
+    font-weight: 400;
+    letter-spacing: normal;
+    word-spacing: normal;
+    line-height: 38px; // 40px height - 2px total border
+    text-transform: none;
+    text-indent: 0;
+    text-shadow: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    
+    // Box model - must match exactly (including border for bt-input)
+    margin: 0;
+    padding: 0 32px 0 12px;
+    border: 1px solid transparent; // Same border as bt-input uses
+    box-sizing: border-box;
+    
+    // Positioning
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 40px;
+    
+    // Scrolling
+    overflow: auto;
+    white-space: nowrap;
+}
+
+// Pre/code element for syntax highlighting - positioned behind the input
+.syntax-highlighting {
+    @include shared-styling;
+    z-index: 1;
+    pointer-events: none;
+    background: transparent;
+    overflow: hidden; // Don't show scrollbar on pre
+
+    code {
+        display: block;
+        font: inherit;
+        letter-spacing: inherit;
+        padding: 0;
+        margin: 0;
+        background: transparent;
+        white-space: inherit;
+        overflow-x: scroll;
+        overflow-y: hidden;
+        // Hide scrollbar
+        scrollbar-width: none;
+        &::-webkit-scrollbar {
+            display: none;
+        }
+    }
+
+    // Syntax highlighting colors
+    .hl-key {
+        color: var(--semantic-color-highlight, #80deea);
+    }
+    .hl-operator {
+        color: #fff;
+    }
+    .hl-value {
+        color: rgb(255, 180, 40);
+    }
+    .hl-keyword {
+        color: #ce93d8;
+    }
+    .hl-paren {
+        color: #ce93d8;
+    }
+    .hl-text {
+        color: #fff;
+    }
+    .hl-whitespace {
+        // Invisible but takes up space
+    }
+    .hl-rangeoperator {
+        color: #fff;
+    }
+    .hl-qtyseparator {
+        color: #fff;
+    }
+    .hl-suboperator {
+        color: #fff;
+    }
+    .hl-error {
+        color: #ef9a9a;
+        background-color: rgba(255, 80, 80, 0.25);
+        border-bottom: 2px wavy #ff4444;
+        cursor: help;
+        pointer-events: auto;
+    }
+}
+
+.syntax-input {
+    @include shared-styling;
+    // Layer on top
+    z-index: 2;
+    // Make input text transparent so highlighting shows through
+    color: transparent;
+    caret-color: #fff;
+    background-color: transparent;
+
+    &::placeholder {
+        color: #666;
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+}
+
+.clear-btn {
+    position: absolute;
+    right: 4px;
+    top: 0;
+    bottom: 0;
+    margin: auto 0;
+    background: transparent;
+    border: none;
+    color: #999;
+    font-size: 1em;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0 6px;
+    height: 32px;
+    width: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 4;
+    transition: color 0.2s;
+    line-height: 1;
+
+    &:hover {
+        color: #ff4444;
+    }
+}
