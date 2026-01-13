@@ -973,6 +973,10 @@ export interface EvaluatorContext {
     matchesText?: (unit: any, text: string) => boolean;
     /** Get item counts for a countable filter (e.g., equipment). Returns name -> count mapping. */
     getCountableValues?: (unit: any, filterKey: string) => Map<string, number> | null;
+    /** Check if a unit belongs to a specific era (external filter) */
+    unitBelongsToEra?: (unit: any, eraName: string) => boolean;
+    /** Check if a unit belongs to a specific faction (external filter) */
+    unitBelongsToFaction?: (unit: any, factionName: string) => boolean;
 }
 
 /**
@@ -999,6 +1003,11 @@ function evaluateFilter(
     
     const { operator, values } = filter;
     
+    // Handle external filters (era, faction) - these use ID-based lookups
+    if (conf.external) {
+        return evaluateExternalFilter(unit, operator, values, conf, context);
+    }
+    
     // Get unit value for this filter
     let unitValue: any;
     if (conf.key === 'bv' && context.getAdjustedBV) {
@@ -1023,6 +1032,48 @@ function evaluateFilter(
     }
     
     return true;
+}
+
+/**
+ * Evaluate an external filter (era, faction) that uses ID-based lookups.
+ */
+function evaluateExternalFilter(
+    unit: any,
+    operator: SemanticOperator,
+    values: string[],
+    conf: AdvFilterConfig,
+    context: EvaluatorContext
+): boolean {
+    // Determine the membership check function based on filter key
+    let checkMembership: (name: string) => boolean;
+    
+    if (conf.key === 'era' && context.unitBelongsToEra) {
+        checkMembership = (name: string) => context.unitBelongsToEra!(unit, name);
+    } else if (conf.key === 'faction' && context.unitBelongsToFaction) {
+        checkMembership = (name: string) => context.unitBelongsToFaction!(unit, name);
+    } else {
+        // External filter handler not provided, pass through
+        return true;
+    }
+    
+    // Handle operators
+    if (operator === '!=') {
+        // Exclude if unit matches ANY of the values
+        for (const val of values) {
+            if (checkMembership(val)) {
+                return false;
+            }
+        }
+        return true;
+    } else {
+        // Include if unit matches ANY of the values (OR logic for =)
+        for (const val of values) {
+            if (checkMembership(val)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
 
 /**

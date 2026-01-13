@@ -584,7 +584,8 @@ hr {
         background-color: var(--background-highlight-bright);
     }
 
-    &[disabled] {
+    &[disabled],
+    &.disabled {
         cursor: not-allowed;
         color: #444;
     }

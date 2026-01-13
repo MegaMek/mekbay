@@ -117,13 +117,26 @@ type RangeFilterOptions = {
 };
 
 export interface SerializedSearchFilter {
+    /** Unique identifier for storage/sync */
+    id: string;
+    /** Display name for the saved search */
     name: string;
+    /** Game system this filter applies to: 'cbt' or 'as' */
+    gameSystem: 'cbt' | 'as';
+    /** Search query text */
     q?: string;
+    /** Sort field key */
     sort?: string;
+    /** Sort direction */
     sortDir?: 'asc' | 'desc';
+    /** Advanced filter values */
     filters?: Record<string, any>;
+    /** Pilot gunnery skill for BV/PV calculations */
     gunnery?: number;
+    /** Pilot piloting skill for BV calculations */
     piloting?: number;
+    /** Timestamp when saved (for sync ordering) */
+    timestamp?: number;
 }
 
 
@@ -679,8 +692,72 @@ export class UnitSearchFiltersService {
                 }
             }
         });
+        // When query becomes complex, convert UI-only filters to semantic text
+        // This ensures filters aren't silently applied without being visible
+        this.setupComplexQueryFilterConversion();
         this.loadFiltersFromUrlOnStartup();
         this.updateUrlOnFiltersChange();
+    }
+
+    /**
+     * When the query becomes complex (OR, nested brackets), UI filter controls are disabled.
+     * This effect converts any UI-only filters (not in semantic text) to semantic form
+     * and appends them to the search text, then clears the UI filter state.
+     * This ensures all active filters are visible in the query.
+     */
+    private setupComplexQueryFilterConversion(): void {
+        let wasComplex = false;
+        
+        effect(() => {
+            const isComplex = this.isComplexQuery();
+            const semanticKeys = this.semanticFilterKeys();
+            const manualFilters = this.filterState();
+            
+            // Only act when transitioning TO complex mode
+            if (isComplex && !wasComplex) {
+                // Find UI-only filters that need conversion
+                const uiOnlyFilters: FilterState = {};
+                for (const [key, state] of Object.entries(manualFilters)) {
+                    if (!semanticKeys.has(key) && state.interactedWith) {
+                        uiOnlyFilters[key] = state;
+                    }
+                }
+                
+                if (Object.keys(uiOnlyFilters).length > 0) {
+                    // Convert UI-only filters to semantic text
+                    const uiFiltersText = filterStateToSemanticText(
+                        uiOnlyFilters,
+                        '', // No text search - we're just converting filters
+                        this.gameService.currentGameSystem(),
+                        this.totalRangesCache
+                    );
+                    
+                    if (uiFiltersText.trim()) {
+                        // Append to current search text (wrapped in parens for clarity)
+                        const currentText = this.searchText().trim();
+                        const newText = currentText 
+                            ? `${currentText} (${uiFiltersText.trim()})`
+                            : uiFiltersText.trim();
+                        
+                        this.isSyncingToText = true;
+                        try {
+                            this.searchText.set(newText);
+                        } finally {
+                            this.isSyncingToText = false;
+                        }
+                        
+                        // Clear the UI-only filters from filterState
+                        const updatedFilters = { ...manualFilters };
+                        for (const key of Object.keys(uiOnlyFilters)) {
+                            delete updatedFilters[key];
+                        }
+                        this.filterState.set(updatedFilters);
+                    }
+                }
+            }
+            
+            wasComplex = isComplex;
+        });
     }
 
     dynamicInternalLabel = computed(() => {
@@ -805,6 +882,38 @@ export class UnitSearchFiltersService {
 
     public setSortDirection(direction: 'asc' | 'desc') {
         this.selectedSortDirection.set(direction);
+    }
+
+    /**
+     * Check if a unit belongs to a specific era by name.
+     * Used for external filter evaluation in AST.
+     */
+    public unitBelongsToEra(unit: Unit, eraName: string): boolean {
+        const era = this.dataService.getEraByName(eraName);
+        if (!era) return false;
+        
+        const extinctFaction = this.dataService.getFactions().find(f => f.id === FACTION_EXTINCT);
+        const extinctUnitIdsForEra = extinctFaction?.eras[era.id] as Set<number> || new Set<number>();
+        
+        // Unit must be in the era's unit set and not extinct
+        return (era.units as Set<number>).has(unit.id) && !extinctUnitIdsForEra.has(unit.id);
+    }
+
+    /**
+     * Check if a unit belongs to a specific faction by name.
+     * Used for external filter evaluation in AST.
+     */
+    public unitBelongsToFaction(unit: Unit, factionName: string): boolean {
+        const faction = this.dataService.getFactionByName(factionName);
+        if (!faction) return false;
+        
+        // Check if unit exists in any era for this faction
+        for (const eraIdStr in faction.eras) {
+            if ((faction.eras[eraIdStr] as Set<number>).has(unit.id)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private getUnitIdsForSelectedEras(selectedEraNames: string[]): Set<number> | null {
@@ -1146,9 +1255,26 @@ export class UnitSearchFiltersService {
                     default:
                         return null;
                 }
-            }
+            },
+            // External filter handlers for era and faction
+            unitBelongsToEra: (unit: Unit, eraName: string) => this.unitBelongsToEra(unit, eraName),
+            unitBelongsToFaction: (unit: Unit, factionName: string) => this.unitBelongsToFaction(unit, factionName)
         };
         let results = filterUnitsWithAST(this.units, ast.ast, context);
+
+        // Apply UI-only filters (those not in semantic text)
+        // This handles the case when automaticallyConvertFiltersToSemantic is false
+        const semanticKeys = this.semanticFilterKeys();
+        const manualFilters = this.filterState();
+        const uiOnlyFilterState: FilterState = {};
+        for (const [key, state] of Object.entries(manualFilters)) {
+            if (!semanticKeys.has(key) && state.interactedWith) {
+                uiOnlyFilterState[key] = state;
+            }
+        }
+        if (Object.keys(uiOnlyFilterState).length > 0) {
+            results = this.applyFilters(results, uiOnlyFilterState);
+        }
 
         const sortKey = this.selectedSort();
         const sortDirection = this.selectedSortDirection();
@@ -2435,10 +2561,6 @@ export class UnitSearchFiltersService {
         }
     }
 
-    public async saveTagsToStorage(): Promise<void> {
-        await this.dataService.saveUnitTags(this.dataService.getUnits());
-    }
-
     setPilotSkills(gunnery: number, piloting: number) {
         this.pilotGunnerySkill.set(gunnery);
         this.pilotPilotingSkill.set(piloting);
@@ -2469,8 +2591,13 @@ export class UnitSearchFiltersService {
     }
 
 
-    public serializeCurrentSearchFilter(name: string): SerializedSearchFilter {
-        const filter: SerializedSearchFilter = { name };
+    public serializeCurrentSearchFilter(id: string, name: string, gameSystem: 'cbt' | 'as'): SerializedSearchFilter {
+        const filter: SerializedSearchFilter = { 
+            id,
+            name, 
+            gameSystem,
+            timestamp: Date.now()
+        };
 
         const q = this.searchText();
         if (q && q.trim().length > 0) filter.q = q.trim();

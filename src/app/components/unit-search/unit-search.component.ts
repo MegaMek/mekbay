@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, Pipe, PipeTransform, DestroyRef, untracked } from '@angular/core';
+import { Component, signal, ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, Pipe, PipeTransform, DestroyRef, untracked, ComponentRef } from '@angular/core';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
@@ -70,6 +70,9 @@ import { TaggingService } from '../../services/tagging.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
+import { SavedSearchesService } from '../../services/saved-searches.service';
+import { generateUUID } from '../../services/ws.service';
+import { GameSystem } from '../../models/common.model';
 
 
 
@@ -123,6 +126,7 @@ export class UnitSearchComponent {
     private abilityLookup = inject(AsAbilityLookupService);
     private optionsService = inject(OptionsService);
     private taggingService = inject(TaggingService);
+    private savedSearchesService = inject(SavedSearchesService);
 
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
 
@@ -132,6 +136,10 @@ export class UnitSearchComponent {
 
     private searchDebounceTimer: any;
     private readonly SEARCH_DEBOUNCE_MS = 300;
+    /** Reference to the favorites overlay component for in-place updates. */
+    private favoritesCompRef: ComponentRef<SearchFavoritesMenuComponent> | null = null;
+    /** Flag to track when a favorites dialog (rename/delete) is in progress. */
+    private favoritesDialogActive = false;
     /** Immediate input value for instant highlighting (not debounced). */
     readonly immediateSearchText = signal('');
 
@@ -946,6 +954,7 @@ export class UnitSearchComponent {
         // If already open, close it
         if (this.overlayManager.has('favorites')) {
             this.overlayManager.closeManagedOverlay('favorites');
+            this.favoritesCompRef = null;
             return;
         }
         const target = this.favBtn()?.nativeElement || (event.target as HTMLElement);
@@ -954,32 +963,155 @@ export class UnitSearchComponent {
             hasBackdrop: false,
             panelClass: 'favorites-overlay-panel',
             closeOnOutsideClick: true,
-            scrollStrategy: this.overlay.scrollStrategies.close()
+            scrollStrategy: this.overlay.scrollStrategies.reposition()
         });
+        this.favoritesCompRef = compRef;
 
-        const favorites: SerializedSearchFilter[] = [];
+        // Get favorites for current game system
+        const gameSystem = this.gameService.currentGameSystem();
+        const favorites = this.savedSearchesService.getSearchesForGameSystem(gameSystem);
         compRef.setInput('favorites', favorites);
+        
+        // Determine if saving is allowed (has search text or filters)
+        const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
+        const filterState = this.filtersService.filterState();
+        const hasActiveFilters = Object.values(filterState).some(s => s.interactedWith);
+        compRef.setInput('canSave', hasSearchText || hasActiveFilters);
+        
         compRef.instance.select.subscribe((favorite: SerializedSearchFilter) => {
             if (favorite) this.applyFavorite(favorite);
             this.overlayManager.closeManagedOverlay('favorites');
+            this.favoritesCompRef = null;
+        });
+        compRef.instance.rename.subscribe((favorite: SerializedSearchFilter) => {
+            this.renameSearch(favorite);
+        });
+        compRef.instance.delete.subscribe((favorite: SerializedSearchFilter) => {
+            this.deleteSearch(favorite);
         });
         compRef.instance.saveRequest.subscribe(() => {
             this.saveCurrentSearch();
+        });
+        compRef.instance.menuOpened.subscribe(() => {
+            this.overlayManager.blockCloseUntil('favorites');
+        });
+        compRef.instance.menuClosed.subscribe(() => {
+            // Delay unblock to allow menu item click to process first
+            // But don't unblock if a dialog operation is in progress
+            setTimeout(() => {
+                if (!this.favoritesDialogActive) {
+                    this.overlayManager.unblockClose('favorites');
+                }
+            }, 50);
         });
     }
 
     closeFavorites() {
         this.overlayManager.closeManagedOverlay('favorites');
+        this.favoritesCompRef = null;
     }
 
     private async saveCurrentSearch() {
-        const name = await this.dialogsService.prompt('Enter a name for this Tactical Bookmark (e.g. "Clan Raid - 3058")', 'Save Tactical Bookmark', '');
-        if (name === null) return; // cancelled
-        const trimmed = (name || '').trim();
-        if (!trimmed) return;
+        // Block favorites overlay from closing while dialog is open
+        this.favoritesDialogActive = true;
+        this.overlayManager.blockCloseUntil('favorites');
+        try {
+            // Check if there's anything to save (text or filters)
+            const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
+            const filterState = this.filtersService.filterState();
+            const hasActiveFilters = Object.values(filterState).some(s => s.interactedWith);
+            
+            if (!hasSearchText && !hasActiveFilters) {
+                await this.dialogsService.showNotice(
+                    'Please enter a search query or set some filters before saving a bookmark.',
+                    'Nothing to Save'
+                );
+                return;
+            }
 
-        const fav = this.filtersService.serializeCurrentSearchFilter(trimmed);
-        // DO THE SAVING!
+            const name = await this.dialogsService.prompt(
+                'Enter a name for this Tactical Bookmark (e.g. "Clan Raid 3052")',
+                'Save Tactical Bookmark',
+                ''
+            );
+            if (name === null) return; // cancelled
+            const trimmed = (name || '').trim();
+            if (!trimmed) return;
+
+            const gameSystem = this.gameService.currentGameSystem();
+            const gsKey = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
+            const id = generateUUID();
+            const filter = this.filtersService.serializeCurrentSearchFilter(id, trimmed, gsKey);
+            
+            await this.savedSearchesService.saveSearch(filter);
+            // Refresh the overlay with the new bookmark
+            this.refreshFavoritesOverlay();
+        } finally {
+            this.favoritesDialogActive = false;
+            // Unblock after small delay to prevent immediate close from residual events
+            setTimeout(() => this.overlayManager.unblockClose('favorites'), 100);
+        }
+    }
+
+    private async renameSearch(favorite: SerializedSearchFilter) {
+        // Block favorites overlay from closing while dialog is open
+        this.favoritesDialogActive = true;
+        this.overlayManager.blockCloseUntil('favorites');
+        try {
+            const newName = await this.dialogsService.prompt(
+                'Enter a new name for this bookmark:',
+                'Rename Tactical Bookmark',
+                favorite.name
+            );
+            if (newName === null) return; // cancelled
+            const trimmed = (newName || '').trim();
+            if (!trimmed || trimmed === favorite.name) return;
+
+            await this.savedSearchesService.renameSearch(favorite.id, trimmed);
+            // Refresh the overlay with updated data
+            this.refreshFavoritesOverlay();
+        } finally {
+            this.favoritesDialogActive = false;
+            // Unblock after small delay to prevent immediate close from residual events
+            setTimeout(() => this.overlayManager.unblockClose('favorites'), 100);
+        }
+    }
+
+    private async deleteSearch(favorite: SerializedSearchFilter) {
+        // Block favorites overlay from closing while dialog is open
+        this.favoritesDialogActive = true;
+        this.overlayManager.blockCloseUntil('favorites');
+        try {
+            const confirmed = await this.dialogsService.requestConfirmation(
+                `Delete "${favorite.name}"?`,
+                'Delete Tactical Bookmark',
+                'danger'
+            );
+            if (!confirmed) return;
+
+            await this.savedSearchesService.deleteSearch(favorite.id);
+            // Refresh the overlay with updated data
+            this.refreshFavoritesOverlay();
+        } finally {
+            this.favoritesDialogActive = false;
+            // Unblock after small delay to prevent immediate close from residual events
+            setTimeout(() => this.overlayManager.unblockClose('favorites'), 100);
+        }
+    }
+
+    private refreshFavoritesOverlay() {
+        // Update favorites data in-place without closing overlay
+        if (this.favoritesCompRef && this.overlayManager.has('favorites')) {
+            const gameSystem = this.gameService.currentGameSystem();
+            const favorites = this.savedSearchesService.getSearchesForGameSystem(gameSystem);
+            this.favoritesCompRef.setInput('favorites', favorites);
+            
+            // Also update canSave state
+            const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
+            const filterState = this.filtersService.filterState();
+            const hasActiveFilters = Object.values(filterState).some(s => s.interactedWith);
+            this.favoritesCompRef.setInput('canSave', hasSearchText || hasActiveFilters);
+        }
     }
 
     private applyFavorite(fav: SerializedSearchFilter) {
