@@ -143,6 +143,7 @@ export class ForceBuilderService {
         currentForce?.units().forEach(unit => unit.destroy());
         this.currentForce.set(newForce);
         if (!newForce) {
+            this.clearForceUrlParams();
             return;
         }
         const instanceId = newForce.instanceId();
@@ -207,7 +208,6 @@ export class ForceBuilderService {
             return false; // User cancelled, do not load new force
         }
         this.setForce(null);
-        this.clearForceUrlParams();
         this.logger.info('ForceBuilderService: Current force removed.');
         return true;
     }
