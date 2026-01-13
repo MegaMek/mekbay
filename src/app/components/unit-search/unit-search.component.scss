@@ -30,21 +30,30 @@
 }
 
 // Mirror div for syntax highlighting - positioned behind the input
+// Must exactly match the input's box model (border, padding) for alignment
 .searchbar-mirror {
     position: absolute;
     top: 0;
-    left: 0;
+    left: 12px;
     right: 32px; // Leave space for cancel button
     bottom: 0;
-    padding-left: 12px;
+    box-sizing: border-box;
+    padding-left: 0px;
     font-size: 1rem;
     font-family: inherit;
     line-height: 40px;
     white-space: pre;
-    overflow: hidden;
     pointer-events: none;
     z-index: 1;
-    border: 1px solid transparent; // Match input border for alignment
+    border: 2px solid transparent; // Match bt-input border width (2px)
+    // Enable horizontal scrolling programmatically
+    overflow-x: scroll;
+    overflow-y: hidden;
+    // Hide scrollbar
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+        display: none;
+    }
     
     // Syntax highlighting colors
     .hl-key {
@@ -58,7 +67,6 @@
     }
     .hl-keyword {
         color: #ce93d8; // Keywords (AND, OR)
-        font-weight: 600;
     }
     .hl-paren {
         color: #ce93d8; // Parentheses

@@ -229,6 +229,12 @@ export class UnitSearchComponent {
                 }
             });
         });
+        // Sync mirror scroll position when highlight tokens change (after DOM update)
+        effect(() => {
+            this.highlightTokens(); // Track dependency
+            // Use requestAnimationFrame to sync after Angular renders the new content
+            requestAnimationFrame(() => this.syncMirrorScroll());
+        });
         effect(() => {
             if (this.advOpen()) {
                 this.layoutService.windowWidth();
