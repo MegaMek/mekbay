@@ -45,7 +45,7 @@
     white-space: pre;
     pointer-events: none;
     z-index: 1;
-    border: 2px solid transparent; // Match bt-input border width (2px)
+    border: 0px solid transparent;
     // Enable horizontal scrolling programmatically
     overflow-x: scroll;
     overflow-y: hidden;
