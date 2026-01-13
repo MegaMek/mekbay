@@ -58,4 +58,5 @@ export interface Options {
     ASPrintPageBreakOnGroups: boolean;
     c3NetworkConnectionsAboveNodes: boolean;
     automaticallyConvertFiltersToSemantic: boolean;
+    allowMultipleActiveSheets: boolean;
 }

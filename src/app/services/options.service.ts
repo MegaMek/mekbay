@@ -56,6 +56,7 @@ const DEFAULT_OPTIONS: Options = {
     ASPrintPageBreakOnGroups: true,
     c3NetworkConnectionsAboveNodes: false,
     automaticallyConvertFiltersToSemantic: false,
+    allowMultipleActiveSheets: true,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -78,6 +79,7 @@ export class OptionsService {
         ASPrintPageBreakOnGroups: DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
         c3NetworkConnectionsAboveNodes: DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
         automaticallyConvertFiltersToSemantic: DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
+        allowMultipleActiveSheets: DEFAULT_OPTIONS.allowMultipleActiveSheets,
     });
 
     constructor() {
@@ -104,6 +106,7 @@ export class OptionsService {
             ASPrintPageBreakOnGroups: saved?.ASPrintPageBreakOnGroups ?? DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
             c3NetworkConnectionsAboveNodes: saved?.c3NetworkConnectionsAboveNodes ?? DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
             automaticallyConvertFiltersToSemantic: saved?.automaticallyConvertFiltersToSemantic ?? DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
+            allowMultipleActiveSheets: saved?.allowMultipleActiveSheets ?? DEFAULT_OPTIONS.allowMultipleActiveSheets,
         });
     }
 

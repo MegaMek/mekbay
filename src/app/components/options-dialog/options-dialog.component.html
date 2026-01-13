@@ -113,6 +113,21 @@
                     <option value="false">Disabled</option>
                 </select>
             </div>
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="allowMultipleActiveSheets">Multiple active sheets:</label>
+                    <select id="allowMultipleActiveSheets" class="bt-select"
+                        [value]="optionsService.options().allowMultipleActiveSheets"
+                        (change)="onAllowMultipleActiveSheetsChange($event)">
+                        <option value="true">Enabled (default)</option>
+                        <option value="false">Disabled</option>
+                    </select>
+                </div>
+                <div class="description">
+                    <p>When enabled, multiple sheets can be displayed side-by-side on wide screens.</p>
+                    <p>When disabled, only one active sheet is shown at a time, with neighbor sheets displayed as faded previews.</p>
+                </div>
+            </div>
             <div class="option-row">
                 <label for="swipeToNextSheet">Swipe to next sheet:</label>
                 <select id="swipeToNextSheet" class="bt-select" [value]="optionsService.options().swipeToNextSheet"
