@@ -35,6 +35,9 @@ import { GameSystem } from '../models/common.model';
 import { ADVANCED_FILTERS, AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
 import { CountOperator, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 
+// Cache for semantic key maps
+const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
+
 /*
  * Author: Drake
  * 
@@ -128,8 +131,13 @@ export const VIRTUAL_SEMANTIC_KEYS: Record<string, VirtualSemanticKeyConfig> = {
  * Build a lookup map from semanticKey to config.
  * Includes all filters regardless of game mode for semantic filtering,
  * but gives priority to filters matching the current game mode when there are duplicates.
+ * Results are cached per game system for performance.
  */
 export function buildSemanticKeyMap(gameSystem: GameSystem): Map<string, AdvFilterConfig> {
+    // Return cached map if available
+    const cached = semanticKeyMapCache.get(gameSystem);
+    if (cached) return cached;
+
     const map = new Map<string, AdvFilterConfig>();
     
     // First pass: add all filters without a game restriction
@@ -158,6 +166,8 @@ export function buildSemanticKeyMap(gameSystem: GameSystem): Map<string, AdvFilt
         map.set(key, conf); // Always set, overriding any previous
     }
     
+    // Cache for future calls
+    semanticKeyMapCache.set(gameSystem, map);
     return map;
 }
 

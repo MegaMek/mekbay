@@ -61,7 +61,7 @@
     
     // Scrolling
     overflow: auto;
-    white-space: nowrap;
+    white-space: pre; // Preserve multiple spaces
 }
 
 // Pre/code element for syntax highlighting - positioned behind the input

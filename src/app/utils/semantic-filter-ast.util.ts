@@ -140,39 +140,56 @@ export interface ParseResult {
  */
 function tokenize(input: string, semanticKeyMap: Map<string, AdvFilterConfig>): LexToken[] {
     const tokens: LexToken[] = [];
+    const len = input.length;
     let i = 0;
 
-    while (i < input.length) {
-        // Skip whitespace (but track position)
-        if (/\s/.test(input[i])) {
+    while (i < len) {
+        const char = input[i];
+        
+        // Skip whitespace (but track position) - inline check is faster than regex
+        if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
             i++;
             continue;
         }
 
         // Check for parentheses
-        if (input[i] === '(') {
+        if (char === '(') {
             tokens.push({ type: 'LPAREN', value: '(', start: i, end: i + 1 });
             i++;
             continue;
         }
 
-        if (input[i] === ')') {
+        if (char === ')') {
             tokens.push({ type: 'RPAREN', value: ')', start: i, end: i + 1 });
             i++;
             continue;
         }
 
         // Check for OR/AND keywords (case insensitive, must be followed by space or paren)
-        const upperRest = input.slice(i).toUpperCase();
-        if (upperRest.startsWith('OR') && (i + 2 >= input.length || /[\s()]/.test(input[i + 2]))) {
-            tokens.push({ type: 'OR', value: input.slice(i, i + 2), start: i, end: i + 2 });
-            i += 2;
-            continue;
+        const charUpper = char.toUpperCase();
+        if (charUpper === 'O' && i + 1 < len) {
+            const nextChar = input[i + 1].toUpperCase();
+            if (nextChar === 'R') {
+                const afterOr = input[i + 2];
+                if (i + 2 >= len || afterOr === ' ' || afterOr === '\t' || afterOr === '\n' || 
+                    afterOr === '\r' || afterOr === '(' || afterOr === ')') {
+                    tokens.push({ type: 'OR', value: input.slice(i, i + 2), start: i, end: i + 2 });
+                    i += 2;
+                    continue;
+                }
+            }
         }
-        if (upperRest.startsWith('AND') && (i + 3 >= input.length || /[\s()]/.test(input[i + 3]))) {
-            tokens.push({ type: 'AND', value: input.slice(i, i + 3), start: i, end: i + 3 });
-            i += 3;
-            continue;
+        if (charUpper === 'A' && i + 2 < len) {
+            const next2 = input.slice(i + 1, i + 3).toUpperCase();
+            if (next2 === 'ND') {
+                const afterAnd = input[i + 3];
+                if (i + 3 >= len || afterAnd === ' ' || afterAnd === '\t' || afterAnd === '\n' || 
+                    afterAnd === '\r' || afterAnd === '(' || afterAnd === ')') {
+                    tokens.push({ type: 'AND', value: input.slice(i, i + 3), start: i, end: i + 3 });
+                    i += 3;
+                    continue;
+                }
+            }
         }
 
         // Try to parse a filter expression
@@ -183,7 +200,9 @@ function tokenize(input: string, semanticKeyMap: Map<string, AdvFilterConfig>): 
             continue;
         }
 
-        // Otherwise, it's plain text - collect until whitespace, paren, or a filter
+        // Otherwise, it's plain text - collect until whitespace, paren, or end
+        // Since we already checked for filters at position i and it failed,
+        // we can safely collect all word characters until we hit a boundary
         const textStart = i;
         let textEnd = i;
         
@@ -191,12 +210,8 @@ function tokenize(input: string, semanticKeyMap: Map<string, AdvFilterConfig>): 
             const char = input[textEnd];
             
             // Stop at whitespace or parentheses
-            if (/[\s()]/.test(char)) break;
-            
-            // Check if we're starting a filter (word followed by operator)
-            if (textEnd > textStart && tryParseFilterToken(input, textEnd, semanticKeyMap)) {
-                break;
-            }
+            if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || 
+                char === '(' || char === ')') break;
             
             textEnd++;
         }
@@ -223,11 +238,19 @@ function tryParseFilterToken(
     start: number,
     semanticKeyMap: Map<string, AdvFilterConfig>
 ): { token: LexToken; endIndex: number } | null {
+    const len = input.length;
     let i = start;
     
-    // Match field name (word characters)
-    while (i < input.length && /\w/.test(input[i])) {
-        i++;
+    // Match field name (word characters) - inline check faster than regex
+    while (i < len) {
+        const code = input.charCodeAt(i);
+        // a-z, A-Z, 0-9, or _
+        if ((code >= 97 && code <= 122) || (code >= 65 && code <= 90) || 
+            (code >= 48 && code <= 57) || code === 95) {
+            i++;
+        } else {
+            break;
+        }
     }
     
     if (i === start) return null;
@@ -283,11 +306,11 @@ function tryParseFilterToken(
     const valueStart = i;
     let inQuote: '"' | "'" | null = null;
     
-    while (i < input.length) {
+    while (i < len) {
         const char = input[i];
         
         if (inQuote) {
-            if (char === '\\' && i + 1 < input.length && (input[i + 1] === inQuote || input[i + 1] === '\\')) {
+            if (char === '\\' && i + 1 < len && (input[i + 1] === inQuote || input[i + 1] === '\\')) {
                 i += 2; // Skip escaped character
                 continue;
             }
@@ -298,7 +321,8 @@ function tryParseFilterToken(
         } else if (char === '"' || char === "'") {
             inQuote = char;
             i++;
-        } else if (/[\s()]/.test(char)) {
+        } else if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || 
+                   char === '(' || char === ')') {
             // Whitespace or parentheses end the value (unless in quotes)
             break;
         } else {
@@ -632,12 +656,19 @@ class Parser {
 /**
  * Parse semantic query with support for nested brackets and boolean operators.
  * Returns an AST along with errors for validation display.
+ * Optionally returns the lexer tokens for reuse.
  */
-export function parseSemanticQueryAST(input: string, gameSystem: GameSystem): ParseResult {
+export function parseSemanticQueryAST(input: string, gameSystem: GameSystem, returnLexTokens?: false): ParseResult;
+export function parseSemanticQueryAST(input: string, gameSystem: GameSystem, returnLexTokens: true): ParseResult & { lexTokens: LexToken[] };
+export function parseSemanticQueryAST(input: string, gameSystem: GameSystem, returnLexTokens = false): ParseResult & { lexTokens?: LexToken[] } {
     const semanticKeyMap = buildSemanticKeyMap(gameSystem);
-    const tokens = tokenize(input, semanticKeyMap);
-    const parser = new Parser(tokens, input);
-    return parser.parse();
+    const lexTokens = tokenize(input, semanticKeyMap);
+    const parser = new Parser(lexTokens, input);
+    const result = parser.parse();
+    if (returnLexTokens) {
+        return { ...result, lexTokens };
+    }
+    return result;
 }
 
 /**
@@ -770,9 +801,9 @@ function tokenizeValuePart(input: string, start: number, end: number, tokens: Hi
 export function tokenizeForHighlight(input: string, gameSystem: GameSystem): HighlightToken[] {
     if (!input) return [];
     
-    const semanticKeyMap = buildSemanticKeyMap(gameSystem);
-    const lexTokens = tokenize(input, semanticKeyMap);
-    const result = parseSemanticQueryAST(input, gameSystem);
+    // Parse with lexer tokens returned to avoid double tokenization
+    const result = parseSemanticQueryAST(input, gameSystem, true);
+    const lexTokens = result.lexTokens;
     const errors = result.errors;
     
     // Build error range lookup
