@@ -151,12 +151,13 @@
     border-bottom: 2px solid #666;
     flex-shrink: 0;
     margin-bottom: -2px;
+    z-index: 2;
 }
 
 .tab-buttons {
     display: flex;
     flex-direction: row;
-    overflow: hidden;
+    overflow: visible;
     flex: 1;
     min-width: 0;
 }
