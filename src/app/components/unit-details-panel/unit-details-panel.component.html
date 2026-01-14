@@ -1,5 +1,9 @@
 @if (unit(); as currentUnit) {
     <div class="panel-container">
+        <!-- Fluff background image -->
+        @if (fluffImageUrl(); as bgUrl) {
+            <img [src]="bgUrl" class="fluff-bg-image" alt="">
+        }
         <!-- Header Section -->
         <div class="panel-header">
             <div class="header-icon-container">
@@ -49,11 +53,6 @@
 
         <!-- Tab Content -->
         <div class="panel-body" [class.tab-intel]="activeTab() === 'Intel'">
-            <!-- Fluff background image -->
-            @if (fluffImageUrl(); as bgUrl) {
-                <img [src]="bgUrl" class="fluff-bg-image" alt="">
-            }
-
             <div class="tab-content">
                 @if (activeTab() === 'General') {
                     <unit-details-general-tab 
