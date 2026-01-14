@@ -197,6 +197,7 @@ export class ForceBuilderService {
             this.selectUnit(force.units()[0] || null);
         } finally {
             this.urlStateInitialized = true; // Re-enable URL state initialization
+            this.updateUrlFromCurrentForce(); // Explicitly update URL after loading
         }
         return true;
     }
@@ -217,6 +218,7 @@ export class ForceBuilderService {
         const currentPath = urlTree.root.children['primary']?.segments.map(s => s.path).join('/') || '';
         this.router.navigate([currentPath], {
             queryParams: {
+                gs: null,
                 units: null,
                 name: null,
                 instance: null
@@ -677,6 +679,26 @@ export class ForceBuilderService {
                 queryParamsHandling: 'merge',
                 replaceUrl: true
             });
+        });
+    }
+
+    /**
+     * Explicitly updates the URL with current force parameters.
+     * Called after loading a force to ensure URL is updated even when
+     * the effect-based approach doesn't trigger due to timing.
+     */
+    private updateUrlFromCurrentForce(): void {
+        const queryParameters = this.queryParameters();
+        this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: {
+                gs: queryParameters.gs,
+                units: queryParameters.units,
+                name: queryParameters.name,
+                instance: queryParameters.instance
+            },
+            queryParamsHandling: 'merge',
+            replaceUrl: true
         });
     }
 
