@@ -32,6 +32,7 @@
  */
 
 import { Unit } from "../models/units.model";
+import { escapeRegExp, removeAccents } from './string.util';
 
 /*
  * Author: Drake
@@ -160,28 +161,16 @@ type RelevanceNormalizedText = {
 const relevanceNormalizeCache = new Map<string, RelevanceNormalizedText>();
 const relevanceFlexRegexCache = new Map<string, RegExp>();
 
-function removeAccentsLite(s: string): string {
-    try {
-        return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    } catch {
-        return s;
-    }
-}
-
 function normalizeForRelevance(text: string): RelevanceNormalizedText {
     const token = (typeof text === 'string') ? text : (text == null ? '' : String(text));
     const cached = relevanceNormalizeCache.get(token);
     if (cached) return cached;
 
-    const lower = removeAccentsLite(token).toLowerCase();
+    const lower = removeAccents(token).toLowerCase();
     const alphaNum = lower.replace(/[^a-z0-9]/gi, '');
     const entry = { lower, alphaNum };
     relevanceNormalizeCache.set(token, entry);
     return entry;
-}
-
-function escapeRegExp(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function getFlexTokenRegex(tokenAlphaNum: string): RegExp {
@@ -224,7 +213,7 @@ function scoreTokenInText(
     const rawToken = token.token ?? '';
     if (!rawToken) return 0;
 
-    const tokenLower = removeAccentsLite(rawToken).toLowerCase();
+    const tokenLower = removeAccents(rawToken).toLowerCase();
     const tokenAlpha = tokenLower.replace(/[^a-z0-9]/gi, '');
 
     // Exact tokens: prioritize whole-token matches with boundaries.
@@ -280,6 +269,50 @@ function scoreTokenInText(
     return -Infinity;
 }
 
+/**
+ * Check if tokens appear in order within the text, with bonus for proximity.
+ * Returns a bonus score if tokens match in sequence, 0 otherwise.
+ */
+function sequentialMatchBonus(
+    textLower: string,
+    textAlphaNum: string,
+    tokens: Array<{ token: string; mode: 'exact' | 'partial' }>
+): number {
+    if (tokens.length < 2) return 0;
+    
+    // Try to find all tokens in order in the alphanumeric text
+    let lastEnd = 0;
+    let allInOrder = true;
+    let totalGap = 0;
+    let matchCount = 0;
+    
+    for (const t of tokens) {
+        const tokenAlpha = removeAccents(t.token).toLowerCase().replace(/[^a-z0-9]/gi, '');
+        if (!tokenAlpha) continue;
+        
+        const idx = textAlphaNum.indexOf(tokenAlpha, lastEnd);
+        if (idx === -1) {
+            allInOrder = false;
+            break;
+        }
+        
+        if (matchCount > 0) {
+            totalGap += idx - lastEnd;
+        }
+        lastEnd = idx + tokenAlpha.length;
+        matchCount++;
+    }
+    
+    if (allInOrder && matchCount >= 2) {
+        // Bonus for sequential match, reduced by gaps between tokens
+        // Small gap = high bonus, large gap = smaller bonus
+        const gapPenalty = Math.min(totalGap * 100, 1500);
+        return 2000 - gapPenalty;
+    }
+    
+    return 0;
+}
+
 function bestGroupScore(
     chassis: RelevanceNormalizedText,
     model: RelevanceNormalizedText,
@@ -313,6 +346,14 @@ function bestGroupScore(
     // Bonus if many/all tokens hit in chassis.
     if (chassisHitCount > 0) total += chassisHitCount * 700;
     if (chassisHitCount === group.tokens.length && group.tokens.length > 1) total += 1200;
+
+    // Bonus for tokens appearing in sequential order in the combined text
+    const combinedLower = chassis.lower + ' ' + model.lower;
+    const combinedAlphaNum = chassis.alphaNum + model.alphaNum;
+    total += sequentialMatchBonus(combinedLower, combinedAlphaNum, group.tokens);
+    
+    // Also check model alone for sequential bonus (for model-specific searches)
+    total += sequentialMatchBonus(model.lower, model.alphaNum, group.tokens) / 2;
 
     return total;
 }

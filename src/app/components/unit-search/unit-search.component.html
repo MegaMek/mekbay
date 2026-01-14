@@ -33,25 +33,8 @@
         </svg>
         }
     </button>
-    <div class="searchbar-input-container">
-        <input #searchInput class="bt-input searchbar" type="text" [disabled]="!this.filtersService.isDataReady()"
-            [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
-            [value]="this.filtersService.searchText()" (input)="setSearch(searchInput.value)"
-            (focus)="focused.set(true)" id="unit-search-input" autocomplete="off" />
-        @if (this.filtersService.searchText().length > 0) {
-        <button class="searchbar-cancel-btn" type="button" (click)="clearSearch()" title="Clear search"
-            aria-label="Clear search" tabindex="-1">
-            &#10005;
-        </button>
-        }
-    </div>
-    <button #favBtn type="button" class="bt-button favorites-btn square" (click)="openFavorites($event)"
-        [title]="'Favorites'" aria-label="Favorites">
-        <svg width="24px" fill="currentColor" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path
-                d="M23.632 9.201a.628.628 0 0 1-.22.678l-5.726 4.96 1.727 7.394a.606.606 0 0 1-.935.676l-6.503-3.953-6.503 3.953a.713.713 0 0 1-.374.112.57.57 0 0 1-.34-.109.629.629 0 0 1-.222-.679l1.729-7.393L.539 9.879A.607.607 0 0 1 .897 8.78l7.536-.635 2.965-7.083a.62.62 0 0 1 1.155.001l2.965 7.082 7.536.635a.63.63 0 0 1 .578.42z" />
-        </svg>
-    </button>
+    <!-- Adv button on left when filters are on left side -->
+    @if (this.expandedView() && this.filtersOnLeft()) {
     <button #advBtn class="bt-button adv-btn square" [class.active]="isAdvActive()"
         [disabled]="!this.filtersService.isDataReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
@@ -61,31 +44,119 @@
         </svg>
     </button>
     }
+    <div class="searchbar-input-container">
+        <syntax-input #syntaxInput [value]="this.filtersService.searchText()" [tokens]="highlightTokens()"
+            [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
+            [disabled]="!this.filtersService.isDataReady()" [showClear]="this.filtersService.searchText().length > 0"
+            (valueChange)="setSearch($event)" (cleared)="clearSearch()" (focused)="focused.set(true)"
+            id="unit-search-input" />
+    </div>
+    <button #favBtn type="button" class="bt-button favorites-btn square" (click)="openFavorites($event)"
+        [title]="'Favorites'" aria-label="Favorites">
+        <svg width="24px" fill="currentColor" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path
+                d="M23.632 9.201a.628.628 0 0 1-.22.678l-5.726 4.96 1.727 7.394a.606.606 0 0 1-.935.676l-6.503-3.953-6.503 3.953a.713.713 0 0 1-.374.112.57.57 0 0 1-.34-.109.629.629 0 0 1-.222-.679l1.729-7.393L.539 9.879A.607.607 0 0 1 .897 8.78l7.536-.635 2.965-7.083a.62.62 0 0 1 1.155.001l2.965 7.082 7.536.635a.63.63 0 0 1 .578.42z" />
+        </svg>
+    </button>
+    @if (this.expandedView()) {
+    <button type="button" class="bt-button semantic-guide-btn square" (click)="openSemanticGuide($event)"
+        [title]="'Semantic Guide'" aria-label="Semantic Guide">
+        <svg fill="currentColor" width="24px" height="24px" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+            <path
+                d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm23.744 191.488c-52.096 0-92.928 14.784-123.2 44.352-30.976 29.568-45.76 70.4-45.76 122.496h80.256c0-29.568 5.632-52.8 17.6-68.992 13.376-19.712 35.2-28.864 66.176-28.864 23.936 0 42.944 6.336 56.32 19.712 12.672 13.376 19.712 31.68 19.712 54.912 0 17.6-6.336 34.496-19.008 49.984l-8.448 9.856c-45.76 40.832-73.216 70.4-82.368 89.408-9.856 19.008-14.08 42.24-14.08 68.992v9.856h80.96v-9.856c0-16.896 3.52-31.68 10.56-45.76 6.336-12.672 15.488-24.64 28.16-35.2 33.792-29.568 54.208-48.576 60.544-55.616 16.896-22.528 26.048-51.392 26.048-86.592 0-42.944-14.08-76.736-42.24-101.376-28.16-25.344-65.472-37.312-111.232-37.312zm-12.672 406.208a54.272 54.272 0 0 0-38.72 14.784 49.408 49.408 0 0 0-15.488 38.016c0 15.488 4.928 28.16 15.488 38.016A54.848 54.848 0 0 0 523.072 768c15.488 0 28.16-4.928 38.72-14.784a51.52 51.52 0 0 0 16.192-38.72 51.968 51.968 0 0 0-15.488-38.016 55.936 55.936 0 0 0-39.424-14.784z" />
+        </svg>
+    </button>
+    }
+    <!-- Adv button on right when filters are on right side (default) -->
+    @if (!this.expandedView() || !this.filtersOnLeft()) {
+    <button #advBtn class="bt-button adv-btn square" [class.active]="isAdvActive()"
+        [disabled]="!this.filtersService.isDataReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+            focusable="false">
+            <path d="M4 4h16l-6 8v5l-4 3v-8z" />
+        </svg>
+    </button>
+    }
+    }
 </div>
 
-<div #resultsDropdown class="results-dropdown framed-borders" [class.expanded]="this.expandedView()"
+<!-- Expanded view: wrapper with results and optional inline details panel -->
+@if (this.expandedView()) {
+<div #expandedResultsWrapper class="expanded-results-wrapper" [class.with-details-panel]="showInlinePanel()"
+    [hidden]="!this.filtersService.isDataReady() || !resultsVisible()" [ngStyle]="expandedWrapperStyle()">
+    <!-- Inline Details Panel (visible when screen permits in expanded view) -->
+    @if (showInlinePanel()) {
+    <unit-details-panel class="inline-details-panel framed-borders" [unit]="inlinePanelUnit()"
+        [gunnerySkill]="this.filtersService.pilotGunnerySkill()"
+        [pilotingSkill]="this.filtersService.pilotPilotingSkill()" 
+        [hasPrev]="inlinePanelHasPrev()"
+        [hasNext]="inlinePanelHasNext()"
+        (add)="onInlinePanelAdd($event)"
+        (prev)="onInlinePanelPrev()"
+        (next)="onInlinePanelNext()">
+    </unit-details-panel>
+    }
+    <div #resultsDropdown class="results-dropdown framed-borders expanded">
+        <div class="results-dropdown-content">
+            @if (this.filtersService.filteredUnits().length > 0) {
+            <!-- Table Header for AS Table View -->
+            @if (gameService.isAlphaStrike()) {
+            <div class="as-table-header">
+                <div class="as-th as-th-icon"></div>
+                <div class="as-th as-th-name">Name</div>
+                <div class="as-th as-th-type">Type</div>
+                <div class="as-th as-th-role">Role</div>
+                <div class="as-th as-th-pv">PV</div>
+                <div class="as-th as-th-sz">SZ</div>
+                <div class="as-th as-th-mv">MV</div>
+                <div class="as-th as-th-tmm">TMM</div>
+                <div class="as-th as-th-dmg">S/M/L</div>
+                <div class="as-th as-th-arm">A</div>
+                <div class="as-th as-th-str">S</div>
+                <div class="as-th as-th-ov">OV</div>
+                <div class="as-th as-th-specials">Special</div>
+                <div class="as-th as-th-tags">Tags</div>
+            </div>
+            }
+            <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
+                [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1350" tabindex="0">
+                <div class="results-dropdown-item unit-card"
+                    *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
+                    [class.active]="activeIndex() === i" [class.selected]="isUnitSelected(unit)"
+                    [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
+                    (pointerenter)="activeIndex.set(i)" longPress (shortPress)="onUnitCardClick(unit, $event)"
+                    (longPress)="multiSelectUnit(unit)">
+                    @if (gameService.isAlphaStrike()) {
+                    <ng-container *ngTemplateOutlet="expandedViewASCard; context: { unit: unit }"></ng-container>
+                    } @else {
+                    <ng-container *ngTemplateOutlet="expandedView; context: { unit: unit }"></ng-container>
+                    }
+                </div>
+            </cdk-virtual-scroll-viewport>
+
+            @if (this.selectedUnits().size > 0) {
+            <ng-container *ngTemplateOutlet="selectionFooterTpl"></ng-container>
+            }
+
+
+@if (this.filtersService.filteredUnits().length > 0) {
+            <ng-container *ngTemplateOutlet="resultsFooterTpl"></ng-container>
+            }
+            } @else {
+            <div class="results-dropdown-item no-results">
+                No results
+            </div>
+            }
+        </div>
+    </div>
+</div>
+} @else {
+<!-- Non-expanded view: standard dropdown -->
+<div #resultsDropdown class="results-dropdown framed-borders"
     [hidden]="!this.filtersService.isDataReady() || !resultsVisible()" [ngStyle]="resultsDropdownStyle()">
     <div class="results-dropdown-content">
         @if (this.filtersService.filteredUnits().length > 0) {
-        <!-- Table Header for AS Table View -->
-        @if (this.expandedView() && gameService.isAlphaStrike()) {
-        <div class="as-table-header">
-            <div class="as-th as-th-icon"></div>
-            <div class="as-th as-th-name">Name</div>
-            <div class="as-th as-th-type">Type</div>
-            <div class="as-th as-th-role">Role</div>
-            <div class="as-th as-th-pv">PV</div>
-            <div class="as-th as-th-sz">SZ</div>
-            <div class="as-th as-th-mv">MV</div>
-            <div class="as-th as-th-tmm">TMM</div>
-            <div class="as-th as-th-dmg">S/M/L</div>
-            <div class="as-th as-th-arm">A</div>
-            <div class="as-th as-th-str">S</div>
-            <div class="as-th as-th-ov">OV</div>
-            <div class="as-th as-th-specials">Special</div>
-            <div class="as-th as-th-tags">Tags</div>
-        </div>
-        }
         <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
             [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1350" tabindex="0">
             <div class="results-dropdown-item unit-card"
@@ -93,14 +164,6 @@
                 [class.active]="activeIndex() === i" [class.selected]="isUnitSelected(unit)"
                 (pointerenter)="activeIndex.set(i)" longPress (shortPress)="onUnitCardClick(unit, $event)"
                 (longPress)="multiSelectUnit(unit)">
-
-                @if (this.expandedView()) {
-                @if (gameService.isAlphaStrike()) {
-                <ng-container *ngTemplateOutlet="expandedViewASCard; context: { unit: unit }"></ng-container>
-                } @else {
-                <ng-container *ngTemplateOutlet="expandedView; context: { unit: unit }"></ng-container>
-                }
-                } @else {
                 <!-- Compact View Template -->
                 <div class="unit-image-container">
                     <unit-icon [unit]="unit"></unit-icon>
@@ -110,41 +173,39 @@
                         <div class="model" [innerHTML]="highlight(unit.model)"></div>
                         @if (unit.role && (unit.role !== 'None')) {
                         <div class="role" [class.sort-slot]="this.filtersService.selectedSort() === 'role'">{{ unit.role
-                            }}
-                        </div>
+                            }}</div>
                         }
                     </div>
                     <div class="primary-info">
                         <div class="chassis" [innerHTML]="highlight(unit.chassis)"></div>
                     </div>
-
                     <div class="third-info">
                         <div class="info-area">
                             @if (gameService.isAlphaStrike()) {
-                                <div class="info-slot centered slim"
-                                    [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">
-                                    <span class="value">PV: {{ unit.as.PV | adjustedPV:gunnery |
-                                        formatNumber:true:true }}</span>
-                                </div>
-                                <div class="info-slot centered slim"
-                                    [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">
-                                    <span class="value">SZ: {{ unit.as.SZ }}</span>
-                                </div>
-                                <div class="info-slot centered slim"
-                                    [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">
-                                    <span class="value">TMM: {{ unit.as.TMM }}</span>
-                                </div>
+                            <div class="info-slot centered slim"
+                                [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">
+                                <span class="value">PV: {{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:true
+                                    }}</span>
+                            </div>
+                            <div class="info-slot centered slim"
+                                [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">
+                                <span class="value">SZ: {{ unit.as.SZ }}</span>
+                            </div>
+                            <div class="info-slot centered slim"
+                                [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">
+                                <span class="value">TMM: {{ unit.as.TMM }}</span>
+                            </div>
                             } @else {
-                                <div class="info-slot numeric"
-                                    [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
-                                    <span class="value">BV: {{ unit.bv | adjustedBV:gunnery:piloting |
-                                        formatNumber:true:true }}</span>
-                                </div>
-                                <div class="info-slot numeric"
-                                    [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
-                                    <span class="value">{{ unit.tons | formatTons }}</span>
-                                    <img src="/images/weight.svg" class="icon" alt="Tonnage">
-                                </div>
+                            <div class="info-slot numeric"
+                                [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
+                                <span class="value">BV: {{ unit | adjustedBV:gunnery:piloting | formatNumber:true:true
+                                    }}</span>
+                            </div>
+                            <div class="info-slot numeric"
+                                [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
+                                <span class="value">{{ unit.tons | formatTons }}</span>
+                                <img src="/images/weight.svg" class="icon" alt="Tonnage">
+                            </div>
                             }
                             <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
                                 <span class="value">{{ unit.year }}</span>
@@ -165,149 +226,94 @@
                         <unit-tags [unit]="unit" mode="compact" (tagClick)="onAddTag($event)" />
                     </div>
                 </div>
-                }
-
             </div>
         </cdk-virtual-scroll-viewport>
-
         @if (this.selectedUnits().size > 0) {
-        <div class="selection-footer">
-            <div class="selected-count">{{ this.selectedUnits().size }} units selected</div>
-            <span class="spanner"></span>
-            <button [disabled]="this.forceBuilderService.readOnlyForce()" type="button" class="bt-button"
-                (click)="addSelectedUnits()">
-                ADD TO FORCE
-            </button>
-            <button type="button" class="bt-button" (click)="selectAll()">
-                SELECT ALL
-            </button>
-            <button type="button" class="bt-button" (click)="clearSelection()">
-                CLEAR
-            </button>
-        </div>
+        <ng-container *ngTemplateOutlet="selectionFooterTpl"></ng-container>
         }
-
-
         @if (this.filtersService.filteredUnits().length > 0) {
-        <div class="results-footer">
-            <div class="results-count">
-                {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length
-                === 1 ? '' : 's' }}
-            </div>
-            <span class="spanner"></span>
-            <div class="results-sort">
-                <select #sortSel class="bt-input sort-select"
-                    (change)="this.filtersService.setSortOrder(sortSel.value)">
-                    @for (opt of SORT_OPTIONS; let i = $index; track i) {
-                    @if (!opt.gameSystem || opt.gameSystem === this.gameSystem()) {
-                    <option [value]="opt.key" [selected]="opt.key === this.filtersService.selectedSort()">
-                        {{ opt.label }}
-                    </option>
-                    }
-                    }
-                </select><button type="button" class="bt-button sort-direction-btn"
-                    (click)="this.filtersService.setSortDirection(this.filtersService.selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
-                    [title]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
-                    [attr.aria-label]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
-                    @if (this.filtersService.selectedSortDirection() === 'asc') {
-                    <!-- ASC -->
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                        aria-hidden="true" role="img">
-                        <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                        <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                        <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                        <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                            stroke-linejoin="round" />
-                    </svg>
-                    } @else {
-                    <!-- DESC -->
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                        aria-hidden="true" role="img">
-                        <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                        <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                        <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                        <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                            stroke-linejoin="round" />
-                    </svg>
-                    }
-                </button>
-            </div>
-            <button class="bt-button square share-btn" (click)="openShareSearch($event)" title="Share Search Results">
-                <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                    <path fill-rule="evenodd" clip-rule="evenodd"
-                        d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z" />
-                </svg>
-            </button>
-        </div>
+        <ng-container *ngTemplateOutlet="resultsFooterTpl"></ng-container>
         }
         } @else {
-        <div class="results-dropdown-item no-results">
-            No results
-        </div>
+        <div class="results-dropdown-item no-results">No results</div>
         }
     </div>
 </div>
+}
 
 @if (this.expandedView() && this.advPanelDocked()) {
-<div class="adv-panel-drag-handle" (pointerdown)="onAdvPanelDragStart($event)" (click)="$event.stopPropagation();"
-    (contextmenu)="$event.stopPropagation()" [style.right.px]="this.advPanelUserColumns() === 2 ? 602 : 302"
+<div class="adv-panel-drag-handle" [class.left]="filtersOnLeft()" (pointerdown)="onAdvPanelDragStart($event)" (click)="$event.stopPropagation();"
+    (contextmenu)="$event.stopPropagation()" 
+    [style.right.px]="filtersOnLeft() ? null : (this.advPanelUserColumns() === 2 ? 602 : 302)"
+    [style.left.px]="filtersOnLeft() ? (this.advPanelUserColumns() === 2 ? 602 : 302) : null"
     title="Drag to resize advanced filter panel" aria-label="Drag to resize advanced filter panel">
     <div class="drag-bar"></div>
 </div>
 }
 <div #advPanel class="adv-panel framed-borders has-shadow" [hidden]="!advOpen()" [ngStyle]="advPanelStyle()"
-    [class.docked]="advPanelDocked()">
+    [class.docked]="advPanelDocked()" [class.docked-left]="advPanelDocked() && filtersOnLeft()">
     <div class="adv-panel-header" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
         <div class="pilot-skills-section framed-borders">
             <div class="pilot-skills-controls">
                 @if (gameService.isAlphaStrike()) {
-                    <div class="skill-control">
-                        <label for="gunnery-skill" (click)="openSelect($event, gunnerySelect)">Pilot Skill:</label>
-                        <select #gunnerySelect id="gunnery-skill" class="bt-input skill-select" 
-                            [class.active]="gunnery != 4" [value]="gunnery"
-                            (change)="setPilotSkill('gunnery', +$any($event.target).value)">
-                            @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
-                            <option [value]="n" [selected]="n === gunnery">{{ n }}</option>
-                            }
+                <div class="skill-control">
+                    <label for="gunnery-skill" (click)="openSelect($event, gunnerySelect)">Pilot Skill:</label>
+                    <select #gunnerySelect id="gunnery-skill" class="bt-input skill-select"
+                        [class.active]="gunnery != 4" [value]="gunnery"
+                        (change)="setPilotSkill('gunnery', +$any($event.target).value)">
+                        @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
+                        <option [value]="n" [selected]="n === gunnery">{{ n }}</option>
+                        }
 
-                        </select>
-                    </div>
+                    </select>
+                </div>
                 } @else {
-                    <div class="skill-control">
-                        <label for="gunnery-skill" (click)="openSelect($event, gunnerySelect)">Gunnery:</label>
-                        <select #gunnerySelect id="gunnery-skill" class="bt-input skill-select" 
-                            [class.active]="gunnery != 4" [value]="gunnery"
-                            (change)="setPilotSkill('gunnery', +$any($event.target).value)">
-                            @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
-                            <option [value]="n" [selected]="n === gunnery">{{ n }}</option>
-                            }
+                <div class="skill-control">
+                    <label for="gunnery-skill" (click)="openSelect($event, gunnerySelect)">Gunnery:</label>
+                    <select #gunnerySelect id="gunnery-skill" class="bt-input skill-select"
+                        [class.active]="gunnery != 4" [value]="gunnery"
+                        (change)="setPilotSkill('gunnery', +$any($event.target).value)">
+                        @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
+                        <option [value]="n" [selected]="n === gunnery">{{ n }}</option>
+                        }
 
-                        </select>
-                    </div>
-                    <div class="skill-control">
-                        <label for="piloting-skill" (click)="openSelect($event, pilotingSelect)">Piloting:</label>
-                        <select #pilotingSelect id="piloting-skill" class="bt-input skill-select"
-                            [class.active]="piloting != 5" [value]="piloting"
-                            (change)="setPilotSkill('piloting', +$any($event.target).value)">
-                            @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
-                            <option [value]="n" [selected]="n === piloting">{{ n }}</option>
-                            }
-                        </select>
-                    </div>
+                    </select>
+                </div>
+                <div class="skill-control">
+                    <label for="piloting-skill" (click)="openSelect($event, pilotingSelect)">Piloting:</label>
+                    <select #pilotingSelect id="piloting-skill" class="bt-input skill-select"
+                        [class.active]="piloting != 5" [value]="piloting"
+                        (change)="setPilotSkill('piloting', +$any($event.target).value)">
+                        @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
+                        <option [value]="n" [selected]="n === piloting">{{ n }}</option>
+                        }
+                    </select>
+                </div>
                 }
             </div>
         </div>
     </div>
     <div class="adv-panel-content" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
+        @if (isComplexQuery()) {
+        <!-- Complex query: show semantic guide as sidebar -->
+        <div class="complex-query-guide">
+            <div class="complex-query-notice">
+                <span class="notice-text">Filters controlled by search query</span>
+            </div>
+            <semantic-guide [compact]="true" />
+        </div>
+        } @else {
         <!-- Dropdown filters -->
         @for (conf of ADVANCED_FILTERS; let i = $index; track i) {
         @if ((!conf.game || conf.game === gameSystem()) && this.filtersService.advOptions()[conf.key]; as optionsData) {
         @if (optionsData.type === 'dropdown') {
-        <div class="filter-row">
+        <div class="filter-row" [class.semantic-only]="optionsData.semanticOnly">
             <multi-select-dropdown class="dropdown" [label]="optionsData.label" [options]="optionsData.options"
                 [selected]="optionsData.value" [multistate]="conf.multistate ?? false"
-                [countable]="conf.countable ?? false" (selectionChange)="setAdvFilter(conf.key, $event)">
+                [countable]="conf.countable ?? false" [semanticOnly]="optionsData.semanticOnly ?? false"
+                [displayText]="optionsData.displayText" [displayItems]="optionsData.displayItems"
+                (selectionChange)="setAdvFilter(conf.key, $event)">
             </multi-select-dropdown>
         </div>
         }
@@ -317,26 +323,95 @@
         @for (conf of ADVANCED_FILTERS; let i = $index; track i) {
         @if ((!conf.game || conf.game === gameSystem()) && this.filtersService.advOptions()[conf.key]; as optionsData) {
         @if (optionsData.type === 'range') {
-        <div class="filter-row">
+        <div class="filter-row" [class.semantic-only]="optionsData.semanticOnly">
             <div class="range">
-                <label class="range-label" (click)="openRangeValueDialog(conf.key, optionsData.value, optionsData.options)">{{ optionsData.label }}
+                <label class="range-label" [class.disabled]="optionsData.semanticOnly"
+                    (click)="!optionsData.semanticOnly && openRangeValueDialog(conf.key, optionsData.value, optionsData.options)">{{
+                    optionsData.label }}
+                    @if (optionsData.displayText) {
+                    <span class="effective-range" title="Effective range after exclusions">
+                        ✓ {{ optionsData.displayText }}
+                    </span>
+                    } @else {
                     <span class="range-values">
                         (<span class="range-value-min">{{ optionsData.value[0] | formatNumber:false:true }}</span>~<span
                             class="range-value-max">{{ optionsData.value[1] | formatNumber:false:true }}</span>)
                     </span>
+                    }
                 </label>
                 <range-slider [min]="optionsData.totalRange[0]" [max]="optionsData.totalRange[1]"
                     [value]="optionsData.value" [availableRange]="optionsData.options"
                     [interacted]="optionsData.interacted" [curve]="conf.curve ?? 1" [stepSize]="conf.stepSize ?? 1"
-                    (valueChange)="setAdvFilter(conf.key, $event)">
+                    [disabled]="optionsData.semanticOnly ?? false" [excludeRanges]="optionsData.excludeRanges"
+                    [includeRanges]="optionsData.includeRanges" (valueChange)="setAdvFilter(conf.key, $event)">
                 </range-slider>
             </div>
         </div>
         }
         }
         }
+        }
     </div>
 </div>
+
+<!-- Shared Footer Templates -->
+<ng-template #selectionFooterTpl>
+    <div class="selection-footer">
+        <div class="selected-count">{{ this.selectedUnits().size }} units selected</div>
+        <span class="spanner"></span>
+        <button [disabled]="this.forceBuilderService.readOnlyForce()" type="button" class="bt-button"
+            (click)="addSelectedUnits()">ADD TO FORCE</button>
+        <button type="button" class="bt-button" (click)="selectAll()">SELECT ALL</button>
+        <button type="button" class="bt-button" (click)="clearSelection()">CLEAR</button>
+    </div>
+</ng-template>
+
+<ng-template #resultsFooterTpl>
+    <div class="results-footer">
+        <div class="results-count">{{ this.filtersService.filteredUnits().length }} result{{
+            this.filtersService.filteredUnits().length === 1 ? '' : 's' }}</div>
+        <span class="spanner"></span>
+        <div class="results-sort">
+            <select class="bt-input sort-select" [value]="this.filtersService.selectedSort()"
+                (change)="this.filtersService.setSortOrder($any($event.target).value)">
+                @for (opt of SORT_OPTIONS; let i = $index; track i) {
+                @if (!opt.gameSystem || opt.gameSystem === this.gameSystem()) {
+                <option [value]="opt.key">{{ opt.label }}</option>
+                }
+                }
+            </select><button type="button" class="bt-button sort-direction-btn"
+                (click)="this.filtersService.setSortDirection(this.filtersService.selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
+                [title]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
+                [attr.aria-label]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+                @if (this.filtersService.selectedSortDirection() === 'asc') {
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                    aria-hidden="true" role="img">
+                    <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                } @else {
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                    aria-hidden="true" role="img">
+                    <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                }
+            </button>
+        </div>
+        <button class="bt-button square share-btn" (click)="openShareSearch($event)" title="Share Search Results">
+            <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <path fill-rule="evenodd" clip-rule="evenodd"
+                    d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z" />
+            </svg>
+        </button>
+    </div>
+</ng-template>
 
 <ng-template #expandedView let-unit="unit">
     <div class="expanded-unit-card">
@@ -373,7 +448,7 @@
                     <div class="info-item">
                         <span class="info-label muted">BV:</span>
                         <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">{{
-                            unit.bv | adjustedBV:gunnery:piloting | formatNumber:true:false }}</span>
+                            unit | adjustedBV:gunnery:piloting | formatNumber:true:false }}</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">Tons:</span>
@@ -529,15 +604,18 @@
                 <div class="expanded-basic-info">
                     <div class="info-item">
                         <span class="info-label muted">PV:</span>
-                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">{{
+                            unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">Size:</span>
-                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">{{ unit.as.SZ }}</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">{{
+                            unit.as.SZ }}</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">TMM:</span>
-                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">{{ unit.as.TMM }}</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">{{
+                            unit.as.TMM }}</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">Movement:</span>
@@ -554,7 +632,8 @@
                     @if (!unit.as.usesArcs) {
                     <div class="info-item">
                         <span class="info-label muted">Damage:</span>
-                        <span class="info-value">{{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }}</span>
+                        <span class="info-value">{{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL
+                            }}</span>
                     </div>
                     }
                     @if (unit.as.usesOV) {
@@ -571,17 +650,21 @@
                     }
                     <div class="info-item">
                         <span class="info-label muted">Intro Year: </span>
-                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">{{ unit.year }} @if(unit._era?.img) {
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">{{
+                            unit.year }} @if(unit._era?.img) {
                             <img [src]="unit._era.img" class="era-icon" [alt]="unit._era?.name"
                                 [title]="unit._era?.name" /> }</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">Tech:</span>
-                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'techBase'">{{ unit.techBase }}</span>
+                        <span class="info-value"
+                            [class.sort-slot]="this.filtersService.selectedSort() === 'techBase'">{{ unit.techBase
+                            }}</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">Tons:</span>
-                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">{{ unit.tons | formatTons }}</span>
+                        <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">{{
+                            unit.tons | formatTons }}</span>
                     </div>
                 </div>
             </div>
@@ -593,7 +676,8 @@
                 <div class="expanded-specials">
                     <div class="specials-pills">
                         @for (special of unit.as.specials; let last = $last; let i = $index; track i) {
-                        <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
+                        <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()"
+                            title="Click for details">{{ special }}</span>
                         }
                     </div>
                 </div>
@@ -610,17 +694,22 @@
         </div>
         <div class="as-td as-td-type">{{ unit.as.TP }}</div>
         <div class="as-td as-td-role">{{ unit.role !== 'None' ? unit.role : '' }}</div>
-        <div class="as-td as-td-pv" [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
-        <div class="as-td as-td-sz" [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">{{ unit.as.SZ }}</div>
+        <div class="as-td as-td-pv" [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">{{ unit.as.PV |
+            adjustedPV:gunnery | formatNumber:true:false }}</div>
+        <div class="as-td as-td-sz" [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">{{ unit.as.SZ }}
+        </div>
         <div class="as-td as-td-mv">{{ formatASMovement(unit) }}</div>
-        <div class="as-td as-td-tmm" [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">{{ unit.as.TMM }}</div>
-        <div class="as-td as-td-dmg">@if (!unit.as.usesArcs) { {{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }} }</div>
+        <div class="as-td as-td-tmm" [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">{{ unit.as.TMM
+            }}</div>
+        <div class="as-td as-td-dmg">@if (!unit.as.usesArcs) { {{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{
+            unit.as.dmg.dmgL }} }</div>
         <div class="as-td as-td-arm">{{ unit.as.Arm }}</div>
         <div class="as-td as-td-str">{{ unit.as.Str }}</div>
         <div class="as-td as-td-ov">@if (unit.as.usesOV) { {{ unit.as.OV }} }</div>
         <div class="as-td as-td-specials">
             @for (special of unit.as.specials; let i = $index; track i) {
-            <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
+            <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()"
+                title="Click for details">{{ special }}</span>
             }
         </div>
         <div class="as-td as-td-tags">

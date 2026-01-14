@@ -59,7 +59,7 @@ export abstract class MultiModeHandler extends EquipmentInteractionHandler {
         equipment.owner.setInventoryEntry(equipment);
         
         const mode = this.getModes(equipment).find(m => m.value === value.value);
-        context.toastService.show(
+        context.toastService.showToast(
             `${equipment.equipment?.name||equipment.name} mode: ${mode?.label || value.value}`,
             'info'
         );

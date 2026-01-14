@@ -36,6 +36,85 @@
  */
 import { Equipment } from "./equipment.model";
 import { Era } from "./eras.model";
+import { TechBase } from "./common.model";
+
+export type UnitType =
+    | 'Aero'
+    | 'Handheld Weapon'
+    | 'Infantry'
+    | 'Mek'
+    | 'Naval'
+    | 'ProtoMek'
+    | 'Tank'
+    | 'VTOL';
+
+export type MoveType =
+    | 'Aerodyne'
+    | 'Biped'
+    | 'Hover'
+    | 'Hydrofoil'
+    | 'Jump'
+    | 'Leg'
+    | 'Microcopter'
+    | 'Motorized'
+    | 'Motorized SCUBA'
+    | 'Naval'
+    | 'None'
+    | 'Quad'
+    | 'Rail'
+    | 'Spheroid'
+    | 'Submarine'
+    | 'Tracked'
+    | 'Tripod'
+    | 'UMU'
+    | 'VTOL'
+    | 'Wheeled'
+    | 'WiGE';
+
+export type UnitSubtype =
+    | 'Aerodyne DropShip'
+    | 'Aerodyne Small Craft'
+    | 'Aerospace Fighter'
+    | 'Aerospace Fighter Omni'
+    | 'Battle Armor'
+    | 'BattleMek'
+    | 'BattleMek Omni'
+    | 'Civilian Aerodyne DropShip'
+    | 'Civilian Aerodyne Small Craft'
+    | 'Civilian Space Station'
+    | 'Civilian Spheroid DropShip'
+    | 'Combat Vehicle'
+    | 'Combat Vehicle Omni'
+    | 'Conventional Fighter'
+    | 'Conventional Infantry'
+    | 'Fixed Wing Support Vehicle'
+    | 'Fixed Wing Support Vehicle Omni'
+    | 'Handheld Weapon'
+    | 'Hovercraft'
+    | 'Hovercraft Omni'
+    | 'Industrial Mek'
+    | 'JumpShip'
+    | 'Land-Air BattleMek'
+    | 'Mechanized Conventional Infantry'
+    | 'Military Space Station'
+    | 'Motorized Conventional Infantry'
+    | 'Naval Vessel'
+    | 'ProtoMek'
+    | 'Quad BattleMek'
+    | 'Quad BattleMek Omni'
+    | 'Quad Industrial Mek'
+    | 'Quad ProtoMek'
+    | 'QuadVee BattleMek'
+    | 'QuadVee BattleMek Omni'
+    | 'Spheroid DropShip'
+    | 'Spheroid Small Craft'
+    | 'Submarine'
+    | 'Support Vehicle'
+    | 'Support Vehicle Omni'
+    | 'Tripod BattleMek'
+    | 'Tripod BattleMek Omni'
+    | 'WarShip'
+    | 'WiGE';
 
 // Weapon/component info for comp.w
 export interface UnitComponent {
@@ -78,10 +157,10 @@ export interface Unit {
     pv: number;
     cost: number;
     level: number;
-    techBase: 'Inner Sphere' | 'Clan' | 'Mixed';
+    techBase: TechBase;
     techRating: string;
-    type: 'Aero' | 'Handheld Weapon' | 'Infantry' | 'Mek' | 'Naval' | 'ProtoMek' | 'Tank' | 'VTOL';
-    subtype: string;
+    type: UnitType;
+    subtype: UnitSubtype;
     omni: number;
     engine: string;
     engineRating: number;
@@ -94,7 +173,7 @@ export interface Unit {
     internal: number;
     heat: number;
     dissipation: number;
-    moveType: 'Aerodyne' | 'Biped' | 'Hover' | 'Hydrofoil' | 'Jump' | 'Leg' | 'Microcopter' | 'Motorized' | 'Motorized SCUBA' | 'Naval' | 'None' | 'Quad' | 'Rail' | 'Spheroid' | 'Submarine' | 'Tracked' | 'Tripod' | 'UMU' | 'VTOL' | 'Wheeled' | 'WiGE';
+    moveType: MoveType;
     walk: number;
     walk2: number; // Max possible
     run: number; // Without MASC systems

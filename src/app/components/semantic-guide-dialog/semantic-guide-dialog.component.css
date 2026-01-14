@@ -1,0 +1,18 @@
+:host ::ng-deep .modal.semantic-guide {
+    max-width: 600px;
+    max-height: 80vh;
+}
+
+:host ::ng-deep .modal-body {
+    overflow-y: auto;
+}
+
+.title {
+    font-weight: bold;
+    font-size: 1.2em;
+}
+
+.footer {
+    display: flex;
+    justify-content: center;
+}

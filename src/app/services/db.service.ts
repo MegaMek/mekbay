@@ -47,6 +47,7 @@ import { DataService } from './data.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { Injector } from '@angular/core';
 import { DialogsService } from './dialogs.service';
+import { SerializedSearchFilter } from './unit-search-filters.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
 
@@ -55,7 +56,7 @@ import { LoggerService } from './logger.service';
  * Author: Drake
  */
 const DB_NAME = 'mekbay';
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 const DB_STORE = 'store';
 const UNITS_KEY = 'units';
 const EQUIPMENT_KEY = 'equipment';
@@ -66,6 +67,7 @@ const SHEETS_STORE = 'sheetsStore';
 const CANVAS_STORE = 'canvasStore';
 const FORCE_STORE = 'forceStore';
 const TAGS_STORE = 'tagsStore';
+const SAVED_SEARCHES_STORE = 'savedSearchesStore';
 const OPTIONS_KEY = 'options';
 const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
@@ -133,6 +135,37 @@ export interface TagSyncState {
     lastSyncTs: number;
 }
 
+/**
+ * Saved search operation for incremental sync.
+ */
+export interface SavedSearchOp {
+    /** Saved search ID */
+    id: string;
+    /** Action: 0=delete, 1=add/update */
+    a: 0 | 1;
+    /** The filter data (only for add/update) */
+    data?: SerializedSearchFilter;
+    /** Timestamp in milliseconds */
+    ts: number;
+}
+
+/**
+ * All saved searches keyed by ID.
+ */
+export interface StoredSavedSearches {
+    [id: string]: SerializedSearchFilter;
+}
+
+/**
+ * Saved search sync state stored in IndexedDB.
+ */
+export interface SavedSearchSyncState {
+    /** Pending operations not yet confirmed by server */
+    pendingOps: SavedSearchOp[];
+    /** Timestamp of last successful sync with server */
+    lastSyncTs: number;
+}
+
 export interface UserData {
     uuid: string;
     tabSubs?: string[];
@@ -142,12 +175,100 @@ export interface UserData {
     providedIn: 'root'
 })
 export class DbService {
-    private dbPromise: Promise<IDBDatabase>;
+    private dbPromise: Promise<IDBDatabase | null>;
     private logger = inject(LoggerService);
     private dialogsService = inject(DialogsService);
+    
+    /** Whether the database is in a degraded state (failed to initialize) */
+    private degradedMode = false;
 
     constructor() {
-        this.dbPromise = this.initIndexedDb();
+        this.dbPromise = this.initIndexedDbWithRecovery();
+    }
+
+    /**
+     * Initialize IndexedDB with error recovery dialog.
+     * Returns null if the user chooses to continue without storage.
+     */
+    private async initIndexedDbWithRecovery(): Promise<IDBDatabase | null> {
+        try {
+            return await this.initIndexedDb();
+        } catch (error) {
+            this.logger.error('IndexedDB initialization failed: ' + error);
+            return await this.handleDbInitFailure(error);
+        }
+    }
+
+    /**
+     * Handle database initialization failure with user options.
+     */
+    private async handleDbInitFailure(error: unknown): Promise<IDBDatabase | null> {
+        const choice = await this.dialogsService.choose<'retry' | 'reset' | 'continue'>(
+            'Database Error',
+            '',
+            [
+                { label: 'RETRY', value: 'retry' },
+                { label: 'RESET DATABASE', value: 'reset', class: 'danger' },
+                { label: 'CONTINUE WITHOUT STORAGE', value: 'continue' }
+            ],
+            'continue',
+            {
+                panelClass: 'danger',
+                messageHtml: `
+                    <p>Failed to open the local database. This may be due to storage corruption or browser issues.</p>
+                    <p style="margin-top: 1em;"><strong>Your options:</strong></p>
+                    <ul style="margin: 0.5em 0 1.5em 1.5em; padding: 0;">
+                        <li><strong>RETRY</strong> – Try opening the database again</li>
+                        <li><strong>RESET DATABASE</strong> – Delete and recreate the database (loses local-only data)</li>
+                        <li><strong>CONTINUE WITHOUT STORAGE</strong> – Use the app without local storage (data won't persist)</li>
+                    </ul>
+                `
+            }
+        );
+
+        if (choice === 'retry') {
+            try {
+                return await this.initIndexedDb();
+            } catch (retryError) {
+                this.logger.error('IndexedDB retry failed: ' + retryError);
+                return await this.handleDbInitFailure(retryError);
+            }
+        }
+
+        if (choice === 'reset') {
+            try {
+                await this.deleteDatabase();
+                return await this.initIndexedDb();
+            } catch (resetError) {
+                this.logger.error('IndexedDB reset failed: ' + resetError);
+                await this.dialogsService.showError(
+                    'Failed to reset the database. Continuing without local storage.',
+                    'Reset Failed'
+                );
+                this.degradedMode = true;
+                return null;
+            }
+        }
+
+        // choice === 'continue'
+        this.degradedMode = true;
+        return null;
+    }
+
+    /**
+     * Delete the entire database for recovery purposes.
+     */
+    private deleteDatabase(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.deleteDatabase(DB_NAME);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+            request.onblocked = () => {
+                this.logger.warn('Database deletion blocked - other tabs may be open');
+                // Still resolve after a delay, deletion will complete when tabs close
+                setTimeout(resolve, 1000);
+            };
+        });
     }
 
     private initIndexedDb(): Promise<IDBDatabase> {
@@ -161,6 +282,7 @@ export class DbService {
                 this.createStoreIfMissing(db, transaction, SHEETS_STORE, 'timestamp');
                 this.createStoreIfMissing(db, transaction, FORCE_STORE, 'timestamp');
                 this.createStoreIfMissing(db, transaction, TAGS_STORE);
+                this.createStoreIfMissing(db, transaction, SAVED_SEARCHES_STORE);
                 this.createStoreIfMissing(db, transaction, CANVAS_STORE);
             };
 
@@ -189,8 +311,14 @@ export class DbService {
         await this.dbPromise;
     }
 
+    /** Check if database is in degraded mode (no storage available) */
+    public isDegraded(): boolean {
+        return this.degradedMode;
+    }
+
     private async getDataFromGeneralStore<T>(key: string): Promise<T | null> {
         const db = await this.dbPromise;
+        if (!db) return null; // Degraded mode
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(DB_STORE, 'readonly');
             const store = transaction.objectStore(DB_STORE);
@@ -209,6 +337,7 @@ export class DbService {
 
     private async saveDataFromGeneralStore<T>(data: T, key: string): Promise<void> {
         const db = await this.dbPromise;
+        if (!db) return; // Degraded mode - silently skip
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(DB_STORE, 'readwrite');
             const store = transaction.objectStore(DB_STORE);
@@ -227,6 +356,7 @@ export class DbService {
 
     private async getDataFromStore<T>(key: string, storeName: string): Promise<T | null> {
         const db = await this.dbPromise;
+        if (!db) return null; // Degraded mode
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(storeName, 'readonly');
             const store = transaction.objectStore(storeName);
@@ -245,6 +375,7 @@ export class DbService {
 
     private async saveDataToStore<T>(data: T, key: string, storeName: string): Promise<void> {
         const db = await this.dbPromise;
+        if (!db) return; // Degraded mode - silently skip
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(storeName, 'readwrite');
             const store = transaction.objectStore(storeName);
@@ -263,6 +394,7 @@ export class DbService {
 
     private async deleteDataFromStore(key: string, storeName: string): Promise<void> {
         const db = await this.dbPromise;
+        if (!db) return; // Degraded mode - silently skip
         return new Promise<void>((resolve, reject) => {
             const transaction = db.transaction(storeName, 'readwrite');
             const store = transaction.objectStore(storeName);
@@ -379,6 +511,7 @@ export class DbService {
      */
     public async getAllTagData(): Promise<TagData | null> {
         const db = await this.dbPromise;
+        if (!db) return null; // Degraded mode
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(TAGS_STORE, 'readonly');
             const store = transaction.objectStore(TAGS_STORE);
@@ -407,6 +540,7 @@ export class DbService {
      */
     public async saveAllTagData(data: TagData): Promise<void> {
         const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(TAGS_STORE, 'readwrite');
             const store = transaction.objectStore(TAGS_STORE);
@@ -425,6 +559,7 @@ export class DbService {
      */
     public async getTagSyncState(): Promise<TagSyncState> {
         const db = await this.dbPromise;
+        if (!db) return { pendingOps: [], lastSyncTs: 0 }; // Degraded mode
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(TAGS_STORE, 'readonly');
             const store = transaction.objectStore(TAGS_STORE);
@@ -447,6 +582,7 @@ export class DbService {
      */
     public async saveTagSyncState(state: TagSyncState): Promise<void> {
         const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(TAGS_STORE, 'readwrite');
             const store = transaction.objectStore(TAGS_STORE);
@@ -464,6 +600,7 @@ export class DbService {
      */
     public async appendTagOps(ops: TagOp[], tagData: TagData): Promise<void> {
         const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(TAGS_STORE, 'readwrite');
             const store = transaction.objectStore(TAGS_STORE);
@@ -492,10 +629,137 @@ export class DbService {
      */
     public async clearPendingTagOps(syncTs: number): Promise<void> {
         const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(TAGS_STORE, 'readwrite');
             const store = transaction.objectStore(TAGS_STORE);
 
+            store.put([], 'pendingOps');
+            store.put(syncTs, 'lastSyncTs');
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    // ================== Saved Searches Methods ==================
+
+    /**
+     * Get all saved searches.
+     */
+    public async getSavedSearches(): Promise<StoredSavedSearches | null> {
+        return await this.getDataFromStore<StoredSavedSearches>('main', SAVED_SEARCHES_STORE);
+    }
+
+    /**
+     * Save all saved searches.
+     */
+    public async saveSavedSearches(searches: StoredSavedSearches): Promise<void> {
+        return await this.saveDataToStore(searches, 'main', SAVED_SEARCHES_STORE);
+    }
+
+    /**
+     * Get saved search sync state.
+     */
+    public async getSavedSearchSyncState(): Promise<SavedSearchSyncState> {
+        const db = await this.dbPromise;
+        if (!db) return { pendingOps: [], lastSyncTs: 0 }; // Degraded mode
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(SAVED_SEARCHES_STORE, 'readonly');
+            const store = transaction.objectStore(SAVED_SEARCHES_STORE);
+
+            const pendingRequest = store.get('pendingOps');
+            const lastSyncRequest = store.get('lastSyncTs');
+
+            transaction.oncomplete = () => {
+                resolve({
+                    pendingOps: pendingRequest.result || [],
+                    lastSyncTs: lastSyncRequest.result || 0
+                });
+            };
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /**
+     * Append saved search operations to pending queue.
+     */
+    public async appendSavedSearchOps(ops: SavedSearchOp[], searches: StoredSavedSearches): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(SAVED_SEARCHES_STORE, 'readwrite');
+            const store = transaction.objectStore(SAVED_SEARCHES_STORE);
+
+            const pendingRequest = store.get('pendingOps');
+
+            pendingRequest.onsuccess = () => {
+                const currentPending: SavedSearchOp[] = pendingRequest.result || [];
+                const newPending = [...currentPending, ...ops];
+                
+                store.put(searches, 'main');
+                store.put(newPending, 'pendingOps');
+            };
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /**
+     * Clear pending saved search operations after successful sync.
+     */
+    public async clearPendingSavedSearchOps(syncTs: number): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(SAVED_SEARCHES_STORE, 'readwrite');
+            const store = transaction.objectStore(SAVED_SEARCHES_STORE);
+
+            store.put([], 'pendingOps');
+            store.put(syncTs, 'lastSyncTs');
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /**
+     * Get all saved search data (searches and sync state) in a single transaction.
+     */
+    public async getAllSavedSearchData(): Promise<{ searches: StoredSavedSearches; pendingOps: SavedSearchOp[]; lastSyncTs: number }> {
+        const db = await this.dbPromise;
+        if (!db) return { searches: {}, pendingOps: [], lastSyncTs: 0 }; // Degraded mode
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(SAVED_SEARCHES_STORE, 'readonly');
+            const store = transaction.objectStore(SAVED_SEARCHES_STORE);
+
+            const mainRequest = store.get('main');
+            const pendingRequest = store.get('pendingOps');
+            const lastSyncRequest = store.get('lastSyncTs');
+
+            transaction.oncomplete = () => {
+                resolve({
+                    searches: mainRequest.result || {},
+                    pendingOps: pendingRequest.result || [],
+                    lastSyncTs: lastSyncRequest.result || 0
+                });
+            };
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /**
+     * Save all saved search data in a single transaction.
+     */
+    public async saveAllSavedSearchData(searches: StoredSavedSearches, syncTs: number): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(SAVED_SEARCHES_STORE, 'readwrite');
+            const store = transaction.objectStore(SAVED_SEARCHES_STORE);
+
+            store.put(searches, 'main');
             store.put([], 'pendingOps');
             store.put(syncTs, 'lastSyncTs');
 
@@ -520,6 +784,7 @@ export class DbService {
      */
     public async listForces(dataService: DataService, unitInitializer: UnitInitializerService, injector: Injector): Promise<LoadForceEntry[]> {
         const db = await this.dbPromise;
+        if (!db) return []; // Degraded mode
         return new Promise<LoadForceEntry[]>((resolve, reject) => {
             const transaction = db.transaction(FORCE_STORE, 'readonly');
             const store = transaction.objectStore(FORCE_STORE);
@@ -676,6 +941,7 @@ export class DbService {
 
     private async clearStore(storeName: string): Promise<void> {
         const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
         return new Promise<void>((resolve, reject) => {
             const transaction = db.transaction(storeName, 'readwrite');
             const store = transaction.objectStore(storeName);
@@ -701,6 +967,7 @@ export class DbService {
 
     private async getStoreSize(storeName: string): Promise<number> {
         const db = await this.dbPromise;
+        if (!db) return 0; // Degraded mode
         return new Promise<number>((resolve, reject) => {
             const transaction = db.transaction(storeName, 'readonly');
             const store = transaction.objectStore(storeName);
@@ -729,6 +996,7 @@ export class DbService {
 
     private async getStoreCount(storeName: string): Promise<number> {
         const db = await this.dbPromise;
+        if (!db) return 0; // Degraded mode
         return new Promise<number>((resolve, reject) => {
             const transaction = db.transaction(storeName, 'readonly');
             const store = transaction.objectStore(storeName);
@@ -758,6 +1026,7 @@ export class DbService {
 
     private async cullOldSheets(): Promise<void> {
         const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
         const transaction = db.transaction(SHEETS_STORE, 'readwrite');
         const store = transaction.objectStore(SHEETS_STORE);
         const countRequest = store.count();

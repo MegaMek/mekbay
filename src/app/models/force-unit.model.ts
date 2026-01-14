@@ -72,7 +72,7 @@ export abstract class ForceUnit {
     ) {
         this.id = generateUUID();
         this.force = force;
-        this.unit = structuredClone(unit);
+        this.unit = unit;
 
         this.dataService = dataService;
         this.unitInitializer = unitInitializer;

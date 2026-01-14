@@ -138,6 +138,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('syncZoomBetweenSheets', value);
     }
 
+    onAllowMultipleActiveSheetsChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('allowMultipleActiveSheets', value);
+    }
+
     onPickerStyleChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'radial' | 'linear';
         this.optionsService.setOption('pickerStyle', value);
@@ -148,9 +153,19 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('unitDisplayName', value);
     }
 
+    onAutoConvertFiltersChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('automaticallyConvertFiltersToSemantic', value);
+    }
+
     onQuickActionsChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'enabled' | 'disabled';
         this.optionsService.setOption('quickActions', value);
+    }
+
+    onunitSearchExpandedViewLayoutChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as 'panel-list-filters' | 'filters-list-panel';
+        this.optionsService.setOption('unitSearchExpandedViewLayout', value);
     }
 
     onCanvasInputChange(event: Event) {

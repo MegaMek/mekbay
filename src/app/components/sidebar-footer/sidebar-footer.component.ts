@@ -51,6 +51,15 @@ export class SidebarFooterComponent {
     });
     singleButton = input<boolean>(false);
 
+    /**
+     * Returns true if the force can be saved (has units, no instanceId, and is not readOnly)
+     */
+    canSaveForce = computed(() => {
+        const force = this.forceBuilderService.currentForce();
+        if (!force) return false;
+        return force.units().length > 0 && !force.instanceId() && !force.readOnly();
+    });
+
     constructor() {}
     
     toggleCompactMode() {
@@ -75,9 +84,13 @@ export class SidebarFooterComponent {
         }
     }
 
+    async saveForce(): Promise<void> {
+        await this.forceBuilderService.saveForceWithNameConfirmation();
+    }
+
     async requestRepairAll(): Promise<void> {
         if (await this.forceBuilderService.repairAllUnits()) {
-            this.toastService.show(`Repaired all units.`, 'success');
+            this.toastService.showToast(`Repaired all units.`, 'success');
         }
     }
 

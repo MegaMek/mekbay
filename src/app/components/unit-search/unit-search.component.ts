@@ -32,11 +32,12 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, Pipe, PipeTransform, DestroyRef } from '@angular/core';
+import { Component, signal, ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, Pipe, PipeTransform, DestroyRef, untracked, ComponentRef } from '@angular/core';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { UnitSearchFiltersService, ADVANCED_FILTERS, SORT_OPTIONS, AdvFilterType, SortOption, SerializedSearchFilter } from '../../services/unit-search-filters.service';
+import { HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { Unit, UnitComponent } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
@@ -58,6 +59,8 @@ import { LongPressDirective } from '../../directives/long-press.directive';
 import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ShareSearchDialogComponent } from './share-search.component';
+import { SemanticGuideDialogComponent } from '../semantic-guide-dialog/semantic-guide-dialog.component';
+import { SemanticGuideComponent } from '../semantic-guide/semantic-guide.component';
 import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
@@ -67,6 +70,11 @@ import { OptionsService } from '../../services/options.service';
 import { TaggingService } from '../../services/tagging.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
+import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
+import { SavedSearchesService } from '../../services/saved-searches.service';
+import { generateUUID } from '../../services/ws.service';
+import { GameSystem } from '../../models/common.model';
+import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 
 
 
@@ -98,9 +106,9 @@ export class ExpandedComponentsPipe implements PipeTransform {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent, UnitDetailsPanelComponent],
     templateUrl: './unit-search.component.html',
-    styleUrl: './unit-search.component.css',
+    styleUrl: './unit-search.component.scss',
     host: {
         '(keydown)': 'onKeydown($event)'
     }
@@ -120,8 +128,11 @@ export class UnitSearchComponent {
     private abilityLookup = inject(AsAbilityLookupService);
     private optionsService = inject(OptionsService);
     private taggingService = inject(TaggingService);
+    private savedSearchesService = inject(SavedSearchesService);
 
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
+    /** Whether the layout is filters-list-panel (filters on left) */
+    readonly filtersOnLeft = computed(() => this.optionsService.options().unitSearchExpandedViewLayout === 'filters-list-panel');
 
     public readonly ADVANCED_FILTERS = ADVANCED_FILTERS;
     public readonly AdvFilterType = AdvFilterType;
@@ -129,13 +140,20 @@ export class UnitSearchComponent {
 
     private searchDebounceTimer: any;
     private readonly SEARCH_DEBOUNCE_MS = 300;
+    /** Reference to the favorites overlay component for in-place updates. */
+    private favoritesCompRef: ComponentRef<SearchFavoritesMenuComponent> | null = null;
+    /** Flag to track when a favorites dialog (rename/delete) is in progress. */
+    private favoritesDialogActive = false;
+    /** Immediate input value for instant highlighting (not debounced). */
+    readonly immediateSearchText = signal('');
 
     viewport = viewChild(CdkVirtualScrollViewport);
-    searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
+    syntaxInput = viewChild<SyntaxInputComponent>('syntaxInput');
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
     favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
     resultsDropdown = viewChild<ElementRef<HTMLElement>>('resultsDropdown');
+    expandedResultsWrapper = viewChild<ElementRef<HTMLElement>>('expandedResultsWrapper');
 
     gameSystem = computed(() => this.gameService.currentGameSystem());
     autoFocus = input(false);
@@ -148,6 +166,34 @@ export class UnitSearchComponent {
     activeIndex = signal<number | null>(null);
     selectedUnits = signal<Set<string>>(new Set());
     private unitDetailsDialogOpen = signal(false);
+    
+    /** Unit currently selected for inline details panel in expanded view */
+    inlinePanelUnit = signal<Unit | null>(null);
+    
+    /** Minimum window width to show the inline details panel */
+    private readonly INLINE_PANEL_MIN_WIDTH = 2100;
+    
+    /** Whether to show the inline details panel (expanded view + sufficient screen width) */
+    showInlinePanel = computed(() => {
+        return this.expandedView() && this.layoutService.windowWidth() >= this.INLINE_PANEL_MIN_WIDTH;
+    });
+    
+    /** Index of the currently selected unit in the filtered list */
+    private inlinePanelIndex = computed(() => {
+        const unit = this.inlinePanelUnit();
+        if (!unit) return -1;
+        return this.filtersService.filteredUnits().findIndex(u => u.name === unit.name);
+    });
+    
+    /** Whether there is a previous unit to navigate to in the inline panel */
+    inlinePanelHasPrev = computed(() => this.inlinePanelIndex() > 0);
+    
+    /** Whether there is a next unit to navigate to in the inline panel */
+    inlinePanelHasNext = computed(() => {
+        const index = this.inlinePanelIndex();
+        return index >= 0 && index < this.filtersService.filteredUnits().length - 1;
+    });
+    
     advPanelStyle = signal<{ left: string, top: string, width: string, height: string, columnsCount: number }>({
         left: '0px',
         top: '0px',
@@ -159,6 +205,34 @@ export class UnitSearchComponent {
         top: '0px',
         width: '100%',
         height: '100%',
+    });
+    
+    /** Style for the expanded results wrapper when advanced panel is docked */
+    expandedWrapperStyle = computed(() => {
+        const { top: safeTop, bottom: safeBottom, right: safeRight } = this.layoutService.getSafeAreaInsets();
+        const gap = 4;
+        const top = safeTop + 4 + 40 + gap; // top margin + searchbar height + gap
+        const bottom = Math.max(4, safeBottom);
+        const filtersOnLeft = this.filtersOnLeft();
+
+        let left = 4;
+        let right = 4;
+        if (this.advPanelDocked()) {
+            const advPanelWidth = parseInt(this.advPanelStyle().width, 10) || 300;
+            if (filtersOnLeft) {
+                left = advPanelWidth + 8;
+            } else {
+                right = advPanelWidth + 8;
+            }
+        }
+
+        return {
+            top: `${top}px`,
+            left: `${left}px`,
+            right: `${right}px`,
+            bottom: `${bottom}px`,
+            flexDirection: filtersOnLeft ? 'row-reverse' : 'row' as 'row' | 'row-reverse',
+        };
     });
 
     overlayVisible = computed(() => {
@@ -173,6 +247,40 @@ export class UnitSearchComponent {
             (this.filtersService.searchText() || this.isAdvActive());
     });
 
+    /**
+     * Tokenized search text for syntax highlighting.
+     * Uses the AST lexer to produce tokens with type info.
+     * Uses immediateSearchText for instant feedback (no debounce).
+     */
+    readonly highlightTokens = computed((): HighlightToken[] => {
+        const text = this.immediateSearchText();
+        if (!text) return [];
+        return tokenizeForHighlight(text, this.gameService.currentGameSystem());
+    });
+
+    /**
+     * Whether there are any parse errors.
+     */
+    readonly hasParseErrors = computed((): boolean => {
+        return this.highlightTokens().some(t => t.type === 'error');
+    });
+
+    /**
+     * Tooltip text for the search input when there are parse errors.
+     * Shows all error messages joined by newlines.
+     */
+    readonly errorTooltip = computed((): string => {
+        const errors = this.highlightTokens().filter(t => t.type === 'error' && t.errorMessage);
+        if (errors.length === 0) return '';
+        return errors.map(e => e.errorMessage).join('\n');
+    });
+
+    /**
+     * Whether the query is too complex to represent in flat UI filters.
+     * When true, filter dropdowns are hidden in favor of the query.
+     */
+    readonly isComplexQuery = computed(() => this.filtersService.isComplexQuery());
+
     itemSize = signal(75);
 
     private resizeObserver?: ResizeObserver;
@@ -180,6 +288,21 @@ export class UnitSearchComponent {
     private advPanelDragStartWidth = 0;
 
     constructor() {
+        // Sync immediateSearchText when searchText changes externally (favorites, etc.)
+        // We use untracked to avoid re-triggering when we set immediateSearchText
+        effect(() => {
+            const text = this.filtersService.searchText();
+            untracked(() => {
+                if (this.immediateSearchText() !== text) {
+                    this.immediateSearchText.set(text);
+                }
+            });
+        });
+        // Auto-refresh favorites overlay when saved searches change (e.g., from cloud sync)
+        effect(() => {
+            this.savedSearchesService.version(); // Subscribe to changes
+            untracked(() => this.refreshFavoritesOverlay());
+        });
         effect(() => {
             if (this.advOpen()) {
                 this.layoutService.windowWidth();
@@ -200,9 +323,9 @@ export class UnitSearchComponent {
         effect(() => {
             if (this.autoFocus() &&
                 this.filtersService.isDataReady() &&
-                this.searchInput().nativeElement) {
+                this.syntaxInput()) {
                 afterNextRender(() => {
-                    this.searchInput().nativeElement.focus();
+                    this.syntaxInput()?.focus();
                 }, { injector: this.injector });
             }
         });
@@ -291,15 +414,18 @@ export class UnitSearchComponent {
 
     focusInput() {
         afterNextRender(() => {
-            try { this.searchInput()?.nativeElement.focus(); } catch { /* ignore */ }
+            try { this.syntaxInput()?.focus(); } catch { /* ignore */ }
         }, { injector: this.injector });
     }
 
     blurInput() {
-        try { this.searchInput()?.nativeElement.blur(); } catch { /* ignore */ }
+        try { this.syntaxInput()?.blur(); } catch { /* ignore */ }
     }
 
     setSearch(val: string) {
+        // Update immediately for instant highlighting
+        this.immediateSearchText.set(val);
+        // Debounce the actual search/filtering
         if (this.searchDebounceTimer) {
             clearTimeout(this.searchDebounceTimer);
         }
@@ -316,7 +442,7 @@ export class UnitSearchComponent {
     toggleAdv() {
         this.advOpen.set(!this.advOpen());
         if (!this.advOpen()) {
-            this.searchInput().nativeElement.focus();
+            this.syntaxInput()?.focus();
         } else {
             this.focused.set(true);
         }
@@ -378,10 +504,15 @@ export class UnitSearchComponent {
         const singlePanelWidth = 300;
         const doublePanelWidth = 600;
         const gap = 4;
-        const spaceToRight = window.innerWidth - buttonRect.right - gap - 10;
+        const filtersOnLeft = this.filtersOnLeft();
+        
+        // Calculate available space based on layout direction
+        const spaceAvailable = filtersOnLeft 
+            ? buttonRect.left - gap - 10  // Space to the left of button
+            : window.innerWidth - buttonRect.right - gap - 10;  // Space to the right of button
 
         // Use user override if set, else auto
-        let columns = (spaceToRight >= doublePanelWidth ? 2 : 1);
+        let columns = (spaceAvailable >= doublePanelWidth ? 2 : 1);
         if (this.expandedView() && this.advPanelDocked()) {
             const columnsCountOverride = this.advPanelUserColumns();
             if (columnsCountOverride) {
@@ -394,15 +525,30 @@ export class UnitSearchComponent {
         let top: number;
         let availableHeight: number;
 
-        if (spaceToRight >= panelWidth) {
-            left = buttonRect.right + gap;
-            top = buttonRect.top;
-            availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
+        if (filtersOnLeft) {
+            // Filters on left: panel opens to the left of the button
+            if (spaceAvailable >= panelWidth) {
+                left = buttonRect.left - panelWidth - gap;
+                top = buttonRect.top;
+                availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
+            } else {
+                left = gap;
+                top = buttonRect.bottom + gap;
+                availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
+            }
+            left = Math.max(gap, left);
         } else {
-            left = buttonRect.right - panelWidth;
-            top = buttonRect.bottom + gap;
-            availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
-            left = Math.max(10, left);
+            // Default: panel opens to the right of the button
+            if (spaceAvailable >= panelWidth) {
+                left = buttonRect.right + gap;
+                top = buttonRect.top;
+                availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
+            } else {
+                left = buttonRect.right - panelWidth;
+                top = buttonRect.bottom + gap;
+                availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
+                left = Math.max(10, left);
+            }
         }
 
         this.advPanelStyle.set({
@@ -427,7 +573,7 @@ export class UnitSearchComponent {
     }
 
     clearAdvFilters() {
-        this.filtersService.clearFilters();
+        this.filtersService.resetFilters();
         this.activeIndex.set(null);
     }
 
@@ -437,7 +583,6 @@ export class UnitSearchComponent {
     }
 
     onKeydown(event: KeyboardEvent) {
-        const searchInput = this.searchInput();
         // SELECT ALL
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
             const isInInput = event.target instanceof HTMLElement && Boolean(event.target.closest('input, textarea, select, [contenteditable]'));
@@ -451,7 +596,7 @@ export class UnitSearchComponent {
             event.stopPropagation();
             if (this.advOpen()) {
                 this.closeAdvPanel();
-                searchInput.nativeElement.focus();
+                this.syntaxInput()?.focus();
                 return;
             } else {
                 if (this.expandedView()) {
@@ -482,7 +627,7 @@ export class UnitSearchComponent {
                         this.scrollToIndex(prevIndex);
                     } else {
                         this.activeIndex.set(null);
-                        searchInput.nativeElement.focus();
+                        this.syntaxInput()?.focus();
                     }
                     break;
                 case 'Enter':
@@ -602,6 +747,7 @@ export class UnitSearchComponent {
         ref.componentInstance?.indexChange.subscribe(newIndex => {
             this.activeIndex.set(newIndex);
             this.scrollToMakeVisible(newIndex);
+            this.inlinePanelUnit.set(filteredUnits[newIndex]);
         });
 
         ref.componentInstance?.add.subscribe(newUnit => {
@@ -737,7 +883,10 @@ export class UnitSearchComponent {
 
     onAdvPanelDragMove = (event: PointerEvent) => {
         const delta = event.clientX - this.advPanelDragStartX;
-        const newWidth = this.advPanelDragStartWidth - delta;
+        // When filters are on left, dragging right increases width; otherwise dragging left increases width
+        const newWidth = this.filtersOnLeft() 
+            ? this.advPanelDragStartWidth + delta 
+            : this.advPanelDragStartWidth - delta;
         // Snap to 1 or 2 columns
         if (newWidth > 450) {
             this.advPanelUserColumns.set(2);
@@ -780,8 +929,50 @@ export class UnitSearchComponent {
             event.stopPropagation();
             return;
         }
-        // Single click: open details and clear selection
-        this.showUnitDetails(unit);
+        // Single click: show inline panel if available, otherwise open dialog
+        this.inlinePanelUnit.set(unit);
+        if (this.showInlinePanel()) {
+            // Update activeIndex to match clicked unit
+            const filteredUnits = this.filtersService.filteredUnits();
+            const index = filteredUnits.findIndex(u => u.name === unit.name);
+            if (index >= 0) {
+                this.activeIndex.set(index);
+            }
+        } else {
+            this.showUnitDetails(unit);
+        }
+    }
+
+    /** Handle unit added from inline panel */
+    onInlinePanelAdd(unit: Unit): void {
+        if (this.forceBuilderService.currentForce()?.units().length === 1) {
+            // If this is the first unit being added, close the search panel
+            this.closeAllPanels();
+        }
+        this.blurInput();
+    }
+
+    /** Navigate to previous unit in inline panel */
+    onInlinePanelPrev(): void {
+        const index = this.inlinePanelIndex();
+        if (index > 0) {
+            const prevUnit = this.filtersService.filteredUnits()[index - 1];
+            this.inlinePanelUnit.set(prevUnit);
+            this.activeIndex.set(index - 1);
+            this.scrollToMakeVisible(index - 1);
+        }
+    }
+
+    /** Navigate to next unit in inline panel */
+    onInlinePanelNext(): void {
+        const index = this.inlinePanelIndex();
+        const filteredUnits = this.filtersService.filteredUnits();
+        if (index >= 0 && index < filteredUnits.length - 1) {
+            const nextUnit = filteredUnits[index + 1];
+            this.inlinePanelUnit.set(nextUnit);
+            this.activeIndex.set(index + 1);
+            this.scrollToMakeVisible(index + 1);
+        }
     }
 
     isUnitSelected(unit: Unit): boolean {
@@ -870,14 +1061,19 @@ export class UnitSearchComponent {
     }
 
     clearSearch() {
+        this.immediateSearchText.set('');
         this.filtersService.searchText.set('');
         this.activeIndex.set(null);
-        this.focusInput();
     }
 
     openShareSearch(event: MouseEvent) {
         event.stopPropagation();
         this.dialogsService.createDialog(ShareSearchDialogComponent);
+    }
+
+    openSemanticGuide(event: MouseEvent) {
+        event.stopPropagation();
+        this.dialogsService.createDialog(SemanticGuideDialogComponent);
     }
 
     /* ------------------------------------------
@@ -890,6 +1086,7 @@ export class UnitSearchComponent {
         // If already open, close it
         if (this.overlayManager.has('favorites')) {
             this.overlayManager.closeManagedOverlay('favorites');
+            this.favoritesCompRef = null;
             return;
         }
         const target = this.favBtn()?.nativeElement || (event.target as HTMLElement);
@@ -898,35 +1095,169 @@ export class UnitSearchComponent {
             hasBackdrop: false,
             panelClass: 'favorites-overlay-panel',
             closeOnOutsideClick: true,
-            scrollStrategy: this.overlay.scrollStrategies.close()
+            scrollStrategy: this.overlay.scrollStrategies.reposition()
         });
+        this.favoritesCompRef = compRef;
 
-        const favorites: SerializedSearchFilter[] = [];
+        // Get favorites - filter by game system only if a force is loaded
+        const hasForce = this.forceBuilderService.currentForce() !== null;
+        const favorites = hasForce
+            ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
+            : this.savedSearchesService.getAllSearches();
         compRef.setInput('favorites', favorites);
+        
+        // Determine if saving is allowed (has search text or filters)
+        const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
+        const filterState = this.filtersService.filterState();
+        const hasActiveFilters = Object.values(filterState).some(s => s.interactedWith);
+        compRef.setInput('canSave', hasSearchText || hasActiveFilters);
+        
         compRef.instance.select.subscribe((favorite: SerializedSearchFilter) => {
             if (favorite) this.applyFavorite(favorite);
             this.overlayManager.closeManagedOverlay('favorites');
+            this.favoritesCompRef = null;
+        });
+        compRef.instance.rename.subscribe((favorite: SerializedSearchFilter) => {
+            this.renameSearch(favorite);
+        });
+        compRef.instance.delete.subscribe((favorite: SerializedSearchFilter) => {
+            this.deleteSearch(favorite);
         });
         compRef.instance.saveRequest.subscribe(() => {
             this.saveCurrentSearch();
+        });
+        compRef.instance.menuOpened.subscribe(() => {
+            this.overlayManager.blockCloseUntil('favorites');
+        });
+        compRef.instance.menuClosed.subscribe(() => {
+            // Delay unblock to allow menu item click to process first
+            // But don't unblock if a dialog operation is in progress
+            setTimeout(() => {
+                if (!this.favoritesDialogActive) {
+                    this.overlayManager.unblockClose('favorites');
+                }
+            }, 50);
         });
     }
 
     closeFavorites() {
         this.overlayManager.closeManagedOverlay('favorites');
+        this.favoritesCompRef = null;
     }
 
     private async saveCurrentSearch() {
-        const name = await this.dialogsService.prompt('Enter a name for this Tactical Bookmark (e.g. "Clan Raid - 3058")', 'Save Tactical Bookmark', '');
-        if (name === null) return; // cancelled
-        const trimmed = (name || '').trim();
-        if (!trimmed) return;
+        // Block favorites overlay from closing while dialog is open
+        this.favoritesDialogActive = true;
+        this.overlayManager.blockCloseUntil('favorites');
+        try {
+            // Check if there's anything to save (text or filters)
+            const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
+            const filterState = this.filtersService.filterState();
+            const hasActiveFilters = Object.values(filterState).some(s => s.interactedWith);
+            
+            if (!hasSearchText && !hasActiveFilters) {
+                await this.dialogsService.showNotice(
+                    'Please enter a search query or set some filters before saving a bookmark.',
+                    'Nothing to Save'
+                );
+                return;
+            }
 
-        const fav = this.filtersService.serializeCurrentSearchFilter(trimmed);
-        // DO THE SAVING!
+            const name = await this.dialogsService.prompt(
+                'Enter a name for this Tactical Bookmark (e.g. "Clan Raid 3052")',
+                'Save Tactical Bookmark',
+                ''
+            );
+            if (name === null) return; // cancelled
+            const trimmed = (name || '').trim();
+            if (!trimmed) return;
+
+            const gameSystem = this.gameService.currentGameSystem();
+            const gsKey = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
+            const id = generateUUID();
+            const filter = this.filtersService.serializeCurrentSearchFilter(id, trimmed, gsKey);
+            
+            await this.savedSearchesService.saveSearch(filter);
+            // Refresh the overlay with the new bookmark
+            this.refreshFavoritesOverlay();
+        } finally {
+            this.favoritesDialogActive = false;
+            // Unblock after small delay to prevent immediate close from residual events
+            setTimeout(() => this.overlayManager.unblockClose('favorites'), 100);
+        }
+    }
+
+    private async renameSearch(favorite: SerializedSearchFilter) {
+        // Block favorites overlay from closing while dialog is open
+        this.favoritesDialogActive = true;
+        this.overlayManager.blockCloseUntil('favorites');
+        try {
+            const newName = await this.dialogsService.prompt(
+                'Enter a new name for this bookmark:',
+                'Rename Tactical Bookmark',
+                favorite.name
+            );
+            if (newName === null) return; // cancelled
+            const trimmed = (newName || '').trim();
+            if (!trimmed || trimmed === favorite.name) return;
+
+            await this.savedSearchesService.renameSearch(favorite.id, trimmed);
+            // Refresh the overlay with updated data
+            this.refreshFavoritesOverlay();
+        } finally {
+            this.favoritesDialogActive = false;
+            // Unblock after small delay to prevent immediate close from residual events
+            setTimeout(() => this.overlayManager.unblockClose('favorites'), 100);
+        }
+    }
+
+    private async deleteSearch(favorite: SerializedSearchFilter) {
+        // Block favorites overlay from closing while dialog is open
+        this.favoritesDialogActive = true;
+        this.overlayManager.blockCloseUntil('favorites');
+        try {
+            const confirmed = await this.dialogsService.requestConfirmation(
+                `Delete "${favorite.name}"?`,
+                'Delete Tactical Bookmark',
+                'danger'
+            );
+            if (!confirmed) return;
+
+            await this.savedSearchesService.deleteSearch(favorite.id);
+            // Refresh the overlay with updated data
+            this.refreshFavoritesOverlay();
+        } finally {
+            this.favoritesDialogActive = false;
+            // Unblock after small delay to prevent immediate close from residual events
+            setTimeout(() => this.overlayManager.unblockClose('favorites'), 100);
+        }
+    }
+
+    private refreshFavoritesOverlay() {
+        // Update favorites data in-place without closing overlay
+        if (this.favoritesCompRef && this.overlayManager.has('favorites')) {
+            // Get favorites - filter by game system only if a force is loaded
+            const hasForce = this.forceBuilderService.currentForce() !== null;
+            const favorites = hasForce
+                ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
+                : this.savedSearchesService.getAllSearches();
+            this.favoritesCompRef.setInput('favorites', favorites);
+            
+            // Also update canSave state
+            const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
+            const filterState = this.filtersService.filterState();
+            const hasActiveFilters = Object.values(filterState).some(s => s.interactedWith);
+            this.favoritesCompRef.setInput('canSave', hasSearchText || hasActiveFilters);
+        }
     }
 
     private applyFavorite(fav: SerializedSearchFilter) {
+        // Switch game mode if the saved search's game system differs from current
+        const currentGs = this.gameService.currentGameSystem();
+        const favGs = fav.gameSystem === 'as' ? GameSystem.ALPHA_STRIKE : GameSystem.CLASSIC;
+        if (favGs !== currentGs) {
+            this.gameService.setMode(favGs);
+        }
         this.filtersService.applySerializedSearchFilter(fav);
         // Focus search input after applying
         afterNextRender(() => {

@@ -181,11 +181,11 @@ export class ShareForceDialogComponent {
             }).catch(() => {
                 // fallback if user cancels or error
                 copyTextToClipboard(url);
-                this.toastService.show('Link copied to clipboard.', 'success');
+                this.toastService.showToast('Link copied to clipboard.', 'success');
             });
         } else {
             copyTextToClipboard(url);
-            this.toastService.show('Link copied to clipboard.', 'success');
+            this.toastService.showToast('Link copied to clipboard.', 'success');
         }
     }
 
@@ -204,9 +204,9 @@ export class ShareForceDialogComponent {
 
         try {
             copyTextToClipboard(target.value);
-            this.toastService.show('Link copied to clipboard.', 'success');
+            this.toastService.showToast('Link copied to clipboard.', 'success');
         } catch (err) {
-            this.toastService.show('Failed to copy link.', 'error');
+            this.toastService.showToast('Failed to copy link.', 'error');
         }
     }
 

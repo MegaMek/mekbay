@@ -52,7 +52,7 @@ export class ToastService {
     public toasts = this.toastsSignal.asReadonly();
     private timeouts = new Map<string, any>();
 
-    show(message: string, type: Toast['type'], id?: string): string {
+    showToast(message: string, type: Toast['type'], id?: string): string {
         const toastId = id || generateUUID();
         let toasts = this.toastsSignal();
         

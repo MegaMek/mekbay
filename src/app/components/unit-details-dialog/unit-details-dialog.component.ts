@@ -40,7 +40,6 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ToastService } from '../../services/toast.service';
 import { ForceUnit } from '../../models/force-unit.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { Router } from '@angular/router';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '../../directives/swipe.directive';
@@ -56,6 +55,7 @@ import { GameService } from '../../services/game.service';
 import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
 import { TaggingService } from '../../services/tagging.service';
+import { UrlStateService } from '../../services/url-state.service';
 
 /*
  * Author: Drake
@@ -89,9 +89,9 @@ export class UnitDetailsDialogComponent {
     dialogRef = inject(DialogRef<UnitDetailsDialogComponent>);
     data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     toastService = inject(ToastService);
-    router = inject(Router);
     floatingOverlayService = inject(FloatingOverlayService);
     private taggingService = inject(TaggingService);
+    private urlStateService = inject(UrlStateService);
     add = output<Unit>();
     select = output<Unit>();
     indexChange = output<number>();
@@ -99,12 +99,9 @@ export class UnitDetailsDialogComponent {
     incomingPanelRef = viewChild<ElementRef>('incomingPanel');
 
     tabs = computed<string[]>(() => {
-        if (this.gameService.isAlphaStrike()) {
-            return ['Card', 'Intel', 'Factions', 'General', 'Sheet'];
-        }
         return ['General', 'Intel', 'Factions', 'Sheet', 'Card'];
     });
-    activeTab = signal(this.tabs()[0]);
+    activeTab = signal(this.gameService.isAlphaStrike() ? 'Card' : 'General');
 
     unitList: Unit[] | ForceUnit[] = this.data.unitList;
     unitIndex = signal(this.data.unitIndex);
@@ -189,13 +186,10 @@ export class UnitDetailsDialogComponent {
         effect(() => {
             this.unit;
             this.activeTab()
-            this.router.navigate([], {
-                queryParams: {
-                    shareUnit: this.unit.name,
-                    tab: this.activeTab(),
-                },
-                queryParamsHandling: 'merge',
-                replaceUrl: true
+            // Use centralized URL state service to avoid race conditions
+            this.urlStateService.setParams({
+                shareUnit: this.unit.name,
+                tab: this.activeTab(),
             });
         });
         
@@ -206,13 +200,10 @@ export class UnitDetailsDialogComponent {
         });
         
         this.dialogRef.closed.subscribe(() => {
-            this.router.navigate([], {
-                queryParams: {
-                    shareUnit: null,
-                    tab: null,
-                },
-                queryParamsHandling: 'merge',
-                replaceUrl: true
+            // Clear dialog-specific params when closing
+            this.urlStateService.setParams({
+                shareUnit: null,
+                tab: null,
             });
         });
     }
@@ -351,7 +342,7 @@ export class UnitDetailsDialogComponent {
             piloting,
         );
         if (addedUnit) {
-            this.toastService.show(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
+            this.toastService.showToast(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
             this.add.emit(selectedUnit);
         }
         this.onClose();
@@ -379,11 +370,11 @@ export class UnitDetailsDialogComponent {
             }).catch(() => {
                 // fallback if user cancels or error
                 copyTextToClipboard(shareUrl);
-                this.toastService.show('Unit link copied to clipboard.', 'success');
+                this.toastService.showToast('Unit link copied to clipboard.', 'success');
             });
         } else {
             copyTextToClipboard(shareText);
-            this.toastService.show('Unit link copied to clipboard.', 'success');
+            this.toastService.showToast('Unit link copied to clipboard.', 'success');
         }
     }
 

@@ -32,7 +32,7 @@
  */
 
 
-import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 
 /*
@@ -63,10 +63,11 @@ export interface InputDialogData {
             <input
                 #inputRef
                 [type]="data.inputType || 'text'"
-                [placeholder]="data.placeholder"
+                [placeholder]="data.placeholder ?? ''"
                 [value]="data.defaultValue ?? ''"
                 [attr.min]="data.inputType === 'number' ? 0 : null"
                 (keydown.enter)="submit()"
+                (input)="onInputChange($event)"
                 required
             />
         </div>
@@ -74,6 +75,7 @@ export interface InputDialogData {
             @for (btn of buttons; let i = $index; track i) {
                 <button
                     (click)="btn.value === 'ok' ? submit() : close(null)"
+                    [disabled]="btn.value === 'ok' && !isInputValid()"
                     class="bt-button {{ btn.class }}"
                 >{{ btn.label }}</button>
             }
@@ -144,12 +146,28 @@ export class InputDialogComponent {
     public dialogRef: DialogRef<string | number | null, InputDialogComponent> = inject(DialogRef);
     readonly data: InputDialogData = inject(DIALOG_DATA);
     buttons: { label: string; value: 'ok' | 'cancel'; class?: string }[];
+    
+    /** Track input value for validation */
+    private inputValue = signal<string>(String(this.data.defaultValue ?? ''));
 
     constructor() {
         this.buttons = this.data.buttons ?? [
             { label: 'CONFIRM', value: 'ok' },
             { label: 'DISMISS', value: 'cancel' }
         ];
+    }
+
+    onInputChange(event: Event) {
+        const value = (event.target as HTMLInputElement).value;
+        this.inputValue.set(value);
+    }
+
+    isInputValid(): boolean {
+        const value = this.inputValue();
+        if (this.data.inputType === 'number') {
+            return value.trim().length > 0 && !isNaN(Number(value));
+        }
+        return value.trim().length > 0;
     }
 
     submit() {

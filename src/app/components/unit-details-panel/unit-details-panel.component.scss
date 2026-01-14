@@ -1,0 +1,231 @@
+/*
+ * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
+:host {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    background-color: #222;
+    overflow: hidden;
+    container-type: inline-size;
+    container-name: details-panel;
+    padding: 2px;
+    box-sizing: border-box;
+}
+
+/* Header Section */
+.header {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    padding: 8px;
+}
+
+.header-icon-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.header-icon-container unit-icon {
+    height: 48px;
+    vertical-align: middle;
+}
+
+.header-content {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    min-width: 0;
+    gap: 2px;
+}
+
+.header-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.header-row-top {
+    flex-wrap: wrap-reverse;
+}
+
+.header-row-bottom {
+    flex-wrap: wrap;
+}
+
+.header-model {
+    font-size: 0.9em;
+    color: var(--text-color-secondary);
+    margin-right: 8px;
+}
+
+.header-chassis {
+    font-size: 1.2em;
+    color: var(--text-color);
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    margin-right: 8px;
+}
+
+.header-details {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5em;
+    white-space: nowrap;
+    margin-left: auto;
+}
+
+.header-details .role {
+    font-size: 0.9em;
+}
+
+.header-tags {
+    margin-left: auto;
+}
+
+.info-slot {
+    display: flex;
+    align-items: center;
+    justify-content: baseline;
+    flex-direction: row;
+    gap: 4px;
+}
+
+.info-slot .icon {
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
+}
+
+/* Body Content */
+.body-content {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.body-content.tab-intel {
+    background-color: #202b46;
+}
+
+.tab-content {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    overflow: auto;
+    min-height: 0;
+    position: relative;
+}
+
+/* Fluff Background */
+.fluff-bg-image {
+    position: absolute;
+    top: calc(10% - 100px);
+    right: calc(40% - 400px);
+    width: 800px;
+    height: auto;
+    object-fit: cover;
+    object-position: right center;
+    filter: saturate(0) invert(1) blur(0.5px) opacity(0.08);
+    mix-blend-mode: lighten;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Footer */
+.footer {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.add-btn {
+    padding: 8px 24px;
+    font-size: 1em;
+}
+
+/* Navigation arrows */
+.nav-arrow {
+    background: none;
+    border: none;
+    color: var(--text-color-secondary);
+    font-size: 1.5em;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: color 0.2s;
+    outline: none;
+}
+
+.nav-arrow:hover {
+    color: var(--text-color);
+}
+
+.nav-arrow.hidden {
+    visibility: hidden;
+}
+
+/* Empty State */
+.panel-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 24px;
+    color: var(--text-color-tertiary);
+}
+
+.empty-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+    font-size: 1.1em;
+}
+
+.empty-icon {
+    width: 48px;
+    height: 48px;
+    opacity: 0.5;
+}

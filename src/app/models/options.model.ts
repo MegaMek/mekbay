@@ -57,4 +57,7 @@ export interface Options {
     ASCardStyle: 'colored' | 'monochrome';
     ASPrintPageBreakOnGroups: boolean;
     c3NetworkConnectionsAboveNodes: boolean;
+    automaticallyConvertFiltersToSemantic: boolean;
+    allowMultipleActiveSheets: boolean;
+    unitSearchExpandedViewLayout: 'panel-list-filters' | 'filters-list-panel';
 }

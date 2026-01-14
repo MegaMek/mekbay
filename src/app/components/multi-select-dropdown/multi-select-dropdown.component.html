@@ -1,27 +1,43 @@
-<div class="multi-select-container corner-borders" [class.open]="isOpen()">
+<div class="multi-select-container corner-borders" [class.open]="isOpen()" [class.disabled]="semanticOnly()" [class.semantic-only]="semanticOnly()">
     <div class="display-area" (click)="toggleDropdown()">
-        <span class="label">{{ label() }}</span>
+        <span class="label" [class.semantic-only]="semanticOnly()">{{ label() }}</span>
         <div class="pills-container">
-            @if (selectedOptions().length === 0) {
+            @if (semanticOnly() && displayItems()?.length) {
+                <!-- Semantic-only mode with structured items: show styled items -->
+                @for (item of displayItems(); track item.state + ':' + item.text) {
+                    <span class="semantic-item" [class.semantic-or]="item.state === 'or'" [class.semantic-and]="item.state === 'and'" [class.semantic-not]="item.state === 'not'">
+                        @if (item.state === 'or') { ✓ }
+                        @else if (item.state === 'and') { &amp; }
+                        @else if (item.state === 'not') { ! }
+                        {{ item.text }}
+                    </span>
+                }
+            } @else if (semanticOnly() && displayText()) {
+                <!-- Semantic-only mode fallback: show plain text -->
+                <span class="semantic-display-text">✓ {{ displayText() }}</span>
+            } @else if (selectedOptions().length === 0) {
                 <span class="placeholder">Any</span>
-            }
-            @for (option of selectedOptions(); let i = $index; track i) {
-                <span class="pill"
-                      (click)="openAndScrollTo(option.name, $event)"
-                      [ngClass]="{
-                        'pill-or': option.state === 'or',
-                        'pill-and': option.state === 'and',
-                        'pill-not': option.state === 'not'
-                      }">
-                    {{ getDisplayName(option.name) }}{{ (option.count > 1) ? ' (' + option.count + ')' : '' }}
-                    <button class="remove-pill" (click)="removeOption(option.name, $event)">&#10005;</button>
-                </span>
+            } @else {
+                @for (option of selectedOptions(); let i = $index; track i) {
+                    <span class="pill"
+                          (click)="openAndScrollTo(option.name, $event)"
+                          [ngClass]="{
+                            'pill-or': option.state === 'or',
+                            'pill-and': option.state === 'and',
+                            'pill-not': option.state === 'not'
+                          }">
+                        {{ getDisplayName(option.name) }}{{ (option.count > 1) ? ' (' + option.count + ')' : '' }}
+                        <button class="remove-pill" (click)="removeOption(option.name, $event)">&#10005;</button>
+                    </span>
+                }
             }
         </div>
-        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round" />
-        </svg>
+        @if (!semanticOnly()) {
+            <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" />
+            </svg>
+        }
     </div>
 
     @if (isOpen()) {

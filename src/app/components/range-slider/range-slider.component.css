@@ -85,6 +85,24 @@
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right, center center;
 }
 
+/* Clamped state: thumb has a value but is at boundary due to cascade filtering */
+.thumb.clamped:not(.active) {
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    background-image:
+        linear-gradient(var(--semantic-color-highlight), var(--semantic-color-highlight)),
+        linear-gradient(var(--semantic-color-highlight), var(--semantic-color-highlight)),
+        linear-gradient(var(--semantic-color-highlight), var(--semantic-color-highlight)),
+        linear-gradient(var(--semantic-color-highlight), var(--semantic-color-highlight)),
+        linear-gradient(var(--semantic-color-highlight), var(--semantic-color-highlight)),
+        linear-gradient(var(--semantic-color-highlight), var(--semantic-color-highlight)),
+        linear-gradient(var(--semantic-color-highlight), var(--semantic-color-highlight)),
+        linear-gradient(var(--semantic-color-highlight), var(--semantic-color-highlight)),
+        linear-gradient(var(--semantic-color-highlight), var(--semantic-color-highlight));
+    background-size: 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 4px 4px;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right, center center;
+}
+
 .thumb-label {
     position: absolute;
     top: -28px;
@@ -97,5 +115,55 @@
     pointer-events: none;
     white-space: nowrap;
     z-index: 1002;
+}
+
+/* Disabled state (semantic-only mode) */
+.slider-container.disabled {
+    opacity: 1;
+    pointer-events: none;
+}
+
+.slider-container.disabled .thumb {
+    display: none;
+}
+
+/* Exclude range indicator (semantic-only feature) */
+.slider-exclude {
+    position: absolute;
+    top: 50%;
+    height: 4px;
+    margin-left: -11px;
+    margin-right: -11px;
+    transform: translateY(-50%);
+    background-color: #dc3545;
+    background-image: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.2) 2px,
+        rgba(0, 0, 0, 0.2) 4px
+    );
+    z-index: 3;
+    pointer-events: none;
+}
+
+/* Include range indicator (semantic filter includes) */
+.slider-include {
+    position: absolute;
+    top: 50%;
+    height: 4px;
+    margin-left: -11px;
+    margin-right: -11px;
+    transform: translateY(-50%);
+    background-color: var(--semantic-color);
+    background-image: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 2px,
+        rgba(255, 255, 255, 0.3) 2px,
+        rgba(255, 255, 255, 0.3) 4px
+    );
+    z-index: 2;
+    pointer-events: none;
 }
 

@@ -62,6 +62,11 @@ export class RangeSliderComponent {
     interacted = input<boolean>(false);
     curve = input<number>(1); // 1 = linear, >1 = log-like, <1 = exp-like
     stepSize = input<number>(1);
+    disabled = input<boolean>(false);
+    /** Display excluded ranges (values that are filtered OUT) */
+    excludeRanges = input<[number, number][] | undefined>();
+    /** Display included ranges from semantic filters (highlighted in cyan) */
+    includeRanges = input<[number, number][] | undefined>();
     
     valueChange = output<[number, number]>();
 
@@ -78,6 +83,24 @@ export class RangeSliderComponent {
     isRightThumbActive = computed(() => {
         const [, availableMax] = this.availableRange() ?? [this.min(), this.max()];
         return this.dragging() === 'max' || this.right() < availableMax;
+    });
+
+    /** Left thumb is clamped: has a set value below the available min */
+    isLeftThumbClamped = computed(() => {
+        const ranges = this.includeRanges();
+        if (!ranges || ranges.length === 0) return false;
+        const [availableMin,] = this.availableRange() ?? [this.min(), this.max()];
+        // Check if any include range starts below the available min
+        return ranges.some(r => r[0] < availableMin);
+    });
+
+    /** Right thumb is clamped: has a set value above the available max */
+    isRightThumbClamped = computed(() => {
+        const ranges = this.includeRanges();
+        if (!ranges || ranges.length === 0) return false;
+        const [, availableMax] = this.availableRange() ?? [this.min(), this.max()];
+        // Check if any include range ends above the available max
+        return ranges.some(r => r[1] > availableMax);
     });
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
@@ -133,6 +156,26 @@ export class RangeSliderComponent {
             return curved * 100;
     }
 
+    /**
+     * Get the left percentage for a range band visualization.
+     * Extends the range by half a step to the left, clamped to min.
+     */
+    rangeBandLeft(value: number): number {
+        const step = this.stepSize();
+        const adjusted = Math.max(this.min(), value - step / 2);
+        return this.valueToPercent(adjusted);
+    }
+
+    /**
+     * Get the right percentage for a range band visualization.
+     * Extends the range by half a step to the right, clamped to max.
+     */
+    rangeBandRight(value: number): number {
+        const step = this.stepSize();
+        const adjusted = Math.min(this.max(), value + step / 2);
+        return 100 - this.valueToPercent(adjusted);
+    }
+
     private percentToValue(percent: number): number {
         // Use log scale if curve == 0
         if (this.curve() == 0) {
@@ -179,6 +222,7 @@ export class RangeSliderComponent {
     }
 
     onKeyDown(event: KeyboardEvent) {
+        if (this.disabled()) return;
         const focused = this.focusedThumb();
         if (!focused) return;
 
@@ -228,6 +272,7 @@ export class RangeSliderComponent {
     }
  
     onWheel(event: WheelEvent) {
+        if (this.disabled()) return;
         const focused = this.focusedThumb();
         if (!focused) return;
  
@@ -278,6 +323,7 @@ export class RangeSliderComponent {
     }
 
     startDrag(which: 'min' | 'max', event: PointerEvent) {
+        if (this.disabled()) return;
         event.preventDefault();
         this.dragging.set(which);
         this.focusedThumb.set(which);

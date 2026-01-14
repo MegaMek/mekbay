@@ -92,7 +92,7 @@ export class ECMHandler extends EquipmentInteractionHandler {
     handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {
         equipment.states?.set(this.stateKey, String(choice.value));
         equipment.owner.setInventoryEntry(equipment);
-        context.toastService.show(
+        context.toastService.showToast(
             `${equipment.equipment?.name||equipment.name} mode: ${choice.label}`,
             'info'
         );

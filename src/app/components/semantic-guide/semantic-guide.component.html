@@ -1,0 +1,192 @@
+<div class="guide-content" [class.compact]="compact()">
+    <!-- Basic Syntax -->
+    <section class="guide-section">
+        <h3>Basic Syntax</h3>
+        <p>Combine text search with filters: <code>text field=value</code></p>
+        <div class="example">
+            <code class="allow-select">crab pv=20-40</code>
+            <span class="desc">→ Units with "crab" in chassis or model, PV between 20-40</span>
+        </div>
+    </section>
+
+    <!-- Operators -->
+    <section class="guide-section">
+        <h3>Operators</h3>
+        <table class="operators-table">
+            <tr><td><code>=</code></td><td>Include / Equal</td></tr>
+            <tr><td><code>!=</code></td><td>Exclude / Not equal</td></tr>
+            <tr><td><code>&gt;</code></td><td>Greater than</td></tr>
+            <tr><td><code>&gt;=</code></td><td>Greater than or equal</td></tr>
+            <tr><td><code>&lt;</code></td><td>Less than</td></tr>
+            <tr><td><code>&lt;=</code></td><td>Less than or equal</td></tr>
+            <tr><td><code>&amp;=</code></td><td>AND (require all) - dropdowns and text searches only</td></tr>
+        </table>
+    </section>
+
+    <!-- Range Filters -->
+    <section class="guide-section">
+        <h3>Range Filters (Numeric)</h3>
+        <div class="examples">
+            <div class="example"><code class="allow-select">pv=30</code><span class="desc">→ Exactly 30</span></div>
+            <div class="example"><code class="allow-select">pv=20-40</code><span class="desc">→ Between 20 and 40</span></div>
+            <div class="example"><code class="allow-select">pv&gt;=20 pv&lt;=40</code><span class="desc">→ Same as above</span></div>
+            <div class="example"><code class="allow-select">pv!=25</code><span class="desc">→ Exclude 25</span></div>
+            <div class="example"><code class="allow-select">pv=20-40 pv!=30</code><span class="desc">→ 20-40 but not 30</span></div>
+        </div>
+    </section>
+
+    <!-- Dropdown Filters -->
+    <section class="guide-section">
+        <h3>Dropdown Filters</h3>
+        <div class="examples">
+            <div class="example"><code class="allow-select">type=BM</code><span class="desc">→ Meks only</span></div>
+            <div class="example"><code class="allow-select">type=BM,CV</code><span class="desc">→ Meks OR Combat Vehicles</span></div>
+            <div class="example"><code class="allow-select">type!=BA</code><span class="desc">→ Exclude Battle Armor</span></div>
+            <div class="example"><code class="allow-select">faction="Draconis Combine"</code><span class="desc">→ Use quotes for spaces</span></div>
+        </div>
+    </section>
+
+    <!-- Multistate Filters -->
+    @if (multistateFilters().length > 0) {
+    <section class="guide-section">
+        <h3>Multistate Filters (OR / AND / NOT)</h3>
+        <p>Some filters support OR, AND, and NOT modes:</p>
+        <div class="filter-list inline">
+            @for (f of multistateFilters(); track f.key) {
+                <code>{{ f.key }}</code>
+            }
+        </div>
+        <div class="examples">
+            <div class="example"><code class="allow-select">specials=ECM,TAG</code><span class="desc">→ Has ECM OR TAG</span></div>
+            <div class="example"><code class="allow-select">specials&amp;=ECM,TAG</code><span class="desc">→ Has ECM AND TAG (must have both)</span></div>
+            <div class="example"><code class="allow-select">specials!=ECM</code><span class="desc">→ Does NOT have ECM</span></div>
+        </div>
+    </section>
+    }
+
+    <!-- Countable Filters -->
+    @if (countableFilters().length > 0) {
+    <section class="guide-section">
+        <h3>Quantity Constraints</h3>
+        <p>Some filters support quantity: <span class="filter-list inline">@for (f of countableFilters(); track f.key) {<code>{{ f.key }}</code>}</span></p>
+        <div class="examples">
+            <div class="example"><code class="allow-select">equipment=ER*:&gt;=2</code><span class="desc">→ At least 2 ER weapons</span></div>
+            <div class="example"><code class="allow-select">equipment="Medium Laser":3</code><span class="desc">→ Exactly 3 Medium Lasers</span></div>
+            <div class="example"><code class="allow-select">equipment=PPC:2-4</code><span class="desc">→ Between 2 and 4 PPCs</span></div>
+            <div class="example"><code class="allow-select">equipment=PPC:!3</code><span class="desc">→ Not exactly 3 PPCs</span></div>
+            <div class="example"><code class="allow-select">equipment&=AC5:>2,CASE</code><span class="desc">→ More than 2 AC5s and has CASE (must have both)</span></div>
+        </div>
+    </section>
+    }
+
+    <!-- Wildcards -->
+    <section class="guide-section">
+        <h3>Wildcards</h3>
+        <p>Use <code>*</code> as wildcard in dropdown values:</p>
+        <div class="examples">
+            <div class="example"><code class="allow-select">equipment=AC*</code><span class="desc">→ Any AC (AC2, AC5, etc.)</span></div>
+            <div class="example"><code class="allow-select">equipment=*Laser*</code><span class="desc">→ Any equipment with "Laser" (ER Laser, Medium Laser, etc.)</span></div>
+            <div class="example"><code class="allow-select">specials=AC*/4/*</code><span class="desc">→ Any AC special with a medium damage of 4</span></div>
+        </div>
+    </section>
+
+    <!-- Virtual Keys -->
+    <section class="guide-section">
+        <h3>Virtual Keys</h3>
+        <p>Combine related filters with slash notation:</p>
+        <div class="examples">
+            <div class="example"><code class="allow-select">dmg=3/2/1</code><span class="desc">→ dmgS=3, dmgM=2, dmgL=1</span></div>
+            <div class="example"><code class="allow-select">dmg=*/2/*</code><span class="desc">→ dmgM=2 (any short/long)</span></div>
+            <div class="example"><code class="allow-select">dmg=*/*/*/3</code><span class="desc">→ dmgE=3 (any short/medium/long)</span></div>
+        </div>
+    </section>
+
+    <!-- Boolean Logic & Grouping -->
+    <section class="guide-section">
+        <h3>Boolean Logic &amp; Grouping</h3>
+        <p>Use <code>OR</code> and <code>AND</code> keywords with parentheses for complex queries:</p>
+        <div class="examples">
+            <div class="example"><code class="allow-select">type=BM pv>50</code><span class="desc">→ Meks AND pv>50 (implicit AND)</span></div>
+            <div class="example"><code class="allow-select">crab or ares</code><span class="desc">→ Meks OR Ares</span></div>
+            <div class="example"><code class="allow-select">(type=BM pv>50) OR (type=CV pv<10)</code><span class="desc">→ Meks with pv &gt; 50 OR Vehicles with pv &lt; 10</span></div>
+        </div>
+        <p class="note"><strong>Note:</strong> Filters at the same level are AND'd by default. Use <code>OR</code> to combine groups.</p>
+    </section>
+
+    <!-- Available Fields - Classic BattleTech -->
+    <section class="guide-section fields-section">
+        <h3>Available Fields (Classic BattleTech)</h3>
+        
+        <h4>Dropdown Fields</h4>
+        <div class="filter-list">
+            @for (f of cbtDropdownFilters(); track f.key) {
+                <div class="filter-item">
+                    <code>{{ f.key }}</code>
+                    <span class="filter-label">{{ f.label }}</span>
+                </div>
+            }
+        </div>
+
+        <h4>Range Fields</h4>
+        <div class="filter-list">
+            @for (f of cbtRangeFilters(); track f.key) {
+                <div class="filter-item">
+                    <code>{{ f.key }}</code>
+                    <span class="filter-label">{{ f.label }}</span>
+                </div>
+            }
+        </div>
+    </section>
+
+    <!-- Available Fields - Alpha Strike -->
+    <section class="guide-section fields-section">
+        <h3>Available Fields (Alpha Strike)</h3>
+        
+        <h4>Dropdown Fields</h4>
+        <div class="filter-list">
+            @for (f of asDropdownFilters(); track f.key) {
+                <div class="filter-item">
+                    <code>{{ f.key }}</code>
+                    <span class="filter-label">{{ f.label }}</span>
+                </div>
+            }
+        </div>
+
+        <h4>Range Fields</h4>
+        <div class="filter-list">
+            @for (f of asRangeFilters(); track f.key) {
+                <div class="filter-item">
+                    <code>{{ f.key }}</code>
+                    <span class="filter-label">{{ f.label }}</span>
+                </div>
+            }
+        </div>
+    </section>
+
+    <!-- Semantic-Only Fields (Text Search) -->
+    @if (semanticFilters().length > 0) {
+    <section class="guide-section fields-section">
+        <h3>Text Search Fields (Semantic Only)</h3>
+        <p>These fields use exact match by default. Use <code>*</code> wildcards for partial matching. Supports <code>=</code>, <code>&amp;=</code>, and <code>!=</code>:</p>
+        <div class="filter-list inline">
+            @for (f of semanticFilters(); track f.key) {
+                <div class="filter-item">
+                    <code>{{ f.key }}</code>
+                    <span class="filter-label">{{ f.label }}</span>
+                </div>
+            }
+        </div>
+        <div class="examples">
+            <div class="example"><code class="allow-select">chassis=Crab</code><span class="desc">→ Exact match: only "Crab" chassis</span></div>
+            <div class="example"><code class="allow-select">chassis=*Crab</code><span class="desc">→ Ends with "Crab" (Crab, Hermit Crab, King Crab)</span></div>
+            <div class="example"><code class="allow-select">chassis=*Crab*</code><span class="desc">→ Contains "Crab" anywhere</span></div>
+            <div class="example"><code class="allow-select">chassis&amp;=*Crab*</code><span class="desc">→ Must contain "Crab" (AND logic for multiple)</span></div>
+            <div class="example"><code class="allow-select">chassis!=*Crab*</code><span class="desc">→ Excludes anything containing "Crab"</span></div>
+            <div class="example"><code class="allow-select">chassis=*Crab chassis!=Hermit*</code><span class="desc">→ Contains "Crab" but excludes "Hermit"</span></div>
+            <div class="example"><code class="allow-select">mul=5,10,11</code><span class="desc">→ Units with MUL ID 5, 10, or 11</span></div>
+            <div class="example"><code class="allow-select">model=*Prime</code><span class="desc">→ Prime variants only</span></div>
+            <div class="example"><code class="allow-select">model!=*Prime</code><span class="desc">→ Exclude Prime variants</span></div>
+        </div>
+    </section>
+    }
+</div>

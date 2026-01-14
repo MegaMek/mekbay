@@ -34,8 +34,7 @@
 import { Injectable, signal, computed, effect, inject } from '@angular/core';
 import { Unit } from '../models/units.model';
 import { DataService } from './data.service';
-import { MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
-import { ActivatedRoute, Router } from '@angular/router';
+import { CountOperator, MultiState, MultiStateSelection, MultiStateOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getForcePacks } from '../models/forcepacks.model';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { computeRelevanceScore, naturalCompare, compareUnitsByName } from '../utils/sort.util';
@@ -47,6 +46,11 @@ import { GameSystem } from '../models/common.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
+import { filterStateToSemanticText, tokensToFilterState, SemanticFilterState, WildcardPattern } from '../utils/semantic-filter.util';
+import { parseSemanticQueryAST, ParseResult, ParseError, filterUnitsWithAST, EvaluatorContext, isComplexQuery, getMatchingTextForUnit } from '../utils/semantic-filter-ast.util';
+import { wildcardToRegex } from '../utils/string.util';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
+import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
 
 /*
  * Author: Drake
@@ -61,7 +65,8 @@ export interface SortOption {
 
 export enum AdvFilterType {
     DROPDOWN = 'dropdown',
-    RANGE = 'range'
+    RANGE = 'range',
+    SEMANTIC = 'semantic' // Semantic-only filters (not shown in UI, no advOptions entry)
 }
 export interface AdvFilterConfig {
     game?: GameSystem;
@@ -75,21 +80,27 @@ export interface AdvFilterConfig {
     multistate?: boolean; // if true, the filter (dropdown) can have multiple states (OR, AND, NOT)
     countable?: boolean; // if true, show amount next to options
     stepSize?: number; // for range sliders, defines the step size
+    semanticKey?: string; // Simplified key for semantic filter mode (e.g., 'tmm' instead of 'as.TMM')
 }
 
-interface FilterState {
-    [key: string]: {
-        value: any;
-        interactedWith: boolean;
-    };
+// Use SemanticFilterState from semantic-filter.util as our FilterState
+type FilterState = SemanticFilterState;
+
+/** Display item for semantic-only mode with state information */
+export interface SemanticDisplayItem {
+    text: string;
+    state: 'or' | 'and' | 'not';
 }
 
 type DropdownFilterOptions = {
     type: 'dropdown';
     label: string;
-    options: { name: string, img?: string }[];
+    options: { name: string, img?: string, displayName?: string }[];
     value: string[];
     interacted: boolean;
+    semanticOnly?: boolean;  // True if this filter has semantic-only constraints (values not in options)
+    displayText?: string;    // Display text for semantic-only values (plain string fallback)
+    displayItems?: SemanticDisplayItem[];  // Structured display items with state for proper styling
 };
 
 type RangeFilterOptions = {
@@ -100,16 +111,33 @@ type RangeFilterOptions = {
     value: [number, number];
     interacted: boolean;
     curve?: number;
+    semanticOnly?: boolean;  // True if this filter has semantic-only constraints
+    includeRanges?: [number, number][];  // Semantic include ranges (for display)
+    excludeRanges?: [number, number][];  // Ranges to exclude (for display/filtering)
+    displayText?: string;  // Formatted effective ranges (e.g., "0-3, 5-99")
 };
 
 export interface SerializedSearchFilter {
+    /** Unique identifier for storage/sync */
+    id: string;
+    /** Display name for the saved search */
     name: string;
+    /** Game system this filter applies to: 'cbt' or 'as' */
+    gameSystem: 'cbt' | 'as';
+    /** Search query text */
     q?: string;
+    /** Sort field key */
     sort?: string;
+    /** Sort direction */
     sortDir?: 'asc' | 'desc';
+    /** Advanced filter values */
     filters?: Record<string, any>;
+    /** Pilot gunnery skill for BV/PV calculations */
     gunnery?: number;
+    /** Pilot piloting skill for BV calculations */
     piloting?: number;
+    /** Timestamp when saved (for sync ordering) */
+    timestamp?: number;
 }
 
 
@@ -172,29 +200,97 @@ function getProperty(obj: any, key?: string) {
     return cur;
 }
 
-function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiStateSelection): Unit[] {
-    const orList: Array<{ name: string, count: number }> = [];
-    const andList: Array<{ name: string, count: number }> = [];
-    const notSet = new Set<string>();
+/**
+ * Check if a unit's count satisfies a quantity constraint.
+ * Supports include/exclude ranges for merged constraints.
+ */
+function checkQuantityConstraint(
+    unitCount: number,
+    item: MultiStateOption
+): boolean {
+    const { count, countOperator, countMax, countIncludeRanges, countExcludeRanges } = item;
+    
+    // If we have merged ranges, use those
+    if (countIncludeRanges || countExcludeRanges) {
+        // Check exclude ranges first
+        if (countExcludeRanges) {
+            for (const [min, max] of countExcludeRanges) {
+                if (unitCount >= min && unitCount <= max) {
+                    return false;  // Excluded
+                }
+            }
+        }
+        
+        // Check include ranges
+        if (countIncludeRanges && countIncludeRanges.length > 0) {
+            for (const [min, max] of countIncludeRanges) {
+                if (unitCount >= min && unitCount <= max) {
+                    return true;  // Included
+                }
+            }
+            return false;  // Not in any include range
+        }
+        
+        // Only excludes, no includes - implicit include is 1+
+        return unitCount >= 1;
+    }
+    
+    // Single constraint handling
+    const op = countOperator;
+    
+    // No operator means "at least N" (what UI does)
+    if (!op) {
+        return unitCount >= count;
+    }
+    
+    // Range constraint (count to countMax)
+    if (countMax !== undefined) {
+        const inRange = unitCount >= count && unitCount <= countMax;
+        return op === '!=' ? !inRange : inRange;
+    }
+    
+    // Single value constraint with explicit operator
+    switch (op) {
+        case '=':
+            return unitCount === count;  // Exact match
+        case '!=':
+            return unitCount !== count;
+        case '>':
+            return unitCount > count;
+        case '>=':
+            return unitCount >= count;
+        case '<':
+            return unitCount < count;
+        case '<=':
+            return unitCount <= count;
+        default:
+            return unitCount >= count;
+    }
+}
+
+function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiStateSelection, wildcardPatterns?: WildcardPattern[]): Unit[] {
+    const orList: MultiStateOption[] = [];
+    const andList: MultiStateOption[] = [];
+    const notList: MultiStateOption[] = [];
 
     for (const [name, selectionValue] of Object.entries(selection)) {
-        const { state, count } = selectionValue;
-        if (state === 'or') orList.push({ name, count });
-        else if (state === 'and') andList.push({ name, count });
-        else if (state === 'not') notSet.add(name);
+        if (selectionValue.state === 'or') orList.push(selectionValue);
+        else if (selectionValue.state === 'and') andList.push(selectionValue);
+        else if (selectionValue.state === 'not') notList.push(selectionValue);
     }
 
     // Early return if no filters
-    if (orList.length === 0 && andList.length === 0 && notSet.size === 0) {
+    const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
+    if (orList.length === 0 && andList.length === 0 && notList.length === 0 && !hasWildcards) {
         return units;
     }
 
-    const needsQuantityCounting = [...orList, ...andList].some(item => item.count > 1);
+    // Check if we need quantity counting (any non-default constraint)
+    const needsQuantityCounting = [...orList, ...andList, ...notList].some(
+        item => item.count > 1 || item.countOperator || item.countMax !== undefined || 
+                item.countIncludeRanges || item.countExcludeRanges
+    );
     const isComponentFilter = key === 'componentName';
-
-    // Pre-create Sets for faster lookup
-    const orMap = new Map(orList.map(item => [item.name, item.count]));
-    const andMap = new Map(andList.map(item => [item.name, item.count]));
 
     return units.filter(unit => {
         let unitData: { names: Set<string>; counts?: Map<string, number> };
@@ -223,42 +319,102 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
             }
         }
 
-        if (notSet.size > 0) {
-            for (const notName of notSet) {
-                if (unitData.names.has(notName)) return false;
+        // Check wildcard patterns
+        if (hasWildcards) {
+            const orPatterns = wildcardPatterns!.filter(p => p.state === 'or');
+            const andPatterns = wildcardPatterns!.filter(p => p.state === 'and');
+            const notPatterns = wildcardPatterns!.filter(p => p.state === 'not');
+            
+            // Check NOT patterns - exclude if any value matches a NOT pattern
+            for (const p of notPatterns) {
+                const regex = wildcardToRegex(p.pattern);
+                for (const name of unitData.names) {
+                    if (regex.test(name)) return false;
+                }
+            }
+            
+            // Check AND patterns - must have at least one match for EACH AND pattern
+            for (const p of andPatterns) {
+                const regex = wildcardToRegex(p.pattern);
+                let hasMatch = false;
+                for (const name of unitData.names) {
+                    if (regex.test(name)) {
+                        hasMatch = true;
+                        break;
+                    }
+                }
+                if (!hasMatch) return false;
+            }
+            
+            // Check OR patterns - if we have OR wildcard patterns and no regular OR, need at least one match
+            if (orPatterns.length > 0 && orList.length === 0) {
+                let hasMatch = false;
+                for (const p of orPatterns) {
+                    const regex = wildcardToRegex(p.pattern);
+                    for (const name of unitData.names) {
+                        if (regex.test(name)) {
+                            hasMatch = true;
+                            break;
+                        }
+                    }
+                    if (hasMatch) break;
+                }
+                if (!hasMatch) return false;
             }
         }
 
-        // AND: Must have all items with sufficient quantity
-        if (andMap.size > 0) {
-            if (needsQuantityCounting && unitData.counts) {
-                for (const [name, requiredCount] of andMap) {
-                    if ((unitData.counts.get(name) || 0) < requiredCount) return false;
-                }
-            } else {
-                for (const [name] of andMap) {
-                    if (!unitData.names.has(name)) return false;
+        // NOT: Exclude if any NOT constraint is satisfied
+        if (notList.length > 0) {
+            for (const item of notList) {
+                if (!unitData.names.has(item.name)) continue;  // Item not present, OK
+                
+                // Item is present - check quantity constraint
+                if (needsQuantityCounting && unitData.counts) {
+                    const unitCount = unitData.counts.get(item.name) || 0;
+                    // For NOT, we exclude if the quantity constraint IS satisfied
+                    // e.g., equipment!=AC/2:2 means exclude units with exactly 2 AC/2s
+                    if (checkQuantityConstraint(unitCount, item)) {
+                        return false;
+                    }
+                } else {
+                    // No quantity constraint or not counting - just presence check
+                    return false;
                 }
             }
         }
 
-        // OR: Must have at least one with sufficient quantity
-        if (orMap.size > 0) {
-            if (needsQuantityCounting && unitData.counts) {
-                for (const [name, requiredCount] of orMap) {
-                    if ((unitData.counts.get(name) || 0) >= requiredCount) {
-                        return true;
+        // AND: Must have all items with satisfied quantity constraints
+        if (andList.length > 0) {
+            for (const item of andList) {
+                if (!unitData.names.has(item.name)) return false;  // Must have item
+                
+                if (needsQuantityCounting && unitData.counts) {
+                    const unitCount = unitData.counts.get(item.name) || 0;
+                    if (!checkQuantityConstraint(unitCount, item)) {
+                        return false;
                     }
                 }
-                return false;
-            } else {
-                for (const [name] of orMap) {
-                    if (unitData.names.has(name)) {
-                        return true;
-                    }
-                }
-                return false;
             }
+        }
+
+        // OR: Must have at least one with satisfied quantity constraint
+        if (orList.length > 0) {
+            let hasMatch = false;
+            for (const item of orList) {
+                if (!unitData.names.has(item.name)) continue;
+                
+                if (needsQuantityCounting && unitData.counts) {
+                    const unitCount = unitData.counts.get(item.name) || 0;
+                    if (checkQuantityConstraint(unitCount, item)) {
+                        hasMatch = true;
+                        break;
+                    }
+                } else {
+                    hasMatch = true;
+                    break;
+                }
+            }
+            if (!hasMatch) return false;
         }
 
         return true;
@@ -266,64 +422,70 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
 }
 
 export const ADVANCED_FILTERS: AdvFilterConfig[] = [
-    { key: 'era', label: 'Era', type: AdvFilterType.DROPDOWN, external: true },
-    { key: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true, multistate: true },
-    { key: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
-    { key: 'as.TP', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
-    { key: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'era', semanticKey: 'era', label: 'Era', type: AdvFilterType.DROPDOWN, external: true },
+    { key: 'faction', semanticKey: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true, multistate: true },
+    { key: 'type', semanticKey: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'as.TP', semanticKey: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
+    { key: 'subtype', semanticKey: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
     {
-        key: 'techBase', label: 'Tech', type: AdvFilterType.DROPDOWN,
+        key: 'techBase', semanticKey: 'tech', label: 'Tech', type: AdvFilterType.DROPDOWN,
         sortOptions: ['Inner Sphere', 'Clan', 'Mixed']
     },
-    { key: 'role', label: 'Role', type: AdvFilterType.DROPDOWN },
+    { key: 'role', semanticKey: 'role', label: 'Role', type: AdvFilterType.DROPDOWN },
     {
-        key: 'weightClass', label: 'Weight Class', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
+        key: 'weightClass', semanticKey: 'weight', label: 'Weight Class', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
         sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*']
     },
     {
-        key: 'level', label: 'Rules', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
+        key: 'level', semanticKey: 'rules', label: 'Rules', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
         sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial']
     },
-    { key: 'c3', label: 'Network', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
-    { key: 'moveType', label: 'Motive', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
-    { key: 'as.MV', label: 'Move', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.ALPHA_STRIKE },
-    { key: 'componentName', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: GameSystem.CLASSIC },
-    { key: 'features', label: 'Features', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
-    { key: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
-    { key: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
-    { key: 'forcePack', label: 'Force Packs', type: AdvFilterType.DROPDOWN, external: true },
-    { key: '_tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
-    { key: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'as.PV', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.ALPHA_STRIKE },
-    { key: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: GameSystem.CLASSIC },
-    { key: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'armorPer', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'internal', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: '_mdSumNoPhysical', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
-    { key: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
-    { key: '_dissipationEfficiency', label: 'Heat Efficiency', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.CLASSIC },
-    { key: '_maxRange', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'umu', label: 'UMU MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
-    { key: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'c3', semanticKey: 'network', label: 'Network', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'moveType', semanticKey: 'motive', label: 'Motive', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
+    { key: 'as.MV', semanticKey: 'move', label: 'Move', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.specials', semanticKey: 'specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.ALPHA_STRIKE },
+    { key: 'componentName', semanticKey: 'equipment', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: GameSystem.CLASSIC },
+    { key: 'features', semanticKey: 'features', label: 'Features', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
+    { key: 'quirks', semanticKey: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
+    { key: 'source', semanticKey: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
+    { key: 'forcePack', semanticKey: 'pack', label: 'Force Packs', type: AdvFilterType.DROPDOWN, external: true },
+    { key: '_tags', semanticKey: 'tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
+    { key: 'bv', semanticKey: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'as.PV', semanticKey: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.ALPHA_STRIKE },
+    { key: 'tons', semanticKey: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: GameSystem.CLASSIC },
+    { key: 'armor', semanticKey: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'armorPer', semanticKey: 'armorpct', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'internal', semanticKey: 'structure', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: '_mdSumNoPhysical', semanticKey: 'firepower', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'dpt', semanticKey: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'heat', semanticKey: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
+    { key: 'dissipation', semanticKey: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
+    { key: '_dissipationEfficiency', semanticKey: 'efficiency', label: 'Heat Efficiency', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.CLASSIC },
+    { key: '_maxRange', semanticKey: 'range', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'walk', semanticKey: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'run', semanticKey: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'jump', semanticKey: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'umu', semanticKey: 'umu', label: 'UMU MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'year', semanticKey: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
+    { key: 'cost', semanticKey: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
 
     /* Alpha Strike specific filters (but some are above) */
-    { key: 'as.SZ', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.TMM', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.OV', label: 'Overheat Value', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.Th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgS', label: 'Damage (Short)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgM', label: 'Damage (Medium)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgL', label: 'Damage (Long)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgE', label: 'Damage (Extreme)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.Arm', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.Str', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.SZ', semanticKey: 'sz', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.TMM', semanticKey: 'tmm', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.OV', semanticKey: 'ov', label: 'Overheat Value', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.Th', semanticKey: 'th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgS', semanticKey: 'dmgs', label: 'Damage (Short)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgM', semanticKey: 'dmgm', label: 'Damage (Medium)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgL', semanticKey: 'dmgl', label: 'Damage (Long)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgE', semanticKey: 'dmge', label: 'Damage (Extreme)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.Arm', semanticKey: 'a', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.Str', semanticKey: 's', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+
+    /* Invisible filters (semantic mode only) */
+    { key: 'name', semanticKey: 'name', label: 'Internal Name', type: AdvFilterType.SEMANTIC },
+    { key: 'id', semanticKey: 'mul', label: 'MUL ID', type: AdvFilterType.SEMANTIC },
+    { key: 'chassis', semanticKey: 'chassis', label: 'Chassis', type: AdvFilterType.SEMANTIC },
+    { key: 'model', semanticKey: 'model', label: 'Model', type: AdvFilterType.SEMANTIC },
 ];
 
 export const SORT_OPTIONS: SortOption[] = [
@@ -369,8 +531,6 @@ function getUnitComponentData(unit: Unit) {
 export class UnitSearchFiltersService {
     dataService = inject(DataService);
     optionsService = inject(OptionsService);
-    private router = inject(Router);
-    private route = inject(ActivatedRoute);
     gameService = inject(GameService);
     logger = inject(LoggerService);
     private urlStateService = inject(UrlStateService);
@@ -386,10 +546,124 @@ export class UnitSearchFiltersService {
     advOpen = signal(false);
     private totalRangesCache: Record<string, [number, number]> = {};
     private availableNamesCache = new Map<string, string[]>();
-    private urlStateInitialized = false;
+    private urlStateInitialized = signal(false);
     
     /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
     readonly tagsVersion = signal(0);
+
+    /** Whether to automatically convert UI filter changes to semantic text */
+    readonly autoConvertToSemantic = computed(() => 
+        this.optionsService.options().automaticallyConvertFiltersToSemantic
+    );
+
+    /** 
+     * Flag to prevent feedback loops when programmatically updating search text.
+     * Non-reactive to avoid triggering recomputation.
+     */
+    private isSyncingToText = false;
+
+    /** 
+     * Parsed semantic query as AST (supports nested brackets and OR operators).
+     * Primary parser for all semantic query processing.
+     */
+    private readonly semanticParsedAST = computed((): ParseResult => {
+        return parseSemanticQueryAST(this.searchText(), this.gameService.currentGameSystem());
+    });
+
+    /**
+     * Parse errors from the semantic query.
+     * Used for validation display with error highlighting.
+     */
+    readonly parseErrors = computed((): ParseError[] => {
+        return this.semanticParsedAST().errors;
+    });
+
+    /**
+     * Whether the query is too complex to represent in flat UI filters.
+     * Complex queries include: OR operators, nested brackets, etc.
+     * When true, the filter dropdowns should be hidden in favor of the query.
+     */
+    readonly isComplexQuery = computed((): boolean => {
+        return isComplexQuery(this.semanticParsedAST().ast);
+    });
+
+    /** 
+     * Effective text search - extracts the text portion from semantic query.
+     * Used for relevance scoring and display, not for filtering (AST handles that).
+     */
+    readonly effectiveTextSearch = computed(() => {
+        return this.semanticParsedAST().textSearch || '';
+    });
+
+    /**
+     * Set of filter keys that currently have semantic representation in the search text.
+     * Uses AST parser to properly handle brackets and boolean operators.
+     * Used to determine which filters are "linked" (UI changes should update text).
+     */
+    readonly semanticFilterKeys = computed((): Set<string> => {
+        const parsed = this.semanticParsedAST();
+        if (parsed.tokens.length === 0) return new Set();
+        
+        const keys = new Set<string>();
+        const gameSystem = this.gameService.currentGameSystem();
+        
+        for (const token of parsed.tokens) {
+            // Find the config for this semantic key
+            const conf = ADVANCED_FILTERS.find(f => 
+                (f.semanticKey || f.key) === token.field &&
+                (!f.game || f.game === gameSystem)
+            );
+            if (conf) {
+                keys.add(conf.key);
+            }
+        }
+        return keys;
+    });
+
+    /**
+     * Semantic filter state derived from parsed tokens in the search text.
+     * Uses AST parser to properly handle brackets and boolean operators.
+     * This is ALWAYS computed - semantic text is the source of truth for filters it contains.
+     */
+    private readonly semanticFilterState = computed((): FilterState => {
+        const parsed = this.semanticParsedAST();
+        if (parsed.tokens.length === 0) return {};
+        
+        return tokensToFilterState(
+            parsed.tokens,
+            this.gameService.currentGameSystem(),
+            this.totalRangesCache
+        );
+    });
+
+    /**
+     * Effective filter state - combines manual filterState with semantic filters.
+     * - For filters in semantic text: semantic state is used (it's the source of truth)
+     * - For filters only in UI: filterState is used
+     * - UI filterState for linked filters is kept in sync for display purposes
+     */
+    readonly effectiveFilterState = computed((): FilterState => {
+        const manual = this.filterState();
+        const semantic = this.semanticFilterState();
+        const semanticKeys = this.semanticFilterKeys();
+        
+        // Start with manual filters that are NOT in semantic text
+        const result: FilterState = {};
+        
+        for (const [key, state] of Object.entries(manual)) {
+            if (!semanticKeys.has(key)) {
+                // This filter is UI-only, use it as-is
+                result[key] = state;
+            }
+        }
+        
+        // Add all semantic filters - they take precedence
+        for (const [key, state] of Object.entries(semantic)) {
+            result[key] = state;
+        }
+        
+        return result;
+    });
 
     constructor() {
         // Register as a URL state consumer - must call markConsumerReady when done reading URL
@@ -417,8 +691,72 @@ export class UnitSearchFiltersService {
                 }
             }
         });
+        // When query becomes complex, convert UI-only filters to semantic text
+        // This ensures filters aren't silently applied without being visible
+        this.setupComplexQueryFilterConversion();
         this.loadFiltersFromUrlOnStartup();
         this.updateUrlOnFiltersChange();
+    }
+
+    /**
+     * When the query becomes complex (OR, nested brackets), UI filter controls are disabled.
+     * This effect converts any UI-only filters (not in semantic text) to semantic form
+     * and appends them to the search text, then clears the UI filter state.
+     * This ensures all active filters are visible in the query.
+     */
+    private setupComplexQueryFilterConversion(): void {
+        let wasComplex = false;
+        
+        effect(() => {
+            const isComplex = this.isComplexQuery();
+            const semanticKeys = this.semanticFilterKeys();
+            const manualFilters = this.filterState();
+            
+            // Only act when transitioning TO complex mode
+            if (isComplex && !wasComplex) {
+                // Find UI-only filters that need conversion
+                const uiOnlyFilters: FilterState = {};
+                for (const [key, state] of Object.entries(manualFilters)) {
+                    if (!semanticKeys.has(key) && state.interactedWith) {
+                        uiOnlyFilters[key] = state;
+                    }
+                }
+                
+                if (Object.keys(uiOnlyFilters).length > 0) {
+                    // Convert UI-only filters to semantic text
+                    const uiFiltersText = filterStateToSemanticText(
+                        uiOnlyFilters,
+                        '', // No text search - we're just converting filters
+                        this.gameService.currentGameSystem(),
+                        this.totalRangesCache
+                    );
+                    
+                    if (uiFiltersText.trim()) {
+                        // Append to current search text (wrapped in parens for clarity)
+                        const currentText = this.searchText().trim();
+                        const newText = currentText 
+                            ? `${currentText} (${uiFiltersText.trim()})`
+                            : uiFiltersText.trim();
+                        
+                        this.isSyncingToText = true;
+                        try {
+                            this.searchText.set(newText);
+                        } finally {
+                            this.isSyncingToText = false;
+                        }
+                        
+                        // Clear the UI-only filters from filterState
+                        const updatedFilters = { ...manualFilters };
+                        for (const key of Object.keys(uiOnlyFilters)) {
+                            delete updatedFilters[key];
+                        }
+                        this.filterState.set(updatedFilters);
+                    }
+                }
+            }
+            
+            wasComplex = isComplex;
+        });
     }
 
     dynamicInternalLabel = computed(() => {
@@ -432,7 +770,7 @@ export class UnitSearchFiltersService {
     });
 
     searchTokens = computed((): SearchTokensGroup[] => {
-        return parseSearchQuery(this.searchText());
+        return parseSearchQuery(this.effectiveTextSearch());
     });
 
     private recalculateBVRange() {
@@ -543,6 +881,38 @@ export class UnitSearchFiltersService {
 
     public setSortDirection(direction: 'asc' | 'desc') {
         this.selectedSortDirection.set(direction);
+    }
+
+    /**
+     * Check if a unit belongs to a specific era by name.
+     * Used for external filter evaluation in AST.
+     */
+    public unitBelongsToEra(unit: Unit, eraName: string): boolean {
+        const era = this.dataService.getEraByName(eraName);
+        if (!era) return false;
+        
+        const extinctFaction = this.dataService.getFactions().find(f => f.id === FACTION_EXTINCT);
+        const extinctUnitIdsForEra = extinctFaction?.eras[era.id] as Set<number> || new Set<number>();
+        
+        // Unit must be in the era's unit set and not extinct
+        return (era.units as Set<number>).has(unit.id) && !extinctUnitIdsForEra.has(unit.id);
+    }
+
+    /**
+     * Check if a unit belongs to a specific faction by name.
+     * Used for external filter evaluation in AST.
+     */
+    public unitBelongsToFaction(unit: Unit, factionName: string): boolean {
+        const faction = this.dataService.getFactionByName(factionName);
+        if (!faction) return false;
+        
+        // Check if unit exists in any era for this faction
+        for (const eraIdStr in faction.eras) {
+            if ((faction.eras[eraIdStr] as Set<number>).has(unit.id)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private getUnitIdsForSelectedEras(selectedEraNames: string[]): Set<number> | null {
@@ -711,36 +1081,133 @@ export class UnitSearchFiltersService {
             if (!filterState || !filterState.interactedWith) continue;
 
             const val = filterState.value;
+            const wildcardPatterns = filterState.wildcardPatterns;
 
             if (conf.type === AdvFilterType.DROPDOWN && conf.multistate && val && typeof val === 'object') {
                 if (!conf.external) {
-                    results = filterUnitsByMultiState(results, conf.key, val);
+                    results = filterUnitsByMultiState(results, conf.key, val, wildcardPatterns);
                     continue;
                 }
             }
 
-            if (conf.type === AdvFilterType.DROPDOWN && Array.isArray(val) && val.length > 0) {
-                results = results.filter(u => {
-                    const v = getProperty(u, conf.key);
-                    if (Array.isArray(v)) {
-                        return v.some((vv: any) => val.includes(vv));
-                    }
-                    return val.includes(v);
-                });
+            // Handle semantic-only filters (exact match, with optional wildcards, AND, and NOT support)
+            if (conf.type === AdvFilterType.SEMANTIC) {
+                const searchTerms: string[] = Array.isArray(val) ? val : (typeof val === 'object' ? Object.keys(val) : [String(val)]);
+                const hasSearchTerms = searchTerms.length > 0;
+                const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
+                
+                // Separate include, exclude, and AND patterns
+                const includePatterns = wildcardPatterns?.filter(p => p.state === 'or') || [];
+                const excludePatterns = wildcardPatterns?.filter(p => p.state === 'not') || [];
+                const andPatterns = wildcardPatterns?.filter(p => p.state === 'and') || [];
+                
+                if (hasSearchTerms || hasWildcards) {
+                    results = results.filter(u => {
+                        const unitValue = getProperty(u, conf.key);
+                        if (unitValue == null) return false;
+                        const unitStr = String(unitValue).toLowerCase();
+
+                        // Check NOT patterns first - if any match, exclude this unit
+                        for (const p of excludePatterns) {
+                            const regex = wildcardToRegex(p.pattern);
+                            if (regex.test(unitStr)) return false;
+                        }
+
+                        // Check AND patterns - ALL must match
+                        for (const p of andPatterns) {
+                            const regex = wildcardToRegex(p.pattern);
+                            if (!regex.test(unitStr)) return false;
+                        }
+
+                        // If we only have exclude/and patterns (no includes), include all remaining
+                        if (!hasSearchTerms && includePatterns.length === 0) {
+                            return true;
+                        }
+
+                        // Check exact matches (OR logic)
+                        for (const term of searchTerms) {
+                            if (unitStr === term.toLowerCase()) return true;
+                        }
+
+                        // Check include wildcard patterns (OR logic)
+                        for (const p of includePatterns) {
+                            const regex = wildcardToRegex(p.pattern);
+                            if (regex.test(unitStr)) return true;
+                        }
+
+                        return false;
+                    });
+                }
+                continue;
+            }
+
+            if (conf.type === AdvFilterType.DROPDOWN && (Array.isArray(val) || wildcardPatterns?.length)) {
+                // Handle regular dropdown with possible wildcards
+                const hasRegularValues = Array.isArray(val) && val.length > 0;
+                const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
+                
+                if (hasRegularValues || hasWildcards) {
+                    results = results.filter(u => {
+                        const v = getProperty(u, conf.key);
+                        const unitValues = Array.isArray(v) ? v : [v];
+                        
+                        // Check regular values first
+                        if (hasRegularValues) {
+                            for (const uv of unitValues) {
+                                if (val.includes(uv)) return true;
+                            }
+                        }
+                        
+                        // Check wildcard patterns
+                        if (hasWildcards) {
+                            for (const p of wildcardPatterns!) {
+                                if (p.state === 'or') {
+                                    const regex = wildcardToRegex(p.pattern);
+                                    for (const uv of unitValues) {
+                                        if (uv && regex.test(String(uv))) return true;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        return false;
+                    });
+                }
                 continue;
             }
 
             if (conf.type === AdvFilterType.RANGE && Array.isArray(val)) {
+                const excludeRanges = filterState.excludeRanges;
+                const includeRanges = filterState.includeRanges;
+                
+                // Helper function to check if value is in any exclude range
+                const isExcluded = (v: number): boolean => {
+                    if (!excludeRanges) return false;
+                    return excludeRanges.some(([exMin, exMax]) => v >= exMin && v <= exMax);
+                };
+
+                // Helper function to check if value is in any include range (when specified)
+                const isIncluded = (v: number): boolean => {
+                    if (!includeRanges) {
+                        // No specific include ranges, use the min/max from value
+                        return v >= val[0] && v <= val[1];
+                    }
+                    // Check if value is in any of the include ranges
+                    return includeRanges.some(([incMin, incMax]) => v >= incMin && v <= incMax);
+                };
+                
                 // Special handling for BV range to use adjusted values
                 if (conf.key === 'bv') {
                     results = results.filter(u => {
                         const adjustedBV = this.getAdjustedBV(u);
-                        return adjustedBV >= val[0] && adjustedBV <= val[1];
+                        if (isExcluded(adjustedBV)) return false;
+                        return isIncluded(adjustedBV);
                     });
                 } else if (conf.key === 'as.PV') {
                     results = results.filter(u => {
                         const adjustedPV = this.getAdjustedPV(u);
-                        return adjustedPV >= val[0] && adjustedPV <= val[1];
+                        if (isExcluded(adjustedPV)) return false;
+                        return isIncluded(adjustedPV);
                     });
                 } else {
                     results = results.filter(u => {
@@ -749,7 +1216,8 @@ export class UnitSearchFiltersService {
                             if (val[0] === 0) return true; // If the range starts at 0, we allow -1 values
                             return false; // Ignore this unit if it has an ignored value
                         }
-                        return unitValue != null && unitValue >= val[0] && unitValue <= val[1];
+                        if (isExcluded(unitValue)) return false;
+                        return unitValue != null && isIncluded(unitValue);
                     });
                 }
                 continue;
@@ -758,22 +1226,54 @@ export class UnitSearchFiltersService {
         return results;
     }
 
-    filteredUnitsBySearchTextTokens = computed(() => {
-        if (!this.isDataReady()) return [];
-        const searchTokens = this.searchTokens();
-        if (searchTokens.length === 0) return this.units;
-
-        return this.units.filter(unit =>
-            matchesSearch(`${unit._chassis ?? ''} ${unit._model ?? ''}`, searchTokens, true)
-        );
-    });
-
-    // All filters applied
+    // All filters applied using AST-based filtering
     filteredUnits = computed(() => {
         if (!this.isDataReady()) return [];
 
-        let results = this.filteredUnitsBySearchTextTokens();
-        results = this.applyFilters(results, this.filterState());
+        // AST handles all filtering: text search, semantic filters, and boolean logic
+        const ast = this.semanticParsedAST();
+        const context: EvaluatorContext = {
+            getProperty,
+            getAdjustedBV: (unit: Unit) => this.getAdjustedBV(unit),
+            getAdjustedPV: (unit: Unit) => this.getAdjustedPV(unit),
+            totalRanges: this.totalRangesCache,
+            gameSystem: this.gameService.currentGameSystem(),
+            matchesText: (unit: Unit, text: string) => {
+                const chassis = (unit._chassis ?? unit.chassis ?? '') as string;
+                const model = (unit._model ?? unit.model ?? '') as string;
+                const searchableText = `${chassis} ${model}`;
+                const tokens = parseSearchQuery(text);
+                return matchesSearch(searchableText, tokens, true);
+            },
+            getCountableValues: (unit: Unit, filterKey: string) => {
+                // Map filter keys to their countable data sources
+                // Add new countable filters here as they are created
+                switch (filterKey) {
+                    case 'componentName':
+                        return getUnitComponentData(unit).componentCounts;
+                    default:
+                        return null;
+                }
+            },
+            // External filter handlers for era and faction
+            unitBelongsToEra: (unit: Unit, eraName: string) => this.unitBelongsToEra(unit, eraName),
+            unitBelongsToFaction: (unit: Unit, factionName: string) => this.unitBelongsToFaction(unit, factionName)
+        };
+        let results = filterUnitsWithAST(this.units, ast.ast, context);
+
+        // Apply UI-only filters (those not in semantic text)
+        // This handles the case when automaticallyConvertFiltersToSemantic is false
+        const semanticKeys = this.semanticFilterKeys();
+        const manualFilters = this.filterState();
+        const uiOnlyFilterState: FilterState = {};
+        for (const [key, state] of Object.entries(manualFilters)) {
+            if (!semanticKeys.has(key) && state.interactedWith) {
+                uiOnlyFilterState[key] = state;
+            }
+        }
+        if (Object.keys(uiOnlyFilterState).length > 0) {
+            results = this.applyFilters(results, uiOnlyFilterState);
+        }
 
         const sortKey = this.selectedSort();
         const sortDirection = this.selectedSortDirection();
@@ -784,11 +1284,36 @@ export class UnitSearchFiltersService {
         let relevanceScores: WeakMap<Unit, number> | null = null;
         if (sortKey === '') {
             const tokens = this.searchTokens();
+            const isComplex = isComplexQuery(ast.ast);
             relevanceScores = new WeakMap<Unit, number>();
+            
             for (const u of sorted) {
                 const chassis = (u._chassis ?? u.chassis ?? '') as string;
                 const model = (u._model ?? u.model ?? '') as string;
-                relevanceScores.set(u, computeRelevanceScore(chassis, model, tokens));
+                
+                if (isComplex) {
+                    // For complex queries (OR, nested brackets), get the matching text for this unit
+                    const matchingTexts = getMatchingTextForUnit(ast.ast, u, context);
+                    if (matchingTexts.length > 0) {
+                        // Parse each matching text and score, take the best
+                        let bestScore = 0;
+                        for (const text of matchingTexts) {
+                            const textTokens = parseSearchQuery(text);
+                            const score = computeRelevanceScore(chassis, model, textTokens);
+                            if (score > bestScore) bestScore = score;
+                        }
+                        // Also try scoring with all matching texts combined
+                        const combinedTokens = parseSearchQuery(matchingTexts.join(' '));
+                        const combinedScore = computeRelevanceScore(chassis, model, combinedTokens);
+                        relevanceScores.set(u, Math.max(bestScore, combinedScore));
+                    } else {
+                        // No text nodes matched, just use filter match (base score)
+                        relevanceScores.set(u, 0);
+                    }
+                } else {
+                    // Simple query - use normal token scoring
+                    relevanceScores.set(u, computeRelevanceScore(chassis, model, tokens));
+                }
             }
         }
 
@@ -844,10 +1369,10 @@ export class UnitSearchFiltersService {
         if (!this.isDataReady()) return {};
 
         const result: Record<string, AdvFilterOptions> = {};
-        const state = this.filterState();
+        const state = this.effectiveFilterState();
         const _tagsVersion = this.tagsVersion();
 
-        let baseUnits = this.filteredUnitsBySearchTextTokens();
+        let baseUnits = this.units;
         const activeFilters = Object.entries(state)
             .filter(([, s]) => s.interactedWith)
             .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
@@ -859,6 +1384,11 @@ export class UnitSearchFiltersService {
             .map(([name, _]) => name);
 
         for (const conf of ADVANCED_FILTERS) {
+            // Skip semantic-only filters (they're only available via semantic mode)
+            if (conf.type === AdvFilterType.SEMANTIC) continue;
+            // Skip filters for other game modes (no UI to display them, saves computation)
+            if (conf.game && conf.game !== this.gameService.currentGameSystem()) continue;
+
             let label = conf.label;
             if (conf.key === 'internal') {
                 label = this.dynamicInternalLabel();
@@ -1036,12 +1566,118 @@ export class UnitSearchFiltersService {
                         return option;
                     });
 
+                    // Check for semantic-only mode (advanced quantity constraints or wildcard patterns)
+                    const filterStateEntry = state[conf.key];
+                    const currentFilterValue = filterStateEntry?.interactedWith ? filterStateEntry.value : {};
+                    const currentSelection = currentFilterValue as MultiStateSelection;
+                    const wildcardPatternsMultistate = filterStateEntry?.wildcardPatterns;
+                    let semanticOnlyMultistate = false;
+                    let displayItemsMultistate: SemanticDisplayItem[] | undefined;
+                    
+                    // Check for wildcard patterns first
+                    if (wildcardPatternsMultistate && wildcardPatternsMultistate.length > 0) {
+                        semanticOnlyMultistate = true;
+                        displayItemsMultistate = [];
+                        
+                        // Add wildcard patterns
+                        for (const wp of wildcardPatternsMultistate) {
+                            displayItemsMultistate.push({
+                                text: wp.pattern,
+                                state: wp.state
+                            });
+                        }
+                        
+                        // Also include any regular selections
+                        if (currentSelection && typeof currentSelection === 'object') {
+                            for (const [name, sel] of Object.entries(currentSelection)) {
+                                if (sel.state !== false) {
+                                    displayItemsMultistate.push({
+                                        text: name,
+                                        state: sel.state as 'or' | 'and' | 'not'
+                                    });
+                                }
+                            }
+                        }
+                    } else if (currentSelection && typeof currentSelection === 'object') {
+                        const activeSelections = Object.entries(currentSelection)
+                            .filter(([_, sel]) => sel.state !== false);
+                        
+                        // Check for quantity constraints that can't be shown in UI
+                        // UI can only represent: no operator (implicit >=1) or >= operator
+                        // Semantic-only: =, !=, >, <, <=, ranges, merged ranges
+                        const hasAdvancedQuantity = activeSelections.some(([_, sel]) => {
+                            // Has merged ranges → semantic-only
+                            if (sel.countIncludeRanges || sel.countExcludeRanges) return true;
+                            // Has countMax (range) → semantic-only
+                            if (sel.countMax !== undefined) return true;
+                            // Has operator that isn't >= → semantic-only
+                            if (sel.countOperator && sel.countOperator !== '>=') return true;
+                            return false;
+                        });
+                        
+                        if (hasAdvancedQuantity) {
+                            semanticOnlyMultistate = true;
+                            displayItemsMultistate = activeSelections.map(([name, sel]) => {
+                                let suffix = '';
+                                
+                                // For single constraint, prefer showing original operator/count
+                                // Only use ranges for display when there are multiple merged constraints
+                                if (sel.countOperator && sel.countOperator !== '=') {
+                                    // Single constraint with operator - show as written
+                                    if (sel.countMax !== undefined) {
+                                        // Range constraint like :3-5
+                                        const rangePrefix = sel.countOperator === '!=' ? '!' : '';
+                                        suffix = `:${rangePrefix}${sel.count}-${sel.countMax}`;
+                                    } else {
+                                        // Operator constraint like :>3 or :>=4
+                                        suffix = `:${sel.countOperator}${sel.count}`;
+                                    }
+                                } else if (sel.countIncludeRanges || sel.countExcludeRanges) {
+                                    // Multiple merged constraints - use ranges for display
+                                    const parts: string[] = [];
+                                    if (sel.countIncludeRanges) {
+                                        for (const [min, max] of sel.countIncludeRanges) {
+                                            if (min === max) {
+                                                parts.push(`${min}`);
+                                            } else if (max === Infinity) {
+                                                parts.push(`>=${min}`);
+                                            } else {
+                                                parts.push(`${min}-${max}`);
+                                            }
+                                        }
+                                    }
+                                    if (sel.countExcludeRanges) {
+                                        for (const [min, max] of sel.countExcludeRanges) {
+                                            if (min === max) {
+                                                parts.push(`!${min}`);
+                                            } else {
+                                                parts.push(`!${min}-${max}`);
+                                            }
+                                        }
+                                    }
+                                    if (parts.length > 0) {
+                                        suffix = `:${parts.join(',')}`;
+                                    }
+                                } else if (sel.count > 1) {
+                                    suffix = `:${sel.count}`;
+                                }
+                                
+                                return {
+                                    text: name + suffix,
+                                    state: sel.state as 'or' | 'and' | 'not'
+                                };
+                            });
+                        }
+                    }
+
                     result[conf.key] = {
                         type: 'dropdown',
                         label,
                         options: optionsWithAvailability,
-                        value: state[conf.key]?.interactedWith ? state[conf.key].value : {},
-                        interacted: state[conf.key]?.interactedWith ?? false
+                        value: currentFilterValue,
+                        interacted: filterStateEntry?.interactedWith ?? false,
+                        semanticOnly: semanticOnlyMultistate,
+                        displayItems: displayItemsMultistate
                     };
                     continue;
                 } else {
@@ -1071,12 +1707,118 @@ export class UnitSearchFiltersService {
                         availableOptions = sortedOptions.map(name => ({ name }));
                     }
                 }
+                
+                // Get the filter state value
+                const filterStateEntry = state[conf.key];
+                const isInteracted = filterStateEntry?.interactedWith ?? false;
+                const filterValue = isInteracted ? filterStateEntry.value : [];
+                
+                // Check for semantic-only: values in the filter that aren't in available options,
+                // OR if there are wildcard patterns (which are always semantic-only)
+                let semanticOnly = filterStateEntry?.semanticOnly ?? false;
+                let displayText: string | undefined;
+                const availableOptionNames = new Set(availableOptions.map(o => o.name));
+                const wildcardPatterns = filterStateEntry?.wildcardPatterns;
+                
+                // If there are wildcard patterns, this is semantic-only
+                if (wildcardPatterns && wildcardPatterns.length > 0) {
+                    semanticOnly = true;
+                    displayText = wildcardPatterns.map(wp => {
+                        const prefix = wp.state === 'not' ? '!' : '';
+                        return prefix + wp.pattern;
+                    }).join(', ');
+                } else if (conf.multistate) {
+                    // For multistate dropdowns, check MultiStateSelection
+                    const selection = filterValue as MultiStateSelection;
+                    if (selection && typeof selection === 'object') {
+                        const activeSelections = Object.entries(selection)
+                            .filter(([_, sel]) => sel.state !== false);
+                        const unavailableSelections = activeSelections
+                            .filter(([name, _]) => !availableOptionNames.has(name));
+                        
+                        // Check for quantity constraints that can't be shown in UI
+                        // UI can only represent: no operator (implicit >=1) or >= operator
+                        const hasAdvancedQuantity = activeSelections.some(([_, sel]) => {
+                            if (sel.countIncludeRanges || sel.countExcludeRanges) return true;
+                            if (sel.countMax !== undefined) return true;
+                            if (sel.countOperator && sel.countOperator !== '>=') return true;
+                            return false;
+                        });
+                        
+                        if ((unavailableSelections.length > 0 && unavailableSelections.length === activeSelections.length) || hasAdvancedQuantity) {
+                            // Semantic only mode - either unavailable values or advanced quantity constraints
+                            semanticOnly = true;
+                            displayText = activeSelections.map(([name, sel]) => {
+                                const prefix = sel.state === 'not' ? '!' : '';
+                                let suffix = '';
+                                if (conf.countable) {
+                                    // For single constraint, prefer showing original operator/count
+                                    // Only use ranges for display when there are multiple merged constraints
+                                    if (sel.countOperator && sel.countOperator !== '=') {
+                                        // Single constraint with operator - show as written
+                                        if (sel.countMax !== undefined) {
+                                            // Range constraint like :3-5
+                                            const rangePrefix = sel.countOperator === '!=' ? '!' : '';
+                                            suffix = `:${rangePrefix}${sel.count}-${sel.countMax}`;
+                                        } else {
+                                            // Operator constraint like :>3 or :>=4
+                                            suffix = `:${sel.countOperator}${sel.count}`;
+                                        }
+                                    } else if (sel.countIncludeRanges || sel.countExcludeRanges) {
+                                        // Multiple merged constraints - use ranges for display
+                                        const parts: string[] = [];
+                                        if (sel.countIncludeRanges) {
+                                            for (const [min, max] of sel.countIncludeRanges) {
+                                                if (min === max) {
+                                                    parts.push(`${min}`);
+                                                } else if (max === Infinity) {
+                                                    parts.push(`>=${min}`);
+                                                } else {
+                                                    parts.push(`${min}-${max}`);
+                                                }
+                                            }
+                                        }
+                                        if (sel.countExcludeRanges) {
+                                            for (const [min, max] of sel.countExcludeRanges) {
+                                                if (min === max) {
+                                                    parts.push(`!${min}`);
+                                                } else {
+                                                    parts.push(`!${min}-${max}`);
+                                                }
+                                            }
+                                        }
+                                        if (parts.length > 0) {
+                                            suffix = `:${parts.join(',')}`;
+                                        }
+                                    } else if (sel.count > 1) {
+                                        suffix = `:${sel.count}`;
+                                    }
+                                }
+                                return prefix + name + suffix;
+                            }).join(', ');
+                        }
+                    }
+                } else {
+                    // For regular dropdowns, check string array
+                    const selectedValues = filterValue as string[];
+                    if (selectedValues && Array.isArray(selectedValues) && selectedValues.length > 0) {
+                        const unavailableValues = selectedValues.filter(v => !availableOptionNames.has(v));
+                        if (unavailableValues.length > 0 && unavailableValues.length === selectedValues.length) {
+                            // All selected values are unavailable - semantic only mode
+                            semanticOnly = true;
+                            displayText = unavailableValues.join(', ');
+                        }
+                    }
+                }
+                
                 result[conf.key] = {
                     type: 'dropdown',
                     label,
                     options: availableOptions,
-                    value: state[conf.key]?.interactedWith ? state[conf.key].value : [],
-                    interacted: state[conf.key]?.interactedWith ?? false
+                    value: filterValue,
+                    interacted: isInteracted,
+                    semanticOnly,
+                    displayText
                 };
             }
             else if (conf.type === AdvFilterType.RANGE) {
@@ -1098,21 +1840,40 @@ export class UnitSearchFiltersService {
 
                 const availableRange = vals.length ? [Math.min(...vals), Math.max(...vals)] : totalRange;
 
-                let currentValue = state[conf.key]?.interactedWith ? state[conf.key].value : availableRange;
+                // Get the original filter value (before clamping) for visualization
+                const filterStateEntry = state[conf.key];
+                const isInteracted = filterStateEntry?.interactedWith ?? false;
+                const originalValue: [number, number] = isInteracted ? filterStateEntry.value : availableRange;
 
-                // Clamp both min and max to the available range, and ensure min <= max
-                let clampedMin = Math.max(availableRange[0], Math.min(currentValue[0], availableRange[1]));
-                let clampedMax = Math.min(availableRange[1], Math.max(currentValue[1], availableRange[0]));
+                // Clamp both min and max to the available range for thumb positions
+                let clampedMin = Math.max(availableRange[0], Math.min(originalValue[0], availableRange[1]));
+                let clampedMax = Math.min(availableRange[1], Math.max(originalValue[1], availableRange[0]));
                 if (clampedMin > clampedMax) [clampedMin, clampedMax] = [clampedMax, clampedMin];
-                currentValue = [clampedMin, clampedMax];
+                const clampedValue: [number, number] = [clampedMin, clampedMax];
+
+                // Get semantic-only properties from filter state
+                const semanticOnly = filterStateEntry?.semanticOnly ?? false;
+                
+                // For visualization: show the ORIGINAL set range (before clamping) as includeRanges
+                // If semantic has multiple disjoint ranges, use those; otherwise use original value
+                const semanticIncludeRanges = filterStateEntry?.includeRanges;
+                const includeRanges: [number, number][] | undefined = 
+                    semanticIncludeRanges ?? (isInteracted ? [originalValue] : undefined);
+                
+                const excludeRanges = filterStateEntry?.excludeRanges;
+                const displayText = filterStateEntry?.displayText;
 
                 result[conf.key] = {
                     type: 'range',
                     label,
                     totalRange: totalRange,
                     options: availableRange as [number, number],
-                    value: currentValue,
-                    interacted: state[conf.key]?.interactedWith ?? false
+                    value: clampedValue,
+                    interacted: isInteracted,
+                    semanticOnly,
+                    includeRanges,
+                    excludeRanges,
+                    displayText
                 };
             }
         }
@@ -1133,11 +1894,11 @@ export class UnitSearchFiltersService {
     private loadFiltersFromUrlOnStartup() {
         effect(() => {
             const isDataReady = this.dataService.isDataReady();
-            if (isDataReady && !this.urlStateInitialized) {
+            if (isDataReady && !this.urlStateInitialized()) {
                 // Use UrlStateService to get initial URL params (captured before any routing effects)
                 let hasFilters = false;
                 
-                // Load search query
+                // Load search query (may contain semantic filters)
                 const searchParam = this.urlStateService.getInitialParam('q');
                 if (searchParam) {
                     this.searchText.set(decodeURIComponent(searchParam));
@@ -1155,7 +1916,7 @@ export class UnitSearchFiltersService {
                     this.selectedSortDirection.set(sortDirParam);
                 }
 
-                // Load filters
+                // Load UI filters from filters param (these are separate from semantic filters in q)
                 const filtersParam = this.urlStateService.getInitialParam('filters');
                 if (filtersParam) {
                     hasFilters = true;
@@ -1229,7 +1990,7 @@ export class UnitSearchFiltersService {
                         }
                     }
                 }
-                this.urlStateInitialized = true;
+                this.urlStateInitialized.set(true);
                 // Signal that we're done reading URL state
                 this.urlStateService.markConsumerReady('unit-search-filters');
             }
@@ -1270,6 +2031,7 @@ export class UnitSearchFiltersService {
     queryParameters = computed(() => {
         const search = this.searchText();
         const filterState = this.filterState();
+        const semanticKeys = this.semanticFilterKeys();
         const selectedSort = this.selectedSort();
         const selectedSortDirection = this.selectedSortDirection();
         const expanded = this.expandedView();
@@ -1278,10 +2040,18 @@ export class UnitSearchFiltersService {
 
         const queryParams: any = {};
 
-        // Add search query if present
+        // Add search query if present (contains semantic filters)
         queryParams.q = search.trim() ? encodeURIComponent(search.trim()) : null;
-        // Add filters if any are active
-        const filtersParam = this.generateCompactFiltersParam(filterState);
+        
+        // UI-only filters (not in semantic text) are saved in filters param
+        // Exclude any filters that are represented in semantic text
+        const uiOnlyFilters: FilterState = {};
+        for (const [key, state] of Object.entries(filterState)) {
+            if (!semanticKeys.has(key)) {
+                uiOnlyFilters[key] = state;
+            }
+        }
+        const filtersParam = this.generateCompactFiltersParam(uiOnlyFilters);
         queryParams.filters = filtersParam ? filtersParam : null;
 
         // Add sort if not default
@@ -1301,15 +2071,11 @@ export class UnitSearchFiltersService {
     private updateUrlOnFiltersChange() {
         effect(() => {
             const queryParameters = this.queryParameters();
-            if (!this.urlStateInitialized) {
+            if (!this.urlStateInitialized()) {
                 return;
             }
-            this.router.navigate([], {
-                relativeTo: this.route,
-                queryParams: Object.keys(queryParameters).length > 0 ? queryParameters : {},
-                queryParamsHandling: 'merge',
-                replaceUrl: true
-            });
+            // Use centralized URL state service to avoid race conditions
+            this.urlStateService.setParams(queryParameters);
         });
     }
 
@@ -1458,12 +2224,19 @@ export class UnitSearchFiltersService {
         if (!conf) return;
 
         let interacted = true;
+        let atLeftBoundary = false;
+        let atRightBoundary = false;
 
         if (conf.type === AdvFilterType.RANGE) {
-            // For range filters, if the value matches the full available range, it's not interacted.
+            // For range filters, check which boundaries the value matches.
             const availableRange = this.advOptions()[key]?.options;
-            if (availableRange && value[0] === availableRange[0] && value[1] === availableRange[1]) {
-                interacted = false;
+            if (availableRange) {
+                atLeftBoundary = value[0] === availableRange[0];
+                atRightBoundary = value[1] === availableRange[1];
+                // Only "not interacted" if BOTH boundaries match
+                if (atLeftBoundary && atRightBoundary) {
+                    interacted = false;
+                }
             }
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             if (conf.multistate) {
@@ -1480,19 +2253,246 @@ export class UnitSearchFiltersService {
             }
         }
 
-        this.filterState.update(current => ({
-            ...current,
-            [key]: { value, interactedWith: interacted }
-        }));
+        // Determine if we should sync this filter to semantic text:
+        // 1. If autoConvertToSemantic is enabled: always sync
+        // 2. If this filter already exists in semantic text: sync to keep them linked
+        const shouldSyncToText = this.autoConvertToSemantic() || this.semanticFilterKeys().has(key);
+
+        if (shouldSyncToText) {
+            // Update the semantic text for this specific filter
+            this.updateSemanticTextForFilter(key, value, interacted, conf);
+        } else {
+            // Just update filterState (UI-only filter)
+            this.filterState.update(current => ({
+                ...current,
+                [key]: { value, interactedWith: interacted }
+            }));
+        }
     }
 
-    public clearFilters() {
+    /**
+     * Update the semantic text to reflect a filter value change.
+     * This replaces/adds/removes the token for the specified filter key.
+     */
+    private updateSemanticTextForFilter(key: string, value: any, interacted: boolean, conf: AdvFilterConfig): void {
+        if (this.isSyncingToText) return; // Prevent re-entry
+        
+        this.isSyncingToText = true;
+        try {
+            const semanticKey = conf.semanticKey || conf.key;
+            const currentText = this.searchText();
+            const gameSystem = this.gameService.currentGameSystem();
+            
+            // Parse current query using AST parser to get text search and existing tokens
+            const parsed = parseSemanticQueryAST(currentText, gameSystem);
+            
+            // Filter out any existing tokens for this filter key
+            const otherTokens = parsed.tokens.filter(t => {
+                const tokenConf = ADVANCED_FILTERS.find(f => 
+                    (f.semanticKey || f.key) === t.field &&
+                    (!f.game || f.game === gameSystem)
+                );
+                return tokenConf?.key !== key;
+            });
+            
+            // Build new semantic text with updated filter
+            // For range filters, always generate token text to handle partial boundaries
+            // (generateSemanticTokenText will return empty if both boundaries match)
+            // For other filter types, only generate if interacted
+            let newTokenText = '';
+            
+            if (conf.type === AdvFilterType.RANGE || interacted) {
+                // Generate the new token text for this filter
+                const availableRange = conf.type === AdvFilterType.RANGE 
+                    ? this.advOptions()[key]?.options as [number, number] | undefined
+                    : undefined;
+                newTokenText = this.generateSemanticTokenText(key, value, conf, availableRange);
+            }
+            
+            // Rebuild the search text: text search + other tokens + new token (if any)
+            const parts: string[] = [];
+            
+            if (parsed.textSearch) {
+                parts.push(parsed.textSearch);
+            }
+            
+            // Add back other filter tokens
+            for (const token of otherTokens) {
+                parts.push(token.rawText);
+            }
+            
+            // Add the new/updated token
+            if (newTokenText) {
+                parts.push(newTokenText);
+            }
+            
+            this.searchText.set(parts.join(' ').trim());
+            
+            // Also clear the filterState for this key since semantic is now the source of truth
+            this.filterState.update(current => {
+                const updated = { ...current };
+                delete updated[key];
+                return updated;
+            });
+        } finally {
+            this.isSyncingToText = false;
+        }
+    }
+
+    /**
+     * Generate semantic token text for a filter value.
+     * E.g., for PV range [50, 100] with available [0, 200], generates "pv>=50 pv<=100" or "pv=50-100"
+     * @param availableRange For range filters, the context-filtered available range for boundary detection
+     */
+    private generateSemanticTokenText(key: string, value: any, conf: AdvFilterConfig, availableRange?: [number, number]): string {
+        const semanticKey = conf.semanticKey || conf.key;
+        const parts: string[] = [];
+        
+        if (conf.type === AdvFilterType.RANGE) {
+            const [min, max] = value as [number, number];
+            // Use available range (context-filtered) for boundary detection
+            // This ensures dragging to the visible boundary removes the constraint
+            const boundaryRange = availableRange || this.totalRangesCache[key] || [0, 100];
+            
+            if (min === max) {
+                parts.push(`${semanticKey}=${min}`);
+            } else if (min !== boundaryRange[0] && max !== boundaryRange[1]) {
+                parts.push(`${semanticKey}=${min}-${max}`);
+            } else if (min !== boundaryRange[0]) {
+                parts.push(`${semanticKey}>=${min}`);
+            } else if (max !== boundaryRange[1]) {
+                parts.push(`${semanticKey}<=${max}`);
+            }
+            // If both match available range, nothing to add (filter removed)
+            
+        } else if (conf.type === AdvFilterType.DROPDOWN) {
+            if (conf.multistate) {
+                const selection = value as MultiStateSelection;
+                const orValues: string[] = [];
+                const andValues: string[] = [];
+                const notValues: string[] = [];
+                
+                for (const [name, sel] of Object.entries(selection)) {
+                    // Format: quote the name if needed, then append quantity suffix outside quotes
+                    const quotedName = this.formatSemanticValue(name);
+                    let quantitySuffix = '';
+                    
+                    if (conf.countable && sel.count > 1) {
+                        // Format with quantity suffix
+                        // UI spinner represents "at least N", so use >= unless there's a specific operator
+                        if (sel.countOperator && sel.countOperator !== '=') {
+                            quantitySuffix = `:${sel.countOperator}${sel.count}`;
+                        } else if (sel.countMax !== undefined) {
+                            quantitySuffix = `:${sel.count}-${sel.countMax}`;
+                        } else if (sel.countOperator === '=') {
+                            // Explicit exact match
+                            quantitySuffix = `:${sel.count}`;
+                        } else {
+                            // No operator = UI spinner = "at least N"
+                            quantitySuffix = `:>=${sel.count}`;
+                        }
+                    } else if (conf.countable && sel.countOperator && sel.countOperator !== '=') {
+                        // Non-equality operator with count 1
+                        quantitySuffix = `:${sel.countOperator}${sel.count}`;
+                    } else if (conf.countable && sel.countMax !== undefined) {
+                        // Range constraint
+                        quantitySuffix = `:${sel.count}-${sel.countMax}`;
+                    }
+                    
+                    const formattedName = quotedName + quantitySuffix;
+                    
+                    if (sel.state === 'not') {
+                        notValues.push(formattedName);
+                    } else if (sel.state === 'and') {
+                        andValues.push(formattedName);
+                    } else if (sel.state === 'or') {
+                        orValues.push(formattedName);
+                    }
+                }
+                
+                if (orValues.length > 0) {
+                    // OR uses = operator
+                    parts.push(`${semanticKey}=${orValues.join(',')}`);
+                }
+                if (andValues.length > 0) {
+                    // AND uses &= operator
+                    parts.push(`${semanticKey}&=${andValues.join(',')}`);
+                }
+                if (notValues.length > 0) {
+                    // NOT uses != operator
+                    parts.push(`${semanticKey}!=${notValues.join(',')}`);
+                }
+            } else {
+                const values = value as string[];
+                if (values.length > 0) {
+                    const formatted = values.map(v => this.formatSemanticValue(v)).join(',');
+                    parts.push(`${semanticKey}=${formatted}`);
+                }
+            }
+        }
+        
+        return parts.join(' ');
+    }
+
+    /**
+     * Format a value for semantic text output, adding quotes if needed.
+     */
+    private formatSemanticValue(value: string): string {
+        // Add quotes if value contains spaces, commas, special chars, or quotes
+        if (/[\s,=!<>"']/.test(value)) {
+            // Escape backslashes and double quotes
+            const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            return `"${escaped}"`;
+        }
+        return value;
+    }
+
+    public resetFilters() {
+        this.clearFilters();
+    }
+
+    private clearFilters() {
         this.searchText.set('');
         this.filterState.set({});
         this.selectedSort.set('');
         this.selectedSortDirection.set('asc');
         this.pilotGunnerySkill.set(4);
         this.pilotPilotingSkill.set(5);
+    }
+
+    /**
+     * Get the total ranges cache for semantic filter conversion.
+     */
+    public getTotalRanges(): Record<string, [number, number]> {
+        return this.totalRangesCache;
+    }
+
+    /**
+     * Convert current filter state to semantic text.
+     * @deprecated Use updateSemanticTextForFilter for targeted updates instead.
+     */
+    public getSemanticText(): string {
+        return filterStateToSemanticText(
+            this.effectiveFilterState(),
+            this.effectiveTextSearch(),
+            this.gameService.currentGameSystem(),
+            this.totalRangesCache
+        );
+    }
+
+    /**
+     * Update search text with semantic text representation of current filters.
+     * @deprecated Use updateSemanticTextForFilter for targeted updates instead.
+     */
+    public syncSearchTextFromFilters(): void {
+        if (this.isSyncingToText) return;
+        this.isSyncingToText = true;
+        try {
+            const semanticText = this.getSemanticText();
+            this.searchText.set(semanticText);
+        } finally {
+            this.isSyncingToText = false;
+        }
     }
 
     // Collect all unique tags from all units (merged name + chassis)
@@ -1556,10 +2556,6 @@ export class UnitSearchFiltersService {
         }
     }
 
-    public async saveTagsToStorage(): Promise<void> {
-        await this.dataService.saveUnitTags(this.dataService.getUnits());
-    }
-
     setPilotSkills(gunnery: number, piloting: number) {
         this.pilotGunnerySkill.set(gunnery);
         this.pilotPilotingSkill.set(piloting);
@@ -1569,20 +2565,29 @@ export class UnitSearchFiltersService {
         const gunnery = this.pilotGunnerySkill();
         let piloting = this.pilotPilotingSkill();
         if (unit.type === 'ProtoMek') {
-            piloting = 5; // ProtoMeks always use Piloting 5
+            piloting = DEFAULT_PILOTING_SKILL; // ProtoMeks always use Piloting 5
+        } else
+        if (unit.type === 'Infantry') {
+            if (!canAntiMech(unit)) {
+                if (unit.subtype === 'Conventional Infantry') {
+                    piloting = NO_ANTIMEK_SKILL;
+                } else {
+                    piloting = DEFAULT_PILOTING_SKILL;
+                }
+            }
         }
         // Use default skills - no adjustment needed
-        if (gunnery === 4 && piloting === 5) {
+        if (gunnery === DEFAULT_GUNNERY_SKILL && piloting === DEFAULT_PILOTING_SKILL) {
             return unit.bv;
         }
 
-        return BVCalculatorUtil.calculateAdjustedBV(unit.bv, gunnery, piloting);
+        return BVCalculatorUtil.calculateAdjustedBV(unit, gunnery, piloting);
     }
 
     getAdjustedPV(unit: Unit): number {
         let skill = this.pilotGunnerySkill();
         // Use default skill - no adjustment needed
-        if (skill === 4) {
+        if (skill === DEFAULT_GUNNERY_SKILL) {
             return unit.as.PV;
         }
 
@@ -1590,8 +2595,13 @@ export class UnitSearchFiltersService {
     }
 
 
-    public serializeCurrentSearchFilter(name: string): SerializedSearchFilter {
-        const filter: SerializedSearchFilter = { name };
+    public serializeCurrentSearchFilter(id: string, name: string, gameSystem: 'cbt' | 'as'): SerializedSearchFilter {
+        const filter: SerializedSearchFilter = { 
+            id,
+            name, 
+            gameSystem,
+            timestamp: Date.now()
+        };
 
         const q = this.searchText();
         if (q && q.trim().length > 0) filter.q = q.trim();

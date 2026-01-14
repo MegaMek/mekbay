@@ -92,7 +92,6 @@ export class CBTForceUnit extends ForceUnit {
             crew[i] = new CrewMember(i, this);
         }
         this.state.crew.set(crew);
-        this.linkEquipmentLookups();
     }
 
     override destroy() {
@@ -151,19 +150,6 @@ export class CBTForceUnit extends ForceUnit {
                 await this._svgService.loadAndInitialize();
             });
         }); 
-    }
-
-    // this links the equipment definitions (required for unit.comp.*.eq queries)
-    protected linkEquipmentLookups() {
-        const unit = this.unit;
-        const allEquipment = this.dataService.getEquipment(unit.type);
-        unit.comp.forEach(comp => {
-            if (!comp.eq && comp.id) {
-                if (allEquipment) {
-                    comp.eq = allEquipment[comp.id];
-                }
-            }
-        });
     }
 
     turnState = computed<TurnState>(() => {
@@ -436,7 +422,7 @@ export class CBTForceUnit extends ForceUnit {
             }
         }
         let adjustedBv = BVCalculatorUtil.calculateAdjustedBV(
-            bv,
+            this.getUnit(),
             gunnery,
             piloting
         );
@@ -763,7 +749,6 @@ export class CBTForceUnit extends ForceUnit {
         const fu = new CBTForceUnit(unit, force, dataService, unitInitializer, injector);
         fu.id = data.id;
         fu.deserializeState(data.state);
-        fu.linkEquipmentLookups();
         return fu;
     }
 }

@@ -48,6 +48,7 @@ import { OptionsDialogComponent } from './components/options-dialog/options-dial
 import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { LicenseDialogComponent } from './components/license-dialog/license-dialog.component';
 import { ToastsComponent } from './components/toasts/toasts.component';
+import { SavedSearchesService } from './services/saved-searches.service';
 import { WsService } from './services/ws.service';
 import { ToastService } from './services/toast.service';
 import { DialogsService } from './services/dialogs.service';
@@ -105,6 +106,7 @@ export class App {
     public injector = inject(Injector);
     public gameService = inject(GameService);
     private urlStateService = inject(UrlStateService);
+    private savedSearchesService = inject(SavedSearchesService);
 
     protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
@@ -132,6 +134,8 @@ export class App {
         //     (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
         // }
         this.dataService.initialize();
+        this.savedSearchesService.initialize();
+        this.savedSearchesService.registerWsHandlers();
 
         // iOS doesn't fire beforeinstallprompt, so we check manually
         if (isIOS() && !isRunningStandalone()) {
@@ -147,7 +151,7 @@ export class App {
             this.checkForUpdate();
         }
         this.wsService.setGlobalErrorHandler((msg: string) => {
-            this.toastService.show(msg, 'error');
+            this.toastService.showToast(msg, 'error');
         });
         effect(() => {
             const colorMode = this.optionsService.options().sheetsColor;

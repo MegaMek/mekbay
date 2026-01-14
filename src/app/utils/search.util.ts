@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { DataService } from '../services/data.service';
+import { removeAccents, escapeHtml, escapeRegExp } from './string.util';
 
 /**
  * Represents a single token from a search query.
@@ -90,10 +90,10 @@ export function parseSearchQuery(query: string): SearchTokensGroup[] {
         while ((m = re.exec(group)) !== null) {
             if (m[1] !== undefined) {
                 // Quoted exact token
-                const cleaned = DataService.removeAccents(m[1].trim());
+                const cleaned = removeAccents(m[1].trim());
                 if (cleaned) tokens.push({ token: cleaned, mode: 'exact' });
             } else if (m[2] !== undefined) {
-                const cleaned = DataService.removeAccents(m[2].trim());
+                const cleaned = removeAccents(m[2].trim());
                 if (cleaned) tokens.push({ token: cleaned, mode: 'partial' });
             }
         }
@@ -153,7 +153,7 @@ export function matchesSearch(
 ): boolean {
     if (!searchTokens || searchTokens.length === 0) return true;
 
-    const normalizedText = DataService.removeAccents(textToSearch.toLowerCase());
+    const normalizedText = removeAccents(textToSearch.toLowerCase());
     const alphaNumText = alphanumericNormalization 
         ? normalizedText.replace(/[^a-z0-9]/gi, '') 
         : '';
@@ -189,15 +189,6 @@ export function matchesSearch(
     });
 }
 
-function escapeHtml(s: string): string {
-    return s
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
 /**
  * Highlights the matching tokens in a given text.
  * @param text The text to highlight.
@@ -229,7 +220,6 @@ export function highlightMatches(
 
     if (tokens.length === 0) return escapeHtml(text);
 
-    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     let pattern = tokens.map(escapeRegExp).join('|');
 
     if (alphanumericNormalization) {
