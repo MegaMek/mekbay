@@ -31,10 +31,15 @@
  * affiliated with Microsoft.
  */
 
+import { DEFAULT_PILOTING_SKILL } from "../models/crew-member.model";
+import { Unit } from "../models/units.model";
+import { canAntiMech, NO_ANTIMEK_SKILL } from "./infantry.util";
+
 /*
  * Author: Drake
  */
 export class BVCalculatorUtil {
+
     // BattleTech BV 2.0 Skill Multiplier Table (Official Values)
     private static readonly BV2_SKILL_MATRIX = [
     //     0     1     2     3     4     5     6     7     8
@@ -65,70 +70,27 @@ export class BVCalculatorUtil {
 
     /**
      * Calculate adjusted Battle Value based on pilot skills
-     * @param baseBV - Base Battle Value of the unit
+     * @param unit - Unit object containing base Battle Value
      * @param gunnerySkill - Gunnery skill level (0-8+)
      * @param pilotingSkill - Piloting skill level (0-8+)
      * @returns Adjusted Battle Value rounded to nearest integer
      */
-    static calculateAdjustedBV(baseBV: number, gunnerySkill: number, pilotingSkill: number): number {
-        const multiplier = this.getSkillMultiplier(gunnerySkill, pilotingSkill);
-        if (multiplier === 1.0) {
-            return baseBV;
-        }
-        return Math.round(baseBV * multiplier);
-    }
-
-    /**
-     * Get skill level description based on combined skill levels
-     * @param gunnerySkill - Gunnery skill level (0-8+)
-     * @param pilotingSkill - Piloting skill level (0-8+)
-     * @returns Skill category description
-     */
-    static getSkillDescription(gunnerySkill: number, pilotingSkill: number): string {
-        const totalSkill = gunnerySkill + pilotingSkill;
-        if (totalSkill <= 3) return "Elite";
-        if (totalSkill <= 5) return "Veteran";
-        if (totalSkill <= 7) return "Regular";
-        if (totalSkill <= 9) return "Green";
-        return "Ultra-Green";
-    }
-
-    /**
-     * Get all possible skill combinations with their multipliers
-     * @returns Array of skill combinations with multipliers and descriptions
-     */
-    static getAllSkillCombinations(): Array<{
-        gunnery: number;
-        piloting: number;
-        multiplier: number;
-        description: string;
-    }> {
-        const combinations = [];
-        for (let gunnery = 0; gunnery <= 8; gunnery++) {
-            for (let piloting = 0; piloting <= 8; piloting++) {
-                combinations.push({
-                    gunnery,
-                    piloting,
-                    multiplier: this.getSkillMultiplier(gunnery, piloting),
-                    description: this.getSkillDescription(gunnery, piloting)
-                });
+    static calculateAdjustedBV(unit: Unit, gunnerySkill: number, pilotingSkill: number): number {
+        const baseBv = unit.bv;
+        if (unit.type === 'Infantry') {
+            // Evaluate anti-mech capability for infantry units
+            if (!canAntiMech(unit)) {
+                if (unit.subtype === 'Conventional Infantry') {
+                    pilotingSkill = NO_ANTIMEK_SKILL;
+                } else {
+                    pilotingSkill = DEFAULT_PILOTING_SKILL;
+                }
             }
         }
-        return combinations;
-    }
-
-    /**
-     * Get skill combinations for a specific skill category
-     * @param category - Skill category ("Elite", "Veteran", "Regular", "Green", "Ultra-Green")
-     * @returns Array of skill combinations matching the category
-     */
-    static getSkillCombinationsByCategory(category: string): Array<{
-        gunnery: number;
-        piloting: number;
-        multiplier: number;
-    }> {
-        return this.getAllSkillCombinations().filter(combo => 
-            combo.description === category
-        );
+        const multiplier = this.getSkillMultiplier(gunnerySkill, pilotingSkill);
+        if (multiplier === 1.0) {
+            return baseBv;
+        }
+        return Math.round(baseBv * multiplier);
     }
 }

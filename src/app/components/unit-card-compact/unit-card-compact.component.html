@@ -40,7 +40,7 @@
                     </div>
                 } @else {
                     <div class="info-slot numeric">
-                        <span class="value">BV: {{ u.bv | adjustedBV:gunnery():piloting() | formatNumber:true:true }}</span>
+                        <span class="value">BV: {{ u | adjustedBV:gunnery():piloting() | formatNumber:true:true }}</span>
                     </div>
                     <div class="info-slot numeric">
                         <span class="value">{{ u.tons | formatTons }}</span>

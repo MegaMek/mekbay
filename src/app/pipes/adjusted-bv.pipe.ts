@@ -34,6 +34,7 @@
 
 import { Pipe, PipeTransform } from "@angular/core";
 import { BVCalculatorUtil } from "../utils/bv-calculator.util";
+import { Unit } from "../models/units.model";
 
 /*
  * Author: Drake
@@ -44,8 +45,8 @@ import { BVCalculatorUtil } from "../utils/bv-calculator.util";
 })
 export class AdjustedBV implements PipeTransform {
 
-    transform(bv: number, gunnery: number, piloting: number): number {
-        if (bv === undefined) return 0;
-        return BVCalculatorUtil.calculateAdjustedBV(bv, gunnery, piloting);
+    transform(unit: Unit, gunnery: number, piloting: number): number {
+        if (unit.bv === undefined) return 0;
+        return BVCalculatorUtil.calculateAdjustedBV(unit, gunnery, piloting);
     }
 }

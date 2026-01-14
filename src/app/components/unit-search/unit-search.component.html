@@ -145,7 +145,7 @@
                             } @else {
                                 <div class="info-slot numeric"
                                     [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
-                                    <span class="value">BV: {{ unit.bv | adjustedBV:gunnery:piloting |
+                                    <span class="value">BV: {{ unit | adjustedBV:gunnery:piloting |
                                         formatNumber:true:true }}</span>
                                 </div>
                                 <div class="info-slot numeric"
@@ -402,7 +402,7 @@
                     <div class="info-item">
                         <span class="info-label muted">BV:</span>
                         <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">{{
-                            unit.bv | adjustedBV:gunnery:piloting | formatNumber:true:false }}</span>
+                            unit | adjustedBV:gunnery:piloting | formatNumber:true:false }}</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label muted">Tons:</span>

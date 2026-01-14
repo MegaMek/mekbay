@@ -36,7 +36,7 @@ import { HttpClient } from '@angular/common/http';
 import { Unit, UnitComponent, Units } from '../models/units.model';
 import { Faction, Factions } from '../models/factions.model';
 import { Era, Eras } from '../models/eras.model';
-import { DbService, StoredTags, StoredChassisTags, TagData, TagOp, TagSyncState, SavedSearchOp, StoredSavedSearches } from './db.service';
+import { DbService, TagData, SavedSearchOp, StoredSavedSearches } from './db.service';
 import { TagsService } from './tags.service';
 import { ADVANCED_FILTERS, AdvFilterType, SerializedSearchFilter } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
@@ -783,6 +783,30 @@ export class DataService {
                 this.data[store.key as keyof LocalStore] = store.postprocess(storeData);
             }
         }
+        this.linkEquipmentToUnits();
+    }
+
+    /**
+     * Link equipment objects to unit components so methods like .eq.hasFlag() work.
+     */
+    private linkEquipmentToUnits(): void {
+        const units = this.getUnits();
+        for (const unit of units) {
+            if (!unit.comp) continue;
+            const equipment = this.getEquipment(unit.type);
+            this.linkEquipmentToComponents(unit.comp, equipment);
+        }
+    }
+
+    private linkEquipmentToComponents(components: UnitComponent[], equipment: EquipmentUnitType): void {
+        for (const comp of components) {
+            if (comp.id && !comp.eq) {
+                comp.eq = equipment[comp.id];
+            }
+            if (comp.bay) {
+                this.linkEquipmentToComponents(comp.bay, equipment);
+            }
+        }
     }
 
     public async checkForUpdate(): Promise<void> {
@@ -1514,6 +1538,10 @@ export class DataService {
         await this.dbService.saveSavedSearches(this.cachedSavedSearches);
         this.savedSearchesVersion.update(v => v + 1);
     }
+
+    /**
+     * Link equipment data to loaded units.
+     */
 
     /* ----------------------------------------------------------
      * Canvas Data

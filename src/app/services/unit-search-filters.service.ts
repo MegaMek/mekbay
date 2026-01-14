@@ -49,6 +49,8 @@ import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { filterStateToSemanticText, tokensToFilterState, SemanticFilterState, WildcardPattern } from '../utils/semantic-filter.util';
 import { parseSemanticQueryAST, ParseResult, ParseError, filterUnitsWithAST, EvaluatorContext, isComplexQuery, getMatchingTextForUnit } from '../utils/semantic-filter-ast.util';
 import { wildcardToRegex } from '../utils/string.util';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
+import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
 
 /*
  * Author: Drake
@@ -2563,20 +2565,29 @@ export class UnitSearchFiltersService {
         const gunnery = this.pilotGunnerySkill();
         let piloting = this.pilotPilotingSkill();
         if (unit.type === 'ProtoMek') {
-            piloting = 5; // ProtoMeks always use Piloting 5
+            piloting = DEFAULT_PILOTING_SKILL; // ProtoMeks always use Piloting 5
+        } else
+        if (unit.type === 'Infantry') {
+            if (!canAntiMech(unit)) {
+                if (unit.subtype === 'Conventional Infantry') {
+                    piloting = NO_ANTIMEK_SKILL;
+                } else {
+                    piloting = DEFAULT_PILOTING_SKILL;
+                }
+            }
         }
         // Use default skills - no adjustment needed
-        if (gunnery === 4 && piloting === 5) {
+        if (gunnery === DEFAULT_GUNNERY_SKILL && piloting === DEFAULT_PILOTING_SKILL) {
             return unit.bv;
         }
 
-        return BVCalculatorUtil.calculateAdjustedBV(unit.bv, gunnery, piloting);
+        return BVCalculatorUtil.calculateAdjustedBV(unit, gunnery, piloting);
     }
 
     getAdjustedPV(unit: Unit): number {
         let skill = this.pilotGunnerySkill();
         // Use default skill - no adjustment needed
-        if (skill === 4) {
+        if (skill === DEFAULT_GUNNERY_SKILL) {
             return unit.as.PV;
         }
 

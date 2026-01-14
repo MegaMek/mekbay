@@ -137,7 +137,7 @@ export class UnitDetailsGeneralTabComponent {
         if (gunnery === undefined || piloting === undefined) {
             return null;
         }
-        return BVCalculatorUtil.calculateAdjustedBV(this.unit().bv, gunnery, piloting);
+        return BVCalculatorUtil.calculateAdjustedBV(this.unit(), gunnery, piloting);
     }
 
     trackByBay = (bay: UnitComponent) => `${bay.n}|${bay.t}|${bay.l}`;

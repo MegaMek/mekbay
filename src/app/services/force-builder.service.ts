@@ -53,7 +53,7 @@ import { ForcePackDialogComponent } from '../components/force-pack-dialog/force-
 import { SerializedForce } from '../models/force-serialization';
 import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
 import { EditASPilotDialogComponent, EditASPilotDialogData, EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
-import { CrewMember } from '../models/crew-member.model';
+import { CrewMember, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
@@ -61,6 +61,7 @@ import { ASForceUnit } from '../models/as-force-unit.model';
 import { OptionsService } from './options.service';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
+import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
 
 /*
  * Author: Drake
@@ -263,7 +264,16 @@ export class ForceBuilderService {
             newForceUnit.disabledSaving = true;
             if (unit.type === 'ProtoMek') {
                 // ProtoMeks have a fixed Piloting skill of 5
-                pilotingSkill = 5;
+                pilotingSkill = DEFAULT_PILOTING_SKILL;
+            } else
+            if (unit.type === 'Infantry') {
+                if (!canAntiMech(unit)) {
+                    if (unit.subtype === 'Conventional Infantry') {
+                        pilotingSkill = NO_ANTIMEK_SKILL;
+                    } else {
+                        pilotingSkill = DEFAULT_PILOTING_SKILL;
+                    }
+                }
             }
             for (const crew of crewMembers) {
                 if (gunnerySkill !== undefined) {
@@ -1217,7 +1227,7 @@ export class ForceBuilderService {
             }
             pilot = crewMembers[0];
         }
-        const disablePiloting = baseUnit.type === 'ProtoMek';
+        const disablePiloting = baseUnit.type === 'ProtoMek' || ((baseUnit.type === 'Infantry') && (!canAntiMech(baseUnit)));
         let labelPiloting;
         if (baseUnit.type === 'Infantry') {
             labelPiloting = 'Anti-Mech';
