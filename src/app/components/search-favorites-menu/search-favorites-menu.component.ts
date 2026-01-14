@@ -31,9 +31,10 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, output, signal, afterNextRender } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, signal, afterNextRender, computed } from '@angular/core';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { SerializedSearchFilter } from '../../services/unit-search-filters.service';
+import { GameSystem } from '../../models/common.model';
 
 @Component({
     selector: 'search-favorites-menu',
@@ -44,9 +45,19 @@ import { SerializedSearchFilter } from '../../services/unit-search-filters.servi
     },
     template: `
     <div class="favorites-menu glass framed-borders has-shadow">
+      @if (favorites().length > 0) {
+        <div class="search-container">
+          <input
+            class="bt-input search-input"
+            type="text"
+            placeholder="Filter tactical bookmarks..."
+            [value]="searchText()"
+            (input)="onSearch($any($event.target).value)" />
+        </div>
+      }
       <div class="favorites-list">
-        @let favs = this.favorites();
-        @if (!favs || favs.length === 0) {
+        @let favs = this.filteredFavorites();
+        @if (favorites().length === 0) {
           <div class="no-favorites">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg">
               <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
@@ -54,10 +65,14 @@ import { SerializedSearchFilter } from '../../services/unit-search-filters.servi
             <span>No tactical bookmarks saved yet</span>
             <span class="hint">Save your current search to quickly access it later</span>
           </div>
+        } @else if (favs.length === 0) {
+          <div class="no-favorites">
+            <span>No tactical bookmarks match your search</span>
+          </div>
         } @else {
           @for (f of favs; track f.id) {
             <div class="favorite-item" (click)="selectFavorite(f)">
-              <svg class="item-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" xmlns="http://www.w3.org/2000/svg">
+              <svg class="item-icon" [class.as]="f.gameSystem === GameSystem.ALPHA_STRIKE" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" xmlns="http://www.w3.org/2000/svg">
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
               </svg>
               <span class="favorite-name">{{ f.name }}</span>
@@ -114,6 +129,14 @@ import { SerializedSearchFilter } from '../../services/unit-search-filters.servi
             display: flex;
             flex-direction: column;
         }
+        .search-container {
+            padding: 12px 16px 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .search-input {
+            width: 100%;
+            box-sizing: border-box;
+        }
         .favorites-list {
             max-height: 320px;
             overflow: auto;
@@ -138,7 +161,12 @@ import { SerializedSearchFilter } from '../../services/unit-search-filters.servi
         }
         .item-icon {
             flex-shrink: 0;
-            opacity: 0.5;
+            stroke: #ffcc00;
+            fill: #725c00;
+        }
+        .item-icon.as {
+            stroke: #ffcc00;
+            fill: #cd0000;
         }
         .favorite-name {
             flex: 1;
@@ -210,9 +238,12 @@ import { SerializedSearchFilter } from '../../services/unit-search-filters.servi
     `]
 })
 export class SearchFavoritesMenuComponent {
+    protected readonly GameSystem = GameSystem;
+
     favorites = input<SerializedSearchFilter[]>([]);
     canSave = input<boolean>(false);
     ready = signal(false);
+    searchText = signal('');
     select = output<SerializedSearchFilter>();
     rename = output<SerializedSearchFilter>();
     delete = output<SerializedSearchFilter>();
@@ -226,10 +257,24 @@ export class SearchFavoritesMenuComponent {
     /** Currently active item for the context menu */
     private activeItem = signal<SerializedSearchFilter | null>(null);
 
+    /** Filtered favorites based on search text */
+    filteredFavorites = computed(() => {
+        const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
+        if (tokens.length === 0) return this.favorites();
+        return this.favorites().filter(f => {
+            const hay = f.name.toLowerCase();
+            return tokens.every(t => hay.includes(t));
+        });
+    });
+
     constructor() {
         afterNextRender(() => {
             this.ready.set(true);
         });
+    }
+
+    onSearch(text: string) {
+        this.searchText.set(text);
     }
 
     selectFavorite(favorite: SerializedSearchFilter) {

@@ -39,6 +39,7 @@ import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import { DialogsService } from './dialogs.service';
 import { GameSystem } from '../models/common.model';
+import { naturalCompare } from '../utils/sort.util';
 
 /*
  * Author: Drake
@@ -77,7 +78,14 @@ export class SavedSearchesService {
         const gsKey = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
         return Object.values(all)
             .filter(s => s.gameSystem === gsKey)
-            .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+            .sort((a, b) => naturalCompare(a.name, b.name));
+    }
+
+    /** Get all saved searches without filtering by game system */
+    public getAllSearches(): SerializedSearchFilter[] {
+        const all = this.cachedSearches();
+        return Object.values(all)
+            .sort((a, b) => naturalCompare(a.name, b.name));
     }
 
     /** Initialize and load saved searches from storage */

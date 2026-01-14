@@ -973,9 +973,11 @@ export class UnitSearchComponent {
         });
         this.favoritesCompRef = compRef;
 
-        // Get favorites for current game system
-        const gameSystem = this.gameService.currentGameSystem();
-        const favorites = this.savedSearchesService.getSearchesForGameSystem(gameSystem);
+        // Get favorites - filter by game system only if a force is loaded
+        const hasForce = this.forceBuilderService.currentForce() !== null;
+        const favorites = hasForce
+            ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
+            : this.savedSearchesService.getAllSearches();
         compRef.setInput('favorites', favorites);
         
         // Determine if saving is allowed (has search text or filters)
@@ -1108,8 +1110,11 @@ export class UnitSearchComponent {
     private refreshFavoritesOverlay() {
         // Update favorites data in-place without closing overlay
         if (this.favoritesCompRef && this.overlayManager.has('favorites')) {
-            const gameSystem = this.gameService.currentGameSystem();
-            const favorites = this.savedSearchesService.getSearchesForGameSystem(gameSystem);
+            // Get favorites - filter by game system only if a force is loaded
+            const hasForce = this.forceBuilderService.currentForce() !== null;
+            const favorites = hasForce
+                ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
+                : this.savedSearchesService.getAllSearches();
             this.favoritesCompRef.setInput('favorites', favorites);
             
             // Also update canSave state
@@ -1121,6 +1126,12 @@ export class UnitSearchComponent {
     }
 
     private applyFavorite(fav: SerializedSearchFilter) {
+        // Switch game mode if the saved search's game system differs from current
+        const currentGs = this.gameService.currentGameSystem();
+        const favGs = fav.gameSystem === 'as' ? GameSystem.ALPHA_STRIKE : GameSystem.CLASSIC;
+        if (favGs !== currentGs) {
+            this.gameService.setMode(favGs);
+        }
         this.filtersService.applySerializedSearchFilter(fav);
         // Focus search input after applying
         afterNextRender(() => {
