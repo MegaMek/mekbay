@@ -44,22 +44,12 @@
     box-sizing: border-box;
 }
 
-.panel-container {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    width: 100%;
-    overflow: hidden;
-    position: relative;
-}
-
 /* Header Section */
-.panel-header {
+.header {
     display: flex;
     flex-direction: row;
     gap: 8px;
     padding: 8px;
-    flex-shrink: 0;
 }
 
 .header-icon-container {
@@ -142,89 +132,16 @@
     vertical-align: middle;
 }
 
-/* Tab Bar - matches base-dialog styling */
-.panel-tabs {
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 1em;
-    border-bottom: 2px solid #666;
-    flex-shrink: 0;
-    margin-bottom: -2px;
-    z-index: 2;
-}
-
-.tab-buttons {
-    display: flex;
-    flex-direction: row;
-    overflow: visible;
-    flex: 1;
-    min-width: 0;
-}
-
-.tab-actions {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-}
-
-.tab-actions-button {
-    background: none;
-    border: none;
-    color: var(--text-color-secondary);
-    cursor: pointer;
-    transition: color 0.2s;
-    outline: none;
-    height: 24px;
-    padding: 0 8px;
-}
-
-.tab-actions-button:hover {
-    color: var(--text-color);
-}
-
-.tab-btn {
-    background: none;
-    border: none;
-    color: var(--text-color-secondary);
-    padding: 0.5em 1em;
-    cursor: pointer;
-    font-size: 1em;
-    border-bottom: 2px solid transparent;
-    transition: color 0.2s, border-color 0.2s;
-    outline: none;
-    white-space: nowrap;
-    margin-bottom: -2px;
-
-    @container details-panel (max-width: 400px) {
-        padding: 0.5em 0.5em;
-        font-size: 0.95em;
-    }
-}
-
-.tab-btn:focus-visible:not(.active),
-.tab-btn:hover {
-    color: var(--text-color);
-    border-bottom-color: silver;
-}
-
-.tab-btn.active {
-    color: var(--text-color);
-    border-bottom-color: var(--accent-color);
-}
-
-/* Panel Body */
-.panel-body {
+/* Body Content */
+.body-content {
     display: flex;
     flex-direction: column;
     flex-grow: 1;
     overflow: hidden;
-    position: relative;
     min-height: 0;
 }
 
-.panel-body.tab-intel {
+.body-content.tab-intel {
     background-color: #202b46;
 }
 
@@ -235,7 +152,6 @@
     overflow: auto;
     min-height: 0;
     position: relative;
-    z-index: 1;
 }
 
 /* Fluff Background */
@@ -254,16 +170,13 @@
 }
 
 /* Footer */
-.panel-footer {
+.footer {
     display: flex;
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
     gap: 8px;
-    padding: 8px;
-    background-color: var(--background-color-header, #222);
-    border-top: 1px solid var(--border-color, #444);
-    flex-shrink: 0;
+    width: 100%;
 }
 
 .add-btn {
@@ -315,46 +228,4 @@
     width: 48px;
     height: 48px;
     opacity: 0.5;
-}
-
-/* Responsive adjustments */
-@container details-panel (max-width: 400px) {
-    .panel-header {
-        padding: 6px;
-    }
-
-    .header-icon-container unit-icon {
-        height: 36px;
-    }
-
-    .header-model {
-        font-size: 0.8em;
-    }
-
-    .header-chassis {
-        font-size: 1em;
-    }
-
-    .header-details {
-        font-size: 0.8em;
-    }
-
-    .header-details .icon {
-        width: 14px;
-        height: 14px;
-    }
-
-    .tab-btn {
-        padding: 4px 8px;
-        font-size: 0.85em;
-    }
-
-    .panel-footer {
-        padding: 6px;
-    }
-
-    .add-btn {
-        padding: 6px 16px;
-        font-size: 0.9em;
-    }
 }

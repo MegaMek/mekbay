@@ -40,6 +40,7 @@ import { ToastService } from '../../services/toast.service';
 import { TaggingService } from '../../services/tagging.service';
 import { REMOTE_HOST } from '../../models/common.model';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { BasePanelComponent } from '../base-panel/base-panel.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
 import { UnitDetailsGeneralTabComponent } from '../unit-details-dialog/tabs/unit-details-general-tab.component';
@@ -58,6 +59,7 @@ import { UnitDetailsCardTabComponent } from '../unit-details-dialog/tabs/unit-de
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         CommonModule,
+        BasePanelComponent,
         UnitIconComponent,
         UnitTagsComponent,
         UnitDetailsGeneralTabComponent,
@@ -79,32 +81,15 @@ export class UnitDetailsPanelComponent {
     private forceBuilderService = inject(ForceBuilderService);
     private toastService = inject(ToastService);
     private taggingService = inject(TaggingService);
-
-    /** The unit to display details for */
     readonly unit = input<Unit | null>(null);
-    
-    /** Gunnery skill for BV/PV calculations */
     readonly gunnerySkill = input<number | undefined>(undefined);
-    
-    /** Piloting skill for BV calculations */
     readonly pilotingSkill = input<number | undefined>(undefined);
-    
-    /** Whether there is a previous unit to navigate to */
     readonly hasPrev = input<boolean>(false);
-    
-    /** Whether there is a next unit to navigate to */
     readonly hasNext = input<boolean>(false);
-
-    /** Emitted when the ADD button is clicked */
     readonly add = output<Unit>();
-    
-    /** Emitted when prev button is clicked */
     readonly prev = output<void>();
-    
-    /** Emitted when next button is clicked */
     readonly next = output<void>();
 
-    /** Available tabs based on game system */
     readonly tabs = computed<string[]>(() => {
         return ['General', 'Intel', 'Factions', 'Sheet', 'Card'];
     });

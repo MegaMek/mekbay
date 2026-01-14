@@ -1,0 +1,195 @@
+/*
+ * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
+:host {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    container-type: inline-size;
+    container-name: base-panel;
+}
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    position: relative;
+    background-color: var(--background-color-menu);
+}
+
+/* Header - matches base-dialog .modal-header */
+.panel-header {
+    border-bottom: 2px solid #fff;
+    flex-shrink: 0;
+
+    &.tabbed {
+        border-bottom: 2px solid #666;
+    }
+
+    ::ng-deep .title {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 8px;
+        font-weight: bold;
+        font-size: 1.3em;
+        text-transform: uppercase;
+        text-align: center;
+    }
+
+    .tab-header {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 1em;
+        margin-bottom: -2px;
+    }
+
+    .tab-buttons {
+        display: flex;
+        flex-direction: row;
+        overflow: hidden;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .tab-buttons.wrap {
+        flex-wrap: wrap;
+        overflow: visible;
+    }
+
+    .tab-overflow-trigger {
+        display: flex;
+        align-items: center;
+        gap: 0.25em;
+    }
+
+    .overflow-active-label {
+        max-width: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .overflow-icon {
+        font-size: 0.8em;
+        opacity: 0.8;
+    }
+
+    .tab-header.wrap-mode {
+        flex-wrap: wrap;
+    }
+
+    .tab-header.wrap-mode .tab-actions {
+        margin-left: auto;
+    }
+
+    .tab-actions {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+    }
+
+    ::ng-deep .tab-actions-button {
+        background: none;
+        border: none;
+        color: var(--text-color-secondary);
+        cursor: pointer;
+        transition: color 0.2s;
+        outline: none;
+        height: 24px;
+        padding: 0 8px;
+        pointer-events: auto;
+    }
+
+    ::ng-deep .tab-actions-button:hover {
+        color: var(--text-color);
+    }
+
+    .tab-button {
+        background: none;
+        border: none;
+        color: var(--text-color-secondary);
+        padding: 0.5em 1em;
+        cursor: pointer;
+        font-size: 1em;
+        border-bottom: 2px solid transparent;
+        transition: color 0.2s, border-color 0.2s;
+        outline: none;
+        white-space: nowrap;
+
+        @container base-panel (max-width: 400px) {
+            padding: 0.5em 0.5em;
+            font-size: 0.95em;
+        }
+    }
+
+    .tab-button:focus-visible:not(.active),
+    .tab-button:hover {
+        color: var(--text-color);
+        border-bottom-color: silver;
+    }
+
+    .tab-button.active {
+        color: var(--text-color);
+        border-bottom-color: var(--accent-color);
+    }
+}
+
+/* Body - matches base-dialog .modal-body */
+.panel-body {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* Footer - matches base-dialog .modal-footer */
+.panel-footer {
+    display: flex;
+    justify-content: center;
+    padding: 8px;
+    border-top: 2px solid var(--border-color);
+    font-size: 1em;
+    flex-shrink: 0;
+}
+
+/* Empty footer should not take up space */
+.panel-footer:empty {
+    display: none;
+}
