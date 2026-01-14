@@ -1,6 +1,6 @@
 .toast-container {
     position: fixed;
-    left: calc(8px + var(--safe-area-inset-left) + var(--sidebar-offset));
+    left: calc(8px + var(--safe-area-inset-left) + var(--sidebar-offset, 0px));
     top: calc(8px + var(--safe-area-inset-top));
     z-index: 9999;
     display: flex;
