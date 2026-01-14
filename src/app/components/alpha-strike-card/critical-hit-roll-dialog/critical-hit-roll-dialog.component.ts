@@ -222,6 +222,7 @@ function getTableForUnitType(unitType: ASUnitTypeCode): Record<number, CritTable
             <!-- 2D6 roll -->
             <dice-roller #mainRoller
                 [diceCount]="2"
+                [modifier]="rollModifier()"
                 [rollDurationMs]="600"
                 [freezeOnRollEnd]="500"
                 (finished)="onMainRollFinished($event)"
@@ -398,6 +399,16 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
     readonly randomColumn = signal<string | null>(null);
     readonly currentEntry = signal<CritTableEntry | null>(null);
 
+    /** Modifier to the critical hit roll (e.g., -2 for CR special) */
+    readonly rollModifier = computed(() => {
+        if (!this.forceUnit) return 0;
+        const specials = this.forceUnit.getUnit().as.specials;
+        if (!specials) return 0;
+        // CR (Critical-Resistant) special reduces crit roll by 2
+        if (specials.includes('CR')) return -2;
+        return 0;
+    });
+
     /** Ammo hit mitigation status based on unit specials */
     readonly ammoHitMitigation = computed<'none' | 'case' | 'immune'>(() => {
         const res = this.result();
@@ -502,6 +513,18 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
                 roll,
                 critType: 'No Critical Hit',
                 description: 'This unit type does not take critical hits.',
+                pipKey: null,
+            });
+            return;
+        }
+
+        // Rolls of 1 or less (possible with CR modifier) are not critical hits
+        if (roll <= 1) {
+            this.currentEntry.set(null);
+            this.result.set({
+                roll,
+                critType: 'No Critical Hit',
+                description: 'No additional effect.',
                 pipKey: null,
             });
             return;
