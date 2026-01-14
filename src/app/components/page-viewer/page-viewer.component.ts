@@ -1683,7 +1683,7 @@ export class PageViewerComponent implements AfterViewInit {
         
         if (existingShadow) {
             // Use the existing shadow page navigation
-            this.navigateToShadowPage(targetUnit, targetIndex);
+            this.navigateToShadowPage(targetUnit, targetIndex, existingShadow);
             return;
         }
         
@@ -1738,7 +1738,7 @@ export class PageViewerComponent implements AfterViewInit {
             this.shadowPageElements.push(tempWrapper);
             
             // Now navigate using the shadow page mechanism
-            this.navigateToShadowPage(targetUnit, targetIndex);
+            this.navigateToShadowPage(targetUnit, targetIndex, tempWrapper);
         });
     }
 
@@ -2225,20 +2225,18 @@ export class PageViewerComponent implements AfterViewInit {
     /**
      * Navigates to a shadow page by animating to it.
      * First replaces the shadow with the real SVG, then animates the transition.
+     * 
+     * @param unit The unit to navigate to
+     * @param targetIndex The index of the target unit in the force
+     * @param clickedShadow The actual shadow element that was clicked (passed directly to avoid
+     *                      incorrect lookups when the same unit appears on multiple sides)
      */
-    private navigateToShadowPage(unit: CBTForceUnit, targetIndex: number): void {
+    private navigateToShadowPage(unit: CBTForceUnit, targetIndex: number, clickedShadow: HTMLDivElement): void {
         const force = this.forceBuilder.currentForce();
         const allUnits = force?.units() ?? [];
         const totalUnits = allUnits.length;
         const currentStartIndex = this.viewStartIndex();
         const effectiveVisible = this.effectiveVisiblePageCount();
-        
-        // Find the shadow page element that was clicked to determine direction
-        const clickedShadow = this.shadowPageElements.find(
-            el => el.dataset['unitIndex'] === String(targetIndex)
-        );
-        
-        if (!clickedShadow) return;
         
         const direction = clickedShadow.dataset['shadowDirection'];
         
@@ -2490,7 +2488,7 @@ export class PageViewerComponent implements AfterViewInit {
         const clickHandler = (event: MouseEvent) => {
             event.preventDefault();
             event.stopPropagation();
-            this.navigateToShadowPage(unit, unitIndex);
+            this.navigateToShadowPage(unit, unitIndex, shadowWrapper);
         };
         shadowWrapper.addEventListener('click', clickHandler);
         
