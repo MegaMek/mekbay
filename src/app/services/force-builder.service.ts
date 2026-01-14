@@ -33,6 +33,7 @@
 
 import { Injectable, signal, effect, computed, Injector, inject, untracked, DestroyRef } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
+import { Location } from '@angular/common';
 import { Unit } from '../models/units.model';
 import { Force, UnitGroup } from '../models/force.model';
 import { ForceUnit } from '../models/force-unit.model';
@@ -77,6 +78,7 @@ export class ForceBuilderService {
     wsService = inject(WsService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
+    private location = inject(Location);
     private dialogsService = inject(DialogsService);
     private unitInitializer = inject(UnitInitializerService);
     private injector = inject(Injector);
@@ -85,7 +87,7 @@ export class ForceBuilderService {
 
     public currentForce = signal<Force | null>(null);
     public selectedUnit = signal<ForceUnit | null>(null);
-    private urlStateInitialized = false;
+    private urlStateInitialized = signal(false);
     private forceChangedSubscription: any;
     private conflictDialogRef: any;
 
@@ -171,7 +173,7 @@ export class ForceBuilderService {
             return;
         }
         try {
-            this.urlStateInitialized = false; // Reset URL state initialization
+            this.urlStateInitialized.set(false); // Reset URL state initialization
             const selectedUnitId = this.selectedUnit()?.id;
             const selectedIndex = currentForce.units().findIndex(u => u.id === selectedUnitId);
             currentForce.update(serializedForce);
@@ -180,7 +182,7 @@ export class ForceBuilderService {
             const newSelectedUnit = currentForce.units().find(u => u.id === selectedUnitId);
             this.selectUnit(newSelectedUnit || currentForce.units()[selectedIndex] || currentForce.units()[0] || null);
         } finally {
-            this.urlStateInitialized = true; // Re-enable URL state initialization
+            this.urlStateInitialized.set(true); // Re-enable URL state initialization
         }
     }
 
@@ -191,13 +193,12 @@ export class ForceBuilderService {
             return false; // User cancelled, do not load new force
         }
 
-        this.urlStateInitialized = false; // Reset URL state initialization
+        this.urlStateInitialized.set(false); // Reset URL state initialization
         try {
             this.setForce(force);
             this.selectUnit(force.units()[0] || null);
         } finally {
-            this.urlStateInitialized = true; // Re-enable URL state initialization
-            this.updateUrlFromCurrentForce(); // Explicitly update URL after loading
+            this.urlStateInitialized.set(true); // Re-enable URL state initialization
         }
         return true;
     }
@@ -218,7 +219,6 @@ export class ForceBuilderService {
         const currentPath = urlTree.root.children['primary']?.segments.map(s => s.path).join('/') || '';
         this.router.navigate([currentPath], {
             queryParams: {
-                gs: null,
                 units: null,
                 name: null,
                 instance: null
@@ -590,12 +590,12 @@ export class ForceBuilderService {
                 // If the local force is not owned, automatically load the cloud version
                 if (!currentForce.owned()) {
                     this.logger.info(`ForceBuilderService: Force with instance ID ${instanceId} downloading cloud version.`);
-                    this.urlStateInitialized = false; // Reset URL state initialization
+                    this.urlStateInitialized.set(false); // Reset URL state initialization
                     try {
                         this.setForce(cloudForce);
                         this.selectUnit(cloudForce.units()[0] || null);
                     } finally {
-                        this.urlStateInitialized = true; // Re-enable URL state initialization
+                        this.urlStateInitialized.set(true); // Re-enable URL state initialization
                     }
                     this.toastService.show('Cloud version loaded successfully', 'success');
                     return;
@@ -665,10 +665,12 @@ export class ForceBuilderService {
     private updateUrlOnForceChange() {
         effect(() => {
             const queryParameters = this.queryParameters();
-            if (!this.urlStateInitialized) {
+            if (!this.urlStateInitialized()) {
                 return;
             }
-            this.router.navigate([], {
+            // Use Location.replaceState to directly update URL without triggering router navigation
+            // This avoids timing issues with calling router.navigate inside effects
+            const urlTree = this.router.createUrlTree([], {
                 relativeTo: this.route,
                 queryParams: {
                     gs: queryParameters.gs,
@@ -676,29 +678,9 @@ export class ForceBuilderService {
                     name: queryParameters.name,
                     instance: queryParameters.instance
                 },
-                queryParamsHandling: 'merge',
-                replaceUrl: true
+                queryParamsHandling: 'merge'
             });
-        });
-    }
-
-    /**
-     * Explicitly updates the URL with current force parameters.
-     * Called after loading a force to ensure URL is updated even when
-     * the effect-based approach doesn't trigger due to timing.
-     */
-    private updateUrlFromCurrentForce(): void {
-        const queryParameters = this.queryParameters();
-        this.router.navigate([], {
-            relativeTo: this.route,
-            queryParams: {
-                gs: queryParameters.gs,
-                units: queryParameters.units,
-                name: queryParameters.name,
-                instance: queryParameters.instance
-            },
-            queryParamsHandling: 'merge',
-            replaceUrl: true
+            this.location.replaceState(urlTree.toString());
         });
     }
 
@@ -773,7 +755,7 @@ export class ForceBuilderService {
         effect(async () => {
             const isDataReady = this.dataService.isDataReady();
             // This effect runs when data is ready, but we only execute the logic once.
-            if (isDataReady && !this.urlStateInitialized) {
+            if (isDataReady && !this.urlStateInitialized()) {
                 // Use UrlStateService to get initial URL params (captured before any routing effects)
                 const instanceParam = this.urlStateService.getInitialParam('instance');
                 let loadedInstance = null;
@@ -839,7 +821,7 @@ export class ForceBuilderService {
                     }
                 }
                 // Mark as initialized so the update effect can start running.
-                this.urlStateInitialized = true;
+                this.urlStateInitialized.set(true);
                 // Signal that we're done reading URL state
                 this.urlStateService.markConsumerReady('force-builder');
             }

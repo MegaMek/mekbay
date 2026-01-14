@@ -36,6 +36,7 @@ import { Unit } from '../models/units.model';
 import { DataService } from './data.service';
 import { CountOperator, MultiState, MultiStateSelection, MultiStateOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { ActivatedRoute, Router } from '@angular/router';
+import { Location } from '@angular/common';
 import { getForcePacks } from '../models/forcepacks.model';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { computeRelevanceScore, naturalCompare, compareUnitsByName } from '../utils/sort.util';
@@ -532,6 +533,7 @@ export class UnitSearchFiltersService {
     optionsService = inject(OptionsService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
+    private location = inject(Location);
     gameService = inject(GameService);
     logger = inject(LoggerService);
     private urlStateService = inject(UrlStateService);
@@ -547,7 +549,7 @@ export class UnitSearchFiltersService {
     advOpen = signal(false);
     private totalRangesCache: Record<string, [number, number]> = {};
     private availableNamesCache = new Map<string, string[]>();
-    private urlStateInitialized = false;
+    private urlStateInitialized = signal(false);
     
     /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
     readonly tagsVersion = signal(0);
@@ -1895,7 +1897,7 @@ export class UnitSearchFiltersService {
     private loadFiltersFromUrlOnStartup() {
         effect(() => {
             const isDataReady = this.dataService.isDataReady();
-            if (isDataReady && !this.urlStateInitialized) {
+            if (isDataReady && !this.urlStateInitialized()) {
                 // Use UrlStateService to get initial URL params (captured before any routing effects)
                 let hasFilters = false;
                 
@@ -1991,7 +1993,7 @@ export class UnitSearchFiltersService {
                         }
                     }
                 }
-                this.urlStateInitialized = true;
+                this.urlStateInitialized.set(true);
                 // Signal that we're done reading URL state
                 this.urlStateService.markConsumerReady('unit-search-filters');
             }
@@ -2072,15 +2074,17 @@ export class UnitSearchFiltersService {
     private updateUrlOnFiltersChange() {
         effect(() => {
             const queryParameters = this.queryParameters();
-            if (!this.urlStateInitialized) {
+            if (!this.urlStateInitialized()) {
                 return;
             }
-            this.router.navigate([], {
+            // Use Location.replaceState to directly update URL without triggering router navigation
+            // This avoids timing issues with calling router.navigate inside effects
+            const urlTree = this.router.createUrlTree([], {
                 relativeTo: this.route,
                 queryParams: Object.keys(queryParameters).length > 0 ? queryParameters : {},
-                queryParamsHandling: 'merge',
-                replaceUrl: true
+                queryParamsHandling: 'merge'
             });
+            this.location.replaceState(urlTree.toString());
         });
     }
 

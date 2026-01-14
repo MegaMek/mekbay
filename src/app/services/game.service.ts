@@ -36,6 +36,7 @@ import { OptionsService } from './options.service';
 import { ForceBuilderService } from './force-builder.service';
 import { GameSystem } from '../models/common.model';
 import { ActivatedRoute, Router } from '@angular/router';
+import { Location } from '@angular/common';
 import { UrlStateService } from './url-state.service';
 
 /*
@@ -61,6 +62,7 @@ import { UrlStateService } from './url-state.service';
 export class GameService {
     private router = inject(Router);
     private route = inject(ActivatedRoute);
+    private location = inject(Location);
     private readonly optionsService = inject(OptionsService);
     private readonly forceBuilderService = inject(ForceBuilderService);
     private readonly urlStateService = inject(UrlStateService);
@@ -123,12 +125,14 @@ export class GameService {
             if (hasForce) {
                 return;
             }
-            this.router.navigate([], {
+            // Use Location.replaceState to directly update URL without triggering router navigation
+            // This avoids timing issues with calling router.navigate inside effects
+            const urlTree = this.router.createUrlTree([], {
                 relativeTo: this.route,
                 queryParams: { gs },
-                queryParamsHandling: 'merge',
-                replaceUrl: true
+                queryParamsHandling: 'merge'
             });
+            this.location.replaceState(urlTree.toString());
         });
     }
 
