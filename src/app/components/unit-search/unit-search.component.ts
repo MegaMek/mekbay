@@ -1252,11 +1252,14 @@ export class UnitSearchComponent {
     }
 
     private applyFavorite(fav: SerializedSearchFilter) {
-        // Switch game mode if the saved search's game system differs from current
-        const currentGs = this.gameService.currentGameSystem();
-        const favGs = fav.gameSystem === 'as' ? GameSystem.ALPHA_STRIKE : GameSystem.CLASSIC;
-        if (favGs !== currentGs) {
-            this.gameService.setMode(favGs);
+        // Switch game mode only if the saved search has a specific game system
+        // Game-agnostic searches (no gameSystem) don't switch the mode
+        if (fav.gameSystem) {
+            const currentGs = this.gameService.currentGameSystem();
+            const favGs = fav.gameSystem === 'as' ? GameSystem.ALPHA_STRIKE : GameSystem.CLASSIC;
+            if (favGs !== currentGs) {
+                this.gameService.setMode(favGs);
+            }
         }
         this.filtersService.applySerializedSearchFilter(fav);
         // Focus search input after applying

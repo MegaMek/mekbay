@@ -34,7 +34,6 @@
 import { Component, ChangeDetectionStrategy, input, output, signal, afterNextRender, computed } from '@angular/core';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { SerializedSearchFilter } from '../../services/unit-search-filters.service';
-import { GameSystem } from '../../models/common.model';
 
 @Component({
     selector: 'search-favorites-menu',
@@ -72,7 +71,7 @@ import { GameSystem } from '../../models/common.model';
         } @else {
           @for (f of favs; track f.id) {
             <div class="favorite-item" (click)="selectFavorite(f)">
-              <svg class="item-icon" [class.as]="f.gameSystem === GameSystem.ALPHA_STRIKE" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" xmlns="http://www.w3.org/2000/svg">
+              <svg class="item-icon" [class.cbt]="f.gameSystem === 'cbt'" [class.as]="f.gameSystem === 'as'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" xmlns="http://www.w3.org/2000/svg">
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
               </svg>
               <span class="favorite-name">{{ f.name }}</span>
@@ -161,6 +160,10 @@ import { GameSystem } from '../../models/common.model';
         }
         .item-icon {
             flex-shrink: 0;
+            stroke: #bbb;
+            fill: #333;
+        }
+        .item-icon.cbt {
             stroke: #ffcc00;
             fill: #725c00;
         }
@@ -238,8 +241,6 @@ import { GameSystem } from '../../models/common.model';
     `]
 })
 export class SearchFavoritesMenuComponent {
-    protected readonly GameSystem = GameSystem;
-
     favorites = input<SerializedSearchFilter[]>([]);
     canSave = input<boolean>(false);
     ready = signal(false);

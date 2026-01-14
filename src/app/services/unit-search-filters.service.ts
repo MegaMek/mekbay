@@ -122,8 +122,8 @@ export interface SerializedSearchFilter {
     id: string;
     /** Display name for the saved search */
     name: string;
-    /** Game system this filter applies to: 'cbt' or 'as' */
-    gameSystem: 'cbt' | 'as';
+    /** Game system this filter applies to: 'cbt' or 'as'. If not set, the search is game-agnostic. */
+    gameSystem?: 'cbt' | 'as';
     /** Search query text */
     q?: string;
     /** Sort field key */
@@ -2599,7 +2599,6 @@ export class UnitSearchFiltersService {
         const filter: SerializedSearchFilter = { 
             id,
             name, 
-            gameSystem,
             timestamp: Date.now()
         };
 
@@ -2618,7 +2617,7 @@ export class UnitSearchFiltersService {
         const p = this.pilotPilotingSkill();
         if (typeof p === 'number' && p !== 5) filter.piloting = p;
 
-        // Save only interacted filters
+        // Save only interacted filters (UI filters, not from semantic text)
         const state = this.filterState();
         const savedFilters: Record<string, any> = {};
         for (const [key, val] of Object.entries(state)) {
@@ -2629,7 +2628,36 @@ export class UnitSearchFiltersService {
         if (Object.keys(savedFilters).length > 0) {
             filter.filters = savedFilters;
         }
+
+        // Determine if the search is game-specific by checking UI filters and sort
+        // Semantic searches are game-agnostic (they support cross-game searching)
+        const isGameSpecific = this.isSearchGameSpecific(savedFilters, sort);
+        if (isGameSpecific) {
+            filter.gameSystem = gameSystem;
+        }
+
         return filter;
+    }
+
+    /**
+     * Determine if a search filter configuration is specific to a game system.
+     * Only UI filters (not semantic text) are considered game-specific.
+     * Returns true if any filter or sort key is specific to a game mode.
+     */
+    private isSearchGameSpecific(savedFilters: Record<string, any>, sortKey?: string): boolean {
+        // Check if sort key is game-specific
+        if (sortKey) {
+            const sortConfig = ADVANCED_FILTERS.find(f => f.key === sortKey);
+            if (sortConfig?.game) return true;
+        }
+
+        // Check if any saved filter is game-specific
+        for (const filterKey of Object.keys(savedFilters)) {
+            const filterConfig = ADVANCED_FILTERS.find(f => f.key === filterKey);
+            if (filterConfig?.game) return true;
+        }
+
+        return false;
     }
 
     public applySerializedSearchFilter(filter: SerializedSearchFilter): void {
