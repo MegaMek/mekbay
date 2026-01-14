@@ -103,17 +103,26 @@
     gap: 4px 16px;
 }
 
-.complex-query-notice {
+.complex-query-guide {
     grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+    max-height: 100%;
+}
+
+.complex-query-notice {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 24px 16px;
+    padding: 12px 16px;
     border: 1px dashed var(--semantic-color);
     color: var(--semantic-color);
     font-size: 0.9rem;
     text-align: center;
+    flex-shrink: 0;
 }
 
 .search-overlay  {

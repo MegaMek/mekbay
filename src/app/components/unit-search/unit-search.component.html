@@ -309,9 +309,12 @@
     </div>
     <div class="adv-panel-content" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         @if (isComplexQuery()) {
-        <!-- Complex query message - filters controlled by search query -->
-        <div class="complex-query-notice">
-            <span class="notice-text">Filters controlled by search query</span>
+        <!-- Complex query: show semantic guide as sidebar -->
+        <div class="complex-query-guide">
+            <div class="complex-query-notice">
+                <span class="notice-text">Filters controlled by search query</span>
+            </div>
+            <semantic-guide [compact]="true" />
         </div>
         } @else {
         <!-- Dropdown filters -->

@@ -60,6 +60,7 @@ import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-fa
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ShareSearchDialogComponent } from './share-search.component';
 import { SemanticGuideDialogComponent } from '../semantic-guide-dialog/semantic-guide-dialog.component';
+import { SemanticGuideComponent } from '../semantic-guide/semantic-guide.component';
 import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
@@ -104,7 +105,7 @@ export class ExpandedComponentsPipe implements PipeTransform {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {

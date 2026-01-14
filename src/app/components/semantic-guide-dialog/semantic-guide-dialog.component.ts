@@ -31,101 +31,24 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
-import { GameService } from '../../services/game.service';
-import { ADVANCED_FILTERS, AdvFilterType } from '../../services/unit-search-filters.service';
-import { GameSystem } from '../../models/common.model';
+import { SemanticGuideComponent } from '../semantic-guide/semantic-guide.component';
 
 /*
  * Author: Drake
  */
 
-interface FilterInfo {
-    key: string;
-    label: string;
-    type: 'dropdown' | 'range' | 'semantic';
-    multistate?: boolean;
-    countable?: boolean;
-}
-
 @Component({
     selector: 'semantic-guide-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent],
+    imports: [BaseDialogComponent, SemanticGuideComponent],
     templateUrl: './semantic-guide-dialog.component.html',
     styleUrls: ['./semantic-guide-dialog.component.css']
 })
 export class SemanticGuideDialogComponent {
     private dialogRef = inject(DialogRef);
-    private gameService = inject(GameService);
-
-    gameSystem = this.gameService.currentGameSystem;
-    isAlphaStrike = this.gameService.isAlphaStrike;
-
-    /** Get filters for a specific game system */
-    private getFiltersForSystem(gs: GameSystem | null): FilterInfo[] {
-        return ADVANCED_FILTERS
-            .filter(f => !f.game || f.game === gs)
-            .map(f => {
-                let type: 'dropdown' | 'range' | 'semantic';
-                if (f.type === AdvFilterType.RANGE) {
-                    type = 'range';
-                } else if (f.type === AdvFilterType.SEMANTIC) {
-                    type = 'semantic';
-                } else {
-                    type = 'dropdown';
-                }
-                return {
-                    key: f.semanticKey || f.key,
-                    label: f.label,
-                    type,
-                    multistate: f.multistate,
-                    countable: f.countable
-                };
-            })
-            .sort((a, b) => a.key.localeCompare(b.key));
-    }
-
-    /** Filters available for Classic BattleTech */
-    cbtFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.CLASSIC));
-    cbtDropdownFilters = computed(() => this.cbtFilters().filter(f => f.type === 'dropdown'));
-    cbtRangeFilters = computed(() => this.cbtFilters().filter(f => f.type === 'range'));
-
-    /** Filters available for Alpha Strike */
-    asFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.ALPHA_STRIKE));
-    asDropdownFilters = computed(() => this.asFilters().filter(f => f.type === 'dropdown'));
-    asRangeFilters = computed(() => {
-        const ranges = this.asFilters().filter(f => f.type === 'range');
-        // Add virtual 'dmg' filter for damage shorthand (dmg=2/3/1/0)
-        ranges.push({
-            key: 'dmg',
-            label: 'Damage (S/M/L/E)',
-            type: 'range'
-        });
-        return ranges.sort((a, b) => a.key.localeCompare(b.key));
-    });
-
-    /** Semantic-only filters (shared across game systems) */
-    semanticFilters = computed(() => {
-        const all = [...this.asFilters(), ...this.cbtFilters()];
-        const seen = new Set<string>();
-        return all.filter(f => f.type === 'semantic' && !seen.has(f.key) && seen.add(f.key));
-    });
-
-    /** Multistate and countable filters (shared) */
-    multistateFilters = computed(() => {
-        const all = [...this.asFilters(), ...this.cbtFilters()];
-        const seen = new Set<string>();
-        return all.filter(f => f.multistate && !seen.has(f.key) && seen.add(f.key));
-    });
-    countableFilters = computed(() => {
-        const all = [...this.asFilters(), ...this.cbtFilters()];
-        const seen = new Set<string>();
-        return all.filter(f => f.countable && !seen.has(f.key) && seen.add(f.key));
-    });
 
     onClose(): void {
         this.dialogRef.close();

@@ -1,0 +1,145 @@
+:host {
+    display: block;
+}
+
+.guide-content {
+    padding: 0 8px;
+    container-type: inline-size;
+    container-name: guide;
+}
+
+.guide-content.compact {
+    font-size: 0.9em;
+}
+
+.guide-content.compact .guide-section {
+    margin-bottom: 12px;
+}
+
+.guide-content.compact .examples {
+    gap: 2px;
+}
+
+.guide-content.compact .example code {
+    width: clamp(100px, 45cqi, 180px);
+    word-break: break-word;
+}
+
+.guide-section {
+    margin-bottom: 16px;
+    gap: 0.5em;
+    display: flex;
+    flex-direction: column;
+}
+
+.guide-section h3 {
+    color: var(--bt-yellow);
+    font-size: 1em;
+    margin: 4px 0 4px 0;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 4px;
+}
+
+.guide-section h4 {
+    color: var(--text-color-secondary);
+    font-size: 0.9em;
+    margin: 12px 0 6px 0;
+}
+
+.guide-section p {
+    margin: 4px 0 4px 0;
+    font-size: 0.9em;
+    color: var(--text-color-secondary);
+}
+
+code {
+    background: var(--background-color-light);
+    padding: 2px 4px;
+    font-size: 1.1em;
+    color: var(--semantic-color-highlight);
+}
+
+.operators-table {
+    width: 100%;
+    font-size: 0.9em;
+}
+
+.operators-table td {
+    padding: 4px 8px;
+}
+
+.operators-table td:first-child {
+    width: 60px;
+    text-align: center;
+
+    @container guide (max-width: 300px) {
+        width: 20px;
+    }
+}
+
+.examples {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.example {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+}
+
+.example code {
+    width: 180px;
+    flex-shrink: 0;
+}
+
+.example .desc {
+    color: var(--text-color-secondary);
+    font-size: 0.85em;
+}
+
+.filter-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.filter-list.inline {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.filter-list.inline code {
+    margin: 0;
+}
+
+.filter-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--background-color-light);
+    padding: 4px 8px;
+    font-size: 0.9em;
+}
+
+.filter-item code {
+    background: transparent;
+    padding: 0;
+}
+
+.filter-label {
+    color: var(--text-color-secondary);
+    font-size: 0.85em;
+}
+
+.fields-section {
+    margin-top: 24px;
+}
+
+.guide-content.compact .fields-section {
+    margin-top: 16px;
+}
