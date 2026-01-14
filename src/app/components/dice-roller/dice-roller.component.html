@@ -6,9 +6,8 @@
         </div>@if (!last) {<span class="plus-sign"> + </span>}
         }
         @if (modifier() !== 0) {
-        <div class="modifier" [class.large]="!small()">
-            <span>{{ modifier() > 0 ? '+' : '' }}{{ modifier() }}</span>
-        </div>
+        <span class="operator"> {{ modifier() > 0 ? '+' : '−' }} </span>
+        <span class="modifier-value" [class.large]="!small()">{{ modifier() > 0 ? modifier() : -modifier() }}</span>
         }
         @if (rollFinished()) {
         <div class="sum" [class.large]="!small()"> = {{ diceSum() }}</div>
@@ -26,9 +25,8 @@
                 </div>
                 }
                 @if (modifier() !== 0) {
-                <div class="modifier large">
-                    <span>{{ modifier() > 0 ? '+' : '' }}{{ modifier() }}</span>
-                </div>
+                <span class="operator large"> {{ modifier() > 0 ? '+' : '−' }} </span>
+                <span class="modifier-value large">{{ modifier() > 0 ? modifier() : -modifier() }}</span>
                 }
             </div>
             @if (rollFinished()) {

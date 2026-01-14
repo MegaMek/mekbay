@@ -44,6 +44,12 @@
         font-weight: bold;
         color: #fff;
     }
+
+    &.large {
+        font-size: 32px;
+        font-weight: bold;
+        color: #fff;
+    }
 }
 
 /* overlay */
@@ -88,10 +94,27 @@
     justify-content: center;
 }
 
-.modifier.large {
-    font-size: 32px;
+.operator {
+    .dice-roller-root:not(.small) & {
+        font-size: 24px;
+        font-weight: bold;
+        color: #fff;
+    }
+
+    &.large {
+        font-size: 32px;
+        font-weight: bold;
+        color: #fff;
+    }
+}
+
+.modifier-value {
     font-weight: bold;
     color: #fff;
+
+    &.large {
+        font-size: 32px;
+    }
 }
 
 /* sum text shown under overlay dice once finished */
