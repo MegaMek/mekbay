@@ -169,7 +169,7 @@ export class UnitSearchComponent {
     inlinePanelUnit = signal<Unit | null>(null);
     
     /** Minimum window width to show the inline details panel */
-    private readonly INLINE_PANEL_MIN_WIDTH = 2000;
+    private readonly INLINE_PANEL_MIN_WIDTH = 2100;
     
     /** Whether to show the inline details panel (expanded view + sufficient screen width) */
     showInlinePanel = computed(() => {
