@@ -36,6 +36,8 @@ export enum GameSystem {
     ALPHA_STRIKE = 'as'
 }
 
+export type TechBase = 'Inner Sphere' | 'Clan' | 'Mixed';
+
 export enum ECMMode {
     ECM = 'ecm',
     ECCM = 'eccm',
