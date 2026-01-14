@@ -1097,6 +1097,53 @@ export class ForceBuilderService {
         }
     }
 
+    /**
+     * Saves the current force after prompting the user to confirm/edit the force name.
+     * Shows a rename dialog first, then saves the force if the user confirms.
+     * @returns true if the force was saved successfully, false otherwise
+     */
+    async saveForceWithNameConfirmation(): Promise<boolean> {
+        const currentForce = this.currentForce();
+        if (!currentForce) {
+            return false;
+        }
+        
+        // Show rename dialog to confirm/edit force name
+        const dialogRef = this.dialogsService.createDialog<string | null>(RenameForceDialogComponent, {
+            data: {
+                force: currentForce,
+                hideUnset: true
+            } as RenameForceDialogData
+        });
+        
+        const newName = await firstValueFrom(dialogRef.closed);
+        
+        // User cancelled the dialog
+        if (newName === null || newName === undefined) {
+            return false;
+        }
+        
+        // Update force name based on dialog result
+        if (newName === '') {
+            currentForce.nameLock = false;
+            currentForce.setName(this.generateForceName());
+        } else {
+            currentForce.nameLock = true;
+            currentForce.setName(newName.trim());
+        }
+        
+        // Save the force
+        try {
+            await this.dataService.saveForce(currentForce);
+            this.toastService.show('Force saved successfully.', 'success');
+            return true;
+        } catch (error) {
+            this.logger.error('Error saving force: ' + error);
+            this.toastService.show('Failed to save force.', 'error');
+            return false;
+        }
+    }
+
     async promptChangeGroupName(group: UnitGroup) {
         const dialogRef = this.dialogsService.createDialog<string | null>(RenameGroupDialogComponent, {
             data: {

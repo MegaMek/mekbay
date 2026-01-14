@@ -50,7 +50,8 @@ interface FactionDisplay {
  * Author: Drake
  */
 export interface RenameForceDialogData {
-    force: Force
+    force: Force;
+    hideUnset?: boolean;
 }
 
 @Component({
@@ -100,7 +101,9 @@ export interface RenameForceDialogData {
       </div>
       <div dialog-actions>
         <button (click)="submit()" class="bt-button">CONFIRM</button>
-        <button (click)="submitEmpty()" class="bt-button">UNSET</button>
+        @if (!data.hideUnset) {
+          <button (click)="submitEmpty()" class="bt-button">UNSET</button>
+        }
         <button (click)="close()" class="bt-button">DISMISS</button>
       </div>
     </div>

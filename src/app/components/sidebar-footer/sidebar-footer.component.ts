@@ -85,14 +85,7 @@ export class SidebarFooterComponent {
     }
 
     async saveForce(): Promise<void> {
-        const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce) return;
-        try {
-            await this.dataService.saveForce(currentForce);
-            this.toastService.show('Force saved successfully.', 'success');
-        } catch (error) {
-            this.toastService.show('Failed to save force.', 'error');
-        }
+        await this.forceBuilderService.saveForceWithNameConfirmation();
     }
 
     async requestRepairAll(): Promise<void> {
