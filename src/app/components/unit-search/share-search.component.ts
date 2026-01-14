@@ -201,7 +201,7 @@ export class ShareSearchDialogComponent {
     async exportToExcel() {
         const units = this.unitSearchFilters.filteredUnits();
         if (!units || units.length === 0) {
-            this.toastService.show('No units to export.', 'error');
+            this.toastService.showToast('No units to export.', 'error');
             return;
         }
 
@@ -220,10 +220,10 @@ export class ShareSearchDialogComponent {
             const filename = `mekbay-${systemLabel}-units-${timestamp}`;
             
             await exportUnitsToExcel(units, gameSystem, filename);
-            this.toastService.show(`Exported ${units.length} units to Excel.`, 'success');
+            this.toastService.showToast(`Exported ${units.length} units to Excel.`, 'success');
         } catch (err) {
             console.error('Failed to export to Excel:', err);
-            this.toastService.show('Failed to export to Excel.', 'error');
+            this.toastService.showToast('Failed to export to Excel.', 'error');
         } finally {
             this.isExporting.set(false);
         }
@@ -232,7 +232,7 @@ export class ShareSearchDialogComponent {
     async exportToCSV() {
         const units = this.unitSearchFilters.filteredUnits();
         if (!units || units.length === 0) {
-            this.toastService.show('No units to export.', 'error');
+            this.toastService.showToast('No units to export.', 'error');
             return;
         }
 
@@ -251,10 +251,10 @@ export class ShareSearchDialogComponent {
             const filename = `mekbay-${systemLabel}-units-${timestamp}`;
             
             await exportUnitsToCSV(units, gameSystem, filename);
-            this.toastService.show(`Exported ${units.length} units to CSV.`, 'success');
+            this.toastService.showToast(`Exported ${units.length} units to CSV.`, 'success');
         } catch (err) {
             console.error('Failed to export to CSV:', err);
-            this.toastService.show('Failed to export to CSV.', 'error');
+            this.toastService.showToast('Failed to export to CSV.', 'error');
         } finally {
             this.isExporting.set(false);
         }
@@ -268,11 +268,11 @@ export class ShareSearchDialogComponent {
             }).catch(() => {
                 // fallback if user cancels or error
                 copyTextToClipboard(url);
-                this.toastService.show('Link copied to clipboard.', 'success');
+                this.toastService.showToast('Link copied to clipboard.', 'success');
             });
         } else {
             copyTextToClipboard(url);
-            this.toastService.show('Link copied to clipboard.', 'success');
+            this.toastService.showToast('Link copied to clipboard.', 'success');
         }
     }
 
@@ -291,9 +291,9 @@ export class ShareSearchDialogComponent {
 
         try {
             copyTextToClipboard(target.value);
-            this.toastService.show('Link copied to clipboard.', 'success');
+            this.toastService.showToast('Link copied to clipboard.', 'success');
         } catch (err) {
-            this.toastService.show('Failed to copy link.', 'error');
+            this.toastService.showToast('Failed to copy link.', 'error');
         }
     }
 

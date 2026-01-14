@@ -76,7 +76,7 @@ export class C3Handler extends EquipmentInteractionHandler {
         ref.closed.subscribe((result) => {
             if (result?.updated) {
                 force.setNetwork(result.networks);
-                context.toastService.show('C3 network configuration changed', 'success');
+                context.toastService.showToast('C3 network configuration changed', 'success');
             }
         });
 

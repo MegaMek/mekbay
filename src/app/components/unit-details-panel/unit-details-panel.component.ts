@@ -1,0 +1,204 @@
+/*
+ * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
+import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject, effect } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Unit } from '../../models/units.model';
+import { GameService } from '../../services/game.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
+import { ToastService } from '../../services/toast.service';
+import { TaggingService } from '../../services/tagging.service';
+import { REMOTE_HOST } from '../../models/common.model';
+import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
+import { UnitDetailsGeneralTabComponent } from '../unit-details-dialog/tabs/unit-details-general-tab.component';
+import { UnitDetailsIntelTabComponent } from '../unit-details-dialog/tabs/unit-details-intel-tab.component';
+import { UnitDetailsFactionTabComponent } from '../unit-details-dialog/tabs/unit-details-factions-tab.component';
+import { UnitDetailsSheetTabComponent } from '../unit-details-dialog/tabs/unit-details-sheet-tab.component';
+import { UnitDetailsCardTabComponent } from '../unit-details-dialog/tabs/unit-details-card-tab.component';
+
+/**
+ * Inline unit details panel for expanded view mode.
+ * Shows the same content as unit-details-dialog but without the dialog wrapper.
+ * Displayed when screen space permits in expanded view mode.
+ */
+@Component({
+    selector: 'unit-details-panel',
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [
+        CommonModule,
+        UnitIconComponent,
+        UnitTagsComponent,
+        UnitDetailsGeneralTabComponent,
+        UnitDetailsIntelTabComponent,
+        UnitDetailsFactionTabComponent,
+        UnitDetailsSheetTabComponent,
+        UnitDetailsCardTabComponent
+    ],
+    templateUrl: './unit-details-panel.component.html',
+    styleUrl: './unit-details-panel.component.scss',
+    host: {
+        '[class.has-unit]': '!!unit()',
+        '[class.has-fluff]': 'hasFluff()',
+        '[style.--fluff-bg]': 'fluffBgStyle()'
+    }
+})
+export class UnitDetailsPanelComponent {
+    private gameService = inject(GameService);
+    private forceBuilderService = inject(ForceBuilderService);
+    private toastService = inject(ToastService);
+    private taggingService = inject(TaggingService);
+
+    /** The unit to display details for */
+    readonly unit = input<Unit | null>(null);
+    
+    /** Gunnery skill for BV/PV calculations */
+    readonly gunnerySkill = input<number | undefined>(undefined);
+    
+    /** Piloting skill for BV calculations */
+    readonly pilotingSkill = input<number | undefined>(undefined);
+    
+    /** Whether there is a previous unit to navigate to */
+    readonly hasPrev = input<boolean>(false);
+    
+    /** Whether there is a next unit to navigate to */
+    readonly hasNext = input<boolean>(false);
+
+    /** Emitted when the ADD button is clicked */
+    readonly add = output<Unit>();
+    
+    /** Emitted when prev button is clicked */
+    readonly prev = output<void>();
+    
+    /** Emitted when next button is clicked */
+    readonly next = output<void>();
+
+    /** Available tabs based on game system */
+    readonly tabs = computed<string[]>(() => {
+        return ['General', 'Intel', 'Factions', 'Sheet', 'Card'];
+    });
+    /** Currently active tab */
+    readonly activeTab = signal<string>(this.gameService.isAlphaStrike() ? 'Card' : 'General');
+
+    /** Whether the force is read-only */
+    readonly readOnlyForce = computed(() => this.forceBuilderService.readOnlyForce());
+
+    /** Check if unit has fluff background image */
+    readonly hasFluff = computed(() => {
+        const u = this.unit();
+        if (!u?.fluff?.img) return false;
+        if (u.fluff.img.endsWith('hud.png')) return false;
+        return true;
+    });
+
+    /** Fluff background URL */
+    readonly fluffImageUrl = computed(() => {
+        const u = this.unit();
+        if (!u?.fluff?.img) return null;
+        if (u.fluff.img.endsWith('hud.png')) return null;
+        return `${REMOTE_HOST}/images/fluff/${u.fluff.img}`;
+    });
+
+    /** CSS background style for fluff */
+    readonly fluffBgStyle = computed(() => {
+        const url = this.fluffImageUrl();
+        return url ? `url("${url}")` : null;
+    });
+
+    constructor() {
+        // Set initial tab and reset when game system changes
+        effect(() => {
+            const newTabs = this.tabs();
+            const currentTab = this.activeTab();
+            if (!newTabs.includes(currentTab)) {
+                this.activeTab.set(newTabs[0]);
+            }
+        });
+    }
+
+    /** Format thousands with commas */
+    formatThousands(value: number): string {
+        if (value === undefined || value === null) return '';
+        return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+
+    /** Handle ADD button click */
+    async onAdd(): Promise<void> {
+        const unit = this.unit();
+        if (!unit) return;
+
+        const addedUnit = await this.forceBuilderService.addUnit(
+            unit,
+            this.gunnerySkill(),
+            this.pilotingSkill()
+        );
+
+        if (addedUnit) {
+            this.toastService.showToast(`${unit.chassis} ${unit.model} added to force`, 'success');
+            this.add.emit(unit);
+        }
+    }
+
+    /** Handle tag clicks */
+    async onTagClick({ unit, event }: TagClickEvent): Promise<void> {
+        event.stopPropagation();
+        const anchorEl = (event.currentTarget as HTMLElement) || (event.target as HTMLElement);
+        await this.taggingService.openTagSelector([unit], anchorEl);
+    }
+
+    /** Handle share button click */
+    onShare(): void {
+        const unit = this.unit();
+        if (!unit) return;
+        
+        const domain = window.location.origin + window.location.pathname;
+        const unitName = encodeURIComponent(unit.name);
+        const tab = encodeURIComponent(this.activeTab());
+        const shareUrl = `${domain}?gs=${this.gameService.currentGameSystem()}&shareUnit=${unitName}&tab=${tab}`;
+        const shareText = `${unit.chassis} ${unit.model}`;
+        
+        if (navigator.share) {
+            navigator.share({
+                title: shareText,
+                url: shareUrl
+            }).catch(() => {
+                copyTextToClipboard(shareUrl);
+                this.toastService.showToast('Unit link copied to clipboard.', 'success');
+            });
+        } else {
+            copyTextToClipboard(shareUrl);
+            this.toastService.showToast('Unit link copied to clipboard.', 'success');
+        }
+    }
+}

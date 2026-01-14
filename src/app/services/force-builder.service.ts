@@ -254,7 +254,7 @@ export class ForceBuilderService {
         try {
             newForceUnit = currentForce.addUnit(unit);
         } catch (error) {
-            this.toastService.show(error instanceof Error ? error.message : (error as string), 'error');
+            this.toastService.showToast(error instanceof Error ? error.message : (error as string), 'error');
             return null;
         }
 
@@ -465,7 +465,7 @@ export class ForceBuilderService {
             } finally {
                 currentForce.loading = false;
             }
-            this.toastService.show(`A copy of this force was created and saved. You can now edit the copy without affecting the original.`, 'success');
+            this.toastService.showToast(`A copy of this force was created and saved. You can now edit the copy without affecting the original.`, 'success');
             resolve(true);
         });
     }
@@ -557,7 +557,7 @@ export class ForceBuilderService {
         await this.loadForce(newForce);
         this.dataService.saveForce(newForce);
 
-        this.toastService.show(`Force converted to ${targetSystemLabel} and saved.`, 'success');
+        this.toastService.showToast(`Force converted to ${targetSystemLabel} and saved.`, 'success');
         return true;
     }
 
@@ -704,7 +704,7 @@ export class ForceBuilderService {
                     } finally {
                         this.urlStateInitialized.set(true); // Re-enable URL state initialization
                     }
-                    this.toastService.show('Cloud version loaded successfully', 'success');
+                    this.toastService.showToast('Cloud version loaded successfully', 'success');
                     return;
                 }
                 // Cloud version is newer - show conflict dialog
@@ -748,18 +748,18 @@ export class ForceBuilderService {
             // Load the cloud version
             await this.loadForce(cloudForce);
             await this.dataService.saveForce(currentForce, true);
-            this.toastService.show('Cloud version loaded successfully', 'success');
+            this.toastService.showToast('Cloud version loaded successfully', 'success');
         } else if (result === 'local') {
             // Keep local version and overwrite cloud
             currentForce.timestamp = new Date().toISOString();
             await this.dataService.saveForce(currentForce);
-            this.toastService.show('Local version kept and synced to cloud', 'success');
+            this.toastService.showToast('Local version kept and synced to cloud', 'success');
         } else if (result === 'cloneLocal') {
             // clone local version as a new force
             currentForce.instanceId.set(generateUUID());
             currentForce.timestamp = new Date().toISOString();
             currentForce.setName(currentForce.name + ' (Cloned)', false);
-            this.toastService.show('Local version has been cloned', 'success');
+            this.toastService.showToast('Local version has been cloned', 'success');
         }
         // else: dialog was closed without selection, do nothing. If they interact, it will overwrite the cloud.
     }
@@ -1046,7 +1046,7 @@ export class ForceBuilderService {
             if (force instanceof LoadForceEntry) {
                 const requestedForce = await this.dataService.getForce(force.instanceId, true);
                 if (!requestedForce) {
-                    this.toastService.show('Failed to load force.', 'error');
+                    this.toastService.showToast('Failed to load force.', 'error');
                     return;
                 }
                 this.loadForce(requestedForce);
@@ -1145,11 +1145,11 @@ export class ForceBuilderService {
         // Save the force
         try {
             await this.dataService.saveForce(currentForce);
-            this.toastService.show('Force saved successfully.', 'success');
+            this.toastService.showToast('Force saved successfully.', 'success');
             return true;
         } catch (error) {
             this.logger.error('Error saving force: ' + error);
-            this.toastService.show('Failed to save force.', 'error');
+            this.toastService.showToast('Failed to save force.', 'error');
             return false;
         }
     }
@@ -1222,7 +1222,7 @@ export class ForceBuilderService {
         if (!pilot) {
             const crewMembers = unit.getCrewMembers();
             if (crewMembers.length === 0) {
-                this.toastService.show('This unit has no crew to edit.', 'error');
+                this.toastService.showToast('This unit has no crew to edit.', 'error');
                 return;
             }
             pilot = crewMembers[0];

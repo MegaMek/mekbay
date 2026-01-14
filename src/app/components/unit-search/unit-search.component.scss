@@ -141,6 +141,42 @@
     background-color: var(--background-color-menu);
 }
 
+/* Wrapper for expanded results with optional inline details panel */
+.expanded-results-wrapper {
+    position: fixed;
+    left: 4px;
+    /* top, right, bottom set via ngStyle */
+    z-index: 3;
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+}
+
+.expanded-results-wrapper .results-dropdown {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    top: auto !important;
+    width: auto !important;
+    height: 100% !important;
+}
+
+.expanded-results-wrapper.with-details-panel .results-dropdown {
+    flex: 1 1 auto;
+}
+
+.expanded-results-wrapper .inline-details-panel {
+    flex: 0 0 800px;
+    width: 800px;
+}
+
+.results-dropdown-item.unit-card.panel-selected:not(.selected) {
+    background-color: var(--background-highlight);
+}
+
 .results-dropdown {
     position: absolute;
     box-sizing: border-box;

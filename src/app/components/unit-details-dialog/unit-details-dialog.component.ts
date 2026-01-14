@@ -99,12 +99,9 @@ export class UnitDetailsDialogComponent {
     incomingPanelRef = viewChild<ElementRef>('incomingPanel');
 
     tabs = computed<string[]>(() => {
-        if (this.gameService.isAlphaStrike()) {
-            return ['Card', 'Intel', 'Factions', 'General', 'Sheet'];
-        }
         return ['General', 'Intel', 'Factions', 'Sheet', 'Card'];
     });
-    activeTab = signal(this.tabs()[0]);
+    activeTab = signal(this.gameService.isAlphaStrike() ? 'Card' : 'General');
 
     unitList: Unit[] | ForceUnit[] = this.data.unitList;
     unitIndex = signal(this.data.unitIndex);
@@ -345,7 +342,7 @@ export class UnitDetailsDialogComponent {
             piloting,
         );
         if (addedUnit) {
-            this.toastService.show(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
+            this.toastService.showToast(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
             this.add.emit(selectedUnit);
         }
         this.onClose();
@@ -373,11 +370,11 @@ export class UnitDetailsDialogComponent {
             }).catch(() => {
                 // fallback if user cancels or error
                 copyTextToClipboard(shareUrl);
-                this.toastService.show('Unit link copied to clipboard.', 'success');
+                this.toastService.showToast('Unit link copied to clipboard.', 'success');
             });
         } else {
             copyTextToClipboard(shareText);
-            this.toastService.show('Unit link copied to clipboard.', 'success');
+            this.toastService.showToast('Unit link copied to clipboard.', 'success');
         }
     }
 

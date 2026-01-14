@@ -74,6 +74,7 @@ import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { generateUUID } from '../../services/ws.service';
 import { GameSystem } from '../../models/common.model';
+import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 
 
 
@@ -105,7 +106,7 @@ export class ExpandedComponentsPipe implements PipeTransform {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent, UnitDetailsPanelComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {
@@ -150,6 +151,7 @@ export class UnitSearchComponent {
     favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
     resultsDropdown = viewChild<ElementRef<HTMLElement>>('resultsDropdown');
+    expandedResultsWrapper = viewChild<ElementRef<HTMLElement>>('expandedResultsWrapper');
 
     gameSystem = computed(() => this.gameService.currentGameSystem());
     autoFocus = input(false);
@@ -162,6 +164,34 @@ export class UnitSearchComponent {
     activeIndex = signal<number | null>(null);
     selectedUnits = signal<Set<string>>(new Set());
     private unitDetailsDialogOpen = signal(false);
+    
+    /** Unit currently selected for inline details panel in expanded view */
+    inlinePanelUnit = signal<Unit | null>(null);
+    
+    /** Minimum window width to show the inline details panel */
+    private readonly INLINE_PANEL_MIN_WIDTH = 2000;
+    
+    /** Whether to show the inline details panel (expanded view + sufficient screen width) */
+    showInlinePanel = computed(() => {
+        return this.expandedView() && this.layoutService.windowWidth() >= this.INLINE_PANEL_MIN_WIDTH;
+    });
+    
+    /** Index of the currently selected unit in the filtered list */
+    private inlinePanelIndex = computed(() => {
+        const unit = this.inlinePanelUnit();
+        if (!unit) return -1;
+        return this.filtersService.filteredUnits().findIndex(u => u.name === unit.name);
+    });
+    
+    /** Whether there is a previous unit to navigate to in the inline panel */
+    inlinePanelHasPrev = computed(() => this.inlinePanelIndex() > 0);
+    
+    /** Whether there is a next unit to navigate to in the inline panel */
+    inlinePanelHasNext = computed(() => {
+        const index = this.inlinePanelIndex();
+        return index >= 0 && index < this.filtersService.filteredUnits().length - 1;
+    });
+    
     advPanelStyle = signal<{ left: string, top: string, width: string, height: string, columnsCount: number }>({
         left: '0px',
         top: '0px',
@@ -173,6 +203,26 @@ export class UnitSearchComponent {
         top: '0px',
         width: '100%',
         height: '100%',
+    });
+    
+    /** Style for the expanded results wrapper when advanced panel is docked */
+    expandedWrapperStyle = computed(() => {
+        const { top: safeTop, bottom: safeBottom, right: safeRight } = this.layoutService.getSafeAreaInsets();
+        const gap = 4;
+        const top = safeTop + 4 + 40 + gap; // top margin + searchbar height + gap
+        const bottom = Math.max(4, safeBottom);
+        
+        let right = 4;
+        if (this.advPanelDocked()) {
+            const advPanelWidth = parseInt(this.advPanelStyle().width, 10) || 300;
+            right = advPanelWidth + 8;
+        }
+        
+        return {
+            top: `${top}px`,
+            right: `${right}px`,
+            bottom: `${bottom}px`
+        };
     });
 
     overlayVisible = computed(() => {
@@ -845,8 +895,50 @@ export class UnitSearchComponent {
             event.stopPropagation();
             return;
         }
-        // Single click: open details and clear selection
-        this.showUnitDetails(unit);
+        // Single click: show inline panel if available, otherwise open dialog
+        if (this.showInlinePanel()) {
+            this.inlinePanelUnit.set(unit);
+            // Update activeIndex to match clicked unit
+            const filteredUnits = this.filtersService.filteredUnits();
+            const index = filteredUnits.findIndex(u => u.name === unit.name);
+            if (index >= 0) {
+                this.activeIndex.set(index);
+            }
+        } else {
+            this.showUnitDetails(unit);
+        }
+    }
+
+    /** Handle unit added from inline panel */
+    onInlinePanelAdd(unit: Unit): void {
+        if (this.forceBuilderService.currentForce()?.units().length === 1) {
+            // If this is the first unit being added, close the search panel
+            this.closeAllPanels();
+        }
+        this.blurInput();
+    }
+
+    /** Navigate to previous unit in inline panel */
+    onInlinePanelPrev(): void {
+        const index = this.inlinePanelIndex();
+        if (index > 0) {
+            const prevUnit = this.filtersService.filteredUnits()[index - 1];
+            this.inlinePanelUnit.set(prevUnit);
+            this.activeIndex.set(index - 1);
+            this.scrollToMakeVisible(index - 1);
+        }
+    }
+
+    /** Navigate to next unit in inline panel */
+    onInlinePanelNext(): void {
+        const index = this.inlinePanelIndex();
+        const filteredUnits = this.filtersService.filteredUnits();
+        if (index >= 0 && index < filteredUnits.length - 1) {
+            const nextUnit = filteredUnits[index + 1];
+            this.inlinePanelUnit.set(nextUnit);
+            this.activeIndex.set(index + 1);
+            this.scrollToMakeVisible(index + 1);
+        }
     }
 
     isUnitSelected(unit: Unit): boolean {

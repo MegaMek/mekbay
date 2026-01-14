@@ -158,7 +158,7 @@ export class ForceBuilderViewerComponent {
             'info');
         if (confirmed) {
             unit.repairAll();
-            this.toastService.show(`Repaired unit ${unit.getUnit()?.chassis} ${unit.getUnit()?.model}.`, 'success');
+            this.toastService.showToast(`Repaired unit ${unit.getUnit()?.chassis} ${unit.getUnit()?.model}.`, 'success');
             return true;
         };
         return false;
@@ -201,7 +201,7 @@ export class ForceBuilderViewerComponent {
             if (result?.updated) {
                 // Save networks back to force
                 force.setNetwork(result.networks);
-                this.toastService.show('C3 network configuration changed', 'success');
+                this.toastService.showToast('C3 network configuration changed', 'success');
             }
         });
     }

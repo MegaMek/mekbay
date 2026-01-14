@@ -60,7 +60,7 @@ export abstract class ToggleHandler extends EquipmentInteractionHandler {
         const newState = value.value === 'enabled' ? 'disabled' : 'enabled';
         equipment.states?.set(this.stateKey, newState);
         equipment.owner.setInventoryEntry(equipment);
-        context.toastService.show(
+        context.toastService.showToast(
             `${equipment.equipment?.name||equipment.name} ${newState === 'enabled' ? this.enabledLabel : this.disabledLabel}`,
             'info'
         );

@@ -151,7 +151,7 @@ export class App {
             this.checkForUpdate();
         }
         this.wsService.setGlobalErrorHandler((msg: string) => {
-            this.toastService.show(msg, 'error');
+            this.toastService.showToast(msg, 'error');
         });
         effect(() => {
             const colorMode = this.optionsService.options().sheetsColor;

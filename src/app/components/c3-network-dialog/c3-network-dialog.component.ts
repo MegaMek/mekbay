@@ -270,7 +270,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 // If user has modified, they will save or cancel explicitly
                 if (this.hasModifications()) {
                     // User has local changes - show a toast notification
-                    this.toastService.show(
+                    this.toastService.showToast(
                         'C3 network was updated remotely. Your local changes will be kept.',
                         'info'
                     );
@@ -1345,13 +1345,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                                 this.networks.set(result.networks);
                             }
                             this.hasModifications.set(true);
-                            this.toastService.show('Connection removed', 'success');
+                            this.toastService.showToast('Connection removed', 'success');
                         } else if (!this.data.readOnly) {
                             const result = C3NetworkUtil.createConnection(this.getNetworkContext(), conn.node, conn.compIndex, targetNode, targetPin);
                             if (result.success) {
                                 this.networks.set(result.networks);
                                 this.hasModifications.set(true);
-                                this.toastService.show(result.message || 'Connected', 'success');
+                                this.toastService.showToast(result.message || 'Connected', 'success');
                             }
                         }
                     }

@@ -314,7 +314,7 @@ export class SvgInteractionService {
             lastAmountVariationTimestamp = Date.now();
             const remaining = totalTroops - getHits();
             const amountText = amount > 0 ? `+${amount}` : amount.toString();
-            this.toastService.show(`${amountText} hits (${remaining}/${totalTroops})`, amount > 0 ? 'error' : 'success', toastId);
+            this.toastService.showToast(`${amountText} hits (${remaining}/${totalTroops})`, amount > 0 ? 'error' : 'success', toastId);
         };
         svg.querySelectorAll('.soldierPip').forEach(el => {
             const svgEl = el as SVGElement;
@@ -386,7 +386,7 @@ export class SvgInteractionService {
                 const amountText = amount > 0 ? `+${amount}` : amount.toString();
                 const totalPips = pipsCount + availableModularArmorPoints + consumedModularArmorPoints;
                 const location = isStructure ? 'internal' : isShield ? 'shield' : 'armor';
-                this.toastService.show(`${amountText} ${rear ? ' rear' : ''} ${location} hits in ${loc} (${remaining}/${totalPips})`, amount > 0 ? 'error' : 'success', armorToastId);
+                this.toastService.showToast(`${amountText} ${rear ? ' rear' : ''} ${location} hits in ${loc} (${remaining}/${totalPips})`, amount > 0 ? 'error' : 'success', armorToastId);
             };
 
             const createAndShowPicker = (event: PointerEvent) => {
@@ -553,7 +553,7 @@ export class SvgInteractionService {
                 lastAmountVariationTimestamp = Date.now();
                 const remaining = totalAmmo - critSlot.consumed;
                 const amountText = amount > 0 ? `+${amount}` : amount.toString();
-                this.toastService.show(`${amountText} ${amount >= 0 ? 'to' : 'from'} ${labelText} (${remaining}/${totalAmmo})`, 'info', ammoToastId);
+                this.toastService.showToast(`${amountText} ${amount >= 0 ? 'to' : 'from'} ${labelText} (${remaining}/${totalAmmo})`, 'info', ammoToastId);
             };
 
             const registry = this.equipmentRegistryService.getRegistry();
@@ -616,7 +616,7 @@ export class SvgInteractionService {
                         } else if (choice.value == 'Empty') {
                             critSlot.consumed = totalAmmo;
                             unit.setCritSlot(critSlot);
-                            this.toastService.show(`Emptied ${labelText}`, 'info');
+                            this.toastService.showToast(`Emptied ${labelText}`, 'info');
                         } else if (choice.value == 'Set Ammo') {
                             const amountUsed = critSlot.consumed ?? 0;
                             const ammoOptions: AmmoEquipment[] = [];
@@ -676,10 +676,10 @@ export class SvgInteractionService {
                             }
                         } else if (choice.value == 'Hit') {
                             unit.applyHitToCritSlot(critSlot, 1, !this.optionsService.options().useAutomations);
-                            this.toastService.show(`Critical Hit on ${labelText}`, 'error');
+                            this.toastService.showToast(`Critical Hit on ${labelText}`, 'error');
                         } else if (choice.value == 'Repair') {
                             unit.applyHitToCritSlot(critSlot, -1, !this.optionsService.options().useAutomations);
-                            this.toastService.show(`Repaired ${labelText}`, 'success');
+                            this.toastService.showToast(`Repaired ${labelText}`, 'success');
                         }
                         if (choice.keepOpen) {
                             pickerInstance.component.values.set(calculateValues());
@@ -709,7 +709,7 @@ export class SvgInteractionService {
                         // default is damage
                         if (!critSlot.destroyed) {
                             unit.applyHitToCritSlot(critSlot, 1, !this.optionsService.options().useAutomations);
-                            this.toastService.show(`Critical Hit on ${labelText}`, 'error');
+                            this.toastService.showToast(`Critical Hit on ${labelText}`, 'error');
                             return;
                         }
                     }
@@ -743,7 +743,7 @@ export class SvgInteractionService {
                 lastAmountVariationTimestamp = Date.now();
                 const remaining = totalAmmo - equip.consumed;
                 const amountText = amount > 0 ? `+${amount}` : amount.toString();
-                this.toastService.show(`${amountText} ${amount >= 0 ? 'to' : 'from'} ${nameText} (${remaining}/${totalAmmo})`, 'info', ammoToastId);
+                this.toastService.showToast(`${amountText} ${amount >= 0 ? 'to' : 'from'} ${nameText} (${remaining}/${totalAmmo})`, 'info', ammoToastId);
             };
 
             const createAndShowPicker = (event: Event) => {
@@ -828,15 +828,15 @@ export class SvgInteractionService {
                             } else if (choice.value == 'Empty') {
                                 entry.consumed = totalAmmo;
                                 this.unit()?.setInventoryEntry(entry);
-                                this.toastService.show(`Emptied ${nameText}`, 'info');
+                                this.toastService.showToast(`Emptied ${nameText}`, 'info');
                             } else if (choice.value == 'Hit') {
                                 entry.destroyed = true;
                                 this.unit()?.setInventoryEntry(entry);
-                                this.toastService.show(`Critical Hit on ${nameText}`, 'error');
+                                this.toastService.showToast(`Critical Hit on ${nameText}`, 'error');
                             } else if (choice.value == 'Repair') {
                                 entry.destroyed = false;
                                 this.unit()?.setInventoryEntry(entry);
-                                this.toastService.show(`Repaired ${nameText}`, 'success');
+                                this.toastService.showToast(`Repaired ${nameText}`, 'success');
                             }
                         }
                         if (choice.keepOpen) {
@@ -1052,7 +1052,7 @@ export class SvgInteractionService {
                             if (val) {
                                 const heatsinksOff = (unit.getHeat().heatsinksOff || 0) - (val.value as number);
                                 unit.setHeatsinksOff(heatsinksOff);
-                                this.toastService.show(`Heatsink settings updated.`, 'info');
+                                this.toastService.showToast(`Heatsink settings updated.`, 'info');
                             }
                         },
                         onCancel: () => {
