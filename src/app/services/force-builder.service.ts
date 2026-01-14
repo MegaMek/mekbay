@@ -210,7 +210,6 @@ export class ForceBuilderService {
     }
 
     private clearForceUrlParams() {
-        console.log(`ForceBuilderService: clearing force-related URL parameters`);
         this.urlStateService.setParams({
             units: null,
             name: null,
@@ -869,7 +868,6 @@ export class ForceBuilderService {
                     // If no instance ID or not found, create a new force.
                     if (instanceParam) {
                         //We remove the failed instance ID from the URL
-                        console.log(`ForceBuilderService: instance ID ${instanceParam} not found, removing from URL`);
                         this.urlStateService.setParams({ instance: null });
                     }
                     const unitsParam = this.urlStateService.getInitialParam('units');
