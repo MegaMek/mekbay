@@ -125,8 +125,6 @@ export class GameService {
             if (hasForce) {
                 return;
             }
-            // Use Location.replaceState to directly update URL without triggering router navigation
-            // This avoids timing issues with calling router.navigate inside effects
             const urlTree = this.router.createUrlTree([], {
                 relativeTo: this.route,
                 queryParams: { gs },
