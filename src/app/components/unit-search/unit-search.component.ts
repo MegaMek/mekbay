@@ -717,6 +717,7 @@ export class UnitSearchComponent {
         ref.componentInstance?.indexChange.subscribe(newIndex => {
             this.activeIndex.set(newIndex);
             this.scrollToMakeVisible(newIndex);
+            this.inlinePanelUnit.set(filteredUnits[newIndex]);
         });
 
         ref.componentInstance?.add.subscribe(newUnit => {
@@ -896,8 +897,8 @@ export class UnitSearchComponent {
             return;
         }
         // Single click: show inline panel if available, otherwise open dialog
+        this.inlinePanelUnit.set(unit);
         if (this.showInlinePanel()) {
-            this.inlinePanelUnit.set(unit);
             // Update activeIndex to match clicked unit
             const filteredUnits = this.filtersService.filteredUnits();
             const index = filteredUnits.findIndex(u => u.name === unit.name);
