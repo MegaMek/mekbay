@@ -131,6 +131,8 @@ export class UnitSearchComponent {
     private savedSearchesService = inject(SavedSearchesService);
 
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
+    /** Whether the layout is filters-list-panel (filters on left) */
+    readonly filtersOnLeft = computed(() => this.optionsService.options().unitSearchExpandedViewLayout === 'filters-list-panel');
 
     public readonly ADVANCED_FILTERS = ADVANCED_FILTERS;
     public readonly AdvFilterType = AdvFilterType;
@@ -211,17 +213,25 @@ export class UnitSearchComponent {
         const gap = 4;
         const top = safeTop + 4 + 40 + gap; // top margin + searchbar height + gap
         const bottom = Math.max(4, safeBottom);
-        
+        const filtersOnLeft = this.filtersOnLeft();
+
+        let left = 4;
         let right = 4;
         if (this.advPanelDocked()) {
             const advPanelWidth = parseInt(this.advPanelStyle().width, 10) || 300;
-            right = advPanelWidth + 8;
+            if (filtersOnLeft) {
+                left = advPanelWidth + 8;
+            } else {
+                right = advPanelWidth + 8;
+            }
         }
-        
+
         return {
             top: `${top}px`,
+            left: `${left}px`,
             right: `${right}px`,
-            bottom: `${bottom}px`
+            bottom: `${bottom}px`,
+            flexDirection: filtersOnLeft ? 'row-reverse' : 'row' as 'row' | 'row-reverse',
         };
     });
 
@@ -494,10 +504,15 @@ export class UnitSearchComponent {
         const singlePanelWidth = 300;
         const doublePanelWidth = 600;
         const gap = 4;
-        const spaceToRight = window.innerWidth - buttonRect.right - gap - 10;
+        const filtersOnLeft = this.filtersOnLeft();
+        
+        // Calculate available space based on layout direction
+        const spaceAvailable = filtersOnLeft 
+            ? buttonRect.left - gap - 10  // Space to the left of button
+            : window.innerWidth - buttonRect.right - gap - 10;  // Space to the right of button
 
         // Use user override if set, else auto
-        let columns = (spaceToRight >= doublePanelWidth ? 2 : 1);
+        let columns = (spaceAvailable >= doublePanelWidth ? 2 : 1);
         if (this.expandedView() && this.advPanelDocked()) {
             const columnsCountOverride = this.advPanelUserColumns();
             if (columnsCountOverride) {
@@ -510,15 +525,30 @@ export class UnitSearchComponent {
         let top: number;
         let availableHeight: number;
 
-        if (spaceToRight >= panelWidth) {
-            left = buttonRect.right + gap;
-            top = buttonRect.top;
-            availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
+        if (filtersOnLeft) {
+            // Filters on left: panel opens to the left of the button
+            if (spaceAvailable >= panelWidth) {
+                left = buttonRect.left - panelWidth - gap;
+                top = buttonRect.top;
+                availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
+            } else {
+                left = gap;
+                top = buttonRect.bottom + gap;
+                availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
+            }
+            left = Math.max(gap, left);
         } else {
-            left = buttonRect.right - panelWidth;
-            top = buttonRect.bottom + gap;
-            availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
-            left = Math.max(10, left);
+            // Default: panel opens to the right of the button
+            if (spaceAvailable >= panelWidth) {
+                left = buttonRect.right + gap;
+                top = buttonRect.top;
+                availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
+            } else {
+                left = buttonRect.right - panelWidth;
+                top = buttonRect.bottom + gap;
+                availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
+                left = Math.max(10, left);
+            }
         }
 
         this.advPanelStyle.set({
@@ -853,7 +883,10 @@ export class UnitSearchComponent {
 
     onAdvPanelDragMove = (event: PointerEvent) => {
         const delta = event.clientX - this.advPanelDragStartX;
-        const newWidth = this.advPanelDragStartWidth - delta;
+        // When filters are on left, dragging right increases width; otherwise dragging left increases width
+        const newWidth = this.filtersOnLeft() 
+            ? this.advPanelDragStartWidth + delta 
+            : this.advPanelDragStartWidth - delta;
         // Snap to 1 or 2 columns
         if (newWidth > 450) {
             this.advPanelUserColumns.set(2);

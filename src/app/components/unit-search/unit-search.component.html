@@ -33,6 +33,17 @@
         </svg>
         }
     </button>
+    <!-- Adv button on left when filters are on left side -->
+    @if (this.expandedView() && this.filtersOnLeft()) {
+    <button #advBtn class="bt-button adv-btn square" [class.active]="isAdvActive()"
+        [disabled]="!this.filtersService.isDataReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+            focusable="false">
+            <path d="M4 4h16l-6 8v5l-4 3v-8z" />
+        </svg>
+    </button>
+    }
     <div class="searchbar-input-container">
         <syntax-input #syntaxInput [value]="this.filtersService.searchText()" [tokens]="highlightTokens()"
             [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
@@ -40,6 +51,13 @@
             (valueChange)="setSearch($event)" (cleared)="clearSearch()" (focused)="focused.set(true)"
             id="unit-search-input" />
     </div>
+    <button #favBtn type="button" class="bt-button favorites-btn square" (click)="openFavorites($event)"
+        [title]="'Favorites'" aria-label="Favorites">
+        <svg width="24px" fill="currentColor" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path
+                d="M23.632 9.201a.628.628 0 0 1-.22.678l-5.726 4.96 1.727 7.394a.606.606 0 0 1-.935.676l-6.503-3.953-6.503 3.953a.713.713 0 0 1-.374.112.57.57 0 0 1-.34-.109.629.629 0 0 1-.222-.679l1.729-7.393L.539 9.879A.607.607 0 0 1 .897 8.78l7.536-.635 2.965-7.083a.62.62 0 0 1 1.155.001l2.965 7.082 7.536.635a.63.63 0 0 1 .578.42z" />
+        </svg>
+    </button>
     @if (this.expandedView()) {
     <button type="button" class="bt-button semantic-guide-btn square" (click)="openSemanticGuide($event)"
         [title]="'Semantic Guide'" aria-label="Semantic Guide">
@@ -49,13 +67,8 @@
         </svg>
     </button>
     }
-    <button #favBtn type="button" class="bt-button favorites-btn square" (click)="openFavorites($event)"
-        [title]="'Favorites'" aria-label="Favorites">
-        <svg width="24px" fill="currentColor" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path
-                d="M23.632 9.201a.628.628 0 0 1-.22.678l-5.726 4.96 1.727 7.394a.606.606 0 0 1-.935.676l-6.503-3.953-6.503 3.953a.713.713 0 0 1-.374.112.57.57 0 0 1-.34-.109.629.629 0 0 1-.222-.679l1.729-7.393L.539 9.879A.607.607 0 0 1 .897 8.78l7.536-.635 2.965-7.083a.62.62 0 0 1 1.155.001l2.965 7.082 7.536.635a.63.63 0 0 1 .578.42z" />
-        </svg>
-    </button>
+    <!-- Adv button on right when filters are on right side (default) -->
+    @if (!this.expandedView() || !this.filtersOnLeft()) {
     <button #advBtn class="bt-button adv-btn square" [class.active]="isAdvActive()"
         [disabled]="!this.filtersService.isDataReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
@@ -64,6 +77,7 @@
             <path d="M4 4h16l-6 8v5l-4 3v-8z" />
         </svg>
     </button>
+    }
     }
 </div>
 
@@ -228,14 +242,16 @@
 }
 
 @if (this.expandedView() && this.advPanelDocked()) {
-<div class="adv-panel-drag-handle" (pointerdown)="onAdvPanelDragStart($event)" (click)="$event.stopPropagation();"
-    (contextmenu)="$event.stopPropagation()" [style.right.px]="this.advPanelUserColumns() === 2 ? 602 : 302"
+<div class="adv-panel-drag-handle" [class.left]="filtersOnLeft()" (pointerdown)="onAdvPanelDragStart($event)" (click)="$event.stopPropagation();"
+    (contextmenu)="$event.stopPropagation()" 
+    [style.right.px]="filtersOnLeft() ? null : (this.advPanelUserColumns() === 2 ? 602 : 302)"
+    [style.left.px]="filtersOnLeft() ? (this.advPanelUserColumns() === 2 ? 602 : 302) : null"
     title="Drag to resize advanced filter panel" aria-label="Drag to resize advanced filter panel">
     <div class="drag-bar"></div>
 </div>
 }
 <div #advPanel class="adv-panel framed-borders has-shadow" [hidden]="!advOpen()" [ngStyle]="advPanelStyle()"
-    [class.docked]="advPanelDocked()">
+    [class.docked]="advPanelDocked()" [class.docked-left]="advPanelDocked() && filtersOnLeft()">
     <div class="adv-panel-header" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
         <div class="pilot-skills-section framed-borders">

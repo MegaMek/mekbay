@@ -57,6 +57,7 @@ const DEFAULT_OPTIONS: Options = {
     c3NetworkConnectionsAboveNodes: false,
     automaticallyConvertFiltersToSemantic: false,
     allowMultipleActiveSheets: true,
+    unitSearchExpandedViewLayout: 'panel-list-filters',
 };
 
 @Injectable({ providedIn: 'root' })
@@ -80,6 +81,7 @@ export class OptionsService {
         c3NetworkConnectionsAboveNodes: DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
         automaticallyConvertFiltersToSemantic: DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
         allowMultipleActiveSheets: DEFAULT_OPTIONS.allowMultipleActiveSheets,
+        unitSearchExpandedViewLayout: DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
     });
 
     constructor() {
@@ -107,6 +109,7 @@ export class OptionsService {
             c3NetworkConnectionsAboveNodes: saved?.c3NetworkConnectionsAboveNodes ?? DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
             automaticallyConvertFiltersToSemantic: saved?.automaticallyConvertFiltersToSemantic ?? DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
             allowMultipleActiveSheets: saved?.allowMultipleActiveSheets ?? DEFAULT_OPTIONS.allowMultipleActiveSheets,
+            unitSearchExpandedViewLayout: saved?.unitSearchExpandedViewLayout ?? DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
         });
     }
 

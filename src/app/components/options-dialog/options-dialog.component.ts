@@ -163,6 +163,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('quickActions', value);
     }
 
+    onunitSearchExpandedViewLayoutChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as 'panel-list-filters' | 'filters-list-panel';
+        this.optionsService.setOption('unitSearchExpandedViewLayout', value);
+    }
+
     onCanvasInputChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'all' | 'touch' | 'pen';
         this.optionsService.setOption('canvasInput', value);

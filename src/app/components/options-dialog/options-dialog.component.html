@@ -36,6 +36,19 @@
                     <p>When disabled, UI filters and semantic filters in the search bar work independently and are merged together.</p>
                 </div>
             </div>
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="unitSearchExpandedViewLayout">Expanded search layout:</label>
+                    <select id="unitSearchExpandedViewLayout" class="bt-select" [value]="optionsService.options().unitSearchExpandedViewLayout"
+                        (change)="onunitSearchExpandedViewLayoutChange($event)">
+                        <option value="panel-list-filters">Details | Results | Filters (default)</option>
+                        <option value="filters-list-panel">Filters | Results | Details</option>
+                    </select>
+                </div>
+                <div class="description">
+                    <p>Choose the panel arrangement in expanded unit search view on wide screens.</p>
+                </div>
+            </div>
             <hr />
             <div class="option-col">
                 <label for="userUuid">User identifier:</label>

@@ -57,6 +57,11 @@
     box-shadow: none;
 }
 
+.adv-panel.docked-left {
+    left: 4px !important;
+    right: auto;
+}
+
 .adv-panel-drag-handle {
     position: fixed;
     top: 50%;
@@ -69,6 +74,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.adv-panel-drag-handle.left {
+    right: auto;
+    left: 302px;
 }
 
 .adv-panel-drag-handle .drag-bar {
