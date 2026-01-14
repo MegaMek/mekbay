@@ -32,8 +32,6 @@
  */
 
 import { Injectable, signal, effect, computed, Injector, inject, untracked, DestroyRef } from '@angular/core';
-import { Router, ActivatedRoute } from '@angular/router';
-import { Location } from '@angular/common';
 import { Unit } from '../models/units.model';
 import { Force, UnitGroup } from '../models/force.model';
 import { ForceUnit } from '../models/force-unit.model';
@@ -76,9 +74,6 @@ export class ForceBuilderService {
     layoutService = inject(LayoutService);
     toastService = inject(ToastService);
     wsService = inject(WsService);
-    private router = inject(Router);
-    private route = inject(ActivatedRoute);
-    private location = inject(Location);
     private dialogsService = inject(DialogsService);
     private unitInitializer = inject(UnitInitializerService);
     private injector = inject(Injector);
@@ -215,16 +210,11 @@ export class ForceBuilderService {
     }
 
     private clearForceUrlParams() {
-        const urlTree = this.router.parseUrl(this.router.url);
-        const currentPath = urlTree.root.children['primary']?.segments.map(s => s.path).join('/') || '';
-        this.router.navigate([currentPath], {
-            queryParams: {
-                units: null,
-                name: null,
-                instance: null
-            },
-            queryParamsHandling: 'merge',
-            replaceUrl: true
+        console.log(`ForceBuilderService: clearing force-related URL parameters`);
+        this.urlStateService.setParams({
+            units: null,
+            name: null,
+            instance: null
         });
     }
 
@@ -776,17 +766,13 @@ export class ForceBuilderService {
             if (!this.urlStateInitialized()) {
                 return;
             }
-            const urlTree = this.router.createUrlTree([], {
-                relativeTo: this.route,
-                queryParams: {
-                    gs: queryParameters.gs,
-                    units: queryParameters.units,
-                    name: queryParameters.name,
-                    instance: queryParameters.instance
-                },
-                queryParamsHandling: 'merge'
+            // Use centralized URL state service to avoid race conditions
+            this.urlStateService.setParams({
+                gs: queryParameters.gs,
+                units: queryParameters.units,
+                name: queryParameters.name,
+                instance: queryParameters.instance
             });
-            this.location.replaceState(urlTree.toString());
         });
     }
 
@@ -883,12 +869,8 @@ export class ForceBuilderService {
                     // If no instance ID or not found, create a new force.
                     if (instanceParam) {
                         //We remove the failed instance ID from the URL
-                        this.router.navigate([], {
-                            relativeTo: this.route,
-                            queryParams: { instance: null },
-                            queryParamsHandling: 'merge',
-                            replaceUrl: true
-                        });
+                        console.log(`ForceBuilderService: instance ID ${instanceParam} not found, removing from URL`);
+                        this.urlStateService.setParams({ instance: null });
                     }
                     const unitsParam = this.urlStateService.getInitialParam('units');
                     const forceNameParam = this.urlStateService.getInitialParam('name');

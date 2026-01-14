@@ -35,8 +35,6 @@ import { Injectable, signal, computed, effect, inject } from '@angular/core';
 import { Unit } from '../models/units.model';
 import { DataService } from './data.service';
 import { CountOperator, MultiState, MultiStateSelection, MultiStateOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
-import { ActivatedRoute, Router } from '@angular/router';
-import { Location } from '@angular/common';
 import { getForcePacks } from '../models/forcepacks.model';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { computeRelevanceScore, naturalCompare, compareUnitsByName } from '../utils/sort.util';
@@ -531,9 +529,6 @@ function getUnitComponentData(unit: Unit) {
 export class UnitSearchFiltersService {
     dataService = inject(DataService);
     optionsService = inject(OptionsService);
-    private router = inject(Router);
-    private route = inject(ActivatedRoute);
-    private location = inject(Location);
     gameService = inject(GameService);
     logger = inject(LoggerService);
     private urlStateService = inject(UrlStateService);
@@ -2077,12 +2072,8 @@ export class UnitSearchFiltersService {
             if (!this.urlStateInitialized()) {
                 return;
             }
-            const urlTree = this.router.createUrlTree([], {
-                relativeTo: this.route,
-                queryParams: Object.keys(queryParameters).length > 0 ? queryParameters : {},
-                queryParamsHandling: 'merge'
-            });
-            this.location.replaceState(urlTree.toString());
+            // Use centralized URL state service to avoid race conditions
+            this.urlStateService.setParams(queryParameters);
         });
     }
 

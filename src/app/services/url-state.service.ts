@@ -31,8 +31,17 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
+import { Location } from '@angular/common';
 import { GameSystem } from '../models/common.model';
+
+/**
+ * Type for URL parameter values.
+ * - string: The parameter value
+ * - null: Remove this parameter from URL
+ * - undefined: Don't touch this parameter (use existing value)
+ */
+export type UrlParamValue = string | number | null | undefined;
 
 /**
  * URL parameter keys that indicate a "meaningful" link that should override
@@ -137,6 +146,8 @@ export class UrlStateService {
         this.pendingConsumers.delete(consumerId);
         if (this.pendingConsumers.size === 0) {
             this.initialStateConsumed.set(true);
+            // Apply any params that were queued during initialization
+            this.scheduleUrlUpdate();
         }
     }
 
@@ -178,5 +189,48 @@ export class UrlStateService {
             return this.initialState.gameSystem;
         }
         return null;
+    }
+
+    // ============================================
+    // Centralized URL Parameter Management
+    // ============================================
+
+    private readonly location = inject(Location);
+    private readonly urlParams: Record<string, string | null> = {};
+    private updateTimer: ReturnType<typeof setTimeout> | null = null;
+
+    /**
+     * Set one or more URL parameters. Batches multiple calls into one URL update.
+     * Use null to remove a parameter.
+     */
+    setParams(params: Record<string, UrlParamValue>): void {
+        for (const [key, value] of Object.entries(params)) {
+            if (value === undefined) continue; // undefined = don't touch
+            this.urlParams[key] = value === null ? null : String(value);
+        }
+        if (this.initialStateConsumed()) {
+            this.scheduleUrlUpdate();
+        }
+    }
+
+    private scheduleUrlUpdate(): void {
+        if (this.updateTimer) return; // Already scheduled
+        this.updateTimer = setTimeout(() => {
+            this.updateTimer = null;
+            this.applyUrlUpdate();
+        }, 0);
+    }
+
+    private applyUrlUpdate(): void {
+        const searchParams = new URLSearchParams();
+        for (const [key, value] of Object.entries(this.urlParams)) {
+            if (value !== null) {
+                searchParams.set(key, value);
+            }
+        }
+        const path = window.location.pathname;
+        const query = searchParams.toString();
+        const url = query ? `${path}?${query}` : path;
+        this.location.replaceState(url);
     }
 }

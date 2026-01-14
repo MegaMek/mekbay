@@ -35,8 +35,6 @@ import { Injectable, signal, inject, computed, effect, untracked } from '@angula
 import { OptionsService } from './options.service';
 import { ForceBuilderService } from './force-builder.service';
 import { GameSystem } from '../models/common.model';
-import { ActivatedRoute, Router } from '@angular/router';
-import { Location } from '@angular/common';
 import { UrlStateService } from './url-state.service';
 
 /*
@@ -60,9 +58,6 @@ import { UrlStateService } from './url-state.service';
     providedIn: 'root'
 })
 export class GameService {
-    private router = inject(Router);
-    private route = inject(ActivatedRoute);
-    private location = inject(Location);
     private readonly optionsService = inject(OptionsService);
     private readonly forceBuilderService = inject(ForceBuilderService);
     private readonly urlStateService = inject(UrlStateService);
@@ -125,12 +120,8 @@ export class GameService {
             if (hasForce) {
                 return;
             }
-            const urlTree = this.router.createUrlTree([], {
-                relativeTo: this.route,
-                queryParams: { gs },
-                queryParamsHandling: 'merge'
-            });
-            this.location.replaceState(urlTree.toString());
+            // Use centralized URL state service
+            this.urlStateService.setParams({ gs });
         });
     }
 

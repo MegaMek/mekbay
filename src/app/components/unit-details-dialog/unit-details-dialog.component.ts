@@ -40,7 +40,6 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ToastService } from '../../services/toast.service';
 import { ForceUnit } from '../../models/force-unit.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { Router } from '@angular/router';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '../../directives/swipe.directive';
@@ -56,6 +55,7 @@ import { GameService } from '../../services/game.service';
 import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
 import { TaggingService } from '../../services/tagging.service';
+import { UrlStateService } from '../../services/url-state.service';
 
 /*
  * Author: Drake
@@ -89,9 +89,9 @@ export class UnitDetailsDialogComponent {
     dialogRef = inject(DialogRef<UnitDetailsDialogComponent>);
     data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     toastService = inject(ToastService);
-    router = inject(Router);
     floatingOverlayService = inject(FloatingOverlayService);
     private taggingService = inject(TaggingService);
+    private urlStateService = inject(UrlStateService);
     add = output<Unit>();
     select = output<Unit>();
     indexChange = output<number>();
@@ -189,13 +189,10 @@ export class UnitDetailsDialogComponent {
         effect(() => {
             this.unit;
             this.activeTab()
-            this.router.navigate([], {
-                queryParams: {
-                    shareUnit: this.unit.name,
-                    tab: this.activeTab(),
-                },
-                queryParamsHandling: 'merge',
-                replaceUrl: true
+            // Use centralized URL state service to avoid race conditions
+            this.urlStateService.setParams({
+                shareUnit: this.unit.name,
+                tab: this.activeTab(),
             });
         });
         
@@ -206,13 +203,10 @@ export class UnitDetailsDialogComponent {
         });
         
         this.dialogRef.closed.subscribe(() => {
-            this.router.navigate([], {
-                queryParams: {
-                    shareUnit: null,
-                    tab: null,
-                },
-                queryParamsHandling: 'merge',
-                replaceUrl: true
+            // Clear dialog-specific params when closing
+            this.urlStateService.setParams({
+                shareUnit: null,
+                tab: null,
             });
         });
     }
