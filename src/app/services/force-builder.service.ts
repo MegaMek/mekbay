@@ -425,13 +425,30 @@ export class ForceBuilderService {
     }
 
     public async requestCloneForce() {
-        const confirmed = await this.dialogsService.requestConfirmation(
-            'Create a separate, editable copy of this force. The original will remain unchanged. Do you want to proceed?',
-            'Clone Force',
-            'info');
-        if (confirmed) {
+        const currentForce = this.currentForce();
+        if (!currentForce) return;
+        
+        const isAlphaStrike = currentForce.gameSystem === GameSystem.ALPHA_STRIKE;
+        const targetSystemLabel = isAlphaStrike ? 'CBT' : 'AS';
+        
+        const dialogRef = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
+            data: {
+                title: 'Clone Force',
+                message: 'Create a separate, editable copy of this force. The original will remain unchanged.',
+                buttons: [
+                    { label: 'CLONE', value: 'clone', class: 'primary' },
+                    { label: `CONVERT TO ${targetSystemLabel}`, value: 'convert' },
+                    { label: 'DISMISS', value: 'cancel' }
+                ]
+            } as ConfirmDialogData<string>
+        });
+        
+        const result = await firstValueFrom(dialogRef.closed);
+        if (result === 'clone') {
             this.cloneForce();
-        };
+        } else if (result === 'convert') {
+            this.convertForce();
+        }
     }
 
     private cloneForce(): Promise<boolean> {
@@ -452,6 +469,97 @@ export class ForceBuilderService {
             this.toastService.show(`A copy of this force was created and saved. You can now edit the copy without affecting the original.`, 'success');
             resolve(true);
         });
+    }
+
+    /**
+     * Converts the current force to the opposite game system (CBT <-> Alpha Strike).
+     * Creates a new force with the same name and groups, but fresh units without state.
+     */
+    private async convertForce(): Promise<boolean> {
+        const currentForce = this.currentForce();
+        if (!currentForce) {
+            return false;
+        }
+
+        const isAlphaStrike = currentForce.gameSystem === GameSystem.ALPHA_STRIKE;
+        const targetSystemLabel = isAlphaStrike ? 'Classic BattleTech' : 'Alpha Strike';
+
+        // Create new force with opposite game system
+        const newForce = isAlphaStrike
+            ? new CBTForce(currentForce.name, this.dataService, this.unitInitializer, this.injector)
+            : new ASForce(currentForce.name, this.dataService, this.unitInitializer, this.injector);
+
+        newForce.nameLock = currentForce.nameLock;
+        newForce.loading = true;
+
+        try {
+            const allUnits = this.dataService.getUnits();
+            const unitMap = new Map(allUnits.map(u => [u.name, u]));
+
+            // First, clear any default groups
+            newForce.groups.set([]);
+
+            // Recreate groups and units - process one group at a time
+            for (const sourceGroup of currentForce.groups()) {
+                const newGroup = newForce.addGroup(sourceGroup.name());
+                newGroup.nameLock = sourceGroup.nameLock;
+
+                for (const sourceUnit of sourceGroup.units()) {
+                    const unitName = sourceUnit.getUnit().name;
+                    const unit = unitMap.get(unitName);
+                    if (!unit) {
+                        this.logger.warn(`Unit "${unitName}" not found during conversion`);
+                        continue;
+                    }
+
+                    // addUnit adds to the last group, which is newGroup since we just created it
+                    const newForceUnit = newForce.addUnit(unit);
+
+                    // Copy pilot/crew skills based on source and target game systems
+                    if (isAlphaStrike) {
+                        // Source is AS, target is CBT
+                        // AS has single pilot with skill, CBT has crew members
+                        const asSourceUnit = sourceUnit as ASForceUnit;
+                        const sourceName = asSourceUnit.alias();
+                        const sourceSkill = asSourceUnit.getPilotSkill();
+                        
+                        const newCrewMembers = newForceUnit.getCrewMembers();
+                        if (newCrewMembers.length > 0) {
+                            if (sourceName) {
+                                newCrewMembers[0].setName(sourceName);
+                            }
+                            newCrewMembers[0].setSkill('gunnery', sourceSkill);
+                        }
+                    } else {
+                        // Source is CBT, target is AS
+                        // CBT has crew members, AS has single pilot with skill
+                        const asNewUnit = newForceUnit as ASForceUnit;
+                        const sourceCrewMembers = sourceUnit.getCrewMembers();
+                        if (sourceCrewMembers.length > 0) {
+                            const sourceName = sourceCrewMembers[0].getName();
+                            const sourceGunnery = sourceCrewMembers[0].getSkill('gunnery');
+                            
+                            if (sourceName) {
+                                asNewUnit.setPilotName(sourceName);
+                            }
+                            asNewUnit.setPilotSkill(sourceGunnery);
+                        }
+                    }
+                }
+            }
+
+            // Set a new instance ID and save
+            newForce.instanceId.set(generateUUID());
+        } finally {
+            newForce.loading = false;
+        }
+
+        // Load the new force (this handles URL state and other housekeeping)
+        await this.loadForce(newForce);
+        this.dataService.saveForce(newForce);
+
+        this.toastService.show(`Force converted to ${targetSystemLabel} and saved.`, 'success');
+        return true;
     }
 
     private generateForceNameIfNeeded() {
