@@ -72,12 +72,12 @@ export class SavedSearchesService {
         return this.cachedSearches();
     });
 
-    /** Get saved searches filtered by game system */
+    /** Get saved searches filtered by game system. Includes game-agnostic searches (no gameSystem). */
     public getSearchesForGameSystem(gameSystem: GameSystem): SerializedSearchFilter[] {
         const all = this.cachedSearches();
         const gsKey = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
         return Object.values(all)
-            .filter(s => s.gameSystem === gsKey)
+            .filter(s => !s.gameSystem || s.gameSystem === gsKey)
             .sort((a, b) => naturalCompare(a.name, b.name));
     }
 

@@ -980,29 +980,16 @@ export interface EvaluatorContext {
 }
 
 /**
- * Evaluate a single filter against a unit.
- * Returns true if the unit matches the filter.
+ * Evaluate a single filter config against a unit.
+ * Returns true if the unit matches the filter config.
  */
-function evaluateFilter(
-    filter: SemanticToken,
+function evaluateSingleFilterConfig(
+    conf: AdvFilterConfig,
+    operator: SemanticOperator,
+    values: string[],
     unit: any,
     context: EvaluatorContext
 ): boolean {
-    // Find matching filter config, preferring current game mode but allowing cross-game filters
-    // This allows queries like "pv=16 and bv<50" to work in any game mode
-    const matchingFilters = ADVANCED_FILTERS.filter(f => 
-        (f.semanticKey || f.key) === filter.field
-    );
-    
-    // Prefer: 1) current game mode, 2) game-agnostic, 3) other game mode
-    const conf = matchingFilters.find(f => f.game === context.gameSystem) 
-        ?? matchingFilters.find(f => !f.game) 
-        ?? matchingFilters[0];
-    
-    if (!conf) return true; // Unknown filter - pass through
-    
-    const { operator, values } = filter;
-    
     // Handle external filters (era, faction) - these use ID-based lookups
     if (conf.external) {
         return evaluateExternalFilter(unit, operator, values, conf, context);
@@ -1032,6 +1019,50 @@ function evaluateFilter(
     }
     
     return true;
+}
+
+/**
+ * Evaluate a single filter against a unit.
+ * Returns true if the unit matches the filter.
+ * 
+ * For filters with duplicate semantic keys (e.g., 'type' for both CLASSIC and ALPHA_STRIKE),
+ * this checks ALL matching configs and returns true if ANY match.
+ */
+function evaluateFilter(
+    filter: SemanticToken,
+    unit: any,
+    context: EvaluatorContext
+): boolean {
+    // Find ALL matching filter configs for this semantic key
+    // This allows filters like 'type' to match both CLASSIC and ALPHA_STRIKE variants
+    const matchingFilters = ADVANCED_FILTERS.filter(f => 
+        (f.semanticKey || f.key) === filter.field
+    );
+    
+    if (matchingFilters.length === 0) return true; // Unknown filter - pass through
+    
+    const { operator, values } = filter;
+    
+    // Sort configs: prefer current game mode first, then game-agnostic, then other
+    const sortedFilters = [
+        ...matchingFilters.filter(f => f.game === context.gameSystem),
+        ...matchingFilters.filter(f => !f.game),
+        ...matchingFilters.filter(f => f.game && f.game !== context.gameSystem)
+    ];
+    
+    // For != (exclude) operator, ALL configs must pass (AND logic for exclusion)
+    // For other operators, ANY config can match (OR logic for inclusion)
+    if (operator === '!=') {
+        // Exclusion: unit must NOT match ANY of the configs
+        return sortedFilters.every(conf => 
+            evaluateSingleFilterConfig(conf, operator, values, unit, context)
+        );
+    } else {
+        // Inclusion: unit must match AT LEAST ONE config
+        return sortedFilters.some(conf => 
+            evaluateSingleFilterConfig(conf, operator, values, unit, context)
+        );
+    }
 }
 
 /**
