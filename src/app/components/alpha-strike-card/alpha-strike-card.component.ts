@@ -546,12 +546,13 @@ export class AlphaStrikeCardComponent {
                     if (tookStructureDamage) {
                         // Normal structure damage roll
                         await this.onRollCriticalClick();
+                        
+                        // Industrial Meks get an extra roll on structure damage
+                        if (unitType === 'IM') {
+                            await this.onRollCriticalClick();
+                        }
                     }
                     
-                    // Industrial Meks get an extra roll on structure damage
-                    if (unitType === 'IM' && tookStructureDamage) {
-                        await this.onRollCriticalClick();
-                    }
 
                     // If damage increased, check for motive damage roll for vehicles
                     if (deltaChange > 0) {
