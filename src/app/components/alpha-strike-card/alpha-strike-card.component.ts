@@ -541,11 +541,9 @@ export class AlphaStrikeCardComponent {
                     if (hasBAR && deltaChange > 0) {
                         // BAR: Any time a unit with BAR suffers damage, a critical hit may occur
                         await this.onRollCriticalClick();
-                        if (tookStructureDamage) {
-                            // BAR + structure damage: two critical hit checks must be made
-                            await this.onRollCriticalClick();
-                        }
-                    } else if (tookStructureDamage) {
+                    } 
+                    
+                    if (tookStructureDamage) {
                         // Normal structure damage roll
                         await this.onRollCriticalClick();
                     }
@@ -554,10 +552,11 @@ export class AlphaStrikeCardComponent {
                     if (unitType === 'IM' && tookStructureDamage) {
                         await this.onRollCriticalClick();
                     }
-                }
-                // If damage increased, check for motive damage roll for vehicles
-                if (deltaChange > 0) {
-                    await this.checkMotiveDamage(unit);
+
+                    // If damage increased, check for motive damage roll for vehicles
+                    if (deltaChange > 0) {
+                        await this.checkMotiveDamage(unit);
+                    }
                 }
             },
             onCancel: () => this.removePicker()
