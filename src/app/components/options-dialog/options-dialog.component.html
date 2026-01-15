@@ -206,6 +206,15 @@
                     <option value="false">No</option>
                 </select>
             </div>
+            <div class="option-section-title">Rules</div>
+            <div class="option-row">
+                <label for="vehiclesCriticalHitTable">Vehicles critical hit table:</label>
+                <select id="vehiclesCriticalHitTable" class="bt-select" [value]="optionsService.options().vehiclesCriticalHitTable"
+                    (change)="onVehiclesCriticalHitTableChange($event)">
+                    <option value="default">default (default)</option>
+                    <option value="scouringSands">Aces: Scouring Sands</option>
+                </select>
+            </div>
         </div>
         }
         <!-- Advanced options -->

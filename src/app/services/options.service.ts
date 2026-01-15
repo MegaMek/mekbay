@@ -58,6 +58,7 @@ const DEFAULT_OPTIONS: Options = {
     automaticallyConvertFiltersToSemantic: false,
     allowMultipleActiveSheets: true,
     unitSearchExpandedViewLayout: 'panel-list-filters',
+    vehiclesCriticalHitTable: 'default',
 };
 
 @Injectable({ providedIn: 'root' })
@@ -82,6 +83,7 @@ export class OptionsService {
         automaticallyConvertFiltersToSemantic: DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
         allowMultipleActiveSheets: DEFAULT_OPTIONS.allowMultipleActiveSheets,
         unitSearchExpandedViewLayout: DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
+        vehiclesCriticalHitTable: DEFAULT_OPTIONS.vehiclesCriticalHitTable,
     });
 
     constructor() {
@@ -110,6 +112,7 @@ export class OptionsService {
             automaticallyConvertFiltersToSemantic: saved?.automaticallyConvertFiltersToSemantic ?? DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
             allowMultipleActiveSheets: saved?.allowMultipleActiveSheets ?? DEFAULT_OPTIONS.allowMultipleActiveSheets,
             unitSearchExpandedViewLayout: saved?.unitSearchExpandedViewLayout ?? DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
+            vehiclesCriticalHitTable: saved?.vehiclesCriticalHitTable ?? DEFAULT_OPTIONS.vehiclesCriticalHitTable,
         });
     }
 

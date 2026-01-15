@@ -761,4 +761,163 @@ export class ASForceUnit extends ForceUnit {
         if (inches <= 34) return 4;
         return 5;
     }
+
+    // ===== Damage Calculations =====
+
+    /**
+     * Get effective Short range damage after applying crits.
+     */
+    effectiveDamageS = computed<string>(() => {
+        const base = this.unit.as.dmg.dmgS;
+        return this.calculateReducedDamage(base);
+    });
+
+    /**
+     * Get effective Medium range damage after applying crits.
+     */
+    effectiveDamageM = computed<string>(() => {
+        const base = this.unit.as.dmg.dmgM;
+        return this.calculateReducedDamage(base);
+    });
+
+    /**
+     * Get effective Long range damage after applying crits.
+     */
+    effectiveDamageL = computed<string>(() => {
+        const base = this.unit.as.dmg.dmgL;
+        return this.calculateReducedDamage(base);
+    });
+
+    /**
+     * Get effective Extreme range damage after applying crits.
+     */
+    effectiveDamageE = computed<string>(() => {
+        const base = this.unit.as.dmg.dmgE;
+        return this.calculateReducedDamage(base);
+    });
+
+    /**
+     * Check if all damage values are at minimum (0 or '-').
+     * Used to determine if a weapon critical hit would have any effect.
+     */
+    isAllDamageAtMinimum = computed<boolean>(() => {
+        const dmgS = this.effectiveDamageS();
+        const dmgM = this.effectiveDamageM();
+        const dmgL = this.effectiveDamageL();
+        const dmgE = this.effectiveDamageE();
+        
+        return this.isDamageAtMinimum(dmgS) &&
+               this.isDamageAtMinimum(dmgM) &&
+               this.isDamageAtMinimum(dmgL) &&
+               this.isDamageAtMinimum(dmgE);
+    });
+
+    /**
+     * Check if a single damage value is at minimum (0 or '-').
+     */
+    private isDamageAtMinimum(value: string): boolean {
+        return value === '0' || value === '-' || value === '';
+    }
+
+    /**
+     * Calculate reduced damage after applying critical hit effects.
+     * 
+     * For vehicles (order matters):
+     *   1. Engine Hit: 50% reduction (floor, min 0)
+     *   2. Weapon Hits: -1 per hit
+     * 
+     * For non-vehicles:
+     *   - Weapon Hits: -1 per hit using position scale (9 8 7 6 5 4 3 2 1 0* 0)
+     */
+    private calculateReducedDamage(base: string): string {
+        if (this.isVehicle()) {
+            return this.calculateVehicleDamageReduction(base);
+        }
+        const weaponHits = this.state.getCommittedCritHits('weapons');
+        return this.reduceDamageValue(base, weaponHits);
+    }
+
+    /**
+     * Vehicle damage reduction using ordered crits:
+     *   - Engine hit: 50% of current damage value (floor, min 0)
+     *   - Weapon hit: -1 per hit using position scale (1→0*→0)
+     * Order matters - effects are applied sequentially.
+     */
+    private calculateVehicleDamageReduction(base: string): string {
+        // Handle special cases
+        if (base === '-' || base === '') return base;
+
+        // Track as string to handle 0* properly
+        let current = base;
+
+        // Process crits in order
+        const orderedCrits = this.state.getCommittedCritsOrdered();
+
+        for (const crit of orderedCrits) {
+            if (current === '0') break; // Already at minimum
+
+            switch (crit.key) {
+                case 'engine':
+                    // Engine hit: 50% reduction (convert to number, reduce, convert back)
+                    current = this.applyEngineHitToValue(current);
+                    break;
+                case 'weapons':
+                    // Weapon hit: use position scale (1→0*→0)
+                    current = this.reduceDamageValue(current, 1);
+                    break;
+            }
+        }
+
+        return current;
+    }
+
+    /**
+     * Apply engine hit reduction (50%, floor) to a single damage value.
+     * Handles 0* specially: 0* → 0
+     */
+    private applyEngineHitToValue(value: string): string {
+        if (value === '0' || value === '-' || value === '') return value;
+        if (value === '0*') return '0';
+        
+        const numericValue = parseInt(value, 10);
+        if (isNaN(numericValue) || numericValue < 0) return value;
+        
+        const reduced = Math.floor(numericValue / 2);
+        return reduced.toString();
+    }
+
+    /**
+     * Reduce a single damage value by weapon hits.
+     * Uses damage scale: 9 8 7 6 5 4 3 2 1 0* 0
+     * Non-numeric values (like '-') are returned unchanged.
+     */
+    private reduceDamageValue(value: string, weaponHits: number): string {
+        value = value.trim();
+        
+        // Handle special values
+        if (value === '-' || value === '') return value;
+        if (value === '0*') {
+            // 0* is at position 1 in the scale (0=0, 1=0*)
+            // After weaponHits reductions, if position <= 0, return '0'
+            const newPosition = Math.max(0, 1 - weaponHits);
+            return newPosition === 0 ? '0' : '0*';
+        }
+        if (value === '0') return '0'; // Already at minimum
+        
+        // Parse numeric value
+        const numericValue = parseInt(value, 10);
+        if (isNaN(numericValue) || numericValue < 0) {
+            // Non-numeric, return as-is
+            return value;
+        }
+        
+        // Position in sequence: value + 1 (so 1 -> position 2, 9 -> position 10)
+        const position = numericValue + 1;
+        const newPosition = Math.max(0, position - weaponHits);
+        
+        // Convert back to string
+        if (newPosition === 0) return '0';
+        if (newPosition === 1) return '0*';
+        return (newPosition - 1).toString();
+    }
 }

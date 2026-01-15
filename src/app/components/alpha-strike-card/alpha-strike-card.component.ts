@@ -40,6 +40,7 @@ import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-in
 import { CardConfig, CardLayoutDesign, CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
 import { SpecialAbilityState, SpecialAbilityClickEvent } from './layouts/layout-base.component';
 import { CriticalHitRollDialogComponent, CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
+import { MotiveDamageRollDialogComponent, MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
 import {
     AsLayoutStandardComponent,
     AsLayoutLargeVessel1Component,
@@ -50,6 +51,7 @@ import { RotatingPickerComponent } from '../rotating-picker/rotating-picker.comp
 import { LinearPickerComponent } from '../linear-picker/linear-picker.component';
 import { PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
+import { firstValueFrom } from 'rxjs';
 
 /*
  * Author: Drake
@@ -347,14 +349,14 @@ export class AlphaStrikeCardComponent {
     }
 
     // Handle roll critical click - shows the critical hit roll dialog
-    onRollCriticalClick(): void {
+    async onRollCriticalClick(): Promise<void> {
         const fu = this.forceUnit();
         if (!fu) return;
         
         const unitType = fu.getUnit().as.TP;
         if (!unitType) return;
         
-        this.dialogs.createDialog<void, CriticalHitRollDialogComponent, CriticalHitRollDialogData>(
+        const ref = this.dialogs.createDialog<void, CriticalHitRollDialogComponent, CriticalHitRollDialogData>(
             CriticalHitRollDialogComponent,
             {
                 data: { 
@@ -363,6 +365,7 @@ export class AlphaStrikeCardComponent {
                 }
             }
         );
+        await firstValueFrom(ref.closed);
     }
     
     // ===== Interaction Logic =====
@@ -514,15 +517,77 @@ export class AlphaStrikeCardComponent {
             anchorElement: event.currentTarget as HTMLElement,
             title: 'DAMAGE',
             values,
-            onPick: (val: PickerChoice) => {
+            onPick: async (val: PickerChoice) => {
                 this.removePicker();
                 const deltaChange = val.value as number;
                 const delta = pendingTotal + deltaChange;
+                
+                // Track pending internal before applying damage
+                const previousPendingInternal = unit.getState().pendingInternal();
+                
                 unit.setPendingDamage(delta);
                 vibrate(10);
+                
+                // Check if internal structure damage increased
+                const newPendingInternal = unit.getState().pendingInternal();
+                const tookStructureDamage = newPendingInternal > previousPendingInternal;
+                
+                // Critical hit handling (skip for conventional infantry)
+                const unitType = unit.getUnit().as.TP;
+                if (unitType !== 'CI') {
+                    const specials = unit.getUnit().as.specials || [];
+                    const hasBAR = specials.some(s => s.startsWith('BAR'));
+                    
+                    if (hasBAR && deltaChange > 0) {
+                        // BAR: Any time a unit with BAR suffers damage, a critical hit may occur
+                        await this.onRollCriticalClick();
+                        if (tookStructureDamage) {
+                            // BAR + structure damage: two critical hit checks must be made
+                            await this.onRollCriticalClick();
+                        }
+                    } else if (tookStructureDamage) {
+                        // Normal structure damage roll
+                        await this.onRollCriticalClick();
+                    }
+                    
+                    // Industrial Meks get an extra roll on structure damage
+                    if (unitType === 'IM' && tookStructureDamage) {
+                        await this.onRollCriticalClick();
+                    }
+                }
+                // If damage increased, check for motive damage roll for vehicles
+                if (deltaChange > 0) {
+                    await this.checkMotiveDamage(unit);
+                }
             },
             onCancel: () => this.removePicker()
         });
+    }
+    
+    /**
+     * Check if motive damage roll should be triggered for a vehicle.
+     * Vehicles must roll on the Motive Systems Damage Table when taking structure damage.
+     */
+    private async checkMotiveDamage(unit: ASForceUnit): Promise<void> {
+        const unitType = unit.getUnit().as.TP;
+        // Only vehicles (CV = Combat Vehicle, SV = Support Vehicle) need motive damage rolls
+        if (unitType !== 'CV' && unitType !== 'SV') return;
+        
+        // Skip if unit has no movement
+        const movement = unit.effectiveMovement();
+        const entries = Object.entries(movement);
+        if (entries.length === 0) return;
+        if (entries.every(([, inches]) => inches <= 0)) return;
+        
+        const ref = this.dialogs.createDialog<void, MotiveDamageRollDialogComponent, MotiveDamageRollDialogData>(
+            MotiveDamageRollDialogComponent,
+            {
+                data: { 
+                    forceUnit: unit
+                }
+            }
+        );
+        await firstValueFrom(ref.closed);
     }
     
     private showCritPicker(event: PointerEvent, critKey: string, rowElement: HTMLElement): void {

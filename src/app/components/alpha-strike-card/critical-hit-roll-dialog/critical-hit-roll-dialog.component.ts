@@ -36,6 +36,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import { ASForceUnit } from '../../../models/as-force-unit.model';
 import { ASUnitTypeCode } from '../../../models/units.model';
+import { OptionsService } from '../../../services/options.service';
 
 /*
  * Author: Drake
@@ -96,7 +97,7 @@ const CRIT_TABLE_MEK: Record<number, CritTableEntry> = {
     4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
     5: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     6: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
-    7: { critType: 'Motive Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp', maxHits: 4 },
+    7: { critType: 'MP Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp', maxHits: 4 },
     8: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
     9: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     10: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
@@ -108,11 +109,11 @@ const CRIT_TABLE_PROTOMEK: Record<number, CritTableEntry> = {
     2: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
     3: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
     4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
-    5: { critType: 'Motive Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp', maxHits: 4 },
+    5: { critType: 'MP Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp', maxHits: 4 },
     6: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
-    7: { critType: 'Motive Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp', maxHits: 4 },
+    7: { critType: 'MP Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp', maxHits: 4 },
     8: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
-    9: { critType: 'Motive Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp', maxHits: 4 },
+    9: { critType: 'MP Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp', maxHits: 4 },
     10: { critType: 'Unit Destroyed', description: 'The unit is eliminated from the game.', pipKey: null },
     11: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
     12: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
@@ -126,6 +127,20 @@ const CRIT_TABLE_VEHICLE: Record<number, CritTableEntry> = {
     6: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     7: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     8: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
+    9: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
+    10: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
+    11: { critType: 'Crew Killed', description: 'The unit is destroyed. Remove from play.', pipKey: null },
+    12: { critType: 'Engine Hit', description: '½ MV and Damage. Second hit destroys unit.', pipKey: 'engine', maxHits: 2 },
+};
+
+const CRIT_TABLE_VEHICLE_SCOURING_SANDS: Record<number, CritTableEntry> = {
+    2: { critType: 'Ammo Hit', description: 'Unit destroyed unless CASE/CASEII/ENE. CASE: +1 damage. CASEII/ENE: No effect.', pipKey: null },
+    3: { critType: 'Crew Stunned', description: 'Unit cannot move or attack next turn. Treated as immobile target.', pipKey: null },
+    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
+    5: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
+    6: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
+    7: { critType: 'Motive Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'motive2', maxHits: 2 },
+    8: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
     9: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
     10: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
     11: { critType: 'Crew Killed', description: 'The unit is destroyed. Remove from play.', pipKey: null },
@@ -153,7 +168,7 @@ const CRIT_TABLE_JUMPSHIP: Record<number, CritTableEntry> = {
     5: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     6: { critType: 'Weapon Hit', description: '-25% Damage in random arc/column.', pipKey: null, requiresArcRoll: true },
     7: { critType: 'Weapon Hit', description: '-25% Damage in random arc/column.', pipKey: null, requiresArcRoll: true },
-    8: { critType: 'Thruster Hit', description: '-1 Thrust. If 0 Thrust, crash. Only once per unit.', pipKey: 'thruster', maxHits: 1 },
+    8: { critType: 'Thruster Hit', description: '-1 Thrust. If 0 Thrust, crash.', pipKey: 'thruster', maxHits: 1 },
     9: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     10: { critType: 'KF Drive Hit', description: 'This unit sustains damage to its KF drive (if any). JumpShips can sustain a number of KF Drive hits equal to the unit’s Size value; WarShips can sustain a number of KF Drive hits equal to twice the unit’s Size value. Once a JumpShip or WarShip suffers more KF Drive hits than it can sustain, the unit cannot execute a hyperspace jump. Otherwise, this critical hit has no effect in gameplay.', pipKey: null },
     11: { critType: 'Engine Hit', description: '-25%/-50%/-100% Thrust per hit. Third hit = crash.', pipKey: 'engine', maxHits: 3 },
@@ -166,43 +181,13 @@ const CRIT_TABLE_DROPSHIP: Record<number, CritTableEntry> = {
     4: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     5: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
     6: { critType: 'Weapon Hit', description: '-25% Damage in random arc/column.', pipKey: null, requiresArcRoll: true },
-    7: { critType: 'Thruster Hit', description: '-1 Thrust. If 0 Thrust, crash. Only once per unit.', pipKey: 'thruster', maxHits: 1 },
+    7: { critType: 'Thruster Hit', description: '-1 Thrust. If 0 Thrust, crash.', pipKey: 'thruster', maxHits: 1 },
     8: { critType: 'Weapon Hit', description: '-25% Damage in random arc/column.', pipKey: null, requiresArcRoll: true },
     9: { critType: 'Door Hit', description: 'Random cargo bay doors damaged. Units cannot enter/exit.', pipKey: null },
     10: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     11: { critType: 'Engine Hit', description: '-25%/-50%/-100% Thrust per hit. Third hit = crash.', pipKey: 'engine', maxHits: 3 },
     12: { critType: 'Crew Hit', description: '+2 Weapon To-Hit and +2 Control Roll. Second hit kills crew.', pipKey: 'crew', maxHits: 2 },
 };
-
-function getTableForUnitType(unitType: ASUnitTypeCode): Record<number, CritTableEntry> | null {
-    switch (unitType) {
-        case 'BM':  // BattleMek
-        case 'IM':  // IndustrialMek
-            return CRIT_TABLE_MEK;
-        case 'PM':  // ProtoMek
-            return CRIT_TABLE_PROTOMEK;
-        case 'CV':  // Combat Vehicle
-        case 'SV':  // Support Vehicle
-            return CRIT_TABLE_VEHICLE;
-        case 'AF':  // Aerospace Fighter
-        case 'CF':  // Conventional Fighter
-            return CRIT_TABLE_AEROSPACE;
-        case 'WS':  // WarShip
-        case 'SS':  // Space Station
-        case 'JS':  // JumpShip
-            return CRIT_TABLE_JUMPSHIP;
-        case 'SC':  // Small Craft
-        case 'DA':  // DropShip (Aerodyne)
-        case 'DS':  // DropShip (Spheroid)
-            return CRIT_TABLE_DROPSHIP;
-        case 'BA':  // Battle Armor - no critical hits
-        case 'CI':  // Conventional Infantry - no critical hits
-        case 'MS':  // Mobile Structure - no critical hits
-            return null;
-        default:
-            return null;
-    }
-}
 
 @Component({
     selector: 'critical-hit-roll-dialog',
@@ -383,10 +368,11 @@ function getTableForUnitType(unitType: ASUnitTypeCode): Record<number, CritTable
 export class CriticalHitRollDialogComponent implements AfterViewInit {
     private readonly dialogRef = inject(DialogRef);
     private readonly data = inject<CriticalHitRollDialogData>(DIALOG_DATA);
+    private readonly optionsService = inject(OptionsService);
 
     private readonly mainRoller = viewChild<DiceRollerComponent>('mainRoller');
 
-    private readonly critTable = getTableForUnitType(this.data.unitType);
+    private readonly critTable = this.getTableForUnitType(this.data.unitType);
     private readonly forceUnit = this.data.forceUnit;
     private readonly unitType = this.data.unitType;
     private readonly _hasCap = !dropshipOrSmallCraft(this.data.unitType);
@@ -466,6 +452,20 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
                 this.forceUnit.getState().getPendingCritChange(res.pipKey);
             if (currentHits >= maxHits) {
                 return `${res.critType} already at maximum (${maxHits} hit${maxHits > 1 ? 's' : ''}).`;
+            }
+        }
+
+        // We evaluate each key if has any effect
+        if (res.pipKey === 'mp' || res.pipKey === 'motive2') {
+            const movement = this.forceUnit.effectiveMovement();
+            const entries = Object.entries(movement);
+            if ((entries.length === 0) || (entries.every(([, inches]) => inches <= 0))) {
+                return `Unit has no movement left to reduce.`;
+            }
+        } else if (res.pipKey === 'weapons') {
+            // Check if all damage values are already at minimum
+            if (this.forceUnit.isAllDamageAtMinimum()) {
+                return `Unit has no weapons damage left to reduce.`;
             }
         }
 
@@ -611,5 +611,38 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
 
     close(): void {
         this.dialogRef.close(this.result());
+    }
+
+    /** Get the critical hit table for a unit type */
+    private getTableForUnitType(unitType: ASUnitTypeCode): Record<number, CritTableEntry> | null {
+        switch (unitType) {
+            case 'BM':  // BattleMek
+            case 'IM':  // IndustrialMek
+                return CRIT_TABLE_MEK;
+            case 'PM':  // ProtoMek
+                return CRIT_TABLE_PROTOMEK;
+            case 'CV':  // Combat Vehicle
+            case 'SV':  // Support Vehicle
+                return this.optionsService.options().vehiclesCriticalHitTable === 'scouringSands'
+                    ? CRIT_TABLE_VEHICLE_SCOURING_SANDS
+                    : CRIT_TABLE_VEHICLE;
+            case 'AF':  // Aerospace Fighter
+            case 'CF':  // Conventional Fighter
+                return CRIT_TABLE_AEROSPACE;
+            case 'WS':  // WarShip
+            case 'SS':  // Space Station
+            case 'JS':  // JumpShip
+                return CRIT_TABLE_JUMPSHIP;
+            case 'SC':  // Small Craft
+            case 'DA':  // DropShip (Aerodyne)
+            case 'DS':  // DropShip (Spheroid)
+                return CRIT_TABLE_DROPSHIP;
+            case 'BA':  // Battle Armor - no critical hits
+            case 'CI':  // Conventional Infantry - no critical hits
+            case 'MS':  // Mobile Structure - no critical hits
+                return null;
+            default:
+                return null;
+        }
     }
 }
