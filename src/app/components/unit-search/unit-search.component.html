@@ -372,11 +372,11 @@
             this.filtersService.filteredUnits().length === 1 ? '' : 's' }}</div>
         <span class="spanner"></span>
         <div class="results-sort">
-            <select class="bt-input sort-select" [value]="this.filtersService.selectedSort()"
+            <select class="bt-input sort-select"
                 (change)="this.filtersService.setSortOrder($any($event.target).value)">
                 @for (opt of SORT_OPTIONS; let i = $index; track i) {
                 @if (!opt.gameSystem || opt.gameSystem === this.gameSystem()) {
-                <option [value]="opt.key">{{ opt.label }}</option>
+                <option [value]="opt.key" [selected]="opt.key === this.filtersService.selectedSort()">{{ opt.label }}</option>
                 }
                 }
             </select><button type="button" class="bt-button sort-direction-btn"
