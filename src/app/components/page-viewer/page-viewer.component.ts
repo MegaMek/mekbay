@@ -376,18 +376,6 @@ export class PageViewerComponent implements AfterViewInit {
             this.setFluffImageVisibility();
         });
 
-        // Watch for window resize to re-evaluate shadow pages visibility
-        effect(() => {
-            // Track window dimensions
-            this.layoutService.windowWidth();
-            this.layoutService.windowHeight();
-            
-            // Re-render shadow pages when window size changes (they may or may not fit now)
-            if (this.viewInitialized && !this.isSwiping) {
-                untracked(() => this.renderShadowPages());
-            }
-        });
-
         // Watch for allowMultipleActiveSheets option changes
         let previousAllowMultiple: boolean | undefined;
         effect(() => {
@@ -1574,12 +1562,16 @@ export class PageViewerComponent implements AfterViewInit {
         this.updateDimensions();
         this.zoomPanService.handleResize();
 
-        // If effective visible page count changed, re-render pages
+        // If effective visible page count changed, re-render pages (which includes shadow pages)
         const newVisibleCount = this.effectiveVisiblePageCount();
         if (newVisibleCount !== previousVisibleCount && this.unit()) {
             // Close interaction overlays before re-rendering
             this.closeInteractionOverlays();
             this.displayUnit();
+        } else {
+            // Even if page count didn't change, shadow pages need re-rendering
+            // because their positions depend on container size and zoom state
+            this.renderShadowPages();
         }
     }
 
@@ -1786,7 +1778,14 @@ export class PageViewerComponent implements AfterViewInit {
         const totalUnits = allUnits.length;
         
         // Use viewStartIndex for display positioning (independent of selected unit)
-        const startIndex = this.viewStartIndex();
+        let startIndex = this.viewStartIndex();
+
+        // When all units fit on screen, reset viewStartIndex to 0
+        // This ensures proper display when transitioning to "all fit" mode
+        if (totalUnits <= visiblePages && startIndex !== 0) {
+            this.viewStartIndex.set(0);
+            startIndex = 0;
+        }
 
         // Build list of units to display
         // If we have fewer units than visible pages, show all units (no swipe)
@@ -1843,11 +1842,18 @@ export class PageViewerComponent implements AfterViewInit {
         const allUnits = force?.units() ?? [];
         const totalUnits = allUnits.length;
         const visiblePages = this.effectiveVisiblePageCount();
-        const startIndex = this.viewStartIndex();
+        let startIndex = this.viewStartIndex();
 
         if (totalUnits === 0) {
             this.clearPages();
             return;
+        }
+
+        // When all units fit on screen, reset viewStartIndex to 0
+        // This ensures proper display when transitioning to "all fit" mode
+        if (totalUnits <= visiblePages && startIndex !== 0) {
+            this.viewStartIndex.set(0);
+            startIndex = 0;
         }
 
         // Compute expected units for each visible slot (same logic as displayUnit)
@@ -2078,12 +2084,6 @@ export class PageViewerComponent implements AfterViewInit {
         
         // Only render if shadowPages is enabled
         if (!this.shadowPages()) {
-            this.clearShadowPages();
-            return;
-        }
-        
-        // Only show shadow pages when at minimum zoom (when swiping is possible)
-        if (!this.isFullyVisible()) {
             this.clearShadowPages();
             return;
         }
@@ -2758,6 +2758,15 @@ export class PageViewerComponent implements AfterViewInit {
             needsRedisplay = true;
         }
 
+        // When all units fit on screen, reset viewStartIndex to 0
+        // This prevents issues where a stale viewStartIndex causes incorrect display
+        // after transitioning from paginated mode to "all fit" mode
+        if (allUnits.length <= visibleCount && viewStart !== 0) {
+            this.viewStartIndex.set(0);
+            viewStart = 0;
+            needsRedisplay = true;
+        }
+
         // If the currently selected unit was visible, follow it and keep its relative slot.
         // Example: if selected unit was in slot 1 of 3, keep it in slot 1 after reorder.
         const selectedUnitId = this.unit()?.id;
@@ -2808,8 +2817,16 @@ export class PageViewerComponent implements AfterViewInit {
             // Close interaction overlays before re-rendering
             this.closeInteractionOverlays();
             
-            // If the selected unit is already visible, update non-selected pages in-place to prevent flicker.
-            if (selectedUnitId && preserveSelectedSlot && this.pageElements.length > 0) {
+            // Determine if we're transitioning between display modes
+            // (from paginated/swipe mode to all-fit mode or vice versa)
+            // In such cases, page positions need to be recalculated, so we must do a full re-render
+            const wasInPaginatedMode = previousUnitCount > visibleCount;
+            const nowInPaginatedMode = allUnits.length > visibleCount;
+            const modeChanged = wasInPaginatedMode !== nowInPaginatedMode;
+            
+            // If the selected unit is already visible and display mode hasn't changed,
+            // update non-selected pages in-place to prevent flicker.
+            if (selectedUnitId && preserveSelectedSlot && this.pageElements.length > 0 && !modeChanged) {
                 this.updateDisplayedPagesInPlace({ preserveSelectedUnitId: selectedUnitId });
             } else {
                 this.displayUnit();
