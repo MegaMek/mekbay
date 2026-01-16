@@ -342,14 +342,17 @@ export class PageViewerComponent implements AfterViewInit {
 
         // Watch for force units changes (additions, removals, reordering)
         let previousUnitIds: string[] = [];
+        let previousUnitCount = 0;
         effect(() => {
             const force = this.force();
             const allUnits = force?.units() ?? [];
             const currentUnitIds = allUnits.map(u => u.id);
+            const currentUnitCount = allUnits.length;
 
             // Skip if view isn't ready yet
             if (!this.viewInitialized) {
                 previousUnitIds = currentUnitIds;
+                previousUnitCount = currentUnitCount;
                 return;
             }
 
@@ -357,12 +360,13 @@ export class PageViewerComponent implements AfterViewInit {
             const unitsChanged = currentUnitIds.length !== previousUnitIds.length ||
                 currentUnitIds.some((id, idx) => id !== previousUnitIds[idx]);
 
-            if (unitsChanged && previousUnitIds.length > 0) {
-                // Units have changed - check if currently displayed units are still valid
-                untracked(() => this.handleForceUnitsChanged(currentUnitIds));
+            if (unitsChanged) {
+                // Units have changed - update view
+                untracked(() => this.handleForceUnitsChanged(previousUnitCount));
             }
 
             previousUnitIds = currentUnitIds;
+            previousUnitCount = currentUnitCount;
         }, { injector: this.injector });
 
         // Watch for fluff image visibility option changes
@@ -2726,21 +2730,33 @@ export class PageViewerComponent implements AfterViewInit {
     /**
      * Handle changes to the force's units array (additions, removals, reordering).
      * Updates the view if currently displayed units no longer match their expected positions.
+     * 
+     * @param previousUnitCount The number of units before this change (used to detect count changes)
      */
-    private handleForceUnitsChanged(currentUnitIds: string[]): void {
+    private handleForceUnitsChanged(previousUnitCount: number): void {
         const force = this.forceBuilder.currentForce();
         const allUnits = force?.units() ?? [];
         
         if (allUnits.length === 0) {
             // Force is empty, clear display
             this.clearPages();
+            this.renderShadowPages(); // Clear shadow pages too
             return;
         }
+
+        // Update dimensions first - this updates the zoom service's page count
+        // which affects visiblePageCount and effectiveVisiblePageCount
+        this.updateDimensions();
 
         // Check if any of our currently displayed units are no longer at the expected indices
         let viewStart = this.viewStartIndex();
         const visibleCount = this.effectiveVisiblePageCount();
         let needsRedisplay = false;
+
+        // Force redisplay when unit count changes - this affects how many pages should be shown
+        if (allUnits.length !== previousUnitCount) {
+            needsRedisplay = true;
+        }
 
         // If the currently selected unit was visible, follow it and keep its relative slot.
         // Example: if selected unit was in slot 1 of 3, keep it in slot 1 after reorder.
@@ -2789,6 +2805,9 @@ export class PageViewerComponent implements AfterViewInit {
         }
 
         if (needsRedisplay) {
+            // Close interaction overlays before re-rendering
+            this.closeInteractionOverlays();
+            
             // If the selected unit is already visible, update non-selected pages in-place to prevent flicker.
             if (selectedUnitId && preserveSelectedSlot && this.pageElements.length > 0) {
                 this.updateDisplayedPagesInPlace({ preserveSelectedUnitId: selectedUnitId });
