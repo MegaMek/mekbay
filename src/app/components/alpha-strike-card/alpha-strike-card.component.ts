@@ -52,6 +52,7 @@ import { LinearPickerComponent } from '../linear-picker/linear-picker.component'
 import { PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { firstValueFrom } from 'rxjs';
+import { OptionsService } from '../../services/options.service';
 
 /*
  * Author: Drake
@@ -82,6 +83,7 @@ interface PickerInstance {
 export class AlphaStrikeCardComponent {
     private static nextId = 0;
     private readonly injector = inject(Injector);
+    private readonly optionsService = inject(OptionsService);
     private readonly abilityLookup = inject(AsAbilityLookupService);
     private readonly dialogs = inject(DialogsService);
     private readonly elRef = inject(ElementRef<HTMLElement>);
@@ -528,35 +530,37 @@ export class AlphaStrikeCardComponent {
                 unit.setPendingDamage(delta);
                 vibrate(10);
                 
-                // Check if internal structure damage increased
-                const newPendingInternal = unit.getState().pendingInternal();
-                const tookStructureDamage = newPendingInternal > previousPendingInternal;
-                
-                // Critical hit handling (skip for conventional infantry)
-                const unitType = unit.getUnit().as.TP;
-                if (unitType !== 'CI') {
-                    const specials = unit.getUnit().as.specials || [];
-                    const hasBAR = specials.some(s => s.startsWith('BAR'));
+                if (this.optionsService.options().ASUseAutomations) {
+                    // Check if internal structure damage increased
+                    const newPendingInternal = unit.getState().pendingInternal();
+                    const tookStructureDamage = newPendingInternal > previousPendingInternal;
                     
-                    if (hasBAR && deltaChange > 0) {
-                        // BAR: Any time a unit with BAR suffers damage, a critical hit may occur
-                        await this.onRollCriticalClick();
-                    } 
-                    
-                    if (tookStructureDamage) {
-                        // Normal structure damage roll
-                        await this.onRollCriticalClick();
+                    // Critical hit handling (skip for conventional infantry)
+                    const unitType = unit.getUnit().as.TP;
+                    if (unitType !== 'CI') {
+                        const specials = unit.getUnit().as.specials || [];
+                        const hasBAR = specials.some(s => s.startsWith('BAR'));
                         
-                        // Industrial Meks get an extra roll on structure damage
-                        if (unitType === 'IM') {
+                        if (hasBAR && deltaChange > 0) {
+                            // BAR: Any time a unit with BAR suffers damage, a critical hit may occur
                             await this.onRollCriticalClick();
+                        } 
+                        
+                        if (tookStructureDamage) {
+                            // Normal structure damage roll
+                            await this.onRollCriticalClick();
+    
+                            // Industrial Meks get an extra roll on structure damage
+                            if (unitType === 'IM') {
+                                await this.onRollCriticalClick();
+                            }
                         }
-                    }
-                    
-
-                    // If damage increased, check for motive damage roll for vehicles
-                    if (deltaChange > 0) {
-                        await this.checkMotiveDamage(unit);
+                        
+    
+                        // If damage increased, check for motive damage roll for vehicles
+                        if (deltaChange > 0) {
+                            await this.checkMotiveDamage(unit);
+                        }
                     }
                 }
             },

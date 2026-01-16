@@ -623,7 +623,7 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
                 return CRIT_TABLE_PROTOMEK;
             case 'CV':  // Combat Vehicle
             case 'SV':  // Support Vehicle
-                return this.optionsService.options().vehiclesCriticalHitTable === 'scouringSands'
+                return this.optionsService.options().ASVehiclesCriticalHitTable === 'scouringSands'
                     ? CRIT_TABLE_VEHICLE_SCOURING_SANDS
                     : CRIT_TABLE_VEHICLE;
             case 'AF':  // Aerospace Fighter
