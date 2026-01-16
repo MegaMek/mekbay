@@ -567,8 +567,8 @@ export class AlphaStrikeCardComponent {
         // Only vehicles (CV = Combat Vehicle, SV = Support Vehicle) need motive damage rolls
         if (unitType !== 'CV' && unitType !== 'SV') return;
         
-        // Skip if unit has no movement
-        const movement = unit.effectiveMovement();
+        // Skip if unit will not have any movement left
+        const movement = unit.previewMovementNoHeat();
         const entries = Object.entries(movement);
         if (entries.length === 0) return;
         if (entries.every(([, inches]) => inches <= 0)) return;
@@ -583,25 +583,97 @@ export class AlphaStrikeCardComponent {
         );
         await firstValueFrom(ref.closed);
     }
+
+    private calculateRemainingCritHits(critKey: string): number | null {
+        const unit = this.forceUnit();
+        if (!unit) return null;
+        if (critKey === 'mp' || critKey === 'motive2') {
+            return this.calculateRemainingMotiveHits(unit, false);
+        } else if (critKey === 'motive1') {
+            return this.calculateRemainingMotiveHits(unit, true);
+        } else if (critKey === 'weapons') {
+            return this.calculateRemainingWeaponHits(unit);
+        }
+        return null;
+    }
+
+    /**
+     * Calculate hits needed to reduce a damage value to 0 from the preview state.
+     * Damage scale: 9 8 7 6 5 4 3 2 1 0* 0
+     */
+    private calculateRemainingWeaponHits(unit: ASForceUnit): number {
+        const values = [unit.previewDamageS(), unit.previewDamageM(), unit.previewDamageL(), unit.previewDamageE()];
+        let maxHits = 0;
+        const hitsToReduceDamageToZero = (value: string): number => {
+            if (!value) return 0;
+            value = value.trim();
+            if (value === '0' || value === '-' || value === '') return 0;
+            if (value === '0*') return 1;
+            const numericValue = parseInt(value, 10);
+            if (isNaN(numericValue) || numericValue < 0) return 0;
+            // Position in sequence: value + 1 (0=0, 1=0*, 2=1, etc.)
+            // To get to 0, we need (position) hits
+            return numericValue + 1;
+        }
+        for (const val of values) {
+            const hits = hitsToReduceDamageToZero(val);
+            if (hits > maxHits) maxHits = hits;
+        }
+        return maxHits;
+    }
+
+    private calculateRemainingMotiveHits(unit: ASForceUnit, isMotive1: boolean): number {
+        // Determine max movement inches from preview state
+        let maxInches = 0;
+        for (const inches of Object.values(unit.previewMovementNoHeat())) {
+            if (typeof inches === 'number' && inches > maxInches) {
+                maxInches = inches;
+            }
+        }
+        if (maxInches <= 0) return 0;
+        let current = maxInches;
+        let hits = 0;
+        // Simulate Motive damage hits until movement reduced to 0
+        if (isMotive1) {
+            // Each hit reduces by 2, so max hits = ceil(maxInches / 2)
+            hits = Math.ceil(maxInches / 2);
+        } else {
+            while (current > 0) {
+                const halved = Math.floor(current / 2);
+                const reduction = Math.max(2, current - halved);
+                current = Math.max(0, current - reduction);
+                hits++;
+            }
+        }
+        return hits;
+    }
     
     private showCritPicker(event: PointerEvent, critKey: string, rowElement: HTMLElement): void {
         const unit = this.forceUnit();
         if (!unit) return;
         
         const pips = rowElement.querySelectorAll('.pip');
-        const maxHits = pips.length;
-        if (maxHits === 0) return;
+        const pipsCount = pips.length;
+        if (pipsCount === 0) return;
         
         const committedHits = unit.getCommittedCritHits(critKey);
         const pendingHits = unit.getPendingCritChange(critKey);
         const currentHits = committedHits + pendingHits;
-        const currentTotal = maxHits - currentHits;
+        const remainingPips = pipsCount - currentHits;
+        
+        // Calculate the effective max based on actual crit effects
+        let maxValue = remainingPips;
+        const remainingCritHits = this.calculateRemainingCritHits(critKey);
+        if (remainingCritHits !== null && remainingCritHits > maxValue) {
+            maxValue = remainingCritHits;
+        }
         
         this.showNumericPicker({
             anchorElement: rowElement,
             title: critKey.replace(/-/g, ' ').toUpperCase(),
             min: -currentHits,
-            max: currentTotal,
+            max: maxValue,
+            threshold: remainingPips > 0 ? remainingPips : 0,
             selected: 1, // Start with delta of 1 selected
             onPick: (result: NumericPickerResult) => {
                 this.removePicker();
@@ -622,6 +694,7 @@ export class AlphaStrikeCardComponent {
         min: number;
         max: number;
         selected?: number;
+        threshold?: number;
         onPick: (result: NumericPickerResult) => void;
         onCancel: () => void;
     }): void {
@@ -634,6 +707,7 @@ export class AlphaStrikeCardComponent {
         this.pickerRef = this.pickerFactory.createNumericPicker({
             min: config.min,
             max: config.max,
+            threshold: config.threshold,
             selected: config.selected ?? 0,
             position,
             title: config.title,

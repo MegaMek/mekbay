@@ -392,7 +392,7 @@ export class RotatingPickerComponent implements AfterViewInit, NumericPickerComp
     readonly isOverThreshold = computed(() => {
         const thresh = this.threshold();
         if (thresh === null) return false;
-        return this.currentValue() >= thresh;
+        return this.currentValue() > thresh;
     });
 
     readonly leftArrowPath = computed(() => {

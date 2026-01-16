@@ -108,6 +108,13 @@ export class ASForceUnit extends ForceUnit {
         return this.state.heat();
     });
 
+    /**
+     * Get preview heat including pending changes.
+     */
+    previewHeat = computed<number>(() => {
+        return Math.max(0, this.state.heat() + this.state.pendingHeat());
+    });
+
     setHeat(heat: number): void {
         this.state.heat.set(heat);
         this.setModified();
@@ -176,26 +183,17 @@ export class ASForceUnit extends ForceUnit {
     });
 
     /**
-     * Calculate effective Thrust after applying Engine and Thruster critical hits.
-     * 
-     * Engine Hit (Aerospace Fighters, Conventional Fighters, Fixed-Wing Support Vehicles):
-     * - 1st hit: -50% of original THR (round down, minimum 1 lost)
-     * - 2nd hit: THR = 0
-     * 
-     * Engine Hit (DropShips/Small Craft):
-     * - 1st hit: -25% of original THR (round normally, minimum 1 lost)
-     * - 2nd hit: -50% of original THR (round normally, minimum 1 lost)
-     * - 3rd hit: THR = 0
-     * 
-     * Thruster Hit:
-     * - -1 THR
+     * Core Thrust calculation logic.
+     * @param orderedCrits Ordered crits array
+     * @param engineHits Engine critical hits count
      */
-    public calculateEffectiveThrust(): number {
+    private calculateThrust(
+        orderedCrits: { key: string; timestamp: number }[],
+        engineHits: number
+    ): number {
         const base = this.unit.as.Th;
         if (base <= 0) return base;
         
-        const orderedCrits = this.state.getCommittedCritsOrdered();
-        const engineHits = this.state.getCommittedCritHits('engine');
         let current = base;
         let engineHitCount = 0;
         
@@ -222,21 +220,53 @@ export class ASForceUnit extends ForceUnit {
                         }
                     } else {
                         if (engineHitCount === 1) {
-                        const reduction = Math.max(1, Math.ceil(base * 0.5));
-                        current = Math.max(0, current - reduction);
+                            const reduction = Math.max(1, Math.ceil(base * 0.5));
+                            current = Math.max(0, current - reduction);
                         } else if (engineHitCount >= 2) {
                             current = 0;
                         }
                     }
                     break;
                 case 'thruster':
-                    // -1 THR per hit (only first hit counts per rules)
+                    // -1 THR per hit
                     current = Math.max(0, current - 1);
                     break;
             }
         }
         
         return current;
+    }
+
+    /**
+     * Calculate effective Thrust after applying committed Engine and Thruster critical hits.
+     * 
+     * Engine Hit (Aerospace Fighters, Conventional Fighters, Fixed-Wing Support Vehicles):
+     * - 1st hit: -50% of original THR (round down, minimum 1 lost)
+     * - 2nd hit: THR = 0
+     * 
+     * Engine Hit (DropShips/Small Craft):
+     * - 1st hit: -25% of original THR (round normally, minimum 1 lost)
+     * - 2nd hit: -50% of original THR (round normally, minimum 1 lost)
+     * - 3rd hit: THR = 0
+     * 
+     * Thruster Hit:
+     * - -1 THR
+     */
+    public calculateEffectiveThrust(): number {
+        return this.calculateThrust(
+            this.state.getCommittedCritsOrdered(),
+            this.state.getCommittedCritHits('engine')
+        );
+    }
+
+    /**
+     * Calculate preview Thrust including pending critical hits.
+     */
+    public calculatePreviewThrust(): number {
+        return this.calculateThrust(
+            this.state.getPreviewCritsOrdered(),
+            this.state.getPreviewCritHits('engine')
+        );
     }
 
     /**
@@ -522,15 +552,19 @@ export class ASForceUnit extends ForceUnit {
     // ===== Movement & TMM Calculations =====
 
     /**
-     * Get effective movement values in inches after applying crits and heat.
+     * Core movement calculation logic.
+     * @param heat Heat level to apply
+     * @param mpHits MP critical hits count (for non-vehicles)
+     * @param orderedCrits Ordered crits array (for vehicles)
      */
-    effectiveMovement = computed<{ [mode: string]: number }>(() => {
+    public calculateMovement(
+        heat: number,
+        mpHits: number,
+        orderedCrits: { key: string; timestamp: number }[]
+    ): { [mode: string]: number } {
         const mvm = this.unit.as.MVm;
         if (!mvm) return {};
 
-        const heat = this.state.heat();
-        const heatReduction = heat * 2;
-        const mpHits = this.state.getCommittedCritHits('mp');
         const mvByMode: { [mode: string]: number } = {};
 
         const entries = Object.entries(mvm);
@@ -547,12 +581,14 @@ export class ASForceUnit extends ForceUnit {
 
             let reducedInches: number;
             if (this.isVehicle()) {
-                reducedInches = this.applyVehicleMotiveReduction(inches);
+                reducedInches = this.applyVehicleMotiveReductionWithCrits(inches, orderedCrits);
             } else {
                 reducedInches = this.applyMpHitsReduction(inches, mpHits);
             }
+
             // Apply heat reduction only to ground movement (not 'j')
             if (mode !== 'j') {
+                const heatReduction = heat * 2;
                 reducedInches = Math.max(0, reducedInches - heatReduction);
             }
             mvByMode[mode] = reducedInches;
@@ -571,10 +607,51 @@ export class ASForceUnit extends ForceUnit {
             }
         }
         return result;
+    }
+
+    /**
+     * Get effective movement values in inches after applying committed crits and heat.
+     */
+    effectiveMovement = computed<{ [mode: string]: number }>(() => {
+        return this.calculateMovement(
+            this.state.heat(),
+            this.state.getCommittedCritHits('mp'),
+            this.state.getCommittedCritsOrdered()
+        );
+    });
+
+    /**
+     * Get preview movement values including pending changes.
+     */
+    previewMovement = computed<{ [mode: string]: number }>(() => {
+        return this.calculateMovement(
+            this.state.heat() + this.state.pendingHeat(),
+            this.state.getPreviewCritHits('mp'),
+            this.state.getPreviewCritsOrdered()
+        );
+    });
+
+    /**
+     * Get preview movement values including pending changes but ignoring heat effects.
+     */
+    previewMovementNoHeat = computed<{ [mode: string]: number }>(() => {
+        return this.calculateMovement(
+            0,
+            this.state.getPreviewCritHits('mp'),
+            this.state.getPreviewCritsOrdered()
+        );
     });
 
     isShutdown = computed<boolean>(() => {
         const heat = this.getState().heat();
+        return heat >= 4;
+    });
+
+    /**
+     * Preview shutdown state including pending heat.
+     */
+    previewShutdown = computed<boolean>(() => {
+        const heat = this.getState().heat() + this.getState().pendingHeat();
         return heat >= 4;
     });
 
@@ -593,13 +670,34 @@ export class ASForceUnit extends ForceUnit {
     });
 
     /**
-     * Get effective TMM values after applying crits and heat.
-     * Returns { [mode: string]: number }
-     * Modes with the same TMM are merged (e.g., if ground and jump have same TMM, only '' is returned).
+     * Preview immobilized state including pending changes.
      */
-    effectiveTmm = computed<{ [mode: string]: number }>(() => {
+    previewImmobilized = computed<boolean>(() => {
+        if (this.previewShutdown()) {
+            return true;
+        }
+        const movement = this.previewMovement();
+        const entries = Object.entries(movement);
+        if (entries.length === 0) return false;
+
+        return entries.every(([, inches]) => inches <= 0);
+    });
+
+    /**
+     * Core TMM calculation logic.
+     * @param isImmobilized Whether the unit is immobilized
+     * @param heat Heat level for TMM penalty
+     * @param mpHits MP critical hits count (for non-vehicles)
+     * @param orderedCrits Ordered crits array (for vehicles)
+     */
+    private calculateTmm(
+        isImmobilized: boolean,
+        heat: number,
+        mpHits: number,
+        orderedCrits: { key: string; timestamp: number }[]
+    ): { [mode: string]: number } {
         // Immobilized units have TMM of -4
-        if (this.isImmobilized()) {
+        if (isImmobilized) {
             return { '': -4 };
         }
 
@@ -618,21 +716,15 @@ export class ASForceUnit extends ForceUnit {
             }
         }
 
-        // Get jump/sub TMM modifiers from specials
-        // OBSOLETE: we calculate the TMM from calculateBaseTMMFromInches which would include those modifiers alreadyy.
-        // const jumpMod = this.getSignedSpecialModifier(stats.specials, 'JMPS', 'JMPW');
-        // const subMod = this.getSignedSpecialModifier(stats.specials, 'SUBS', 'SUBW');
-
         // Calculate TMM penalty from crits
         let tmmPenalty: number;
         if (this.isVehicle()) {
-            tmmPenalty = this.calculateVehicleTmmPenalty();
+            tmmPenalty = this.calculateVehicleTmmPenaltyWithCrits(orderedCrits);
         } else {
-            tmmPenalty = this.state.getCommittedCritHits('mp');
+            tmmPenalty = mpHits;
         }
 
         // Apply heat TMM penalty: -1 at heat level 2+ (only for ground movement)
-        const heat = this.state.heat();
         const heatTmmPenalty = heat >= 2 ? 1 : 0;
 
         // Calculate TMM for each movement mode
@@ -643,18 +735,10 @@ export class ASForceUnit extends ForceUnit {
 
             const baseTmm = this.calculateBaseTMMFromInches(inches);
 
-            // Apply mode-specific modifiers
-            let modifier = 0;
-            // if (mode === 'j' && jumpMod !== null) {
-            //     modifier = jumpMod;
-            // } else if (mode === 's' && subMod !== null) {
-            //     modifier = subMod;
-            // }
-
             // Heat penalty applies to ground movement only (not 'j')
             const heatPenalty = mode === 'j' ? 0 : heatTmmPenalty;
 
-            const effectiveTmm = Math.max(0, baseTmm + modifier - tmmPenalty - heatPenalty);
+            const effectiveTmm = Math.max(0, baseTmm - tmmPenalty - heatPenalty);
             tmmByMode[mode] = effectiveTmm;
         }
 
@@ -675,6 +759,32 @@ export class ASForceUnit extends ForceUnit {
         }
 
         return result;
+    }
+
+    /**
+     * Get effective TMM values after applying committed crits and heat.
+     * Returns { [mode: string]: number }
+     * Modes with the same TMM are merged (e.g., if ground and jump have same TMM, only '' is returned).
+     */
+    effectiveTmm = computed<{ [mode: string]: number }>(() => {
+        return this.calculateTmm(
+            this.isImmobilized(),
+            this.state.heat(),
+            this.state.getCommittedCritHits('mp'),
+            this.state.getCommittedCritsOrdered()
+        );
+    });
+
+    /**
+     * Get preview TMM values including pending changes.
+     */
+    previewTmm = computed<{ [mode: string]: number }>(() => {
+        return this.calculateTmm(
+            this.previewImmobilized(),
+            this.state.heat() + this.state.pendingHeat(),
+            this.state.getPreviewCritHits('mp'),
+            this.state.getPreviewCritsOrdered()
+        );
     });
 
     /**
@@ -692,10 +802,12 @@ export class ASForceUnit extends ForceUnit {
     }
 
     /**
-     * Apply vehicle motive critical hits to movement value.
+     * Apply vehicle motive critical hits to movement value with provided crits.
      */
-    private applyVehicleMotiveReduction(baseInches: number): number {
-        const orderedCrits = this.state.getCommittedCritsOrdered();
+    private applyVehicleMotiveReductionWithCrits(
+        baseInches: number,
+        orderedCrits: { key: string; timestamp: number }[]
+    ): number {
         let current = baseInches;
 
         for (const crit of orderedCrits) {
@@ -723,10 +835,11 @@ export class ASForceUnit extends ForceUnit {
     }
 
     /**
-     * Calculate total TMM penalty from vehicle motive critical hits.
+     * Calculate total TMM penalty from vehicle motive critical hits with provided crits.
      */
-    private calculateVehicleTmmPenalty(): number {
-        const orderedCrits = this.state.getCommittedCritsOrdered();
+    private calculateVehicleTmmPenaltyWithCrits(
+        orderedCrits: { key: string; timestamp: number }[]
+    ): number {
         const baseTmm = this.unit.as.TMM ?? 0;
         let currentTmm = baseTmm;
 
@@ -765,51 +878,137 @@ export class ASForceUnit extends ForceUnit {
     // ===== Damage Calculations =====
 
     /**
-     * Get effective Short range damage after applying crits.
+     * Core damage calculation logic.
+     * @param base Base damage value
+     * @param weaponHits Weapon critical hits count (for non-vehicles)
+     * @param orderedCrits Ordered crits array (for vehicles)
+     */
+    private calculateDamage(
+        base: string,
+        weaponHits: number,
+        orderedCrits: { key: string; timestamp: number }[]
+    ): string {
+        if (this.isVehicle()) {
+            return this.calculateVehicleDamageReductionWithCrits(base, orderedCrits);
+        }
+        return this.reduceDamageValue(base, weaponHits);
+    }
+
+    /**
+     * Get effective Short range damage after applying committed crits.
      */
     effectiveDamageS = computed<string>(() => {
         const base = this.unit.as.dmg.dmgS;
-        return this.calculateReducedDamage(base);
+        return this.calculateDamage(
+            base,
+            this.state.getCommittedCritHits('weapons'),
+            this.state.getCommittedCritsOrdered()
+        );
     });
 
     /**
-     * Get effective Medium range damage after applying crits.
+     * Get effective Medium range damage after applying committed crits.
      */
     effectiveDamageM = computed<string>(() => {
         const base = this.unit.as.dmg.dmgM;
-        return this.calculateReducedDamage(base);
+        return this.calculateDamage(
+            base,
+            this.state.getCommittedCritHits('weapons'),
+            this.state.getCommittedCritsOrdered()
+        );
     });
 
     /**
-     * Get effective Long range damage after applying crits.
+     * Get effective Long range damage after applying committed crits.
      */
     effectiveDamageL = computed<string>(() => {
         const base = this.unit.as.dmg.dmgL;
-        return this.calculateReducedDamage(base);
+        return this.calculateDamage(
+            base,
+            this.state.getCommittedCritHits('weapons'),
+            this.state.getCommittedCritsOrdered()
+        );
     });
 
     /**
-     * Get effective Extreme range damage after applying crits.
+     * Get effective Extreme range damage after applying committed crits.
      */
     effectiveDamageE = computed<string>(() => {
         const base = this.unit.as.dmg.dmgE;
-        return this.calculateReducedDamage(base);
+        return this.calculateDamage(
+            base,
+            this.state.getCommittedCritHits('weapons'),
+            this.state.getCommittedCritsOrdered()
+        );
     });
 
     /**
-     * Check if all damage values are at minimum (0 or '-').
+     * Get preview Short range damage including pending crits.
+     */
+    previewDamageS = computed<string>(() => {
+        const base = this.unit.as.dmg.dmgS;
+        return this.calculateDamage(
+            base,
+            this.state.getPreviewCritHits('weapons'),
+            this.state.getPreviewCritsOrdered()
+        );
+    });
+
+    /**
+     * Get preview Medium range damage including pending crits.
+     */
+    previewDamageM = computed<string>(() => {
+        const base = this.unit.as.dmg.dmgM;
+        return this.calculateDamage(
+            base,
+            this.state.getPreviewCritHits('weapons'),
+            this.state.getPreviewCritsOrdered()
+        );
+    });
+
+    /**
+     * Get preview Long range damage including pending crits.
+     */
+    previewDamageL = computed<string>(() => {
+        const base = this.unit.as.dmg.dmgL;
+        return this.calculateDamage(
+            base,
+            this.state.getPreviewCritHits('weapons'),
+            this.state.getPreviewCritsOrdered()
+        );
+    });
+
+    /**
+     * Get preview Extreme range damage including pending crits.
+     */
+    previewDamageE = computed<string>(() => {
+        const base = this.unit.as.dmg.dmgE;
+        return this.calculateDamage(
+            base,
+            this.state.getPreviewCritHits('weapons'),
+            this.state.getPreviewCritsOrdered()
+        );
+    });
+
+    /**
+     * Check if all effective damage values are at minimum (0 or '-').
      * Used to determine if a weapon critical hit would have any effect.
      */
     isAllDamageAtMinimum = computed<boolean>(() => {
-        const dmgS = this.effectiveDamageS();
-        const dmgM = this.effectiveDamageM();
-        const dmgL = this.effectiveDamageL();
-        const dmgE = this.effectiveDamageE();
-        
-        return this.isDamageAtMinimum(dmgS) &&
-               this.isDamageAtMinimum(dmgM) &&
-               this.isDamageAtMinimum(dmgL) &&
-               this.isDamageAtMinimum(dmgE);
+        return this.isDamageAtMinimum(this.effectiveDamageS()) &&
+               this.isDamageAtMinimum(this.effectiveDamageM()) &&
+               this.isDamageAtMinimum(this.effectiveDamageL()) &&
+               this.isDamageAtMinimum(this.effectiveDamageE());
+    });
+
+    /**
+     * Check if all preview damage values are at minimum (0 or '-').
+     */
+    isAllPreviewDamageAtMinimum = computed<boolean>(() => {
+        return this.isDamageAtMinimum(this.previewDamageS()) &&
+               this.isDamageAtMinimum(this.previewDamageM()) &&
+               this.isDamageAtMinimum(this.previewDamageL()) &&
+               this.isDamageAtMinimum(this.previewDamageE());
     });
 
     /**
@@ -820,38 +1019,20 @@ export class ASForceUnit extends ForceUnit {
     }
 
     /**
-     * Calculate reduced damage after applying critical hit effects.
-     * 
-     * For vehicles (order matters):
-     *   1. Engine Hit: 50% reduction (floor, min 0)
-     *   2. Weapon Hits: -1 per hit
-     * 
-     * For non-vehicles:
-     *   - Weapon Hits: -1 per hit using position scale (9 8 7 6 5 4 3 2 1 0* 0)
-     */
-    private calculateReducedDamage(base: string): string {
-        if (this.isVehicle()) {
-            return this.calculateVehicleDamageReduction(base);
-        }
-        const weaponHits = this.state.getCommittedCritHits('weapons');
-        return this.reduceDamageValue(base, weaponHits);
-    }
-
-    /**
      * Vehicle damage reduction using ordered crits:
      *   - Engine hit: 50% of current damage value (floor, min 0)
      *   - Weapon hit: -1 per hit using position scale (1→0*→0)
      * Order matters - effects are applied sequentially.
      */
-    private calculateVehicleDamageReduction(base: string): string {
+    private calculateVehicleDamageReductionWithCrits(
+        base: string,
+        orderedCrits: { key: string; timestamp: number }[]
+    ): string {
         // Handle special cases
         if (base === '-' || base === '') return base;
 
         // Track as string to handle 0* properly
         let current = base;
-
-        // Process crits in order
-        const orderedCrits = this.state.getCommittedCritsOrdered();
 
         for (const crit of orderedCrits) {
             if (current === '0') break; // Already at minimum

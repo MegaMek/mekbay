@@ -446,6 +446,21 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
         // For regular pip-based crits
         if (!res.pipKey) return null;
 
+        // We evaluate each key if has any effect, if we already bottomed the affects stats then we cannot apply
+        if (res.pipKey === 'mp' || res.pipKey === 'motive1' || res.pipKey === 'motive2' || res.pipKey === 'motive3') {
+            const movement = this.forceUnit.previewMovementNoHeat();
+            const entries = Object.entries(movement);
+            if ((entries.length === 0) || (entries.every(([, inches]) => inches <= 0))) {
+                return `Unit has no movement left to reduce.`;
+            }
+        } else if (res.pipKey === 'weapons') {
+            // Check if all damage values are already at minimum
+            if (this.forceUnit.isAllPreviewDamageAtMinimum()) {
+                return `Unit has no weapons damage left to reduce.`;
+            }
+        }
+
+        // for all others we just check max hits
         const maxHits = entry?.maxHits;
         if (maxHits) {
             const currentHits = this.forceUnit.getCommittedCritHits(res.pipKey) +
@@ -455,19 +470,6 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
             }
         }
 
-        // We evaluate each key if has any effect
-        if (res.pipKey === 'mp' || res.pipKey === 'motive2') {
-            const movement = this.forceUnit.effectiveMovement();
-            const entries = Object.entries(movement);
-            if ((entries.length === 0) || (entries.every(([, inches]) => inches <= 0))) {
-                return `Unit has no movement left to reduce.`;
-            }
-        } else if (res.pipKey === 'weapons') {
-            // Check if all damage values are already at minimum
-            if (this.forceUnit.isAllDamageAtMinimum()) {
-                return `Unit has no weapons damage left to reduce.`;
-            }
-        }
 
         return null;
     });

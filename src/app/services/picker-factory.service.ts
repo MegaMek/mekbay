@@ -96,6 +96,7 @@ interface BasePickerConfig {
 export interface NumericPickerConfig extends BasePickerConfig {
     min: number;
     max: number;
+    threshold?: number;
     selected?: number;
     step?: number;
     onPick: (result: NumericPickerResult) => void;
@@ -140,6 +141,7 @@ export class PickerFactoryService {
         // Set inputs
         compRef.setInput('min', config.min);
         compRef.setInput('max', config.max);
+        compRef.setInput('threshold', config.threshold ?? null);
         compRef.setInput('selected', config.selected ?? 0);
         compRef.setInput('step', config.step ?? 1);
         compRef.setInput('position', config.position);

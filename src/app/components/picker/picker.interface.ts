@@ -142,6 +142,8 @@ export interface NumericPickerComponent extends BasePicker {
     min: InputSignal<number>;
     /** Maximum value (inclusive) */
     max: InputSignal<number>;
+    /** Threshold value (optional) */
+    threshold: InputSignal<number | null>;
     /** Initial/selected value */
     selected: InputSignal<number>;
     /** Step increment (default: 1) */
