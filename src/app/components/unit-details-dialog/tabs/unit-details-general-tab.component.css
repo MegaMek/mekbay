@@ -31,12 +31,10 @@
     box-sizing: border-box;
 }
 
-.basic-info-block img {
-    margin-top: -4px;
-}
-
 .basic-info-block .era-icon {
-    height: 19px;
+    height: 1.2em;
+    vertical-align: middle;
+    position: relative;
 }
 
 .basic-info-block a {
