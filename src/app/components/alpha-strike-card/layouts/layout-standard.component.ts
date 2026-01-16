@@ -159,96 +159,31 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     });
 
     // Damage values affected by weapon critical hits: -1 per hit
-    // isVehicle is now inherited from base class
+    // Uses forceUnit's damage calculations when available
 
     effectiveDamageS = computed<string>(() => {
-        const base = this.asStats().dmg.dmgS;
-        return this.calculateReducedDamage(base);
+        const fu = this.forceUnit();
+        if (fu) return fu.effectiveDamageS();
+        return this.asStats().dmg.dmgS;
     });
 
     effectiveDamageM = computed<string>(() => {
-        const base = this.asStats().dmg.dmgM;
-        return this.calculateReducedDamage(base);
+        const fu = this.forceUnit();
+        if (fu) return fu.effectiveDamageM();
+        return this.asStats().dmg.dmgM;
     });
 
     effectiveDamageL = computed<string>(() => {
-        const base = this.asStats().dmg.dmgL;
-        return this.calculateReducedDamage(base);
+        const fu = this.forceUnit();
+        if (fu) return fu.effectiveDamageL();
+        return this.asStats().dmg.dmgL;
     });
 
     effectiveDamageE = computed<string>(() => {
-        const base = this.asStats().dmg.dmgE;
-        return this.calculateReducedDamage(base);
-    });
-
-    /**
-     * Calculate reduced damage after applying critical hit effects.
-     * 
-     * For vehicles (order matters):
-     *   1. Engine Hit: 50% reduction (floor, min 0)
-     *   2. Weapon Hits: -1 per hit
-     * 
-     * For non-vehicles:
-     *   - Weapon Hits: -1 per hit using position scale (9 8 7 6 5 4 3 2 1 0* 0)
-     */
-    private calculateReducedDamage(base: string): string {
-        if (this.isVehicle()) {
-            return this.calculateVehicleDamageReduction(base);
-        }
-        return this.reduceDamageValue(base, this.weaponHits());
-    }
-
-    /**
-     * Vehicle damage reduction using ordered crits:
-     *   - Engine hit: 50% of current damage value (floor, min 0)
-     *   - Weapon hit: -1 per hit using position scale (1→0*→0)
-     * Order matters - effects are applied sequentially.
-     */
-    private calculateVehicleDamageReduction(base: string): string {
         const fu = this.forceUnit();
-        if (!fu) return base;
-
-        // Handle special cases
-        if (base === '-' || base === '') return base;
-
-        // Track as string to handle 0* properly
-        let current = base;
-
-        // Process crits in order
-        const orderedCrits = fu.getState().getCommittedCritsOrdered();
-
-        for (const crit of orderedCrits) {
-            if (current === '0') break; // Already at minimum
-
-            switch (crit.key) {
-                case 'engine':
-                    // Engine hit: 50% reduction (convert to number, reduce, convert back)
-                    current = this.applyEngineHitToValue(current);
-                    break;
-                case 'weapons':
-                    // Weapon hit: use position scale (1→0*→0)
-                    current = this.reduceDamageValue(current, 1);
-                    break;
-            }
-        }
-
-        return current;
-    }
-
-    /**
-     * Apply engine hit reduction (50%, floor) to a single damage value.
-     * Handles 0* specially: 0* → 0
-     */
-    private applyEngineHitToValue(value: string): string {
-        if (value === '0' || value === '-' || value === '') return value;
-        if (value === '0*') return '0';
-        
-        const numericValue = parseInt(value, 10);
-        if (isNaN(numericValue) || numericValue < 0) return value;
-        
-        const reduced = Math.floor(numericValue / 2);
-        return reduced.toString();
-    }
+        if (fu) return fu.effectiveDamageE();
+        return this.asStats().dmg.dmgE;
+    });
 
     constructor() {
         super();

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, ApplicationRef, EnvironmentInjector, createComponent, ComponentRef, Injector } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, ComponentRef, Injector } from '@angular/core';
 import { ASUnitTypeCode, Unit } from '../../models/units.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { AsAbilityLookupService, ParsedAbility } from '../../services/as-ability-lookup.service';
@@ -40,25 +40,22 @@ import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-in
 import { CardConfig, CardLayoutDesign, CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
 import { SpecialAbilityState, SpecialAbilityClickEvent } from './layouts/layout-base.component';
 import { CriticalHitRollDialogComponent, CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
+import { MotiveDamageRollDialogComponent, MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
 import {
     AsLayoutStandardComponent,
     AsLayoutLargeVessel1Component,
         AsLayoutLargeVessel2Component,
 } from './layouts';
 import { REMOTE_HOST } from '../../models/common.model';
-import { RotatingPickerComponent } from '../rotating-picker/rotating-picker.component';
-import { LinearPickerComponent } from '../linear-picker/linear-picker.component';
-import { PickerChoice, PickerPosition } from '../picker/picker.interface';
+import { ChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
+import { firstValueFrom } from 'rxjs';
+import { OptionsService } from '../../services/options.service';
+import { PickerFactoryService } from '../../services/picker-factory.service';
 
 /*
  * Author: Drake
  */
-
-interface PickerInstance {
-    componentRef: ComponentRef<RotatingPickerComponent | LinearPickerComponent>;
-    destroy(): void;
-}
 
 @Component({
     selector: 'alpha-strike-card',
@@ -80,12 +77,12 @@ interface PickerInstance {
 export class AlphaStrikeCardComponent {
     private static nextId = 0;
     private readonly injector = inject(Injector);
+    private readonly optionsService = inject(OptionsService);
     private readonly abilityLookup = inject(AsAbilityLookupService);
     private readonly dialogs = inject(DialogsService);
     private readonly elRef = inject(ElementRef<HTMLElement>);
     private readonly destroyRef = inject(DestroyRef);
-    private readonly appRef = inject(ApplicationRef);
-    private readonly envInjector = inject(EnvironmentInjector);
+    private readonly pickerFactory = inject(PickerFactoryService);
     
     /** Unique instance ID for SVG filter deduplication */
     readonly instanceId = AlphaStrikeCardComponent.nextId++;
@@ -111,7 +108,7 @@ export class AlphaStrikeCardComponent {
     
     // Interaction state
     private interactionAbortController: AbortController | null = null;
-    private pickerRef: PickerInstance | null = null;
+    private pickerRef: NumericPickerInstance | ChoicePickerInstance | null = null;
     private pickerAnchorElement: HTMLElement | null = null;
     private interactionsSetup = false;
     
@@ -347,14 +344,14 @@ export class AlphaStrikeCardComponent {
     }
 
     // Handle roll critical click - shows the critical hit roll dialog
-    onRollCriticalClick(): void {
+    async onRollCriticalClick(): Promise<void> {
         const fu = this.forceUnit();
         if (!fu) return;
         
         const unitType = fu.getUnit().as.TP;
         if (!unitType) return;
         
-        this.dialogs.createDialog<void, CriticalHitRollDialogComponent, CriticalHitRollDialogData>(
+        const ref = this.dialogs.createDialog<void, CriticalHitRollDialogComponent, CriticalHitRollDialogData>(
             CriticalHitRollDialogComponent,
             {
                 data: { 
@@ -363,6 +360,7 @@ export class AlphaStrikeCardComponent {
                 }
             }
         );
+        await firstValueFrom(ref.closed);
     }
     
     // ===== Interaction Logic =====
@@ -505,24 +503,154 @@ export class AlphaStrikeCardComponent {
         const currentTotalDamage = committedTotal + pendingTotal;
         const currentTotal = totalMax - currentTotalDamage;
         
-        const values: PickerChoice[] = [];
-        values.push({ label: `-${currentTotalDamage}`, value: -currentTotalDamage });
-        values.push({ label: `0`, value: 0 });
-        values.push({ label: `${currentTotal}`, value: currentTotal });
-        
-        this.showPicker({
+        this.showNumericPicker({
             anchorElement: event.currentTarget as HTMLElement,
             title: 'DAMAGE',
-            values,
-            onPick: (val: PickerChoice) => {
+            min: -currentTotalDamage,
+            max: currentTotal,
+            selected: 0,
+            onPick: async (val: NumericPickerResult) => {
                 this.removePicker();
-                const deltaChange = val.value as number;
+                const deltaChange = val.value;
                 const delta = pendingTotal + deltaChange;
+                
+                // Track pending internal before applying damage
+                const previousPendingInternal = unit.getState().pendingInternal();
+                
                 unit.setPendingDamage(delta);
                 vibrate(10);
+                
+                if (this.optionsService.options().ASUseAutomations) {
+                    // Check if internal structure damage increased
+                    const newPendingInternal = unit.getState().pendingInternal();
+                    const tookStructureDamage = newPendingInternal > previousPendingInternal;
+                    
+                    // Critical hit handling (skip for conventional infantry)
+                    const unitType = unit.getUnit().as.TP;
+                    if (unitType !== 'CI') {
+                        const specials = unit.getUnit().as.specials || [];
+                        const hasBAR = specials.some(s => s.startsWith('BAR'));
+                        
+                        if (hasBAR && deltaChange > 0) {
+                            // BAR: Any time a unit with BAR suffers damage, a critical hit may occur
+                            await this.onRollCriticalClick();
+                        } 
+                        
+                        if (tookStructureDamage) {
+                            // Normal structure damage roll
+                            await this.onRollCriticalClick();
+    
+                            // Industrial Meks get an extra roll on structure damage
+                            if (unitType === 'IM') {
+                                await this.onRollCriticalClick();
+                            }
+                        }
+                        
+    
+                        // If damage increased, check for motive damage roll for vehicles
+                        if (deltaChange > 0) {
+                            await this.checkMotiveDamage(unit);
+                        }
+                    }
+                }
             },
             onCancel: () => this.removePicker()
         });
+    }
+    
+    /**
+     * Check if motive damage roll should be triggered for a vehicle.
+     * Vehicles must roll on the Motive Systems Damage Table when taking structure damage.
+     */
+    private async checkMotiveDamage(unit: ASForceUnit): Promise<void> {
+        const unitType = unit.getUnit().as.TP;
+        // Only vehicles (CV = Combat Vehicle, SV = Support Vehicle) need motive damage rolls
+        if (unitType !== 'CV' && unitType !== 'SV') return;
+        
+        // Skip if unit will not have any movement left
+        const movement = unit.previewMovementNoHeat();
+        const entries = Object.entries(movement);
+        if (entries.length === 0) return;
+        if (entries.every(([, inches]) => inches <= 0)) return;
+        
+        const ref = this.dialogs.createDialog<void, MotiveDamageRollDialogComponent, MotiveDamageRollDialogData>(
+            MotiveDamageRollDialogComponent,
+            {
+                data: { 
+                    forceUnit: unit
+                }
+            }
+        );
+        await firstValueFrom(ref.closed);
+    }
+
+    private calculateRemainingCritHits(critKey: string): number | null {
+        const unit = this.forceUnit();
+        if (!unit) return null;
+        if (critKey === 'mp' || critKey === 'motive2') {
+            return this.calculateRemainingMotiveHits(unit, false);
+        } else if (critKey === 'motive1') {
+            return this.calculateRemainingMotiveHits(unit, true);
+        } else if (critKey === 'weapons') {
+            return this.calculateRemainingWeaponHits(unit);
+        } else if (critKey === 'fire-control') {
+            return 10; // Arbitrary high number, no real limit
+        }
+        return null;
+    }
+
+    /**
+     * Calculate hits needed to reduce a damage value to 0 from the preview state.
+     * Damage scale: 9 8 7 6 5 4 3 2 1 0* 0
+     */
+    private calculateRemainingWeaponHits(unit: ASForceUnit): number {
+        const values = [unit.previewDamageS(), unit.previewDamageM(), unit.previewDamageL(), unit.previewDamageE()];
+        let maxHits = 0;
+        const hitsToReduceDamageToZero = (value: string): number => {
+            if (!value) return 0;
+            value = value.trim();
+            if (value === '0' || value === '-' || value === '') return 0;
+            if (value === '0*') return 1;
+            const numericValue = parseInt(value, 10);
+            if (isNaN(numericValue) || numericValue < 0) return 0;
+            // Position in sequence: value + 1 (0=0, 1=0*, 2=1, etc.)
+            // To get to 0, we need (position) hits
+            return numericValue + 1;
+        }
+        for (const val of values) {
+            const hits = hitsToReduceDamageToZero(val);
+            if (hits > maxHits) maxHits = hits;
+        }
+        return maxHits;
+    }
+
+    /**
+     * Calculate hits needed to reduce movement to 0 from the preview state.
+     */
+    private calculateRemainingMotiveHits(unit: ASForceUnit, isMotive1: boolean): number {
+        // Determine max movement inches from preview state
+        let maxInches = 0;
+        for (const inches of Object.values(unit.previewMovementNoHeat())) {
+            if (typeof inches === 'number' && inches > maxInches) {
+                maxInches = inches;
+            }
+        }
+        if (maxInches <= 0) return 0;
+        let current = maxInches;
+        let hits = 0;
+        // Simulate Motive damage hits until movement reduced to 0
+        if (isMotive1) {
+            // Each hit reduces by 2, so max hits = ceil(maxInches / 2)
+            hits = Math.ceil(maxInches / 2);
+        } else {
+            while (current > 0) {
+                const halved = Math.floor(current / 2);
+                const reduction = Math.max(2, current - halved);
+                current = Math.max(0, current - reduction);
+                hits++;
+            }
+        }
+        return hits;
     }
     
     private showCritPicker(event: PointerEvent, critKey: string, rowElement: HTMLElement): void {
@@ -530,27 +658,31 @@ export class AlphaStrikeCardComponent {
         if (!unit) return;
         
         const pips = rowElement.querySelectorAll('.pip');
-        const maxHits = pips.length;
-        if (maxHits === 0) return;
+        const pipsCount = pips.length;
+        if (pipsCount === 0) return;
         
         const committedHits = unit.getCommittedCritHits(critKey);
         const pendingHits = unit.getPendingCritChange(critKey);
         const currentHits = committedHits + pendingHits;
-        const currentTotal = maxHits - currentHits;
+        const remainingPips = pipsCount - currentHits;
         
-        const values: PickerChoice[] = [];
-        values.push({ label: `-${currentHits}`, value: -currentHits });
-        values.push({ label: `0`, value: 0 });
-        values.push({ label: `${currentTotal}`, value: currentTotal });
+        // Calculate the effective max based on actual crit effects
+        let maxValue = remainingPips;
+        const remainingCritHits = this.calculateRemainingCritHits(critKey);
+        if (remainingCritHits !== null && remainingCritHits > maxValue) {
+            maxValue = remainingCritHits;
+        }
         
-        this.showPicker({
+        this.showNumericPicker({
             anchorElement: rowElement,
             title: critKey.replace(/-/g, ' ').toUpperCase(),
-            values,
+            min: -currentHits,
+            max: maxValue,
+            threshold: remainingPips > 0 ? remainingPips : 0,
             selected: 1, // Start with delta of 1 selected
-            onPick: (val: PickerChoice) => {
+            onPick: (result: NumericPickerResult) => {
                 this.removePicker();
-                const delta = pendingHits + (val.value as number);
+                const delta = pendingHits + result.value;
                 unit.setPendingCritHits(critKey, delta);
                 vibrate(10);
             },
@@ -558,12 +690,17 @@ export class AlphaStrikeCardComponent {
         });
     }
     
-    private showPicker(config: {
+    /**
+     * Show a numeric picker (rotating dial) for selecting a value within a range.
+     */
+    private showNumericPicker(config: {
         anchorElement: HTMLElement;
         title: string;
-        values: PickerChoice[];
+        min: number;
+        max: number;
         selected?: number;
-        onPick: (val: PickerChoice) => void;
+        threshold?: number;
+        onPick: (result: NumericPickerResult) => void;
         onCancel: () => void;
     }): void {
         this.removePicker();
@@ -572,31 +709,22 @@ export class AlphaStrikeCardComponent {
         this.pickerAnchorElement = config.anchorElement;
         const position = this.calculatePickerPosition(config.anchorElement, true);
         
-        const compRef = createComponent(RotatingPickerComponent, {
-            environmentInjector: this.envInjector,
+        this.pickerRef = this.pickerFactory.createNumericPicker({
+            min: config.min,
+            max: config.max,
+            threshold: config.threshold,
+            selected: config.selected ?? 0,
+            position,
+            title: config.title,
+            lightTheme: this.cardStyle() === 'colored',
+            onPick: config.onPick,
+            onCancel: config.onCancel
         });
-        
-        compRef.setInput('position', position);
-        compRef.setInput('title', config.title);
-        compRef.setInput('lightTheme', this.cardStyle() === 'colored');
-        compRef.setInput('selected', config.selected ?? 0);
-        compRef.instance.values.set(config.values);
-        
-        compRef.instance.picked.subscribe((val: PickerChoice) => config.onPick(val));
-        compRef.instance.cancelled.subscribe(() => config.onCancel());
-        
-        this.appRef.attachView(compRef.hostView);
-        document.body.appendChild(compRef.location.nativeElement);
-        
-        this.pickerRef = {
-            componentRef: compRef,
-            destroy: () => {
-                this.appRef.detachView(compRef.hostView);
-                compRef.destroy();
-            }
-        };
     }
     
+    /**
+     * Show a choice picker (linear style) for selecting from a list of options.
+     */
     private showLinearPicker(config: {
         anchorElement: HTMLElement;
         title: string;
@@ -609,30 +737,16 @@ export class AlphaStrikeCardComponent {
         this.pickerAnchorElement = config.anchorElement;
         const position = this.calculatePickerPosition(config.anchorElement, false);
         
-        const compRef = createComponent(LinearPickerComponent, {
-            environmentInjector: this.envInjector,
+        this.pickerRef = this.pickerFactory.createLinearPicker({
+            values: config.values,
+            position,
+            title: config.title,
+            lightTheme: this.cardStyle() === 'colored',
+            align: 'top',
+            horizontal: true,
+            onPick: config.onPick,
+            onCancel: config.onCancel
         });
-        
-        compRef.setInput('position', position);
-        compRef.setInput('lightTheme', this.cardStyle() === 'colored');
-        compRef.setInput('title', config.title);
-        compRef.setInput('align', 'top');
-        compRef.setInput('horizontal', true);
-        compRef.instance.values.set(config.values);
-        
-        compRef.instance.picked.subscribe((val: PickerChoice) => config.onPick(val));
-        compRef.instance.cancelled.subscribe(() => config.onCancel());
-        
-        this.appRef.attachView(compRef.hostView);
-        document.body.appendChild(compRef.location.nativeElement);
-        
-        this.pickerRef = {
-            componentRef: compRef,
-            destroy: () => {
-                this.appRef.detachView(compRef.hostView);
-                compRef.destroy();
-            }
-        };
     }
     
     private calculatePickerPosition(element: HTMLElement, centerVertically: boolean): PickerPosition {
@@ -652,9 +766,9 @@ export class AlphaStrikeCardComponent {
             return;
         }
         
-        const isRotating = this.pickerRef.componentRef.instance instanceof RotatingPickerComponent;
-        const position = this.calculatePickerPosition(this.pickerAnchorElement, isRotating);
-        this.pickerRef.componentRef.setInput('position', position);
+        // Update picker position based on current anchor element position
+        const position = this.calculatePickerPosition(this.pickerAnchorElement, true);
+        this.pickerRef.setPosition(position);
     }
     
     private removePicker(): void {

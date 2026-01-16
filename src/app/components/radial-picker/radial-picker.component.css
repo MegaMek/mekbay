@@ -99,28 +99,28 @@
     pointer-events: none;
     stroke: #fff;
 }
-:host-context(.night-mode) .radial-title-hex-shape {
+.light-theme .radial-title-hex-shape {
     fill: #fff;
     stroke: #000;
 }
-:host-context(.night-mode) .radial-title-text {
+.light-theme .radial-title-text {
     color: #000;
 }
-:host-context(.night-mode) .radial-sector {
+.light-theme .radial-sector {
     fill: #FFFC;
 }
-:host-context(.night-mode) .radial-sector.selected {
+.light-theme .radial-sector.selected {
     fill: #AAAC;
 }
-:host-context(.night-mode) .radial-label.selected {
+.light-theme .radial-label.selected {
     fill: #FFF;
     text-shadow: 0 1px 2px #111;
 }
-:host-context(.night-mode) .radial-label {
+.light-theme .radial-label {
     fill: #000;
     text-shadow: none;
 }
-:host-context(.night-mode) .radial-label.highlight {
+.light-theme .radial-label.highlight {
     fill: #fff;
     text-shadow: 0 1px 2px #111;
 }

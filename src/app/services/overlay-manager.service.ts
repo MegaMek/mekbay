@@ -155,6 +155,15 @@ export class OverlayManagerService {
 
         const entry: ManagedEntry = { overlayRef };
 
+        // Subscribe to detachments to clean up managed entry when overlay is closed externally
+        // (e.g., by scroll strategy close)
+        overlayRef.detachments().subscribe(() => {
+            // Only clean up if the entry still exists and hasn't been cleaned up yet
+            if (this.managed.get(key) === entry) {
+                this.cleanupManagedEntry(key, entry);
+            }
+        });
+
         const resolveEl = (v?: HTMLElement | ElementRef<HTMLElement> | null): HTMLElement | null => {
             if (!v) return null;
             // ElementRef-like detection
@@ -228,6 +237,9 @@ export class OverlayManagerService {
                 if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked))) {
                     return;
                 }
+                // Stop the event from propagating to prevent triggering other UI elements
+                ev.stopPropagation();
+                ev.preventDefault();
                 this.closeManagedOverlay(key);
             };
 
@@ -269,6 +281,9 @@ export class OverlayManagerService {
                         const overlayEl = overlayRef.overlayElement;
                         const targetNode = ev.target as Node;
                         if (!overlayEl?.contains(targetNode) && !(triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
+                            // Stop the event from propagating to prevent triggering other UI elements
+                            ev.stopPropagation();
+                            ev.preventDefault();
                             this.closeManagedOverlay(key);
                         }
                     }
@@ -298,6 +313,9 @@ export class OverlayManagerService {
                 if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked))) {
                     return;
                 }
+                // Stop the event from propagating to prevent triggering other UI elements
+                ev.stopPropagation();
+                ev.preventDefault();
                 this.closeManagedOverlay(key);
             };
             this.document.addEventListener('click', listener, true);
@@ -403,6 +421,14 @@ export class OverlayManagerService {
         const entry = this.managed.get(key);
         if (!entry) return;
         try { entry.overlayRef.dispose(); } catch { /* ignore */ }
+        this.cleanupManagedEntry(key, entry);
+    }
+
+    /**
+     * Internal cleanup of a managed entry (listeners, observers, etc.).
+     * Called by closeManagedOverlay and by detachment subscription.
+     */
+    private cleanupManagedEntry(key: string, entry: ManagedEntry) {
         if (entry.clickListener) {
             this.document.removeEventListener('click', entry.clickListener, true);
         }

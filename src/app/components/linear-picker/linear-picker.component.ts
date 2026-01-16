@@ -33,39 +33,54 @@
 
 
 import { Component, ElementRef, signal, output, computed, inject, Injector, ChangeDetectionStrategy, viewChild, afterNextRender, effect, input } from '@angular/core';
-import { PickerComponent, PickerValue } from '../picker/picker.interface';
-import { HandlerChoice } from '../../services/equipment-interaction-registry.service';
+import { ChoicePickerComponent, PickerChoice, PickerPosition, PickerValue } from '../picker/picker.interface';
 import { LayoutService } from '../../services/layout.service';
 
 /*
  * Author: Drake
+ * 
+ * Linear Picker - A horizontal or vertical list picker for selecting from choices.
+ * 
+ * Usage:
+ *   <linear-picker
+ *     [title]="'SELECT'"
+ *     [values]="choices"
+ *     [selected]="currentValue"
+ *     [horizontal]="true"
+ *     [align]="'center'"
+ *     (picked)="onChoicePicked($event)"
+ *     (cancelled)="onCancelled()"
+ *   />
  */
 @Component({
     selector: 'linear-picker',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [],
     templateUrl: './linear-picker.component.html',
     styleUrls: ['./linear-picker.component.scss']
 })
-export class LinearPickerComponent implements PickerComponent {
+export class LinearPickerComponent implements ChoicePickerComponent {
     private readonly injector = inject(Injector);
     public readonly layoutService = inject(LayoutService);
 
-    // Input signals
+    // ChoicePickerComponent interface inputs
     readonly title = input<string | null>(null);
-    readonly values = signal<HandlerChoice[]>([]);
+    readonly values = signal<PickerChoice[]>([]);
     readonly selected = input<PickerValue | null>(null);
-    readonly position = input<{ x: number, y: number }>({ x: 0, y: 0 });
+    readonly position = input<PickerPosition>({ x: 0, y: 0 });
+    readonly lightTheme = input<boolean>(false);
+    readonly initialEvent = signal<PointerEvent | null>(null);
+    
+    // Linear-picker specific inputs
     readonly horizontal = input<boolean>(false);
     readonly align = input<'topleft' | 'left' | 'center' | 'top'>('center');
-    readonly initialEvent = signal<PointerEvent | null>(null);
-    lightTheme = input<boolean>(false);
 
-    picked = output<HandlerChoice>();
+    // ChoicePickerComponent interface outputs
+    picked = output<PickerChoice>();
     cancelled = output<void>();
 
-    hoveredChoice = signal<HandlerChoice | null>(null);
+    // Internal state
+    hoveredChoice = signal<PickerChoice | null>(null);
 
     pickerRef = viewChild.required<ElementRef<HTMLDivElement>>('picker');
 
@@ -147,16 +162,16 @@ export class LinearPickerComponent implements PickerComponent {
     }
 
     // Helper methods
-    isSelected(choice: HandlerChoice): boolean {
+    isSelected(choice: PickerChoice): boolean {
         return choice.value === this.selected();
     }
 
-    isHovered(choice: HandlerChoice): boolean {
+    isHovered(choice: PickerChoice): boolean {
         return choice === this.hoveredChoice();
     }
 
     // Event handlers
-    setHoveredChoice(choice: HandlerChoice): void {
+    setHoveredChoice(choice: PickerChoice): void {
         if (choice.disabled) return;
         this.hoveredChoice.set(choice);
     }
@@ -165,7 +180,7 @@ export class LinearPickerComponent implements PickerComponent {
         this.hoveredChoice.set(null);
     }
 
-    handleChoiceClick(event: MouseEvent, choice: HandlerChoice): void {
+    handleChoiceClick(event: MouseEvent, choice: PickerChoice): void {
         if (!this.pointerDownInside || choice.disabled) {
             return;
         }
@@ -175,7 +190,7 @@ export class LinearPickerComponent implements PickerComponent {
         this.pick(choice);
     }
 
-    handleDropdownChange(event: Event, choice: HandlerChoice): void {
+    handleDropdownChange(event: Event, choice: PickerChoice): void {
         const selectElement = event.target as HTMLSelectElement;
         const selectedValue = selectElement.value;
         const selectedOption = choice.choices?.find(c => c.value == selectedValue);
@@ -185,7 +200,7 @@ export class LinearPickerComponent implements PickerComponent {
         }
     }
 
-    pick(val: HandlerChoice): void {
+    pick(val: PickerChoice): void {
         this.picked.emit(val);
     }
 

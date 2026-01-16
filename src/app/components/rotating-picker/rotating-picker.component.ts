@@ -31,13 +31,26 @@
  * affiliated with Microsoft.
  */
 
-
 import { Component, ElementRef, AfterViewInit, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, viewChild, DestroyRef, inject } from '@angular/core';
-import { PickerComponent, PickerChoice, PickerValue, PickerPosition } from '../picker/picker.interface';
+import { NumericPickerComponent, NumericPickerResult, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { LayoutService } from '../../services/layout.service';
+
 /*
  * Author: Drake
+ * 
+ * Rotating Picker - A numeric dial picker for selecting values within a range.
+ * 
+ * Usage:
+ *   <rotating-picker
+ *     [min]="-10"
+ *     [max]="10"
+ *     [selected]="0"
+ *     [step]="1"
+ *     [title]="'DAMAGE'"
+ *     (picked)="onValuePicked($event)"
+ *     (cancelled)="onCancelled()"
+ *   />
  */
 const ROTATING_PICKER_DIAMETER = 120;
 const MIN_ROTATION_STEP_DEGREES = 360 / 12;
@@ -149,7 +162,7 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
                 </g>
 
                 @if (currentValue() !== 0) {
-                    <circle [attr.cx]="radius()" [attr.cy]="radius()" [attr.r]="innerRadius()" class="dial-center-area" />
+                    <circle [attr.cx]="radius()" [attr.cy]="radius()" [attr.r]="innerRadius()" class="dial-center-area" [class.over-threshold]="isOverThreshold()" />
 
                     <text
                         [attr.x]="radius()"
@@ -245,6 +258,12 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
         .dial-center-area:hover {
             fill: var(--bt-yellow);
         }
+        .dial-center-area.over-threshold {
+            fill: #8B0000;
+        }
+        .dial-center-area.over-threshold:hover {
+            fill: #B22222;
+        }
         .dial-center-value {
             font-size: 1.5em;
             font-weight: bold;
@@ -300,6 +319,12 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
         .light-theme .dial-center-area:hover {
             fill: var(--bt-yellow-strong);
         }
+        .light-theme .dial-center-area.over-threshold {
+            fill: #FF6B6B;
+        }
+        .light-theme .dial-center-area.over-threshold:hover {
+            fill: #FF4444;
+        }
         .light-theme .dial-center-value {
             fill: #000;
         }
@@ -314,38 +339,27 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
         }
     `]
 })
-export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
+export class RotatingPickerComponent implements AfterViewInit, NumericPickerComponent {
     public layoutService = inject(LayoutService);
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     pickerRef = viewChild.required<ElementRef<SVGElement>>('picker');
 
+    // NumericPickerComponent interface inputs
     title = input<string | null>(null);
-    values = signal<PickerChoice[]>([]); // We will use only the min/max value of it...
-    selected = input<PickerValue | null>(0);
+    min = input<number>(-99);
+    max = input<number>(99);
+    selected = input<number>(0);
+    step = input<number>(1);
     position = input<PickerPosition>({ x: 0, y: 0 });
-    initialEvent = signal<PointerEvent | null>(null);
     lightTheme = input<boolean>(false);
+    threshold = input<number | null>(null);
+    initialEvent = signal<PointerEvent | null>(null);
 
-    picked = output<PickerChoice>();
+    // NumericPickerComponent interface outputs
+    picked = output<NumericPickerResult>();
     cancelled = output<void>();
 
-    // Component-specific signals
-    private readonly numericValues = computed(() => this.values()
-        .map(c => c.value)
-        .filter((v): v is number => typeof v === 'number')
-    );
-
-    // Component-specific signals
-    readonly min = computed(() => {
-        const values = this.numericValues();
-        return values.length > 0 ? Math.min(...values) : -99;
-    });
-    readonly max = computed(() => {
-        const values = this.numericValues();
-        return values.length > 0 ? Math.max(...values) : 99;
-    });
-    step = signal<number>(1);
-
+    // Internal state
     currentValue = signal<number>(0);
     rotationAngle = signal<number>(0);
 
@@ -373,6 +387,12 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
         const scaleFactor = Math.min(1, maxWidth / estimatedWidth);
         const finalSize = Math.max(0.5, scaleFactor); // minimum 0.5em
         return `${finalSize}em`;
+    });
+
+    readonly isOverThreshold = computed(() => {
+        const thresh = this.threshold();
+        if (thresh === null) return false;
+        return this.currentValue() > thresh;
     });
 
     readonly leftArrowPath = computed(() => {
@@ -475,8 +495,7 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
         // Effect to initialize currentValue from selected signal
         effect(() => {
             const selectedValue = this.selected();
-            const initialValue = typeof selectedValue === 'number' ? selectedValue : 0;
-            untracked(() => this.currentValue.set(this.clampValue(initialValue)));
+            untracked(() => this.currentValue.set(this.clampValue(selectedValue)));
         });
         inject(DestroyRef).onDestroy(() => {     
             this.cleanupEventListeners();
@@ -517,7 +536,7 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
         // Handle Enter key to confirm current value
         if (event.key === 'Enter') {
             event.preventDefault();
-            this.pick({ value: this.currentValue(), label: this.currentValue().toString() });
+            this.pick(this.currentValue());
             return;
         }
 
@@ -566,8 +585,8 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
         }
     }
 
-    pick(val: PickerChoice): void {
-        this.picked.emit(val);
+    pick(value: number): void {
+        this.picked.emit({ value });
     }
 
     cancel(): void {
@@ -754,7 +773,7 @@ export class RotatingPickerComponent implements AfterViewInit, PickerComponent {
         if (!this.isDragging) {
             const target = document.elementFromPoint(event.clientX, event.clientY) as SVGElement;
             if (target && target.classList.contains('dial-center-area')) {
-                this.pick({ value: this.currentValue(), label: this.currentValue().toString() } );
+                this.pick(this.currentValue());
             }
         }
         // Clean up regardless of whether a drag occurred

@@ -41,23 +41,29 @@ import { GameSystem } from '../models/common.model';
  */
 
 const DEFAULT_OPTIONS: Options = {
+    canvasInput: 'all',
+    unitDisplayName: 'chassisModel',
+    gameSystem: GameSystem.CLASSIC,
+    c3NetworkConnectionsAboveNodes: false,
+    automaticallyConvertFiltersToSemantic: false,
+    unitSearchExpandedViewLayout: 'panel-list-filters',
+    
+    // Classic
     sheetsColor: 'normal',
     pickerStyle: 'default',
     quickActions: 'disabled',
-    canvasInput: 'all',
     swipeToNextSheet: 'horizontal',
-    unitDisplayName: 'chassisModel',
-    gameSystem: GameSystem.CLASSIC,
     recordSheetCenterPanelContent: 'clusterTable',
     syncZoomBetweenSheets: true,
     useAutomations: true,
+    allowMultipleActiveSheets: true,
+    
+    // Alpha Strike
     ASUseHex: false,
     ASCardStyle: 'monochrome',
     ASPrintPageBreakOnGroups: true,
-    c3NetworkConnectionsAboveNodes: false,
-    automaticallyConvertFiltersToSemantic: false,
-    allowMultipleActiveSheets: true,
-    unitSearchExpandedViewLayout: 'panel-list-filters',
+    ASUseAutomations: true,
+    ASVehiclesCriticalHitTable: 'default',
 };
 
 @Injectable({ providedIn: 'root' })
@@ -82,6 +88,8 @@ export class OptionsService {
         automaticallyConvertFiltersToSemantic: DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
         allowMultipleActiveSheets: DEFAULT_OPTIONS.allowMultipleActiveSheets,
         unitSearchExpandedViewLayout: DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
+        ASVehiclesCriticalHitTable: DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
+        ASUseAutomations: DEFAULT_OPTIONS.ASUseAutomations,
     });
 
     constructor() {
@@ -110,6 +118,8 @@ export class OptionsService {
             automaticallyConvertFiltersToSemantic: saved?.automaticallyConvertFiltersToSemantic ?? DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
             allowMultipleActiveSheets: saved?.allowMultipleActiveSheets ?? DEFAULT_OPTIONS.allowMultipleActiveSheets,
             unitSearchExpandedViewLayout: saved?.unitSearchExpandedViewLayout ?? DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
+            ASVehiclesCriticalHitTable: saved?.ASVehiclesCriticalHitTable ?? DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
+            ASUseAutomations: saved?.ASUseAutomations ?? DEFAULT_OPTIONS.ASUseAutomations,
         });
     }
 

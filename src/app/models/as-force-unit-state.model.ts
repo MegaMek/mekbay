@@ -143,6 +143,61 @@ export class ASForceUnitState extends ForceUnitState {
     }
 
     /**
+     * Get preview critical hits (committed + pending) sorted by timestamp.
+     * Pending heals (negative timestamp) remove the newest matching committed crit.
+     * Used for preview calculations that show what would happen after commit.
+     */
+    getPreviewCritsOrdered(): ASCriticalHit[] {
+        const committed = [...this.crits()];
+        const pending = this.pendingCrits();
+
+        // Count pending heals per key
+        const healCounts = new Map<string, number>();
+        for (const p of pending) {
+            if (p.timestamp < 0) {
+                healCounts.set(p.key, (healCounts.get(p.key) ?? 0) + 1);
+            }
+        }
+
+        // Sort committed by timestamp (newest first) to remove newest on heal
+        const sortedCommitted = committed.sort((a, b) => b.timestamp - a.timestamp);
+
+        // Remove healed crits (oldest first per key)
+        const effective: ASCriticalHit[] = [];
+        const healRemaining = new Map(healCounts);
+
+        for (const crit of sortedCommitted) {
+            const remaining = healRemaining.get(crit.key) ?? 0;
+            if (remaining > 0) {
+                // This crit is healed, skip it
+                healRemaining.set(crit.key, remaining - 1);
+            } else {
+                effective.push(crit);
+            }
+        }
+
+        // Add pending damage (positive timestamp)
+        for (const p of pending) {
+            if (p.timestamp > 0) {
+                effective.push(p);
+            }
+        }
+
+        // Sort by absolute timestamp for effect ordering
+        return effective.sort((a, b) => Math.abs(a.timestamp) - Math.abs(b.timestamp));
+    }
+
+    /**
+     * Get the preview hit count for a specific crit key (committed + pending).
+     * Accounts for pending heals reducing the count.
+     */
+    getPreviewCritHits(key: string): number {
+        const committed = this.getCommittedCritHits(key);
+        const pendingChange = this.getPendingCritChange(key);
+        return Math.max(0, committed + pendingChange);
+    }
+
+    /**
      * Set pending armor/internal damage.
      * totalDamage is the total damage to distribute across armor and internal.
      */

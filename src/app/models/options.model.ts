@@ -60,4 +60,6 @@ export interface Options {
     automaticallyConvertFiltersToSemantic: boolean;
     allowMultipleActiveSheets: boolean;
     unitSearchExpandedViewLayout: 'panel-list-filters' | 'filters-list-panel';
+    ASUseAutomations: boolean;
+    ASVehiclesCriticalHitTable: 'default' | 'scouringSands';
 }

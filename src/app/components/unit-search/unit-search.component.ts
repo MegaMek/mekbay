@@ -504,7 +504,7 @@ export class UnitSearchComponent {
         const singlePanelWidth = 300;
         const doublePanelWidth = 600;
         const gap = 4;
-        const filtersOnLeft = this.filtersOnLeft();
+        const filtersOnLeft = this.filtersOnLeft() && this.expandedView(); // Only applies in expanded view
         
         // Calculate available space based on layout direction
         const spaceAvailable = filtersOnLeft 
@@ -754,6 +754,7 @@ export class UnitSearchComponent {
             if (this.forceBuilderService.currentForce()?.units().length === 1) {
                 // If this is the first unit being added, close the search panel
                 this.closeAllPanels();
+                this.expandedView.set(false);
             }
             this.blurInput();
             this.unitDetailsDialogOpen.set(false);
@@ -948,6 +949,7 @@ export class UnitSearchComponent {
         if (this.forceBuilderService.currentForce()?.units().length === 1) {
             // If this is the first unit being added, close the search panel
             this.closeAllPanels();
+            this.expandedView.set(false);
         }
         this.blurInput();
     }
