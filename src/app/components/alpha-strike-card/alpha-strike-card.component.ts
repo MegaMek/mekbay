@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, ApplicationRef, EnvironmentInjector, createComponent, ComponentRef, Injector } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, ComponentRef, Injector } from '@angular/core';
 import { ASUnitTypeCode, Unit } from '../../models/units.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { AsAbilityLookupService, ParsedAbility } from '../../services/as-ability-lookup.service';
@@ -47,21 +47,15 @@ import {
         AsLayoutLargeVessel2Component,
 } from './layouts';
 import { REMOTE_HOST } from '../../models/common.model';
-import { RotatingPickerComponent } from '../rotating-picker/rotating-picker.component';
-import { LinearPickerComponent } from '../linear-picker/linear-picker.component';
-import { PickerChoice, PickerPosition } from '../picker/picker.interface';
+import { ChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';
+import { PickerFactoryService } from '../../services/picker-factory.service';
 
 /*
  * Author: Drake
  */
-
-interface PickerInstance {
-    componentRef: ComponentRef<RotatingPickerComponent | LinearPickerComponent>;
-    destroy(): void;
-}
 
 @Component({
     selector: 'alpha-strike-card',
@@ -88,8 +82,7 @@ export class AlphaStrikeCardComponent {
     private readonly dialogs = inject(DialogsService);
     private readonly elRef = inject(ElementRef<HTMLElement>);
     private readonly destroyRef = inject(DestroyRef);
-    private readonly appRef = inject(ApplicationRef);
-    private readonly envInjector = inject(EnvironmentInjector);
+    private readonly pickerFactory = inject(PickerFactoryService);
     
     /** Unique instance ID for SVG filter deduplication */
     readonly instanceId = AlphaStrikeCardComponent.nextId++;
@@ -115,7 +108,7 @@ export class AlphaStrikeCardComponent {
     
     // Interaction state
     private interactionAbortController: AbortController | null = null;
-    private pickerRef: PickerInstance | null = null;
+    private pickerRef: NumericPickerInstance | ChoicePickerInstance | null = null;
     private pickerAnchorElement: HTMLElement | null = null;
     private interactionsSetup = false;
     
@@ -510,18 +503,15 @@ export class AlphaStrikeCardComponent {
         const currentTotalDamage = committedTotal + pendingTotal;
         const currentTotal = totalMax - currentTotalDamage;
         
-        const values: PickerChoice[] = [];
-        values.push({ label: `-${currentTotalDamage}`, value: -currentTotalDamage });
-        values.push({ label: `0`, value: 0 });
-        values.push({ label: `${currentTotal}`, value: currentTotal });
-        
-        this.showPicker({
+        this.showNumericPicker({
             anchorElement: event.currentTarget as HTMLElement,
             title: 'DAMAGE',
-            values,
-            onPick: async (val: PickerChoice) => {
+            min: -currentTotalDamage,
+            max: currentTotal,
+            selected: 0,
+            onPick: async (val: NumericPickerResult) => {
                 this.removePicker();
-                const deltaChange = val.value as number;
+                const deltaChange = val.value;
                 const delta = pendingTotal + deltaChange;
                 
                 // Track pending internal before applying damage
@@ -607,19 +597,15 @@ export class AlphaStrikeCardComponent {
         const currentHits = committedHits + pendingHits;
         const currentTotal = maxHits - currentHits;
         
-        const values: PickerChoice[] = [];
-        values.push({ label: `-${currentHits}`, value: -currentHits });
-        values.push({ label: `0`, value: 0 });
-        values.push({ label: `${currentTotal}`, value: currentTotal });
-        
-        this.showPicker({
+        this.showNumericPicker({
             anchorElement: rowElement,
             title: critKey.replace(/-/g, ' ').toUpperCase(),
-            values,
+            min: -currentHits,
+            max: currentTotal,
             selected: 1, // Start with delta of 1 selected
-            onPick: (val: PickerChoice) => {
+            onPick: (result: NumericPickerResult) => {
                 this.removePicker();
-                const delta = pendingHits + (val.value as number);
+                const delta = pendingHits + result.value;
                 unit.setPendingCritHits(critKey, delta);
                 vibrate(10);
             },
@@ -627,12 +613,16 @@ export class AlphaStrikeCardComponent {
         });
     }
     
-    private showPicker(config: {
+    /**
+     * Show a numeric picker (rotating dial) for selecting a value within a range.
+     */
+    private showNumericPicker(config: {
         anchorElement: HTMLElement;
         title: string;
-        values: PickerChoice[];
+        min: number;
+        max: number;
         selected?: number;
-        onPick: (val: PickerChoice) => void;
+        onPick: (result: NumericPickerResult) => void;
         onCancel: () => void;
     }): void {
         this.removePicker();
@@ -641,31 +631,21 @@ export class AlphaStrikeCardComponent {
         this.pickerAnchorElement = config.anchorElement;
         const position = this.calculatePickerPosition(config.anchorElement, true);
         
-        const compRef = createComponent(RotatingPickerComponent, {
-            environmentInjector: this.envInjector,
+        this.pickerRef = this.pickerFactory.createNumericPicker({
+            min: config.min,
+            max: config.max,
+            selected: config.selected ?? 0,
+            position,
+            title: config.title,
+            lightTheme: this.cardStyle() === 'colored',
+            onPick: config.onPick,
+            onCancel: config.onCancel
         });
-        
-        compRef.setInput('position', position);
-        compRef.setInput('title', config.title);
-        compRef.setInput('lightTheme', this.cardStyle() === 'colored');
-        compRef.setInput('selected', config.selected ?? 0);
-        compRef.instance.values.set(config.values);
-        
-        compRef.instance.picked.subscribe((val: PickerChoice) => config.onPick(val));
-        compRef.instance.cancelled.subscribe(() => config.onCancel());
-        
-        this.appRef.attachView(compRef.hostView);
-        document.body.appendChild(compRef.location.nativeElement);
-        
-        this.pickerRef = {
-            componentRef: compRef,
-            destroy: () => {
-                this.appRef.detachView(compRef.hostView);
-                compRef.destroy();
-            }
-        };
     }
     
+    /**
+     * Show a choice picker (linear style) for selecting from a list of options.
+     */
     private showLinearPicker(config: {
         anchorElement: HTMLElement;
         title: string;
@@ -678,30 +658,16 @@ export class AlphaStrikeCardComponent {
         this.pickerAnchorElement = config.anchorElement;
         const position = this.calculatePickerPosition(config.anchorElement, false);
         
-        const compRef = createComponent(LinearPickerComponent, {
-            environmentInjector: this.envInjector,
+        this.pickerRef = this.pickerFactory.createLinearPicker({
+            values: config.values,
+            position,
+            title: config.title,
+            lightTheme: this.cardStyle() === 'colored',
+            align: 'top',
+            horizontal: true,
+            onPick: config.onPick,
+            onCancel: config.onCancel
         });
-        
-        compRef.setInput('position', position);
-        compRef.setInput('lightTheme', this.cardStyle() === 'colored');
-        compRef.setInput('title', config.title);
-        compRef.setInput('align', 'top');
-        compRef.setInput('horizontal', true);
-        compRef.instance.values.set(config.values);
-        
-        compRef.instance.picked.subscribe((val: PickerChoice) => config.onPick(val));
-        compRef.instance.cancelled.subscribe(() => config.onCancel());
-        
-        this.appRef.attachView(compRef.hostView);
-        document.body.appendChild(compRef.location.nativeElement);
-        
-        this.pickerRef = {
-            componentRef: compRef,
-            destroy: () => {
-                this.appRef.detachView(compRef.hostView);
-                compRef.destroy();
-            }
-        };
     }
     
     private calculatePickerPosition(element: HTMLElement, centerVertically: boolean): PickerPosition {
@@ -721,9 +687,9 @@ export class AlphaStrikeCardComponent {
             return;
         }
         
-        const isRotating = this.pickerRef.componentRef.instance instanceof RotatingPickerComponent;
-        const position = this.calculatePickerPosition(this.pickerAnchorElement, isRotating);
-        this.pickerRef.componentRef.setInput('position', position);
+        // Update picker position based on current anchor element position
+        const position = this.calculatePickerPosition(this.pickerAnchorElement, true);
+        this.pickerRef.setPosition(position);
     }
     
     private removePicker(): void {

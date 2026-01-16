@@ -33,11 +33,22 @@
 
 
 import { Component, ElementRef, signal, computed, output, ChangeDetectionStrategy, viewChild, effect, afterNextRender, inject, Injector, input } from '@angular/core';
-import { PickerChoice, PickerComponent, PickerValue } from '../picker/picker.interface';
+import { ChoicePickerComponent, PickerChoice, PickerPosition, PickerValue } from '../picker/picker.interface';
 import { LayoutService } from '../../services/layout.service';
 
 /*
  * Author: Drake
+ * 
+ * Radial Picker - A circular sector picker for selecting from a small set of choices.
+ * 
+ * Usage:
+ *   <radial-picker
+ *     [title]="'SELECT'"
+ *     [values]="choices"
+ *     [selected]="currentValue"
+ *     (picked)="onChoicePicked($event)"
+ *     (cancelled)="onCancelled()"
+ *   />
  */
 const RADIAL_PICKER_DIAMETER = 120;
 const DEFAULT_RADIAL_INNER_RADIUS = 25;
@@ -46,29 +57,33 @@ const BEGIN_END_SECTOR_PADDING = 110;
 
 @Component({
     selector: 'radial-picker',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [],
     templateUrl: 'radial-picker.component.html',
     styleUrls: ['radial-picker.component.css']
 })
-export class RadialPickerComponent implements PickerComponent {
+export class RadialPickerComponent implements ChoicePickerComponent {
     private readonly injector = inject(Injector);
     public readonly layoutService = inject(LayoutService);
 
-    // Input signals
+    // ChoicePickerComponent interface inputs
     readonly title = input<string | null>(null);
     readonly values = signal<PickerChoice[]>([]);
     readonly selected = input<PickerValue | null>(null);
-    readonly position = input<{ x: number, y: number }>({ x: 0, y: 0 });
+    readonly position = input<PickerPosition>({ x: 0, y: 0 });
+    readonly lightTheme = input<boolean>(false);
+    readonly initialEvent = signal<PointerEvent | null>(null);
+
+    // Radial-picker specific inputs (writable signals for dynamic configuration)
     readonly useCurvedText = signal<boolean>(false);
     readonly innerRadius = signal<number>(DEFAULT_RADIAL_INNER_RADIUS);
     readonly beginEndPadding = signal<number>(BEGIN_END_SECTOR_PADDING);
-    readonly initialEvent = signal<PointerEvent | null>(null);
 
+    // ChoicePickerComponent interface outputs
     picked = output<PickerChoice>();
     cancelled = output<void>();
 
+    // Internal state
     hoveredChoice = signal<PickerChoice | null>(null);
 
     pickerRef = viewChild.required<ElementRef<HTMLDivElement>>('picker');

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, ElementRef, DestroyRef, signal, WritableSignal, Injector, effect, EffectRef, ApplicationRef, EnvironmentInjector, createComponent, inject } from '@angular/core';
+import { Injectable, ElementRef, DestroyRef, signal, WritableSignal, Injector, effect, EffectRef, inject } from '@angular/core';
 import { DialogsService } from '../../services/dialogs.service';
 import { firstValueFrom } from 'rxjs';
 import { ForceUnit } from '../../models/force-unit.model';
@@ -40,10 +40,7 @@ import { CriticalSlot, MountedEquipment } from '../../models/force-serialization
 import { OptionsService } from '../../services/options.service';
 import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
 import { ZoomPanServiceInterface } from './zoom-pan.interface';
-import { PickerChoice, PickerInstance, PickerPosition, PickerTargetType, PickerValue } from '../picker/picker.interface';
-import { RadialPickerComponent } from '../radial-picker/radial-picker.component';
-import { LinearPickerComponent } from '../linear-picker/linear-picker.component';
-import { RotatingPickerComponent } from '../rotating-picker/rotating-picker.component';
+import { ChoicePickerInstance, isChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition, PickerTargetType, PickerValue } from '../picker/picker.interface';
 import { ToastService } from '../../services/toast.service';
 import { LayoutService } from '../../services/layout.service';
 import { SetAmmoDialogComponent, SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
@@ -53,6 +50,7 @@ import { EquipmentInteractionRegistryService } from '../../services/equipment-in
 import { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { ChoicePickerStyle, PickerFactoryService } from '../../services/picker-factory.service';
 
 /*
  * Author: Drake
@@ -74,6 +72,7 @@ export class SvgInteractionService {
     private layoutService = inject(LayoutService);
     private forceBuilderService = inject(ForceBuilderService);
     private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
+    private pickerFactory = inject(PickerFactoryService);
 
     // Zoom-pan service passed via initialize()
     private zoomPanService!: ZoomPanServiceInterface;
@@ -90,7 +89,7 @@ export class SvgInteractionService {
         isPickerOpen: signal(false)
     };
 
-    private pickerRef: PickerInstance | null = null;
+    private pickerRef: ChoicePickerInstance | NumericPickerInstance | null = null;
     private heatMarkerEffectRef: EffectRef | null = null;
     private interactionAbortController: AbortController | null = null;
 
@@ -439,24 +438,19 @@ export class SvgInteractionService {
 
                     return values;
                 };
-                const pickerInstance: PickerInstance = this.showPicker({
-                    event: event,
-                    el: svgEl,
-                    position: { x: x, y: y },
-                    title: `${loc}${rear ? ' (Rear)' : ''}`,
-                    values: calculateValues(),
-                    selected: 0,
-                    suggestedPickerStyle: 'radial',
-                    targetType: 'armor',
-                    onPick: (val: PickerChoice) => {
-                        this.removePicker();
-                        const unit = this.unit();
-                        if (!unit) return;
-                        if (val) {
-                            if (isStructure) {
-                                unit.addInternalHits(loc, val.value as number);
-                            } else {
-                                let valueToApply = val.value as number;
+                const title = `${loc}${rear ? ' (Rear)' : ''}`;
+                const position = { x, y };
+                const startValue = - getHits() - consumedModularArmorPoints;
+                const endValue = pipsCount - getHits() + availableModularArmorPoints;
+
+                const applyArmorChange = (value: number) => {
+                    this.removePicker();
+                    const unit = this.unit();
+                    if (!unit) return;
+                    if (isStructure) {
+                        unit.addInternalHits(loc, value);
+                    } else {
+                        let valueToApply = value;
                                 // We remove/add first from/to the modular armor, if any
                                 if (availableModularArmorPoints > 0 && valueToApply > 0) {
                                     unit.getCritSlotsAsMatrix()[loc]?.forEach(critSlot => {
@@ -486,17 +480,42 @@ export class SvgInteractionService {
                                         this.unit()?.setCritSlot(critSlot);
                                     });
                                 }
-                                if (valueToApply != 0) {
-                                    this.unit()?.addArmorHits(loc, valueToApply, rear);
-                                }
-                            }
-                            showArmorToast(val.value as number);
+                        if (valueToApply != 0) {
+                            this.unit()?.addArmorHits(loc, valueToApply, rear);
                         }
-                    },
-                    onCancel: () => {
-                        this.removePicker();
                     }
-                });
+                    showArmorToast(value);
+                };
+
+                // Use numeric picker for continuous range
+                const pickerStylePref = this.getUserPickerPreference();
+                if (pickerStylePref === 'radial' || pickerStylePref === 'default') {
+                    this.showNumericPicker({
+                        event,
+                        el: svgEl,
+                        position,
+                        title,
+                        min: startValue,
+                        max: endValue,
+                        selected: 0,
+                        onPick: (result) => applyArmorChange(result.value),
+                        onCancel: () => this.removePicker()
+                    });
+                } else {
+                    // Use choice picker with discrete values for linear style (screen space limitation)
+                    this.showChoicePicker({
+                        event,
+                        el: svgEl,
+                        position,
+                        title,
+                        values: calculateValues(),
+                        selected: 0,
+                        suggestedStyle: 'linear',
+                        targetType: 'armor',
+                        onPick: (val) => applyArmorChange(val.value as number),
+                        onCancel: () => this.removePicker()
+                    });
+                }
             }
 
             this.addSvgTapHandler(svgEl, (event: PointerEvent, primaryAction: boolean) => {
@@ -582,13 +601,13 @@ export class SvgInteractionService {
 
                 // TODO: merge it with the inventory interaction system. 
                 // Make that we find the inventory entry from the crit slot and then we handle from there.
-                const pickerInstance: PickerInstance = this.showPicker({
-                    event: event,
+                const pickerInstance = this.showChoicePicker({
+                    event,
                     el: svgEl,
                     title: labelText,
                     values: calculateValues(),
                     selected: null,
-                    pickerStyle: 'linear',
+                    style: 'linear',
                     targetType: 'crit',
                     onPick: async (choice: HandlerChoice) => {
                         if (!choice || !choice.keepOpen) {
@@ -681,7 +700,7 @@ export class SvgInteractionService {
                             unit.applyHitToCritSlot(critSlot, -1, !this.optionsService.options().useAutomations);
                             this.toastService.showToast(`Repaired ${labelText}`, 'success');
                         }
-                        if (choice.keepOpen) {
+                        if (choice.keepOpen && isChoicePickerInstance(pickerInstance)) {
                             pickerInstance.component.values.set(calculateValues());
                         }
                     },
@@ -787,13 +806,13 @@ export class SvgInteractionService {
                     return;
                 }
 
-                const pickerInstance: PickerInstance = this.showPicker({
-                    event: event,
-                    el: el,
+                const pickerInstance = this.showChoicePicker({
+                    event,
+                    el,
                     title: nameText,
                     values: calculatePickerValues,
                     selected: null,
-                    pickerStyle: 'linear',
+                    style: 'linear',
                     targetType: 'crit',
                     onPick: (choice: HandlerChoice) => {
                         if (!choice || !choice.keepOpen) {
@@ -839,7 +858,7 @@ export class SvgInteractionService {
                                 this.toastService.showToast(`Repaired ${nameText}`, 'success');
                             }
                         }
-                        if (choice.keepOpen) {
+                        if (choice.keepOpen && isChoicePickerInstance(pickerInstance)) {
                             pickerInstance.component.values.set(calculateValues());
                         }
                     },
@@ -1039,27 +1058,45 @@ export class SvgInteractionService {
             if (hsPipEl) {
                 this.addSvgTapHandler(hsPipEl, (event: PointerEvent) => {
                     if (this.state.clickTarget !== hsPipEl) return;
-                    const pickerInstance: PickerInstance = this.showPicker({
-                        event: event,
-                        el: hsPipEl,
-                        title: `Active Heatsinks`,
-                        values: getHeatsinkPickerChoices(unit),
-                        selected: 0,
-                        suggestedPickerStyle: 'radial',
-                        targetType: 'heatsinks',
-                        onPick: (val: PickerChoice) => {
-                            this.removePicker();
-                            if (val) {
-                                const heatsinksOff = (unit.getHeat().heatsinksOff || 0) - (val.value as number);
-                                unit.setHeatsinksOff(heatsinksOff);
-                                this.toastService.showToast(`Heatsink settings updated.`, 'info');
-                            }
-                        },
-                        onCancel: () => {
-                            this.removePicker();
-                        }
-                    });
 
+                    const applyHeatsinkChange = (value: number) => {
+                        this.removePicker();
+                        const heatsinksOff = (unit.getHeat().heatsinksOff || 0) - value;
+                        unit.setHeatsinksOff(heatsinksOff);
+                        this.toastService.showToast(`Heatsink settings updated.`, 'info');
+                    };
+
+                    const choices = getHeatsinkPickerChoices(unit);
+                    const numericValues = choices.map(c => c.value as number);
+                    const min = Math.min(...numericValues);
+                    const max = Math.max(...numericValues);
+
+                    const pickerStylePref = this.getUserPickerPreference();
+                    if (pickerStylePref === 'radial' || pickerStylePref === 'default') {
+                        this.showNumericPicker({
+                            event,
+                            el: hsPipEl,
+                            title: `Active Heatsinks`,
+                            min,
+                            max,
+                            selected: 0,
+                            onPick: (result) => applyHeatsinkChange(result.value),
+                            onCancel: () => this.removePicker()
+                        });
+                    } else {
+                        // Use choice picker with discrete values for linear style
+                        this.showChoicePicker({
+                            event,
+                            el: hsPipEl,
+                            title: `Active Heatsinks`,
+                            values: choices,
+                            selected: 0,
+                            suggestedStyle: 'linear',
+                            targetType: 'heatsinks',
+                            onPick: (val) => applyHeatsinkChange(val.value as number),
+                            onCancel: () => this.removePicker()
+                        });
+                    }
                 }, signal);
             }
         }
@@ -1115,15 +1152,15 @@ export class SvgInteractionService {
                     { label: '0', value: 0 },
                 ];
 
-                this.showPicker({
-                    event: event,
+                this.showChoicePicker({
+                    event,
                     el: svgEl,
                     title: skill,
-                    values: values,
+                    values,
                     selected: currentValue,
-                    suggestedPickerStyle: 'radial',
+                    suggestedStyle: 'radial',
                     targetType: 'skill',
-                    onPick: (val: PickerChoice) => {
+                    onPick: (val) => {
                         crewMember.setSkill(skill, parseInt(val.value as string), asf);
                         this.removePicker();
                     },
@@ -1222,169 +1259,126 @@ export class SvgInteractionService {
     }
 
     // Picker Management
-    private showPicker(opts: {
-        event: Event,
-        el: SVGElement,
-        position?: PickerPosition,
-        title: string | null,
-        values: PickerChoice[],
-        selected: PickerValue | null,
-        pickerStyle?: 'radial' | 'linear',
-        suggestedPickerStyle?: 'radial' | 'linear' | 'auto',
-        targetType?: PickerTargetType,
-        onPick: (val: PickerChoice) => void,
-        onCancel: () => void
-    }): PickerInstance {
+    
+    /**
+     * Show a choice picker for selecting from a list of values.
+     * Uses the PickerFactoryService to handle picker type selection based on user preferences.
+     */
+    private showChoicePicker(opts: {
+        event: Event;
+        el: SVGElement;
+        position?: PickerPosition;
+        title: string | null;
+        values: PickerChoice[];
+        selected: PickerValue | null;
+        style?: ChoicePickerStyle;
+        suggestedStyle?: ChoicePickerStyle;
+        targetType?: PickerTargetType;
+        onPick: (val: PickerChoice) => void;
+        onCancel: () => void;
+    }): ChoicePickerInstance {
         if (this.pickerRef) this.removePicker();
 
         opts.el.classList.add('picker-active');
         this.currentHighlightedElement = opts.el;
         this.state.isPickerOpen.set(true);
 
-        const appRef = this.injector.get(ApplicationRef);
-        const envInjector = this.injector.get(EnvironmentInjector);
         const rect = opts.el.getBoundingClientRect();
+        const lightTheme = this.optionsService.options().sheetsColor === 'night';
 
-        // Determine picker style
-        let pickerStyle = opts.pickerStyle ?? opts.suggestedPickerStyle ?? 'auto';
-        if (pickerStyle === 'auto') {
-            pickerStyle = !this.layoutService.isTouchInput() ? 'linear' : 'radial';
-        }
-        if (!opts.pickerStyle) {
-            const optionsPickerStyle = this.optionsService.options().pickerStyle;
-            if (optionsPickerStyle !== 'default') {
-                pickerStyle = optionsPickerStyle;
-            }
-        }
-
-        // Create appropriate picker component
-        let compRef: any;
-        if (pickerStyle === 'linear') {
-            compRef = this.createLinearPicker(envInjector, opts, rect);
-        } else {
-            if (opts.targetType === 'armor' || opts.targetType === 'heatsinks') {
-                compRef = this.createRotatingPicker(envInjector, opts, rect);
-            } else {
-                compRef = this.createRadialPicker(envInjector, opts, rect);
-            }
-        }
-
-        // Subscribe to picker events
-        compRef.instance.picked.subscribe(opts.onPick);
-        compRef.instance.cancelled.subscribe(opts.onCancel);
-
-        // Attach to DOM
-        document.body.appendChild(compRef.location.nativeElement);
-        appRef.attachView(compRef.hostView);
-        this.pickerRef = {
-            component: compRef.instance,
-            destroy: () => {
-                appRef.detachView(compRef.hostView);
-                compRef.destroy();
-            }
-        };
-
-        return this.pickerRef;
-    }
-
-    private createLinearPicker(envInjector: EnvironmentInjector, opts: any, rect: DOMRect) {
-        const compRef = createComponent(LinearPickerComponent, {
-            environmentInjector: envInjector,
-            elementInjector: this.injector
-        });
-
-        const instance = compRef.instance;
-        compRef.setInput('title', opts.title);
-        compRef.setInput('selected', opts.selected);
-        compRef.setInput('lightTheme', (this.optionsService.options().sheetsColor === 'night') );
-        instance.values.set(opts.values);
+        // Calculate position based on target type
+        let position: PickerPosition;
+        let horizontal = false;
+        let align: 'topleft' | 'left' | 'center' | 'top' = 'center';
 
         if (opts.targetType === 'crit') {
-            const pickerX = opts.position?.x ?? rect.left;
-            const pickerY = opts.position?.y ?? rect.top;
-            compRef.setInput('position', { x: pickerX, y: pickerY });
-            compRef.setInput('align', 'topleft');
-            compRef.setInput('horizontal', true);
-        } else
-            if (opts.targetType === 'inventory') {
-                const pickerX = opts.position?.x ?? (rect.left + rect.width + 4);
-                const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-                compRef.setInput('position', { x: pickerX, y: pickerY });
-                compRef.setInput('align', 'left');
-                compRef.setInput('horizontal', true);
-            } else {
-                const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
-                const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-                compRef.setInput('position', { x: pickerX, y: pickerY });
-                compRef.setInput('horizontal', false);
-            }
-        if (opts.event instanceof PointerEvent) {
-            instance.initialEvent.set(opts.event);
-        }
-
-        return compRef;
-    }
-
-    private createRotatingPicker(envInjector: EnvironmentInjector, opts: any, rect: DOMRect) {
-        const compRef = createComponent(RotatingPickerComponent, {
-            environmentInjector: envInjector,
-            elementInjector: this.injector
-        });
-
-        const instance = compRef.instance;
-        instance.values.set(opts.values);
-        compRef.setInput('title', opts.title);
-        compRef.setInput('selected', opts.selected);
-        const colorMode = this.optionsService.options().sheetsColor;
-        compRef.setInput('lightTheme', (colorMode === 'night') );
-
-        const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
-        const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-        compRef.setInput('position', { x: pickerX, y: pickerY });
-        if (opts.event instanceof PointerEvent) {
-            instance.initialEvent.set(opts.event);
-        }
-
-        return compRef;
-    }
-
-    private createRadialPicker(envInjector: EnvironmentInjector, opts: any, rect: DOMRect) {
-        const compRef = createComponent(RadialPickerComponent, {
-            environmentInjector: envInjector,
-            elementInjector: this.injector
-        });
-
-        const instance = compRef.instance;
-        instance.values.set(opts.values);
-        compRef.setInput('title', opts.title);
-        compRef.setInput('selected', opts.selected);
-
-        if (opts.targetType === 'crit' || opts.targetType === 'inventory') {
-            const x = opts.event.clientX;
-            const y = opts.event.clientY;
-            instance.beginEndPadding.set(0);
-            instance.useCurvedText.set(true);
-            instance.innerRadius.set(40);
-            compRef.setInput('position', { x: opts.position?.x ?? x, y: opts.position?.y ?? y });
-        } else if (opts.targetType === 'armor') {
-            const x = opts.event.clientX;
-            const y = opts.event.clientY;
-            instance.beginEndPadding.set(50);
-            instance.innerRadius.set(50);
-            compRef.setInput('position', { x: opts.position?.x ?? x, y: opts.position?.y ?? y });
+            position = { 
+                x: opts.position?.x ?? rect.left, 
+                y: opts.position?.y ?? rect.top 
+            };
+            align = 'topleft';
+            horizontal = true;
+        } else if (opts.targetType === 'inventory') {
+            position = { 
+                x: opts.position?.x ?? (rect.left + rect.width + 4), 
+                y: opts.position?.y ?? (rect.top + rect.height / 2) 
+            };
+            align = 'left';
+            horizontal = true;
         } else {
-            const pickerX = opts.position?.x ?? (rect.left + rect.width / 2);
-            const pickerY = opts.position?.y ?? (rect.top + rect.height / 2);
-            compRef.setInput('position', { x: pickerX, y: pickerY });
-            if (!opts.title) {
-                instance.beginEndPadding.set(0);
-            }
-        }
-        if (opts.event instanceof PointerEvent) {
-            instance.initialEvent.set(opts.event);
+            position = { 
+                x: opts.position?.x ?? (rect.left + rect.width / 2), 
+                y: opts.position?.y ?? (rect.top + rect.height / 2) 
+            };
         }
 
-        return compRef;
+        this.pickerRef = this.pickerFactory.createChoicePicker({
+            values: opts.values,
+            selected: opts.selected,
+            position,
+            title: opts.title,
+            lightTheme,
+            style: opts.style,
+            suggestedStyle: opts.suggestedStyle,
+            targetType: opts.targetType,
+            horizontal,
+            align,
+            initialEvent: opts.event instanceof PointerEvent ? opts.event : undefined,
+            onPick: opts.onPick,
+            onCancel: opts.onCancel
+        });
+
+        return this.pickerRef as ChoicePickerInstance;
+    }
+
+    /**
+     * Show a numeric picker for selecting a value within a min/max range.
+     * Uses the rotating dial picker optimized for numeric input.
+     */
+    private showNumericPicker(opts: {
+        event: Event;
+        el: SVGElement;
+        position?: PickerPosition;
+        title: string | null;
+        min: number;
+        max: number;
+        selected?: number;
+        step?: number;
+        onPick: (result: NumericPickerResult) => void;
+        onCancel: () => void;
+    }): NumericPickerInstance {
+        if (this.pickerRef) this.removePicker();
+
+        opts.el.classList.add('picker-active');
+        this.currentHighlightedElement = opts.el;
+        this.state.isPickerOpen.set(true);
+
+        const rect = opts.el.getBoundingClientRect();
+        const lightTheme = this.optionsService.options().sheetsColor === 'night';
+
+        const position: PickerPosition = {
+            x: opts.position?.x ?? (rect.left + rect.width / 2),
+            y: opts.position?.y ?? (rect.top + rect.height / 2)
+        };
+
+        this.pickerRef = this.pickerFactory.createNumericPicker({
+            min: opts.min,
+            max: opts.max,
+            selected: opts.selected ?? 0,
+            step: opts.step ?? 1,
+            position,
+            title: opts.title,
+            lightTheme,
+            initialEvent: opts.event instanceof PointerEvent ? opts.event : undefined,
+            onPick: opts.onPick,
+            onCancel: opts.onCancel
+        });
+
+        return this.pickerRef as NumericPickerInstance;
+    }
+
+    private getUserPickerPreference(): 'linear' | 'radial' | 'default' {
+        return this.optionsService.options().pickerStyle;
     }
 
     public removePicker() {

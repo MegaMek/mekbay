@@ -1,5 +1,6 @@
 <div
     class="radial-picker-container"
+    [class.light-theme]="lightTheme()"
     [class.touch]="this.layoutService.isTouchInput()"
     [style.width.px]="diameter()"
     [style.position]="'absolute'"
