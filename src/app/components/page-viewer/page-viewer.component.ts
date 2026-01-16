@@ -376,18 +376,6 @@ export class PageViewerComponent implements AfterViewInit {
             this.setFluffImageVisibility();
         });
 
-        // Watch for window resize to re-evaluate shadow pages visibility
-        effect(() => {
-            // Track window dimensions
-            this.layoutService.windowWidth();
-            this.layoutService.windowHeight();
-            
-            // Re-render shadow pages when window size changes (they may or may not fit now)
-            if (this.viewInitialized && !this.isSwiping) {
-                untracked(() => this.renderShadowPages());
-            }
-        });
-
         // Watch for allowMultipleActiveSheets option changes
         let previousAllowMultiple: boolean | undefined;
         effect(() => {
@@ -1574,12 +1562,16 @@ export class PageViewerComponent implements AfterViewInit {
         this.updateDimensions();
         this.zoomPanService.handleResize();
 
-        // If effective visible page count changed, re-render pages
+        // If effective visible page count changed, re-render pages (which includes shadow pages)
         const newVisibleCount = this.effectiveVisiblePageCount();
         if (newVisibleCount !== previousVisibleCount && this.unit()) {
             // Close interaction overlays before re-rendering
             this.closeInteractionOverlays();
             this.displayUnit();
+        } else {
+            // Even if page count didn't change, shadow pages need re-rendering
+            // because their positions depend on container size and zoom state
+            this.renderShadowPages();
         }
     }
 
@@ -2078,12 +2070,6 @@ export class PageViewerComponent implements AfterViewInit {
         
         // Only render if shadowPages is enabled
         if (!this.shadowPages()) {
-            this.clearShadowPages();
-            return;
-        }
-        
-        // Only show shadow pages when at minimum zoom (when swiping is possible)
-        if (!this.isFullyVisible()) {
             this.clearShadowPages();
             return;
         }
