@@ -162,7 +162,7 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
                 </g>
 
                 @if (currentValue() !== 0) {
-                    <circle [attr.cx]="radius()" [attr.cy]="radius()" [attr.r]="innerRadius()" class="dial-center-area" />
+                    <circle [attr.cx]="radius()" [attr.cy]="radius()" [attr.r]="innerRadius()" class="dial-center-area" [class.over-threshold]="isOverThreshold()" />
 
                     <text
                         [attr.x]="radius()"
@@ -258,6 +258,12 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
         .dial-center-area:hover {
             fill: var(--bt-yellow);
         }
+        .dial-center-area.over-threshold {
+            fill: #8B0000;
+        }
+        .dial-center-area.over-threshold:hover {
+            fill: #B22222;
+        }
         .dial-center-value {
             font-size: 1.5em;
             font-weight: bold;
@@ -313,6 +319,12 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
         .light-theme .dial-center-area:hover {
             fill: var(--bt-yellow-strong);
         }
+        .light-theme .dial-center-area.over-threshold {
+            fill: #FF6B6B;
+        }
+        .light-theme .dial-center-area.over-threshold:hover {
+            fill: #FF4444;
+        }
         .light-theme .dial-center-value {
             fill: #000;
         }
@@ -340,6 +352,7 @@ export class RotatingPickerComponent implements AfterViewInit, NumericPickerComp
     step = input<number>(1);
     position = input<PickerPosition>({ x: 0, y: 0 });
     lightTheme = input<boolean>(false);
+    threshold = input<number | null>(null);
     initialEvent = signal<PointerEvent | null>(null);
 
     // NumericPickerComponent interface outputs
@@ -374,6 +387,12 @@ export class RotatingPickerComponent implements AfterViewInit, NumericPickerComp
         const scaleFactor = Math.min(1, maxWidth / estimatedWidth);
         const finalSize = Math.max(0.5, scaleFactor); // minimum 0.5em
         return `${finalSize}em`;
+    });
+
+    readonly isOverThreshold = computed(() => {
+        const thresh = this.threshold();
+        if (thresh === null) return false;
+        return this.currentValue() >= thresh;
     });
 
     readonly leftArrowPath = computed(() => {
