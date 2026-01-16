@@ -754,6 +754,7 @@ export class UnitSearchComponent {
             if (this.forceBuilderService.currentForce()?.units().length === 1) {
                 // If this is the first unit being added, close the search panel
                 this.closeAllPanels();
+                this.expandedView.set(false);
             }
             this.blurInput();
             this.unitDetailsDialogOpen.set(false);
@@ -948,6 +949,7 @@ export class UnitSearchComponent {
         if (this.forceBuilderService.currentForce()?.units().length === 1) {
             // If this is the first unit being added, close the search panel
             this.closeAllPanels();
+            this.expandedView.set(false);
         }
         this.blurInput();
     }
