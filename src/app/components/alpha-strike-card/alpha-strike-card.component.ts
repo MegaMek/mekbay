@@ -593,6 +593,8 @@ export class AlphaStrikeCardComponent {
             return this.calculateRemainingMotiveHits(unit, true);
         } else if (critKey === 'weapons') {
             return this.calculateRemainingWeaponHits(unit);
+        } else if (critKey === 'fire-control') {
+            return 10; // Arbitrary high number, no real limit
         }
         return null;
     }
@@ -622,6 +624,9 @@ export class AlphaStrikeCardComponent {
         return maxHits;
     }
 
+    /**
+     * Calculate hits needed to reduce movement to 0 from the preview state.
+     */
     private calculateRemainingMotiveHits(unit: ASForceUnit, isMotive1: boolean): number {
         // Determine max movement inches from preview state
         let maxInches = 0;
