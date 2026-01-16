@@ -93,100 +93,100 @@ function dropshipOrSmallCraft(unitType: ASUnitTypeCode): boolean {
  */
 const CRIT_TABLE_MEK: Record<number, CritTableEntry> = {
     2: { critType: 'Ammo Hit', description: 'Unit destroyed unless CASE/CASEII/ENE. CASE: +1 damage. CASEII/ENE: No effect.', pipKey: null },
-    3: { critType: 'Engine Hit', description: '+1 Heat when firing weapons. Second hit destroys unit.', pipKey: 'engine', maxHits: 2 },
-    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
+    3: { critType: 'Engine Hit', description: '+1 Heat when firing weapons. Second hit destroys unit.', pipKey: 'engine' },
+    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
     5: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
-    6: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
-    7: { critType: 'MP Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp', maxHits: 4 },
-    8: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
+    6: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons' },
+    7: { critType: 'MP Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp' },
+    8: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons' },
     9: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
-    10: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
-    11: { critType: 'Engine Hit', description: '+1 Heat when firing weapons. Second hit destroys unit.', pipKey: 'engine', maxHits: 2 },
+    10: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
+    11: { critType: 'Engine Hit', description: '+1 Heat when firing weapons. Second hit destroys unit.', pipKey: 'engine' },
     12: { critType: 'Unit Destroyed', description: 'The unit is eliminated from the game.', pipKey: null },
 };
 
 const CRIT_TABLE_PROTOMEK: Record<number, CritTableEntry> = {
-    2: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
-    3: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
-    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
-    5: { critType: 'MP Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp', maxHits: 4 },
+    2: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons' },
+    3: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons' },
+    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
+    5: { critType: 'MP Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp' },
     6: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
-    7: { critType: 'MP Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp', maxHits: 4 },
+    7: { critType: 'MP Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp' },
     8: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
-    9: { critType: 'MP Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp', maxHits: 4 },
+    9: { critType: 'MP Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'mp' },
     10: { critType: 'Unit Destroyed', description: 'The unit is eliminated from the game.', pipKey: null },
-    11: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
-    12: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
+    11: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons' },
+    12: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons' },
 };
 
 const CRIT_TABLE_VEHICLE: Record<number, CritTableEntry> = {
     2: { critType: 'Ammo Hit', description: 'Unit destroyed unless CASE/CASEII/ENE. CASE: +1 damage. CASEII/ENE: No effect.', pipKey: null },
     3: { critType: 'Crew Stunned', description: 'Unit cannot move or attack next turn. Treated as immobile target.', pipKey: null },
-    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
-    5: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
+    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
+    5: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
     6: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     7: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     8: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
-    9: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
-    10: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
+    9: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons' },
+    10: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons' },
     11: { critType: 'Crew Killed', description: 'The unit is destroyed. Remove from play.', pipKey: null },
-    12: { critType: 'Engine Hit', description: '½ MV and Damage. Second hit destroys unit.', pipKey: 'engine', maxHits: 2 },
+    12: { critType: 'Engine Hit', description: '½ MV and Damage. Second hit destroys unit.', pipKey: 'engine' },
 };
 
 const CRIT_TABLE_VEHICLE_SCOURING_SANDS: Record<number, CritTableEntry> = {
     2: { critType: 'Ammo Hit', description: 'Unit destroyed unless CASE/CASEII/ENE. CASE: +1 damage. CASEII/ENE: No effect.', pipKey: null },
     3: { critType: 'Crew Stunned', description: 'Unit cannot move or attack next turn. Treated as immobile target.', pipKey: null },
-    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
-    5: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
-    6: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
-    7: { critType: 'Motive Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'motive2', maxHits: 2 },
-    8: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
-    9: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
-    10: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons', maxHits: 4 },
+    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
+    5: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
+    6: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons' },
+    7: { critType: 'Motive Hit', description: '½ Movement. Minimum -2" MV and -1 TMM per hit.', pipKey: 'motive2' },
+    8: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons' },
+    9: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons' },
+    10: { critType: 'Weapon Hit', description: '-1 Damage at all ranges.', pipKey: 'weapons' },
     11: { critType: 'Crew Killed', description: 'The unit is destroyed. Remove from play.', pipKey: null },
-    12: { critType: 'Engine Hit', description: '½ MV and Damage. Second hit destroys unit.', pipKey: 'engine', maxHits: 2 },
+    12: { critType: 'Engine Hit', description: '½ MV and Damage. Second hit destroys unit.', pipKey: 'engine' },
 };
 
 const CRIT_TABLE_AEROSPACE: Record<number, CritTableEntry> = {
     2: { critType: 'Fuel Hit', description: 'Fuel tank hit. Unit crashes and is destroyed.', pipKey: null },
-    3: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
-    4: { critType: 'Engine Hit', description: '½ Thrust (min 1 lost). Second hit = 0 Thrust, crash.', pipKey: 'engine', maxHits: 2 },
-    5: { critType: 'Weapon Hit', description: '-1 Damage at all ranges (min 0).', pipKey: 'weapons', maxHits: 4 },
+    3: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
+    4: { critType: 'Engine Hit', description: '½ Thrust (min 1 lost). Second hit = 0 Thrust, crash.', pipKey: 'engine' },
+    5: { critType: 'Weapon Hit', description: '-1 Damage at all ranges (min 0).', pipKey: 'weapons' },
     6: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     7: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     8: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
-    9: { critType: 'Weapon Hit', description: '-1 Damage at all ranges (min 0).', pipKey: 'weapons', maxHits: 4 },
-    10: { critType: 'Engine Hit', description: '½ Thrust (min 1 lost). Second hit = 0 Thrust, crash.', pipKey: 'engine', maxHits: 2 },
-    11: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
+    9: { critType: 'Weapon Hit', description: '-1 Damage at all ranges (min 0).', pipKey: 'weapons' },
+    10: { critType: 'Engine Hit', description: '½ Thrust (min 1 lost). Second hit = 0 Thrust, crash.', pipKey: 'engine' },
+    11: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
     12: { critType: 'Crew Killed', description: 'The crew is killed. Unit is destroyed.', pipKey: null },
 };
 
 const CRIT_TABLE_JUMPSHIP: Record<number, CritTableEntry> = {
     2: { critType: 'Door Hit', description: 'Random cargo bay doors damaged. Units cannot enter/exit.', pipKey: null },
     3: { critType: 'Dock Hit', description: '-1 DT capacity. No DT# or reduced to 0 = cannot dock DropShips.', pipKey: null },
-    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
+    4: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
     5: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     6: { critType: 'Weapon Hit', description: '-25% Damage in random arc/column.', pipKey: null, requiresArcRoll: true },
     7: { critType: 'Weapon Hit', description: '-25% Damage in random arc/column.', pipKey: null, requiresArcRoll: true },
     8: { critType: 'Thruster Hit', description: '-1 Thrust. If 0 Thrust, crash.', pipKey: 'thruster', maxHits: 1 },
     9: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
     10: { critType: 'KF Drive Hit', description: 'This unit sustains damage to its KF drive (if any). JumpShips can sustain a number of KF Drive hits equal to the unit’s Size value; WarShips can sustain a number of KF Drive hits equal to twice the unit’s Size value. Once a JumpShip or WarShip suffers more KF Drive hits than it can sustain, the unit cannot execute a hyperspace jump. Otherwise, this critical hit has no effect in gameplay.', pipKey: null },
-    11: { critType: 'Engine Hit', description: '-25%/-50%/-100% Thrust per hit. Third hit = crash.', pipKey: 'engine', maxHits: 3 },
-    12: { critType: 'Crew Hit', description: '+2 Weapon To-Hit and +2 Control Roll. Second hit kills crew.', pipKey: 'crew', maxHits: 2 },
+    11: { critType: 'Engine Hit', description: '-25%/-50%/-100% Thrust per hit. Third hit = crash.', pipKey: 'engine' },
+    12: { critType: 'Crew Hit', description: '+2 Weapon To-Hit and +2 Control Roll. Second hit kills crew.', pipKey: 'crew' },
 };
 
 const CRIT_TABLE_DROPSHIP: Record<number, CritTableEntry> = {
     2: { critType: 'KF Boom Hit', description: 'Cannot be transported via JumpShip.', pipKey: 'kf-boom', maxHits: 1},
     3: { critType: 'Docking Collar Hit', description: 'Cannot dock with a JumpShip.', pipKey: 'dock-collar', maxHits: 1 },
     4: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
-    5: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control', maxHits: 4 },
+    5: { critType: 'Fire Control Hit', description: '+2 To-Hit modifier for weapon attacks.', pipKey: 'fire-control' },
     6: { critType: 'Weapon Hit', description: '-25% Damage in random arc/column.', pipKey: null, requiresArcRoll: true },
     7: { critType: 'Thruster Hit', description: '-1 Thrust. If 0 Thrust, crash.', pipKey: 'thruster', maxHits: 1 },
     8: { critType: 'Weapon Hit', description: '-25% Damage in random arc/column.', pipKey: null, requiresArcRoll: true },
     9: { critType: 'Door Hit', description: 'Random cargo bay doors damaged. Units cannot enter/exit.', pipKey: null },
     10: { critType: 'No Critical Hit', description: 'No additional effect.', pipKey: null },
-    11: { critType: 'Engine Hit', description: '-25%/-50%/-100% Thrust per hit. Third hit = crash.', pipKey: 'engine', maxHits: 3 },
-    12: { critType: 'Crew Hit', description: '+2 Weapon To-Hit and +2 Control Roll. Second hit kills crew.', pipKey: 'crew', maxHits: 2 },
+    11: { critType: 'Engine Hit', description: '-25%/-50%/-100% Thrust per hit. Third hit = crash.', pipKey: 'engine' },
+    12: { critType: 'Crew Hit', description: '+2 Weapon To-Hit and +2 Control Roll. Second hit kills crew.', pipKey: 'crew' },
 };
 
 @Component({
@@ -534,6 +534,23 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
         
         const entry = this.critTable[roll];
         if (entry) {
+            // Check if this crit type has maxHits and is already at the limit
+            if (entry.maxHits && entry.pipKey && this.forceUnit) {
+                const currentHits = this.forceUnit.getCommittedCritHits(entry.pipKey) +
+                    this.forceUnit.getState().getPendingCritChange(entry.pipKey);
+                if (currentHits >= entry.maxHits) {
+                    // Treat as No Critical Hit since this crit type is maxed out
+                    this.currentEntry.set(null);
+                    this.result.set({
+                        roll,
+                        critType: 'No Critical Hit',
+                        description: `${entry.critType} already sustained. No additional effect.`,
+                        pipKey: null,
+                    });
+                    return;
+                }
+            }
+
             this.currentEntry.set(entry);
             this.result.set({
                 roll,
