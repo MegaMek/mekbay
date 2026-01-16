@@ -130,11 +130,6 @@
             justify-content: space-between;
         }
     }
-
-    .pip {
-        width: 2.14em;
-        height: 2.14em;
-    }
 }
 
 // Critical Hit Roll Button
@@ -187,7 +182,7 @@
 
     .critical-row { // Nested critical rows for motive of vehicles
         &:not(:last-child) {
-            margin-right: 1.5em;
+            margin-right: 0.5em;
         }
     }
 }

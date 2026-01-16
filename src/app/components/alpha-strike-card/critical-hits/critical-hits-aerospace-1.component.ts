@@ -33,6 +33,7 @@
 
 import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { AsCriticalHitsBase } from './critical-hits-base';
+import { AsCritPipsComponent } from './crit-pips.component';
 
 /*
  * Author: Drake
@@ -43,6 +44,7 @@ import { AsCriticalHitsBase } from './critical-hits-base';
 @Component({
     selector: 'as-critical-hits-aerospace-1',
     changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [AsCritPipsComponent],
     host: {
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     },
@@ -58,13 +60,7 @@ import { AsCriticalHitsBase } from './critical-hits-base';
                 <div class="critical-row" data-crit="crew">
                     <span class="critical-name">CREW</span>
                     <div class="critical-pips">
-                        @for (i of range(2); track i) {
-                        <svg class="pip" 
-                             [class.damaged]="isCritPipDamaged('crew', i)"
-                             [class.pending-damage]="isCritPipPendingDamage('crew', i)"
-                             [class.pending-heal]="isCritPipPendingHeal('crew', i)"
-                             viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
-                        }
+                        <as-crit-pips [forceUnit]="forceUnit()" critKey="crew" [maxPips]="2" />
                     </div>
                     <div class="desc-group">
                         <span class="brace">&#123;</span>
@@ -76,13 +72,7 @@ import { AsCriticalHitsBase } from './critical-hits-base';
                 <div class="critical-row" data-crit="engine">
                     <span class="critical-name">ENGINE</span>
                     <div class="critical-pips">
-                        @for (i of range(3); track i) {
-                        <svg class="pip" 
-                             [class.damaged]="isCritPipDamaged('engine', i)"
-                             [class.pending-damage]="isCritPipPendingDamage('engine', i)"
-                             [class.pending-heal]="isCritPipPendingHeal('engine', i)"
-                             viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
-                        }
+                        <as-crit-pips [forceUnit]="forceUnit()" critKey="engine" [maxPips]="3" />
                     </div>
                     <span class="critical-desc">-25%/-50%/-100% THR</span>
                 </div>
@@ -90,13 +80,7 @@ import { AsCriticalHitsBase } from './critical-hits-base';
                 <div class="critical-row" data-crit="fire-control">
                     <span class="critical-name">FIRE CONTROL</span>
                     <div class="critical-pips">
-                        @for (i of range(4); track i) {
-                        <svg class="pip" 
-                             [class.damaged]="isCritPipDamaged('fire-control', i)"
-                             [class.pending-damage]="isCritPipPendingDamage('fire-control', i)"
-                             [class.pending-heal]="isCritPipPendingHeal('fire-control', i)"
-                             viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
-                        }
+                        <as-crit-pips [forceUnit]="forceUnit()" critKey="fire-control" [maxPips]="4" />
                     </div>
                     <span class="critical-desc">+2 To-Hit Each</span>
                 </div>
@@ -104,13 +88,7 @@ import { AsCriticalHitsBase } from './critical-hits-base';
                 <div class="critical-row" data-crit="thruster">
                     <span class="critical-name">THRUSTER</span>
                     <div class="critical-pips">
-                        @for (i of range(1); track i) {
-                        <svg class="pip" 
-                             [class.damaged]="isCritPipDamaged('thruster', i)"
-                             [class.pending-damage]="isCritPipPendingDamage('thruster', i)"
-                             [class.pending-heal]="isCritPipPendingHeal('thruster', i)"
-                             viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
-                        }
+                        <as-crit-pips [forceUnit]="forceUnit()" critKey="thruster" [maxPips]="1" />
                     </div>
                     <span class="critical-desc">-1 Thrust (THR)</span>
                 </div>
