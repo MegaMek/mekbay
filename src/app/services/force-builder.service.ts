@@ -450,24 +450,33 @@ export class ForceBuilderService {
         }
     }
 
-    private cloneForce(): Promise<boolean> {
-        return new Promise(async (resolve) => {
-            // We simply set a new UUID and we save the force as a new instance.
-            const currentForce = this.currentForce();
-            if (!currentForce) {
-                resolve(false);
-                return;
+    private async cloneForce(): Promise<boolean> {
+        const currentForce = this.currentForce();
+        if (!currentForce) {
+            return false;
+        }
+        
+        currentForce.loading = true;
+        try {
+            currentForce.instanceId.set(generateUUID());
+            await this.dataService.saveForce(currentForce);
+        } finally {
+            currentForce.loading = false;
+        }
+        
+        // Clear and re-set force in next microtask to trigger all subscriptions
+        const selectedUnit = this.selectedUnit();
+        this.currentForce.set(null);
+        this.selectedUnit.set(null);
+        queueMicrotask(() => {
+            this.setForce(currentForce);
+            if (selectedUnit) {
+                this.selectUnit(selectedUnit);
             }
-            currentForce.loading = true;
-            try {
-                currentForce.instanceId.set(generateUUID());
-                this.dataService.saveForce(currentForce);
-            } finally {
-                currentForce.loading = false;
-            }
-            this.toastService.showToast(`A copy of this force was created and saved. You can now edit the copy without affecting the original.`, 'success');
-            resolve(true);
         });
+        
+        this.toastService.showToast(`A copy of this force was created and saved. You can now edit the copy without affecting the original.`, 'success');
+        return true;
     }
 
     /**
