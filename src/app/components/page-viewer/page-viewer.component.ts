@@ -119,9 +119,11 @@ export class PageViewerComponent implements AfterViewInit {
     unit = input<CBTForceUnit | null>(null);
     force = input<CBTForce | null>(null);
     spaceEvenly = input(false);
-    readOnly = input(false);
     maxVisiblePageCount = input(99); // Limits max pages displayed even if viewport fits more
     shadowPages = input(true); // When true, shows faded clones of neighbor pages that can be clicked to navigate
+
+    // Computed from force
+    readOnly = computed(() => this.force()?.readOnly() ?? false);
 
     // View children
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
