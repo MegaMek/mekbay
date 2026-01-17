@@ -27,8 +27,8 @@
                     <label for="autoConvertFilters">Auto-convert filters to semantic:</label>
                     <select id="autoConvertFilters" class="bt-select" [value]="optionsService.options().automaticallyConvertFiltersToSemantic"
                         (change)="onAutoConvertFiltersChange($event)">
-                        <option value="false">Disabled (default)</option>
                         <option value="true">Enabled</option>
+                        <option value="false">Disabled (default)</option>
                     </select>
                 </div>
                 <div class="description">
@@ -132,8 +132,8 @@
                     <select id="allowMultipleActiveSheets" class="bt-select"
                         [value]="optionsService.options().allowMultipleActiveSheets"
                         (change)="onAllowMultipleActiveSheetsChange($event)">
-                        <option value="true">Enabled (default)</option>
-                        <option value="false">Disabled</option>
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled (default)</option>
                     </select>
                 </div>
                 <div class="description">

@@ -56,7 +56,7 @@ const DEFAULT_OPTIONS: Options = {
     recordSheetCenterPanelContent: 'clusterTable',
     syncZoomBetweenSheets: true,
     useAutomations: true,
-    allowMultipleActiveSheets: true,
+    allowMultipleActiveSheets: false,
     
     // Alpha Strike
     ASUseHex: false,
