@@ -150,32 +150,6 @@
                     <option value="disabled">Disabled</option>
                 </select>
             </div>
-            <div class="option-row">
-                <label for="pickerStyle">Picker style:</label>
-                <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"
-                    (change)="onPickerStyleChange($event)">
-                    <option value="default">Automatic (default)</option>
-                    <option value="radial">Always Dial</option>
-                    <option value="linear">Always Linear</option>
-                </select>
-            </div>
-            <div class="option-col">
-                <div class="option-row">
-                    <label for="canvasInput">Drawing input:</label>
-                    <select id="canvasInput" class="bt-select" [value]="optionsService.options().canvasInput"
-                        (change)="onCanvasInputChange($event)">
-                        <option value="all">All</option>
-                        <option value="pen">Pen only</option>
-                        <option value="touch">Touch only</option>
-                    </select>
-                </div>
-                @if (isIOS) {
-                <div class="description">
-                    <p>To enhance the performance with Apple Pencil, disable Scribble mode in Settings > Apple Pencil >
-                        Scribble.</p>
-                </div>
-                }
-            </div>
         </div>
         }
         <!-- Alpha Strike options -->
@@ -234,6 +208,33 @@
         <!-- Advanced options -->
         @if (activeTab() === 'Advanced') {
         <div class="tab-content">
+            <div class="option-row">
+                <label for="pickerStyle">Picker style:</label>
+                <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"
+                    (change)="onPickerStyleChange($event)">
+                    <option value="default">Automatic (default)</option>
+                    <option value="radial">Always Dial</option>
+                    <option value="linear">Always Linear</option>
+                </select>
+            </div>
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="canvasInput">Drawing input:</label>
+                    <select id="canvasInput" class="bt-select" [value]="optionsService.options().canvasInput"
+                        (change)="onCanvasInputChange($event)">
+                        <option value="all">All</option>
+                        <option value="pen">Pen only</option>
+                        <option value="touch">Touch only</option>
+                    </select>
+                </div>
+                @if (isIOS) {
+                <div class="description">
+                    <p>To enhance the performance with Apple Pencil, disable Scribble mode in Settings > Apple Pencil >
+                        Scribble.</p>
+                </div>
+                }
+            </div>
+            <hr />
             <div class="option-row">
                 <span>Unit icons stored: <strong>{{ unitIconsCount() }}</strong></span>
                 <button class="bt-button" (click)="onPurgeIcons()">PURGE</button>

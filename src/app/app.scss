@@ -125,13 +125,29 @@
     max-width: 500px;
 }
 
+.social-links-container,
 .install-container {
     flex-grow: 1;
     display: flex;
+    flex-direction: row;
+    gap: 16px;
     align-items: center;
     justify-content: center;
     padding-bottom: 16px;
 }
+
+.social-link {
+    img {
+        height: 48px;
+        opacity: 0.5;
+        transition: opacity 0.2s;
+
+        &:hover {
+            opacity: 1;
+        }
+    }
+}
+
 
 .install-button {
     display: flex;
@@ -210,7 +226,7 @@ svg-viewer {
     flex-direction: row;
     justify-content: flex-end;
     gap: 16px;
- 
+
     button {
         background: none;
         border: none;
