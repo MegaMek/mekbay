@@ -177,6 +177,10 @@ export class SvgInteractionService {
         if (this.interactionAbortController) {
             this.interactionAbortController.abort();
         }
+        // Skip setting up interactions if the unit is readonly
+        if (this.unit()?.readOnly()) {
+            return;
+        }
         this.interactionAbortController = new AbortController();
         const signal = this.interactionAbortController.signal;
         this.setupPipInteractions(svg, signal);
