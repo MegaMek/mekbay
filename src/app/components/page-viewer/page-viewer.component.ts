@@ -2453,7 +2453,6 @@ export class PageViewerComponent implements AfterViewInit {
     
     /**
      * Creates a single shadow page element with click handler.
-     * This is the unified method for creating shadow pages - use this everywhere.
      */
     private createShadowPageElement(
         unit: CBTForceUnit,
