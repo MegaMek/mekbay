@@ -274,6 +274,9 @@ export class PageViewerComponent implements AfterViewInit {
 
     // Track if view is initialized
     private viewInitialized = false;
+    
+    // Track if initial render is complete (prevents resize handler from creating shadows prematurely)
+    private initialRenderComplete = false;
 
     // Track display version to handle async loads
     private displayVersion = 0;
@@ -1570,9 +1573,9 @@ export class PageViewerComponent implements AfterViewInit {
             // Close interaction overlays before re-rendering
             this.closeInteractionOverlays();
             this.displayUnit();
-        } else {
-            // Even if page count didn't change, shadow pages need re-rendering
-            // because their positions depend on container size and zoom state
+        } else if (this.initialRenderComplete) {
+            // Only update shadow pages if initial render is complete
+            // This prevents creating shadows with wrong scale during initialization
             this.renderShadowPages();
         }
     }
@@ -2068,6 +2071,9 @@ export class PageViewerComponent implements AfterViewInit {
         
         // Render shadow pages if enabled (smart update - reuses existing shadows)
         this.renderShadowPages();
+        
+        // Mark initial render complete - allows resize handler to update shadows
+        this.initialRenderComplete = true;
     }
 
     /**
