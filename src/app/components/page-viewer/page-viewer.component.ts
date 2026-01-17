@@ -404,6 +404,28 @@ export class PageViewerComponent implements AfterViewInit {
             }
         });
 
+        // Watch for readOnly changes (e.g., after cloning a shared force)
+        let previousReadOnly: boolean | undefined;
+        effect(() => {
+            const isReadOnly = this.readOnly();
+            
+            // Skip initial run
+            if (previousReadOnly === undefined) {
+                previousReadOnly = isReadOnly;
+                return;
+            }
+            
+            // Re-display when transitioning from readOnly to editable
+            if (previousReadOnly && !isReadOnly && this.viewInitialized && !this.isSwiping) {
+                previousReadOnly = isReadOnly;
+                untracked(() => {
+                    this.displayUnit();
+                });
+            } else {
+                previousReadOnly = isReadOnly;
+            }
+        });
+
         inject(DestroyRef).onDestroy(() => this.cleanup());
     }
 
