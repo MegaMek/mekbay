@@ -36,11 +36,39 @@
  */
 
 import type { Unit, AlphaStrikeArcStats } from '../models/units.model';
+import type { ForceUnit } from '../models/force-unit.model';
+import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import type { ASForceUnit } from '../models/as-force-unit.model';
+import type { Force, UnitGroup } from '../models/force.model';
 import { GameSystem } from '../models/common.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 
 async function loadXlsx() {
     const { utils, writeFile } = await import('xlsx');
     return { utils, writeFile };
+}
+
+/**
+ * Sanitizes a string for use in filenames by removing/replacing invalid characters.
+ */
+function sanitizeFilename(name: string): string {
+    return name
+        .replace(/[<>:"/\\|?*]/g, '') // Remove invalid file characters
+        .replace(/\s+/g, '-')          // Replace spaces with dashes
+        .replace(/-+/g, '-')           // Collapse multiple dashes
+        .replace(/^-|-$/g, '')         // Remove leading/trailing dashes
+        .slice(0, 50);                 // Limit length
+}
+
+/**
+ * Sanitizes a string for use as an Excel sheet name.
+ * Invalid characters: \ / ? * [ ] :
+ * Max length: 31 characters
+ */
+function sanitizeSheetName(name: string): string {
+    return name
+        .replace(/[\\/?*[\]:]/g, '') // Remove invalid sheet name characters
+        .slice(0, 31) || 'Force';     // Limit length, fallback if empty
 }
 
 /**
@@ -55,8 +83,8 @@ function formatArcDamage(arc: AlphaStrikeArcStats | undefined, type: 'STD' | 'CA
 /**
  * Converts units to CBT (Classic BattleTech) export format.
  */
-function unitsToCBTRows(units: Unit[]): Record<string, unknown>[] {
-    return units.map(unit => ({
+function unitToCBTRow(unit: Unit): Record<string, unknown> {
+    return {
         chassis: unit.chassis,
         model: unit.model,
         mul_id: unit.id === -1 ? '' : unit.id,
@@ -103,68 +131,151 @@ function unitsToCBTRows(units: Unit[]): Record<string, unknown>[] {
         gravDecks: unit.capital?.gravDecks?.join(', ') ?? '',
         sailIntegrity: unit.capital?.sailIntegrity ?? '',
         kfIntegrity: unit.capital?.kfIntegrity ?? ''
-    }));
+    };
+}
+
+function unitsToCBTRows(units: Unit[]): Record<string, unknown>[] {
+    return units.map(unitToCBTRow);
 }
 
 /**
  * Converts units to AS (Alpha Strike) export format.
  */
+function unitToASRow(unit: Unit): Record<string, unknown> {
+    const as = unit.as;
+    return {
+        chassis: unit.chassis,
+        model: unit.model,
+        mul_id: unit.id === -1 ? '' : unit.id,
+        year: unit.year,
+        PV: as?.PV ?? '',
+        cost: unit.cost,
+        level: unit.level,
+        techBase: unit.techBase,
+        techRating: unit.techRating,
+        source: unit.source?.join(', ') ?? '',
+        SZ: as?.SZ ?? '',
+        usesOV: as?.usesOV ?? '',
+        OV: as?.OV ?? '',
+        MV: as?.MV ?? '',
+        TMM: as?.TMM ?? '',
+        usesTh: as?.usesTh ?? '',
+        Th: as?.usesTh ? (as?.Th ?? '') : '',
+        Str: as?.Str ?? '',
+        TP: as?.TP ?? '',
+        Arm: as?.Arm ?? '',
+        usesE: as?.usesE ?? '',
+        dmgS: as?.dmg?.dmgS ?? '',
+        dmgM: as?.dmg?.dmgM ?? '',
+        dmgL: as?.dmg?.dmgL ?? '',
+        dmgE: as?.dmg?.dmgE ?? '',
+        usesArcs: as?.usesArcs ?? '',
+        // Front Arc columns
+        'frontArc STD': formatArcDamage(as?.frontArc, 'STD'),
+        'frontArc CAP': formatArcDamage(as?.frontArc, 'CAP'),
+        'frontArc MSL': formatArcDamage(as?.frontArc, 'MSL'),
+        'frontArc SCAP': formatArcDamage(as?.frontArc, 'SCAP'),
+        'frontArc specials': as?.frontArc?.specials ?? '',
+        // Rear Arc columns
+        'rearArc STD': formatArcDamage(as?.rearArc, 'STD'),
+        'rearArc CAP': formatArcDamage(as?.rearArc, 'CAP'),
+        'rearArc MSL': formatArcDamage(as?.rearArc, 'MSL'),
+        'rearArc SCAP': formatArcDamage(as?.rearArc, 'SCAP'),
+        'rearArc specials': as?.rearArc?.specials ?? '',
+        // Left Arc columns
+        'leftArc STD': formatArcDamage(as?.leftArc, 'STD'),
+        'leftArc CAP': formatArcDamage(as?.leftArc, 'CAP'),
+        'leftArc MSL': formatArcDamage(as?.leftArc, 'MSL'),
+        'leftArc SCAP': formatArcDamage(as?.leftArc, 'SCAP'),
+        'leftArc specials': as?.leftArc?.specials ?? '',
+        // Right Arc columns
+        'rightArc STD': formatArcDamage(as?.rightArc, 'STD'),
+        'rightArc CAP': formatArcDamage(as?.rightArc, 'CAP'),
+        'rightArc MSL': formatArcDamage(as?.rightArc, 'MSL'),
+        'rightArc SCAP': formatArcDamage(as?.rightArc, 'SCAP'),
+        'rightArc specials': as?.rightArc?.specials ?? ''
+    };
+}
+
 function unitsToASRows(units: Unit[]): Record<string, unknown>[] {
-    return units.map(unit => {
-        const as = unit.as;
-        return {
-            chassis: unit.chassis,
-            model: unit.model,
-            mul_id: unit.id === -1 ? '' : unit.id,
-            year: unit.year,
-            PV: as?.PV ?? '',
-            cost: unit.cost,
-            level: unit.level,
-            techBase: unit.techBase,
-            techRating: unit.techRating,
-            source: unit.source?.join(', ') ?? '',
-            SZ: as?.SZ ?? '',
-            usesOV: as?.usesOV ?? '',
-            OV: as?.OV ?? '',
-            MV: as?.MV ?? '',
-            TMM: as?.TMM ?? '',
-            usesTh: as?.usesTh ?? '',
-            Th: as?.usesTh ? (as?.Th ?? '') : '',
-            Str: as?.Str ?? '',
-            TP: as?.TP ?? '',
-            Arm: as?.Arm ?? '',
-            usesE: as?.usesE ?? '',
-            dmgS: as?.dmg?.dmgS ?? '',
-            dmgM: as?.dmg?.dmgM ?? '',
-            dmgL: as?.dmg?.dmgL ?? '',
-            dmgE: as?.dmg?.dmgE ?? '',
-            usesArcs: as?.usesArcs ?? '',
-            // Front Arc columns
-            'frontArc STD': formatArcDamage(as?.frontArc, 'STD'),
-            'frontArc CAP': formatArcDamage(as?.frontArc, 'CAP'),
-            'frontArc MSL': formatArcDamage(as?.frontArc, 'MSL'),
-            'frontArc SCAP': formatArcDamage(as?.frontArc, 'SCAP'),
-            'frontArc specials': as?.frontArc?.specials ?? '',
-            // Rear Arc columns
-            'rearArc STD': formatArcDamage(as?.rearArc, 'STD'),
-            'rearArc CAP': formatArcDamage(as?.rearArc, 'CAP'),
-            'rearArc MSL': formatArcDamage(as?.rearArc, 'MSL'),
-            'rearArc SCAP': formatArcDamage(as?.rearArc, 'SCAP'),
-            'rearArc specials': as?.rearArc?.specials ?? '',
-            // Left Arc columns
-            'leftArc STD': formatArcDamage(as?.leftArc, 'STD'),
-            'leftArc CAP': formatArcDamage(as?.leftArc, 'CAP'),
-            'leftArc MSL': formatArcDamage(as?.leftArc, 'MSL'),
-            'leftArc SCAP': formatArcDamage(as?.leftArc, 'SCAP'),
-            'leftArc specials': as?.leftArc?.specials ?? '',
-            // Right Arc columns
-            'rightArc STD': formatArcDamage(as?.rightArc, 'STD'),
-            'rightArc CAP': formatArcDamage(as?.rightArc, 'CAP'),
-            'rightArc MSL': formatArcDamage(as?.rightArc, 'MSL'),
-            'rightArc SCAP': formatArcDamage(as?.rightArc, 'SCAP'),
-            'rightArc specials': as?.rightArc?.specials ?? ''
-        };
-    });
+    return units.map(unitToASRow);
+}
+
+/**
+ * Converts a CBT ForceUnit to export row with additional state fields.
+ */
+function forceUnitToCBTRow(forceUnit: ForceUnit, groupName: string): Record<string, unknown> {
+    const unit = forceUnit.getUnit();
+    const baseRow = unitToCBTRow(unit);
+    const cbtUnit = forceUnit as CBTForceUnit;
+    const crew = cbtUnit.getCrewMembers();
+    const pilot = crew.length > 0 ? crew[0] : null;
+    
+    // Sum armor damage across all locations
+    const locations = cbtUnit.getLocations();
+    let totalArmorDamage = 0;
+    let totalInternalDamage = 0;
+    for (const locData of Object.values(locations)) {
+        totalArmorDamage += locData.armor ?? 0;
+        totalInternalDamage += locData.internal ?? 0;
+    }
+    
+    // Insert force-specific fields
+    const { chassis, model, ...rest } = baseRow;
+    return {
+        group: groupName,
+        chassis,
+        model,
+        pilot: pilot?.getName() ?? '',
+        gunnery: pilot?.getSkill('gunnery') ?? DEFAULT_GUNNERY_SKILL,
+        piloting: pilot?.getSkill('piloting') ?? DEFAULT_PILOTING_SKILL,
+        wounds: pilot?.getHits() ?? 0,
+        adjustedBV: cbtUnit.baseBvPilotAdjusted(),
+        C3Tax: cbtUnit.c3Tax(),
+        totalBV: cbtUnit.getBv(),
+        armorDamage: totalArmorDamage,
+        internalDamage: totalInternalDamage,
+        destroyed: forceUnit.destroyed,
+        ...rest
+    };
+}
+
+/**
+ * Converts an AS ForceUnit to export row with additional state fields.
+ */
+function forceUnitToASRow(forceUnit: ForceUnit, groupName: string): Record<string, unknown> {
+    const unit = forceUnit.getUnit();
+    const baseRow = unitToASRow(unit);
+    const asUnit = forceUnit as ASForceUnit;
+    const state = asUnit.getState();
+    
+    // Insert force-specific fields
+    const { chassis, model, ...rest } = baseRow;
+    return {
+        group: groupName,
+        chassis,
+        model,
+        pilot: asUnit.alias() ?? '',
+        skill: asUnit.pilotSkill(),
+        adjustedPV: asUnit.adjustedPv(),
+        armorDamage: state.armor(),
+        structureDamage: state.internal(),
+        destroyed: forceUnit.destroyed,
+        ...rest
+    };
+}
+
+/**
+ * Converts force groups to rows.
+ */
+function forceGroupsToRows(
+    groups: UnitGroup[],
+    gameSystem: GameSystem
+): Record<string, unknown>[] {
+    const rowConverter = gameSystem === GameSystem.ALPHA_STRIKE ? forceUnitToASRow : forceUnitToCBTRow;
+    return groups.flatMap(group =>
+        group.units().map(unit => rowConverter(unit, group.name()))
+    );
 }
 
 /**
@@ -247,6 +358,100 @@ export async function exportUnitsToCSV(
     const defaultFilename = gameSystem === GameSystem.ALPHA_STRIKE
         ? 'mekbay-alpha-strike-units'
         : 'mekbay-battletech-units';
+    const exportFilename = `${filename || defaultFilename}.csv`;
+
+    writeFile(workbook, exportFilename, { bookType: 'csv' });
+}
+
+/**
+ * Creates a worksheet with auto-width columns.
+ */
+function createWorksheetWithAutoWidth(
+    rows: Record<string, unknown>[],
+    utils: { json_to_sheet: (data: unknown[]) => Record<string, unknown> }
+): Record<string, unknown> {
+    const worksheet = utils.json_to_sheet(rows);
+    
+    if (rows.length > 0) {
+        const keys = Object.keys(rows[0]);
+        (worksheet as Record<string, unknown>)['!cols'] = keys.map(key => {
+            const maxContentLength = rows.reduce((max, row) => {
+                const val = row[key];
+                const len = val == null ? 0 : String(val).length;
+                return Math.max(max, len);
+            }, key.length);
+            return { wch: Math.min(maxContentLength + 2, 60) };
+        });
+    }
+    
+    return worksheet;
+}
+
+/**
+ * Exports a force to an Excel file with force-specific state data.
+ * Groups are included as a column if there are multiple groups.
+ * 
+ * @param force - The Force to export
+ * @param filename - Optional custom filename (without extension). If not provided, uses force name.
+ */
+export async function exportForceToExcel(
+    force: Force,
+    filename?: string
+): Promise<void> {
+    const groups = force.groups();
+    const totalUnits = groups.reduce((sum, g) => sum + g.units().length, 0);
+    if (totalUnits === 0) {
+        throw new Error('No units to export');
+    }
+
+    const { utils, writeFile } = await loadXlsx();
+    const gameSystem = force.gameSystem;
+    const rows = forceGroupsToRows(groups, gameSystem);
+
+    const worksheet = createWorksheetWithAutoWidth(rows, utils);
+    const workbook = utils.book_new();
+    const sheetName = sanitizeSheetName(force.name || 'Force');
+    utils.book_append_sheet(workbook, worksheet, sheetName);
+
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const systemLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
+    const forceName = sanitizeFilename(force.name) || 'force';
+    const defaultFilename = `mekbay-${systemLabel}-${forceName}-${timestamp}`;
+    const exportFilename = `${filename || defaultFilename}.xlsx`;
+
+    writeFile(workbook, exportFilename);
+}
+
+/**
+ * Exports a force to a CSV file with force-specific state data.
+ * Groups are included as a column if there are multiple groups.
+ * 
+ * @param force - The Force to export
+ * @param filename - Optional custom filename (without extension). If not provided, uses force name.
+ */
+export async function exportForceToCSV(
+    force: Force,
+    filename?: string
+): Promise<void> {
+    const groups = force.groups();
+    const totalUnits = groups.reduce((sum, g) => sum + g.units().length, 0);
+    if (totalUnits === 0) {
+        throw new Error('No units to export');
+    }
+
+    const { utils, writeFile } = await loadXlsx();
+    const gameSystem = force.gameSystem;
+    const rows = forceGroupsToRows(groups, gameSystem);
+
+    const worksheet = utils.json_to_sheet(rows);
+    const workbook = utils.book_new();
+    const sheetName = sanitizeSheetName(force.name || 'Force');
+    utils.book_append_sheet(workbook, worksheet, sheetName);
+
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const systemLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
+    const forceName = sanitizeFilename(force.name) || 'force';
+    const defaultFilename = `mekbay-${systemLabel}-${forceName}-${timestamp}`;
     const exportFilename = `${filename || defaultFilename}.csv`;
 
     writeFile(workbook, exportFilename, { bookType: 'csv' });

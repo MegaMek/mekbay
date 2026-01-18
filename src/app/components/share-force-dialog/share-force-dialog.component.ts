@@ -40,6 +40,8 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ToastService } from '../../services/toast.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { Force } from '../../models/force.model';
+import { firstValueFrom } from 'rxjs';
+import { DialogsService } from '../../services/dialogs.service';
 
 /*
  * Author: Drake
@@ -77,6 +79,26 @@ export interface ShareForceDialogData {
                     <button class="bt-button" (click)="share(cleanUrlString)">SHARE</button>
                 </div>
             }
+            
+            <div class="export-section">
+                <label class="description">Or export the force units to a file.</label>
+                <div class="export-buttons">
+                    <button class="bt-button export-btn" (click)="exportToCSV()" [disabled]="isExporting()">
+                        @if (isExporting()) {
+                            EXPORTING...
+                        } @else {
+                            CSV
+                        }
+                    </button>
+                    <button class="bt-button export-btn" (click)="exportToExcel()" [disabled]="isExporting()">
+                        @if (isExporting()) {
+                            EXPORTING...
+                        } @else {
+                            EXCEL
+                        }
+                    </button>
+                </div>
+            </div>
         </div>
         <div dialog-actions>
             <button class="bt-button" (click)="close(null)">DISMISS</button>
@@ -112,6 +134,29 @@ export interface ShareForceDialogData {
             align-items: center;
         }
 
+        .export-section {
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
+
+        .export-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .export-btn {
+            min-width: 100px;
+        }
+
+        .export-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         .url {
             flex-grow: 1;
         }
@@ -136,15 +181,76 @@ export class ShareForceDialogComponent {
     private data: ShareForceDialogData = inject(DIALOG_DATA);
     forceBuilderService = inject(ForceBuilderService);
     toastService = inject(ToastService);
+    private dialogsService = inject(DialogsService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
     shareLiveUrl = signal<string | null>(null);
     cleanUrl = signal<string | null>(null);
     force: Force;
+    isExporting = signal(false);
 
     constructor() {
         this.force = this.data.force;
         this.buildUrls();
+    }
+
+    private async confirmDataExportLicense(): Promise<boolean> {
+        const { DataExportLicenseDialogComponent } = await import('../data-export-license-dialog/data-export-license-dialog.component');
+        const ref = this.dialogsService.createDialog<boolean>(DataExportLicenseDialogComponent, {
+            disableClose: true
+        });
+        const accepted = await firstValueFrom(ref.closed);
+        return accepted === true;
+    }
+
+    async exportToExcel() {
+        const forceUnits = this.force.units();
+        if (!forceUnits || forceUnits.length === 0) {
+            this.toastService.showToast('No units to export.', 'error');
+            return;
+        }
+
+        const accepted = await this.confirmDataExportLicense();
+        if (!accepted) {
+            return;
+        }
+
+        this.isExporting.set(true);
+        try {
+            const { exportForceToExcel } = await import('../../utils/excel-export.util');
+            await exportForceToExcel(this.force);
+            this.toastService.showToast(`Exported ${forceUnits.length} units to Excel.`, 'success');
+        } catch (err) {
+            console.error('Failed to export to Excel:', err);
+            this.toastService.showToast('Failed to export to Excel.', 'error');
+        } finally {
+            this.isExporting.set(false);
+        }
+    }
+
+    async exportToCSV() {
+        const forceUnits = this.force.units();
+        if (!forceUnits || forceUnits.length === 0) {
+            this.toastService.showToast('No units to export.', 'error');
+            return;
+        }
+
+        const accepted = await this.confirmDataExportLicense();
+        if (!accepted) {
+            return;
+        }
+
+        this.isExporting.set(true);
+        try {
+            const { exportForceToCSV } = await import('../../utils/excel-export.util');
+            await exportForceToCSV(this.force);
+            this.toastService.showToast(`Exported ${forceUnits.length} units to CSV.`, 'success');
+        } catch (err) {
+            console.error('Failed to export to CSV:', err);
+            this.toastService.showToast('Failed to export to CSV.', 'error');
+        } finally {
+            this.isExporting.set(false);
+        }
     }
 
     private buildUrls() {
