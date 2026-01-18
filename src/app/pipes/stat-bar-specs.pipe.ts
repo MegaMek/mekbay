@@ -44,6 +44,7 @@ interface statBarSpec {
     valueText?: string; // Optional text to display instead of the raw number
     max: number;
     percent: number;
+    description?: string; // Tooltip description for the stat
 }
 
 @Pipe({
@@ -78,32 +79,32 @@ export class StatBarSpecsPipe implements PipeTransform {
         }
         const statDefs = [];
         statDefs.push(
-            { key: 'armor', label: armorLabel, value: unit.armor, valueText: armorValue, max: maxStats.armor[1] },
-            { key: 'internal', label: structureLabel, value: unit.internal, max: maxStats.internal[1] },
+            { key: 'armor', label: armorLabel, value: unit.armor, valueText: armorValue, max: maxStats.armor[1], description: 'Total armor points protecting the unit from internal damage' },
+            { key: 'internal', label: structureLabel, value: unit.internal, max: maxStats.internal[1], description: unit.type === 'Infantry' ? 'Number of soldiers in the infantry unit' : 'Internal structure points; unit is destroyed when depleted' },
         );
 
         if (unit.capital) {
             statDefs.push(
-                { key: 'sailIntegrity', label: 'Sail Integrity', value: unit.capital.sailIntegrity, max: maxStats.sailIntegrity[1] },
-                { key: 'kfIntegrity', label: 'KF Integrity', value: unit.capital.kfIntegrity, max: maxStats.kfIntegrity[1] },
-                { key: 'dropshipCapacity', label: 'Docking Collars', value: unit.capital.dropshipCapacity, max: maxStats.dropshipCapacity[1] },
-                { key: 'lifeBoats', label: 'Life Boats', value: unit.capital.lifeBoats, max: maxStats.lifeBoats[1] },
-                { key: 'escapePods', label: 'Escape Pods', value: unit.capital.escapePods, max: maxStats.escapePods[1] },
+                { key: 'sailIntegrity', label: 'Sail Integrity', value: unit.capital.sailIntegrity, max: maxStats.sailIntegrity[1], description: 'Jump sail integrity for interstellar travel' },
+                { key: 'kfIntegrity', label: 'KF Integrity', value: unit.capital.kfIntegrity, max: maxStats.kfIntegrity[1], description: 'Kearny-Fuchida drive integrity for jump capability' },
+                { key: 'dropshipCapacity', label: 'Docking Collars', value: unit.capital.dropshipCapacity, max: maxStats.dropshipCapacity[1], description: 'Number of DropShip docking collars available' },
+                { key: 'lifeBoats', label: 'Life Boats', value: unit.capital.lifeBoats, max: maxStats.lifeBoats[1], description: 'Number of life boats for crew evacuation' },
+                { key: 'escapePods', label: 'Escape Pods', value: unit.capital.escapePods, max: maxStats.escapePods[1], description: 'Number of escape pods for emergency evacuation' },
             );
         }
 
         statDefs.push(
-            { key: 'alphaNoPhysical', label: 'Firepower', value: unit._mdSumNoPhysical, max: maxStats.alphaNoPhysicalNoOneshots[1] },
-            { key: 'dpt', label: 'Damage/Turn', value: unit.dpt, max: maxStats.dpt[1] },
-            { key: 'maxRange', label: 'Range', value: unit._maxRange, max: maxStats.maxRange[1] },
-            { key: 'heat', label: 'Heat', value: unit.heat, max: maxStats.heat[1] },
-            { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, max: maxStats.dissipation[1] },
-            { key: 'runMP', label: 'Top Speed', value: unit.run2, max: maxStats.run2MP[1] },
-            { key: 'jumpMP', label: jumpLabel, value: jumpValue, max: maxStats.jumpMP[1] },
+            { key: 'alphaNoPhysical', label: 'Firepower', value: unit._mdSumNoPhysical, max: maxStats.alphaNoPhysicalNoOneshots[1], description: 'Total maximum damage from all weapons fired simultaneously' },
+            { key: 'dpt', label: 'Damage/Turn', value: unit.dpt, max: maxStats.dpt[1], description: 'Average damage per turn over a 10-turn engagement, accounting for heat and ammo limits' },
+            { key: 'maxRange', label: 'Range', value: unit._maxRange, max: maxStats.maxRange[1], description: 'Maximum weapon range in hexes' },
+            { key: 'heat', label: 'Heat', value: unit.heat, max: maxStats.heat[1], description: 'Maximum heat generated when firing all weapons' },
+            { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, max: maxStats.dissipation[1], description: 'Heat dissipation capacity per turn from heat sinks' },
+            { key: 'runMP', label: 'Top Speed', value: unit.run2, max: maxStats.run2MP[1], description: 'Maximum running/cruising speed in hexes per turn' },
+            { key: 'jumpMP', label: jumpLabel, value: jumpValue, max: maxStats.jumpMP[1], description: jumpLabel === 'VTOL' ? 'VTOL movement capability in hexes' : 'Jump movement capability in hexes' },
         );
 
         if (unit.umu > 0) {
-            statDefs.push({ key: 'umuMP', label: 'UMU', value: unit.umu, max: maxStats.umuMP[1] });
+            statDefs.push({ key: 'umuMP', label: 'UMU', value: unit.umu, max: maxStats.umuMP[1], description: 'Underwater Maneuvering Unit movement in hexes' });
         }
         const filteredStats: statBarSpec[] = statDefs.filter(def => {
             const statMaxArr = maxStats[def.key as keyof typeof maxStats];
@@ -112,7 +113,7 @@ export class StatBarSpecsPipe implements PipeTransform {
             if (statMaxArr[0] === statMaxArr[1]) return false;
             if (statMaxArr[0] === 0 && DOES_NOT_TRACK === statMaxArr[1] && DOES_NOT_TRACK === def.value) return false;
             return true;
-        }).map(def => ({ label: def.label, value: def.value, valueText: def.valueText, max: def.max, percent: this.getStatPercent(def.value, def.max) }) );
+        }).map(def => ({ label: def.label, value: def.value, valueText: def.valueText, max: def.max, percent: this.getStatPercent(def.value, def.max), description: def.description }) );
         return filteredStats;
     }
 

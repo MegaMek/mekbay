@@ -70,7 +70,7 @@ unit().moveType }}</strong></div>
 <!-- Stat Progress Bars -->
 <div class="stat-bars-columns">
 @for (spec of (unit() | statBarSpecs); let i = $index; track i) {
-<div class="stat-bar-row">
+<div class="stat-bar-row" [tooltip]="spec.description ?? null">
     <div class="stat-bar">
         <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
     </div>

@@ -529,7 +529,7 @@
                 <div class="stat-bars-columns">
                     @if((unit | statBarSpecs); as specsList) {
                     @for (spec of specsList; let i = $index; track i) {
-                    <div class="stat-bar-row">
+                    <div class="stat-bar-row" [tooltip]="spec.description ?? null">
                         <div class="stat-bar">
                             <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
                         </div>
