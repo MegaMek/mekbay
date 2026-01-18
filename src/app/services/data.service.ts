@@ -516,7 +516,8 @@ export class DataService {
             }
             if ((weapon.md) && (weapon.t !== 'P')) {
                 let maxDamage = weapon.md ? parseFloat(weapon.md) || 0 : 0;
-                if (unit.subtype === 'Battle Armor' && weapon.l !== 'SSW') {
+                // Multiply by internal units for Battle Armor (except SSW and position is not on a specific soldier (p < 1))
+                if (unit.subtype === 'Battle Armor' && weapon.l !== 'SSW' && weapon.p < 1) {
                     maxDamage *= unit.internal;
                 }
                 sum += maxDamage * (weapon.q || 1);
