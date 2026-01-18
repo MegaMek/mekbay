@@ -81,7 +81,7 @@ export interface ShareForceDialogData {
             }
             
             <div class="export-section">
-                <label class="description">Or export the force units to a file.</label>
+                <label class="description">Or export the force to a file.</label>
                 <div class="export-buttons">
                     <button class="bt-button export-btn" (click)="exportToCSV()" [disabled]="isExporting()">
                         @if (isExporting()) {
