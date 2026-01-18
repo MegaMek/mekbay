@@ -1376,7 +1376,7 @@ const FORCE_PACKS: ForcePack[] = [
     ]
   },
   {
-    "name": "Inner Sphere Security Lance",
+    "name": "Inner Sphere Assault Lance",
     "units": [
       {
         "name": "BMPillager_PLG3Z"
