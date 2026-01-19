@@ -1055,8 +1055,13 @@ export class UnitSearchComponent {
     toggleExpandedView() {
         const isExpanded = this.expandedView();
         if (isExpanded) {
-            this.closeAllPanels();
-            this.blurInput();
+            const currentForce = this.forceBuilderService.currentForce();
+            if (currentForce && currentForce.units().length > 0) {
+                this.closeAllPanels();
+                this.blurInput();
+            } else {
+                this.focusInput();   
+            }
         } else {
             this.focusInput();
         }
