@@ -124,6 +124,7 @@ export class WsService {
      */
     private handleNetworkOnline(): void {
         this.shouldReconnect = true;
+        this.reconnectAttempt = 0; // Reset backoff when network returns
         if (!this.wsConnected() && !this.isConnecting) {
             this.clearReconnectTimer();
             this.scheduleReconnect();
