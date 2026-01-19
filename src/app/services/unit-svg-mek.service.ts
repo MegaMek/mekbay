@@ -158,7 +158,7 @@ export class UnitSvgMekService extends UnitSvgService {
     }
 
     systemsStatus = computed(() => {
-        const critSlots = this.unit.getCritSlots();        
+        const critSlots = this.unit.getCritSlots();
         const hasMASC = critSlots.some(slot => slot.name && slot.name.includes('MASC'));
         const destroyedMASC = critSlots.some(slot => slot.name && slot.name.includes('MASC') && slot.destroyed);
         const hasSupercharger = critSlots.some(slot => slot.name && slot.name.includes('Supercharger'));
@@ -176,7 +176,7 @@ export class UnitSvgMekService extends UnitSvgService {
         const destroyedTargetingComputers = critSlots.filter(slot => slot.name && slot.name.includes('Targeting Computer') && slot.destroyed).length;
 
         const internalLocations = new Set<string>(this.unit.locations?.internal.keys() || []);
-        
+
         let destroyedLegsCount = 0;
         let destroyedHipsCount = 0;
         let destroyedLegActuatorsCount = 0;
@@ -210,7 +210,7 @@ export class UnitSvgMekService extends UnitSvgService {
             checkLeg('RRL');
             checkLeg('FRL');
         }
-      
+
         let destroyedArmActuatorsCount = { 'LA': 0, 'RA': 0 };
 
         // Capabilities
@@ -221,7 +221,7 @@ export class UnitSvgMekService extends UnitSvgService {
             }
 
             const destroyedShoulder = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Shoulder') && slot.destroyed);
-            const destroyedHand = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Hand') && slot.destroyed);    
+            const destroyedHand = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Hand') && slot.destroyed);
             const destroyedUpperArmsCount = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Upper Arm') && slot.destroyed).length;
             const destroyedLowerArmsCount = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Lower Arm') && slot.destroyed).length;
             const destroyedUpperArms = destroyedUpperArmsCount > 0;
@@ -282,7 +282,7 @@ export class UnitSvgMekService extends UnitSvgService {
         let heatMoveModifier = 0;
         let heatFireModifier = 0;
         let moveImpaired = false;
-        
+
         const systemsStatus = this.systemsStatus();
         const internalLocations = new Set<string>(this.unit.locations?.internal.keys() || []);
         let runDisabled = false;
@@ -329,7 +329,7 @@ export class UnitSvgMekService extends UnitSvgService {
         if (systemsStatus.destroyedLegActuatorsCount != 0 || systemsStatus.destroyedFeetCount != 0) {
             moveImpaired = true;
         }
-        
+
         svg.querySelectorAll('.heatEffect.hot:not(.surpassed)').forEach(effectEl => {
             const move = parseInt(effectEl.getAttribute('h-move') as string);
             if (move && move < heatMoveModifier) {
@@ -418,9 +418,9 @@ export class UnitSvgMekService extends UnitSvgService {
         if (systemsStatus.cockpitLoc === 'HD' && systemsStatus.destroyedSensorsCount > 0) {
             globalFireMod += (systemsStatus.destroyedSensorsCount * 2);
         } else
-        if (systemsStatus.cockpitLoc !== 'HD' && systemsStatus.destroyedSensorsCountInHD < 2 && systemsStatus.destroyedSensorsCount >= 1) {
-            globalFireMod += systemsStatus.destroyedSensorsCount * 2;
-        }
+            if (systemsStatus.cockpitLoc !== 'HD' && systemsStatus.destroyedSensorsCountInHD < 2 && systemsStatus.destroyedSensorsCount >= 1) {
+                globalFireMod += systemsStatus.destroyedSensorsCount * 2;
+            }
 
         let globalMod = 0;
         if (systemsStatus.cockpitLoc !== 'HD' && systemsStatus.destroyedSensorsCountInHD >= 2) {
@@ -472,7 +472,7 @@ export class UnitSvgMekService extends UnitSvgService {
             }
         };
     });
-    
+
     protected override updateInventory() {
         const svg = this.unit.svg();
         if (!svg) return;
@@ -568,10 +568,18 @@ export class UnitSvgMekService extends UnitSvgService {
                                     damage = Math.floor(damage * 0.5);
                                     if (damage < 1) damage = 1;
                                 }
+                                let maxDamage = damage;
+                                if (systemStatus.hasTripleStrengthMyomer) {
+                                    maxDamage *= 2;
+                                }
                                 if (systemStatus.tripleStrengthMyomerMoveBonusActive) {
                                     damage *= 2;
                                 }
-                                punchDamageEl.textContent = `${damage}`;
+                                if (damage !== maxDamage) {
+                                    punchDamageEl.textContent = `${damage} [${maxDamage}]`;
+                                } else {
+                                    punchDamageEl.textContent = `${damage}`;
+                                }
                                 punchDamageEl.classList.toggle('damaged', damage < baseDamage);
                             }
 
@@ -592,10 +600,18 @@ export class UnitSvgMekService extends UnitSvgService {
                             if (originalText) {
                                 let baseDamage = parseInt(originalText);
                                 let damage = baseDamage;
+                                let maxDamage = baseDamage;
+                                if (systemStatus.hasTripleStrengthMyomer) {
+                                    maxDamage *= 2;
+                                }
                                 if (systemStatus.tripleStrengthMyomerMoveBonusActive) {
                                     damage *= 2;
                                 }
-                                clubDamageEl.textContent = `${damage}`;
+                                if (damage !== maxDamage) {
+                                    clubDamageEl.textContent = `${damage} [${maxDamage}]`;
+                                } else {
+                                    clubDamageEl.textContent = `${damage}`;
+                                }
                                 clubDamageEl.classList.toggle('damaged', damage < baseDamage);
                             }
                         }
@@ -625,10 +641,18 @@ export class UnitSvgMekService extends UnitSvgService {
                                     damage = Math.floor(damage * 0.5);
                                     if (damage < 1) damage = 1;
                                 }
+                                let maxDamage = damage;
+                                if (systemStatus.hasTripleStrengthMyomer) {
+                                    maxDamage *= 2;
+                                }
                                 if (systemStatus.tripleStrengthMyomerMoveBonusActive) {
                                     damage *= 2;
                                 }
-                                kickDamageEl.textContent = `${damage}`;
+                                if (damage !== maxDamage) {
+                                    kickDamageEl.textContent = `${damage} [${maxDamage}]`;
+                                } else {
+                                    kickDamageEl.textContent = `${damage}`;
+                                }
                                 kickDamageEl.classList.toggle('damaged', damage < baseDamage);
                             }
                         }
@@ -638,6 +662,34 @@ export class UnitSvgMekService extends UnitSvgService {
                 // Physical weapons are marked as F_CLUB and they have physical=false. 
                 // TODO: make them physical=true
                 if (entry.equipment?.flags.has('F_CLUB')) {
+                    const equipDamageEl = entry.el.querySelector(`:scope > .damage > text`);
+                    if (equipDamageEl) {
+                        let originalText = equipDamageEl.getAttribute('originalText');
+                        if (originalText === undefined || originalText === null) {
+                            originalText = equipDamageEl.textContent || '';
+                            equipDamageEl.setAttribute('originalText', originalText);
+                        }
+                        if (originalText) {
+                            let baseDamage = parseInt(originalText);
+                            let damage = baseDamage;
+                            let maxDamage = baseDamage;
+                            if (!entry.equipment?.flags.has('S_FLAIL')) {
+                                if (systemStatus.hasTripleStrengthMyomer) {
+                                    maxDamage *= 2;
+                                }
+                                if (systemStatus.tripleStrengthMyomerMoveBonusActive) {
+                                    damage *= 2;
+                                }
+                            }
+                            
+                            if (damage !== maxDamage) {
+                                equipDamageEl.textContent = `${damage} [${maxDamage}]`;
+                            } else {
+                                equipDamageEl.textContent = `${damage}`;
+                            }
+                            equipDamageEl.classList.toggle('damaged', damage < baseDamage);
+                        }
+                    }
                     entry.locations.forEach(loc => {
                         if ((loc in unitState.canPhysWeapon) && !unitState.canPhysWeapon[loc as "LA" | "RA"]) {
                             isDisabled = true;
@@ -729,7 +781,7 @@ export class UnitSvgMekService extends UnitSvgService {
     public override evaluateDestroyed(): void {
         const svg = this.unit.svg();
         if (!svg) return;
-        
+
         const locationsToDestroy = new Set<String>();
         this.unit.locations?.internal?.forEach((_value, loc) => {
             if (this.unit.isInternalLocDestroyed(loc)) {
@@ -811,16 +863,16 @@ export class UnitSvgMekService extends UnitSvgService {
                             pip.classList.add('fresh');
                         }
                     } else if (pip.classList.contains('fresh')) {
-                            pip.classList.remove('fresh');
-                        }
+                        pip.classList.remove('fresh');
+                    }
                 }
             });
 
-            
+
             this.unit.locations?.armor.forEach(entry => {
                 const el = svg.querySelector(`.shield:not(.pip)[loc="${entry.loc}"]`);
                 if (!el) return;
-                const shieldExhausted = this.unit.isArmorLocDestroyed('DC'+entry.loc) || this.unit.isArmorLocDestroyed('DA'+entry.loc);
+                const shieldExhausted = this.unit.isArmorLocDestroyed('DC' + entry.loc) || this.unit.isArmorLocDestroyed('DA' + entry.loc);
                 if (shieldExhausted || this.unit.isInternalLocDestroyed(entry.loc)) {
                     el.classList.add('damaged');
                 } else {
