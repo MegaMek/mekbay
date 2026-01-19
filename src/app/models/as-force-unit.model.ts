@@ -630,8 +630,10 @@ export class ASForceUnit extends ForceUnit {
      * Get effective movement values in inches after applying committed crits and heat.
      */
     effectiveMovement = computed<{ [mode: string]: number }>(() => {
+        const baseHeat = this.state.heat();
+        const heat = this.hasHotDog() ? Math.max(0, baseHeat - 1) : baseHeat;
         return this.calculateMovement(
-            this.state.heat(),
+            heat,
             this.state.getCommittedCritHits('mp'),
             this.state.getCommittedCritsOrdered()
         );
@@ -641,8 +643,10 @@ export class ASForceUnit extends ForceUnit {
      * Get preview movement values including pending changes.
      */
     previewMovement = computed<{ [mode: string]: number }>(() => {
+        const baseHeat = this.state.heat() + this.state.pendingHeat();
+        const heat = this.hasHotDog() ? Math.max(0, baseHeat - 1) : baseHeat;
         return this.calculateMovement(
-            this.state.heat() + this.state.pendingHeat(),
+            heat,
             this.state.getPreviewCritHits('mp'),
             this.state.getPreviewCritsOrdered()
         );
@@ -659,9 +663,18 @@ export class ASForceUnit extends ForceUnit {
         );
     });
 
+    // Check if pilot has the "hot_dog" ability (extends heat track to 4 before shutdown)
+    hasHotDog = computed<boolean>(() => {
+        const abilities = this.pilotAbilities() ?? [];
+        return abilities.some((ability) =>
+            typeof ability === 'string' && ability === 'hot_dog'
+        );
+    });
+
     isShutdown = computed<boolean>(() => {
         const heat = this.getState().heat();
-        return heat >= 4;
+        const hotDog = this.hasHotDog();
+        return hotDog ? heat >= 5 : heat >= 4;
     });
 
     /**
@@ -669,7 +682,8 @@ export class ASForceUnit extends ForceUnit {
      */
     previewShutdown = computed<boolean>(() => {
         const heat = this.getState().heat() + this.getState().pendingHeat();
-        return heat >= 4;
+        const hotDog = this.hasHotDog();
+        return hotDog ? heat >= 5 : heat >= 4;
     });
 
     /**
@@ -784,9 +798,11 @@ export class ASForceUnit extends ForceUnit {
      * Modes with the same TMM are merged (e.g., if ground and jump have same TMM, only '' is returned).
      */
     effectiveTmm = computed<{ [mode: string]: number }>(() => {
+        const baseHeat = this.state.heat();
+        const heat = this.hasHotDog() ? Math.max(0, baseHeat - 1) : baseHeat;
         return this.calculateTmm(
             this.isImmobilized(),
-            this.state.heat(),
+            heat,
             this.state.getCommittedCritHits('mp'),
             this.state.getCommittedCritsOrdered()
         );
@@ -796,9 +812,11 @@ export class ASForceUnit extends ForceUnit {
      * Get preview TMM values including pending changes.
      */
     previewTmm = computed<{ [mode: string]: number }>(() => {
+        const baseHeat = this.state.heat() + this.state.pendingHeat();
+        const heat = this.hasHotDog() ? Math.max(0, baseHeat - 1) : baseHeat;
         return this.calculateTmm(
             this.previewImmobilized(),
-            this.state.heat() + this.state.pendingHeat(),
+            heat,
             this.state.getPreviewCritHits('mp'),
             this.state.getPreviewCritsOrdered()
         );

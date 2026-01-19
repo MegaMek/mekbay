@@ -124,33 +124,48 @@
                         <!-- Heat 0 -->
                         @let pendingHeatDelta = pendingHeat();
                         @let effectiveHeat = heatLevel() + pendingHeatDelta;
+                        @let hotDog = forceUnit()?.hasHotDog();
                         <div class="heat-level heat-0" 
+                             [class.hot-dog]="hotDog"
                              [class.active]="heatLevel() === 0"
                              [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 0">
                             <span>0</span>
                         </div>
                         <!-- Heat 1 -->
                         <div class="heat-level heat-1" 
+                             [class.hot-dog]="hotDog"
                              [class.active]="heatLevel() === 1"
                              [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 1">
                             <span>1</span>
                         </div>
                         <!-- Heat 2 -->
                         <div class="heat-level heat-2" 
+                             [class.hot-dog]="hotDog"
                              [class.active]="heatLevel() === 2"
                              [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 2">
                             <span>2</span>
                         </div>
                         <!-- Heat 3 -->
                         <div class="heat-level heat-3" 
+                             [class.hot-dog]="hotDog"
                              [class.active]="heatLevel() === 3"
                              [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 3">
                             <span>3</span>
                         </div>
+                        <!-- Heat 4 (Hot Dog ability) -->
+                        @if (hotDog) {
+                        <div class="heat-level heat-4" 
+                             [class.hot-dog]="hotDog"
+                             [class.active]="heatLevel() === 4"
+                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 4">
+                            <span>4</span>
+                        </div>
+                        }
                         <!-- Shutdown -->
                         <div class="heat-level heat-s" 
-                             [class.active]="heatLevel() >= 4"
-                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat >= 4">
+                             [class.hot-dog]="hotDog"
+                             [class.active]="hotDog ? heatLevel() >= 5 : heatLevel() >= 4"
+                             [class.pending]="pendingHeatDelta !== 0 && (hotDog ? effectiveHeat >= 5 : effectiveHeat >= 4)">
                             <span>S</span>
                         </div>
                     </div>

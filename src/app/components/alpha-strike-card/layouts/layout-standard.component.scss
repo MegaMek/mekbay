@@ -340,6 +340,10 @@
     transition: background-color 0.2s;
     border-right: .06em solid #000;
 
+    &.hot-dog {
+        width: 0.98em;
+    }
+
     :host(.interactive) & {
         cursor: pointer;
     }
@@ -363,6 +367,10 @@
 
         &.heat-3.active {
             background: rgb(255, 100, 0);
+        }
+
+        &.heat-4.active {
+            background: rgb(255, 50, 0);
         }
 
         &.heat-s.active {
