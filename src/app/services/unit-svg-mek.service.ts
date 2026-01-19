@@ -622,6 +622,7 @@ export class UnitSvgMekService extends UnitSvgService {
                         }
                         hitMod += unitState.pushMod || 0;
                         break;
+                    case 'kick [talons]':
                     case 'kick':
                         if (!unitState.canKick) {
                             isDisabled = true;
@@ -635,7 +636,7 @@ export class UnitSvgMekService extends UnitSvgService {
                                 kickDamageEl.setAttribute('originalText', originalText);
                             }
                             if (originalText) {
-                                let baseDamage = parseInt(originalText);
+                                let baseDamage = parseInt(originalText); // It should handle properly also situations like "15 [30]" (example: Talons with Triple Strength Myomer)
                                 let damage = baseDamage;
                                 for (let i = 0; i < systemStatus.destroyedLegActuatorsCount; i++) {
                                     damage = Math.floor(damage * 0.5);
