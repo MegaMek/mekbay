@@ -44,6 +44,7 @@ export interface ASSpecialAbility {
     consumable?: boolean;
     canExhaust?: boolean;
     summary: string[];
+    notes?: string[];
     rulesBook: string;
     rulesPage: number;
 }
@@ -360,6 +361,9 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
             "This unit has particularly underpowered, weak jump jets. Weak Jump Jets subtract the # from their TMM when using Jumping movement.",
             "JMPW# also affect damage dealt when executing a Death From Above attack: subtract 1 damage if JMPW# is at 2 or higher (see p. 46).",
         ],
+        notes: [
+            'Movement and TMM modifiers are already applied.'
+        ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 78,
         type: SpecialAbilityType.Standard,
@@ -371,6 +375,9 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
             "This unit has particularly overpowered, strong jump jets compared to their non-jump movement. Strong Jump Jets add the # to their TMM when using Jumping movement.",
             "Any effect that reduces TMM by 50% will lower the JMPS# by 1, to a minimum of JMPS0.",
             "JMPS# also affect damage dealt when executing a Death From Above attack: add +1 damage if JMPS is at 2 or higher (see p. 46).",
+        ],
+        notes: [
+            'Movement and TMM modifiers are already applied.'
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 78,
@@ -491,6 +498,9 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         summary: [
             "This unit has particularly overpowered, strong submersible movement compared to their non-submersible movement. Strong submersible movement adds the # to their TMM when using submersible movement.",
         ],
+        notes: [
+            'Movement and TMM modifiers are already applied.'
+        ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 79,
         type: SpecialAbilityType.Standard,
@@ -500,6 +510,9 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         name: "Weak Submersible Movement",
         summary: [
             "This unit has particularly underpowered, weak submersible movement compared to their non-submersible movement. Weak submersible movement subtracts the # from their TMM when using submersible movement.",
+        ],
+        notes: [
+            'Movement and TMM modifiers are already applied.'
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 79,
@@ -524,6 +537,9 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
             "’Mechs with the Triple-Strength Myomer special ability can move faster and deliver additional damage in standard- and melee- type physical attacks, but only when running hot. Once a unit with TSM overheats, the following rules apply only to its movement and physical attack capabilities. All other rules for overheating and gameplay apply normally.",
             "Movement: When a ’Mech with TSM has a heat scale level of 1 or higher, it gains 2 inches of additional ground Move. If the heat scale is 1, the unit also ignores the loss of 2 inches from overheating, but the overheating effects on Move for heat levels of 2+ remain in effect. (Unlike units with Industrial TSM, units with this ability do not include its movement effects in their normal stats, because the ability is activated only by overheating.)",
             "Physical Attacks: When an overheating unit delivers a successful standard- or melee-type physical attack, it adds 1 point to the damage delivered by the attack. Unlike Industrial TSM, this heat- activated version imposes no additional Target Number modifiers.",
+        ],
+        notes: [
+            'Movement bonus is automatically applied when heat level is 1 or higher.'
         ],
         rulesBook: ASRulebook.ASCE,
         rulesPage: 79,

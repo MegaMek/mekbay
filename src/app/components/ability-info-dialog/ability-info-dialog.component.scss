@@ -77,6 +77,24 @@
     }
 }
 
+.ability-notes {
+    margin-bottom: 12px;
+    padding: 4px 12px;
+    background-color: var(--accent-color-background);
+    border-left: 3px solid var(--accent-color);
+
+    p {
+        margin: 0 0 4px 0;
+        font-size: 0.9em;
+        color: var(--text-color-secondary);
+        line-height: 1.4;
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+    }
+}
+
 .rules-reference {
     margin-top: 12px;
     font-size: 0.85em;

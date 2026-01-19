@@ -22,6 +22,14 @@
             </div>
             }
 
+            @if (mainAbility()!.notes?.length) {
+            <div class="ability-notes">
+                @for (note of mainAbility()!.notes; track note) {
+                <p>{{ note }}</p>
+                }
+            </div>
+            }
+
             <div class="summary">
                 @for (line of mainAbility()!.summary; track line) {
                 <p>{{ line }}</p>

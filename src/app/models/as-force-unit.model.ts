@@ -35,6 +35,7 @@ import { computed, Injector, signal, Signal } from '@angular/core';
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
+import { AsAbilityLookupService } from '../services/as-ability-lookup.service';
 import { ASSerializedState, ASSerializedUnit, AS_SERIALIZED_UNIT_SCHEMA } from './force-serialization';
 import { ASForce } from './as-force.model';
 import { ForceUnit } from './force-unit.model';
@@ -43,6 +44,7 @@ import { ASForceUnitState } from './as-force-unit-state.model';
 import { CrewMember } from './crew-member.model';
 import { ASCustomPilotAbility } from './as-abilities.model';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
+import { SpecialAbilityState } from '../components/alpha-strike-card/layouts/layout-base.component';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
 export type AbilitySelection = string | ASCustomPilotAbility;
@@ -53,6 +55,7 @@ export type AbilitySelection = string | ASCustomPilotAbility;
 export class ASForceUnit extends ForceUnit {
     declare force: ASForce;
     protected override state: ASForceUnitState;
+    protected readonly abilityLookup: AsAbilityLookupService;
 
     private readonly _pilotName = signal<string | undefined>(undefined);
     private readonly _pilotSkill = signal<number>(4);
@@ -70,6 +73,7 @@ export class ASForceUnit extends ForceUnit {
     ) {
         super(unit, force, dataService, unitInitializer, injector);
         this.state = new ASForceUnitState(this);
+        this.abilityLookup = injector.get(AsAbilityLookupService);
     }
 
     override destroy() {
@@ -588,8 +592,21 @@ export class ASForceUnit extends ForceUnit {
 
             // Apply heat reduction only to ground movement (not 'j')
             if (mode !== 'j') {
-                const heatReduction = heat * 2;
-                reducedInches = Math.max(0, reducedInches - heatReduction);
+                let heatReduction = heat * 2;
+                let tsmBonus = 0;
+
+                // TSM (Triple Strength Myomer): At heat 1+, gain 2" ground Move.
+                // At heat 1, also ignore the 2" loss from overheating.
+                const hasTsm = this.unit.as.specials?.some(s => s === 'TSM');
+                if (heat >= 1 && hasTsm) {
+                    tsmBonus = 2;
+                    if (heat === 1) {
+                        // At heat level 1, TSM negates the 2" movement loss from overheating
+                        heatReduction = 0;
+                    }
+                }
+
+                reducedInches = Math.max(0, reducedInches - heatReduction + tsmBonus);
             }
             mvByMode[mode] = reducedInches;
         }
@@ -1100,5 +1117,217 @@ export class ASForceUnit extends ForceUnit {
         if (newPosition === 0) return '0';
         if (newPosition === 1) return '0*';
         return (newPosition - 1).toString();
+    }
+
+    /**
+     * Get committed weapon hits (affects damage).
+     */
+    weaponHits = computed<number>(() => {
+        return this.getState().getCommittedCritHits('weapons');
+    });
+
+    /**
+     * Get effective specials with weapon hit reduction applied.
+     * Returns both original and effective values for each special.
+     * Uses displaysDamage property from ability definitions to determine reduction.
+     * Also tracks exhausted/consumed state for interactive abilities.
+     * 
+     * For vehicles, applies engine and weapon crits in order:
+     *   - Engine hit: 50% reduction to all damage values
+     *   - Weapon hit: -1 per hit using position scale (1→0*→0)
+     */
+    effectiveSpecials = computed<SpecialAbilityState[]>(() => {
+        const specials = this.unit.as.specials || [];
+        const unitState = this.getState();
+        return specials.map(special => {
+            let effective: string;
+            
+            if (this.isVehicle()) {
+                // For vehicles, apply crits in order
+                effective = this.applyVehicleCritsToSpecial(special);
+            } else {
+                // For non-vehicles, just apply weapon hits
+                const hits = this.weaponHits();
+                effective = hits > 0 ? this.applyWeaponHitsToSpecial(special, hits) : special;
+            }
+            
+            const state: SpecialAbilityState = { original: special, effective };
+            
+            // Add exhausted/consumed state if we have a force unit
+            const parsed = this.abilityLookup.parseAbility(special);
+            const ability = parsed.ability;
+
+            
+            if (ability?.canExhaust) {
+                state.isExhausted = unitState.isAbilityEffectivelyExhausted(special);
+            }
+            
+            if (ability?.consumable && parsed.consumableMax) {
+                state.maxCount = parsed.consumableMax;
+                state.consumedCount = unitState.getEffectiveConsumedCount(special);
+            }
+            
+            return state;
+        });
+    });
+    /**
+     * Apply vehicle crits to a special ability in order.
+     * Engine hit: 50% reduction to damage values.
+     * Weapon hit: -1 using position scale (1→0*→0).
+     */
+    protected applyVehicleCritsToSpecial(special: string): string {
+        const orderedCrits = this.getState().getCommittedCritsOrdered();
+        if (orderedCrits.length === 0) return special;
+        
+        let result = special;
+        
+        for (const crit of orderedCrits) {
+            switch (crit.key) {
+                case 'engine':
+                    // Engine hit: 50% reduction to all damage values
+                    result = this.applyEngineHitToSpecial(result);
+                    break;
+                case 'weapons':
+                    // Weapon hit: -1 using position scale
+                    result = this.applyWeaponHitsToSpecial(result, 1);
+                    break;
+            }
+        }
+        
+        return result;
+    }
+
+    /**
+     * Apply engine hit (50% reduction) to a special ability's damage values.
+     * Only affects abilities with displaysDamage: true.
+     */
+    protected applyEngineHitToSpecial(special: string): string {
+        // Handle TUR(...) or similar bracketed patterns
+        const bracketMatch = special.match(/^([A-Za-z]+)\((.+)\)$/);
+        if (bracketMatch) {
+            const prefix = bracketMatch[1].toUpperCase();
+            const content = bracketMatch[2];
+            const items = content.split(',').map(s => s.trim());
+            
+            const processedItems = items.map((item, index) => {
+                // First item: if it's a damage pattern (no letters, just #/#/#), always reduce
+                if (index === 0 && this.isDamagePatternOnly(item)) {
+                    return this.applyEngineHitToAllNumbers(item);
+                }
+                // Other items: check if ability has displaysDamage
+                return this.processItemByEngineHit(item);
+            });
+            
+            return `${prefix}(${processedItems.join(',')})`;
+        }
+        
+        // Handle regular special (no brackets)
+        return this.processItemByEngineHit(special);
+    }
+
+    /**
+     * Process an item based on whether its ability has displaysDamage: true.
+     * If displaysDamage is true, apply 50% reduction to ALL numbers.
+     */
+    protected processItemByEngineHit(item: string): string {
+        const ability = this.abilityLookup.lookupAbility(item);
+        if (ability?.displaysDamage) {
+            return this.applyEngineHitToAllNumbers(item);
+        }
+        return item;
+    }
+
+    /**
+     * Apply engine hit (50% reduction, floor) to ALL numeric values in a string.
+     * Handles 0* specially: 0* → 0.
+     */
+    protected applyEngineHitToAllNumbers(item: string): string {
+        // Handle 0* specially
+        const placeholder = '\x00ZEROSTAR\x00';
+        let result = item.replace(/0\*/g, placeholder);
+        
+        // Replace all numbers with their reduced values (50%, floor)
+        result = result.replace(/\d+/g, (match) => {
+            const value = parseInt(match, 10);
+            return Math.floor(value / 2).toString();
+        });
+        
+        // Restore 0* placeholders as '0' (0* / 2 = 0)
+        result = result.replace(new RegExp(placeholder, 'g'), '0');
+        
+        return result;
+    }
+
+    /**
+     * Apply weapon hit reduction to a single special ability.
+     * Uses displaysDamage property from ability lookup to determine if reduction applies.
+     * For TUR(...) with comma-separated items:
+     *   - First item with #/#/# pattern gets reduced (turret damage)
+     *   - Remaining items checked via displaysDamage lookup
+     */
+    protected applyWeaponHitsToSpecial(special: string, weaponHits: number): string {
+        // Handle TUR(...) or similar bracketed patterns
+        const bracketMatch = special.match(/^([A-Za-z]+)\((.+)\)$/);
+        if (bracketMatch) {
+            const prefix = bracketMatch[1].toUpperCase();
+            const content = bracketMatch[2];
+            const items = content.split(',').map(s => s.trim());
+            
+            const processedItems = items.map((item, index) => {
+                // First item: if it's a damage pattern (no letters, just #/#/#), always reduce
+                if (index === 0 && this.isDamagePatternOnly(item)) {
+                    return this.reduceAllNumbers(item, weaponHits);
+                }
+                // Other items: check if ability has displaysDamage
+                return this.processItemByDisplaysDamage(item, weaponHits);
+            });
+            
+            return `${prefix}(${processedItems.join(',')})`;
+        }
+        
+        // Handle regular special (no brackets)
+        return this.processItemByDisplaysDamage(special, weaponHits);
+    }
+
+    /**
+     * Check if an item is a pure damage pattern without letters (e.g., "1/1/1", "0-star/2/2")
+     */
+    protected isDamagePatternOnly(item: string): boolean {
+        return /^(\d+|0\*|-)\/(\d+|0\*|-)\/(\d+|0\*|-)(\/(\d+|0\*|-))?$/.test(item);
+    }
+
+    /**
+     * Process an item based on whether its ability has displaysDamage: true.
+     * If displaysDamage is true, reduce ALL numbers in the item.
+     * Otherwise, return unchanged.
+     */
+    protected processItemByDisplaysDamage(item: string, weaponHits: number): string {
+        const ability = this.abilityLookup.lookupAbility(item);
+        if (ability?.displaysDamage) {
+            return this.reduceAllNumbers(item, weaponHits);
+        }
+        return item;
+    }
+
+    /**
+     * Reduce ALL numeric values in a string by weapon hits.
+     * Works on any format: "FLK1/2/3", "TOR3/2/1", "IF2", etc.
+     */
+    protected reduceAllNumbers(item: string, weaponHits: number): string {
+        // Handle 0* specially - it's a token that shouldn't be split
+        // First, temporarily replace 0* with a placeholder
+        const placeholder = '\x00ZEROSTAR\x00';
+        let result = item.replace(/0\*/g, placeholder);
+        
+        // Replace all numbers with their reduced values
+        result = result.replace(/\d+/g, (match) => {
+            return this.reduceDamageValue(match, weaponHits);
+        });
+        
+        // Restore 0* placeholders, but also reduce them
+        const reducedZeroStar = this.reduceDamageValue('0*', weaponHits);
+        result = result.replace(new RegExp(placeholder, 'g'), reducedZeroStar);
+        
+        return result;
     }
 }
