@@ -70,7 +70,9 @@ export class WsService {
     private reconnectTimeoutId: number | null = null;
     private shouldReconnect = true;
     private isConnecting = false;
-    private readonly reconnectDelay = 3000;
+    private reconnectAttempt = 0;
+    private readonly baseReconnectDelay = 1000;
+    private readonly maxReconnectDelay = 15000;
     private readonly connectionTimeout = 3000;
 
     public wsConnected = signal<boolean>(false);
@@ -190,6 +192,7 @@ export class WsService {
     private handleOpen(): void {
         this.logger.info('WebSocket connected');
         this.isConnecting = false;
+        this.reconnectAttempt = 0; // Reset backoff on successful connection
         this.wsConnected.set(true);
         this.resolveConnectionPromise();
         this.registerSession();
@@ -276,14 +279,30 @@ export class WsService {
     }
 
     /**
+     * Calculate reconnect delay with exponential backoff and jitter
+     */
+    private getReconnectDelay(): number {
+        // Exponential backoff: 1s, 1.8s, 3.24s, etc., capped at maxReconnectDelay
+        const exponentialDelay = Math.min(
+            this.baseReconnectDelay * Math.pow(1.8, this.reconnectAttempt),
+            this.maxReconnectDelay
+        );
+        // Add random jitter (0-50% of delay) to prevent thundering herd
+        const jitter = Math.random() * exponentialDelay * 0.5;
+        return Math.floor(exponentialDelay + jitter);
+    }
+
+    /**
      * Schedule a reconnection attempt
      */
     private scheduleReconnect(): void {
         this.clearReconnectTimer();
-        this.logger.info(`Scheduling reconnect in ${this.reconnectDelay}ms`);
+        const delay = this.getReconnectDelay();
+        this.reconnectAttempt++;
+        this.logger.info(`Scheduling reconnect in ${delay}ms (attempt ${this.reconnectAttempt})`);
         this.reconnectTimeoutId = window.setTimeout(() => {
             this.connect();
-        }, this.reconnectDelay);
+        }, delay);
     }
 
     /**
