@@ -224,7 +224,7 @@
                 <div class="stats-container-row">
                     <div class="pilot-abilities">
                         @for (ability of abilities; track $index) {
-                            <div class="pilot-ability">{{ ability }}</div>
+                            <div class="pilot-ability" (click)="onPilotAbilityClick(ability)">{{ formatPilotAbility(ability) }}</div>
                         }
                     </div>
                 </div>

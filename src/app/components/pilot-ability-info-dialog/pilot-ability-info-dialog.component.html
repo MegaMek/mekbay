@@ -1,0 +1,30 @@
+<div class="ability-dialog glass framed-borders has-shadow">
+    <div class="dialog-header">
+        <span class="ability-detail-name">
+            @if (isCustom()) {
+            <span class="custom-badge">Custom</span>
+            }
+            {{ abilityName() }}
+        </span>
+        <span class="ability-detail-cost">Cost: {{ abilityCost() }}</span>
+    </div>
+
+    <div class="dialog-content">
+        <div class="ability-section main-ability">
+            <div class="summary">
+                @for (line of summary(); track line) {
+                <p>{{ line }}</p>
+                }
+            </div>
+
+            @if (rulesReference()) {
+            <div class="ability-rules">
+                <span>{{ rulesReference() }}</span>
+            </div>
+            }
+        </div>
+    </div>
+    <div class="dialog-buttons">
+        <button type="button" class="bt-button" (click)="close()">DISMISS</button>
+    </div>
+</div>

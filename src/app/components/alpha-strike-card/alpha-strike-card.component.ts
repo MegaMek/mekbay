@@ -33,10 +33,12 @@
 
 import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, ComponentRef, Injector } from '@angular/core';
 import { ASUnitTypeCode, Unit } from '../../models/units.model';
-import { ASForceUnit } from '../../models/as-force-unit.model';
+import { ASForceUnit, AbilitySelection } from '../../models/as-force-unit.model';
+import { AS_PILOT_ABILITIES, ASCustomPilotAbility } from '../../models/as-abilities.model';
 import { AsAbilityLookupService, ParsedAbility } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
+import { PilotAbilityInfoDialogComponent, PilotAbilityInfoDialogData } from '../pilot-ability-info-dialog/pilot-ability-info-dialog.component';
 import { CardConfig, CardLayoutDesign, CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
 import { SpecialAbilityState, SpecialAbilityClickEvent } from './layouts/layout-base.component';
 import { CriticalHitRollDialogComponent, CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
@@ -341,6 +343,22 @@ export class AlphaStrikeCardComponent {
         if (fu) {
             this.editPilot.emit(fu);
         }
+    }
+
+    onPilotAbilityClick(selection: AbilitySelection): void {
+        const isCustom = typeof selection !== 'string';
+        let ability: PilotAbilityInfoDialogData['ability'];
+        
+        if (typeof selection === 'string') {
+            const found = AS_PILOT_ABILITIES.find(a => a.id === selection);
+            ability = found ?? { name: selection, cost: 0, summary: '' } as ASCustomPilotAbility;
+        } else {
+            ability = selection;
+        }
+        
+        this.dialogs.createDialog<void>(PilotAbilityInfoDialogComponent, {
+            data: { ability, isCustom } as PilotAbilityInfoDialogData
+        });
     }
 
     // Handle roll critical click - shows the critical hit roll dialog

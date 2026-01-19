@@ -1,0 +1,85 @@
+:host {
+    display: block;
+}
+
+.ability-dialog {
+    width: min(500px, 90vw);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+
+.custom-badge {
+    font-size: 0.7em;
+    padding: 2px 5px;
+    background: var(--bt-yellow);
+    color: #000;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.ability-detail-name {
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.ability-detail-cost {
+    font-size: 0.85em;
+    color: var(--bt-yellow);
+    padding: 2px 6px;
+    background: rgba(240, 192, 64, 0.15);
+    white-space: nowrap;
+    align-self: flex-start;
+}
+
+.dialog-content {
+    padding: 16px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.ability-section {
+    margin-bottom: 16px;
+}
+
+.summary p {
+    margin: 0 0 8px 0;
+    line-height: 1.5;
+    font-size: 0.95em;
+
+    &:last-child {
+        margin-bottom: 0;
+    }
+}
+
+.ability-rules {
+    margin-top: 12px;
+    font-size: 0.8em;
+    color: var(--text-color-tertiary);
+    font-style: italic;
+}
+
+.dialog-buttons {
+    padding: 8px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    button {
+        padding: 8px;
+        min-width: 100px;
+    }
+}

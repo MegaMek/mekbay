@@ -37,7 +37,7 @@ import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
 import { Era } from '../../../models/eras.model';
 import { DataService } from '../../../services/data.service';
 import { AsAbilityLookupService } from '../../../services/as-ability-lookup.service';
-import { AS_PILOT_ABILITIES, ASPilotAbility } from '../../../models/as-abilities.model';
+import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility } from '../../../models/as-abilities.model';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
 
@@ -110,6 +110,7 @@ export abstract class AsLayoutBaseComponent {
 
     // Common outputs
     specialClick = output<SpecialAbilityClickEvent>();
+    pilotAbilityClick = output<AbilitySelection>();
     editPilotClick = output<void>();
     rollCriticalClick = output<void>();
 
@@ -130,9 +131,8 @@ export abstract class AsLayoutBaseComponent {
     adjustedPV = computed<number>(() => {
         return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.skill());
     });
-    pilotAbilities = computed<string[]>(() => {
-        const selections = this.forceUnit()?.pilotAbilities() ?? [];
-        return selections.map((selection) => this.formatPilotAbility(selection));
+    pilotAbilities = computed<AbilitySelection[]>(() => {
+        return this.forceUnit()?.pilotAbilities() ?? [];
     });
 
     // Armor and structure
@@ -418,13 +418,16 @@ export abstract class AsLayoutBaseComponent {
         });
     });
 
-    protected formatPilotAbility(selection: AbilitySelection): string {
+    formatPilotAbility(selection: AbilitySelection): string {
         if (typeof selection === 'string') {
             const ability = this.pilotAbilityById.get(selection);
             return ability ? `${ability.name} (${ability.cost})` : selection;
         }
-
         return `${selection.name} (${selection.cost})`;
+    }
+
+    onPilotAbilityClick(selection: AbilitySelection): void {
+        this.pilotAbilityClick.emit(selection);
     }
 
     range(count: number): number[] {
