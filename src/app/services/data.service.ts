@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, signal, Injector, inject } from '@angular/core';
+import { Injectable, signal, Injector, inject, DestroyRef } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Unit, UnitComponent, Units } from '../models/units.model';
 import { Faction, Factions } from '../models/factions.model';
@@ -125,6 +125,7 @@ export class DataService {
     private userStateService = inject(UserStateService);
     private unitInitializer = inject(UnitInitializerService);
     private tagsService = inject(TagsService);
+    private destroyRef = inject(DestroyRef);
 
     isDataReady = signal(false);
     isDownloading = signal(false);
@@ -349,6 +350,9 @@ export class DataService {
                 this.broadcast.addEventListener('message', (ev) => {
                     void this.handleStoreUpdate(ev.data as any);
                 });
+                inject(DestroyRef).onDestroy(() => {
+                    this.broadcast?.close();
+                });
             };
         } catch { /* best-effort */ }
         if (typeof window !== 'undefined') {
@@ -357,19 +361,27 @@ export class DataService {
                     this.flushAllPendingSavesOnUnload();
                 } catch { /* best-effort */ }
             };
-            window.addEventListener('beforeunload', flushOnUnload);
-            window.addEventListener('pagehide', flushOnUnload);
-            // also try when visibility becomes hidden (mobile browsers)
-            document.addEventListener('visibilitychange', () => {
+            const onVisibility = () => {
                 if (document.visibilityState === 'hidden') {
                     flushOnUnload();
                 }
-            });
-
-            // Handle network online event to sync tags from cloud
-            window.addEventListener('online', () => {
+            };
+            const onOnline = () => {
                 // Small delay to let WS reconnect first
                 setTimeout(() => this.tagsService.syncFromCloud(), 1000);
+            };
+            
+            window.addEventListener('beforeunload', flushOnUnload);
+            window.addEventListener('pagehide', flushOnUnload);
+            document.addEventListener('visibilitychange', onVisibility);
+            window.addEventListener('online', onOnline);
+            
+            this.destroyRef.onDestroy(() => {
+                window.removeEventListener('beforeunload', flushOnUnload);
+                window.removeEventListener('pagehide', flushOnUnload);
+                document.removeEventListener('visibilitychange', onVisibility);
+                window.removeEventListener('online', onOnline);
+                this.broadcast?.close();
             });
         }
 
