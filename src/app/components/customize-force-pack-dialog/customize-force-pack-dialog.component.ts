@@ -269,10 +269,10 @@ export class CustomizeForcePackDialogComponent {
     }
 
     /** Open unit details for a variant in the dropdown - SELECT selects the unit */
-    private async showVariantInfo(variant: Unit, variants: Unit[], unitIndex: number): Promise<void> {
+    private showVariantInfo(variant: Unit, variants: Unit[], unitIndex: number): void {
         const variantIdx = variants.findIndex(v => v.name === variant.name);
 
-        const ref = this.dialogsService.createDialog<UnitDetailsDialogComponent>(
+        const ref = this.dialogsService.createDialog(
             UnitDetailsDialogComponent,
             {
                 data: {
@@ -284,7 +284,7 @@ export class CustomizeForcePackDialogComponent {
         );
 
         // When SELECT is clicked in unit-details, select that variant
-        ref.componentInstance.select.subscribe((selectedUnit: Unit) => {
+        ref.componentInstance?.select.subscribe((selectedUnit) => {
             this.selectVariant(unitIndex, selectedUnit);
             this.closeDropdown();
             ref.close();
