@@ -32,7 +32,7 @@
  */
 
 
-import { Component, Output, EventEmitter, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 
