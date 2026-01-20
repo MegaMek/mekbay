@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, inject, effect, computed, untracked } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit, UnitComponent } from '../../../models/units.model';
 import { weaponTypes, getWeaponTypeCSSClass } from '../../../utils/equipment.util';
@@ -102,53 +102,50 @@ export class UnitDetailsGeneralTabComponent {
     gunnerySkill = input<number | undefined>(undefined);
     pilotingSkill = input<number | undefined>(undefined);
 
-    // Computed state
-    groupedBays: Array<{ l: string, p: number, bays: UnitComponent[] }> = [];
-    components: UnitComponent[] = [];
-    componentsForMatrix: UnitComponent[] = [];
+    // Computed state - derived from unit
+    groupedBays = computed(() => this.getGroupedBaysByLocation());
+    components = computed(() => this.getComponents(false));
+    componentsForMatrix = computed(() => this.getComponents(true));
 
     // Matrix layout state
     useMatrixLayout = computed(() => {
         const matrix = MATRIX_ALIGNMENT[this.unit()?.type];
         return Array.isArray(matrix) && this.layoutService.windowWidth() >= 780;
     });
-    gridAreas = '';
-    matrixAreaCodes: string[] = [];
-    private areaNameToCodes = new Map<string, string[]>();
-    private baysByLocCache = new Map<string, UnitComponent[]>();
-    private baysForArea = new Map<string, UnitComponent[]>();
-    private compsForArea = new Map<string, UnitComponent[]>();
+
+    /** 
+     * Computed matrix layout data - derives all matrix-related state from unit.
+     * Returns an object with gridAreas, areaCodes, and lookup Maps.
+     */
+    private matrixData = computed(() => {
+        const unit = this.unit();
+        const groupedBays = this.groupedBays();
+        const componentsForMatrix = this.componentsForMatrix();
+        return this.buildMatrixLayout(unit, groupedBays, componentsForMatrix);
+    });
+
+    gridAreas = computed(() => this.matrixData().gridAreas);
+    matrixAreaCodes = computed(() => this.matrixData().matrixAreaCodes);
+    private areaNameToCodes = computed(() => this.matrixData().areaNameToCodes);
+    private baysForArea = computed(() => this.matrixData().baysForArea);
+    private compsForArea = computed(() => this.matrixData().compsForArea);
 
     get weaponTypes() {
         return weaponTypes;
     }
 
-    constructor() {
-        effect(() => {
-            this.unit();
-            untracked(() => this.updateCachedData());
-        });
-    }
-
-    get adjustedBV(): number | null {
+    adjustedBV = computed(() => {
         const gunnery = this.gunnerySkill();
         const piloting = this.pilotingSkill();
         if (gunnery === undefined || piloting === undefined) {
             return null;
         }
         return BVCalculatorUtil.calculateAdjustedBV(this.unit(), gunnery, piloting);
-    }
+    });
 
     trackByBay = (bay: UnitComponent) => `${bay.n}|${bay.t}|${bay.l}`;
     trackByComp = (comp: UnitComponent) => `${comp.n}|${comp.t}|${comp.l}`;
 
-    private updateCachedData() {
-        this.groupedBays = this.getGroupedBaysByLocation();
-        this.components = this.getComponents(false);
-        this.componentsForMatrix = this.getComponents(true);
-        this.baysByLocCache.clear();
-        this.buildMatrixLayout();
-    }
 
     formatThousands(value: number): string {
         if (value === undefined || value === null) return '';
@@ -222,22 +219,30 @@ export class UnitDetailsGeneralTabComponent {
     }
 
     getAreaLabel(areaName: string): string {
-        const present = this.getPresentAreaCodes(areaName);
-        if (present.length === 0) return '';
-        const display = present.map(c => c === 'ALL' ? '*' : c);
+        const areaNameToCodes = this.areaNameToCodes();
+        const baysForArea = this.baysForArea();
+        const compsForArea = this.compsForArea();
+        const codes = areaNameToCodes.get(areaName) ?? [areaName];
+        const present = new Set<string>();
+        for (const code of codes) {
+            if ((baysForArea.get(code)?.length ?? 0) > 0) present.add(code);
+            if ((compsForArea.get(code)?.length ?? 0) > 0) present.add(code);
+        }
+        if (present.size === 0) return '';
+        const display = Array.from(present).map(c => c === 'ALL' ? '*' : c);
         return display.join('/');
     }
 
     getComponentsForArea(areaName: string): UnitComponent[] {
-        return this.compsForArea.get(areaName) ?? [];
+        return this.compsForArea().get(areaName) ?? [];
     }
 
     getBaysForArea(areaName: string): UnitComponent[] {
-        return this.baysForArea.get(areaName) ?? [];
+        return this.baysForArea().get(areaName) ?? [];
     }
 
     areaHasBays(areaName: string): boolean {
-        return (this.baysForArea.get(areaName)?.length || 0) > 0;
+        return (this.baysForArea().get(areaName)?.length || 0) > 0;
     }
 
     features = computed<string[]>(() => {
@@ -258,18 +263,59 @@ export class UnitDetailsGeneralTabComponent {
         return norm;
     }
 
-    private buildMatrixLayout() {
-        const matrix = this.getMatrixForUnit();
-        if (!matrix) {
-            this.gridAreas = '';
-            this.matrixAreaCodes = [];
-            this.areaNameToCodes.clear();
-            this.baysForArea.clear();
-            this.compsForArea.clear();
-            return;
+    /** Result type for buildMatrixLayout */
+    private static readonly EMPTY_MATRIX_DATA = {
+        gridAreas: '',
+        matrixAreaCodes: [] as string[],
+        areaNameToCodes: new Map<string, string[]>(),
+        baysForArea: new Map<string, UnitComponent[]>(),
+        compsForArea: new Map<string, UnitComponent[]>()
+    };
+
+    /**
+     * Pure function that builds all matrix layout data.
+     * Returns an object containing gridAreas, areaCodes, and lookup Maps.
+     */
+    private buildMatrixLayout(
+        unit: Unit,
+        groupedBays: Array<{ l: string, p: number, bays: UnitComponent[] }>,
+        componentsForMatrix: UnitComponent[]
+    ): typeof UnitDetailsGeneralTabComponent.EMPTY_MATRIX_DATA {
+        const matrix = MATRIX_ALIGNMENT[unit?.type];
+        if (!Array.isArray(matrix)) {
+            return UnitDetailsGeneralTabComponent.EMPTY_MATRIX_DATA;
         }
 
-        const { names, areaCodes } = this.normalizeMatrix(matrix);
+        // Helper to get bays by location (pure, no caching needed in computed context)
+        const getBaysByLoc = (loc: string): UnitComponent[] => {
+            const target = loc;
+            const matched = groupedBays.filter(g => this.normalizeLoc(g.l) === target);
+            if (!matched.length) return [];
+            const byName = new Map<string, UnitComponent>();
+            for (const g of matched) {
+                for (const bay of g.bays) {
+                    const key = bay.n ?? '';
+                    if (!byName.has(key)) byName.set(key, { ...bay });
+                    else {
+                        const agg = byName.get(key)!;
+                        agg.q = (agg.q || 1) + (bay.q || 1);
+                    }
+                }
+            }
+            return Array.from(byName.values()).sort((a, b) => {
+                if (a.n === b.n) return 0;
+                if (a.n === undefined) return 1;
+                if (b.n === undefined) return -1;
+                return a.n!.localeCompare(b.n!);
+            });
+        };
+
+        // Helper to get components by location
+        const getCompsForLoc = (loc: string): UnitComponent[] => {
+            return componentsForMatrix.filter(c => this.normalizeLoc(c.l) === loc);
+        };
+
+        const { names, areaCodes } = this.normalizeMatrixPure(matrix, getBaysByLoc, getCompsForLoc);
         const filteredNames = names.filter(row => row.some(name => name !== '.'));
 
         const matrixDeclaredCodes = new Set<string>();
@@ -278,10 +324,10 @@ export class UnitDetailsGeneralTabComponent {
         }
 
         const allUnitLocs = new Set<string>();
-        for (const comp of this.componentsForMatrix) {
+        for (const comp of componentsForMatrix) {
             if (comp.l) allUnitLocs.add(this.normalizeLoc(comp.l));
         }
-        for (const g of this.groupedBays) {
+        for (const g of groupedBays) {
             if (g.l) allUnitLocs.add(this.normalizeLoc(g.l));
         }
 
@@ -309,28 +355,69 @@ export class UnitDetailsGeneralTabComponent {
         }
 
         if (!filteredNames.length) {
-            this.gridAreas = '';
-            this.matrixAreaCodes = [];
-            this.areaNameToCodes.clear();
-            return;
+            return UnitDetailsGeneralTabComponent.EMPTY_MATRIX_DATA;
         }
 
-        this.areaNameToCodes = areaCodes;
-        this.gridAreas = this.computeGridAreas(filteredNames);
+        const gridAreas = this.computeGridAreas(filteredNames);
 
         const seen = new Set<string>();
-        const unique: string[] = [];
+        const matrixAreaCodes: string[] = [];
         for (const row of filteredNames) {
             for (const name of row) {
                 if (name === '.') continue;
                 if (!seen.has(name)) {
                     seen.add(name);
-                    unique.push(name);
+                    matrixAreaCodes.push(name);
                 }
             }
         }
-        this.matrixAreaCodes = unique;
-        this.buildAreaCaches();
+
+        // Build area caches
+        const baysForArea = new Map<string, UnitComponent[]>();
+        const compsForArea = new Map<string, UnitComponent[]>();
+
+        for (const area of matrixAreaCodes) {
+            const codes = areaCodes.get(area) ?? [area];
+            const merged = new Map<string, UnitComponent>();
+            for (const code of codes) {
+                for (const bay of getBaysByLoc(code)) {
+                    const key = bay.n ?? '';
+                    if (!merged.has(key)) merged.set(key, { ...bay });
+                    else {
+                        const agg = merged.get(key)!;
+                        agg.q = (agg.q || 1) + (bay.q || 1);
+                    }
+                }
+            }
+            const bays = Array.from(merged.values()).sort((a, b) => {
+                if (a.n === b.n) return 0;
+                if (a.n === undefined) return 1;
+                if (b.n === undefined) return -1;
+                return a.n!.localeCompare(b.n!);
+            });
+            baysForArea.set(area, bays);
+
+            const comps = codes
+                .flatMap(code => getCompsForLoc(code))
+                .sort((a, b) => {
+                    if (a.l === b.l) {
+                        if (a.n === b.n) return 0;
+                        if (a.n === undefined) return 1;
+                        if (b.n === undefined) return -1;
+                        return a.n!.localeCompare(b.n!);
+                    }
+                    return a.l.localeCompare(b.l);
+                });
+            compsForArea.set(area, comps);
+        }
+
+        return {
+            gridAreas,
+            matrixAreaCodes,
+            areaNameToCodes: areaCodes,
+            baysForArea,
+            compsForArea
+        };
     }
 
     private parseSlotSpec(slot: SlotSpec): {
@@ -362,7 +449,11 @@ export class UnitDetailsGeneralTabComponent {
         return { codes, hasFallback, hasBorrowUp, anchorCodes };
     }
 
-    private normalizeMatrix(matrix: MatrixSpec): { names: string[][]; areaCodes: Map<string, string[]> } {
+    private normalizeMatrixPure(
+        matrix: MatrixSpec,
+        getBaysByLoc: (loc: string) => UnitComponent[],
+        getCompsForLoc: (loc: string) => UnitComponent[]
+    ): { names: string[][]; areaCodes: Map<string, string[]> } {
         interface CellMeta {
             codes: string[];
             anchorCodes: string[];
@@ -378,8 +469,8 @@ export class UnitDetailsGeneralTabComponent {
         if (!expectedCols) return { names: [], areaCodes: new Map() };
 
         const codeHasContent = (code: string): boolean =>
-            this.getBaysByLocation(code).length > 0 ||
-            this.getComponentsForLocation(code).length > 0;
+            getBaysByLoc(code).length > 0 ||
+            getCompsForLoc(code).length > 0;
 
         const meta: CellMeta[][] = [];
         for (let r = 0; r < matrix.length; r++) {
@@ -512,25 +603,6 @@ export class UnitDetailsGeneralTabComponent {
         return { names, areaCodes };
     }
 
-    private getAreaCodes(areaName: string): string[] {
-        return this.areaNameToCodes.get(areaName) ?? [areaName];
-    }
-
-    private getPresentAreaCodes(areaName: string): string[] {
-        const codes = this.getAreaCodes(areaName);
-        const present = new Set<string>();
-        for (const code of codes) {
-            if (this.getBaysByLocation(code).length > 0) present.add(code);
-            if (this.getComponentsForLocation(code).length > 0) present.add(code);
-        }
-        return Array.from(present);
-    }
-
-    private getMatrixForUnit(): MatrixSpec | null {
-        const matrix = MATRIX_ALIGNMENT[this.unit()?.type];
-        return Array.isArray(matrix) ? matrix : null;
-    }
-
     private computeGridAreas(names: string[][]): string {
         if (!names.length) return '';
         const cols = names[0].length;
@@ -540,79 +612,6 @@ export class UnitDetailsGeneralTabComponent {
             return row;
         });
         return sanitized.map(row => `"${row.join(' ')}"`).join(' ');
-    }
-
-    private buildAreaCaches() {
-        this.baysForArea.clear();
-        this.compsForArea.clear();
-        for (const area of this.matrixAreaCodes) {
-            const codes = this.getAreaCodes(area);
-            const merged = new Map<string, UnitComponent>();
-            for (const code of codes) {
-                for (const bay of this.getBaysByLocation(code)) {
-                    const key = bay.n ?? '';
-                    if (!merged.has(key)) merged.set(key, { ...bay });
-                    else {
-                        const agg = merged.get(key)!;
-                        agg.q = (agg.q || 1) + (bay.q || 1);
-                    }
-                }
-            }
-            const bays = Array.from(merged.values()).sort((a, b) => {
-                if (a.n === b.n) return 0;
-                if (a.n === undefined) return 1;
-                if (b.n === undefined) return -1;
-                return a.n!.localeCompare(b.n!);
-            });
-            this.baysForArea.set(area, bays);
-
-            const comps = codes
-                .flatMap(code => this.getComponentsForLocation(code))
-                .sort((a, b) => {
-                    if (a.l === b.l) {
-                        if (a.n === b.n) return 0;
-                        if (a.n === undefined) return 1;
-                        if (b.n === undefined) return -1;
-                        return a.n!.localeCompare(b.n!);
-                    }
-                    return a.l.localeCompare(b.l);
-                });
-            this.compsForArea.set(area, comps);
-        }
-    }
-
-    getBaysByLocation(loc: string): UnitComponent[] {
-        const target = loc;
-        if (this.baysByLocCache.has(target)) return this.baysByLocCache.get(target)!;
-        const matched = this.groupedBays.filter(g => this.normalizeLoc(g.l) === target);
-
-        if (!matched.length) {
-            this.baysByLocCache.set(loc, []);
-            return [];
-        }
-        const byName = new Map<string, UnitComponent>();
-        for (const g of matched) {
-            for (const bay of g.bays) {
-                const key = bay.n ?? '';
-                if (!byName.has(key)) byName.set(key, { ...bay });
-                else {
-                    const agg = byName.get(key)!;
-                    agg.q = (agg.q || 1) + (bay.q || 1);
-                }
-            }
-        }
-        const arr = Array.from(byName.values()).sort((a, b) => {
-            if (a.n === b.n) return 0;
-            if (a.n === undefined) return 1;
-            if (b.n === undefined) return -1;
-            return a.n!.localeCompare(b.n!);
-        });
-        this.baysByLocCache.set(loc, arr);
-        return arr;
-    }
-
-    getComponentsForLocation(loc: string): UnitComponent[] {
-        return this.componentsForMatrix.filter(c => this.normalizeLoc(c.l) === loc);
     }
 
     getComponents(isForMatrix: boolean): UnitComponent[] {

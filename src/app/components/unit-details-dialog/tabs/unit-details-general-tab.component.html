@@ -8,8 +8,8 @@
         unit().weightClass }}</strong></div>
         <div>
             <span class="muted">BV: </span>
-            @if (adjustedBV != null && adjustedBV != unit().bv) {
-                <strong>{{ formatThousands(adjustedBV!) }}</strong>
+            @if (adjustedBV() != null && adjustedBV() != unit().bv) {
+                <strong>{{ formatThousands(adjustedBV()!) }}</strong>
                 <span class="muted"> ({{ formatThousands(unit().bv) }})</span>
             } @else {
                 <strong>{{ formatThousands(unit().bv) }}</strong>
@@ -94,8 +94,8 @@ unit().moveType }}</strong></div>
 <!-- Components Grid -->
 <!-- Matrix layout (3x3) when supported and defined for unit.type -->
 @if (useMatrixLayout()) {
-<div class="components-matrix" [style.grid-template-areas]="gridAreas">
-@for (area of matrixAreaCodes; let i = $index; track i) {
+<div class="components-matrix" [style.grid-template-areas]="gridAreas()">
+@for (area of matrixAreaCodes(); let i = $index; track i) {
     <div class="component-rect" [style.grid-area]="area">
         <div class="comp-loc">{{ getAreaLabel(area) }}</div>
         <div class="comp-list">
@@ -120,7 +120,7 @@ unit().moveType }}</strong></div>
 <!-- Default -->
 @if (hasBays()) {
 <div class="components-container">
-@for (group of groupedBays; let i = $index; track group.l) {
+@for (group of groupedBays(); let i = $index; track group.l) {
     <div class="component-rect">
         <div class="comp-loc">{{ group.l }}</div>
         <div class="bay">
@@ -133,7 +133,7 @@ unit().moveType }}</strong></div>
 </div>
 } @else {
 <div class="components-container">
-@for (comp of components; let i = $index; track i) {
+@for (comp of components(); let i = $index; track i) {
     <div class="component-rect">
         <div class="comp-loc">{{ comp.l }}</div>
         <div class="comp-list">
