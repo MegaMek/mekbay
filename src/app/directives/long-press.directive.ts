@@ -142,5 +142,6 @@ export class LongPressDirective {
             }
         } catch (e) { /* ignore */ }
         this.pointerId = undefined;
+        this.pointerDownEvent = null;
     }
 }
