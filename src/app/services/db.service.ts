@@ -915,26 +915,45 @@ export class DbService {
         }
     }
 
-    public async getSheet(key: string, etag: string): Promise<SVGSVGElement | null> {
+    /**
+     * Get sheet metadata (timestamp, etag) without decompressing content.
+     */
+    public async getSheetMeta(key: string): Promise<{ timestamp: number; etag: string } | null> {
         const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
-        if (!storedData) {
+        if (!storedData) return null;
+        return { timestamp: storedData.timestamp, etag: storedData.etag };
+    }
+
+    /**
+     * Get the decompressed sheet content from cache.
+     */
+    public async getSheet(key: string): Promise<SVGSVGElement | null> {
+        const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
+        if (!storedData) return null;
+        try {
+            const decompressedStream = storedData.content.stream().pipeThrough(new DecompressionStream('gzip'));
+            const decompressedString = await new Response(decompressedStream).text();
+            const parser = new DOMParser();
+            const content = parser.parseFromString(decompressedString, 'image/svg+xml');
+            return content.documentElement as unknown as SVGSVGElement;
+        } catch (error) {
+            this.logger.error(`Error retrieving sheet ${key}: ${error}`);
             return null;
         }
-        const isSameEtag = storedData.etag === etag;
-        if (isSameEtag || !navigator.onLine) {
-            try {
-                const decompressedStream = storedData.content.stream().pipeThrough(new DecompressionStream('gzip'));
-                const decompressedString = await new Response(decompressedStream).text();
-                const parser = new DOMParser();
-                const content = parser.parseFromString(decompressedString, 'image/svg+xml');
-                const svg: SVGSVGElement | null = content.documentElement as unknown as SVGSVGElement;
-                return svg;
-            } catch (error) {
-                this.logger.error(`Error retrieving sheet ${key}: ${error}`);
-                return null;
-            }
+    }
+
+    /**
+     * Update the timestamp of a cached sheet (to mark it as recently validated).
+     */
+    public async touchSheet(key: string): Promise<void> {
+        const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
+        if (!storedData) return;
+        storedData.timestamp = Date.now();
+        try {
+            await this.saveDataToStore(storedData, key, SHEETS_STORE);
+        } catch {
+            // Silently ignore - not critical
         }
-        return null; // If we detect that we are online and the etag is different, return null to force a refresh
     }
 
     public async saveSheet(key: string, sheet: SVGSVGElement, etag: string): Promise<void> {

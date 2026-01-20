@@ -63,6 +63,7 @@ import { removeAccents } from '../utils/string.util';
  * Author: Drake
  */
 export const DOES_NOT_TRACK = 999;
+const SHEET_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export interface MinMaxStatsRange {
     armor: [number, number],
@@ -902,18 +903,37 @@ export class DataService {
     }
 
     public async getSheet(sheetFileName: string): Promise<SVGSVGElement> {
-        const etag = await this.fetchSheetETag(sheetFileName);
-        const sheet: SVGSVGElement | null = await this.dbService.getSheet(sheetFileName, etag);
-        if (sheet) {
-            this.logger.info(`Sheet ${sheetFileName} found in cache.`);
-            return sheet;
-        }
-        return this.fetchAndCacheSheet(sheetFileName);
-    }
+        const meta = await this.dbService.getSheetMeta(sheetFileName);
+        const now = Date.now();
+        const isFresh = meta && (now - meta.timestamp) < SHEET_CACHE_MAX_AGE_MS;
 
-    private async fetchSheetETag(sheetFileName: string): Promise<string> {
-        const src = `${REMOTE_HOST}/sheets/${sheetFileName}`;
-        return this.getRemoteETag(src);
+        // If cache is fresh, use it without checking remote
+        if (isFresh) {
+            const sheet = await this.dbService.getSheet(sheetFileName);
+            if (sheet) {
+                this.logger.info(`Sheet ${sheetFileName} loaded from cache (fresh).`);
+                return sheet;
+            }
+        }
+
+        // Cache is stale or missing - check remote ETag
+        const remoteEtag = await this.getRemoteETag(`${REMOTE_HOST}/sheets/${sheetFileName}`);
+
+        // If offline or same ETag, use cached version and refresh timestamp
+        if (meta && (!remoteEtag || meta.etag === remoteEtag)) {
+            const sheet = await this.dbService.getSheet(sheetFileName);
+            if (sheet) {
+                if (remoteEtag) {
+                    // ETag matched, refresh timestamp so we don't check again for SHEET_CACHE_MAX_AGE_MS
+                    this.dbService.touchSheet(sheetFileName);
+                }
+                this.logger.info(`Sheet ${sheetFileName} loaded from cache (validated).`);
+                return sheet;
+            }
+        }
+
+        // Fetch fresh copy from remote
+        return this.fetchAndCacheSheet(sheetFileName);
     }
 
     private async fetchAndCacheSheet(sheetFileName: string): Promise<SVGSVGElement> {
