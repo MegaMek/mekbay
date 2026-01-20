@@ -9,7 +9,7 @@
     @if(rackSize !== null && rackSize > 0){<div><span class="muted">Rack Size: </span>{{ rackSize }}</div>}
     @if(heat && heat > 0){<div><span class="muted">Heat: </span>{{ heat }}</div>}
     @if (equipment()) {<hr>}
-    @for ( group of equipmentDisplay; let i = $index; track i) {
+    @for ( group of equipmentDisplay(); let i = $index; track i) {
         <div class="equip-group-container">
             <div class="equip-group">
                 <div class="equip-group-title">{{ group.group }}</div>

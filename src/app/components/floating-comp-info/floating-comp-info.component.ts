@@ -31,14 +31,13 @@
  * affiliated with Microsoft.
  */
 
-import { Component, input, signal, effect, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, computed, inject, ChangeDetectionStrategy } from '@angular/core';
 
 import { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { Unit } from '../../models/units.model';
 import { Equipment, WeaponEquipment } from '../../models/equipment.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
-import { W } from '@angular/cdk/keycodes';
 
 /*
  * Author: Drake
@@ -60,31 +59,18 @@ export class FloatingCompInfoComponent {
     unit = input.required<Unit>();
     comp = input<UnitComponent | null>(null);
 
-    pos = signal<{ x: number, y: number }>({ x: 0, y: 0 });
-    equipment = signal<Equipment | null>(null);
     positioned = false;
-    equipmentDisplay: Array<{ group: string, items: Array<{ label: string, value: any }> }> = [];
-    
-    constructor() {
-        effect(() => {
-            const currentComp = this.comp();
-            const currentUnit = this.unit();
-            
-            if (currentUnit && currentComp?.id && currentUnit?.type) {
-                const eq = this.dataService.getEquipment(currentUnit.type)[currentComp.id];
-                this.equipment.set(eq || null);
-            } else {
-                this.equipment.set(null);
-            }
-            this.equipmentDisplay = this.computeEquipmentDisplay();
-        });
 
-        effect(() => {
-            this.comp();
-            this.unit();
-            this.equipmentDisplay = this.computeEquipmentDisplay();
-        });
-    }
+    equipment = computed<Equipment | null>(() => {
+        const currentComp = this.comp();
+        const currentUnit = this.unit();
+        if (currentUnit && currentComp?.id && currentUnit?.type) {
+            return this.dataService.getEquipment(currentUnit.type)[currentComp.id] || null;
+        }
+        return null;
+    });
+
+    equipmentDisplay = computed(() => this.computeEquipmentDisplay());
 
     onPointerEnter() {
         // overlay service listens for overlay element pointer events; parent keeps component state
