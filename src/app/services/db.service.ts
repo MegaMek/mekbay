@@ -40,8 +40,6 @@ import { Quirks } from '../models/quirks.model';
 import { Sourcebooks } from '../models/sourcebook.model';
 import { MULUnitSources } from '../models/mul-unit-sources.model';
 import { EquipmentData } from '../models/equipment.model';
-import { Force, UnitGroup } from '../models/force.model';
-import { ForceUnit } from '../models/force-unit.model';
 import { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { UnitInitializerService } from './unit-initializer.service';
@@ -181,6 +179,9 @@ export class DbService {
     
     /** Whether the database is in a degraded state (failed to initialize) */
     private degradedMode = false;
+    
+    /** Whether blob storage is unavailable (iOS Safari Private Mode) */
+    private blobStorageUnavailable = false;
 
     constructor() {
         this.dbPromise = this.initIndexedDbWithRecovery();
@@ -386,6 +387,14 @@ export class DbService {
             };
 
             request.onerror = () => {
+                const errorMsg = request.error?.message || String(request.error);
+                // Detect iOS Safari Private Mode blob storage failure
+                if (errorMsg.includes('Blob') || errorMsg.includes('File')) {
+                    this.blobStorageUnavailable = true;
+                    this.logger.warn('Blob storage unavailable - operating in degraded mode');
+                    resolve();
+                    return;
+                }
                 this.logger.error(`Error saving ${key} to IndexedDB ${storeName}: ${request.error}`);
                 reject(request.error);
             };
@@ -897,7 +906,13 @@ export class DbService {
     }
 
     public async saveCanvasData(unitId: string, img: Blob): Promise<void> {
-        this.saveDataToStore(img, unitId, CANVAS_STORE);
+        // Skip saving if blob storage is unavailable
+        if (this.blobStorageUnavailable) return;
+        try {
+            await this.saveDataToStore(img, unitId, CANVAS_STORE);
+        } catch {
+            // Silently ignore
+        }
     }
 
     public async getSheet(key: string, etag: string): Promise<SVGSVGElement | null> {
@@ -923,6 +938,9 @@ export class DbService {
     }
 
     public async saveSheet(key: string, sheet: SVGSVGElement, etag: string): Promise<void> {
+        // Skip saving if blob storage is unavailable
+        if (this.blobStorageUnavailable) return;
+        
         const serializer = new XMLSerializer();
         const contentString = serializer.serializeToString(sheet);
         const compressedStream = new Blob([contentString]).stream().pipeThrough(new CompressionStream('gzip'));
@@ -934,9 +952,14 @@ export class DbService {
             content: compressedBlob,
             size: compressedBlob.size,
         };
-        this.saveDataToStore(data, key, SHEETS_STORE).then(() => {
-            this.cullOldSheets();
-        });
+        try {
+            await this.saveDataToStore(data, key, SHEETS_STORE);
+            if (!this.blobStorageUnavailable) {
+                this.cullOldSheets();
+            }
+        } catch {
+            // Silently ignore cache failures - sheets will be refetched as needed
+        }
     }
 
     private async clearStore(storeName: string): Promise<void> {
