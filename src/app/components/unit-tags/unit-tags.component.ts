@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit } from '../../models/units.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
@@ -58,8 +58,6 @@ export interface TagClickEvent {
 })
 export class UnitTagsComponent {
     private filtersService = inject(UnitSearchFiltersService);
-
-    /** The unit whose tags to display */
     unit = input.required<Unit>();
 
     /** 
@@ -72,33 +70,20 @@ export class UnitTagsComponent {
     /** Emitted when the add/edit tag button is clicked. Passes both the unit and MouseEvent for overlay positioning. */
     tagClick = output<TagClickEvent>();
 
-    /** Internal signal that holds a copy of the name tags array */
-    private _nameTags = signal<string[]>([]);
-    /** Internal signal that holds a copy of the chassis tags array */
-    private _chassisTags = signal<string[]>([]);
+    /** Name tags derived from unit, invalidated when tagsVersion changes */
+    nameTags = computed(() => {
+        this.filtersService.tagsVersion(); // dependency for cache invalidation
+        return [...(this.unit()._nameTags ?? [])];
+    });
 
-    /** Exposed name tags for template */
-    nameTags = this._nameTags.asReadonly();
-    /** Exposed chassis tags for template */
-    chassisTags = this._chassisTags.asReadonly();
+    /** Chassis tags derived from unit, invalidated when tagsVersion changes */
+    chassisTags = computed(() => {
+        this.filtersService.tagsVersion(); // dependency for cache invalidation
+        return [...(this.unit()._chassisTags ?? [])];
+    });
 
-    /** Total tag count for compact mode */
-    totalTagCount = computed(() => this._nameTags().length + this._chassisTags().length);
-
-    /** Whether the unit has any tags */
+    totalTagCount = computed(() => this.nameTags().length + this.chassisTags().length);
     hasTags = computed(() => this.totalTagCount() > 0);
-
-    constructor() {
-        // Update local tags signals when unit changes or tagsVersion changes
-        effect(() => {
-            // Read dependencies
-            const unit = this.unit();
-            this.filtersService.tagsVersion();
-            // Create new array copies to ensure change detection sees them as new
-            this._nameTags.set([...(unit._nameTags ?? [])]);
-            this._chassisTags.set([...(unit._chassisTags ?? [])]);
-        });
-    }
 
     onTagClick(event: MouseEvent): void {
         event.stopPropagation();
