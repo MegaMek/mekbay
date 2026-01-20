@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Directive, ElementRef, output, input, inject, effect, Renderer2, signal, DestroyRef } from '@angular/core';
+import { Directive, ElementRef, output, input, inject, Renderer2, signal, DestroyRef } from '@angular/core';
 
 export type SwipeDirection = 'horizontal' | 'vertical' | 'both';
 
@@ -105,15 +105,13 @@ export class SwipeDirective {
 
     constructor() {
         // Set up pointer down listener
-        effect((onCleanup) => {
-            const unlisten = this.renderer.listen(
-                this.elRef.nativeElement,
-                'pointerdown',
-                (event: PointerEvent) => this.onPointerDown(event)
-            );
-            onCleanup(() => unlisten());
-        });
+        const unlisten = this.renderer.listen(
+            this.elRef.nativeElement,
+            'pointerdown',
+            (event: PointerEvent) => this.onPointerDown(event)
+        );
         inject(DestroyRef).onDestroy(() => {
+            unlisten();
             this.cleanup();
         });
     }
