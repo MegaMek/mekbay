@@ -382,6 +382,10 @@ export class DataService {
                 document.removeEventListener('visibilitychange', onVisibility);
                 window.removeEventListener('online', onOnline);
                 this.broadcast?.close();
+                for (const [, entry] of this.saveForceCloudDebounce) {
+                    clearTimeout(entry.timeout);
+                }
+                this.saveForceCloudDebounce.clear();
             });
         }
 
@@ -881,37 +885,30 @@ export class DataService {
     private async fetchFromRemote<T extends object>(remoteStore: RemoteStore<T>): Promise<void> {
         this.isDownloading.set(true);
         this.logger.info(`Downloading ${remoteStore.key}...`);
-        return new Promise<void>((resolve, reject) => {
-            this.http.get<T>(remoteStore.url, {
-                reportProgress: false,
-                observe: 'response',
-            }).subscribe({
-                next: async (response) => {
-                    try {
-                        const etag = response.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
-                        const data = response.body;
-                        if (!data) {
-                            throw new Error(`No body received for ${remoteStore.key}`);
-                        }
-                        (data as any).etag = etag;
-                        let processedData = data;
-                        if (remoteStore.preprocess) {
-                            processedData = remoteStore.preprocess(data);
-                        }
-                        this.data[remoteStore.key as keyof LocalStore] = processedData;
-                        await remoteStore.putInLocalStorage(data); // Save original data with etag
-                        this.logger.info(`${remoteStore.key} updated. (ETag: ${etag})`);
-                        resolve();
-                    } catch (error) {
-                        reject(error);
-                    }
-                },
-                error: (err: any) => {
-                    this.logger.error(`Failed to download ${remoteStore.key}: ` + (err.message ?? err));
-                    reject(err);
-                }
-            });
-        });
+        try {
+            const response = await firstValueFrom(
+                this.http.get<T>(remoteStore.url, {
+                    reportProgress: false,
+                    observe: 'response',
+                })
+            );
+            const etag = response.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
+            const data = response.body;
+            if (!data) {
+                throw new Error(`No body received for ${remoteStore.key}`);
+            }
+            (data as any).etag = etag;
+            let processedData = data;
+            if (remoteStore.preprocess) {
+                processedData = remoteStore.preprocess(data);
+            }
+            this.data[remoteStore.key as keyof LocalStore] = processedData;
+            await remoteStore.putInLocalStorage(data); // Save original data with etag
+            this.logger.info(`${remoteStore.key} updated. (ETag: ${etag})`);
+        } catch (err: any) {
+            this.logger.error(`Failed to download ${remoteStore.key}: ` + (err.message ?? err));
+            throw err;
+        }
     }
 
     public async getSheet(sheetFileName: string): Promise<SVGSVGElement> {
@@ -952,46 +949,40 @@ export class DataService {
         this.logger.info(`Fetching sheet: ${sheetFileName}`);
         const src = `${REMOTE_HOST}/sheets/${sheetFileName}`;
 
-        return new Promise<SVGSVGElement>((resolve, reject) => {
-            this.http.get(src, {
-                reportProgress: false,
-                observe: 'response' as const,
-                responseType: 'text' as const,
-            }).subscribe({
-                next: async (response) => {
-                    try {
-                        const etag = response.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
-                        const svgText = response.body;
-                        if (!svgText) {
-                            throw new Error(`No body received for sheet ${sheetFileName}`);
-                        }
+        try {
+            const response = await firstValueFrom(
+                this.http.get(src, {
+                    reportProgress: false,
+                    observe: 'response' as const,
+                    responseType: 'text' as const,
+                })
+            );
+            const etag = response.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
+            const svgText = response.body;
+            if (!svgText) {
+                throw new Error(`No body received for sheet ${sheetFileName}`);
+            }
 
-                        const parser = new DOMParser();
-                        const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
+            const parser = new DOMParser();
+            const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
 
-                        if (svgDoc.getElementsByTagName('parsererror').length) {
-                            throw new Error('Failed to parse SVG');
-                        }
+            if (svgDoc.getElementsByTagName('parsererror').length) {
+                throw new Error('Failed to parse SVG');
+            }
 
-                        const svgElement = svgDoc.documentElement as unknown as SVGSVGElement;
-                        if (!svgElement) {
-                            throw new Error('Invalid SVG content: Failed to find the SVG root element after parsing.');
-                        }
+            const svgElement = svgDoc.documentElement as unknown as SVGSVGElement;
+            if (!svgElement) {
+                throw new Error('Invalid SVG content: Failed to find the SVG root element after parsing.');
+            }
 
-                        RsPolyfillUtil.fixSvg(svgElement);
-                        await this.dbService.saveSheet(sheetFileName, svgElement, etag);
-                        this.logger.info(`Sheet ${sheetFileName} fetched and cached.`);
-                        resolve(svgElement);
-                    } catch (error) {
-                        reject(error);
-                    }
-                },
-                error: (err) => {
-                    this.logger.error(`Failed to download sheet ${sheetFileName}: ` + err);
-                    reject(err);
-                }
-            });
-        });
+            RsPolyfillUtil.fixSvg(svgElement);
+            await this.dbService.saveSheet(sheetFileName, svgElement, etag);
+            this.logger.info(`Sheet ${sheetFileName} fetched and cached.`);
+            return svgElement;
+        } catch (err) {
+            this.logger.error(`Failed to download sheet ${sheetFileName}: ` + err);
+            throw err;
+        }
     }
 
     private isCloudNewer(localRaw: any, cloudRaw: any): boolean {
