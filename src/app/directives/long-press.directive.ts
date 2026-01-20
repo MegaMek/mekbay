@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Directive, input, effect, output, ElementRef, inject } from '@angular/core';
+import { Directive, input, output, ElementRef, inject, DestroyRef } from '@angular/core';
 
 @Directive({
     selector: '[longPress]',
@@ -60,9 +60,7 @@ export class LongPressDirective {
     private disableNextClick = false;
 
     constructor() {
-        effect((cleanup) => {
-            cleanup(() => this.clearTimer());
-        });
+        inject(DestroyRef).onDestroy(() => this.clearTimer());
     }
 
     onPointerDown(event: PointerEvent) {
