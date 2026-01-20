@@ -335,14 +335,20 @@ export abstract class AsLayoutBaseComponent {
     });
 
     // To-hit values (affected by crew and fire control critical hits: +2 per hit)
-    toHitShort = computed<number>(() => this.skill() + this.heatLevel() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
-    toHitMedium = computed<number>(() => this.skill() + 2 + this.heatLevel() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
-    toHitLong = computed<number>(() => this.skill() + 4 + this.heatLevel() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
-    toHitExtreme = computed<number>(() => this.skill() + 6 + this.heatLevel() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
+    toHitShort = computed<number>(() => this.skill() + this.heatLevelToHitModifier() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
+    toHitMedium = computed<number>(() => this.skill() + 2 + this.heatLevelToHitModifier() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
+    toHitLong = computed<number>(() => this.skill() + 4 + this.heatLevelToHitModifier() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
+    toHitExtreme = computed<number>(() => this.skill() + 6 + this.heatLevelToHitModifier() + (this.crewHits() * 2) + (this.fireControlHits() * 2));
 
     hasExtremeRange = computed<boolean>(() => {
         const tp = this.asStats().TP;
         return tp === 'AF' || tp === 'CF';
+    });
+
+    heatLevelToHitModifier = computed<number>(() => {
+        const fu = this.forceUnit();
+        if (!fu) return 0;
+        return Math.max(0, this.heatLevel() - (fu.hasHotDog() ? 1 : 0));
     });
 
     // Heat level (committed)
