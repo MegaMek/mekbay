@@ -145,6 +145,8 @@ export class DialogsService {
                 closed.next(undefined);
                 closed.complete();
             }
+            // Ensure overlay is disposed when detached externally
+            try { overlayRef.dispose(); } catch { /* already disposed */ }
         });
 
         return {

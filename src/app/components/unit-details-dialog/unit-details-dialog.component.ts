@@ -37,6 +37,7 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { Unit } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
 import { ForceUnit } from '../../models/force-unit.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -199,8 +200,8 @@ export class UnitDetailsDialogComponent {
             this.indexChange.emit(index);
         });
         
-        this.dialogRef.closed.subscribe(() => {
-            // Clear dialog-specific params when closing
+        // Clean up URL params when dialog closes
+        firstValueFrom(this.dialogRef.closed).then(() => {
             this.urlStateService.setParams({
                 shareUnit: null,
                 tab: null,

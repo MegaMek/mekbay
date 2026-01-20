@@ -160,6 +160,8 @@ export class OverlayManagerService {
         overlayRef.detachments().subscribe(() => {
             // Only clean up if the entry still exists and hasn't been cleaned up yet
             if (this.managed.get(key) === entry) {
+                // Dispose the overlay if it was detached externally (not already disposed)
+                try { overlayRef.dispose(); } catch { /* already disposed */ }
                 this.cleanupManagedEntry(key, entry);
             }
         });
