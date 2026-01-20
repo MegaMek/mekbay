@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit } from '../../models/units.model';
 import { GameService } from '../../services/game.service';
@@ -120,17 +120,6 @@ export class UnitDetailsPanelComponent {
         const url = this.fluffImageUrl();
         return url ? `url("${url}")` : null;
     });
-
-    constructor() {
-        // Set initial tab and reset when game system changes
-        effect(() => {
-            const newTabs = this.tabs();
-            const currentTab = this.activeTab();
-            if (!newTabs.includes(currentTab)) {
-                this.activeTab.set(newTabs[0]);
-            }
-        });
-    }
 
     /** Format thousands with commas */
     formatThousands(value: number): string {
