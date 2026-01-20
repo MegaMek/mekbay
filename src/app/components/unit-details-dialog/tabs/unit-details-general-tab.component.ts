@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, inject, effect, signal, computed, untracked } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, effect, computed, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit, UnitComponent } from '../../../models/units.model';
 import { weaponTypes, getWeaponTypeCSSClass } from '../../../utils/equipment.util';
@@ -108,7 +108,10 @@ export class UnitDetailsGeneralTabComponent {
     componentsForMatrix: UnitComponent[] = [];
 
     // Matrix layout state
-    useMatrixLayout = signal(false);
+    useMatrixLayout = computed(() => {
+        const matrix = MATRIX_ALIGNMENT[this.unit()?.type];
+        return Array.isArray(matrix) && this.layoutService.windowWidth() >= 780;
+    });
     gridAreas = '';
     matrixAreaCodes: string[] = [];
     private areaNameToCodes = new Map<string, string[]>();
@@ -124,10 +127,6 @@ export class UnitDetailsGeneralTabComponent {
         effect(() => {
             this.unit();
             untracked(() => this.updateCachedData());
-        });
-        effect(() => {
-            this.layoutService.windowWidth();
-            untracked(() => this.updateUseMatrixLayout());
         });
     }
 
@@ -265,7 +264,6 @@ export class UnitDetailsGeneralTabComponent {
             this.gridAreas = '';
             this.matrixAreaCodes = [];
             this.areaNameToCodes.clear();
-            this.useMatrixLayout.set(false);
             this.baysForArea.clear();
             this.compsForArea.clear();
             return;
@@ -314,7 +312,6 @@ export class UnitDetailsGeneralTabComponent {
             this.gridAreas = '';
             this.matrixAreaCodes = [];
             this.areaNameToCodes.clear();
-            this.useMatrixLayout.set(false);
             return;
         }
 
@@ -334,7 +331,6 @@ export class UnitDetailsGeneralTabComponent {
         }
         this.matrixAreaCodes = unique;
         this.buildAreaCaches();
-        this.updateUseMatrixLayout();
     }
 
     private parseSlotSpec(slot: SlotSpec): {
@@ -544,15 +540,6 @@ export class UnitDetailsGeneralTabComponent {
             return row;
         });
         return sanitized.map(row => `"${row.join(' ')}"`).join(' ');
-    }
-
-    private canHaveThreeCols(): boolean {
-        return this.layoutService.windowWidth() >= 780;
-    }
-
-    private updateUseMatrixLayout() {
-        const hasMatrix = !!this.getMatrixForUnit();
-        this.useMatrixLayout.set(hasMatrix && this.canHaveThreeCols());
     }
 
     private buildAreaCaches() {
