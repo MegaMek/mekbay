@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { afterNextRender, effect, inject, Injectable, Injector } from '@angular/core';
+import { afterNextRender, DestroyRef, inject, Injectable, Injector } from '@angular/core';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { FloatingCompInfoComponent } from '../components/floating-comp-info/floating-comp-info.component';
@@ -50,15 +50,14 @@ export class FloatingOverlayService {
     private hideTimeout: any = null;
 
     constructor() {
-        effect((cleanup) => {
-            window.addEventListener('scroll', this.onScroll, true);
-            window.addEventListener('wheel', this.onScroll, { capture: true, passive: true });
-            window.addEventListener('pointerdown', this.onPointerDown, true);
-            cleanup(() => {
-                window.removeEventListener('scroll', this.onScroll, true);
-                window.removeEventListener('wheel', this.onScroll, { capture: true, passive: true } as AddEventListenerOptions);
-                window.removeEventListener('pointerdown', this.onPointerDown, true);
-            });
+        window.addEventListener('scroll', this.onScroll, true);
+        window.addEventListener('wheel', this.onScroll, { capture: true, passive: true });
+        window.addEventListener('pointerdown', this.onPointerDown, true);
+
+        inject(DestroyRef).onDestroy(() => {
+            window.removeEventListener('scroll', this.onScroll, true);
+            window.removeEventListener('wheel', this.onScroll, { capture: true, passive: true } as AddEventListenerOptions);
+            window.removeEventListener('pointerdown', this.onPointerDown, true);
         });
     }
 
