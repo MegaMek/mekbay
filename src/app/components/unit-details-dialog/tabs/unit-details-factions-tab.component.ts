@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, inject, effect, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit } from '../../../models/units.model';
 import { DataService } from '../../../services/data.service';
@@ -53,22 +53,10 @@ export class UnitDetailsFactionTabComponent {
     private dataService = inject(DataService);
 
     unit = input.required<Unit>();
-    
-    factionAvailability = signal<FactionAvailability[]>([]);
 
-    constructor() {
-        effect(() => {
-            this.unit();
-            this.updateFactionAvailability();
-        });
-    }
-
-    private updateFactionAvailability() {
+    factionAvailability = computed<FactionAvailability[]>(() => {
         const u = this.unit();
-        if (!u) {
-            this.factionAvailability.set([]);
-            return;
-        }
+        if (!u) return [];
 
         const unitId = u.id;
         const allEras = this.dataService.getEras().sort((a, b) => (a.years.from || 0) - (b.years.from || 0));
@@ -93,6 +81,6 @@ export class UnitDetailsFactionTabComponent {
                 });
             }
         }
-        this.factionAvailability.set(availability);
-    }
+        return availability;
+    });
 }

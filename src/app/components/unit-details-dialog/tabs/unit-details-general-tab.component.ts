@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, inject, effect, signal, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, effect, signal, computed, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit, UnitComponent } from '../../../models/units.model';
 import { weaponTypes, getWeaponTypeCSSClass } from '../../../utils/equipment.util';
@@ -123,11 +123,11 @@ export class UnitDetailsGeneralTabComponent {
     constructor() {
         effect(() => {
             this.unit();
-            this.updateCachedData();
+            untracked(() => this.updateCachedData());
         });
         effect(() => {
             this.layoutService.windowWidth();
-            this.updateUseMatrixLayout();
+            untracked(() => this.updateUseMatrixLayout());
         });
     }
 
@@ -547,7 +547,7 @@ export class UnitDetailsGeneralTabComponent {
     }
 
     private canHaveThreeCols(): boolean {
-        return window.innerWidth >= 780;
+        return this.layoutService.windowWidth() >= 780;
     }
 
     private updateUseMatrixLayout() {
