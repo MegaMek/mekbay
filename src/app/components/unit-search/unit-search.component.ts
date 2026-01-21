@@ -149,13 +149,18 @@ export class UnitSearchComponent {
     /** Immediate input value for instant highlighting (not debounced). */
     readonly immediateSearchText = signal('');
 
-    viewport = viewChild(CdkVirtualScrollViewport);
     syntaxInput = viewChild<SyntaxInputComponent>('syntaxInput');
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
     favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
-    resultsDropdown = viewChild<ElementRef<HTMLElement>>('resultsDropdown');
-    expandedResultsWrapper = viewChild<ElementRef<HTMLElement>>('expandedResultsWrapper');
+    
+    /** Query the active dropdown element directly from DOM to avoid viewChild retention */
+    private getActiveDropdownElement(): HTMLElement | null {
+        return document.querySelector('.results-dropdown') as HTMLElement | null;
+    }
+    
+    /** viewChild for CdkVirtualScrollViewport - only used for scrolling operations!!! */
+    private viewport = viewChild(CdkVirtualScrollViewport);
 
     gameSystem = computed(() => this.gameService.currentGameSystem());
     autoFocus = input(false);
@@ -300,6 +305,17 @@ export class UnitSearchComponent {
                 }
             });
         });
+        // Cancel pending height tracking updates when view mode changes to prevent stale references
+        effect(() => {
+            this.expandedView(); // Track changes
+            this.resultsVisible(); // Also track resultsVisible
+            untracked(() => {
+                if (this.heightTrackingDebounceTimer) {
+                    clearTimeout(this.heightTrackingDebounceTimer);
+                    this.heightTrackingDebounceTimer = undefined;
+                }
+            });
+        });
         // Auto-refresh favorites overlay when saved searches change (e.g., from cloud sync)
         effect(() => {
             this.savedSearchesService.version(); // Subscribe to changes
@@ -361,30 +377,29 @@ export class UnitSearchComponent {
     }
 
     private setupItemHeightTracking() {
-        const DEBOUNCE_MS = 80;
+        const DEBOUNCE_MS = 100;
 
         const debouncedUpdateHeights = () => {
             if (this.heightTrackingDebounceTimer) {
                 clearTimeout(this.heightTrackingDebounceTimer);
             }
             this.heightTrackingDebounceTimer = setTimeout(() => {
-                afterNextRender(() => {
-                    updateHeights();
-                }, { injector: this.injector });
+                // Early exit if results are no longer visible
+                if (!this.resultsVisible()) return;
+                
+                // Query DOM directly - no afterNextRender to avoid closure retention
+                const dropdown = this.getActiveDropdownElement();
+                if (!dropdown) return;
+                
+                const items = dropdown.querySelectorAll('.results-dropdown-item:not(.no-results)');
+                if (items.length === 0) return;
+                const heights = Array.from(items).slice(0, 100).map(el => (el as HTMLElement).offsetHeight);
+                let avg = Math.round(heights.reduce((a, b) => a + b, 0) / heights.length);
+                const currentAvg = this.itemSize();
+                if (currentAvg !== avg) {
+                    this.itemSize.set(avg);
+                }
             }, DEBOUNCE_MS);
-        };
-
-        const updateHeights = () => {
-            const dropdown = this.resultsDropdown()?.nativeElement;
-            if (!dropdown) return;
-            const items = dropdown.querySelectorAll('.results-dropdown-item:not(.no-results)');
-            if (items.length === 0) return;
-            const heights = Array.from(items).slice(0, 100).map(el => (el as HTMLElement).offsetHeight);
-            let avg = Math.round(heights.reduce((a, b) => a + b, 0) / heights.length);
-            const currentAvg = this.itemSize();
-            if (currentAvg !== avg) {
-                this.itemSize.set(avg);
-            }
         };
 
         effect(() => {
@@ -493,10 +508,6 @@ export class UnitSearchComponent {
             height: height,
             ...(right && { right })
         });
-
-        afterNextRender(() => {
-            this.viewport()?.checkViewportSize();
-        }, { injector: this.injector });
     }
 
     updateAdvPanelPosition() {

@@ -84,7 +84,7 @@
 <!-- Expanded view: wrapper with results and optional inline details panel -->
 @if (this.expandedView()) {
 <div #expandedResultsWrapper class="expanded-results-wrapper" [class.with-details-panel]="showInlinePanel()"
-    [hidden]="!this.filtersService.isDataReady() || !resultsVisible()" [ngStyle]="expandedWrapperStyle()">
+    [hidden]="!this.filtersService.isDataReady()" [ngStyle]="expandedWrapperStyle()">
     <!-- Inline Details Panel (visible when screen permits in expanded view) -->
     @if (showInlinePanel()) {
     <unit-details-panel class="inline-details-panel framed-borders" [unit]="inlinePanelUnit()"
@@ -97,7 +97,7 @@
         (next)="onInlinePanelNext()">
     </unit-details-panel>
     }
-    <div #resultsDropdown class="results-dropdown framed-borders expanded">
+    <div class="results-dropdown framed-borders expanded">
         <div class="results-dropdown-content">
             @if (this.filtersService.filteredUnits().length > 0) {
             <!-- Table Header for AS Table View -->
@@ -130,7 +130,7 @@
                     @if (gameService.isAlphaStrike()) {
                     <ng-container *ngTemplateOutlet="expandedViewASCard; context: { unit: unit }"></ng-container>
                     } @else {
-                    <ng-container *ngTemplateOutlet="expandedView; context: { unit: unit }"></ng-container>
+                    <ng-container *ngTemplateOutlet="expandedCardTpl; context: { unit: unit }"></ng-container>
                     }
                 </div>
             </cdk-virtual-scroll-viewport>
@@ -153,8 +153,11 @@
 </div>
 } @else {
 <!-- Non-expanded view: standard dropdown -->
-<div #resultsDropdown class="results-dropdown framed-borders"
-    [hidden]="!this.filtersService.isDataReady() || !resultsVisible()" [ngStyle]="resultsDropdownStyle()">
+@if (this.filtersService.isDataReady() && resultsVisible()) {
+<div class="results-dropdown framed-borders"
+    [style.top]="resultsDropdownStyle().top"
+    [style.width]="resultsDropdownStyle().width"
+    [style.height]="resultsDropdownStyle().height">
     <div class="results-dropdown-content">
         @if (this.filtersService.filteredUnits().length > 0) {
         <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
@@ -239,6 +242,7 @@
         }
     </div>
 </div>
+}
 }
 
 @if (this.expandedView() && this.advPanelDocked()) {
@@ -413,7 +417,7 @@
     </div>
 </ng-template>
 
-<ng-template #expandedView let-unit="unit">
+<ng-template #expandedCardTpl let-unit="unit">
     <div class="expanded-unit-card">
         <!-- Header Section -->
         <div class="expanded-header">
