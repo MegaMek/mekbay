@@ -140,6 +140,7 @@ export class UnitSearchComponent {
     public readonly SORT_OPTIONS = SORT_OPTIONS;
 
     private searchDebounceTimer: any;
+    private heightTrackingDebounceTimer: any;
     private readonly SEARCH_DEBOUNCE_MS = 300;
     /** Reference to the favorites overlay component for in-place updates. */
     private favoritesCompRef: ComponentRef<SearchFavoritesMenuComponent> | null = null;
@@ -351,20 +352,22 @@ export class UnitSearchComponent {
             if (this.searchDebounceTimer) {
                 clearTimeout(this.searchDebounceTimer);
             }
+            if (this.heightTrackingDebounceTimer) {
+                clearTimeout(this.heightTrackingDebounceTimer);
+            }
             this.resizeObserver?.disconnect();
             this.overlayManager.closeAllManagedOverlays();
         });
     }
 
     private setupItemHeightTracking() {
-        let debounceTimer: any;
         const DEBOUNCE_MS = 80;
 
         const debouncedUpdateHeights = () => {
-            if (debounceTimer) {
-                clearTimeout(debounceTimer);
+            if (this.heightTrackingDebounceTimer) {
+                clearTimeout(this.heightTrackingDebounceTimer);
             }
-            debounceTimer = setTimeout(() => {
+            this.heightTrackingDebounceTimer = setTimeout(() => {
                 afterNextRender(() => {
                     updateHeights();
                 }, { injector: this.injector });
@@ -740,24 +743,27 @@ export class UnitSearchComponent {
         });
         this.unitDetailsDialogOpen.set(true);
 
-        ref.closed.subscribe(() => {
-            this.unitDetailsDialogOpen.set(false);
-        });
-
         // Track navigation within the dialog to keep activeIndex in sync
-        ref.componentInstance?.indexChange.subscribe(newIndex => {
+        ref.componentInstance?.indexChange.subscribe((newIndex) => {
             this.activeIndex.set(newIndex);
             this.scrollToMakeVisible(newIndex);
-            this.inlinePanelUnit.set(filteredUnits[newIndex]);
+            // Fetch fresh to avoid closure over stale filteredUnits
+            const currentFilteredUnits = this.filtersService.filteredUnits();
+            if (newIndex < currentFilteredUnits.length) {
+                this.inlinePanelUnit.set(currentFilteredUnits[newIndex]);
+            }
         });
 
-        ref.componentInstance?.add.subscribe(newUnit => {
+        ref.componentInstance?.add.subscribe(() => {
             if (this.forceBuilderService.currentForce()?.units().length === 1) {
-                // If this is the first unit being added, close the search panel
                 this.closeAllPanels();
                 this.expandedView.set(false);
             }
             this.blurInput();
+            this.unitDetailsDialogOpen.set(false);
+        });
+
+        ref.closed.subscribe(() => {
             this.unitDetailsDialogOpen.set(false);
         });
 
