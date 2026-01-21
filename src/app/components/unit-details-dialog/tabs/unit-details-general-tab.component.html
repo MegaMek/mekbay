@@ -82,8 +82,8 @@ unit().moveType }}</strong></div>
 <!-- Weapon Type Summary Bar -->
 <div class="type-summary-bar">
 @for (type of weaponTypes; let i = $index; track i) {
-<div class="type-summary-rect" [ngStyle]="{'border-color': type.color}" [title]="type.name">
-    <div [ngStyle]="{'background-color': type.color}" class="icon">
+<div class="type-summary-rect" [style.border-color]="type.color" [title]="type.name">
+    <div [style.background-color]="type.color" class="icon">
         <img class="type-icon" [src]="getTypeIcon(type.code)" />
     </div>
     @let count = getTypeCount(type.code);

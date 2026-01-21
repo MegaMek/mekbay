@@ -19,7 +19,8 @@
         </div>
         <button #burgerLipBtn class="burger-lip-btn glass" (click)="onLipButtonClick()" 
             (pointerdown)="onLipPointerDown($event)" aria-label="Toggle sidebar"
-            [ngStyle]="lipButtonStyle()">
+            [style.--top]="lipButtonTop()"
+            [style.bottom]="lipButtonTop() ? 'auto' : null">
             <span class="burger-icon">{{ layout.isMenuOpen() ? '«' : '»' }}</span>
         </button>
     </div>

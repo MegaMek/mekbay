@@ -133,14 +133,14 @@ export class SidebarComponent {
 
     private lipTop = signal<number | null>(null);
 
-    lipButtonStyle = computed(() => {
+    lipButtonTop = computed(() => {
         const height = this.layout.windowHeight();
         const lip = this.burgerLipBtn()?.nativeElement;
-        if (!lip) return {};
+        if (!lip) return null;
         // If we're actively dragging, prefer transient signal value
         const transientTop = this.lipTop();
         const savedPos = this.options.options().sidebarLipPosition;
-        if (transientTop === null && !savedPos) return {};
+        if (transientTop === null && !savedPos) return null;
         // Determine the raw top value in pixels
         let topPx: number | null = null;
         if (transientTop !== null) {
@@ -150,8 +150,8 @@ export class SidebarComponent {
             const parsed = parseFloat(savedPos);
             if (!Number.isNaN(parsed)) topPx = parsed;
         }
-        if (topPx === undefined) return {};
-        return {'--top': `${topPx}px`, 'bottom': 'auto'};
+        if (topPx === undefined) return null;
+        return `${topPx}px`;
     });
 
     public toggleMenuOpenClose() {
