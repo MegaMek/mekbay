@@ -33,7 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, Directive, ElementRef, inject, input, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { Field, form } from '@angular/forms/signals';
+import { form, FormField } from '@angular/forms/signals';
 
 /*
  * Author: Drake
@@ -205,7 +205,7 @@ export class NumericInputDirective {
 @Component({
     selector: 'unit-search-filter-range-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [Field, NumericInputDirective],
+    imports: [FormField, NumericInputDirective],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

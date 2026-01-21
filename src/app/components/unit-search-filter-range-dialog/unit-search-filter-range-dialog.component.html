@@ -3,10 +3,10 @@
     <div dialog-content>
         <p>{{ data.message }}</p>
         <div class="range-inputs-wrapper">
-            <input numericInput [allowFloatingValues]="data.allowFloatingValues ?? false" [field]="rangeForm.from" type="text" [placeholder]="toDisplay(data.range.from)"
+            <input numericInput [allowFloatingValues]="data.allowFloatingValues ?? false" [formField]="rangeForm.from" type="text" [placeholder]="toDisplay(data.range.from)"
                 (keydown.enter)="submit()" (blur)="onFromBlur()" />
             <span class="range-separator">~</span>
-            <input numericInput [allowFloatingValues]="data.allowFloatingValues ?? false" [field]="rangeForm.to" type="text" [placeholder]="toDisplay(data.range.to)"
+            <input numericInput [allowFloatingValues]="data.allowFloatingValues ?? false" [formField]="rangeForm.to" type="text" [placeholder]="toDisplay(data.range.to)"
                 (keydown.enter)="submit()" (blur)="onToBlur()" />
         </div>
     </div>
