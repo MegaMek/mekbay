@@ -755,7 +755,7 @@ export class UnitSearchComponent {
         this.unitDetailsDialogOpen.set(true);
 
         // Track navigation within the dialog to keep activeIndex in sync
-        ref.componentInstance?.indexChange.subscribe((newIndex) => {
+        const indexChangeSub = ref.componentInstance?.indexChange.subscribe((newIndex: number) => {
             this.activeIndex.set(newIndex);
             this.scrollToMakeVisible(newIndex);
             // Fetch fresh to avoid closure over stale filteredUnits
@@ -765,7 +765,7 @@ export class UnitSearchComponent {
             }
         });
 
-        ref.componentInstance?.add.subscribe(() => {
+        const addSub = ref.componentInstance?.add.subscribe(() => {
             if (this.forceBuilderService.currentForce()?.units().length === 1) {
                 this.closeAllPanels();
                 this.expandedView.set(false);
@@ -774,8 +774,10 @@ export class UnitSearchComponent {
             this.unitDetailsDialogOpen.set(false);
         });
 
-        ref.closed.subscribe(() => {
+        firstValueFrom(ref.closed).then(() => {
             this.unitDetailsDialogOpen.set(false);
+            indexChangeSub?.unsubscribe();
+            addSub?.unsubscribe();
         });
 
         if (!this.advPanelDocked()) {
