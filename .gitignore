@@ -6,6 +6,9 @@
 /out-tsc
 /bazel-out
 /public/zip
+/public/sprites/*.webp
+/public/sprites/*.json
+/public/sprites/*.hash
 
 # Node
 /node_modules
