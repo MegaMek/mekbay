@@ -85,13 +85,30 @@ export class UnitSvgMekService extends UnitSvgService {
                     const remainingAmmo = totalAmmo - (criticalSlot.consumed ?? 0);
                     let text;
                     if (criticalSlot.eq) {
-                        text = `Ammo (${criticalSlot.eq.shortName})`;
+                        let shortName = criticalSlot.eq.shortName;
+                        if (shortName.endsWith(' Ammo')) {
+                            shortName = shortName.slice(0, -5);
+                        }
+                        text = `Ammo (${shortName})`;
                         isCustomAmmoLoadout = !!criticalSlot.originalName && (criticalSlot.originalName !== criticalSlot.name);
                         el.classList.toggle('customAmmoLoadout', isCustomAmmoLoadout);
                     } else {
                         text = (textNode.textContent || '').replace(/\s\d+$/, '');
                     }
                     textNode.textContent = `${isCustomAmmoLoadout ? '*' : ''}${text} ${remainingAmmo}`;
+
+                    // Adjust text length if too wide
+                    // First remove any existing constraints to get the natural length
+                    const maxWidth = 86;
+                    const svgText = textNode as SVGTextContentElement;
+                    svgText.removeAttribute('textLength');
+                    svgText.removeAttribute('lengthAdjust');
+                    const currentLength = svgText.getComputedTextLength();
+                    if (currentLength > maxWidth) {
+                        svgText.setAttribute('textLength', maxWidth.toString());
+                        svgText.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+                    }
+
                     const key = text.startsWith("Ammo ") ? text.substring(5) : text;
                     ammoProfile.set(
                         key,
