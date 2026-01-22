@@ -201,7 +201,6 @@ export interface C3Node {
     x: number;
     y: number;
     zIndex: number;
-    iconUrl: string;
     pinOffsetsX: number[];
 }
 

@@ -173,9 +173,7 @@
                 (pointerenter)="activeIndex.set(i)" longPress (shortPress)="onUnitCardClick(unit, $event)"
                 (longPress)="multiSelectUnit(unit)">
                 <!-- Compact View Template -->
-                <div class="unit-image-container">
-                    <unit-icon [unit]="unit"></unit-icon>
-                </div>
+                <unit-icon [unit]="unit" [size]="48"></unit-icon>
                 <div class="unit-data-container">
                     <div class="secondary-info">
                         <div class="model" [innerHTML]="highlight(unit.model)"></div>
@@ -430,7 +428,7 @@
         <!-- Header Section -->
         <div class="expanded-header">
             <div class="expanded-image">
-                <unit-icon [unit]="unit"></unit-icon>
+                <unit-icon [unit]="unit" [size]="56"></unit-icon>
             </div>
             <div class="expanded-title">
                 <div class="expanded-model" [innerHTML]="highlight(unit.model)"></div>
@@ -588,7 +586,7 @@
         <!-- Header Section -->
         <div class="expanded-header">
             <div class="expanded-image">
-                <unit-icon [unit]="unit"></unit-icon>
+                <unit-icon [unit]="unit" [size]="56"></unit-icon>
             </div>
             <div class="expanded-title">
                 <div class="expanded-model" [innerHTML]="highlight(unit.model)"></div>
@@ -699,7 +697,7 @@
     </div>
     <!-- Table Row View (shown via CSS at >= 1200px) -->
     <div class="as-table-row">
-        <div class="as-td as-td-icon"><unit-icon [unit]="unit"></unit-icon></div>
+        <div class="as-td as-td-icon"><unit-icon [unit]="unit" [size]="36"></unit-icon></div>
         <div class="as-td as-td-name">
             <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
             <span class="as-td-chassis" [innerHTML]="highlight(unit.chassis)"></span>

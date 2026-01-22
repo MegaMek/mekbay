@@ -34,7 +34,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { AmmoEquipment } from '../../models/equipment.model';
+import { AmmoEquipment } from '../../models/equipment2.model';
 import { DialogsService } from '../../services/dialogs.service';
 
 /*

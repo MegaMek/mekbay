@@ -36,7 +36,7 @@ import { Component, input, computed, inject, ChangeDetectionStrategy } from '@an
 import { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { Unit } from '../../models/units.model';
-import { Equipment, WeaponEquipment } from '../../models/equipment.model';
+import { Equipment, WeaponEquipment } from '../../models/equipment2.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 
 /*
@@ -65,7 +65,7 @@ export class FloatingCompInfoComponent {
         const currentComp = this.comp();
         const currentUnit = this.unit();
         if (currentUnit && currentComp?.id && currentUnit?.type) {
-            return this.dataService.getEquipment(currentUnit.type)[currentComp.id] || null;
+            return this.dataService.getEquipmentByName(currentComp.id) || null;
         }
         return null;
     });
@@ -104,19 +104,19 @@ export class FloatingCompInfoComponent {
             const eq = this.equipment();
             if (eq instanceof WeaponEquipment) {
                 const ranges = eq.ranges; 
-                // Ranges has 5 entries: 0: min, 1: short, 2: medium, 3: long, 4: extreme
-                return `${ranges[1]}/${ranges[2]}/${ranges[3]}`;
+                // Ranges has 4 entries: 0: short, 1: medium, 2: long, 3: extreme
+                return `${ranges[0]}/${ranges[1]}/${ranges[2]}`;
             }
         }
         return null;
     }
 
-    get minRange(): number | null {
+    get minRange(): number {
         const eq = this.equipment();
         if (eq instanceof WeaponEquipment) {
-            return eq.ranges[0];
+            return eq.minRange;
         }
-        return null;
+        return 0;
     }
 
     get damage(): string | null {
@@ -127,7 +127,7 @@ export class FloatingCompInfoComponent {
         if (currentComp?.d) {
             const eq = this.equipment();
             if (eq instanceof WeaponEquipment) {
-                return eq.damage;
+                return String(eq.damage);
             }
         }
         return null;
@@ -150,33 +150,75 @@ export class FloatingCompInfoComponent {
             if (typeof val === 'string') {
                 if (val === 'ES') return 1950;
                 if (val === 'PS') return 2100;
-                // Remove all non-digit characters and parse as number
                 const digits = val.replace(/\D/g, '');
                 return digits ? parseInt(digits, 10) : null;
             }
             if (typeof val === 'number') return val;
             return null;
         };
-        let dates;
+
+        // Helper to pick earliest date from two options
+        const earliest = (a?: string, b?: string): string | undefined => {
+            const aY = parseYear(a), bY = parseYear(b);
+            if (aY === null) return b;
+            if (bY === null) return a;
+            return aY <= bY ? a : b;
+        };
+
+        // Helper to pick latest date from two options
+        const latest = (a?: string, b?: string): string | undefined => {
+            const aY = parseYear(a), bY = parseYear(b);
+            if (aY === null) return b;
+            if (bY === null) return a;
+            return aY >= bY ? a : b;
+        };
+
+        let dates: { prototype?: string; production?: string; common?: string; extinct?: string; reintroduced?: string };
         switch (unit.techBase) {
             case 'Clan':
-                dates = eq.dates?.clan ?? {};
+                dates = eq.tech.advancement?.clan ?? {};
                 break;
-            case 'Mixed':
-                dates = eq.dates?.mixed ?? {};
+            case 'Mixed': {
+                const is = eq.tech.advancement?.is;
+                const clan = eq.tech.advancement?.clan;
+                // For mixed: earliest for most dates, latest for extinction
+                let extinct: string | undefined;
+                let reintroduced: string | undefined;
+                
+                // Only show extinction if BOTH have it (otherwise tech was still available)
+                const bothHaveExtinction = is?.extinct && clan?.extinct;
+                if (bothHaveExtinction) {
+                    extinct = latest(is?.extinct, clan?.extinct);
+                    reintroduced = earliest(is?.reintroduced, clan?.reintroduced);
+                    // If extinction is at or beyond reintroduction, there's no real gap
+                    const extY = parseYear(extinct), reintY = parseYear(reintroduced);
+                    if (extY !== null && reintY !== null && extY >= reintY) {
+                        extinct = undefined;
+                        reintroduced = undefined;
+                    }
+                }
+                
+                dates = {
+                    prototype: earliest(is?.prototype, clan?.prototype),
+                    production: earliest(is?.production, clan?.production),
+                    common: earliest(is?.common, clan?.common),
+                    extinct,
+                    reintroduced
+                };
                 break;
+            }
             case 'Inner Sphere':
             default:
-                dates = eq.dates?.is ?? {};
+                dates = eq.tech.advancement?.is ?? {};
                 break;
         }
 
         const historyItems: Array<{ label: string, value: string }> = [
-            { label: 'Prototype', value: dates.t },
-            { label: 'Production', value: dates.p },
-            { label: 'Common', value: dates.c },
-            { label: 'Extinction', value: dates.x },
-            { label: 'Reintroduction', value: dates.r },
+            { label: 'Prototype', value: dates?.prototype },
+            { label: 'Production', value: dates?.production },
+            { label: 'Common', value: dates?.common },
+            { label: 'Extinction', value: dates?.extinct },
+            { label: 'Reintroduction', value: dates?.reintroduced },
         ].filter((item): item is { label: string, value: string } => 
             item.value !== undefined && item.value !== null && item.value !== '' && item.value !== '-')
         .sort((a, b) => {
@@ -194,7 +236,7 @@ export class FloatingCompInfoComponent {
             slots = eq.tankSlots;
         }
 
-        const ratingString = `${eq.techBase} | ${unit.techBase == 'Clan' ? eq.rating.clan : eq.rating.is}`;
+        const ratingString = `${eq.techBase} | ${eq.rating}/${eq.availability}`;
         const result = [
             {
                 group: 'General',

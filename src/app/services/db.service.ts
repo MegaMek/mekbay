@@ -39,7 +39,7 @@ import { Options } from '../models/options.model';
 import { Quirks } from '../models/quirks.model';
 import { Sourcebooks } from '../models/sourcebook.model';
 import { MULUnitSources } from '../models/mul-unit-sources.model';
-import { EquipmentData } from '../models/equipment.model';
+import { EquipmentData } from '../models/equipment2.model';
 import { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { UnitInitializerService } from './unit-initializer.service';
@@ -427,7 +427,7 @@ export class DbService {
         return await this.saveDataFromGeneralStore(equipmentData, EQUIPMENT_KEY);
     }
 
-    public async getEquipment(): Promise<EquipmentData | null> {
+    public async getEquipments(): Promise<EquipmentData | null> {
         return await this.getDataFromGeneralStore<EquipmentData>(EQUIPMENT_KEY);
     }
 

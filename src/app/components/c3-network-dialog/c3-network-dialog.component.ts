@@ -60,9 +60,9 @@ import {
 import { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { GameSystem } from '../../models/common.model';
 import { ToastService } from '../../services/toast.service';
-import { ImageStorageService } from '../../services/image-storage.service';
 import { OptionsService } from '../../services/options.service';
 import { LayoutService } from '../../services/layout.service';
+import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
@@ -144,7 +144,7 @@ interface Vec2 {
 @Component({
     selector: 'c3-network-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [NgTemplateOutlet],
+    imports: [NgTemplateOutlet, UnitIconComponent],
     host: {
         class: 'fullscreen-dialog-host tv-fade',
         '[class.read-only]': 'data.readOnly'
@@ -156,13 +156,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private dialogRef = inject(DialogRef<C3NetworkDialogResult>);
     protected data = inject<C3NetworkDialogData>(DIALOG_DATA);
     private toastService = inject(ToastService);
-    private imageService = inject(ImageStorageService);
     private destroyRef = inject(DestroyRef);
     private optionsService = inject(OptionsService);
     protected layoutService = inject(LayoutService);
     private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
 
-    protected readonly FALLBACK_ICON = '/images/unknown.png';
     protected readonly NODE_RADIUS = 170;
     protected readonly PIN_RADIUS = 13;
     protected readonly PIN_GAP = 40;
@@ -346,13 +344,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     y,
                     zIndex: maxZ + i + 1,
                     c3Components,
-                    iconUrl: this.FALLBACK_ICON,
                     pinOffsetsX
                 });
             }
-
-            // Load icons for new units
-            this.loadMissingIconUrls(newUnits);
         }
 
         if (nodesToKeep.length !== currentNodes.length || newUnits.length > 0 || positionsChanged) {
@@ -948,12 +942,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 x: pos?.x ?? startX + (idx % c3Units.length) * spacing,
                 y: pos?.y ?? startY + Math.floor(idx / c3Units.length) * spacing,
                 zIndex: idx,
-                iconUrl: unit.getUnit().icon ? (this.imageService.getCachedUrl(unit.getUnit().icon!) || this.FALLBACK_ICON) : this.FALLBACK_ICON,
                 pinOffsetsX: Array.from({ length: numPins }, (_, i) => -totalWidth / 2 + i * this.PIN_GAP)
             };
         }));
-
-        this.loadMissingIconUrls(c3Units);
     }
 
     private fitViewToNodes(): void {
@@ -979,26 +970,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         this.zoom.set(newZoom);
         this.viewOffset.set({ x: canvasW / 2 - centerX * newZoom, y: canvasH / 2 - centerY * newZoom });
-    }
-
-    private async loadMissingIconUrls(units: ForceUnit[]) {
-        const nodes = this.nodes();
-        const nodesById = new Map(nodes.map(n => [n.unit.id, n]));
-        let updated = false;
-
-        for (const unit of units) {
-            const node = nodesById.get(unit.id);
-            if (!node || node.iconUrl !== this.FALLBACK_ICON) continue;
-            const iconPath = unit.getUnit().icon;
-            if (!iconPath) continue;
-
-            try {
-                const url = await this.imageService.getImage(iconPath);
-                if (url && url !== this.FALLBACK_ICON) { node.iconUrl = url; updated = true; }
-            } catch { /* keep fallback */ }
-        }
-
-        if (updated) this.nodes.set([...nodes]);
     }
 
     private initializeMasterPinColors() {

@@ -618,7 +618,7 @@ export class UnitDetailsGeneralTabComponent {
         const u = this.unit();
         if (!u?.comp) return [];
         const expanded: UnitComponent[] = [];
-        const equipmentList = this.dataService.getEquipment(u.type);
+        const equipmentList = this.dataService.getEquipments();
         for (const original of u.comp) {
             if (!isForMatrix && original.t === 'X') continue;
             if (original.t === 'HIDDEN') continue;

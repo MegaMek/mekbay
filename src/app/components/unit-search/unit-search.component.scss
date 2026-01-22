@@ -437,11 +437,6 @@
     order: -1;
 }
 
-.expanded-image {
-    height: 56px;
-    object-fit: contain;
-}
-
 .expanded-model {
     font-size: 0.9em;
     color: var(--text-color-secondary);
@@ -833,15 +828,9 @@
 
     /* Table cell content styles */
     .as-td-icon {
-        height: 36px;
         display: flex;
         align-items: center;
         justify-content: center;
-    }
-
-    .as-td-icon unit-icon {
-        height: 36px;
-        width: 36px;
     }
 
     .as-td-name {

@@ -32,7 +32,6 @@
  */
 
 import { signal, computed } from '@angular/core';
-import { EquipmentUnitType } from './equipment.model';
 import { LocationData, HeatProfile, SerializedInventory, CriticalSlot, MountedEquipment, SerializedState, CBTSerializedState, C3_POSITION_SCHEMA } from './force-serialization';
 import { CrewMember } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';

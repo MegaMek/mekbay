@@ -215,8 +215,11 @@
   }
 }
 
-.node-icon {
+.node-icon-container {
   pointer-events: none;
+  overflow: visible;
+  opacity: 0.7;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
 }
 
 // ==================== Pin Styles ====================

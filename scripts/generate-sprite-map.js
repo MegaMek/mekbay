@@ -68,12 +68,32 @@ const unitIconsDir = path.resolve(root, mmDataPath, 'data/images/units');
 const outputDir = path.join(root, 'public', 'sprites');
 
 // Sprite configuration
-const ICON_WIDTH = 84;
-const ICON_HEIGHT = 72;
-const ICONS_PER_ROW = 30;
+const ICON_BASE_WIDTH = 84;
+const ICON_BASE_HEIGHT = 72;
+const ICON_SCALE = 1.0; // Scale factor (0.5 = half size, 2.0 = double size)
+const ICON_WIDTH = Math.round(ICON_BASE_WIDTH * ICON_SCALE);
+const ICON_HEIGHT = Math.round(ICON_BASE_HEIGHT * ICON_SCALE);
 const PADDING = 0;
 
+/**
+ * Calculate optimal columns for a roughly square sprite sheet.
+ * Takes into account the icon aspect ratio to balance width/height.
+ */
+function calculateOptimalColumns(iconCount) {
+  if (iconCount <= 1) return 1;
+  
+  // For a square-ish sprite: cols * ICON_WIDTH ≈ rows * ICON_HEIGHT
+  // With rows = ceil(iconCount / cols), solve for cols:
+  // cols ≈ sqrt(iconCount * ICON_HEIGHT / ICON_WIDTH)
+  const aspectRatio = ICON_HEIGHT / ICON_WIDTH;
+  const optimalCols = Math.round(Math.sqrt(iconCount * aspectRatio));
+  
+  // Clamp to reasonable bounds (at least 1, at most iconCount)
+  return Math.max(1, Math.min(optimalCols, iconCount));
+}
+
 console.log(`[SpriteMap] Using unit icons from: ${unitIconsDir}`);
+console.log(`[SpriteMap] Icon size: ${ICON_WIDTH}x${ICON_HEIGHT} (scale: ${ICON_SCALE})`);
 
 /**
  * Collect images grouped by unit type (top-level subfolder)
@@ -124,19 +144,19 @@ function collectImagesRecursive(dir, rootDir, images) {
  * Generate sprite sheet for a single unit type
  */
 async function generateSpriteForType(sharp, unitType, images, spriteData) {
-  const cols = Math.min(images.length, ICONS_PER_ROW);
-  const rows = Math.ceil(images.length / ICONS_PER_ROW);
+  const cols = calculateOptimalColumns(images.length);
+  const rows = Math.ceil(images.length / cols);
   const spriteWidth = cols * (ICON_WIDTH + PADDING) - PADDING;
   const spriteHeight = rows * (ICON_HEIGHT + PADDING) - PADDING;
 
-  console.log(`[SpriteMap] Creating ${unitType} sprite: ${spriteWidth}x${spriteHeight} (${images.length} icons)`);
+  console.log(`[SpriteMap] Creating ${unitType} sprite: ${spriteWidth}x${spriteHeight} (${images.length} icons, ${cols}x${rows} grid)`);
 
   const compositeOps = [];
 
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
-    const col = i % ICONS_PER_ROW;
-    const row = Math.floor(i / ICONS_PER_ROW);
+    const col = i % cols;
+    const row = Math.floor(i / cols);
     const x = col * (ICON_WIDTH + PADDING);
     const y = row * (ICON_HEIGHT + PADDING);
 
@@ -180,8 +200,8 @@ async function generateSpriteForType(sharp, unitType, images, spriteData) {
       background: { r: 0, g: 0, b: 0, alpha: 0 }
     }
   })
-    .composite(compositeOps)
-    .webp({ quality: 90, effort: 4 })
+  .composite(compositeOps)
+    .webp({ lossless: true, effort: 6 })
     .toFile(spriteImagePath);
 
   const spriteSize = (fs.statSync(spriteImagePath).size / 1024).toFixed(2);

@@ -40,7 +40,7 @@ import { DbService, TagData, SavedSearchOp, StoredSavedSearches } from './db.ser
 import { TagsService } from './tags.service';
 import { ADVANCED_FILTERS, AdvFilterType, SerializedSearchFilter } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
-import { AmmoEquipment, Equipment, EquipmentData, EquipmentUnitType, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import { Equipment, EquipmentData, EquipmentMap, RawEquipmentData, createEquipment } from '../models/equipment2.model';
 import { Quirk, Quirks } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
 import { ForceUnit } from '../models/force-unit.model';
@@ -198,44 +198,20 @@ export class DataService {
         },
         {
             key: 'equipment',
-            url: `${REMOTE_HOST}/equipment.json`,
-            getFromLocalStorage: async () => (await this.dbService.getEquipment()) ?? null,
+            url: `${REMOTE_HOST}/equipment2.json`,
+            getFromLocalStorage: async () => (await this.dbService.getEquipments()) ?? null,
             putInLocalStorage: async (data: EquipmentData) => this.dbService.saveEquipment(data),
-            preprocess: (data: EquipmentData): EquipmentData => {
+            preprocess: (data: RawEquipmentData): EquipmentData => {
                 const newData: EquipmentData = {
                     version: data.version,
                     etag: data.etag,
                     equipment: {}
                 };
-                for (const [unitType, equipmentForType] of Object.entries(data.equipment)) {
-                    newData.equipment[unitType] = {};
-
-                    for (const [equipmentInternalName, equipmentData] of Object.entries(equipmentForType)) {
-                        try {
-                            const equipment = equipmentData as any;
-
-                            switch (equipment.type) {
-                                case 'weapon':
-                                    newData.equipment[unitType][equipmentInternalName] = new WeaponEquipment(equipment);
-                                    break;
-                                case 'ammo':
-                                    newData.equipment[unitType][equipmentInternalName] = new AmmoEquipment(equipment);
-                                    break;
-                                case 'misc':
-                                    newData.equipment[unitType][equipmentInternalName] = new MiscEquipment(equipment);
-                                    break;
-                                default:
-                                    this.logger.warn(`Unknown equipment type for ${equipmentInternalName}: ${equipment.type}`);
-                                    newData.equipment[unitType][equipmentInternalName] = new Equipment({
-                                        ...equipment,
-                                        internalName: equipmentInternalName,
-                                        name: equipment.name || equipmentInternalName,
-                                        type: equipment.type || 'misc'
-                                    });
-                            }
-                        } catch (error) {
-                            this.logger.error(`Failed to create equipment ${equipmentInternalName}: ${error}`);
-                        }
+                for (const [internalName, rawEquipment] of Object.entries(data.equipment)) {
+                    try {
+                        newData.equipment[internalName] = createEquipment(rawEquipment);
+                    } catch (error) {
+                        this.logger.error(`Failed to create equipment ${internalName}: ${error}`);
                     }
                 }
                 return newData;
@@ -476,8 +452,12 @@ export class DataService {
         return this.unitNameMap.get(name);
     }
 
-    public getEquipment(unitType: string): EquipmentUnitType {
-        return (this.data['equipment'] as EquipmentData)?.equipment?.[unitType] ?? {};
+    public getEquipments(): EquipmentMap {
+        return (this.data['equipment'] as EquipmentData)?.equipment ?? {};
+    }
+
+    public getEquipmentByName(internalName: string): Equipment | undefined {
+        return (this.data['equipment'] as EquipmentData)?.equipment[internalName];
     }
 
     public getFactions(): Faction[] {
@@ -809,14 +789,14 @@ export class DataService {
      */
     private linkEquipmentToUnits(): void {
         const units = this.getUnits();
+        const equipment = this.getEquipments();
         for (const unit of units) {
             if (!unit.comp) continue;
-            const equipment = this.getEquipment(unit.type);
             this.linkEquipmentToComponents(unit.comp, equipment);
         }
     }
 
-    private linkEquipmentToComponents(components: UnitComponent[], equipment: EquipmentUnitType): void {
+    private linkEquipmentToComponents(components: UnitComponent[], equipment: EquipmentMap): void {
         for (const comp of components) {
             if (comp.id && !comp.eq) {
                 comp.eq = equipment[comp.id];

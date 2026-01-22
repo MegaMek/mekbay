@@ -31,8 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { Equipment } from '../models/equipment.model';
-
 /*
  * Author: Drake
  */
