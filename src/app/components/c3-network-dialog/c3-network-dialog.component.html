@@ -382,13 +382,15 @@
                     <span class="member-label">
                         @if (member.isSelfConnection) {
                             <span class="internal-connection-badge" title="Internal connection">internal link</span>
-                        } @else {
+                        } @else if (member.node) {
                             <span class="name">
                                 {{ member.node.unit.getUnit().chassis }}
                                 @if (member.node.unit.getUnit().model) {
                                     - {{ member.node.unit.getUnit().model }}
                                 }
                             </span>
+                        } @else {
+                            <span class="name">{{ member.name }}</span>
                         }
                     </span>
                     @if (member.canRemove) {
@@ -415,13 +417,15 @@
                     <span class="member-label">
                         @if (member.isSelfConnection) {
                             <span class="internal-connection-badge" title="Internal connection">internal link</span>
-                        } @else {
+                        } @else if (member.node) {
                             <span class="name">
                                 {{ member.node.unit.getUnit().chassis }}
                                 @if (member.node.unit.getUnit().model) {
                                     - {{ member.node.unit.getUnit().model }}
                                 }
                             </span>
+                        } @else {
+                            <span class="name">{{ member.name }}</span>
                         }
                     </span>
                     @if (member.canRemove) {

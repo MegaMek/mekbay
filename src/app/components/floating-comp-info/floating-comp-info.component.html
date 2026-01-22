@@ -4,9 +4,9 @@
     class="floating-comp-info allow-select {{ typeClass }}" [class.visible]="comp()">
     <div class="caption">{{ name }}</div>
     <div><span class="muted">Type: </span>{{ typeLabel }}</div>
-    @if(range){<div><span class="muted">Range: </span>@if(minRange > 0){[{{ minRange }}] }{{ range }}</div>}
-    @if(damage !== null){<div><span class="muted">Damage: </span>{{ damage }}</div>}
-    @if(rackSize !== null && rackSize > 0){<div><span class="muted">Rack Size: </span>{{ rackSize }}</div>}
+    @if(typeClass != 'other' && range){<div><span class="muted">Range: </span>@if(minRange > 0){[{{ minRange }}] }{{ range }}</div>}
+    @if(typeClass != 'other' && damage !== null){<div><span class="muted">Damage: </span>{{ damage }}</div>}
+    @if(typeClass != 'other' && rackSize !== null && rackSize > 0){<div><span class="muted">Rack Size: </span>{{ rackSize }}</div>}
     @if(heat && heat > 0){<div><span class="muted">Heat: </span>{{ heat }}</div>}
     @if (equipment()) {<hr>}
     @for ( group of equipmentDisplay(); let i = $index; track i) {

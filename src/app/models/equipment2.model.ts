@@ -245,6 +245,7 @@ export interface EquipmentStats {
 export interface WeaponData {
     heat: number;
     damage: string | number;
+    explosionDamage: number;
     rackSize: number;
     ammoType: AmmoType;
     ranges: number[];      // [short, medium, long, extreme]
@@ -370,7 +371,7 @@ const STATS_DEFAULTS: Record<EquipmentType, EquipmentStats> = {
 };
 
 const WEAPON_DEFAULTS: WeaponData = {
-    heat: 0, damage: 0, rackSize: 0, ammoType: 'NA', minRange: 0, maxRangeBracket: 'short',
+    heat: 0, damage: 0, explosionDamage: 0, rackSize: 0, ammoType: 'NA', minRange: 0, maxRangeBracket: 'short',
     ranges: [0, 0, 0, 0], wRanges: [0, 0, 0, 0], av: [0, 0, 0, 0],
     capital: false, subCapital: false
 };
