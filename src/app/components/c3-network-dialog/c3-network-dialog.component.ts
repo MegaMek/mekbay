@@ -1234,7 +1234,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             this.hoveredNode.set(targetNode);
             if (!pinEl) { this.hoveredPinIndex.set(null); return; }
 
-            const idx = Array.from(pinEl.parentElement?.querySelectorAll('.pin') || []).indexOf(pinEl);
+            // pinEl is inside .pin-container, get index of .pin-container within .pins-container
+            const pinContainer = pinEl.closest('.pin-container');
+            const pinsContainer = pinContainer?.parentElement;
+            const idx = Array.from(pinsContainer?.querySelectorAll(':scope > .pin-container') || []).indexOf(pinContainer!);
             this.hoveredPinIndex.set(this.isPinValidTarget(targetNode, idx) ? idx : null);
             return;
         }
@@ -1293,7 +1296,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const conn = this.connectingFrom()!;
 
                 if (targetNode && this.validTargets().has(targetNode.unit.id)) {
-                    let targetPin = pinEl ? Array.from(pinEl.parentElement?.querySelectorAll('.pin') || []).indexOf(pinEl) : -1;
+                    // pinEl is inside .pin-container, get index of .pin-container within .pins-container
+                    const pinContainer = pinEl?.closest('.pin-container');
+                    const pinsContainer = pinContainer?.parentElement;
+                    let targetPin = pinContainer ? Array.from(pinsContainer?.querySelectorAll(':scope > .pin-container') || []).indexOf(pinContainer) : -1;
                     if (targetPin < 0 || !this.isPinValidTarget(targetNode, targetPin)) {
                         const validPins = this.getValidPinsForTarget(targetNode);
                         targetPin = validPins.length > 0 ? validPins[0] : -1;
@@ -1440,6 +1446,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         for (const node of this.nodes()) {
             node.unit.setC3Position({ x: node.x, y: node.y });
         }
+        const unitsMap = new Map(this.getUnits().map(u => [u.id, u.getUnit()]));
+        this.networks.set(C3NetworkUtil.validateAndCleanNetworks(this.networks(), unitsMap));
         this.dialogRef.close({ networks: this.networks(), updated: this.hasModifications() });
     }
 

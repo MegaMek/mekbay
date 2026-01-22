@@ -582,7 +582,8 @@ export class C3NetworkUtil {
                 return { valid: false, reason: 'Cannot mix sub-masters with slaves' };
             }
         }
-
+        
+        let depthModifierFromAutoLink = 0;
         // The parent has multiple Master components
         if (parentNode.c3Components.length > 1 && parentId !== childId) {
             // Check if this node is already connected elsewhere
@@ -602,7 +603,8 @@ export class C3NetworkUtil {
                             if (!canAutoInternalink.valid) {
                                 return { valid: false, reason: canAutoInternalink.reason };
                             }
-                            return { valid: true, reason: 'Master has another Master component and we can auto-link internally' };
+                            depthModifierFromAutoLink++;
+                            // return { valid: true, reason: 'Master has another Master component and we can auto-link internally' };
                         } else if (altNetAsMember) {
                             return { valid: false, reason: 'Master has another Master component connected' };
                         }
@@ -612,9 +614,24 @@ export class C3NetworkUtil {
         }
         // The child has multiple Master components
         if (childNode.c3Components.length > 1 && parentId !== childId) {
-            // Check if this node is already connected elsewhere
-            if (this.isUnitConnected(childId, networks)) {
-                return { valid: false, reason: 'Child unit already connected' };
+            // If one of the OTHER components is already connected and our child component is not connected, block the connection
+            const childMemberStr = this.createMasterMember(childId, childCompIdx);
+            const childNetAsMaster = this.findMasterNetwork(childId, childCompIdx, networks);
+            const childNetAsMember = networks.find(n => n.members?.includes(childMemberStr));
+            const childPinConnected = childNetAsMaster !== null || childNetAsMember !== undefined;
+
+            if (!childPinConnected) {
+                // Our pin is not connected - check if any OTHER master pin is connected
+                for (const comp of childNode.c3Components) {
+                    if (comp.role === C3Role.MASTER && comp.index !== childCompIdx) {
+                        const altMemberStr = this.createMasterMember(childId, comp.index);
+                        const altNetAsMaster = this.findMasterNetwork(childId, comp.index, networks);
+                        const altNetAsMember = networks.find(n => n.members?.includes(altMemberStr));
+                        if (altNetAsMaster || altNetAsMember) {
+                            return { valid: false, reason: 'Must connect via already-connected pin' };
+                        }
+                    }
+                }
             }
         }
 
@@ -641,13 +658,13 @@ export class C3NetworkUtil {
                 parentDepth = this.getNetworkDepth(grandParent, networks) + 1;
             }
         }
-        if (parentDepth >= C3_MAX_NETWORK_DEPTH) {
+        if (parentDepth + depthModifierFromAutoLink >= C3_MAX_NETWORK_DEPTH) {
             return { valid: false, reason: `Would exceed parent depth ${C3_MAX_NETWORK_DEPTH}` };
         }
 
         const childSubDepth = childNet ? 1 + this.getSubTreeDepth(childNet, networks) : 0;
 
-        if (parentDepth + 1 + childSubDepth > C3_MAX_NETWORK_DEPTH) {
+        if (parentDepth + 1 + depthModifierFromAutoLink + childSubDepth > C3_MAX_NETWORK_DEPTH) {
             return { valid: false, reason: `Would exceed depth ${C3_MAX_NETWORK_DEPTH}` };
         }
         // Check total size
@@ -802,7 +819,7 @@ export class C3NetworkUtil {
                         const altNetAsMaster = this.findMasterNetwork(masterNode.unit.id, comp.index, networks);
                         const altNetAsMember = networks.find(n => n.members?.includes(altMemberStr));
                         if (altNetAsMaster && altNetAsMaster.members) {
-                            const canAutoInternalink = this.canMasterConnectToMaster(masterNode, masterCompIdx, masterNode, comp.index, networks);
+                            const canAutoInternalink = this.canMasterConnectToMaster(masterNode, comp.index, masterNode, masterCompIdx, networks);
                             if (!canAutoInternalink.valid) {
                                 continue;
                             }
@@ -962,6 +979,67 @@ export class C3NetworkUtil {
         if ((result[idx].peerIds?.length ?? 0) < 2) {
             result.splice(idx, 1);
         }
+
+        return { networks: result, success: true };
+    }
+
+    /** Remove a unit from all networks it participates in (as master, slave, peer, or sub-master) */
+    public static removeUnitFromAllNetworks(
+        networks: SerializedC3NetworkGroup[],
+        unitId: string
+    ): NetworkMutationResult {
+        let result = [...networks];
+
+        // 1. Remove networks where this unit is the master (including sub-networks)
+        const networksToRemove = new Set<string>();
+        const collectNetworksToRemove = (masterId: string) => {
+            for (const net of result) {
+                if (net.masterId === masterId) {
+                    networksToRemove.add(net.id);
+                    // Also collect sub-networks (members that are masters)
+                    for (const member of net.members ?? []) {
+                        if (this.isMasterMember(member)) {
+                            const { unitId: subMasterId } = this.parseMember(member);
+                            collectNetworksToRemove(subMasterId);
+                        }
+                    }
+                }
+            }
+        };
+        collectNetworksToRemove(unitId);
+        result = result.filter(n => !networksToRemove.has(n.id));
+
+        // 2. Remove unit from peer networks
+        for (let i = 0; i < result.length; i++) {
+            if (result[i].peerIds?.includes(unitId)) {
+                result[i] = {
+                    ...result[i],
+                    peerIds: result[i].peerIds!.filter(id => id !== unitId)
+                };
+            }
+        }
+
+        // 3. Remove unit from member lists (as slave or sub-master)
+        for (let i = 0; i < result.length; i++) {
+            if (result[i].members) {
+                const filteredMembers = result[i].members!.filter(m => {
+                    const { unitId: memberId } = this.parseMember(m);
+                    return memberId !== unitId;
+                });
+                if (filteredMembers.length !== result[i].members!.length) {
+                    result[i] = { ...result[i], members: filteredMembers };
+                }
+            }
+        }
+
+        // 4. Clean up empty/invalid networks
+        result = result.filter(n => {
+            // Peer networks need at least 2 members
+            if (n.peerIds) return n.peerIds.length >= 2;
+            // Master networks need at least 1 member
+            if (n.masterId) return (n.members?.length ?? 0) > 0;
+            return false;
+        });
 
         return { networks: result, success: true };
     }
@@ -1176,6 +1254,8 @@ export class C3NetworkUtil {
 
         cleaned = this.validateNetworkDepth(cleaned);
         cleaned = this.validateNetworkTotalUnits(cleaned);
+        cleaned = this.validateMemberTypeHomogeneity(cleaned);
+        cleaned = this.validateUnitSingleNetworkTree(cleaned);
         return cleaned;
     }
 
@@ -1229,8 +1309,9 @@ export class C3NetworkUtil {
             return null;
         }
 
-        const validMembers: string[] = [];
-        let memberType: 'master' | 'slave' | null = null;
+        // First pass: collect valid members by type
+        const validMasterMembers: string[] = [];
+        const validSlaveMembers: string[] = [];
 
         for (const member of network.members ?? []) {
             const { unitId, compIndex } = this.parseMember(member);
@@ -1239,16 +1320,26 @@ export class C3NetworkUtil {
             if (!memberC3) continue;
 
             if (compIndex !== undefined) {
-                if (!memberC3.some(c => c.index === compIndex && c.role === C3Role.MASTER)) continue;
-                if (memberType === 'slave') continue;
-                memberType = 'master';
-                validMembers.push(member);
+                // Master member (sub-master)
+                if (memberC3.some(c => c.index === compIndex && c.role === C3Role.MASTER)) {
+                    validMasterMembers.push(member);
+                }
             } else {
-                if (!memberC3.some(c => c.role === C3Role.SLAVE)) continue;
-                if (memberType === 'master') continue;
-                memberType = 'slave';
-                validMembers.push(member);
+                // Slave member
+                if (memberC3.some(c => c.role === C3Role.SLAVE)) {
+                    validSlaveMembers.push(member);
+                }
             }
+        }
+
+        // If mixed, keep the majority type
+        let validMembers: string[];
+        if (validMasterMembers.length > 0 && validSlaveMembers.length > 0) {
+            validMembers = validMasterMembers.length >= validSlaveMembers.length 
+                ? validMasterMembers 
+                : validSlaveMembers;
+        } else {
+            validMembers = [...validMasterMembers, ...validSlaveMembers];
         }
 
         if (validMembers.length === 0) return null;
@@ -1336,5 +1427,107 @@ export class C3NetworkUtil {
                 return filtered.length > 0 ? { ...n, members: filtered } : null;
             })
             .filter((n): n is SerializedC3NetworkGroup => n !== null && !(!n.peerIds && n.members?.length === 0));
+    }
+
+    /**
+     * Validates that each master network has homogeneous member types.
+     * All direct members must be either all masters (sub-masters) or all slaves.
+     * If mixed, keeps the type that has more members (majority wins).
+     */
+    private static validateMemberTypeHomogeneity(networks: SerializedC3NetworkGroup[]): SerializedC3NetworkGroup[] {
+        return networks
+            .map(network => {
+                // Only check master networks with members
+                if (!network.masterId || !network.members || network.members.length === 0) {
+                    return network;
+                }
+
+                // Count each type
+                const masterMembers = network.members.filter(m => this.isMasterMember(m));
+                const slaveMembers = network.members.filter(m => !this.isMasterMember(m));
+
+                // If no mixing, return as-is
+                if (masterMembers.length === 0 || slaveMembers.length === 0) {
+                    return network;
+                }
+
+                // Keep the majority type (slaves win ties since they're more common)
+                const keepMasters = masterMembers.length > slaveMembers.length;
+                const homogeneousMembers = keepMasters ? masterMembers : slaveMembers;
+
+                return { ...network, members: homogeneousMembers };
+            })
+            .filter((n): n is SerializedC3NetworkGroup => n !== null);
+    }
+
+    /**
+     * Validates that each unit with multiple pins belongs to only ONE network tree.
+     * If a unit's pins are connected to different root networks, keep only the first
+     * pin's connection and disconnect all others.
+     */
+    private static validateUnitSingleNetworkTree(networks: SerializedC3NetworkGroup[]): SerializedC3NetworkGroup[] {
+        let result = [...networks];
+        
+        // Count how many networks each unit appears in
+        const unitNetworkCount = new Map<string, number>();
+        for (const net of result) {
+            for (const id of this.getNetworkUnitIds(net)) {
+                unitNetworkCount.set(id, (unitNetworkCount.get(id) ?? 0) + 1);
+            }
+        }
+
+        // Only check units that appear in multiple networks
+        for (const [unitId, count] of unitNetworkCount) {
+            if (count <= 1) continue;
+
+            const containingNetworks = this.findNetworksContainingUnit(unitId, result);
+            if (containingNetworks.length <= 1) continue;
+
+            // Get unique root network IDs
+            const rootIds = new Set(containingNetworks.map(net => this.getRootNetwork(net, result).id));
+            if (rootIds.size <= 1) continue;
+
+            // Multiple root networks - disconnect from all except the first
+            const firstRootId = this.getRootNetwork(containingNetworks[0], result).id;
+            
+            for (const network of containingNetworks) {
+                if (this.getRootNetwork(network, result).id === firstRootId) continue;
+
+                if (network.masterId === unitId) {
+                    // Remove entire network tree where unit is master
+                    const toRemove = new Set<string>();
+                    const collect = (masterId: string) => {
+                        for (const n of result) {
+                            if (n.masterId === masterId) {
+                                toRemove.add(n.id);
+                                for (const m of n.members ?? []) {
+                                    if (this.isMasterMember(m)) collect(this.parseMember(m).unitId);
+                                }
+                            }
+                        }
+                    };
+                    collect(unitId);
+                    result = result.filter(n => !toRemove.has(n.id));
+                } else if (network.peerIds?.includes(unitId)) {
+                    const idx = result.findIndex(n => n.id === network.id);
+                    if (idx >= 0) {
+                        result[idx] = { ...result[idx], peerIds: result[idx].peerIds!.filter(id => id !== unitId) };
+                    }
+                } else if (network.members) {
+                    const idx = result.findIndex(n => n.id === network.id);
+                    if (idx >= 0) {
+                        result[idx] = { ...result[idx], members: result[idx].members!.filter(m => this.parseMember(m).unitId !== unitId) };
+                    }
+                }
+            }
+
+            // Clean up empty networks
+            result = result.filter(n => 
+                (n.peerIds && n.peerIds.length >= 2) || 
+                (n.masterId && (n.members?.length ?? 0) > 0)
+            );
+        }
+
+        return result;
     }
 }
