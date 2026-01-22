@@ -109,14 +109,19 @@ export class CBTForce extends Force<CBTForceUnit> {
             force.timestamp = data.timestamp ?? null;
             if (data.c3Networks) {
                 const sanitized = Sanitizer.sanitizeArray(data.c3Networks, C3_NETWORK_GROUP_SCHEMA);
-                // Build unit map for validation
-                const unitMap = new Map<string, Unit>();
-                for (const group of parsedGroups) {
-                    for (const forceUnit of group.units()) {
-                        unitMap.set(forceUnit.id, forceUnit.getUnit());
+                // Only validate and clean networks if force is not readOnly
+                if (!force.owned()) {
+                    force.setNetwork(sanitized);
+                } else {
+                    // Build unit map for validation
+                    const unitMap = new Map<string, Unit>();
+                    for (const group of parsedGroups) {
+                        for (const forceUnit of group.units()) {
+                            unitMap.set(forceUnit.id, forceUnit.getUnit());
+                        }
                     }
+                    force.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
                 }
-                force.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
             }
         } finally {
             force.loading = false;
@@ -213,14 +218,19 @@ export class CBTForce extends Force<CBTForceUnit> {
             // Update C3 networks with sanitization and validation
             if (data.c3Networks) {
                 const sanitized = Sanitizer.sanitizeArray(data.c3Networks, C3_NETWORK_GROUP_SCHEMA);
-                // Build unit map for validation from current groups
-                const unitMap = new Map<string, Unit>();
-                for (const group of this.groups()) {
-                    for (const forceUnit of group.units()) {
-                        unitMap.set(forceUnit.id, forceUnit.getUnit());
+                // Only validate and clean networks if force is not readOnly
+                if (!this.owned()) {
+                    this.setNetwork(sanitized);
+                } else {
+                    // Build unit map for validation from current groups
+                    const unitMap = new Map<string, Unit>();
+                    for (const group of this.groups()) {
+                        for (const forceUnit of group.units()) {
+                            unitMap.set(forceUnit.id, forceUnit.getUnit());
+                        }
                     }
+                    this.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
                 }
-                this.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitized, unitMap));
             } else {
                 this.setNetwork([]);
             }
