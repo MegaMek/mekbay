@@ -112,19 +112,14 @@ export class ASForce extends Force<ASForceUnit> {
             force.groups.set(parsedGroups);
             force.timestamp = sanitizedData.timestamp ?? null;
             if (sanitizedData.c3Networks) {
-                // Only validate and clean networks if force is not readOnly
-                if (!force.owned()) {
-                    force.setNetwork(sanitizedData.c3Networks);
-                } else {
-                    // Build unit map for validation
-                    const unitMap = new Map<string, Unit>();
-                    for (const group of parsedGroups) {
-                        for (const forceUnit of group.units()) {
-                            unitMap.set(forceUnit.id, forceUnit.getUnit());
-                        }
+                // Build unit map for validation
+                const unitMap = new Map<string, Unit>();
+                for (const group of parsedGroups) {
+                    for (const forceUnit of group.units()) {
+                        unitMap.set(forceUnit.id, forceUnit.getUnit());
                     }
-                    force.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitizedData.c3Networks, unitMap));
                 }
+                force.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitizedData.c3Networks, unitMap));
             }
         } finally {
             force.loading = false;
@@ -221,19 +216,14 @@ export class ASForce extends Force<ASForceUnit> {
             
             // Update C3 networks with validation
             if (sanitizedData.c3Networks) {
-                // Only validate and clean networks if force is not readOnly
-                if (!this.owned()) {
-                    this.setNetwork(sanitizedData.c3Networks);
-                } else {
-                    // Build unit map for validation from current groups
-                    const unitMap = new Map<string, Unit>();
-                    for (const group of this.groups()) {
-                        for (const forceUnit of group.units()) {
-                            unitMap.set(forceUnit.id, forceUnit.getUnit());
-                        }
+                // Build unit map for validation from current groups
+                const unitMap = new Map<string, Unit>();
+                for (const group of this.groups()) {
+                    for (const forceUnit of group.units()) {
+                        unitMap.set(forceUnit.id, forceUnit.getUnit());
                     }
-                    this.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitizedData.c3Networks, unitMap));
                 }
+                this.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitizedData.c3Networks, unitMap));
             } else {
                 this.setNetwork([]);
             }
