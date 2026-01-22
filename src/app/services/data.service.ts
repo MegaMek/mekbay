@@ -40,7 +40,7 @@ import { DbService, TagData, SavedSearchOp, StoredSavedSearches } from './db.ser
 import { TagsService } from './tags.service';
 import { ADVANCED_FILTERS, AdvFilterType, SerializedSearchFilter } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
-import { Equipment, EquipmentData, EquipmentMap, RawEquipmentData, createEquipment } from '../models/equipment2.model';
+import { Equipment, EquipmentData, EquipmentMap, RawEquipmentData, createEquipment } from '../models/equipment.model';
 import { Quirk, Quirks } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
 import { ForceUnit } from '../models/force-unit.model';

@@ -35,6 +35,7 @@ import { computed } from "@angular/core";
 import { linkedLocs, uidTranslations } from "../models/common.model";
 import { CriticalSlot, MountedEquipment } from "../models/force-serialization";
 import { UnitSvgService } from "./unit-svg.service";
+import { AmmoEquipment } from "../models/equipment.model";
 
 /*
  * Author: Drake
@@ -84,10 +85,13 @@ export class UnitSvgMekService extends UnitSvgService {
                     let isCustomAmmoLoadout = false;
                     const remainingAmmo = totalAmmo - (criticalSlot.consumed ?? 0);
                     let text;
-                    if (criticalSlot.eq) {
+                    if (criticalSlot.eq && criticalSlot.eq instanceof AmmoEquipment) {
                         let shortName = criticalSlot.eq.shortName;
                         if (shortName.endsWith(' Ammo')) {
                             shortName = shortName.slice(0, -5);
+                        }
+                        if (criticalSlot.eq.mutatorName && criticalSlot.eq.mutatorName.length < shortName.length) {
+                            shortName = criticalSlot.eq.mutatorName;
                         }
                         text = `Ammo (${shortName})`;
                         isCustomAmmoLoadout = !!criticalSlot.originalName && (criticalSlot.originalName !== criticalSlot.name);

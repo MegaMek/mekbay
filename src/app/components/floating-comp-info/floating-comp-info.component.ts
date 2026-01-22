@@ -36,7 +36,7 @@ import { Component, input, computed, inject, ChangeDetectionStrategy } from '@an
 import { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { Unit } from '../../models/units.model';
-import { Equipment, WeaponEquipment } from '../../models/equipment2.model';
+import { Equipment, WeaponEquipment } from '../../models/equipment.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 
 /*

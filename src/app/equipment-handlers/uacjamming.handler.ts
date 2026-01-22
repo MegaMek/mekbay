@@ -32,7 +32,7 @@
  */
 
 import { PickerChoice } from '../components/picker/picker.interface';
-import { WeaponEquipment } from '../models/equipment2.model';
+import { WeaponEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/force-serialization';
 import { CycleModeHandler } from './base/cycle-mode.handler';
 

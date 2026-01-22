@@ -45,7 +45,7 @@ import { ToastService } from '../../services/toast.service';
 import { LayoutService } from '../../services/layout.service';
 import { SetAmmoDialogComponent, SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
 import { DataService } from '../../services/data.service';
-import { AmmoEquipment } from '../../models/equipment2.model';
+import { AmmoEquipment } from '../../models/equipment.model';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';

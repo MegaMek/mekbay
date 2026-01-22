@@ -40,7 +40,7 @@ import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { linkedLocs } from "../models/common.model";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { WeaponEquipment } from '../models/equipment2.model';
+import { WeaponEquipment } from '../models/equipment.model';
 
 /*
  * Author: Drake

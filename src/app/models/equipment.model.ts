@@ -277,6 +277,7 @@ export interface AmmoData {
     ammoRatio: number;
     subMunition: string;
     munitionType: string[];
+    mutatorName?: string;
     baseAmmo?: string;
     category: AmmoCategory;
 }
@@ -535,6 +536,7 @@ export class AmmoEquipment extends Equipment {
     get category(): AmmoCategory { return this.ammo.category; }
     get baseAmmo(): string | undefined { return this.ammo.baseAmmo; }
     get munitionType(): string[] { return this.ammo.munitionType; }
+    get mutatorName(): string | undefined { return this.ammo.mutatorName; }
 
     /** Returns true if kgPerShot was explicitly set (> 0) */
     get hasCustomKgPerShot(): boolean { return this.ammo.kgPerShot > 0; }

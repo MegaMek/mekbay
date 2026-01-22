@@ -39,7 +39,7 @@ import { Options } from '../models/options.model';
 import { Quirks } from '../models/quirks.model';
 import { Sourcebooks } from '../models/sourcebook.model';
 import { MULUnitSources } from '../models/mul-unit-sources.model';
-import { EquipmentData } from '../models/equipment2.model';
+import { EquipmentData } from '../models/equipment.model';
 import { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { UnitInitializerService } from './unit-initializer.service';

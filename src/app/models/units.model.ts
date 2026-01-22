@@ -34,7 +34,7 @@
 /*
  * Author: Drake
  */
-import { Equipment } from "./equipment2.model";
+import { Equipment } from "./equipment.model";
 import { Era } from "./eras.model";
 import { TechBase } from "./common.model";
 
