@@ -90,9 +90,6 @@ export class UnitSvgMekService extends UnitSvgService {
                         if (shortName.endsWith(' Ammo')) {
                             shortName = shortName.slice(0, -5);
                         }
-                        if (criticalSlot.eq.mutatorName && criticalSlot.eq.mutatorName.length < shortName.length) {
-                            shortName = criticalSlot.eq.mutatorName;
-                        }
                         text = `Ammo (${shortName})`;
                         isCustomAmmoLoadout = !!criticalSlot.originalName && (criticalSlot.originalName !== criticalSlot.name);
                         el.classList.toggle('customAmmoLoadout', isCustomAmmoLoadout);
