@@ -39,23 +39,6 @@
     text-transform: uppercase;
 }
 
-/* Unit icon container */
-.unit-image-container {
-    max-height: 56px;
-    width: 52px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.unit-image-container img {
-    height: 100%;
-    width: 100%;
-    object-fit: contain;
-    display: block;
-}
-
 /* Data container */
 .unit-data-container {
     display: flow-root;

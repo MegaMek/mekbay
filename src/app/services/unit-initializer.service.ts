@@ -32,10 +32,9 @@
  */
 
 import { inject, Injectable, Injector } from '@angular/core';
-import { ForceUnit } from '../models/force-unit.model';
 import { CriticalSlot, MountedEquipment } from '../models/force-serialization';
 import { DataService } from './data.service';
-import { Equipment } from '../models/equipment.model';
+import { Equipment } from '../models/equipment2.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 
 /*
@@ -159,7 +158,7 @@ export class UnitInitializerService {
 
         const criticalSlots: CriticalSlot[] = [];
         const critSlotMatrix = unit.getCritSlotsAsMatrix();
-        const equipmentList = this.getDataService().getEquipment(unit.getUnit().type);
+        const equipmentList = this.getDataService().getEquipments();
         let newSlotsFound = false;
 
         critSlotsEl.forEach(critSlotEl => {
@@ -269,7 +268,7 @@ export class UnitInitializerService {
             let locations = new Set<string>();
             if (critSlots.length > 0) {
                 name = critSlots[0].name ?? '';
-                eq = this.getDataService().getEquipment(unit.getUnit().type)[name];
+                eq = this.getDataService().getEquipments()[name];
                 critSlots.forEach(slot => {
                     const loc = slot.loc;
                     if (loc) {

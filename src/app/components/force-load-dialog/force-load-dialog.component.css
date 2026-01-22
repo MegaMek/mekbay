@@ -223,17 +223,8 @@
         background-color: #F003;
     }
     
-    unit-icon {
-        width: 32px;
-        height: 32px;
-        object-fit: contain;
-        margin: 0;
-        flex-shrink: 0;
-    }
-    
     &.destroyed unit-icon {
         filter: grayscale(1) brightness(0.7) sepia(1) hue-rotate(-30deg) saturate(6) contrast(1.2);
-        transition: filter 0.3s;
     }
     
     .unit-model {

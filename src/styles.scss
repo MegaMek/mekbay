@@ -790,22 +790,6 @@ hr.divider {
     }
 }
 
-.unit-image-container {
-    max-height: 56px;
-    width: 52px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-
-    img {
-        height: 100%;
-        width: 100%;
-        object-fit: contain;
-        display: block;
-    }
-}
-
 .unit-data-container {
     display: flow-root;
     flex: 1 1 auto;

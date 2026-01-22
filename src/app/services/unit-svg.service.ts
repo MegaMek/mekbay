@@ -37,10 +37,10 @@ import { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-ser
 import { DataService } from './data.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
-import { heatLevels, linkedLocs, uidTranslations } from "../models/common.model";
+import { linkedLocs } from "../models/common.model";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { WeaponEquipment } from '../models/equipment.model';
+import { WeaponEquipment } from '../models/equipment2.model';
 
 /*
  * Author: Drake

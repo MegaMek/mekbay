@@ -32,7 +32,7 @@
  */
 
 import { PickerChoice } from '../components/picker/picker.interface';
-import { WeaponEquipment } from '../models/equipment.model';
+import { WeaponEquipment } from '../models/equipment2.model';
 import { MountedEquipment } from '../models/force-serialization';
 import { CycleModeHandler } from './base/cycle-mode.handler';
 
@@ -45,7 +45,7 @@ export class UACJammingHandler extends CycleModeHandler {
     override applicableTo = (equipment: MountedEquipment): boolean => {
         if (equipment.equipment instanceof WeaponEquipment) {
             const ammoType = equipment.equipment.ammoType;
-            return ammoType.includes('Ultra Autocannon') || ammoType.includes('Rotary Autocannon');
+            return ammoType == 'AC_ULTRA' || ammoType == 'AC_ULTRA_THB' || ammoType == 'AC_ROTARY';
         }
         return false;
     }

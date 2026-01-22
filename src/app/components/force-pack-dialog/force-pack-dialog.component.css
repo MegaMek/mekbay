@@ -129,14 +129,6 @@
     &.missing {
         background-color: #F003;
     }
-
-    unit-icon {
-        width: 32px;
-        height: 32px;
-        object-fit: contain;
-        margin: 0;
-        flex-shrink: 0;
-    }
     
     .unit-model {
         color: var(--text-color-secondary);

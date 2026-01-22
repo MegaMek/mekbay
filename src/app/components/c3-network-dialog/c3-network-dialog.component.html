@@ -195,9 +195,10 @@
                     <!-- Inner decorative ring -->
                     <polygon class="node-inner-ring" [attr.points]="NODE_HEX_INNER_POINTS" />
 
-                    <!-- Unit icon centered at top (native SVG image for iOS compatibility) -->
-                    <image class="node-icon" x="-48" y="-48" width="96" height="96" [attr.href]="node.iconUrl"
-                        preserveAspectRatio="xMidYMid meet" filter="url(#icon-shadow)" style="opacity: 0.7;" />
+                    <!-- Unit icon centered (using foreignObject for sprite support) -->
+                    <foreignObject x="-48" y="-48" width="96" height="96" class="node-icon-container">
+                        <unit-icon [unit]="node.unit.getUnit()" [size]="96" />
+                    </foreignObject>
 
                     <!-- Unit label centered below icon -->
                     <foreignObject [attr.x]="-NODE_RADIUS / 2 + 12" y="-60" [attr.width]="NODE_RADIUS - 24" height="40"
@@ -381,13 +382,15 @@
                     <span class="member-label">
                         @if (member.isSelfConnection) {
                             <span class="internal-connection-badge" title="Internal connection">internal link</span>
-                        } @else {
+                        } @else if (member.node) {
                             <span class="name">
                                 {{ member.node.unit.getUnit().chassis }}
                                 @if (member.node.unit.getUnit().model) {
                                     - {{ member.node.unit.getUnit().model }}
                                 }
                             </span>
+                        } @else {
+                            <span class="name">{{ member.name }}</span>
                         }
                     </span>
                     @if (member.canRemove) {
@@ -414,13 +417,15 @@
                     <span class="member-label">
                         @if (member.isSelfConnection) {
                             <span class="internal-connection-badge" title="Internal connection">internal link</span>
-                        } @else {
+                        } @else if (member.node) {
                             <span class="name">
                                 {{ member.node.unit.getUnit().chassis }}
                                 @if (member.node.unit.getUnit().model) {
                                     - {{ member.node.unit.getUnit().model }}
                                 }
                             </span>
+                        } @else {
+                            <span class="name">{{ member.name }}</span>
                         }
                     </span>
                     @if (member.canRemove) {

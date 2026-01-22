@@ -152,7 +152,7 @@ export abstract class ForceUnit {
     }
 
     public getAvailableEquipment() {
-        return this.dataService.getEquipment(this.unit.type);
+        return this.dataService.getEquipments();
     }
 
 }

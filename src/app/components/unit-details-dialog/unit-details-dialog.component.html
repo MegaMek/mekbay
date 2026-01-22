@@ -1,7 +1,7 @@
 <base-dialog #baseDialog [tabs]="tabs()" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)" (closed)="onClose()">
 <div dialog-header class="header">
   <div class="header-icon-container">
-    <unit-icon [unit]="headerUnit()"></unit-icon>
+    <unit-icon [unit]="headerUnit()" [size]="56"></unit-icon>
   </div>
   <div class="header-content">
     <div class="header-row header-row-top">

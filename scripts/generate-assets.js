@@ -116,40 +116,40 @@ function generateSourcebooks() {
   console.log(`[Assets] Generated ${sourcebooksOutput} with ${sourcebooks.length} sourcebooks.`);
 }
 
-function runCompressAssets() {
-  return new Promise((resolve, reject) => {
-    const compressScript = path.join(__dirname, 'compress-assets.js');
+// function runCompressAssets() {
+//   return new Promise((resolve, reject) => {
+//     const compressScript = path.join(__dirname, 'compress-assets.js');
     
-    if (!fs.existsSync(compressScript)) {
-      console.log('[Assets] compress-assets.js not found, skipping compression.');
-      resolve();
-      return;
-    }
+//     if (!fs.existsSync(compressScript)) {
+//       console.log('[Assets] compress-assets.js not found, skipping compression.');
+//       resolve();
+//       return;
+//     }
 
-    console.log('[Assets] Running compress-assets.js...');
-    const child = spawn('node', [compressScript], { 
-      stdio: 'inherit',
-      cwd: root
-    });
+//     console.log('[Assets] Running compress-assets.js...');
+//     const child = spawn('node', [compressScript], { 
+//       stdio: 'inherit',
+//       cwd: root
+//     });
 
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`compress-assets.js exited with code ${code}`));
-      }
-    });
+//     child.on('close', (code) => {
+//       if (code === 0) {
+//         resolve();
+//       } else {
+//         reject(new Error(`compress-assets.js exited with code ${code}`));
+//       }
+//     });
 
-    child.on('error', (err) => {
-      reject(err);
-    });
-  });
-}
+//     child.on('error', (err) => {
+//       reject(err);
+//     });
+//   });
+// }
 
 async function main() {
   try {
     generateSourcebooks();
-    await runCompressAssets();
+    // await runCompressAssets();
     console.log('[Assets] All asset generation complete.');
   } catch (err) {
     console.error('[Assets] Error:', err);

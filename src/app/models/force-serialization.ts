@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Equipment } from './equipment.model';
+import { Equipment } from './equipment2.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';

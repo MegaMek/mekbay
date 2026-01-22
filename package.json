@@ -6,7 +6,7 @@
     "gen-meta": "node scripts/generate-build-meta.js",
     "gen-assets": "node scripts/generate-assets.js",
     "gen-sprites": "node scripts/generate-sprite-map.js",
-    "prerun": "npm run gen-meta && npm run gen-assets",
+    "prerun": "npm run gen-meta && npm run gen-assets && npm run gen-sprites",
     "start": "ng serve --host 0.0.0.0",
     "build": "npm run prerun && ng build --configuration=production",
     "watch": "ng build --watch --configuration=development",

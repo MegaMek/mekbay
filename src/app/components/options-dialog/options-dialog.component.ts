@@ -43,7 +43,7 @@ import { isIOS } from '../../utils/platform.util';
 import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
 import { GameSystem } from '../../models/common.model';
-import { ImageStorageService } from '../../services/image-storage.service';
+import { SpriteStorageService } from '../../services/sprite-storage.service';
 
 /*
  * Author: Drake
@@ -64,7 +64,7 @@ export class OptionsDialogComponent {
     dialogRef = inject(DialogRef<OptionsDialogComponent>);
     userStateService = inject(UserStateService);
     dialogsService = inject(DialogsService);
-    imageStorageService = inject(ImageStorageService);
+    spriteStorageService = inject(SpriteStorageService);
     isIOS = isIOS();
     
     tabs = computed(() => {
@@ -101,7 +101,7 @@ export class OptionsDialogComponent {
     }
 
     async updateUnitIconsCount() {
-        const count = await this.imageStorageService.getCount();
+        const count = await this.spriteStorageService.getIconCount();
         this.unitIconsCount.set(count);
     }
 
@@ -251,9 +251,9 @@ export class OptionsDialogComponent {
             'info'
         );
         if (confirmed) {
-            await this.imageStorageService.clearUnitIconsStore();
+            await this.spriteStorageService.clearSpritesStore();
             await this.updateUnitIconsCount();
-            await this.imageStorageService.checkAndHydrate();
+            await this.spriteStorageService.reinitialize();
             await this.updateUnitIconsCount();
         }
     }

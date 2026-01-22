@@ -206,6 +206,14 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 g.units.set(filtered);
             }
         }
+
+        // Clean up C3 networks - remove the unit from all networks it participates in
+        const currentNetworks = this._c3Networks();
+        if (currentNetworks.length > 0 && C3NetworkUtil.isUnitConnected(unitToRemove.id, currentNetworks)) {
+            const result = C3NetworkUtil.removeUnitFromAllNetworks(currentNetworks, unitToRemove.id);
+            this._c3Networks.set(result.networks);
+        }
+
         unitToRemove.destroy();
         this.removeEmptyGroups();
         if (this.instanceId()) {

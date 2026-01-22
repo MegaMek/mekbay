@@ -1,7 +1,16 @@
 import { Component, ChangeDetectionStrategy, inject, input, signal, effect, computed } from '@angular/core';
 
-import { ImageStorageService } from '../../services/image-storage.service';
+import { SpriteStorageService, SpriteIconInfo } from '../../services/sprite-storage.service';
 import { Unit } from '../../models/units.model';
+
+interface SpriteData {
+  url: string;
+  info: SpriteIconInfo;
+}
+
+// Default sprite dimensions (used before sprite loads)
+const DEFAULT_WIDTH = 84;
+const DEFAULT_HEIGHT = 72;
 
 @Component({
   selector: 'unit-icon',
@@ -9,81 +18,122 @@ import { Unit } from '../../models/units.model';
   imports: [],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <img [src]="currentSrc()" 
-         [alt]="displayAlt()" 
-         [title]="displayTitle()"
+    <div class="icon-container"
          [class]="styleClass()"
-         (error)="onError()"
-         draggable="false">
+         [style.width.px]="containerWidth()"
+         [style.height.px]="containerHeight()"
+         [title]="displayTitle()">
+      @if (spriteData(); as sprite) {
+        <div class="sprite"
+             [style.width.px]="sprite.info.w"
+             [style.height.px]="sprite.info.h"
+             [style.background-image]="'url(' + sprite.url + ')'"
+             [style.background-position]="'-' + sprite.info.x + 'px -' + sprite.info.y + 'px'"
+             [style.transform]="'scale(' + scale() + ')'">
+        </div>
+      } @else if (!isLoading()) {
+        <img [src]="FALLBACK" [alt]="displayAlt()" draggable="false">
+      }
+    </div>
   `,
   styles: [`
-    img { max-height: 100%; max-width: 100%; object-fit: contain; }
+    .icon-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .sprite {
+      flex-shrink: 0;
+      background-repeat: no-repeat;
+      transform-origin: center;
+    }
+    img { 
+      max-height: 100%; 
+      max-width: 100%; 
+      object-fit: contain; 
+    }
   `]
 })
 export class UnitIconComponent {
-  private imageService = inject(ImageStorageService);
-  private isLoading = this.imageService.loading;
+  private spriteService = inject(SpriteStorageService);
   
-  // Primary Input
+  isLoading = this.spriteService.loading;
+  
+  // Inputs
   unit = input<Unit | undefined | null>(null);
   alt = input<string | undefined>(undefined);
   title = input<string | undefined>(undefined);
   styleClass = input<string>('');
-
-  private readonly FALLBACK = '/images/unknown.png';
-  private readonly TRANSPARENT = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
   
-  currentSrc = signal<string>(this.TRANSPARENT);
+  /** Square size shorthand (sets both width and height) */
+  size = input<number | undefined>(undefined);
+  /** Container width in pixels */
+  width = input<number | undefined>(undefined);
+  /** Container height in pixels */
+  height = input<number | undefined>(undefined);
 
-  displayAlt = computed(() => {
-    if (this.alt()) return this.alt();
+  protected readonly FALLBACK = '/images/unknown.png';
+  
+  spriteData = signal<SpriteData | null>(null);
+
+  private unitLabel = computed(() => {
     const u = this.unit();
     return u ? `${u.chassis || ''} ${u.model || ''}`.trim() : '';
   });
 
-  displayTitle = computed(() => {
-    if (this.title()) return this.title();
-    const u = this.unit();
-    return u ? `${u.chassis || ''} ${u.model || ''}`.trim() : '';
+  displayAlt = computed(() => this.alt() || this.unitLabel());
+  displayTitle = computed(() => this.title() || this.unitLabel());
+
+  /** Container width: explicit input or sprite's natural width */
+  containerWidth = computed(() => {
+    const w = this.width() ?? this.size();
+    if (w !== undefined) return w;
+    return this.spriteData()?.info.w ?? DEFAULT_WIDTH;
+  });
+
+  /** Container height: explicit input or sprite's natural height */
+  containerHeight = computed(() => {
+    const h = this.height() ?? this.size();
+    if (h !== undefined) return h;
+    return this.spriteData()?.info.h ?? DEFAULT_HEIGHT;
+  });
+
+  /** Scale factor to contain sprite within container */
+  scale = computed(() => {
+    const sprite = this.spriteData();
+    if (!sprite) return 1;
+    
+    const cw = this.containerWidth();
+    const ch = this.containerHeight();
+    
+    // Contain: scale to fit entirely within container
+    return Math.min(cw / sprite.info.w, ch / sprite.info.h);
   });
 
   constructor() {
     effect(() => {
-      const u = this.unit();
-      const path = u?.icon;
+      const path = this.unit()?.icon;
       const loading = this.isLoading();
-      
-      // If the service is currently hydrating the DB, we wait.
-      // The effect will automatically re-run when loading becomes false.
-      if (loading) {
-        return;
-      }
-      
-      if (!path) {
-        this.currentSrc.set(this.FALLBACK);
+
+      if (!path || loading) {
+        this.spriteData.set(null);
         return;
       }
 
-      const cached = this.imageService.getCachedUrl(path);
+      // Try synchronous cache first (hot path)
+      const cached = this.spriteService.getCachedSpriteInfo(path);
       if (cached) {
-        this.currentSrc.set(cached);
+        this.spriteData.set(cached);
         return;
       }
 
-      // Show transparent while loading to avoid flashing unknown icon
-      this.currentSrc.set(this.TRANSPARENT);
-
-      this.imageService.getImage(path).then(url => {
-        this.currentSrc.set(url || this.FALLBACK);
+      // Fallback to async load
+      this.spriteService.getSpriteInfo(path).then(info => {
+        this.spriteData.set(info);
       }).catch(() => {
-        this.currentSrc.set(this.FALLBACK);
+        this.spriteData.set(null);
       });
     });
-  }
-
-  onError() {
-    if (this.currentSrc() !== this.FALLBACK) {
-      this.currentSrc.set(this.FALLBACK);
-    }
   }
 }

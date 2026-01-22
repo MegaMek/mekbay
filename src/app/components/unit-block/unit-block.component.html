@@ -12,7 +12,7 @@
         [class.pending-effects]="hasPendingEffects()"
         ></div>
     }
-    <unit-icon [unit]="unit()"></unit-icon>
+    <unit-icon [unit]="unit()" [size]="24"></unit-icon>
     @if (unitDisplayName === 'chassisModel'
     || unitDisplayName === 'both'
     || !fu?.alias()) {
@@ -41,9 +41,7 @@
 
     @let role = unit()?.role;
     <div class="unit-role" [class.tight]="(role?.length || 0) > 12">{{ role && role !== 'None' ? role : '' }}</div>
-    <div class="unit-image-container"> 
-        <unit-icon [unit]="unit()"></unit-icon>
-    </div>
+    <unit-icon [unit]="unit()" [size]="48"></unit-icon>
     <div class="unit-data-container">
         <div class="unit-actions">
             <button class="info-btn" (click)="clickInfo($event);" title="Unit info">

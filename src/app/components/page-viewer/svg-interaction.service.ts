@@ -45,7 +45,7 @@ import { ToastService } from '../../services/toast.service';
 import { LayoutService } from '../../services/layout.service';
 import { SetAmmoDialogComponent, SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
 import { DataService } from '../../services/data.service';
-import { AmmoEquipment } from '../../models/equipment.model';
+import { AmmoEquipment } from '../../models/equipment2.model';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -542,7 +542,7 @@ export class SvgInteractionService {
     private setupCritSlotInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         const unit = this.unit();
         if (!unit) return;
-        const equipmentList = this.dataService.getEquipment(unit.getUnit().type);
+        const equipmentList = this.dataService.getEquipments();
         svg.querySelectorAll('.critSlot').forEach(el => {
             if (el.getAttribute('hittable') != '1') return; // Only add handlers to hittable crit slots
             const svgEl = el as SVGElement;
