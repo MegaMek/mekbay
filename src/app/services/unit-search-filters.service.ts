@@ -492,7 +492,7 @@ export const SORT_OPTIONS: SortOption[] = [
     { key: '', label: 'Relevance' },
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
-        .filter(f => !['era', 'faction', 'forcePack', 'componentName', 'source'].includes(f.key))
+        .filter(f => !['era', 'faction', 'forcePack', 'componentName', 'source', '_tags', 'as.specials', 'name', 'chassis', 'model'].includes(f.key))
         .map(f => ({
             key: f.key,
             label: f.label,
