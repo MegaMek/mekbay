@@ -1343,14 +1343,12 @@ export class UnitSearchFiltersService {
                 const aPv = this.getAdjustedPV(a);
                 const bPv = this.getAdjustedPV(b);
                 comparison = aPv - bPv;
-            } else if (sortKey in a && sortKey in b) {
-                const key = sortKey as keyof Unit;
-                const aValue = a[key];
-                const bValue = b[key];
+            } else {
+                const aValue = getProperty(a, sortKey);
+                const bValue = getProperty(b, sortKey);
                 if (typeof aValue === 'string' && typeof bValue === 'string') {
                     comparison = naturalCompare(aValue, bValue);
-                }
-                if (typeof aValue === 'number' && typeof bValue === 'number') {
+                } else if (typeof aValue === 'number' && typeof bValue === 'number') {
                     comparison = aValue - bValue;
                 }
             }
