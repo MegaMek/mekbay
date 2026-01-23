@@ -74,7 +74,7 @@ export interface SetAmmoDialogData {
                     @if (mixedTechBase() && ammo.techBase !== 'All') {
                         [{{ ammo.techBase === 'IS' ? 'IS' : ammo.techBase === 'Clan' ? 'CL' : '*' }}]&nbsp;
                     }
-                    {{ ammo.shortName }}
+                    {{ ammo.name }}
                     @if (data.ammoOptions.length > 1 
                     && ammo.internalName === data.originalAmmo.internalName 
                     && data.originalAmmo.internalName != data.currentAmmo.internalName){&nbsp;★}
