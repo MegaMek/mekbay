@@ -99,13 +99,14 @@ export class UnitSvgMekService extends UnitSvgService {
                     textNode.textContent = `${isCustomAmmoLoadout ? '*' : ''}${text} ${remainingAmmo}`;
 
                     // Adjust text length if too wide
-                    // First remove any existing constraints to get the natural length
                     const maxWidth = 86;
                     const svgText = textNode as SVGTextContentElement;
+                    // First we remove any existing constraints to get the natural length...
                     svgText.removeAttribute('textLength');
                     svgText.removeAttribute('lengthAdjust');
                     const currentLength = svgText.getComputedTextLength();
                     if (currentLength > maxWidth) {
+                        // ...and we add it back if is too long
                         svgText.setAttribute('textLength', maxWidth.toString());
                         svgText.setAttribute('lengthAdjust', 'spacingAndGlyphs');
                     }
