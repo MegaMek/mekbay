@@ -73,6 +73,7 @@ body {
     font-family: 'Roboto', "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Symbol";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    -webkit-user-select: none;
     user-select: none;
     box-sizing: border-box;
     cursor: default;
@@ -117,10 +118,12 @@ a {
 /* Allow selection in input and textarea fields */
 input,
 textarea {
+    -webkit-user-select: text;
     user-select: text;
 }
 
 .allow-select {
+    -webkit-user-select: text;
     user-select: text;
 }
 
@@ -952,8 +955,8 @@ hr.divider {
     display: block;
     box-sizing: content-box;
     touch-action: none;
-    user-select: none;
     -webkit-user-select: none;
+    user-select: none;
     -webkit-touch-callout: none;
 
     .damaged-strike {

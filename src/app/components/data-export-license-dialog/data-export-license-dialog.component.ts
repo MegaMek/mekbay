@@ -136,6 +136,7 @@ import { DialogRef } from '@angular/cdk/dialog';
             display: flex;
             align-items: center;
             gap: 8px;
+            -webkit-user-select: none;
             user-select: none;
             cursor: pointer;
         }

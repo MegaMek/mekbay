@@ -14,6 +14,7 @@
     background: transparent;
     position: relative;
     touch-action: none;
+    -webkit-user-select: none;
     user-select: none;
 }
 

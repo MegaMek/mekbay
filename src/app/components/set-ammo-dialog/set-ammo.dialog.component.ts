@@ -160,6 +160,7 @@ export interface SetAmmoDialogData {
         .max-quantity {
             font-size: 1.2em;
             color: var(--text-color-secondary);
+            -webkit-user-select: none;
             user-select: none;
             pointer-events: none;
         }

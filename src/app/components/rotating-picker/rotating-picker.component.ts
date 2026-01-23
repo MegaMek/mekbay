@@ -186,6 +186,7 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
     styles: [`
         .rotating-picker-container {
             font-family: 'Roboto', sans-serif;
+            -webkit-user-select: none;
             user-select: none;
             touch-action: none;
             outline: none;

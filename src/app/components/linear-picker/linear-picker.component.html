@@ -7,7 +7,7 @@
         [class.highlight]="isHovered(choice) && !choice.disabled" [class.disabled]="choice.disabled"
         [class.active]="choice.active">
         <label [for]="'dropdown-' + i">{{ choice.label }}</label>
-        <select [id]="'dropdown-' + i" (change)="handleDropdownChange($event, choice)">
+        <select  [id]="'dropdown-' + i" (change)="handleDropdownChange($event, choice)">
             @for (option of choice.choices; track option.value) {
             <option [value]="option.value" [selected]="option.value === choice.value">{{ option.label }}</option>
             }

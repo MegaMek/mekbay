@@ -4,6 +4,7 @@
     height: 18px;
     margin: 8px;
     margin-left: 18px;
+    -webkit-user-select: none;
     user-select: none;
     touch-action: none;
 }
