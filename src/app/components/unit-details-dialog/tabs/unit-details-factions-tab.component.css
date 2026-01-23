@@ -64,10 +64,27 @@
     grid-column: 1 / -1;
 }
 
+hr.divider {
+    grid-column: 1 / -1;
+}
+
 /* Responsive */
 @container (max-width: 768px) {
     .faction-availability-list {
         display: flex;
         flex-direction: column;
+    }
+    hr.divider {
+        width: 100%;
+    }
+    .era-name {
+        width: 100%;
+        justify-content: center;
+        font-size: 1.2em;
+        margin-top: 8px;
+        margin-bottom: 8px;
+    }
+    .faction-list {
+        margin-bottom: 16px;
     }
 }
