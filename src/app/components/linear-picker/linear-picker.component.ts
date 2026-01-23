@@ -81,6 +81,7 @@ export class LinearPickerComponent implements ChoicePickerComponent {
 
     // Internal state
     hoveredChoice = signal<PickerChoice | null>(null);
+    labelOnRight = signal<boolean>(false);
 
     pickerRef = viewChild.required<ElementRef<HTMLDivElement>>('picker');
 
@@ -102,6 +103,7 @@ export class LinearPickerComponent implements ChoicePickerComponent {
                 requestAnimationFrame(() => {
                     if (this.pickerRef()?.nativeElement) {
                         this.centerSelectedCell();
+                        this.computeLabelSide();
                         this.initialPositionSet = true;
                     }
                 });
@@ -168,6 +170,21 @@ export class LinearPickerComponent implements ChoicePickerComponent {
 
     isHovered(choice: PickerChoice): boolean {
         return choice === this.hoveredChoice();
+    }
+
+    /** Compute whether the label should display on right side based on viewport space */
+    private computeLabelSide(): void {
+        if (this.horizontal()) return;
+        const picker = this.pickerRef()?.nativeElement;
+        if (!picker) return;
+        
+        const rect = picker.getBoundingClientRect();
+        const labelWidth = 150; // Approximate label width
+        const leftSpace = rect.left;
+        const rightSpace = window.innerWidth - rect.right;
+        
+        // Default left, switch to right if left overflows more
+        this.labelOnRight.set(leftSpace < labelWidth && rightSpace > leftSpace);
     }
 
     // Event handlers

@@ -48,6 +48,11 @@
     right: 100%;
 }
 
+.linear-picker.vertical.label-right .value-cell.selected[data-title]::before {
+    right: auto;
+    left: 100%;
+}
+
 /* Horizontal layout title positioning */
 .linear-picker.horizontal .value-cell.selected[data-title]::before {
     bottom: 100%;

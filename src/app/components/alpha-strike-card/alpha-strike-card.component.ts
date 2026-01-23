@@ -571,6 +571,7 @@ export class AlphaStrikeCardComponent {
         
         this.showNumericPicker({
             anchorElement: event.currentTarget as HTMLElement,
+            event,
             title: 'DAMAGE',
             min: -currentTotalDamage,
             max: currentTotal,
@@ -610,6 +611,7 @@ export class AlphaStrikeCardComponent {
         
         this.showNumericPicker({
             anchorElement: event.currentTarget as HTMLElement,
+            event,
             title: isArmor ? 'ARMOR' : 'STRUCTURE',
             min: -currentDamage,
             max: remaining,
@@ -865,11 +867,12 @@ export class AlphaStrikeCardComponent {
         
         this.showNumericPicker({
             anchorElement: rowElement,
+            event,
             title: critKey.replace(/-/g, ' ').toUpperCase(),
             min: -currentHits,
             max: maxValue,
             threshold: remainingPips > 0 ? remainingPips : 0,
-            selected: 1, // Start with delta of 1 selected
+            selected: 1,
             onPick: (result: NumericPickerResult) => {
                 this.removePicker();
                 const delta = pendingHits + result.value;
@@ -888,6 +891,7 @@ export class AlphaStrikeCardComponent {
      */
     private showNumericPicker(config: {
         anchorElement: HTMLElement;
+        event?: PointerEvent;
         title: string;
         min: number;
         max: number;
@@ -900,12 +904,16 @@ export class AlphaStrikeCardComponent {
         
         // Store anchor element for position updates on scroll
         this.pickerAnchorElement = config.anchorElement;
-        const position = this.calculatePickerPosition(config.anchorElement, true);
         const lightTheme = this.cardStyle() === 'colored';
         
         // Check user's picker style preference
         const pickerStyle = this.optionsService.options().pickerStyle;
         if (pickerStyle === 'linear') {
+            // Use pointer position for linear picker, fall back to element center
+            const position = config.event 
+                ? { x: config.event.clientX, y: config.event.clientY }
+                : this.calculatePickerPosition(config.anchorElement, true);
+            
             // Convert numeric range to choices for linear picker (vertical mode)
             const choices: PickerChoice[] = [];
             for (let i = config.min; i <= config.max; i++) {
@@ -917,7 +925,7 @@ export class AlphaStrikeCardComponent {
             
             this.pickerRef = this.pickerFactory.createLinearPicker({
                 values: choices,
-                selected: config.selected ?? 0,
+                selected: 0,
                 position,
                 title: config.title,
                 lightTheme,
@@ -929,7 +937,8 @@ export class AlphaStrikeCardComponent {
                 onCancel: config.onCancel
             });
         } else {
-            // Use rotating dial picker (default or radial)
+            // Use rotating dial picker (default or radial) - use element center
+            const position = this.calculatePickerPosition(config.anchorElement, true);
             this.pickerRef = this.pickerFactory.createNumericPicker({
                 min: config.min,
                 max: config.max,

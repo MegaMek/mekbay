@@ -62,6 +62,7 @@ export class DialogsService {
             panelClass?: string | string[];
             backdropClass?: string | string[];
             disableClose?: boolean;
+            disableCloseForMs?: number;
             hasBackdrop?: boolean;
             width?: string;
             height?: string;
@@ -86,6 +87,12 @@ export class DialogsService {
         });
 
         const closed = new Subject<R | undefined>();
+        
+        // Block closing for a short period to prevent the triggering click from closing the dialog
+        const blockMs = opts?.disableCloseForMs ?? 150;
+        let closeBlockedUntil = blockMs > 0 ? performance.now() + blockMs : 0;
+        const isCloseBlocked = () => closeBlockedUntil > 0 && performance.now() < closeBlockedUntil;
+        
         const close = (result?: R) => {
             try {
                 if (!closed.closed) {
@@ -113,11 +120,11 @@ export class DialogsService {
 
         if (opts?.hasBackdrop ?? true) {
             overlayRef.backdropClick().subscribe(() => {
-                if (!opts?.disableClose) close(undefined);
+                if (!opts?.disableClose && !isCloseBlocked()) close(undefined);
             });
         }
         overlayRef.keydownEvents().subscribe(ev => {
-            if (!opts?.disableClose && (ev.key === 'Escape' || ev.key === 'Esc')) {
+            if (!opts?.disableClose && !isCloseBlocked() && (ev.key === 'Escape' || ev.key === 'Esc')) {
                 ev.preventDefault();
                 close(undefined);
             }
