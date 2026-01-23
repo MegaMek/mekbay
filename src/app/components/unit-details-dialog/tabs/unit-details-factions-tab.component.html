@@ -4,7 +4,7 @@
         @if (factionAvailability().length === 0) {
             <div class="no-factions">No faction availability information for this unit.</div>
         } @else {
-            @for (era of factionAvailability(); let i = $index; track i) {
+            @for (era of factionAvailability(); let i = $index; let isLastEra = $last; track i) {
                 <div class="era-name">
                     @if (era.eraImg) {
                         <img [src]="era.eraImg" class="era-icon" />
@@ -21,6 +21,9 @@
                         </span>
                     }
                 </div>
+                @if (!isLastEra) {
+                    <hr class="divider" />
+                }
             }
         }
     </div>
