@@ -58,7 +58,6 @@ import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
 import { ASForceUnit } from '../models/as-force-unit.model';
-import { OptionsService } from './options.service';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
@@ -78,7 +77,6 @@ export class ForceBuilderService {
     private dialogsService = inject(DialogsService);
     private unitInitializer = inject(UnitInitializerService);
     private injector = inject(Injector);
-    private optionsService = inject(OptionsService);
     private urlStateService = inject(UrlStateService);
 
     public currentForce = signal<Force | null>(null);
@@ -785,12 +783,21 @@ export class ForceBuilderService {
                 return;
             }
             // Use centralized URL state service to avoid race conditions
-            this.urlStateService.setParams({
-                gs: queryParameters.gs,
-                units: queryParameters.units,
-                name: queryParameters.name,
-                instance: queryParameters.instance
-            });
+            if (queryParameters.instance) {
+                this.urlStateService.setParams({
+                    gs: null,
+                    units: null,
+                    name: null,
+                    instance: queryParameters.instance
+                });
+            } else {
+                this.urlStateService.setParams({
+                    gs: queryParameters.gs,
+                    units: queryParameters.units,
+                    name: queryParameters.name,
+                    instance: null
+                });
+            }
         });
     }
 
