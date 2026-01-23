@@ -42,6 +42,8 @@ export interface InputDialogData {
     title: string;
     message: string;
     inputType?: 'text' | 'number'; // default: text
+    minimumValue?: number; // for number input
+    maximumValue?: number; // for number input
     placeholder?: string;
     defaultValue?: string | number;
     buttons?: { label: string; value: 'ok' | 'cancel'; class?: string }[];
@@ -65,7 +67,8 @@ export interface InputDialogData {
                 [type]="data.inputType || 'text'"
                 [placeholder]="data.placeholder ?? ''"
                 [value]="data.defaultValue ?? ''"
-                [attr.min]="data.inputType === 'number' ? 0 : null"
+                [attr.min]="data.inputType === 'number' ? (data.minimumValue ?? 0) : null"
+                [attr.max]="data.inputType === 'number' && data.maximumValue !== undefined ? data.maximumValue : null"
                 (keydown.enter)="submit()"
                 (input)="onInputChange($event)"
                 required

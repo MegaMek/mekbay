@@ -38,6 +38,7 @@ import { AS_PILOT_ABILITIES, ASCustomPilotAbility } from '../../models/as-abilit
 import { AsAbilityLookupService, ParsedAbility } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
+import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
 import { PilotAbilityInfoDialogComponent, PilotAbilityInfoDialogData } from '../pilot-ability-info-dialog/pilot-ability-info-dialog.component';
 import { CardConfig, CardLayoutDesign, CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
 import { SpecialAbilityState, SpecialAbilityClickEvent } from './layouts/layout-base.component';
@@ -192,6 +193,17 @@ export class AlphaStrikeCardComponent {
             const trigger = this.updatePickerPositionTrigger();
             if (trigger > 0) {
                 this.updatePickerPosition();
+            }
+        });
+        
+        // Watch for ASUnifiedDamagePicker changes and re-setup interactions
+        effect(() => {
+            // Track the option so the effect re-runs when it changes
+            const unifiedPicker = this.optionsService.options().ASUnifiedDamagePicker;
+            // Only re-setup if interactions are already setup (card is interactive)
+            if (this.interactionsSetup) {
+                this.cleanupInteractions();
+                afterNextRender(() => this.setupInteractions(), { injector: this.injector });
             }
         });
         
@@ -454,12 +466,30 @@ export class AlphaStrikeCardComponent {
     }
     
     private setupArmorInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
-        const pipsWrapper = cardElement.querySelector('.pips-wrapper');
-        if (!pipsWrapper) return;
-        
-        this.addTapHandler(pipsWrapper as HTMLElement, (evt) => {
-            this.showDamagePicker(evt);
-        }, signal);
+        if (this.optionsService.options().ASUnifiedDamagePicker) {
+            // Unified: tap anywhere in pips-wrapper shows combined damage picker
+            const pipsWrapper = cardElement.querySelector('.pips-wrapper');
+            if (!pipsWrapper) return;
+            
+            this.addTapHandler(pipsWrapper as HTMLElement, (evt) => {
+                this.showDamagePicker(evt);
+            }, signal);
+        } else {
+            // Separate: tap armor row or structure row shows individual picker
+            const armorRow = cardElement.querySelector('[data-damage-type="armor"]');
+            const structureRow = cardElement.querySelector('[data-damage-type="structure"]');
+            
+            if (armorRow) {
+                this.addTapHandler(armorRow as HTMLElement, (evt) => {
+                    this.showSingleDamagePicker(evt, 'armor');
+                }, signal);
+            }
+            if (structureRow) {
+                this.addTapHandler(structureRow as HTMLElement, (evt) => {
+                    this.showSingleDamagePicker(evt, 'structure');
+                }, signal);
+            }
+        }
     }
     
     private setupCriticalHitInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
@@ -477,9 +507,21 @@ export class AlphaStrikeCardComponent {
     private setupVesselDamageTrackInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
         const damageTracks = cardElement.querySelectorAll('.damage-track');
         damageTracks.forEach(track => {
-            this.addTapHandler(track as HTMLElement, (evt) => {
-                this.showDamagePicker(evt);
-            }, signal);
+            const trackType = track.getAttribute('data-damage-track');
+            
+            if (this.optionsService.options().ASUnifiedDamagePicker) {
+                // Unified: any damage track shows combined damage dialog
+                this.addTapHandler(track as HTMLElement, () => {
+                    this.showVesselDamageDialog();
+                }, signal);
+            } else {
+                // Separate: each track shows its own damage dialog
+                if (trackType === 'armor' || trackType === 'structure') {
+                    this.addTapHandler(track as HTMLElement, () => {
+                        this.showVesselSingleDamageDialog(trackType);
+                    }, signal);
+                }
+            }
         });
     }
     
@@ -538,42 +580,166 @@ export class AlphaStrikeCardComponent {
                 unit.setPendingDamage(delta);
                 vibrate(10);
                 
-                if (this.optionsService.options().ASUseAutomations) {
-                    // Check if internal structure damage increased
-                    const newPendingInternal = unit.getState().pendingInternal();
-                    const tookStructureDamage = newPendingInternal > previousPendingInternal;
-                    
-                    // Critical hit handling (skip for conventional infantry)
-                    const unitType = unit.getUnit().as.TP;
-                    if (unitType !== 'CI') {
-                        const specials = unit.getUnit().as.specials || [];
-                        const hasBAR = specials.some(s => s.startsWith('BAR'));
-                        
-                        if (hasBAR && deltaChange > 0) {
-                            // BAR: Any time a unit with BAR suffers damage, a critical hit may occur
-                            await this.onRollCriticalClick();
-                        } 
-                        
-                        if (tookStructureDamage) {
-                            // Normal structure damage roll
-                            await this.onRollCriticalClick();
-    
-                            // Industrial Meks get an extra roll on structure damage
-                            if (unitType === 'IM') {
-                                await this.onRollCriticalClick();
-                            }
-                        }
-                        
-    
-                        // If damage increased, check for motive damage roll for vehicles
-                        if (deltaChange > 0) {
-                            await this.checkMotiveDamage(unit);
-                        }
-                    }
-                }
+                await this.handleDamageAutomations(unit, deltaChange, previousPendingInternal);
             },
             onCancel: () => this.removePicker()
         });
+    }
+    
+    /**
+     * Show a picker for a single damage type (armor or structure).
+     * Used when ASUnifiedDamagePicker is false.
+     */
+    private showSingleDamagePicker(event: PointerEvent, type: 'armor' | 'structure'): void {
+        const unit = this.forceUnit();
+        if (!unit) return;
+        
+        const state = unit.getState();
+        const isArmor = type === 'armor';
+        const max = isArmor ? unit.getUnit().as.Arm : unit.getUnit().as.Str;
+        const committed = isArmor ? state.armor() : state.internal();
+        const pending = isArmor ? state.pendingArmor() : state.pendingInternal();
+        const currentDamage = committed + pending;
+        const remaining = max - currentDamage;
+        
+        this.showNumericPicker({
+            anchorElement: event.currentTarget as HTMLElement,
+            title: isArmor ? 'ARMOR' : 'STRUCTURE',
+            min: -currentDamage,
+            max: remaining,
+            selected: 0,
+            onPick: async (val: NumericPickerResult) => {
+                this.removePicker();
+                const deltaChange = val.value;
+                const newPending = pending + deltaChange;
+                const previousPendingInternal = state.pendingInternal();
+                
+                if (isArmor) {
+                    unit.setPendingArmorDamage(newPending);
+                } else {
+                    unit.setPendingStructureDamage(newPending);
+                    await this.handleDamageAutomations(unit, deltaChange, previousPendingInternal);
+                }
+                vibrate(10);
+            },
+            onCancel: () => this.removePicker()
+        });
+    }
+    
+    /**
+     * Show a dialog to input damage amount for vessel layouts (unified armor+structure).
+     */
+    private async showVesselDamageDialog(): Promise<void> {
+        const unit = this.forceUnit();
+        if (!unit) return;
+        
+        const ref = this.dialogs.createDialog<number | null>(InputDialogComponent, {
+            data: {
+                title: 'DAMAGE',
+                message: 'Enter damage amount (negative to heal):',
+                inputType: 'number',
+                minimumValue: - (unit.getState().armor() + unit.getState().pendingArmor() + unit.getState().internal() + unit.getState().pendingInternal()),
+                maximumValue: unit.getUnit().as.Arm + unit.getUnit().as.Str,
+                defaultValue: 0
+            } as InputDialogData
+        });
+        
+        const result = await firstValueFrom(ref.closed);
+        if (result === null || result === undefined) return;
+        
+        const deltaChange = result as number;
+        if (deltaChange === 0) return;
+        
+        const pendingTotal = unit.getState().pendingArmor() + unit.getState().pendingInternal();
+        const delta = pendingTotal + deltaChange;
+        
+        const previousPendingInternal = unit.getState().pendingInternal();
+        unit.setPendingDamage(delta);
+        vibrate(10);
+        
+        await this.handleDamageAutomations(unit, deltaChange, previousPendingInternal);
+    }
+    
+    /**
+     * Show a dialog to input damage amount for a single type (armor or structure) on vessels.
+     */
+    private async showVesselSingleDamageDialog(type: 'armor' | 'structure'): Promise<void> {
+        const unit = this.forceUnit();
+        if (!unit) return;
+        
+        const state = unit.getState();
+        const isArmor = type === 'armor';
+        const title = isArmor ? 'ARMOR DAMAGE' : 'STRUCTURE DAMAGE';
+        
+        const ref = this.dialogs.createDialog<number | null>(InputDialogComponent, {
+            data: {
+                title,
+                message: 'Enter damage amount (negative to heal):',
+                inputType: 'number',
+                minimumValue: - (isArmor ? state.armor() + state.pendingArmor() : state.internal() + state.pendingInternal()),
+                maximumValue: isArmor ? unit.getUnit().as.Arm : unit.getUnit().as.Str,
+                defaultValue: 0
+            } as InputDialogData
+        });
+        
+        const result = await firstValueFrom(ref.closed);
+        if (result === null || result === undefined) return;
+        
+        const deltaChange = result as number;
+        if (deltaChange === 0) return;
+        
+        const pending = isArmor ? state.pendingArmor() : state.pendingInternal();
+        const newPending = pending + deltaChange;
+        const previousPendingInternal = state.pendingInternal();
+        
+        if (isArmor) {
+            unit.setPendingArmorDamage(newPending);
+        } else {
+            unit.setPendingStructureDamage(newPending);
+            await this.handleDamageAutomations(unit, deltaChange, previousPendingInternal);
+        }
+        vibrate(10);
+    }
+    
+    /**
+     * Handle damage automations (critical hits, motive damage) after applying damage.
+     * @param unit The unit that took damage
+     * @param deltaChange The amount of damage change (positive = damage, negative = heal)
+     * @param previousPendingInternal The pending internal before damage was applied
+     */
+    private async handleDamageAutomations(
+        unit: ASForceUnit,
+        deltaChange: number,
+        previousPendingInternal: number
+    ): Promise<void> {
+        if (!this.optionsService.options().ASUseAutomations) return;
+        if (deltaChange <= 0) return;
+        
+        const unitType = unit.getUnit().as.TP;
+        if (unitType === 'CI') return; // Skip conventional infantry
+        
+        const newPendingInternal = unit.getState().pendingInternal();
+        const tookStructureDamage = newPendingInternal > previousPendingInternal;
+        const specials = unit.getUnit().as.specials || [];
+        const hasBAR = specials.some(s => s.startsWith('BAR'));
+        
+        // BAR: Any time a unit with BAR suffers damage, a critical hit may occur
+        if (hasBAR) {
+            await this.onRollCriticalClick();
+        }
+        
+        if (tookStructureDamage) {
+            // Normal structure damage roll
+            await this.onRollCriticalClick();
+            
+            // Industrial Meks get an extra roll on structure damage
+            if (unitType === 'IM') {
+                await this.onRollCriticalClick();
+            }
+        }
+        
+        // Check for motive damage roll for vehicles
+        await this.checkMotiveDamage(unit);
     }
     
     /**
@@ -612,7 +778,7 @@ export class AlphaStrikeCardComponent {
         } else if (critKey === 'weapons') {
             return this.calculateRemainingWeaponHits(unit);
         } else if (critKey === 'fire-control') {
-            return 10; // Arbitrary high number, no real limit
+            return 2; // Arbitrary number, no real limit, everytime we offer a +2 to the limit
         }
         return null;
     }
@@ -709,7 +875,10 @@ export class AlphaStrikeCardComponent {
     }
     
     /**
-     * Show a numeric picker (rotating dial) for selecting a value within a range.
+     * Show a numeric picker for selecting a value within a range.
+     * Respects the user's pickerStyle preference:
+     * - 'linear': Uses vertical linear picker with generated choices
+     * - 'radial' or 'default': Uses rotating dial picker
      */
     private showNumericPicker(config: {
         anchorElement: HTMLElement;
@@ -726,18 +895,48 @@ export class AlphaStrikeCardComponent {
         // Store anchor element for position updates on scroll
         this.pickerAnchorElement = config.anchorElement;
         const position = this.calculatePickerPosition(config.anchorElement, true);
+        const lightTheme = this.cardStyle() === 'colored';
         
-        this.pickerRef = this.pickerFactory.createNumericPicker({
-            min: config.min,
-            max: config.max,
-            threshold: config.threshold,
-            selected: config.selected ?? 0,
-            position,
-            title: config.title,
-            lightTheme: this.cardStyle() === 'colored',
-            onPick: config.onPick,
-            onCancel: config.onCancel
-        });
+        // Check user's picker style preference
+        const pickerStyle = this.optionsService.options().pickerStyle;
+        
+        if (pickerStyle === 'linear') {
+            // Convert numeric range to choices for linear picker (vertical mode)
+            const choices: PickerChoice[] = [];
+            for (let i = config.min; i <= config.max; i++) {
+                choices.push({ 
+                    label: i > 0 ? `+${i}` : String(i), 
+                    value: i 
+                });
+            }
+            
+            this.pickerRef = this.pickerFactory.createLinearPicker({
+                values: choices,
+                selected: config.selected ?? 0,
+                position,
+                title: config.title,
+                lightTheme,
+                horizontal: false, // Vertical mode as requested
+                align: 'center',
+                onPick: (choice: PickerChoice) => {
+                    config.onPick({ value: choice.value as number });
+                },
+                onCancel: config.onCancel
+            });
+        } else {
+            // Use rotating dial picker (default or radial)
+            this.pickerRef = this.pickerFactory.createNumericPicker({
+                min: config.min,
+                max: config.max,
+                threshold: config.threshold,
+                selected: config.selected ?? 0,
+                position,
+                title: config.title,
+                lightTheme,
+                onPick: config.onPick,
+                onCancel: config.onCancel
+            });
+        }
     }
     
     /**

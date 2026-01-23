@@ -62,4 +62,5 @@ export interface Options {
     unitSearchExpandedViewLayout: 'panel-list-filters' | 'filters-list-panel';
     ASUseAutomations: boolean;
     ASVehiclesCriticalHitTable: 'default' | 'scouringSands';
+    ASUnifiedDamagePicker: boolean;
 }

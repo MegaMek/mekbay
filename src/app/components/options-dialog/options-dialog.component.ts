@@ -198,6 +198,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('ASPrintPageBreakOnGroups', value);
     }
 
+    onASUnifiedDamagePickerChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('ASUnifiedDamagePicker', value);
+    }
+
     onASUseAutomationsChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('ASUseAutomations', value);

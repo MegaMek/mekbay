@@ -64,6 +64,7 @@ const DEFAULT_OPTIONS: Options = {
     ASPrintPageBreakOnGroups: true,
     ASUseAutomations: true,
     ASVehiclesCriticalHitTable: 'default',
+    ASUnifiedDamagePicker: true,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -90,6 +91,7 @@ export class OptionsService {
         unitSearchExpandedViewLayout: DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
         ASVehiclesCriticalHitTable: DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
         ASUseAutomations: DEFAULT_OPTIONS.ASUseAutomations,
+        ASUnifiedDamagePicker: DEFAULT_OPTIONS.ASUnifiedDamagePicker,
     });
 
     constructor() {
@@ -120,6 +122,7 @@ export class OptionsService {
             unitSearchExpandedViewLayout: saved?.unitSearchExpandedViewLayout ?? DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
             ASVehiclesCriticalHitTable: saved?.ASVehiclesCriticalHitTable ?? DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
             ASUseAutomations: saved?.ASUseAutomations ?? DEFAULT_OPTIONS.ASUseAutomations,
+            ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,
         });
     }
 

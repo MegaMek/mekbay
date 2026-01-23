@@ -305,6 +305,32 @@ export class ASForceUnit extends ForceUnit {
     }
 
     /**
+     * Set pending armor damage directly.
+     * @param damage Armor damage delta (positive = damage, negative = heal)
+     */
+    setPendingArmorDamage(damage: number): void {
+        const maxArmor = this.unit.as.Arm;
+        const committed = this.state.armor();
+        // Clamp to valid range: can't heal more than committed, can't damage beyond max
+        const clamped = Math.max(-committed, Math.min(maxArmor - committed, damage));
+        this.state.pendingArmor.set(clamped);
+        this.force.emitChanged();
+    }
+
+    /**
+     * Set pending structure damage directly.
+     * @param damage Structure damage delta (positive = damage, negative = heal)
+     */
+    setPendingStructureDamage(damage: number): void {
+        const maxInternal = this.unit.as.Str;
+        const committed = this.state.internal();
+        // Clamp to valid range: can't heal more than committed, can't damage beyond max
+        const clamped = Math.max(-committed, Math.min(maxInternal - committed, damage));
+        this.state.pendingInternal.set(clamped);
+        this.force.emitChanged();
+    }
+
+    /**
      * Commit all pending changes.
      */
     commitPending(): void {

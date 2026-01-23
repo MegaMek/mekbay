@@ -171,6 +171,20 @@
                     <option value="true">Hexes</option>
                 </select>
             </div>
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="ASUnifiedDamagePicker">Unified damage picker:</label>
+                    <select id="ASUnifiedDamagePicker" class="bt-select" [value]="optionsService.options().ASUnifiedDamagePicker"
+                        (change)="onASUnifiedDamagePickerChange($event)">
+                        <option value="true">Enabled (default)</option>
+                        <option value="false">Disabled</option>
+                    </select>
+                </div>
+                <div class="description">
+                    <p>When enabled: damage is automatically assigned in the order armor->structure.</p>
+                    <p>When disabled: damage must be assigned manually to either armor or structure.</p>
+                </div>
+            </div>
             <div class="option-section-title">Printing</div>
             <div class="option-row">
                 <label for="ASPrintPageBreakOnGroups">Split groups in pages:</label>
