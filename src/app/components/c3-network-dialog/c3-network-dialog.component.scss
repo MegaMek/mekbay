@@ -14,700 +14,704 @@
  */
 
 :host {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 0;
-  background: var(--background-color);
-  --valid-highlight-color: rgb(242, 242, 255);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+    background: var(--background-color);
+    --valid-highlight-color: rgb(242, 242, 255);
 }
 
 .c3-dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 8px 8px 16px;
-  background-color: var(--background-color-menu);
-  border-bottom: 2px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 8px 8px 16px;
+    background-color: var(--background-color-menu);
+    border-bottom: 2px solid var(--border-color);
 
-  h2 {
-    margin: 0;
-    font-size: 1.25rem;
-    font-weight: 500;
-    color: var(--text-primary, #fff);
-  }
+    h2 {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 500;
+        color: var(--text-primary, #fff);
+    }
 }
 
 .c3-dialog-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .connections-layer-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
-  line-height: 1;
-  min-width: 40px;
-
-  .icon {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
-  }
+    padding: 8px;
+    line-height: 1;
+    min-width: 40px;
 
-  svg {
-    display: block;
-  }
+    .icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    svg {
+        display: block;
+    }
 }
 
 .c3-dialog-content {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-  position: relative;
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
 }
 
 // ==================== SVG Canvas ====================
 
 .svg-canvas {
-  flex: 1;
-  cursor: grab;
-  touch-action: none;
-  background: var(--background-color);
+    flex: 1;
+    cursor: grab;
+    touch-action: none;
+    background: var(--background-color);
 
-  &:active {
-    cursor: grabbing;
-  }
+    &:active {
+        cursor: grabbing;
+    }
 }
 
 // ==================== Node Styles ====================
 
 .node-group {
-  cursor: move;
-  transition: opacity 0.2s;
+    cursor: move;
+    transition: opacity 0.2s;
 
-  &.dragging {
+    &.dragging {
 
-    .node-bg {
-      filter: url(#node-drag-shadow);
-    }
-  }
-
-  &.valid-target {
-    .node-bg {
-      stroke: var(--valid-highlight-color) !important;
-      filter: url(#node-valid-glow);
+        .node-bg {
+            filter: url(#node-drag-shadow);
+        }
     }
 
-    .node-glow {
-      stroke: var(--valid-highlight-color) !important;
-      opacity: 0.8;
-    }
-  }
+    &.valid-target {
+        .node-bg {
+            stroke: var(--valid-highlight-color) !important;
+            filter: url(#node-valid-glow);
+        }
 
-  &.disconnect-target {
-    .node-bg {
-      stroke: var(--danger) !important;
-      filter: url(#node-valid-glow-danger);
+        .node-glow {
+            stroke: var(--valid-highlight-color) !important;
+            opacity: 0.8;
+        }
     }
 
-    .node-glow {
-      stroke: var(--danger) !important;
-      opacity: 0.8;
-    }
-  }
+    &.disconnect-target {
+        .node-bg {
+            stroke: var(--danger) !important;
+            filter: url(#node-valid-glow-danger);
+        }
 
-  &.invalid-target {
-    opacity: 0.4;
-  }
-
-  &.hovered {
-    .node-bg {
-      filter: url(#node-hover-glow);
+        .node-glow {
+            stroke: var(--danger) !important;
+            opacity: 0.8;
+        }
     }
-  }
 
-  &.hovered-disconnect {
-    .node-bg {
-      filter: url(#node-hover-glow-danger);
+    &.invalid-target {
+        opacity: 0.4;
     }
-  }
 
-  &.disconnected {
-    .node-inner-ring {
-      stroke-dasharray: 4, 4;
+    &.hovered {
+        .node-bg {
+            filter: url(#node-hover-glow);
+        }
     }
-  }
+
+    &.hovered-disconnect {
+        .node-bg {
+            filter: url(#node-hover-glow-danger);
+        }
+    }
+
+    &.disconnected {
+        .node-inner-ring {
+            stroke-dasharray: 4, 4;
+        }
+    }
 }
 
 .node-glow {
-  fill: none;
-  stroke-width: 2;
-  opacity: 0.3;
-  filter: url(#glow-blur);
+    fill: none;
+    stroke-width: 2;
+    opacity: 0.3;
+    filter: url(#glow-blur);
 }
 
 .node-bg {
-  fill: #2a2a2a;
-  fill: url(#node-bg-gradient);
-  stroke-width: 3;
-  transition: filter 0.2s, stroke 0.2s;
+    fill: #2a2a2a;
+    fill: url(#node-bg-gradient);
+    stroke-width: 3;
+    transition: filter 0.2s, stroke 0.2s;
 }
 
 .node-border-segment {
-  fill: none;
-  stroke-width: 3;
-  stroke-linecap: butt;
-  transition: filter 0.2s;
+    fill: none;
+    stroke-width: 3;
+    stroke-linecap: butt;
+    transition: filter 0.2s;
 }
 
 .node-inner-ring {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.08);
-  stroke-width: 1;
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.08);
+    stroke-width: 1;
 }
 
 .node-label {
-  color: var(--text-primary);
-  line-height: 1.25;
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  text-shadow: 0px 0px 2px #000, 0px 0px 4px #000a;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-
-  .unit-model,
-  .unit-chassis,
-  .unit-alias {
-    width: 95%;
+    color: var(--text-primary);
+    line-height: 1.25;
+    text-align: center;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .unit-model {
-    color: var(--text-color-secondary);
-    width: 72%;
-    font-size: 0.8em;
-  }
-
-  .unit-chassis {
-    font-size: 0.9em;
-    white-space: normal;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     -webkit-box-orient: vertical;
-    font-weight: 700;
-  }
+    text-shadow: 0px 0px 2px #000, 0px 0px 4px #000a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 
-  .unit-alias {
-    font-size: 0.9em;
-  }
+    .unit-model,
+    .unit-chassis,
+    .unit-alias {
+        width: 95%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .unit-model {
+        color: var(--text-color-secondary);
+        width: 72%;
+        font-size: 0.8em;
+    }
+
+    .unit-chassis {
+        font-size: 0.9em;
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        font-weight: 700;
+    }
+
+    .unit-alias {
+        font-size: 0.9em;
+    }
 }
 
 .node-icon-container {
-  pointer-events: none;
-  overflow: visible;
-  opacity: 0.7;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+    pointer-events: none;
+    overflow: visible;
+    opacity: 0.7;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
 }
 
 // ==================== Pin Styles ====================
 
 .pin-container {
 
-  .pin {
-    pointer-events: all;
-    cursor: pointer;
-    transition: opacity 0.2s;
+    .pin {
+        pointer-events: all;
+        cursor: pointer;
+        transition: opacity 0.2s;
 
-    .pin-ring {
-      fill: none;
-      stroke-width: 1.5;
-      opacity: 0.4;
-      transition: opacity 0.2s, transform 0.15s;
+        .pin-ring {
+            fill: none;
+            stroke-width: 1.5;
+            opacity: 0.4;
+            transition: opacity 0.2s, transform 0.15s;
+        }
+
+        .pin-connector {
+            stroke-width: 2.5;
+            transition: transform 0.15s ease-out, filter 0.2s;
+        }
+
+        &:hover {
+            .pin-connector {
+                transform: scale(1.2);
+            }
+
+            .pin-ring {
+                opacity: 0.7;
+                transform: scale(1.1);
+            }
+        }
     }
-
-    .pin-connector {
-      stroke-width: 2.5;
-      transition: transform 0.15s ease-out, filter 0.2s;
-    }
-
-    &:hover {
-      .pin-connector {
-        transform: scale(1.2);
-      }
-
-      .pin-ring {
-        opacity: 0.7;
-        transform: scale(1.1);
-      }
-    }
-  }
 }
 
 // Read-only mode: disable pin interactions
 :host(.read-only) {
-  .pin-container .pin {
-    cursor: default;
-    pointer-events: none;
+    .pin-container .pin {
+        cursor: default;
+        pointer-events: none;
 
-    &:hover {
-      .pin-connector {
-        transform: none;
-      }
+        &:hover {
+            .pin-connector {
+                transform: none;
+            }
 
-      .pin-ring {
-        opacity: 0.4;
-        transform: none;
-      }
+            .pin-ring {
+                opacity: 0.4;
+                transform: none;
+            }
+        }
     }
-  }
 }
 
 .pin-container {
-  .pin-role-label {
-    font-size: 12px;
-    font-weight: 700;
-    fill: var(--text-primary, #fff);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .pin-type-label {
-    font-size: 10px;
-    font-weight: 500;
-    fill: var(--text-color-secondary, #666);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-  }
-
-  &.master,
-  &.slave,
-  &.peer {
     .pin-role-label {
-      fill: var(--text-color);
-    }
-  }
-
-  // Connected pin
-  &.connected {
-    .pin-ring {
-      opacity: 0.6;
-    }
-  }
-
-  // Valid target pin during drag
-  &.valid-pin-target {
-    .pin-connector {
-      stroke: var(--valid-highlight-color) !important;
-      filter: url(#pin-valid-glow);
+        font-size: 12px;
+        font-weight: 700;
+        fill: var(--text-primary, #fff);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
 
-    .pin-ring {
-      stroke: var(--valid-highlight-color) !important;
-      opacity: 0.8;
-    }
-  }
-
-  // Disconnect target pin during drag (already connected)
-  &.disconnect-pin-target {
-    .pin-connector {
-      stroke: var(--danger) !important;
-      filter: url(#pin-valid-glow-danger);
+    .pin-type-label {
+        font-size: 10px;
+        font-weight: 500;
+        fill: var(--text-color-secondary, #666);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
     }
 
-    .pin-ring {
-      stroke: var(--danger) !important;
-      opacity: 0.8;
-    }
-  }
-
-  // Invalid target pin during drag
-  &.invalid-pin-target:not(.connectingFromPin) {
-    opacity: 0.25;
-  }
-
-  // Hovered pin during drag
-  .pin {
-    &.hovered-pin {
-      .pin-connector {
-        transform: scale(1.4);
-        filter: url(#pin-hover-glow);
-      }
-
-      .pin-ring {
-        transform: scale(1.2);
-        opacity: 1;
-      }
+    &.master,
+    &.slave,
+    &.peer {
+        .pin-role-label {
+            fill: var(--text-color);
+        }
     }
 
-    &.hovered-disconnect-pin {
-      .pin-connector {
-        transform: scale(1.4);
-        filter: url(#pin-hover-glow-danger);
-        stroke: var(--danger) !important;
-      }
-
-      .pin-ring {
-        transform: scale(1.2);
-        opacity: 1;
-        stroke: var(--danger) !important;
-      }
+    // Connected pin
+    &.connected {
+        .pin-ring {
+            opacity: 0.6;
+        }
     }
 
-    &.disabled {
-      cursor: not-allowed;
-
-      &:hover {
+    // Valid target pin during drag
+    &.valid-pin-target {
         .pin-connector {
-          transform: none;
+            stroke: var(--valid-highlight-color) !important;
+            filter: url(#pin-valid-glow);
         }
 
         .pin-ring {
-          transform: none;
-          opacity: 0.4;
+            stroke: var(--valid-highlight-color) !important;
+            opacity: 0.8;
         }
-      }
-    }
-  }
-
-  // Source pin (being dragged from)
-  &.connectingFromPin {
-    .pin-connector {
-      transform: scale(1.25);
-      filter: url(#pin-active-glow);
     }
 
-    .pin-ring {
-      opacity: 0.8;
-    }
-  }
+    // Disconnect target pin during drag (already connected)
+    &.disconnect-pin-target {
+        .pin-connector {
+            stroke: var(--danger) !important;
+            filter: url(#pin-valid-glow-danger);
+        }
 
-  // Disabled pin (mutual exclusion)
-  &.disabled {
-    opacity: 0.35;
-
-    .pin-role-label,
-    .pin-type-label {
-      fill: #555;
+        .pin-ring {
+            stroke: var(--danger) !important;
+            opacity: 0.8;
+        }
     }
-  }
+
+    // Invalid target pin during drag
+    &.invalid-pin-target:not(.connectingFromPin) {
+        opacity: 0.25;
+    }
+
+    // Hovered pin during drag
+    .pin {
+        &.hovered-pin {
+            .pin-connector {
+                transform: scale(1.4);
+                filter: url(#pin-hover-glow);
+            }
+
+            .pin-ring {
+                transform: scale(1.2);
+                opacity: 1;
+            }
+        }
+
+        &.hovered-disconnect-pin {
+            .pin-connector {
+                transform: scale(1.4);
+                filter: url(#pin-hover-glow-danger);
+                stroke: var(--danger) !important;
+            }
+
+            .pin-ring {
+                transform: scale(1.2);
+                opacity: 1;
+                stroke: var(--danger) !important;
+            }
+        }
+
+        &.disabled {
+            cursor: not-allowed;
+
+            &:hover {
+                .pin-connector {
+                    transform: none;
+                }
+
+                .pin-ring {
+                    transform: none;
+                    opacity: 0.4;
+                }
+            }
+        }
+    }
+
+    // Source pin (being dragged from)
+    &.connectingFromPin {
+        .pin-connector {
+            transform: scale(1.25);
+            filter: url(#pin-active-glow);
+        }
+
+        .pin-ring {
+            opacity: 0.8;
+        }
+    }
+
+    // Disabled pin (mutual exclusion)
+    &.disabled {
+        opacity: 0.35;
+
+        .pin-role-label,
+        .pin-type-label {
+            fill: #555;
+        }
+    }
 }
 
 // ==================== Connection Lines ====================
 
 .connections-layer {
-  pointer-events: none;
+    pointer-events: none;
 
-  line {
-    stroke-linecap: round;
-  }
+    line {
+        stroke-linecap: round;
+    }
 }
 
 .animated-line {
-  stroke-dasharray: 6, 4;
-  animation: dash-animation 0.3s linear infinite;
+    stroke-dasharray: 6, 4;
+    animation: dash-animation 0.3s linear infinite;
 }
 
 .animated-line-big {
-  stroke-dasharray: 10, 8;
-  animation: dash-animation-big 0.3s linear infinite;
+    stroke-dasharray: 10, 8;
+    animation: dash-animation-big 0.3s linear infinite;
 }
 
 @keyframes dash-animation {
-  to {
+    to {
     stroke-dashoffset: -10;
-  }
+    }
 }
 
 @keyframes dash-animation-big {
-  to {
+    to {
     stroke-dashoffset: -18;
-  }
+    }
 }
 
 // ==================== Sidebar ====================
 
 .networks-sidebar {
-  width: 300px;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--background-color-menu);
-  overflow: hidden;
+    width: 300px;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--background-color-menu);
+    overflow: hidden;
 
-  &.overlay {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 100%;
-    max-width: 300px;
-    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.5);
-    z-index: 200;
-  }
+    &.overlay {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+        max-width: 300px;
+        box-shadow: -2px 0 8px rgba(0, 0, 0, 0.5);
+        z-index: 200;
+    }
 
-  &.animate {
-    transition: transform 0.2s ease-in-out;
-  }
+    &.animate {
+        transition: transform 0.2s ease-in-out;
+    }
 
-  &.hidden {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    transform: translateX(100%);
-    z-index: 100;
-  }
+    &.hidden {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        transform: translateX(100%);
+        z-index: 100;
+    }
 }
 
 .sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 8px 8px 16px;
-  border-bottom: 1px solid var(--border-color, #444);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 8px 8px 16px;
+    border-bottom: 1px solid var(--border-color, #444);
 
-  h3 {
-    margin: 0;
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: var(--text-primary, #fff);
-  }
+    h3 {
+        margin: 0;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: var(--text-primary, #fff);
+    }
 
-  .bv-toggle {
-    font-weight: 700;
-    font-size: 1rem;
-  }
+    .bv-toggle {
+        font-weight: 700;
+        font-size: 1rem;
+    }
 }
 
 .networks-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
 }
 
 .network-item {
-  background: var(--network-item-bg, #2a2a2a);
-  border: 1px solid var(--network-color, var(--border-color, #444));
-  border-left: 4px solid var(--network-color, var(--border-color, #444));
-  padding: 8px;
-  margin-bottom: 8px;
+    background: var(--network-item-bg, #2a2a2a);
+    border: 1px solid var(--network-color, var(--border-color, #444));
+    border-left: 4px solid var(--network-color, var(--border-color, #444));
+    padding: 8px;
+    margin-bottom: 8px;
 
-  &.sub-network {
-    position: relative;
-    background: rgba(0, 0, 0, 0.2);
-    margin-top: 0px;
-    margin-bottom: 4px;
-    padding: 6px 8px;
+    &.sub-network {
+        position: relative;
+        background: rgba(0, 0, 0, 0.2);
+        margin-top: 0px;
+        margin-bottom: 4px;
+        padding: 6px 8px;
 
-    .network-header {
-      margin-bottom: 6px;
+        .network-header {
+            margin-bottom: 6px;
+        }
+
+        .network-type {
+            font-size: 0.7rem;
+        }
     }
-
-    .network-type {
-      font-size: 0.7rem;
-    }
-  }
 }
 
 .subnetwork-arrow {
-  position: absolute;
-  top: -14px;
-  left: 8px;
-  color: var(--network-color);
+    position: absolute;
+    top: -14px;
+    left: 8px;
+    color: var(--network-color);
 }
 
 .network-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
 
-  .network-type {
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--text-primary, #fff);
-    flex: 1;
-  }
+    .network-type {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--text-primary, #fff);
+        flex: 1;
+    }
 }
 
 .network-units {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-
-  .network-unit-item {
     display: flex;
     flex-direction: column;
     gap: 4px;
 
-    .row {
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      justify-content: space-between;
-      gap: 4px;
-    }
-  }
+    .network-unit-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
 
-  .network-unit {
-    font-size: 0.7rem;
-    color: var(--text-secondary, #aaa);
-    background: var(--tag-bg, #333);
-    padding: 3px 8px;
-    flex: 1;
-    min-width: 0; // Allow flex item to shrink below content size
-
-    .member-label {
-      display: block;
-      min-width: 0; // Allow flex item to shrink below content size
-      overflow: hidden;
+        .row {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            gap: 4px;
+        }
     }
 
-    .name {
-      display: block;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
+    .network-unit {
+        font-size: 0.7rem;
+        color: var(--text-secondary, #aaa);
+        background: var(--tag-bg, #333);
+        padding: 3px 8px;
+        flex: 1;
+        min-width: 0; // Allow flex item to shrink below content size
 
-    .internal-connection-badge {
-      flex: none;
-      padding: 0px 6px;
-      border: 1px solid currentColor;
-      font-size: 0.72em;
-      line-height: 1.4;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-    }
+        .member-label {
+            display: block;
+            min-width: 0; // Allow flex item to shrink below content size
+            overflow: hidden;
+        }
 
-    &.master {
-      color: var(--text-primary, #fff);
-      font-weight: 500;
+        .name {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .internal-connection-badge {
+            flex: none;
+            padding: 0px 6px;
+            border: 1px solid currentColor;
+            font-size: 0.72em;
+            line-height: 1.4;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        &.master {
+            color: var(--text-primary, #fff);
+            font-weight: 500;
+        }
     }
-  }
 }
 
 
 
 .remove-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  transition: color 0.2s;
-  flex-shrink: 0;
-  width: 12px;
-  padding: 0;
-  margin: 0;
-
-  svg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    transition: color 0.2s;
+    flex-shrink: 0;
     width: 12px;
-    height: 12px;
-  }
+    padding: 0;
+    margin: 0;
 
-  &:hover {
-    color: red;
-  }
+    svg {
+        width: 12px;
+        height: 12px;
+    }
+
+    &:hover {
+        color: red;
+    }
 }
 
 .no-networks {
-  text-align: center;
-  color: var(--text-secondary, #888);
-  font-size: 0.8rem;
-  padding: 20px;
-  line-height: 1.6;
+    text-align: center;
+    color: var(--text-secondary, #888);
+    font-size: 0.8rem;
+    padding: 20px;
+    line-height: 1.6;
 }
 
 // ==================== BV Details ====================
 
 .network-tax {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 1px 6px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--bt-yellow);
-  background: rgba(255, 193, 7, 0.15);
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--bt-yellow);
+    background: rgba(255, 193, 7, 0.15);
 }
 
 .member-bv-details {
-  display: flex;
-  gap: 4px;
-  padding: 2px 8px;
-  font-size: 0.65rem;
-  color: var(--text-color-secondary);
-  background: rgba(0, 0, 0, 0.2);
-  margin-top: -4px;
+    display: flex;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 0.65rem;
+    color: var(--text-color-secondary);
+    background: rgba(0, 0, 0, 0.2);
+    margin-top: -4px;
 
-  .tax {
-    color: var(--bt-yellow);
-  }
+    .tax {
+        color: var(--bt-yellow);
+    }
 
-  .total {
-    color: var(--text-color);
-    font-weight: 500;
-  }
+    .total {
+        color: var(--text-color);
+        font-weight: 500;
+    }
 }
 
 .bv-totals {
-  margin-top: 12px;
-  padding: 10px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--border-color);
+    margin-top: 12px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
 
-  .bv-totals-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 4px 0;
-    font-size: 0.75rem;
-    color: var(--text-color-secondary);
+    .bv-totals-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        font-size: 0.75rem;
+        color: var(--text-color-secondary);
 
-    .bv-value {
-      font-weight: 500;
-      color: var(--text-color);
+        .bv-value {
+            font-weight: 500;
+            color: var(--text-color);
 
-      &.tax {
-        color: var(--bt-yellow);
-      }
+            &.tax {
+                color: var(--bt-yellow);
+            }
+        }
+
+        &.grand-total {
+            border-top: 1px solid var(--border-color);
+            margin-top: 4px;
+            padding-top: 8px;
+            font-weight: 600;
+            color: var(--text-color);
+
+            .bv-value {
+                font-size: 0.85rem;
+            }
+        }
     }
-
-    &.grand-total {
-      border-top: 1px solid var(--border-color);
-      margin-top: 4px;
-      padding-top: 8px;
-      font-weight: 600;
-      color: var(--text-color);
-
-      .bv-value {
-        font-size: 0.85rem;
-      }
-    }
-  }
 }
 
 .clear-all-btn {
-  margin: 8px;
+    margin: 8px;
 }
 
 .c3-dialog-footer {
-  display: flex;
-  justify-content: space-around;
-  padding: 8px;
-  background-color: var(--background-color-menu);
-  border-top: 2px solid var(--border-color);
+    display: flex;
+    justify-content: space-around;
+    padding: 8px;
+    background-color: var(--background-color-menu);
+    border-top: 2px solid var(--border-color);
+}
+
+.node-label-container {
+    overflow: visible;
 }

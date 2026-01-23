@@ -7,15 +7,15 @@
             @for (era of factionAvailability(); let i = $index; let isLastEra = $last; track i) {
                 <div class="era-name">
                     @if (era.eraImg) {
-                        <img [src]="era.eraImg" class="era-icon" />
-                    }
+                            <img [src]="era.eraImg" class="era-icon" alt="{{era.eraName}}" title="{{era.eraName}}" />
+                        }
                     <strong>{{ era.eraName }}:</strong>
                 </div>
                 <div class="faction-list">
                     @for (faction of era.factions; let isLast = $last; track faction.name) {
                         <span class="faction-item">
                             @if (faction.img) {
-                                <img [src]="faction.img" class="faction-icon" [alt]="faction.name" />
+                                <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" title="{{faction.name}}" />
                             }
                             {{ faction.name }}{{ !isLast ? ',&nbsp; ' : '' }}
                         </span>

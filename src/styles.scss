@@ -51,6 +51,21 @@
     --cold-color: #0081FF;
 }
 
+/* Fallback scrollbar styling for WebKit browsers (Safari, older Chrome) */
+::-webkit-scrollbar {
+    width: var(--scrollbar-width);
+    height: var(--scrollbar-width);
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0);
+}
+
+::-webkit-scrollbar-thumb {
+    background: #666;
+    border-radius: 3px;
+}
+
 html {
     touch-action: pan-x pan-y;
     margin: 0;
@@ -144,8 +159,8 @@ hr {
 
 .glass {
     background-color: rgba(45, 45, 45, 0.8);
-    backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
 }
 
 .modal-btn {
