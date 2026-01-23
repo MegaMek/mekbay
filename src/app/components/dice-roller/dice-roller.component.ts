@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, effect, input, output, signal } from '@angular/core';
+import { Component, effect, input, output, signal, DestroyRef, inject } from '@angular/core';
 
 /*
  * Author: Drake
@@ -42,6 +42,7 @@ import { Component, computed, effect, input, output, signal } from '@angular/cor
     styleUrls: ['./dice-roller.component.scss']
 })
 export class DiceRollerComponent {
+    private _endTimer: any = null;
     diceCount = input<number>(2);
     diceSides = input<number>(6);
     modifier = input<number>(0);
@@ -80,6 +81,9 @@ export class DiceRollerComponent {
                 this._clearTimers();
             });
         });
+        inject(DestroyRef).onDestroy(() => {
+            this._clearTimers();
+        });
     }
 
     public roll() {
@@ -106,7 +110,7 @@ export class DiceRollerComponent {
         }, this.animationIntervalMs());
 
         // stop after configured duration
-        setTimeout(() => {
+        this._endTimer = setTimeout(() => {
             if (this._animationTimer) {
                 clearInterval(this._animationTimer);
                 this._animationTimer = null;
@@ -179,6 +183,10 @@ export class DiceRollerComponent {
         if (this._postEndTimer) {
             clearTimeout(this._postEndTimer);
             this._postEndTimer = null;
+        }
+        if (this._endTimer) {
+            clearTimeout(this._endTimer);
+            this._endTimer = null;
         }
     }
 }

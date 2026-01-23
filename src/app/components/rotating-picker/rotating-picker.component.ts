@@ -53,8 +53,8 @@ import { LayoutService } from '../../services/layout.service';
  *   />
  */
 const ROTATING_PICKER_DIAMETER = 120;
-const MIN_ROTATION_STEP_DEGREES = 360 / 12;
-const MAX_ROTATION_STEP_DEGREES = 360 / 48;
+const MIN_360_ROTATION_STEPS = 12;
+const MAX_360_ROTATION_STEPS = 48;
 const ROTATION_LOWER_LIMIT = 50;
 const ROTATION_UPPER_LIMIT = 200;
 const START_ARROW_DEG = 0;
@@ -353,6 +353,8 @@ export class RotatingPickerComponent implements AfterViewInit, NumericPickerComp
     position = input<PickerPosition>({ x: 0, y: 0 });
     lightTheme = input<boolean>(false);
     threshold = input<number | null>(null);
+    stepDegreeRange = input<[number, number]>([MIN_360_ROTATION_STEPS, MAX_360_ROTATION_STEPS]);
+    stepRangeBounds = input<[number, number]>([ROTATION_LOWER_LIMIT, ROTATION_UPPER_LIMIT]);
     initialEvent = signal<PointerEvent | null>(null);
 
     // NumericPickerComponent interface outputs
@@ -365,11 +367,11 @@ export class RotatingPickerComponent implements AfterViewInit, NumericPickerComp
 
     readonly rotationStepDegrees = computed(() => {
         const range = this.max() - this.min();
-        if (range <= ROTATION_LOWER_LIMIT) return MIN_ROTATION_STEP_DEGREES;
-        if (range >= ROTATION_UPPER_LIMIT) return MAX_ROTATION_STEP_DEGREES;
-        const t = (range - ROTATION_LOWER_LIMIT) / (ROTATION_UPPER_LIMIT - ROTATION_LOWER_LIMIT);
+        if (range <= this.stepRangeBounds()[0]) return 360 / this.stepDegreeRange()[0];
+        if (range >= this.stepRangeBounds()[1]) return 360 / this.stepDegreeRange()[1];
+        const t = (range - this.stepRangeBounds()[0]) / (this.stepRangeBounds()[1] - this.stepRangeBounds()[0]);
         // Linear interpolation MIN -> MAX (note MIN > MAX in actual degree values)
-        return MIN_ROTATION_STEP_DEGREES + t * (MAX_ROTATION_STEP_DEGREES - MIN_ROTATION_STEP_DEGREES);
+        return 360 / (this.stepDegreeRange()[0] + t * (this.stepDegreeRange()[1] - this.stepDegreeRange()[0]));
     });
 
     // Computed properties

@@ -44,11 +44,7 @@ import { CardConfig, CardLayoutDesign, CriticalHitsVariant, getLayoutForUnitType
 import { SpecialAbilityState, SpecialAbilityClickEvent } from './layouts/layout-base.component';
 import { CriticalHitRollDialogComponent, CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
 import { MotiveDamageRollDialogComponent, MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
-import {
-    AsLayoutStandardComponent,
-    AsLayoutLargeVessel1Component,
-        AsLayoutLargeVessel2Component,
-} from './layouts';
+import { AsLayoutStandardComponent, AsLayoutLargeVessel1Component, AsLayoutLargeVessel2Component } from './layouts';
 import { REMOTE_HOST } from '../../models/common.model';
 import { ChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
@@ -509,16 +505,26 @@ export class AlphaStrikeCardComponent {
         damageTracks.forEach(track => {
             const trackType = track.getAttribute('data-damage-track');
             
+            const pickerStyle = this.optionsService.options().pickerStyle;
+        
             if (this.optionsService.options().ASUnifiedDamagePicker) {
                 // Unified: any damage track shows combined damage dialog
-                this.addTapHandler(track as HTMLElement, () => {
-                    this.showVesselDamageDialog();
+                this.addTapHandler(track as HTMLElement, (evt) => {
+                    if (pickerStyle === 'linear') {
+                        this.showVesselDamageDialog();
+                    } else {
+                        this.showDamagePicker(evt);
+                    }
                 }, signal);
             } else {
                 // Separate: each track shows its own damage dialog
                 if (trackType === 'armor' || trackType === 'structure') {
-                    this.addTapHandler(track as HTMLElement, () => {
+                    this.addTapHandler(track as HTMLElement, (evt) => {
+                    if (pickerStyle === 'linear') {
                         this.showVesselSingleDamageDialog(trackType);
+                    } else {
+                        this.showSingleDamagePicker(evt, trackType);
+                    }
                     }, signal);
                 }
             }
@@ -568,7 +574,7 @@ export class AlphaStrikeCardComponent {
             title: 'DAMAGE',
             min: -currentTotalDamage,
             max: currentTotal,
-            selected: 0,
+            selected: 1,
             onPick: async (val: NumericPickerResult) => {
                 this.removePicker();
                 const deltaChange = val.value;
@@ -607,7 +613,7 @@ export class AlphaStrikeCardComponent {
             title: isArmor ? 'ARMOR' : 'STRUCTURE',
             min: -currentDamage,
             max: remaining,
-            selected: 0,
+            selected: 1,
             onPick: async (val: NumericPickerResult) => {
                 this.removePicker();
                 const deltaChange = val.value;
@@ -899,7 +905,6 @@ export class AlphaStrikeCardComponent {
         
         // Check user's picker style preference
         const pickerStyle = this.optionsService.options().pickerStyle;
-        
         if (pickerStyle === 'linear') {
             // Convert numeric range to choices for linear picker (vertical mode)
             const choices: PickerChoice[] = [];
@@ -916,7 +921,7 @@ export class AlphaStrikeCardComponent {
                 position,
                 title: config.title,
                 lightTheme,
-                horizontal: false, // Vertical mode as requested
+                horizontal: false,
                 align: 'center',
                 onPick: (choice: PickerChoice) => {
                     config.onPick({ value: choice.value as number });
@@ -929,7 +934,9 @@ export class AlphaStrikeCardComponent {
                 min: config.min,
                 max: config.max,
                 threshold: config.threshold,
-                selected: config.selected ?? 0,
+                stepDegreeRange: [6, 48],
+                stepRangeBounds: [25, 200],
+                selected: config.selected ?? 1,
                 position,
                 title: config.title,
                 lightTheme,

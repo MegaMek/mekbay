@@ -97,6 +97,8 @@ export interface NumericPickerConfig extends BasePickerConfig {
     min: number;
     max: number;
     threshold?: number;
+    stepDegreeRange?: [number, number];
+    stepRangeBounds?: [number, number];
     selected?: number;
     step?: number;
     onPick: (result: NumericPickerResult) => void;
@@ -150,6 +152,13 @@ export class PickerFactoryService {
 
         if (config.initialEvent) {
             instance.initialEvent.set(config.initialEvent);
+        }
+
+        if (config.stepDegreeRange) {
+            compRef.setInput('stepDegreeRange', config.stepDegreeRange);
+        }
+        if (config.stepRangeBounds) {
+            compRef.setInput('stepRangeBounds', config.stepRangeBounds);
         }
 
         // Subscribe to events
