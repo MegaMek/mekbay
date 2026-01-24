@@ -215,13 +215,15 @@
     }
 }
 
-.node-icon-container {
+.node-icon {
     pointer-events: none;
-    overflow: visible;
     opacity: 0.7;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+    filter: url(#icon-shadow);
 }
 
+.node-label-container {
+    overflow: visible;
+}
 // ==================== Pin Styles ====================
 
 .pin-container {
@@ -710,8 +712,4 @@
     padding: 8px;
     background-color: var(--background-color-menu);
     border-top: 2px solid var(--border-color);
-}
-
-.node-label-container {
-    overflow: visible;
 }

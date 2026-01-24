@@ -1239,9 +1239,7 @@ export class UnitSearchFiltersService {
             totalRanges: this.totalRangesCache,
             gameSystem: this.gameService.currentGameSystem(),
             matchesText: (unit: Unit, text: string) => {
-                const chassis = (unit._chassis ?? unit.chassis ?? '') as string;
-                const model = (unit._model ?? unit.model ?? '') as string;
-                const searchableText = `${chassis} ${model}`;
+                const searchableText = unit._searchKey || `${unit.chassis ?? ''} ${unit.model ?? ''}`.toLowerCase();
                 const tokens = parseSearchQuery(text);
                 return matchesSearch(searchableText, tokens, true);
             },
@@ -1288,8 +1286,8 @@ export class UnitSearchFiltersService {
             relevanceScores = new WeakMap<Unit, number>();
             
             for (const u of sorted) {
-                const chassis = (u._chassis ?? u.chassis ?? '') as string;
-                const model = (u._model ?? u.model ?? '') as string;
+                const chassis = (u.chassis ?? '').toLowerCase();
+                const model = (u.model ?? '').toLowerCase();
                 
                 if (isComplex) {
                     // For complex queries (OR, nested brackets), get the matching text for this unit

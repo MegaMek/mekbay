@@ -50,19 +50,13 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceUnit } from '../../models/force-unit.model';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { C3NetworkUtil, C3NetworkContext } from '../../utils/c3-network.util';
-import {
-    C3Component,
-    C3NetworkType,
-    C3Node,
-    C3Role,
-    C3_NETWORK_COLORS
-} from '../../models/c3-network.model';
+import { C3NetworkType, C3Node, C3Role } from '../../models/c3-network.model';
 import { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { GameSystem } from '../../models/common.model';
 import { ToastService } from '../../services/toast.service';
 import { OptionsService } from '../../services/options.service';
 import { LayoutService } from '../../services/layout.service';
-import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { SpriteStorageService } from '../../services/sprite-storage.service';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
@@ -144,7 +138,7 @@ interface Vec2 {
 @Component({
     selector: 'c3-network-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [NgTemplateOutlet, UnitIconComponent],
+    imports: [NgTemplateOutlet],
     host: {
         class: 'fullscreen-dialog-host tv-fade',
         '[class.read-only]': 'data.readOnly'
@@ -159,6 +153,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private destroyRef = inject(DestroyRef);
     private optionsService = inject(OptionsService);
     protected layoutService = inject(LayoutService);
+    private spriteService = inject(SpriteStorageService);
     private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
 
     protected readonly NODE_RADIUS = 170;
@@ -222,6 +217,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     // Color tracking
     private masterPinColors = new Map<string, string>();
+
+    // Extracted icon data URLs (small, cached, Safari compatible)
+    protected nodeIconUrls = signal<Map<string, string>>(new Map());
+    protected readonly FALLBACK_ICON = '/images/unknown.png';
 
     constructor() {
         this.destroyRef.onDestroy(() => this.cleanupGlobalPointerState());
@@ -945,6 +944,30 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 pinOffsetsX: Array.from({ length: numPins }, (_, i) => -totalWidth / 2 + i * this.PIN_GAP)
             };
         }));
+
+        // Extract icons async (cached in sprite service, only runs once per unique icon)
+        this.loadNodeIcons(c3Units);
+    }
+
+    /**
+     * Load extracted icon data URLs for all nodes.
+     * Uses sprite service caching
+     */
+    private async loadNodeIcons(units: ForceUnit[]): Promise<void> {
+        const urlMap = new Map<string, string>();
+
+        // Extract all icons in parallel
+        await Promise.all(units.map(async (unit) => {
+            const iconPath = unit.getUnit().icon;
+            if (!iconPath) return;
+
+            const url = await this.spriteService.getExtractedIconUrl(iconPath);
+            if (url) {
+                urlMap.set(unit.id, url);
+            }
+        }));
+
+        this.nodeIconUrls.set(urlMap);
     }
 
     private fitViewToNodes(): void {

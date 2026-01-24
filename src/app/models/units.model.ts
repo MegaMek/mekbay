@@ -216,8 +216,7 @@ export interface Unit {
     },
     sheets: string[];
     as: AlphaStrikeUnitStats;
-    _chassis?: string; // For pre-compiled search
-    _model?: string; // For pre-compiled search
+    _searchKey: string; // Pre-compiled lowercase search key: "chassis model"
     _displayType: string;
     _maxRange: number; // Max range of any weapon on this unit
     _dissipationEfficiency: number; // Dissipation - Heat

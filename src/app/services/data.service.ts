@@ -116,8 +116,8 @@ export type BroadcastPayload = {
 })
 export class DataService {
     private logger = inject(LoggerService);
-    private dialogsService = inject(DialogsService);
     private broadcast?: BroadcastChannel;
+    private broadcastHandler?: (ev: MessageEvent) => void;
     private injector = inject(Injector);
     private http = inject(HttpClient);
     private dbService = inject(DbService);
@@ -136,7 +136,6 @@ export class DataService {
     private eraNameMap = new Map<string, Era>();
     private eraIdMap = new Map<number, Era>();
     private factionNameMap = new Map<string, Faction>();
-    public filterIndexes: Record<string, Map<string | number, Set<number>>> = {};
     private unitTypeMaxStats: UnitTypeMaxStats = {};
     private quirksMap = new Map<string, Quirk>();
     private sourcebooksMap = new Map<string, Sourcebook>();
@@ -322,11 +321,14 @@ export class DataService {
         try {
             if (typeof BroadcastChannel !== 'undefined') {
                 this.broadcast = new BroadcastChannel('mekbay-updates');
-
-                this.broadcast.addEventListener('message', (ev) => {
+                this.broadcastHandler = (ev: MessageEvent) => {
                     void this.handleStoreUpdate(ev.data as any);
-                });
+                };
+                this.broadcast.addEventListener('message', this.broadcastHandler);
                 inject(DestroyRef).onDestroy(() => {
+                    if (this.broadcast && this.broadcastHandler) {
+                        this.broadcast.removeEventListener('message', this.broadcastHandler);
+                    }
                     this.broadcast?.close();
                 });
             };
@@ -358,8 +360,13 @@ export class DataService {
                 document.removeEventListener('visibilitychange', onVisibility);
                 window.removeEventListener('online', onOnline);
                 this.broadcast?.close();
+                // Clear pending debounced saves and reject their promises to prevent memory leaks
                 for (const [, entry] of this.saveForceCloudDebounce) {
                     clearTimeout(entry.timeout);
+                    // Reject pending promises to notify callers
+                    for (const { reject } of entry.resolvers) {
+                        reject(new Error('Service destroyed'));
+                    }
                 }
                 this.saveForceCloudDebounce.clear();
             });
@@ -539,51 +546,40 @@ export class DataService {
     }
 
     private buildFilterIndexes(units: Unit[]) {
-        this.filterIndexes = {};
-        // Get all dropdown filters except the external ones
-        const filtersToIndex = ADVANCED_FILTERS.filter(f => f.type === AdvFilterType.DROPDOWN && f.external !== true);
-
-        for (const filter of filtersToIndex) {
-            const index = new Map<string, Set<number>>();
-            for (const unit of units) {
-                const key = (unit as any)[filter.key];
-                if (key !== undefined && key !== null && key !== '') {
-                    if (!index.has(key)) {
-                        index.set(key, new Set());
-                    }
-                    index.get(key)!.add(unit.id);
-                }
-            }
-            this.filterIndexes[filter.key] = index;
-        }
-
         const statsByType: {
             [type: string]: {
-                armor: number[],
-                internal: number[],
-                heat: number[],
-                dissipation: number[],
-                dissipationEfficiency: number[],
-                runMP: number[],
-                run2MP: number[],
-                jumpMP: number[],
-                umuMP: number[],
-                alphaNoPhysical: number[],
-                alphaNoPhysicalNoOneshots: number[],
-                maxRange: number[],
-                dpt: number[],
+                armor: [number, number],
+                internal: [number, number],
+                heat: [number, number],
+                dissipation: [number, number],
+                dissipationEfficiency: [number, number],
+                runMP: [number, number],
+                run2MP: [number, number],
+                jumpMP: [number, number],
+                umuMP: [number, number],
+                alphaNoPhysical: [number, number],
+                alphaNoPhysicalNoOneshots: [number, number],
+                maxRange: [number, number],
+                dpt: [number, number],
                 // Capital ships
-                dropshipCapacity: number[],
-                escapePods: number[],
-                lifeBoats: number[],
-                sailIntegrity: number[],
-                kfIntegrity: number[],
+                dropshipCapacity: [number, number],
+                escapePods: [number, number],
+                lifeBoats: [number, number],
+                sailIntegrity: [number, number],
+                kfIntegrity: [number, number],
             }
         } = {};
+        
+        const updateMinMax = (minMax: [number, number], value: number): void => {
+            if (value < minMax[0]) minMax[0] = value;
+            if (value > minMax[1]) minMax[1] = value;
+        };
 
         for (const unit of units) {
-            unit._chassis = DataService.removeAccents(unit.chassis?.toLowerCase() || '');
-            unit._model = DataService.removeAccents(unit.model?.toLowerCase() || '');
+            // Combine chassis + model into single search key to save memory
+            const chassis = DataService.removeAccents(unit.chassis?.toLowerCase() || '');
+            const model = DataService.removeAccents(unit.model?.toLowerCase() || '');
+            unit._searchKey = `${chassis} ${model}`;
             unit._displayType = this.formatUnitType(unit.type);
             unit._mdSumNoPhysical = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp) : 0;
             unit._mdSumNoPhysicalNoOneshots = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp, true) : 0;
@@ -627,108 +623,78 @@ export class DataService {
             const t = unit.type;
             if (!statsByType[t]) {
                 statsByType[t] = {
-                    armor: [],
-                    internal: [],
-                    heat: [],
-                    dissipation: [],
-                    dissipationEfficiency: [],
-                    runMP: [],
-                    run2MP: [],
-                    jumpMP: [],
-                    umuMP: [],
-                    alphaNoPhysical: [],
-                    alphaNoPhysicalNoOneshots: [],
-                    maxRange: [],
-                    dpt: [],
+                    armor: [Infinity, -Infinity],
+                    internal: [Infinity, -Infinity],
+                    heat: [Infinity, -Infinity],
+                    dissipation: [Infinity, -Infinity],
+                    dissipationEfficiency: [Infinity, -Infinity],
+                    runMP: [Infinity, -Infinity],
+                    run2MP: [Infinity, -Infinity],
+                    jumpMP: [Infinity, -Infinity],
+                    umuMP: [Infinity, -Infinity],
+                    alphaNoPhysical: [Infinity, -Infinity],
+                    alphaNoPhysicalNoOneshots: [Infinity, -Infinity],
+                    maxRange: [Infinity, -Infinity],
+                    dpt: [Infinity, -Infinity],
                     // Capital ships
-                    dropshipCapacity: [],
-                    escapePods: [],
-                    lifeBoats: [],
-                    sailIntegrity: [],
-                    kfIntegrity: [],
+                    dropshipCapacity: [Infinity, -Infinity],
+                    escapePods: [Infinity, -Infinity],
+                    lifeBoats: [Infinity, -Infinity],
+                    sailIntegrity: [Infinity, -Infinity],
+                    kfIntegrity: [Infinity, -Infinity],
                 };
             }
-            statsByType[t].armor.push(unit.armor || 0);
-            statsByType[t].internal.push(unit.internal || 0);
-            statsByType[t].heat.push(unit.heat || 0);
-            statsByType[t].dissipation.push(unit.dissipation || 0);
-            statsByType[t].dissipationEfficiency.push((unit._dissipationEfficiency || 0));
-            statsByType[t].runMP.push(unit.run || 0);
-            statsByType[t].run2MP.push(unit.run2 || 0);
-            statsByType[t].jumpMP.push(unit.jump || 0);
-            statsByType[t].umuMP.push(unit.umu || 0);
-            statsByType[t].alphaNoPhysical.push(unit._mdSumNoPhysical || 0);
-            statsByType[t].alphaNoPhysicalNoOneshots.push(unit._mdSumNoPhysicalNoOneshots || 0);
-            statsByType[t].maxRange.push(unit._maxRange || 0);
-            statsByType[t].dpt.push(unit.dpt || 0);
+            const s = statsByType[t];
+            updateMinMax(s.armor, unit.armor || 0);
+            updateMinMax(s.internal, unit.internal || 0);
+            updateMinMax(s.heat, unit.heat || 0);
+            updateMinMax(s.dissipation, unit.dissipation || 0);
+            updateMinMax(s.dissipationEfficiency, unit._dissipationEfficiency || 0);
+            updateMinMax(s.runMP, unit.run || 0);
+            updateMinMax(s.run2MP, unit.run2 || 0);
+            updateMinMax(s.jumpMP, unit.jump || 0);
+            updateMinMax(s.umuMP, unit.umu || 0);
+            updateMinMax(s.alphaNoPhysical, unit._mdSumNoPhysical || 0);
+            updateMinMax(s.alphaNoPhysicalNoOneshots, unit._mdSumNoPhysicalNoOneshots || 0);
+            updateMinMax(s.maxRange, unit._maxRange || 0);
+            updateMinMax(s.dpt, unit.dpt || 0);
             // Capital ships
             if (unit.capital) {
-                statsByType[t].dropshipCapacity.push(unit.capital.dropshipCapacity || 0);
-                statsByType[t].escapePods.push(unit.capital.escapePods || 0);
-                statsByType[t].lifeBoats.push(unit.capital.lifeBoats || 0);
-                statsByType[t].sailIntegrity.push(unit.capital.sailIntegrity || 0);
-                statsByType[t].kfIntegrity.push(unit.capital.kfIntegrity || 0);
+                updateMinMax(s.dropshipCapacity, unit.capital.dropshipCapacity || 0);
+                updateMinMax(s.escapePods, unit.capital.escapePods || 0);
+                updateMinMax(s.lifeBoats, unit.capital.lifeBoats || 0);
+                updateMinMax(s.sailIntegrity, unit.capital.sailIntegrity || 0);
+                updateMinMax(s.kfIntegrity, unit.capital.kfIntegrity || 0);
             }
         }
 
-        // Compute max for each stat per unit type
+        // Helper to normalize Infinity values to 0 (when no units of that type exist)
+        const normalize = (minMax: [number, number]): [number, number] => [
+            minMax[0] === Infinity ? 0 : Math.min(minMax[0], 0),
+            minMax[1] === -Infinity ? 0 : Math.max(minMax[1], 0)
+        ];
+        
         for (const [type, stats] of Object.entries(statsByType)) {
             this.unitTypeMaxStats[type] = {
-                armor: [
-                    Math.min(...stats.armor, 0),
-                    Math.max(...stats.armor, 0)],
-                internal: [
-                    Math.min(...stats.internal, 0),
-                    Math.max(...stats.internal, 0)],
-                heat: [
-                    Math.min(...stats.heat, 0),
-                    Math.max(...stats.heat, 0)],
-                dissipation: [
-                    Math.min(...stats.dissipation, 0),
-                    Math.max(...stats.dissipation, 0)],
-                dissipationEfficiency: [
-                    Math.min(...stats.dissipationEfficiency, 0),
-                    Math.max(...stats.dissipationEfficiency, 0)],
-                runMP: [
-                    Math.min(...stats.runMP, 0),
-                    Math.max(...stats.runMP, 0)],
-                run2MP: [
-                    Math.min(...stats.run2MP, 0),
-                    Math.max(...stats.run2MP, 0)],
-                jumpMP: [
-                    Math.min(...stats.jumpMP, 0),
-                    Math.max(...stats.jumpMP, 0)],
-                umuMP: [
-                    Math.min(...stats.umuMP, 0),
-                    Math.max(...stats.umuMP, 0)],
-                alphaNoPhysical: [
-                    Math.min(...stats.alphaNoPhysical, 0),
-                    Math.max(...stats.alphaNoPhysical, 0)],
-                alphaNoPhysicalNoOneshots: [
-                    Math.min(...stats.alphaNoPhysicalNoOneshots, 0),
-                    Math.max(...stats.alphaNoPhysicalNoOneshots, 0)],
-                maxRange: [
-                    Math.min(...stats.maxRange, 0),
-                    Math.max(...stats.maxRange, 0)],
-                dpt: [
-                    Math.min(...stats.dpt, 0),
-                    Math.max(...stats.dpt, 0)],
+                armor: normalize(stats.armor),
+                internal: normalize(stats.internal),
+                heat: normalize(stats.heat),
+                dissipation: normalize(stats.dissipation),
+                dissipationEfficiency: normalize(stats.dissipationEfficiency),
+                runMP: normalize(stats.runMP),
+                run2MP: normalize(stats.run2MP),
+                jumpMP: normalize(stats.jumpMP),
+                umuMP: normalize(stats.umuMP),
+                alphaNoPhysical: normalize(stats.alphaNoPhysical),
+                alphaNoPhysicalNoOneshots: normalize(stats.alphaNoPhysicalNoOneshots),
+                maxRange: normalize(stats.maxRange),
+                dpt: normalize(stats.dpt),
                 // Capital ships
-                dropshipCapacity: [
-                    Math.min(...stats.dropshipCapacity, 0),
-                    Math.max(...stats.dropshipCapacity, 0)],
-                escapePods: [
-                    Math.min(...stats.escapePods, 0),
-                    Math.max(...stats.escapePods, 0)],
-                lifeBoats: [
-                    Math.min(...stats.lifeBoats, 0),
-                    Math.max(...stats.lifeBoats, 0)],
-                sailIntegrity: [
-                    Math.min(...stats.sailIntegrity, 0),
-                    Math.max(...stats.sailIntegrity, 0)],
-                kfIntegrity: [
-                    Math.min(...stats.kfIntegrity, 0),
-                    Math.max(...stats.kfIntegrity, 0)],
+                dropshipCapacity: normalize(stats.dropshipCapacity),
+                escapePods: normalize(stats.escapePods),
+                lifeBoats: normalize(stats.lifeBoats),
+                sailIntegrity: normalize(stats.sailIntegrity),
+                kfIntegrity: normalize(stats.kfIntegrity),
             };
         }
     }
