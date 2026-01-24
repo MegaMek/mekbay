@@ -340,6 +340,63 @@ export class SpriteStorageService {
         return { url, info: iconInfo };
     }
 
+    // Cache for loaded HTMLImageElement objects (for canvas extraction)
+    private spriteImageCache = new Map<string, HTMLImageElement>();
+    // Cache for extracted individual icon data URLs
+    private extractedIconCache = new Map<string, string>();
+
+    /**
+     * Extract a single icon from the sprite sheet as a data URL.
+     * Used for Safari-compatible SVG rendering where we need individual images.
+     * Results are cached, so extraction only happens once per icon path.
+     */
+    public async getExtractedIconUrl(iconPath: string): Promise<string | null> {
+        // Check cache first
+        if (this.extractedIconCache.has(iconPath)) {
+            return this.extractedIconCache.get(iconPath)!;
+        }
+
+        const spriteInfo = await this.getSpriteInfo(iconPath);
+        if (!spriteInfo) return null;
+
+        const { url, info } = spriteInfo;
+
+        try {
+            // Get or load the sprite image (cached per sprite type)
+            let img = this.spriteImageCache.get(info.type);
+            if (!img) {
+                img = await this.loadImage(url);
+                this.spriteImageCache.set(info.type, img);
+            }
+
+            // Extract the icon portion using canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = info.w;
+            canvas.height = info.h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return null;
+
+            ctx.drawImage(img, info.x, info.y, info.w, info.h, 0, 0, info.w, info.h);
+            const dataUrl = canvas.toDataURL('image/png');
+
+            // Cache the result
+            this.extractedIconCache.set(iconPath, dataUrl);
+            return dataUrl;
+        } catch (e) {
+            this.logger.error(`Failed to extract icon: ${iconPath} - ${e}`);
+            return null;
+        }
+    }
+
+    private loadImage(url: string): Promise<HTMLImageElement> {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = url;
+        });
+    }
+
     /**
      * Get the count of icons in the manifest.
      */

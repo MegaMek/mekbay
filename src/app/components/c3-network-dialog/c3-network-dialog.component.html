@@ -195,10 +195,11 @@
                     <!-- Inner decorative ring -->
                     <polygon class="node-inner-ring" [attr.points]="NODE_HEX_INNER_POINTS" />
 
-                    <!-- Unit icon centered (using foreignObject for sprite support) -->
-                    <foreignObject x="-48" y="-48" width="96" height="96" class="node-icon-container">
-                        <unit-icon [unit]="node.unit.getUnit()" [size]="96" />
-                    </foreignObject>
+                    <!-- Unit icon -->
+                    <image class="node-icon" 
+                        x="-42" y="-36" width="84" height="72"
+                        [attr.href]="nodeIconUrls().get(node.unit.id) ?? FALLBACK_ICON"
+                        preserveAspectRatio="xMidYMid meet" />
 
                     <!-- Unit label centered below icon -->
                     <foreignObject [attr.x]="-NODE_RADIUS / 2 + 12" y="-60" [attr.width]="NODE_RADIUS - 24" height="40"
