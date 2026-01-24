@@ -180,7 +180,21 @@ function getMergedTags(unit: Unit): string[] {
     const nameTags = unit._nameTags ?? [];
     const chassisTags = unit._chassisTags ?? [];
     // Merge and deduplicate
-    return Array.from(new Set([...chassisTags, ...nameTags]));
+    const merged = new Set<string>();
+    for (const tag of chassisTags) merged.add(tag);
+    for (const tag of nameTags) merged.add(tag);
+    return Array.from(merged);
+}
+
+/** Check if any element in sourceSet exists in targetSet. */
+function setHasAny<T>(sourceSet: Set<T>, targetSet: Set<T>): boolean {
+    const [smaller, larger] = sourceSet.size <= targetSet.size 
+        ? [sourceSet, targetSet] 
+        : [targetSet, sourceSet];
+    for (const item of smaller) {
+        if (larger.has(item)) return true;
+    }
+    return false;
 }
 
 function getProperty(obj: any, key?: string) {
@@ -286,10 +300,11 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
     }
 
     // Check if we need quantity counting (any non-default constraint)
-    const needsQuantityCounting = [...orList, ...andList, ...notList].some(
-        item => item.count > 1 || item.countOperator || item.countMax !== undefined || 
-                item.countIncludeRanges || item.countExcludeRanges
-    );
+    const hasQuantityConstraint = (item: MultiStateOption) =>
+        item.count > 1 || item.countOperator || item.countMax !== undefined ||
+        item.countIncludeRanges || item.countExcludeRanges;
+    const needsQuantityCounting = orList.some(hasQuantityConstraint) ||
+        andList.some(hasQuantityConstraint) || notList.some(hasQuantityConstraint);
     const isComponentFilter = key === 'componentName';
 
     return units.filter(unit => {
@@ -546,6 +561,8 @@ export class UnitSearchFiltersService {
     advOpen = signal(false);
     private totalRangesCache: Record<string, [number, number]> = {};
     private availableNamesCache = new Map<string, string[]>();
+    private availableNamesCacheOrder: string[] = [];
+    private readonly availableNamesCacheMaxEntries = 50; // Limit cache size for multistate filter options
     private urlStateInitialized = signal(false);
     
     /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
@@ -777,15 +794,16 @@ export class UnitSearchFiltersService {
         const units = this.units;
         if (units.length === 0) return;
 
-        const bvValues = units
-            .map(u => this.getAdjustedBV(u))
-            .filter(bv => bv > 0)
-            .sort((a, b) => a - b);
+        let min = Infinity, max = -Infinity;
+        for (const u of units) {
+            const bv = this.getAdjustedBV(u);
+            if (bv > 0) {
+                if (bv < min) min = bv;
+                if (bv > max) max = bv;
+            }
+        }
 
-        if (bvValues.length === 0) return;
-
-        const min = bvValues[0];
-        const max = bvValues[bvValues.length - 1];
+        if (min > max) return; // No valid values
 
         // Update the totalRangesCache which the computed signal depends on
         this.totalRangesCache['bv'] = [min, max];
@@ -810,15 +828,16 @@ export class UnitSearchFiltersService {
         const units = this.units;
         if (units.length === 0) return;
 
-        const pvValues = units
-            .map(u => this.getAdjustedPV(u))
-            .filter(pv => pv > 0)
-            .sort((a, b) => a - b);
+        let min = Infinity, max = -Infinity;
+        for (const u of units) {
+            const pv = this.getAdjustedPV(u);
+            if (pv > 0) {
+                if (pv < min) min = pv;
+                if (pv > max) max = pv;
+            }
+        }
 
-        if (pvValues.length === 0) return;
-
-        const min = pvValues[0];
-        const max = pvValues[pvValues.length - 1];
+        if (min > max) return; // No valid values
 
         // Update the totalRangesCache which the computed signal depends on
         this.totalRangesCache['as.PV'] = [min, max];
@@ -843,28 +862,36 @@ export class UnitSearchFiltersService {
         for (const conf of rangeFilters) {
             if (conf.key === 'bv') {
                 // Special handling for BV to use adjusted values
-                const bvValues = this.units
-                    .map(u => this.getAdjustedBV(u))
-                    .filter(bv => bv > 0);
-                if (bvValues.length > 0) {
-                    this.totalRangesCache['bv'] = [Math.min(...bvValues), Math.max(...bvValues)];
-                } else {
-                    this.totalRangesCache['bv'] = [0, 0];
+                let min = Infinity, max = -Infinity;
+                for (const u of this.units) {
+                    const bv = this.getAdjustedBV(u);
+                    if (bv > 0) {
+                        if (bv < min) min = bv;
+                        if (bv > max) max = bv;
+                    }
                 }
+                this.totalRangesCache['bv'] = min <= max ? [min, max] : [0, 0];
             } else if (conf.key === 'as.PV') {
-                // Special handling for BV to use adjusted values
-                const pvValues = this.units
-                    .map(u => this.getAdjustedPV(u))
-                    .filter(pv => pv > 0);
-                if (pvValues.length > 0) {
-                    this.totalRangesCache['as.PV'] = [Math.min(...pvValues), Math.max(...pvValues)];
-                } else {
-                    this.totalRangesCache['as.PV'] = [0, 0];
+                // Special handling for PV to use adjusted values
+                let min = Infinity, max = -Infinity;
+                for (const u of this.units) {
+                    const pv = this.getAdjustedPV(u);
+                    if (pv > 0) {
+                        if (pv < min) min = pv;
+                        if (pv > max) max = pv;
+                    }
                 }
+                this.totalRangesCache['as.PV'] = min <= max ? [min, max] : [0, 0];
             } else {
                 const allValues = this.getValidFilterValues(this.units, conf);
                 if (allValues.length > 0) {
-                    this.totalRangesCache[conf.key] = [Math.min(...allValues), Math.max(...allValues)];
+                    let min = allValues[0], max = allValues[0];
+                    for (let i = 1; i < allValues.length; i++) {
+                        const v = allValues[i];
+                        if (v < min) min = v;
+                        if (v > max) max = v;
+                    }
+                    this.totalRangesCache[conf.key] = [min, max];
                 } else {
                     this.totalRangesCache[conf.key] = [0, 0];
                 }
@@ -995,8 +1022,10 @@ export class UnitSearchFiltersService {
                 // If no ORs, the first AND sets the initial list.
                 resultSet = new Set(factionUnitIds);
             } else {
-                // Intersect with the existing results.
-                resultSet = new Set([...resultSet].filter(id => factionUnitIds.has(id)));
+                // Intersect with the existing results
+                for (const id of resultSet) {
+                    if (!factionUnitIds.has(id)) resultSet.delete(id);
+                }
             }
         }
 
@@ -1017,9 +1046,10 @@ export class UnitSearchFiltersService {
 
     private applyFilters(units: Unit[], state: FilterState): Unit[] {
         let results = units;
-        const activeFilters = Object.entries(state)
-            .filter(([, s]) => s.interactedWith)
-            .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
+        const activeFilters: Record<string, any> = {};
+        for (const [key, s] of Object.entries(state)) {
+            if (s.interactedWith) activeFilters[key] = s.value;
+        }
 
         const currentGame = this.gameService.currentGameSystem();
 
@@ -1038,13 +1068,20 @@ export class UnitSearchFiltersService {
             }
 
         if (eraUnitIds || factionUnitIds) {
-            let finalIds: Set<number> | null;
+            let finalIds: Set<number>;
             if (eraUnitIds && factionUnitIds) {
-                finalIds = new Set([...eraUnitIds].filter(id => factionUnitIds!.has(id)));
+                // Intersect
+                const [smaller, larger] = eraUnitIds.size <= factionUnitIds.size
+                    ? [eraUnitIds, factionUnitIds]
+                    : [factionUnitIds, eraUnitIds];
+                finalIds = new Set<number>();
+                for (const id of smaller) {
+                    if (larger.has(id)) finalIds.add(id);
+                }
             } else {
-                finalIds = eraUnitIds || factionUnitIds;
+                finalIds = (eraUnitIds || factionUnitIds)!;
             }
-            results = results.filter(u => finalIds!.has(u.id));
+            results = results.filter(u => finalIds.has(u.id));
         }
 
         // Handle forcePack filter (chassis-based)
@@ -1102,6 +1139,8 @@ export class UnitSearchFiltersService {
                 const andPatterns = wildcardPatterns?.filter(p => p.state === 'and') || [];
                 
                 if (hasSearchTerms || hasWildcards) {
+                    // Pre-normalize search terms
+                    const searchTermsLower = searchTerms.map(t => t.toLowerCase());
                     results = results.filter(u => {
                         const unitValue = getProperty(u, conf.key);
                         if (unitValue == null) return false;
@@ -1125,8 +1164,8 @@ export class UnitSearchFiltersService {
                         }
 
                         // Check exact matches (OR logic)
-                        for (const term of searchTerms) {
-                            if (unitStr === term.toLowerCase()) return true;
+                        for (const term of searchTermsLower) {
+                            if (unitStr === term) return true;
                         }
 
                         // Check include wildcard patterns (OR logic)
@@ -1369,9 +1408,10 @@ export class UnitSearchFiltersService {
         const _tagsVersion = this.tagsVersion();
 
         let baseUnits = this.units;
-        const activeFilters = Object.entries(state)
-            .filter(([, s]) => s.interactedWith)
-            .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
+        const activeFilters: Record<string, any> = {};
+        for (const [key, s] of Object.entries(state)) {
+            if (s.interactedWith) activeFilters[key] = s.value;
+        }
 
         const selectedEraNames = activeFilters['era'] as string[] || [];
         const selectedFactionEntries = activeFilters['faction'] as MultiStateSelection || {};
@@ -1411,7 +1451,7 @@ export class UnitSearchFiltersService {
                                 if (selectedFactionsAvailableEraIds.size > 0) {
                                     if (!selectedFactionsAvailableEraIds.has(era.id)) return false;
                                 }
-                                return [...(era.units as Set<number>)].some(id => contextUnitIds.has(id))
+                                return setHasAny(era.units as Set<number>, contextUnitIds);
                             }).map(era => ({ name: era.name, img: era.img }));
                     } else 
                     if (conf.key === 'faction') {
@@ -1422,7 +1462,7 @@ export class UnitSearchFiltersService {
                                     if (selectedEraIds.size > 0) {
                                         if (!selectedEraIds.has(Number(eraIdStr))) continue;
                                     }
-                                    if ([...(faction.eras[eraIdStr] as Set<number>)].some(id => contextUnitIds.has(id))) return true;
+                                    if (setHasAny(faction.eras[eraIdStr] as Set<number>, contextUnitIds)) return true;
                                 }
                                 return false;
                             })
@@ -1446,9 +1486,12 @@ export class UnitSearchFiltersService {
                         && currentFilter?.interactedWith && currentFilter.value &&
                         Object.values(currentFilter.value as MultiStateSelection).some(selection => selection.count > 1);
 
+                    const filterHash = currentFilter?.interactedWith 
+                        ? JSON.stringify(currentFilter.value) 
+                        : '';
                     const namesCacheKey = isTagsFilter
-                        ? `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}-${_tagsVersion}`
-                        : `${conf.key}-${contextUnits.length}-${JSON.stringify(currentFilter?.value || {})}`;
+                        ? `${conf.key}-${contextUnits.length}-${filterHash}-${_tagsVersion}`
+                        : `${conf.key}-${contextUnits.length}-${filterHash}`;
 
                     let availableNames = this.availableNamesCache.get(namesCacheKey);
                     if (!availableNames) {
@@ -1472,7 +1515,7 @@ export class UnitSearchFiltersService {
                         }
 
                         availableNames = Array.from(nameSet);
-                        this.availableNamesCache.set(namesCacheKey, availableNames);
+                        this.setAvailableNamesCache(namesCacheKey, availableNames);
                     }
 
                     let filteredAvailableNames = availableNames;
@@ -1542,6 +1585,18 @@ export class UnitSearchFiltersService {
                     const sortedNames = sortAvailableDropdownOptions(availableNames);
                     const filteredSet = new Set(filteredAvailableNames);
 
+                    // Precompute total counts per component name
+                    let totalCountsMap: Map<string, number> | null = null;
+                    if (hasQuantityFilters) {
+                        totalCountsMap = new Map();
+                        for (const unit of contextUnits) {
+                            const cached = getUnitComponentData(unit);
+                            for (const [name, count] of cached.componentCounts) {
+                                totalCountsMap.set(name, (totalCountsMap.get(name) || 0) + count);
+                            }
+                        }
+                    }
+
                     // Create options with availability flag and count
                     const optionsWithAvailability = sortedNames.map(name => {
                         const option: { name: string; available: boolean; count?: number } = {
@@ -1550,13 +1605,8 @@ export class UnitSearchFiltersService {
                         };
 
                         // Add count only if needed and for component filters
-                        if (hasQuantityFilters) {
-                            let totalCount = 0;
-                            for (const unit of contextUnits) {
-                                const cached = getUnitComponentData(unit);
-                                totalCount += cached.componentCounts.get(name) || 0;
-                            }
-                            option.count = totalCount;
+                        if (totalCountsMap) {
+                            option.count = totalCountsMap.get(name) || 0;
                         }
 
                         return option;
@@ -1677,20 +1727,26 @@ export class UnitSearchFiltersService {
                     };
                     continue;
                 } else {
-                    let allOptions: string[];
-                    // For source filter, flatten the array of sources per unit
+                    const optionSet = new Set<string>();
                     if (conf.key === 'source') {
-                        allOptions = Array.from(new Set(contextUnits
-                            .flatMap(u => {
-                                const val = getProperty(u, conf.key);
-                                return Array.isArray(val) ? val : (val ? [val] : []);
-                            })
-                            .filter(v => v != null && v !== '')));
+                        // For source filter, flatten the array of sources per unit
+                        for (const u of contextUnits) {
+                            const val = getProperty(u, conf.key);
+                            if (Array.isArray(val)) {
+                                for (const v of val) {
+                                    if (v != null && v !== '') optionSet.add(v);
+                                }
+                            } else if (val != null && val !== '') {
+                                optionSet.add(val);
+                            }
+                        }
                     } else {
-                        allOptions = Array.from(new Set(contextUnits
-                            .map(u => getProperty(u, conf.key))
-                            .filter(v => v != null && v !== '')));
+                        for (const u of contextUnits) {
+                            const v = getProperty(u, conf.key);
+                            if (v != null && v !== '') optionSet.add(v);
+                        }
                     }
+                    const allOptions = Array.from(optionSet);
                     const sortedOptions = sortAvailableDropdownOptions(allOptions, conf.sortOptions);
                     
                     // For source filter, add displayName from sourcebook lookup
@@ -1834,7 +1890,17 @@ export class UnitSearchFiltersService {
                     vals = this.getValidFilterValues(contextUnits, conf);
                 }
 
-                const availableRange = vals.length ? [Math.min(...vals), Math.max(...vals)] : totalRange;
+                let availableRange: [number, number];
+                if (vals.length > 0) {
+                    let min = vals[0], max = vals[0];
+                    for (let i = 1; i < vals.length; i++) {
+                        if (vals[i] < min) min = vals[i];
+                        if (vals[i] > max) max = vals[i];
+                    }
+                    availableRange = [min, max];
+                } else {
+                    availableRange = totalRange as [number, number];
+                }
 
                 // Get the original filter value (before clamping) for visualization
                 const filterStateEntry = state[conf.key];
@@ -1878,11 +1944,13 @@ export class UnitSearchFiltersService {
 
 
     private getValidFilterValues(units: Unit[], conf: AdvFilterConfig): number[] {
-        let vals = units
-            .map(u => getProperty(u, conf.key))
-            .filter(v => typeof v === 'number') as number[];
-        if (conf.ignoreValues && conf.ignoreValues.length > 0) {
-            vals = vals.filter(v => !conf.ignoreValues!.includes(v));
+        const ignoreSet = conf.ignoreValues ? new Set(conf.ignoreValues) : null;
+        const vals: number[] = [];
+        for (const u of units) {
+            const v = getProperty(u, conf.key);
+            if (typeof v === 'number' && (!ignoreSet || !ignoreSet.has(v))) {
+                vals.push(v);
+            }
         }
         return vals;
     }
@@ -2545,9 +2613,34 @@ export class UnitSearchFiltersService {
         this.tagsVersion.update(v => v + 1);
 
         // Clear any cached tag-related data
+        const remainingOrder: string[] = [];
         for (const [key] of this.availableNamesCache) {
             if (key.includes('_tags')) {
                 this.availableNamesCache.delete(key);
+                continue;
+            }
+            remainingOrder.push(key);
+        }
+        this.availableNamesCacheOrder = remainingOrder;
+    }
+
+    /**
+     * Simple LRU cache to store available names for multistate filters. Size limited.
+     */
+    private setAvailableNamesCache(key: string, value: string[]): void {
+        if (this.availableNamesCache.has(key)) {
+            const existingIndex = this.availableNamesCacheOrder.indexOf(key);
+            if (existingIndex !== -1) {
+                this.availableNamesCacheOrder.splice(existingIndex, 1);
+            }
+        }
+        this.availableNamesCacheOrder.push(key);
+        this.availableNamesCache.set(key, value);
+
+        while (this.availableNamesCacheOrder.length > this.availableNamesCacheMaxEntries) {
+            const oldest = this.availableNamesCacheOrder.shift();
+            if (oldest) {
+                this.availableNamesCache.delete(oldest);
             }
         }
     }

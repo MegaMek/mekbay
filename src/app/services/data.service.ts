@@ -773,7 +773,7 @@ export class DataService {
         }
     }
 
-    public async checkForUpdate(): Promise<void> {
+    private async checkForUpdate(): Promise<void> {
         try {
             const updatePromises = this.remoteStores.map(async (store) => {
                 let localData = this.data[store.key as keyof LocalStore];

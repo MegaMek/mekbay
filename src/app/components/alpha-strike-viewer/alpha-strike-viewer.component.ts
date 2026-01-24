@@ -131,6 +131,9 @@ export class AlphaStrikeViewerComponent {
     
     // Pinch gesture state
     private readonly pointers = new Map<number, Point>();
+    
+    // Cache for CardRenderItems to prevent object recreation
+    private readonly cardRenderItemsCache = new Map<string, CardRenderItem[]>();
     private pinchState: {
         lastDistance: number;
         accumulatedDelta: number;
@@ -166,10 +169,20 @@ export class AlphaStrikeViewerComponent {
     
     /**
      * Generate card render items for a unit (handles multi-card units).
+     * Results are cached to prevent object recreation on every change detection cycle
      */
     getCardRenderItems(forceUnit: ASForceUnit): CardRenderItem[] {
-        const cardCount = this.getCardCount(forceUnit);
+        const cacheKey = forceUnit.id;
+        const cached = this.cardRenderItemsCache.get(cacheKey);
+        
+        // Return cached if exists
+        if (cached) {
+            return cached;
+        }
+        
+        // Create new items and cache them
         const items: CardRenderItem[] = [];
+        const cardCount = this.getCardCount(forceUnit);
         for (let i = 0; i < cardCount; i++) {
             items.push({
                 forceUnit,
@@ -177,6 +190,7 @@ export class AlphaStrikeViewerComponent {
                 trackKey: `${forceUnit.id}-card-${i}`
             });
         }
+        this.cardRenderItemsCache.set(cacheKey, items);
         return items;
     }
     
@@ -200,6 +214,21 @@ export class AlphaStrikeViewerComponent {
     }
 
     private setupEffects(): void {
+        // Clean up stale cardRenderItemsCache entries when force changes
+        effect(() => {
+            const currentForce = this.force();
+            if (!currentForce) {
+                this.cardRenderItemsCache.clear();
+                return;
+            }
+
+            const currentUnitIds = new Set(currentForce.units().map(u => u.id));
+            // Remove stale cache entries
+            this.cardRenderItemsCache.forEach((_, id) => {
+                if (!currentUnitIds.has(id)) this.cardRenderItemsCache.delete(id);
+            });
+        });
+        
         // Scroll to selected unit when selection changes externally
         effect(() => {
             const selectedUnit = this.unit();

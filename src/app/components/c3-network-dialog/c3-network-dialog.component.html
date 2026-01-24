@@ -220,7 +220,7 @@
 
                     <!-- Pins section at bottom -->
                     <g class="pins-container" [attr.transform]="'translate(0,' + PIN_Y_OFFSET + ')'">
-                        @for (comp of node.c3Components; track $index; let i = $index) {
+                        @for (comp of node.c3Components; track comp.networkType + '-' + comp.index; let i = $index) {
                         <g class="pin-container" [attr.transform]="'translate(' + node.pinOffsetsX[i] + ', 0)'"
                             [class.master]="comp.role === 'master'" [class.slave]="comp.role === 'slave'"
                             [class.peer]="comp.role === 'peer'" [class.connected]="isPinConnected(node, i)"

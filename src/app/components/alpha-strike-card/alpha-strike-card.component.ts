@@ -167,20 +167,29 @@ export class AlphaStrikeCardComponent {
             }
         });
         
+        // Track pending afterNextRender callbacks to clean up on destroy
+        let pendingAfterRenderRef: { destroy: () => void } | null = null;
+        
         // Setup interactions when interactive mode is enabled
-        afterNextRender(() => {
+        pendingAfterRenderRef = afterNextRender(() => {
             if (this.interactive() && !this.interactionsSetup) {
                 this.setupInteractions();
             }
+            pendingAfterRenderRef = null;
         });
         
         // Watch for interactive changes
         effect(() => {
             const isInteractive = this.interactive();
             if (isInteractive && !this.interactionsSetup) {
-            afterNextRender(() => this.setupInteractions(), { injector: this.injector });
+                // Cancel any previous pending render callback
+                pendingAfterRenderRef?.destroy();
+                pendingAfterRenderRef = afterNextRender(() => {
+                    this.setupInteractions();
+                    pendingAfterRenderRef = null;
+                }, { injector: this.injector });
             } else if (!isInteractive && this.interactionsSetup) {
-            this.cleanupInteractions();
+                this.cleanupInteractions();
             }
         });
         
@@ -199,11 +208,17 @@ export class AlphaStrikeCardComponent {
             // Only re-setup if interactions are already setup (card is interactive)
             if (this.interactionsSetup) {
                 this.cleanupInteractions();
-                afterNextRender(() => this.setupInteractions(), { injector: this.injector });
+                // Cancel any previous pending render callback
+                pendingAfterRenderRef?.destroy();
+                pendingAfterRenderRef = afterNextRender(() => {
+                    this.setupInteractions();
+                    pendingAfterRenderRef = null;
+                }, { injector: this.injector });
             }
         });
         
         this.destroyRef.onDestroy(() => {
+            pendingAfterRenderRef?.destroy();
             this.cleanupInteractions();
         });
     }

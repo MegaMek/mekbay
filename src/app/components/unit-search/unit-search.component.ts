@@ -338,16 +338,26 @@ export class UnitSearchComponent {
                 this.updateResultsDropdownPosition();
             }
         });
+        // Track pending afterNextRender callbacks to cancel on effect re-run or destroy
+        let pendingFocusRef: { destroy: () => void } | null = null;
+        let pendingResizeObserverRef: { destroy: () => void } | null = null;
+        
         effect(() => {
+            // Cancel any previous pending focus callback
+            pendingFocusRef?.destroy();
+            pendingFocusRef = null;
+            
             if (this.autoFocus() &&
                 this.filtersService.isDataReady() &&
                 this.syntaxInput()) {
-                afterNextRender(() => {
+                pendingFocusRef = afterNextRender(() => {
+                    pendingFocusRef = null;
                     this.syntaxInput()?.focus();
                 }, { injector: this.injector });
             }
         });
-        afterNextRender(() => {
+        pendingResizeObserverRef = afterNextRender(() => {
+            pendingResizeObserverRef = null;
             // We use a ResizeObserver to track changes to the search bar container size,
             // so we can update the dropdown/panel positions accordingly.
             const container = document.querySelector('.searchbar-container') as HTMLElement;
@@ -365,6 +375,8 @@ export class UnitSearchComponent {
         }, { injector: this.injector });
         this.setupItemHeightTracking();
         inject(DestroyRef).onDestroy(() => {
+            pendingFocusRef?.destroy();
+            pendingResizeObserverRef?.destroy();
             if (this.searchDebounceTimer) {
                 clearTimeout(this.searchDebounceTimer);
             }

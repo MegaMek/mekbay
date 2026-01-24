@@ -98,7 +98,7 @@ export class LinearPickerComponent implements ChoicePickerComponent {
 
     constructor() {
         effect((cleanup) => {
-            afterNextRender(() => {
+            const afterRenderRef = afterNextRender(() => {
                 this.setupEventListeners();
                 requestAnimationFrame(() => {
                     if (this.pickerRef()?.nativeElement) {
@@ -110,6 +110,7 @@ export class LinearPickerComponent implements ChoicePickerComponent {
             }, { injector: this.injector });
 
             cleanup(() => {
+                afterRenderRef.destroy();
                 this.cleanupEventListeners();
             });
         });

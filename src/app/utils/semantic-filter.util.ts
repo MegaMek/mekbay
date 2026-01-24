@@ -297,13 +297,15 @@ export function parseValues(valueStr: string): string[] {
 }
 
 /**
- * Check if a value string represents a range (e.g., "2-5", "100-200")
+ * Check if a value string represents a range (e.g., "2-5", "100-200", "2~5")
+ * Supports both - and ~ as range separators.
  * Returns [min, max] if it's a range, null otherwise
  */
 function parseRange(value: string): [number, number] | null {
-    // Match patterns like "2-5", "100-200", "-5-10" (negative min)
+    // Match patterns like "2-5", "100-200", "-5-10" (negative min), or "2~5"
     // Be careful with negative numbers: -5--2 means -5 to -2
-    const match = value.match(/^(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$/);
+    // Supports both - and ~ as range separators
+    const match = value.match(/^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/);
     if (match) {
         const min = parseFloat(match[1]);
         const max = parseFloat(match[2]);
@@ -377,8 +379,8 @@ export function parseValueWithQuantity(value: string): { name: string; constrain
         numStr = quantityPart.slice(1);
     }
 
-    // Check for range (N-M)
-    const rangeMatch = numStr.match(/^(\d+)-(\d+)$/);
+    // Check for range (N-M or N~M)
+    const rangeMatch = numStr.match(/^(\d+)[-~](\d+)$/);
     if (rangeMatch) {
         const min = parseInt(rangeMatch[1], 10);
         const max = parseInt(rangeMatch[2], 10);
@@ -597,8 +599,12 @@ export function tokensToFilterState(
             let min = totalRange[0];
             let max = totalRange[1];
             if (mergedRanges.length > 0) {
-                min = Math.min(...mergedRanges.map(r => r[0]));
-                max = Math.max(...mergedRanges.map(r => r[1]));
+                min = mergedRanges[0][0];
+                max = mergedRanges[0][1];
+                for (let i = 1; i < mergedRanges.length; i++) {
+                    if (mergedRanges[i][0] < min) min = mergedRanges[i][0];
+                    if (mergedRanges[i][1] > max) max = mergedRanges[i][1];
+                }
             }
 
             filterState[conf.key] = {
@@ -787,7 +793,7 @@ export function tokensToFilterState(
 
                 if (values.length > 0 || wildcardPatterns.length > 0) {
                     filterState[conf.key] = {
-                        value: [...new Set(values)], // Deduplicate
+                        value: Array.from(new Set(values)), // Deduplicate
                         interactedWith: true,
                         wildcardPatterns: wildcardPatterns.length > 0 ? wildcardPatterns : undefined,
                         semanticOnly: wildcardPatterns.length > 0 ? true : undefined
@@ -823,14 +829,14 @@ export function tokensToFilterState(
             }
 
             // Combine OR and AND values into the value array, with AND values as patterns
-            const allPatterns = [...wildcardPatterns];
+            const allPatterns: WildcardPattern[] = wildcardPatterns.slice();
             for (const andVal of andValues) {
                 allPatterns.push({ pattern: andVal, state: 'and' });
             }
 
             if (orValues.length > 0 || allPatterns.length > 0) {
                 filterState[conf.key] = {
-                    value: [...new Set(orValues)], // Deduplicate OR values
+                    value: Array.from(new Set(orValues)), // Deduplicate OR values
                     interactedWith: true,
                     wildcardPatterns: allPatterns.length > 0 ? allPatterns : undefined,
                     semanticOnly: true // SEMANTIC filters are always semantic-only

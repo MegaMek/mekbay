@@ -18,7 +18,7 @@
             } @else if (selectedOptions().length === 0) {
                 <span class="placeholder">Any</span>
             } @else {
-                @for (option of selectedOptions(); let i = $index; track i) {
+                @for (option of selectedOptions(); track option.name) {
                     <span class="pill"
                           (click)="openAndScrollTo(option.name, $event)"
                           [ngClass]="{

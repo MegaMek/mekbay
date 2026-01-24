@@ -137,10 +137,13 @@ export class RadialPickerComponent implements ChoicePickerComponent {
 
     constructor() {
         effect((cleanup) => {
-            afterNextRender(() => {
+            const afterRenderRef = afterNextRender(() => {
                 this.setupEventListeners();
             }, { injector: this.injector });
-            cleanup(() => this.cleanupEventListeners());
+            cleanup(() => {
+                afterRenderRef.destroy();
+                this.cleanupEventListeners();
+            });
         })
     }
 

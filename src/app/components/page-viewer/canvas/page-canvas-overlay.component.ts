@@ -211,10 +211,16 @@ export class PageCanvasOverlayComponent {
     }
 
     constructor() {
+        // Track pending afterNextRender to clean up on destroy or re-run
+        let pendingAfterRenderRef: { destroy: () => void } | null = null;
+        
         // Load canvas data when unit changes
         effect(() => {
             const unit = this.unit();
-            afterNextRender(() => {
+            // Cancel any previous pending render callback
+            pendingAfterRenderRef?.destroy();
+            pendingAfterRenderRef = afterNextRender(() => {
+                pendingAfterRenderRef = null;
                 this.clearCanvas();
                 if (!unit) return;
                 
@@ -236,12 +242,15 @@ export class PageCanvasOverlayComponent {
         });
 
         // Setup event listeners after render
-        afterNextRender(() => {
+        const initialRenderRef = afterNextRender(() => {
             this.addEventListeners();
         });
 
         // Cleanup on destroy
         inject(DestroyRef).onDestroy(() => {
+            pendingAfterRenderRef?.destroy();
+            initialRenderRef.destroy();
+            
             const container = this.canvasContainer()?.nativeElement;
             if (container) {
                 container.removeEventListener('pointerdown', this.nativePointerDown);

@@ -755,30 +755,31 @@ function tokenizeValuePart(input: string, start: number, end: number, tokens: Hi
         return;
     }
     
-    // Check for range operator `-` pattern (e.g., "100-200")
+    // Check for range operator `-` or `~` pattern (e.g., "100-200" or "100~200")
     // Must have digits on both sides to be a range (not negative number or text with hyphen)
-    const rangeMatch = valueStr.match(/^(\d+)-(\d+)$/);
+    const rangeMatch = valueStr.match(/^(\d+)([-~])(\d+)$/);
     if (rangeMatch) {
-        const dashPos = rangeMatch[1].length;
+        const separatorPos = rangeMatch[1].length;
+        const separator = rangeMatch[2];
         // First number
         tokens.push({
             type: 'value',
             value: rangeMatch[1],
             start: start,
-            end: start + dashPos
+            end: start + separatorPos
         });
         // Range operator
         tokens.push({
             type: 'rangeoperator',
-            value: '-',
-            start: start + dashPos,
-            end: start + dashPos + 1
+            value: separator,
+            start: start + separatorPos,
+            end: start + separatorPos + 1
         });
         // Second number
         tokens.push({
             type: 'value',
-            value: rangeMatch[2],
-            start: start + dashPos + 1,
+            value: rangeMatch[3],
+            start: start + separatorPos + 1,
             end: end
         });
         return;
@@ -1044,11 +1045,16 @@ function evaluateFilter(
     const { operator, values } = filter;
     
     // Sort configs: prefer current game mode first, then game-agnostic, then other
-    const sortedFilters = [
-        ...matchingFilters.filter(f => f.game === context.gameSystem),
-        ...matchingFilters.filter(f => !f.game),
-        ...matchingFilters.filter(f => f.game && f.game !== context.gameSystem)
-    ];
+    const sortedFilters: typeof matchingFilters = [];
+    const gameAgnostic: typeof matchingFilters = [];
+    const otherGame: typeof matchingFilters = [];
+    for (const f of matchingFilters) {
+        if (f.game === context.gameSystem) sortedFilters.push(f);
+        else if (!f.game) gameAgnostic.push(f);
+        else otherGame.push(f);
+    }
+    for (const f of gameAgnostic) sortedFilters.push(f);
+    for (const f of otherGame) sortedFilters.push(f);
     
     // For != (exclude) operator, ALL configs must pass (AND logic for exclusion)
     // For other operators, ANY config can match (OR logic for inclusion)
@@ -1128,8 +1134,8 @@ function evaluateRangeFilter(
     
     // Parse the filter value(s)
     for (const val of values) {
-        // Check for range syntax (e.g., "100-200")
-        const rangeMatch = val.match(/^(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$/);
+        // Check for range syntax (e.g., "100-200" or "100~200")
+        const rangeMatch = val.match(/^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/);
         if (rangeMatch) {
             const min = parseFloat(rangeMatch[1]);
             const max = parseFloat(rangeMatch[2]);

@@ -9,7 +9,7 @@
     <div #scrollableContent class="scrollable-content" cdkScrollable>
         <div class="force-units-list" [class.single-group]="hasSingleGroup()">
             @let groups = forceBuilderService.currentForce()?.groups();
-            @for (group of groups; let gi = $index; track gi) {
+            @for (group of groups; let gi = $index; track group.id) {
             <div class="group-container">
                 @if (!miniMode()) {
                     <div class="group-header">
@@ -34,7 +34,7 @@
                         No units in this group.<br />Drop units here to add them or click to remove it.
                     </div>
                     }
-                    @for (unit of units; let i = $index; track i) {
+                    @for (unit of units; let i = $index; track unit.id) {
                     <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item" (click)="selectUnit(unit)"
                         tabindex="0" (keydown)="onUnitKeydown($event, i)" cdkDrag
                         [cdkDragDisabled]="forceBuilderService.readOnlyForce()" (cdkDragStarted)="onUnitDragStart()"
