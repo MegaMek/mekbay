@@ -1,5 +1,5 @@
 
-import { ChangeDetectionStrategy, Component, inject, computed, input, ElementRef, Renderer2, Injector, viewChildren, ApplicationRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, ElementRef, Renderer2, Injector, viewChildren, ApplicationRef } from '@angular/core';
 import { PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { OptionsService } from '../../services/options.service';
@@ -56,7 +56,9 @@ export class SidebarFooterComponent {
         return force.units().length > 0 && !force.instanceId() && !force.readOnly();
     });
 
-    constructor() {}
+    constructor() {
+        inject(DestroyRef).onDestroy(() => this.closeAllMenus());
+    }
     
     toggleCompactMode() {
         this.compactModeService.toggle();
