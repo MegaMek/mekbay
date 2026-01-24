@@ -562,7 +562,7 @@ export class UnitSearchFiltersService {
     private totalRangesCache: Record<string, [number, number]> = {};
     private availableNamesCache = new Map<string, string[]>();
     private availableNamesCacheOrder: string[] = [];
-    private readonly availableNamesCacheMaxEntries = 50;
+    private readonly availableNamesCacheMaxEntries = 50; // Limit cache size for multistate filter options
     private urlStateInitialized = signal(false);
     
     /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
@@ -2624,10 +2624,17 @@ export class UnitSearchFiltersService {
         this.availableNamesCacheOrder = remainingOrder;
     }
 
+    /**
+     * Simple LRU cache to store available names for multistate filters. Size limited.
+     */
     private setAvailableNamesCache(key: string, value: string[]): void {
-        if (!this.availableNamesCache.has(key)) {
-            this.availableNamesCacheOrder.push(key);
+        if (this.availableNamesCache.has(key)) {
+            const existingIndex = this.availableNamesCacheOrder.indexOf(key);
+            if (existingIndex !== -1) {
+                this.availableNamesCacheOrder.splice(existingIndex, 1);
+            }
         }
+        this.availableNamesCacheOrder.push(key);
         this.availableNamesCache.set(key, value);
 
         while (this.availableNamesCacheOrder.length > this.availableNamesCacheMaxEntries) {
