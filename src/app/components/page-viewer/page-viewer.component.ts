@@ -2889,6 +2889,10 @@ export class PageViewerComponent implements AfterViewInit {
         this.cleanupInteractionServices();
         this.cleanupCanvasOverlays();
         this.cleanupInteractionOverlays();
+        this.cleanupSwipeState();
         this.clearPages();
+        this.lastViewState = null;
+        this.heatDiffMarkers.set(new Map());
+        this.interactionOverlayModes.clear();
     }
 }

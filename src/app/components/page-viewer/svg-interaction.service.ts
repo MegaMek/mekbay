@@ -1421,5 +1421,6 @@ export class SvgInteractionService {
         this.currentHighlightedElement = null;
         this.state.clickTarget = null;
         this.state.heatMarkerData.set(null);
+        this.unit.set(null);
     }
 }

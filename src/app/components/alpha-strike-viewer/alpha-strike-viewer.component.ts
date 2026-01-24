@@ -156,6 +156,8 @@ export class AlphaStrikeViewerComponent {
         this.setupEffects();
         this.destroyRef.onDestroy(() => {
             this.resizeObserver?.disconnect();
+            this.cardRenderItemsCache.clear();
+            this.pointers.clear();
         });
     }
     
