@@ -528,6 +528,9 @@ export class PageViewerComponent implements AfterViewInit {
         // Clear shadow pages during swipe
         this.clearShadowPages();
         
+        // Remove any stale 'leaving-page' classes from previous interrupted animations
+        this.pageElements.forEach(el => this.renderer.removeClass(el, 'leaving-page'));
+        
         this.isSwiping = true;
         this.baseDisplayStartIndex = this.viewStartIndex();
         
@@ -744,6 +747,7 @@ export class PageViewerComponent implements AfterViewInit {
             if (el.parentElement === content) {
                 content.removeChild(el);
             }
+            el.innerHTML = '';
         });
         this.swipeSlots = [];
         this.swipeSlotUnitAssignments = [];
@@ -753,6 +757,7 @@ export class PageViewerComponent implements AfterViewInit {
             if (el.parentElement === content) {
                 content.removeChild(el);
             }
+            el.innerHTML = '';
         });
         this.pageElements = [];
         
@@ -2280,6 +2285,18 @@ export class PageViewerComponent implements AfterViewInit {
         const totalUnits = allUnits.length;
         const currentStartIndex = this.viewStartIndex();
         const effectiveVisible = this.effectiveVisiblePageCount();
+        
+        // Cancel any pending animation callback from a previous navigation
+        if (this.swipeAnimationCallback) {
+            const swipeWrapper = this.swipeWrapperRef().nativeElement;
+            swipeWrapper.removeEventListener('transitionend', this.swipeAnimationCallback);
+            this.swipeAnimationCallback = null;
+            swipeWrapper.style.transition = 'none';
+            swipeWrapper.style.transform = '';
+        }
+        
+        // Remove any stale 'leaving-page' classes from previous interrupted animations
+        this.pageElements.forEach(el => this.renderer.removeClass(el, 'leaving-page'));
         
         const direction = clickedShadow.dataset['shadowDirection'];
         
