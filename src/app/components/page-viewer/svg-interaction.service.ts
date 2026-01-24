@@ -814,7 +814,7 @@ export class SvgInteractionService {
                     selected: null,
                     style: 'linear',
                     targetType: 'crit',
-                    onPick: (choice: HandlerChoice) => {
+                    onPick: async (choice: HandlerChoice) => {
                         if (!choice || !choice.keepOpen) {
                             this.removePicker();
                         }
@@ -823,7 +823,7 @@ export class SvgInteractionService {
                         // Try equipment-specific handlers first
                         let handled = false;
                         if (choice?._handler) {
-                            handled = registry.handleSelection(entry, choice, context);
+                            handled = await registry.handleSelection(entry, choice, context);
                         }
 
                         // Handle standard options

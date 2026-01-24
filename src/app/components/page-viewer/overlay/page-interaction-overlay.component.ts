@@ -38,11 +38,13 @@ import {
     Injector,
     input,
     computed,
-    ElementRef
+    ElementRef,
+    DestroyRef
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { OptionsService } from '../../../services/options.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { LoggerService } from '../../../services/logger.service';
@@ -72,6 +74,7 @@ import { PageTurnSummaryPanelComponent } from './page-turn-summary.component';
 export class PageInteractionOverlayComponent {
     private logger = inject(LoggerService);
     private injector = inject(Injector);
+    private destroyRef = inject(DestroyRef);
     private dialogsService = inject(DialogsService);
     private overlayManager = inject(OverlayManagerService);
     private optionsService = inject(OptionsService);
@@ -160,7 +163,7 @@ export class PageInteractionOverlayComponent {
 
         const portal = new ComponentPortal(PageTurnSummaryPanelComponent, null, customInjector);
 
-        const compRef = this.overlayManager.createManagedOverlay<PageTurnSummaryPanelComponent>(overlayKey, target, portal, {
+        const { componentRef } = this.overlayManager.createManagedOverlay<PageTurnSummaryPanelComponent>(overlayKey, target, portal, {
             hasBackdrop: false,
             panelClass: 'turn-summary-overlay-panel',
             closeOnOutsideClick: false,
@@ -169,9 +172,9 @@ export class PageInteractionOverlayComponent {
             scrollStrategy: this.overlay.scrollStrategies.reposition()
         });
 
-        if (compRef) {
-            compRef.setInput('endTurnForAllButtonVisible', this.endTurnButtonVisible());
-            compRef.instance.endTurnForAllClicked.subscribe(() => {
+        if (componentRef) {
+            componentRef.setInput('endTurnForAllButtonVisible', this.endTurnButtonVisible());
+            outputToObservable(componentRef.instance.endTurnForAllClicked).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
                 this.endTurnForAll();
             });
         }

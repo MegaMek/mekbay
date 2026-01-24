@@ -32,9 +32,10 @@
  */
 
 import { inject, Injectable, Injector } from '@angular/core';
+import { outputToObservable } from '@angular/core/rxjs-interop';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, takeUntil } from 'rxjs';
 import { Unit } from '../models/units.model';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { OverlayManagerService } from './overlay-manager.service';
@@ -86,7 +87,7 @@ export class TaggingService {
         }
 
         const portal = new ComponentPortal(TagSelectorComponent, null, this.injector);
-        const componentRef = this.overlayManager.createManagedOverlay(
+        const { componentRef, closed } = this.overlayManager.createManagedOverlay(
             'tagSelector',
             anchorElement ?? null,
             portal,
@@ -118,15 +119,15 @@ export class TaggingService {
 
         updateTagStates();
 
-        // Handle tag removal
-        componentRef.instance.tagRemoved.subscribe(async (event: TagSelectionEvent) => {
+        // Handle tag removal - cleanup when overlay closes
+        outputToObservable(componentRef.instance.tagRemoved).pipe(takeUntil(closed)).subscribe(async (event: TagSelectionEvent) => {
             await this.dataService.modifyTag(units, event.tag, event.tagType, 'remove');
             updateTagStates();
             this.filtersService.invalidateTagsCache();
         });
 
-        // Handle tag selection
-        componentRef.instance.tagSelected.subscribe(async (event: TagSelectionEvent) => {
+        // Handle tag selection - cleanup when overlay closes
+        outputToObservable(componentRef.instance.tagSelected).pipe(takeUntil(closed)).subscribe(async (event: TagSelectionEvent) => {
             let selectedTag = event.tag;
             const tagType = event.tagType;
 

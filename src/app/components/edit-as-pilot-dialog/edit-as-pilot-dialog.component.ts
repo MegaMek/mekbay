@@ -38,6 +38,7 @@ import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility, getAbilityLim
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
+import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 /*
  * Author: Drake
@@ -275,7 +276,7 @@ export class EditASPilotDialogComponent {
 
         const portal = new ComponentPortal(AbilityDropdownPanelComponent, null, this.injector);
         
-        const compRef = this.overlayManager.createManagedOverlay(
+        const { componentRef } = this.overlayManager.createManagedOverlay(
             'ability-dropdown',
             trigger,
             portal,
@@ -287,18 +288,18 @@ export class EditASPilotDialogComponent {
             }
         );
 
-        compRef.setInput('abilities', this.availableAbilities());
-        compRef.setInput('disabledIds', disabledIds);
-        compRef.setInput('remainingCost', this.remainingCost());
+        componentRef.setInput('abilities', this.availableAbilities());
+        componentRef.setInput('disabledIds', disabledIds);
+        componentRef.setInput('remainingCost', this.remainingCost());
 
-        // Handle standard ability selection
-        compRef.instance.selected.subscribe((abilityId: string) => {
+        // Handle standard ability selection - cleanup when dialog closes
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((abilityId: string) => {
             this.selectAbility(slot, abilityId);
             this.closeDropdownOverlay();
         });
 
-        // Handle custom ability request
-        compRef.instance.addCustom.subscribe(() => {
+        // Handle custom ability request - cleanup when dialog closes
+        outputToObservable(componentRef.instance.addCustom).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.closeDropdownOverlay();
             this.openCustomAbilityDialog(slot);
         });
@@ -309,7 +310,7 @@ export class EditASPilotDialogComponent {
     private openCustomAbilityDialog(slot: number, existingAbility?: ASCustomPilotAbility): void {
         const portal = new ComponentPortal(CustomAbilityDialogComponent, null, this.injector);
         
-        const compRef = this.overlayManager.createManagedOverlay(
+        const { componentRef } = this.overlayManager.createManagedOverlay(
             'custom-ability-dialog',
             null, // centered
             portal,
@@ -322,15 +323,17 @@ export class EditASPilotDialogComponent {
 
         // Set initial ability if editing
         if (existingAbility) {
-            compRef.setInput('initialAbility', existingAbility);
+            componentRef.setInput('initialAbility', existingAbility);
         }
 
-        compRef.instance.submitted.subscribe((customAbility: ASCustomPilotAbility) => {
+        // Handle submission - cleanup when dialog closes
+        outputToObservable(componentRef.instance.submitted).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((customAbility: ASCustomPilotAbility) => {
             this.selectAbility(slot, customAbility);
             this.closeCustomAbilityOverlay();
         });
 
-        compRef.instance.cancelled.subscribe(() => {
+        // Handle cancellation - cleanup when dialog closes
+        outputToObservable(componentRef.instance.cancelled).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.closeCustomAbilityOverlay();
         });
     }

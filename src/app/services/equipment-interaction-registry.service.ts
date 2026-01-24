@@ -90,9 +90,9 @@ export abstract class EquipmentInteractionHandler {
      * @param equipment The mounted equipment
      * @param value The selected picker value
      * @param context Additional context information
-     * @returns true if the picker should close, false to keep it open
+     * @returns true if the picker should close, false to keep it open (can be async)
      */
-    abstract handleSelection(equipment: MountedEquipment, value: PickerChoice, context: HandlerContext): boolean;
+    abstract handleSelection(equipment: MountedEquipment, value: PickerChoice, context: HandlerContext): boolean | Promise<boolean>;
 }
 
 /**
@@ -169,7 +169,7 @@ class EquipmentInteractionRegistry {
         equipment: MountedEquipment, 
         choice: HandlerChoice,
         context: HandlerContext
-    ): boolean {
+    ): boolean | Promise<boolean> {
         if (!choice._handler) {
             return false;
         }

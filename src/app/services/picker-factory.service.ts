@@ -32,6 +32,7 @@
  */
 
 import { ApplicationRef, ComponentRef, createComponent, EnvironmentInjector, inject, Injectable, Injector } from '@angular/core';
+import { Subject, takeUntil } from 'rxjs';
 import { OptionsService } from './options.service';
 import { LayoutService } from './layout.service';
 import {
@@ -46,6 +47,7 @@ import {
 import { RotatingPickerComponent } from '../components/rotating-picker/rotating-picker.component';
 import { LinearPickerComponent } from '../components/linear-picker/linear-picker.component';
 import { RadialPickerComponent } from '../components/radial-picker/radial-picker.component';
+import { outputToObservable } from '@angular/core/rxjs-interop';
 
 /*
  * Author: Drake
@@ -161,9 +163,12 @@ export class PickerFactoryService {
             compRef.setInput('stepRangeBounds', config.stepRangeBounds);
         }
 
-        // Subscribe to events
-        instance.picked.subscribe(config.onPick);
-        instance.cancelled.subscribe(config.onCancel);
+        // Create destroy signal for subscription cleanup
+        const destroy$ = new Subject<void>();
+
+        // Subscribe to events with cleanup
+        outputToObservable(instance.picked).pipe(takeUntil(destroy$)).subscribe(config.onPick);
+        outputToObservable(instance.cancelled).pipe(takeUntil(destroy$)).subscribe(config.onCancel);
 
         // Attach to DOM
         this.attachToDOM(compRef);
@@ -171,7 +176,11 @@ export class PickerFactoryService {
         return {
             component: instance,
             setPosition: (position: PickerPosition) => compRef.setInput('position', position),
-            destroy: () => this.destroyComponent(compRef)
+            destroy: () => {
+                destroy$.next();
+                destroy$.complete();
+                this.destroyComponent(compRef);
+            }
         };
     }
 
@@ -212,9 +221,12 @@ export class PickerFactoryService {
             instance.initialEvent.set(config.initialEvent);
         }
 
-        // Subscribe to events
-        instance.picked.subscribe(config.onPick);
-        instance.cancelled.subscribe(config.onCancel);
+        // Create destroy signal for subscription cleanup
+        const destroy$ = new Subject<void>();
+
+        // Subscribe to events with cleanup
+        outputToObservable(instance.picked).pipe(takeUntil(destroy$)).subscribe(config.onPick);
+        outputToObservable(instance.cancelled).pipe(takeUntil(destroy$)).subscribe(config.onCancel);
 
         // Attach to DOM
         this.attachToDOM(compRef);
@@ -222,7 +234,11 @@ export class PickerFactoryService {
         return {
             component: instance,
             setPosition: (position: PickerPosition) => compRef.setInput('position', position),
-            destroy: () => this.destroyComponent(compRef)
+            destroy: () => {
+                destroy$.next();
+                destroy$.complete();
+                this.destroyComponent(compRef);
+            }
         };
     }
 
@@ -248,9 +264,12 @@ export class PickerFactoryService {
             instance.initialEvent.set(config.initialEvent);
         }
 
-        // Subscribe to events
-        instance.picked.subscribe(config.onPick);
-        instance.cancelled.subscribe(config.onCancel);
+        // Create destroy signal for subscription cleanup
+        const destroy$ = new Subject<void>();
+
+        // Subscribe to events with cleanup
+        outputToObservable(instance.picked).pipe(takeUntil(destroy$)).subscribe(config.onPick);
+        outputToObservable(instance.cancelled).pipe(takeUntil(destroy$)).subscribe(config.onCancel);
 
         // Attach to DOM
         this.attachToDOM(compRef);
@@ -258,7 +277,11 @@ export class PickerFactoryService {
         return {
             component: instance,
             setPosition: (position: PickerPosition) => compRef.setInput('position', position),
-            destroy: () => this.destroyComponent(compRef)
+            destroy: () => {
+                destroy$.next();
+                destroy$.complete();
+                this.destroyComponent(compRef);
+            }
         };
     }
 

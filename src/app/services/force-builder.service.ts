@@ -48,8 +48,8 @@ import { generateUUID, WsService } from './ws.service';
 import { ToastService } from './toast.service';
 import { LoggerService } from './logger.service';
 import { LoadForceEntry } from '../models/load-force-entry.model';
-import { ForceLoadDialogComponent } from '../components/force-load-dialog/force-load-dialog.component';
-import { ForcePackDialogComponent } from '../components/force-pack-dialog/force-pack-dialog.component';
+import { ForceLoadDialogComponent, ForceLoadDialogResult } from '../components/force-load-dialog/force-load-dialog.component';
+import { ForcePackDialogComponent, ForcePackDialogResult } from '../components/force-pack-dialog/force-pack-dialog.component';
 import { SerializedForce } from '../models/force-serialization';
 import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
 import { EditASPilotDialogComponent, EditASPilotDialogData, EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
@@ -61,6 +61,7 @@ import { ASForceUnit } from '../models/as-force-unit.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
+import { ResolvedPack } from '../utils/force-pack.util';
 
 /*
  * Author: Drake
@@ -1057,48 +1058,49 @@ export class ForceBuilderService {
      */
 
     async showLoadForceDialog(): Promise<void> {
-        const ref = this.dialogsService.createDialog(ForceLoadDialogComponent);
-        ref.componentInstance?.load.subscribe(async (force) => {
-            if (force instanceof LoadForceEntry) {
-                const requestedForce = await this.dataService.getForce(force.instanceId, true);
-                if (!requestedForce) {
-                    this.toastService.showToast('Failed to load force.', 'error');
-                    return;
-                }
-                this.loadForce(requestedForce);
-            } else {
-                // Force pack with customized units from ForceLoadDialogComponent
-                // Check if user wants to save current force before creating new one
-                const canProceed = await this.promptSaveForceIfNeeded();
-                if (!canProceed) {
-                    return;
-                }
+        const ref = this.dialogsService.createDialog<ForceLoadDialogResult>(ForceLoadDialogComponent);
+        const result = await firstValueFrom(ref.closed);
+        
+        if (!result) return;
 
-                if (force && force.units && force.units.length > 0) {
-                    await this.createNewForce();
-                    const group = this.addGroup();
-                    for (const unit of force.units) {
-                        if (!unit?.unit) continue;
-                        this.addUnit(unit.unit, undefined, undefined, group);
-                    }
+        if (result instanceof LoadForceEntry) {
+            const requestedForce = await this.dataService.getForce(result.instanceId, true);
+            if (!requestedForce) {
+                this.toastService.showToast('Failed to load force.', 'error');
+                return;
+            }
+            this.loadForce(requestedForce);
+        } else {
+            // Force pack with customized units (ResolvedPack)
+            const pack = result as ResolvedPack;
+            // Check if user wants to save current force before creating new one
+            const canProceed = await this.promptSaveForceIfNeeded();
+            if (!canProceed) {
+                return;
+            }
+
+            if (pack.units && pack.units.length > 0) {
+                await this.createNewForce();
+                const group = this.addGroup();
+                for (const unit of pack.units) {
+                    if (!unit?.unit) continue;
+                    this.addUnit(unit.unit, undefined, undefined, group);
                 }
             }
-            ref.close();
-        });
+        }
     }
 
-    showForcePackDialog(): void {
-        const ref = this.dialogsService.createDialog(ForcePackDialogComponent);
-        ref.componentInstance?.add.subscribe(async (units) => {
-            if (units) {
-                const group = this.addGroup();
-                for (const entry of units) {
-                    if (!entry?.unit) continue;
-                    this.addUnit(entry.unit, undefined, undefined, group);
-                }
+    async showForcePackDialog(): Promise<void> {
+        const ref = this.dialogsService.createDialog<ForcePackDialogResult>(ForcePackDialogComponent);
+        const units = await firstValueFrom(ref.closed);
+
+        if (units && units.length > 0) {
+            const group = this.addGroup();
+            for (const entry of units) {
+                if (!entry?.unit) continue;
+                this.addUnit(entry.unit, undefined, undefined, group);
             }
-            ref.close();
-        });
+        }
     }
 
     async promptChangeForceName() {

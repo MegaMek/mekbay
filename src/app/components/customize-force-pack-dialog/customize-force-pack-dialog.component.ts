@@ -35,6 +35,7 @@ import { Component, inject, signal, ChangeDetectionStrategy, computed, Injector,
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
@@ -176,7 +177,7 @@ export class CustomizeForcePackDialogComponent {
         );
 
         // Create overlay centered in viewport (pass null for target)
-        const compRef = this.overlayManager.createManagedOverlay(
+        const { componentRef } = this.overlayManager.createManagedOverlay(
             'variant-dropdown',
             null,
             portal,
@@ -189,18 +190,18 @@ export class CustomizeForcePackDialogComponent {
         );
         
         // Set inputs
-        compRef.setInput('variants', variants);
-        compRef.setInput('originalUnitName', unit.originalUnit?.name ?? null);
-        compRef.setInput('currentUnitName', unit.unit?.name ?? null);
+        componentRef.setInput('variants', variants);
+        componentRef.setInput('originalUnitName', unit.originalUnit?.name ?? null);
+        componentRef.setInput('currentUnitName', unit.unit?.name ?? null);
 
-        // Handle selection
-        compRef.instance.selected.subscribe((variant: Unit) => {
+        // Handle selection - cleanup when dialog closes
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((variant: Unit) => {
             this.selectVariant(index, variant);
             this.closeDropdown();
         });
 
-        // Handle info request
-        compRef.instance.infoRequested.subscribe((variant: Unit) => {
+        // Handle info request - cleanup when dialog closes
+        outputToObservable(componentRef.instance.infoRequested).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((variant: Unit) => {
             this.showVariantInfo(variant, variants, index);
         });
 
@@ -269,7 +270,7 @@ export class CustomizeForcePackDialogComponent {
     }
 
     /** Open unit details for a variant in the dropdown - SELECT selects the unit */
-    private showVariantInfo(variant: Unit, variants: Unit[], unitIndex: number): void {
+    private async showVariantInfo(variant: Unit, variants: Unit[], unitIndex: number): Promise<void> {
         const variantIdx = variants.findIndex(v => v.name === variant.name);
 
         const ref = this.dialogsService.createDialog(
@@ -284,7 +285,7 @@ export class CustomizeForcePackDialogComponent {
         );
 
         // When SELECT is clicked in unit-details, select that variant
-        ref.componentInstance?.select.subscribe((selectedUnit) => {
+        outputToObservable(ref.componentInstance!.select).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((selectedUnit: Unit) => {
             this.selectVariant(unitIndex, selectedUnit);
             this.closeDropdown();
             ref.close();

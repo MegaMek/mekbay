@@ -36,6 +36,7 @@ import { MountedEquipment } from '../models/force-serialization';
 import { PickerChoice } from '../components/picker/picker.interface';
 import { ALL_C3_FLAGS } from '../models/c3-network.model';
 import { C3NetworkDialogComponent, C3NetworkDialogData, C3NetworkDialogResult } from '../components/c3-network-dialog/c3-network-dialog.component';
+import { firstValueFrom } from 'rxjs';
 
 export class C3Handler extends EquipmentInteractionHandler {
     readonly id = 'c3-handler';
@@ -53,7 +54,7 @@ export class C3Handler extends EquipmentInteractionHandler {
         ];
     }
 
-    handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {
+    async handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): Promise<boolean> {
         if (choice.value !== 'c3-network-configuration') return false;
 
         const force = equipment.owner.force;
@@ -73,12 +74,11 @@ export class C3Handler extends EquipmentInteractionHandler {
             panelClass: 'c3-network-dialog-panel'
         });
 
-        ref.closed.subscribe((result) => {
-            if (result?.updated) {
-                force.setNetwork(result.networks);
-                context.toastService.showToast('C3 network configuration changed', 'success');
-            }
-        });
+        const result = await firstValueFrom(ref.closed);
+        if (result?.updated) {
+            force.setNetwork(result.networks);
+            context.toastService.showToast('C3 network configuration changed', 'success');
+        }
 
         return true;
     }

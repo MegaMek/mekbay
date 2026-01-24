@@ -31,19 +31,30 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, ElementRef, Injector, effect } from '@angular/core';
+import { Injectable, ElementRef, Injector, effect, ComponentRef } from '@angular/core';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { DOCUMENT } from '@angular/common';
 import { inject } from '@angular/core';
-import { take, takeUntil } from 'rxjs';
+import { Subject, take, takeUntil } from 'rxjs';
 import { LayoutService } from './layout.service';
+
+/*
+ * Result returned by createManagedOverlay containing the component ref and a closed observable.
+ */
+export interface ManagedOverlayRef<T> {
+    /** The component reference attached to the overlay */
+    componentRef: ComponentRef<T>;
+    /** Observable that emits once when the overlay is closed/disposed */
+    closed: Subject<void>;
+}
 
 /*
  * Author: Drake
  */
 type ManagedEntry = {
     overlayRef: OverlayRef;
+    closed: Subject<void>;
     clickListener?: (ev: MouseEvent) => void;
     triggerElement?: HTMLElement;
     resizeObserver?: ResizeObserver;
@@ -113,7 +124,7 @@ export class OverlayManagerService {
             matchTriggerWidth?: boolean,
             fullHeight?: boolean,
         }
-    ) {
+    ): ManagedOverlayRef<T> {
         // close existing with same key first
         this.closeManagedOverlay(key);
         const el = target ? ((target as ElementRef<HTMLElement>)?.nativeElement ?? (target as HTMLElement)) : null;
@@ -154,7 +165,8 @@ export class OverlayManagerService {
 
         const compRef = overlayRef.attach(portal);
 
-        const entry: ManagedEntry = { overlayRef };
+        const closed = new Subject<void>();
+        const entry: ManagedEntry = { overlayRef, closed };
 
         // Subscribe to detachments to clean up managed entry when overlay is closed externally
         // (e.g., by scroll strategy close)
@@ -348,7 +360,7 @@ export class OverlayManagerService {
         // initial position update to ensure correct placement immediately
         this.schedulePositionUpdate();
 
-        return compRef;
+        return { componentRef: compRef, closed };
     }
  
     /** Request a reposition for all managed overlays (throttled via RAF). */
@@ -432,6 +444,12 @@ export class OverlayManagerService {
      * Called by closeManagedOverlay and by detachment subscription.
      */
     private cleanupManagedEntry(key: string, entry: ManagedEntry) {
+        // Emit closed signal to notify subscribers
+        if (!entry.closed.closed) {
+            entry.closed.next();
+            entry.closed.complete();
+        }
+        
         if (entry.clickListener) {
             this.document.removeEventListener('click', entry.clickListener, true);
         }

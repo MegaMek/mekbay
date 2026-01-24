@@ -262,7 +262,7 @@ export class BaseDialogComponent implements AfterViewInit {
         if (!triggerEl) return;
 
         const portal = new ComponentPortal(TabOverflowMenuComponent, null, this.injector);
-        const compRef = this.overlayManager.createManagedOverlay(OVERFLOW_OVERLAY_KEY, triggerEl, portal, {
+        const { componentRef } = this.overlayManager.createManagedOverlay(OVERFLOW_OVERLAY_KEY, triggerEl, portal, {
             hasBackdrop: false,
             closeOnOutsideClick: true,
             positions: [
@@ -272,10 +272,10 @@ export class BaseDialogComponent implements AfterViewInit {
             ]
         });
 
-        compRef.setInput('tabs', this.overflowTabs());
-        compRef.setInput('activeTab', this.activeTab());
+        componentRef.setInput('tabs', this.overflowTabs());
+        componentRef.setInput('activeTab', this.activeTab());
         
-        compRef.instance.tabSelected.subscribe((tab: string) => {
+        componentRef.instance.tabSelected.subscribe((tab: string) => {
             this.overlayManager.closeManagedOverlay(OVERFLOW_OVERLAY_KEY);
             this.activeTabChange.emit(tab);
         });

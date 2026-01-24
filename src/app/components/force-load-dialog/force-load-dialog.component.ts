@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, output, viewChild, ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
+import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
@@ -75,6 +75,8 @@ export class FormatTimestamp implements PipeTransform {
     }
 }
 
+export type ForceLoadDialogResult = LoadForceEntry | ResolvedPack | null;
+
 @Component({
     selector: 'force-load-dialog',
     standalone: true,
@@ -84,13 +86,12 @@ export class FormatTimestamp implements PipeTransform {
     styleUrls: ['./force-load-dialog.component.css']
 })
 export class ForceLoadDialogComponent {
-    dialogRef = inject(DialogRef<ForceLoadDialogComponent>);
+    dialogRef = inject(DialogRef<ForceLoadDialogResult>);
     dataService = inject(DataService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
     dialogsService = inject(DialogsService);
     injector = inject(Injector);
-    load = output<LoadForceEntry | ResolvedPack>();
     searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
     forces = signal<LoadForceEntry[]>([]);
@@ -225,8 +226,8 @@ export class ForceLoadDialogComponent {
         const pack = this.selectedPack();
         
         if (force) {
-            // Loading a saved force - emit directly
-            this.load.emit(force);
+            // Loading a saved force - close with result
+            this.dialogRef.close(force);
             return;
         }
         
@@ -241,12 +242,12 @@ export class ForceLoadDialogComponent {
 
             const result = await firstValueFrom(ref.closed);
             if (result?.units) {
-                // User confirmed - emit the customized pack with units
+                // User confirmed - close with the customized pack
                 const customizedPack: ResolvedPack = {
                     ...pack,
                     units: result.units
                 };
-                this.load.emit(customizedPack);
+                this.dialogRef.close(customizedPack);
             }
             // If dismissed (null), stay on this dialog
         }

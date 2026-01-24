@@ -33,6 +33,7 @@
 
 import { CommonModule } from '@angular/common';
 import { Component, signal, ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, Pipe, PipeTransform, DestroyRef, untracked, ComponentRef } from '@angular/core';
+import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
@@ -122,6 +123,7 @@ export class UnitSearchComponent {
     gameService = inject(GameService);
     overlayManager = inject(OverlayManagerService);
 
+    private destroyRef = inject(DestroyRef);
     private injector = inject(Injector);
     private dialogsService = inject(DialogsService);
     private overlay = inject(Overlay);
@@ -1130,45 +1132,45 @@ export class UnitSearchComponent {
         }
         const target = this.favBtn()?.nativeElement || (event.target as HTMLElement);
         const portal = new ComponentPortal(SearchFavoritesMenuComponent, null, this.injector);
-        const compRef = this.overlayManager.createManagedOverlay('favorites', target, portal, {
+        const { componentRef } = this.overlayManager.createManagedOverlay('favorites', target, portal, {
             hasBackdrop: false,
             panelClass: 'favorites-overlay-panel',
             closeOnOutsideClick: true,
             scrollStrategy: this.overlay.scrollStrategies.reposition()
         });
-        this.favoritesCompRef = compRef;
+        this.favoritesCompRef = componentRef;
 
         // Get favorites - filter by game system only if a force is loaded
         const hasForce = this.forceBuilderService.currentForce() !== null;
         const favorites = hasForce
             ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
             : this.savedSearchesService.getAllSearches();
-        compRef.setInput('favorites', favorites);
+        componentRef.setInput('favorites', favorites);
         
         // Determine if saving is allowed (has search text or filters)
         const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
         const filterState = this.filtersService.filterState();
         const hasActiveFilters = Object.values(filterState).some(s => s.interactedWith);
-        compRef.setInput('canSave', hasSearchText || hasActiveFilters);
+        componentRef.setInput('canSave', hasSearchText || hasActiveFilters);
         
-        compRef.instance.select.subscribe((favorite: SerializedSearchFilter) => {
+        outputToObservable(componentRef.instance.select).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((favorite: SerializedSearchFilter) => {
             if (favorite) this.applyFavorite(favorite);
             this.overlayManager.closeManagedOverlay('favorites');
             this.favoritesCompRef = null;
         });
-        compRef.instance.rename.subscribe((favorite: SerializedSearchFilter) => {
+        outputToObservable(componentRef.instance.rename).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((favorite: SerializedSearchFilter) => {
             this.renameSearch(favorite);
         });
-        compRef.instance.delete.subscribe((favorite: SerializedSearchFilter) => {
+        outputToObservable(componentRef.instance.delete).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((favorite: SerializedSearchFilter) => {
             this.deleteSearch(favorite);
         });
-        compRef.instance.saveRequest.subscribe(() => {
+        outputToObservable(componentRef.instance.saveRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.saveCurrentSearch();
         });
-        compRef.instance.menuOpened.subscribe(() => {
+        outputToObservable(componentRef.instance.menuOpened).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.overlayManager.blockCloseUntil('favorites');
         });
-        compRef.instance.menuClosed.subscribe(() => {
+        outputToObservable(componentRef.instance.menuClosed).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             // Delay unblock to allow menu item click to process first
             // But don't unblock if a dialog operation is in progress
             setTimeout(() => {

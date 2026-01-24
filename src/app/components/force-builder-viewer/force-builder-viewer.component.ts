@@ -46,6 +46,7 @@ import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
 import { C3NetworkDialogComponent, C3NetworkDialogData, C3NetworkDialogResult } from '../c3-network-dialog/c3-network-dialog.component';
+import { firstValueFrom } from 'rxjs';
 
 /*
  * Author: Drake
@@ -188,7 +189,7 @@ export class ForceBuilderViewerComponent {
 
     }
 
-    openC3Network(event: MouseEvent, unit: ForceUnit) {
+    async openC3Network(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
         const force = this.forceBuilderService.currentForce();
         if (!force) return;
@@ -207,13 +208,12 @@ export class ForceBuilderViewerComponent {
             panelClass: 'c3-network-dialog-panel'
         });
 
-        ref.closed.subscribe((result) => {
-            if (result?.updated) {
-                // Save networks back to force
-                force.setNetwork(result.networks);
-                this.toastService.showToast('C3 network configuration changed', 'success');
-            }
-        });
+        const result = await firstValueFrom(ref.closed);
+        if (result?.updated) {
+            // Save networks back to force
+            force.setNetwork(result.networks);
+            this.toastService.showToast('C3 network configuration changed', 'success');
+        }
     }
 
     async editPilot(event: MouseEvent, unit: ForceUnit) {
