@@ -249,6 +249,14 @@
                 }
             </div>
             <hr />
+            <div class="option-col">
+                <div class="option-row">
+                    <span>Units loaded: <strong>{{ unitsCount() }}</strong></span>
+                </div>
+                <div class="option-row">
+                    <span>Equipment entries: <strong>{{ equipmentCount() }}</strong></span>
+                </div>
+            </div>
             <div class="option-row">
                 <span>Unit icons stored: <strong>{{ unitIconsCount() }}</strong></span>
                 <button class="bt-button" (click)="onPurgeIcons()">PURGE</button>

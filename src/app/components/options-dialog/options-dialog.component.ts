@@ -44,6 +44,7 @@ import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
 import { GameSystem } from '../../models/common.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
+import { DataService } from '../../services/data.service';
 
 /*
  * Author: Drake
@@ -65,6 +66,7 @@ export class OptionsDialogComponent {
     userStateService = inject(UserStateService);
     dialogsService = inject(DialogsService);
     spriteStorageService = inject(SpriteStorageService);
+    dataService = inject(DataService);
     isIOS = isIOS();
     
     tabs = computed(() => {
@@ -79,7 +81,8 @@ export class OptionsDialogComponent {
     sheetCacheCount = signal(0);
     canvasMemorySize = signal(0);
     unitIconsCount = signal(0);
-
+    unitsCount = computed(() => this.dataService.getUnits().length);
+    equipmentCount = computed(() => Object.keys(this.dataService.getEquipments()).length);
 
     constructor() {
         this.updateSheetCacheSize();
