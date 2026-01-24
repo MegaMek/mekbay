@@ -187,7 +187,7 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
 
     constructor() {
         super();
-        afterNextRender(() => {
+        const afterRenderRef = afterNextRender(() => {
             const hostEl = this.elRef.nativeElement;
             const statsEl = this.statsContainerRef()?.nativeElement;
             if (!hostEl || !statsEl) return;
@@ -205,6 +205,7 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         });
 
         this.destroyRef.onDestroy(() => {
+            afterRenderRef.destroy();
             this.resizeObserver?.disconnect();
         });
     }

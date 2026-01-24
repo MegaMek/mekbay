@@ -99,15 +99,25 @@ export class ForceBuilderViewerComponent {
     });
 
     constructor() {
+        // Track pending afterNextRender to clean up on effect re-run or destroy
+        let pendingScrollRef: { destroy: () => void } | null = null;
+        
         effect(() => {
             const selected = this.forceBuilderService.selectedUnit();
+            // Cancel any previous pending scroll callback
+            pendingScrollRef?.destroy();
+            pendingScrollRef = null;
+            
             if (selected) {
-                afterNextRender(() => {
+                pendingScrollRef = afterNextRender(() => {
+                    pendingScrollRef = null;
                     this.scrollToUnit(selected.id);
                 }, { injector: this.injector });
             }
         });
+        
         inject(DestroyRef).onDestroy(() => {
+            pendingScrollRef?.destroy();
             this.stopAutoScrollLoop();
         });
     }

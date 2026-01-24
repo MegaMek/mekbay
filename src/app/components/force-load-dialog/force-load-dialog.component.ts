@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, output, viewChild, ElementRef, afterNextRender, Injector } from '@angular/core';
+import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, output, viewChild, ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
@@ -133,6 +133,9 @@ export class ForceLoadDialogComponent {
     });
 
     constructor() {
+        // Track pending afterNextRender to cancel on effect re-run or destroy
+        let pendingFocusRef: { destroy: () => void } | null = null;
+        
         effect(async () => {
             this.loading.set(true);
             const result = await this.dataService.listForces();
@@ -144,12 +147,23 @@ export class ForceLoadDialogComponent {
             this.loading.set(false);
         });
         effect(() => {
+            // Cancel any previous pending focus callback
+            pendingFocusRef?.destroy();
+            pendingFocusRef = null;
+            
             if (!this.loading()) {
-                afterNextRender(() => this.searchInput()?.nativeElement?.focus(), { injector: this.injector });
+                pendingFocusRef = afterNextRender(() => {
+                    pendingFocusRef = null;
+                    this.searchInput()?.nativeElement?.focus();
+                }, { injector: this.injector });
             }
         });
         effect(() => {
             this.packs.set(resolveForcePacks(this.dataService));
+        });
+        
+        inject(DestroyRef).onDestroy(() => {
+            pendingFocusRef?.destroy();
         });
     }
 
