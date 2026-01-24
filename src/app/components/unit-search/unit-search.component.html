@@ -81,20 +81,24 @@
     }
 </div>
 
-<!-- Expanded view: wrapper with results and optional inline details panel -->
-@if (this.expandedView()) {
-<div #expandedResultsWrapper class="expanded-results-wrapper" [class.with-details-panel]="showInlinePanel()"
+<!-- Results Container -->
+<div #resultsContainer class="results-container"
+    [class.expanded]="this.expandedView()"
+    [class.with-details-panel]="showInlinePanel()"
     [hidden]="!this.filtersService.isDataReady() || !resultsVisible()"
-    [style.top]="expandedWrapperStyle().top"
-    [style.left]="expandedWrapperStyle().left"
-    [style.right]="expandedWrapperStyle().right"
-    [style.bottom]="expandedWrapperStyle().bottom"
-    [style.flex-direction]="expandedWrapperStyle().flexDirection">
+    [style.top]="this.expandedView() ? expandedWrapperStyle().top : resultsDropdownStyle().top"
+    [style.left]="this.expandedView() ? expandedWrapperStyle().left : null"
+    [style.right]="this.expandedView() ? expandedWrapperStyle().right : null"
+    [style.bottom]="this.expandedView() ? expandedWrapperStyle().bottom : null"
+    [style.width]="this.expandedView() ? null : resultsDropdownStyle().width"
+    [style.height]="this.expandedView() ? null : resultsDropdownStyle().height"
+    [style.flex-direction]="this.expandedView() ? expandedWrapperStyle().flexDirection : null">
+
     <!-- Inline Details Panel (visible when screen permits in expanded view) -->
     @if (showInlinePanel()) {
     <unit-details-panel class="inline-details-panel framed-borders" [unit]="inlinePanelUnit()"
         [gunnerySkill]="this.filtersService.pilotGunnerySkill()"
-        [pilotingSkill]="this.filtersService.pilotPilotingSkill()" 
+        [pilotingSkill]="this.filtersService.pilotPilotingSkill()"
         [hasPrev]="inlinePanelHasPrev()"
         [hasNext]="inlinePanelHasNext()"
         (add)="onInlinePanelAdd($event)"
@@ -102,11 +106,12 @@
         (next)="onInlinePanelNext()">
     </unit-details-panel>
     }
-    <div class="results-dropdown framed-borders expanded">
+
+    <div class="results-dropdown framed-borders" [class.expanded]="this.expandedView()">
         <div class="results-dropdown-content">
             @if (this.filtersService.filteredUnits().length > 0) {
-            <!-- Table Header for AS Table View -->
-            @if (gameService.isAlphaStrike()) {
+            <!-- Table Header for AS Table View (expanded only) -->
+            @if (this.expandedView() && gameService.isAlphaStrike()) {
             <div class="as-table-header">
                 <div class="as-th as-th-icon"></div>
                 <div class="as-th as-th-name">Name</div>
@@ -124,18 +129,30 @@
                 <div class="as-th as-th-tags">Tags</div>
             </div>
             }
+
+            <!-- Single Virtual Scroll Viewport -->
             <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
                 [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1350" tabindex="0">
                 <div class="results-dropdown-item unit-card"
                     *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
-                    [class.active]="activeIndex() === i" [class.selected]="isUnitSelected(unit)"
+                    [class.active]="activeIndex() === i"
+                    [class.selected]="isUnitSelected(unit)"
                     [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
-                    (pointerenter)="activeIndex.set(i)" longPress (shortPress)="onUnitCardClick(unit, $event)"
+                    (pointerenter)="activeIndex.set(i)"
+                    longPress
+                    (shortPress)="onUnitCardClick(unit, $event)"
                     (longPress)="multiSelectUnit(unit)">
-                    @if (gameService.isAlphaStrike()) {
-                    <ng-container *ngTemplateOutlet="expandedViewASCard; context: { unit: unit }"></ng-container>
+
+                    @if (this.expandedView()) {
+                        <!-- Expanded View Cards -->
+                        @if (gameService.isAlphaStrike()) {
+                        <ng-container *ngTemplateOutlet="expandedViewASCard; context: { unit: unit }"></ng-container>
+                        } @else {
+                        <ng-container *ngTemplateOutlet="expandedCardTpl; context: { unit: unit }"></ng-container>
+                        }
                     } @else {
-                    <ng-container *ngTemplateOutlet="expandedCardTpl; context: { unit: unit }"></ng-container>
+                        <!-- Compact View Card -->
+                        <ng-container *ngTemplateOutlet="compactCardTpl; context: { unit: unit, gunnery: gunnery, piloting: piloting }"></ng-container>
                     }
                 </div>
             </cdk-virtual-scroll-viewport>
@@ -143,109 +160,15 @@
             @if (this.selectedUnits().size > 0) {
             <ng-container *ngTemplateOutlet="selectionFooterTpl"></ng-container>
             }
-
-
-@if (this.filtersService.filteredUnits().length > 0) {
+            @if (this.filtersService.filteredUnits().length > 0) {
             <ng-container *ngTemplateOutlet="resultsFooterTpl"></ng-container>
             }
             } @else {
-            <div class="results-dropdown-item no-results">
-                No results
-            </div>
+            <div class="results-dropdown-item no-results">No results</div>
             }
         </div>
     </div>
 </div>
-} @else {
-<!-- Non-expanded view: standard dropdown -->
-<div #resultsDropdown class="results-dropdown framed-borders"
-    [hidden]="!this.filtersService.isDataReady() || !resultsVisible()"
-    [style.top]="resultsDropdownStyle().top"
-    [style.width]="resultsDropdownStyle().width"
-    [style.height]="resultsDropdownStyle().height">
-    <div class="results-dropdown-content">
-        @if (this.filtersService.filteredUnits().length > 0) {
-        <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
-            [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1350" tabindex="0">
-            <div class="results-dropdown-item unit-card"
-                *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
-                [class.active]="activeIndex() === i" [class.selected]="isUnitSelected(unit)"
-                (pointerenter)="activeIndex.set(i)" longPress (shortPress)="onUnitCardClick(unit, $event)"
-                (longPress)="multiSelectUnit(unit)">
-                <!-- Compact View Template -->
-                <unit-icon [unit]="unit" [size]="48"></unit-icon>
-                <div class="unit-data-container">
-                    <div class="secondary-info">
-                        <div class="model" [innerHTML]="highlight(unit.model)"></div>
-                        @if (unit.role && (unit.role !== 'None')) {
-                        <div class="role" [class.sort-slot]="this.filtersService.selectedSort() === 'role'">{{ unit.role
-                            }}</div>
-                        }
-                    </div>
-                    <div class="primary-info">
-                        <div class="chassis" [innerHTML]="highlight(unit.chassis)"></div>
-                    </div>
-                    <div class="third-info">
-                        <div class="info-area">
-                            @if (gameService.isAlphaStrike()) {
-                            <div class="info-slot centered slim"
-                                [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">
-                                <span class="value">PV: {{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:true
-                                    }}</span>
-                            </div>
-                            <div class="info-slot centered slim"
-                                [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">
-                                <span class="value">SZ: {{ unit.as.SZ }}</span>
-                            </div>
-                            <div class="info-slot centered slim"
-                                [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">
-                                <span class="value">TMM: {{ unit.as.TMM }}</span>
-                            </div>
-                            } @else {
-                            <div class="info-slot numeric"
-                                [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
-                                <span class="value">BV: {{ unit | adjustedBV:gunnery:piloting | formatNumber:true:true
-                                    }}</span>
-                            </div>
-                            <div class="info-slot numeric"
-                                [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
-                                <span class="value">{{ unit.tons | formatTons }}</span>
-                                <img src="/images/weight.svg" class="icon" alt="Tonnage">
-                            </div>
-                            }
-                            <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
-                                <span class="value">{{ unit.year }}</span>
-                                @if (unit._era?.img) {
-                                <img [src]="unit._era?.img" class="icon era-icon" alt="Era" [title]="unit._era?.name" />
-                                }
-                            </div>
-                            @if (getSortSlot(unit); as slot) {
-                            <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
-                                <span class="value">
-                                    @if(slot.label) { {{ slot.label }}: } {{ slot.value }}
-                                </span>
-                                @if (slot.img) {<img [src]="slot.img" class="icon" [alt]="slot.alt">}
-                            </div>
-                            }
-                        </div>
-                        <span class="spanner"></span>
-                        <unit-tags [unit]="unit" mode="compact" (tagClick)="onAddTag($event)" />
-                    </div>
-                </div>
-            </div>
-        </cdk-virtual-scroll-viewport>
-        @if (this.selectedUnits().size > 0) {
-        <ng-container *ngTemplateOutlet="selectionFooterTpl"></ng-container>
-        }
-        @if (this.filtersService.filteredUnits().length > 0) {
-        <ng-container *ngTemplateOutlet="resultsFooterTpl"></ng-container>
-        }
-        } @else {
-        <div class="results-dropdown-item no-results">No results</div>
-        }
-    </div>
-</div>
-}
 
 @if (this.expandedView() && this.advPanelDocked()) {
 <div class="adv-panel-drag-handle" [class.left]="filtersOnLeft()" (pointerdown)="onAdvPanelDragStart($event)" (click)="$event.stopPropagation();"
@@ -363,6 +286,63 @@
         }
     </div>
 </div>
+
+<!-- ======================== TEMPLATES ======================== -->
+
+<!-- Compact Card Template (non-expanded view) -->
+<ng-template #compactCardTpl let-unit="unit" let-gunnery="gunnery" let-piloting="piloting">
+    <unit-icon [unit]="unit" [size]="48"></unit-icon>
+    <div class="unit-data-container">
+        <div class="secondary-info">
+            <div class="model" [innerHTML]="highlight(unit.model)"></div>
+            @if (unit.role && (unit.role !== 'None')) {
+            <div class="role" [class.sort-slot]="this.filtersService.selectedSort() === 'role'">{{ unit.role }}</div>
+            }
+        </div>
+        <div class="primary-info">
+            <div class="chassis" [innerHTML]="highlight(unit.chassis)"></div>
+        </div>
+        <div class="third-info">
+            <div class="info-area">
+                @if (gameService.isAlphaStrike()) {
+                <div class="info-slot centered slim" [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">
+                    <span class="value">PV: {{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:true }}</span>
+                </div>
+                <div class="info-slot centered slim" [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">
+                    <span class="value">SZ: {{ unit.as.SZ }}</span>
+                </div>
+                <div class="info-slot centered slim" [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">
+                    <span class="value">TMM: {{ unit.as.TMM }}</span>
+                </div>
+                } @else {
+                <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
+                    <span class="value">BV: {{ unit | adjustedBV:gunnery:piloting | formatNumber:true:true }}</span>
+                </div>
+                <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
+                    <span class="value">{{ unit.tons | formatTons }}</span>
+                    <img src="/images/weight.svg" class="icon" alt="Tonnage">
+                </div>
+                }
+                <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
+                    <span class="value">{{ unit.year }}</span>
+                    @if (unit._era?.img) {
+                    <img [src]="unit._era?.img" class="icon era-icon" alt="Era" [title]="unit._era?.name" />
+                    }
+                </div>
+                @if (getSortSlot(unit); as slot) {
+                <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
+                    <span class="value">
+                        @if(slot.label) { {{ slot.label }}: } {{ slot.value }}
+                    </span>
+                    @if (slot.img) {<img [src]="slot.img" class="icon" [alt]="slot.alt">}
+                </div>
+                }
+            </div>
+            <span class="spanner"></span>
+            <unit-tags [unit]="unit" mode="compact" (tagClick)="onAddTag($event)" />
+        </div>
+    </div>
+</ng-template>
 
 <!-- Shared Footer Templates -->
 <ng-template #selectionFooterTpl>

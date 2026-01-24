@@ -152,17 +152,37 @@
 }
 
 /* Wrapper for expanded results with optional inline details panel */
-.expanded-results-wrapper {
+.results-container {
+    position: absolute;
+    box-sizing: border-box;
+    margin: 0;
+    z-index: 3;
+}
+
+/* Non-expanded mode: container wraps dropdown, dropdown fills container */
+.results-container:not(.expanded):not([hidden]) {
+    display: flex;
+    flex-direction: column;
+}
+
+.results-container:not(.expanded) .results-dropdown {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    flex: 1;
+    min-height: 0;
+}
+
+.results-container.expanded {
     position: fixed;
     left: 4px;
-    /* top, right, bottom set via ngStyle */
     z-index: 3;
     display: flex;
     flex-direction: row;
     gap: 8px;
 }
 
-.expanded-results-wrapper .results-dropdown {
+.results-container.expanded .results-dropdown {
     position: relative;
     flex: 1;
     min-width: 0;
@@ -174,11 +194,11 @@
     height: 100% !important;
 }
 
-.expanded-results-wrapper.with-details-panel .results-dropdown {
+.results-container.expanded.with-details-panel .results-dropdown {
     flex: 1 1 auto;
 }
 
-.expanded-results-wrapper .inline-details-panel {
+.results-container.expanded .inline-details-panel {
     flex: 0 0 850px;
     width: 850px;
 }

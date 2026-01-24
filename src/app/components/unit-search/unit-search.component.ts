@@ -307,10 +307,19 @@ export class UnitSearchComponent {
                 }
             });
         });
+        // Reset item size when view mode changes, compact cards are smaller than expanded cards
+        effect(() => {
+            const expanded = this.expandedView();
+            untracked(() => {
+                // Reset to appropriate default for the view mode
+                // Compact view: ~75px, Expanded view: ~200px (will be refined by height tracking)
+                this.itemSize.set(expanded ? 200 : 75);
+            });
+        });
         // Cancel pending height tracking updates when view mode changes to prevent stale references
         effect(() => {
-            this.expandedView(); // Track changes
-            this.resultsVisible(); // Also track resultsVisible
+            this.expandedView();
+            this.resultsVisible();
             untracked(() => {
                 if (this.heightTrackingDebounceTimer) {
                     clearTimeout(this.heightTrackingDebounceTimer);
@@ -334,6 +343,7 @@ export class UnitSearchComponent {
         });
         effect(() => {
             this.advPanelUserColumns();
+            this.expandedView();
             if (this.resultsVisible()) {
                 this.layoutService.windowWidth();
                 this.layoutService.windowHeight();
@@ -375,6 +385,24 @@ export class UnitSearchComponent {
                 this.resizeObserver.observe(container);
             }
         }, { injector: this.injector });
+
+        const visualViewport = window.visualViewport;
+        if (visualViewport) {
+            const onViewportChange = () => {
+                if (this.advOpen()) {
+                    this.updateAdvPanelPosition();
+                }
+                if (this.resultsVisible() && !this.expandedView()) {
+                    this.updateResultsDropdownPosition();
+                }
+            };
+            visualViewport.addEventListener('resize', onViewportChange);
+            visualViewport.addEventListener('scroll', onViewportChange);
+            this.destroyRef.onDestroy(() => {
+                visualViewport.removeEventListener('resize', onViewportChange);
+                visualViewport.removeEventListener('scroll', onViewportChange);
+            });
+        }
         this.setupItemHeightTracking();
         inject(DestroyRef).onDestroy(() => {
             pendingFocusRef?.destroy();
@@ -484,16 +512,21 @@ export class UnitSearchComponent {
     updateResultsDropdownPosition() {
         const gap = 4;
 
-        const { top: safeTop, bottom: safeBottom, left: safeLeft, right: safeRight } = this.layoutService.getSafeAreaInsets();
+        const { top: safeTop, bottom: safeBottom } = this.layoutService.getSafeAreaInsets();
+        const visualViewport = window.visualViewport;
+        const viewportOffsetTop = visualViewport?.offsetTop ?? 0;
+        const viewportHeight = visualViewport?.height ?? window.innerHeight;
         let dropdownWidth: number;
         let top: number;
+        let baseTop: number;
         let right: string | undefined;
 
         if (this.expandedView()) {
             // When expanded, container is fixed at top with 4px margins
             // Calculate position based on the expanded state, not current DOM position
             dropdownWidth = window.innerWidth - 8; // 4px left + 4px right margin
-            top = safeTop + 4 + 40 + gap; // top margin + searchbar height + gap
+            baseTop = safeTop + 4 + 40 + gap; // top margin + searchbar height + gap
+            top = baseTop + viewportOffsetTop;
             if (this.advPanelDocked()) {
                 const advPanelWidth = this.advPanelStyle().width;
                 right = advPanelWidth ? `${parseInt(advPanelWidth, 10) + 8}px` : `308px`;
@@ -505,12 +538,13 @@ export class UnitSearchComponent {
 
             const containerRect = container.getBoundingClientRect();
             dropdownWidth = containerRect.width;
-            top = containerRect.bottom + gap;
+            baseTop = containerRect.bottom + gap;
+            top = baseTop + viewportOffsetTop;
         }
 
         let height;
         if (this.filtersService.filteredUnits().length > 0) {
-            const availableHeight = window.innerHeight - top - Math.max(4, safeBottom);
+            const availableHeight = viewportHeight - baseTop - Math.max(4, safeBottom);
             height = `${availableHeight}px`;
         } else {
             height = 'auto';
@@ -520,7 +554,6 @@ export class UnitSearchComponent {
             top: `${top}px`,
             width: `${dropdownWidth}px`,
             height: height,
-            ...(right && { right })
         });
     }
 
@@ -1087,12 +1120,6 @@ export class UnitSearchComponent {
 
     toggleExpandedView() {
         const isExpanded = this.expandedView();
-        
-        // Reset viewport scroll position before switching
-        const vp = this.viewport();
-        if (vp) {
-            vp.scrollToOffset(0);
-        }
         
         if (isExpanded) {
             const currentForce = this.forceBuilderService.currentForce();
