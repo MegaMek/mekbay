@@ -136,7 +136,6 @@ export class DataService {
     private eraNameMap = new Map<string, Era>();
     private eraIdMap = new Map<number, Era>();
     private factionNameMap = new Map<string, Faction>();
-    public filterIndexes: Record<string, Map<string | number, Set<number>>> = {};
     private unitTypeMaxStats: UnitTypeMaxStats = {};
     private quirksMap = new Map<string, Quirk>();
     private sourcebooksMap = new Map<string, Sourcebook>();
@@ -547,24 +546,6 @@ export class DataService {
     }
 
     private buildFilterIndexes(units: Unit[]) {
-        this.filterIndexes = {};
-        // Get all dropdown filters except the external ones
-        const filtersToIndex = ADVANCED_FILTERS.filter(f => f.type === AdvFilterType.DROPDOWN && f.external !== true);
-
-        for (const filter of filtersToIndex) {
-            const index = new Map<string, Set<number>>();
-            for (const unit of units) {
-                const key = (unit as any)[filter.key];
-                if (key !== undefined && key !== null && key !== '') {
-                    if (!index.has(key)) {
-                        index.set(key, new Set());
-                    }
-                    index.get(key)!.add(unit.id);
-                }
-            }
-            this.filterIndexes[filter.key] = index;
-        }
-
         const statsByType: {
             [type: string]: {
                 armor: [number, number],
