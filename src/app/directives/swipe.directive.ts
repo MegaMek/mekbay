@@ -116,6 +116,32 @@ export class SwipeDirective {
         });
     }
 
+    private cleanup(): void {
+        this.renderer.removeClass(this.elRef.nativeElement, 'swiping');
+        this.swiping.set(false);
+
+        if (this.pointerCaptured && this.activePointerId !== null) {
+            try {
+                this.elRef.nativeElement.releasePointerCapture(this.activePointerId);
+            } catch {
+                // Ignore release errors
+            }
+            this.pointerCaptured = false; 
+        }
+
+        this.unlistenMove?.();
+        this.unlistenUp?.();
+        this.unlistenCancel?.();
+
+        this.unlistenMove = undefined;
+        this.unlistenUp = undefined;
+        this.unlistenCancel = undefined;
+        this.activePointerId = null;
+        this.pointerCaptured = false;
+        this.swipeRatio.set(0);
+        this.swipeAxis = null;
+    }
+
     /**
      * Programmatically start a swipe gesture from an external pointer event.
      * This allows parent components to initiate swipes from edge zones or other triggers.
@@ -333,33 +359,6 @@ export class SwipeDirective {
     private cancelGesture(): void {
         this.swipecancel.emit();
         this.cleanup();
-    }
-
-    private cleanup(): void {
-        
-        this.renderer.removeClass(this.elRef.nativeElement, 'swiping');
-        this.swiping.set(false);
-
-        if (this.pointerCaptured && this.activePointerId !== null) {
-            try {
-                this.elRef.nativeElement.releasePointerCapture(this.activePointerId);
-            } catch {
-                // Ignore release errors
-            }
-            this.pointerCaptured = false; 
-        }
-
-        this.unlistenMove?.();
-        this.unlistenUp?.();
-        this.unlistenCancel?.();
-
-        this.unlistenMove = undefined;
-        this.unlistenUp = undefined;
-        this.unlistenCancel = undefined;
-        this.activePointerId = null;
-        this.pointerCaptured = false;
-        this.swipeRatio.set(0);
-        this.swipeAxis = null;
     }
 
     private getSwipeDirection(delta: number, isHorizontal: boolean): 'left' | 'right' | 'up' | 'down' {

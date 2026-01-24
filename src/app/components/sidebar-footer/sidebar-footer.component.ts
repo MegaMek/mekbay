@@ -1,5 +1,5 @@
 
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, ElementRef, Renderer2, Injector, viewChildren, ApplicationRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, ElementRef, Injector, viewChildren, ApplicationRef } from '@angular/core';
 import { PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { OptionsService } from '../../services/options.service';
@@ -38,7 +38,6 @@ export class SidebarFooterComponent {
     forceBuilderService = inject(ForceBuilderService);
     dialogsService = inject(DialogsService);
     dataService = inject(DataService);
-    renderer = inject(Renderer2);
     compactModeService = inject(CompactModeService);
     menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 
