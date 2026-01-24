@@ -1045,11 +1045,16 @@ function evaluateFilter(
     const { operator, values } = filter;
     
     // Sort configs: prefer current game mode first, then game-agnostic, then other
-    const sortedFilters = [
-        ...matchingFilters.filter(f => f.game === context.gameSystem),
-        ...matchingFilters.filter(f => !f.game),
-        ...matchingFilters.filter(f => f.game && f.game !== context.gameSystem)
-    ];
+    const sortedFilters: typeof matchingFilters = [];
+    const gameAgnostic: typeof matchingFilters = [];
+    const otherGame: typeof matchingFilters = [];
+    for (const f of matchingFilters) {
+        if (f.game === context.gameSystem) sortedFilters.push(f);
+        else if (!f.game) gameAgnostic.push(f);
+        else otherGame.push(f);
+    }
+    for (const f of gameAgnostic) sortedFilters.push(f);
+    for (const f of otherGame) sortedFilters.push(f);
     
     // For != (exclude) operator, ALL configs must pass (AND logic for exclusion)
     // For other operators, ANY config can match (OR logic for inclusion)

@@ -793,7 +793,7 @@ export function tokensToFilterState(
 
                 if (values.length > 0 || wildcardPatterns.length > 0) {
                     filterState[conf.key] = {
-                        value: [...new Set(values)], // Deduplicate
+                        value: Array.from(new Set(values)), // Deduplicate
                         interactedWith: true,
                         wildcardPatterns: wildcardPatterns.length > 0 ? wildcardPatterns : undefined,
                         semanticOnly: wildcardPatterns.length > 0 ? true : undefined
@@ -829,14 +829,14 @@ export function tokensToFilterState(
             }
 
             // Combine OR and AND values into the value array, with AND values as patterns
-            const allPatterns = [...wildcardPatterns];
+            const allPatterns: WildcardPattern[] = wildcardPatterns.slice();
             for (const andVal of andValues) {
                 allPatterns.push({ pattern: andVal, state: 'and' });
             }
 
             if (orValues.length > 0 || allPatterns.length > 0) {
                 filterState[conf.key] = {
-                    value: [...new Set(orValues)], // Deduplicate OR values
+                    value: Array.from(new Set(orValues)), // Deduplicate OR values
                     interactedWith: true,
                     wildcardPatterns: allPatterns.length > 0 ? allPatterns : undefined,
                     semanticOnly: true // SEMANTIC filters are always semantic-only

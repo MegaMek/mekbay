@@ -927,27 +927,33 @@ export class LanceTypeIdentifierUtil {
         if (matches.length === 0) return null;
         // randomize but put weight on more specific matches.
         // Weights:
-        // 1. Faction-specific lance types that match the current faction: x10
-        // 2. Child definitions (those with parents) as they are more specific: x4
+        // 1. Faction-specific lance types that match the current faction: x5
+        // 2. Child definitions (those with parents) as they are more specific: x3
         // 3. Other lance types with specific requirements (non-generic): x2
         // 4. Generic lance types (support, command, battle): x1
 
-        const weightedMatches: LanceTypeDefinition[] = [];
+        // Compute weights and total
+        let totalWeight = 0;
+        const weights: number[] = [];
         for (const match of matches) {
             let weight = 1;
             if (match.exclusiveFaction && factionName.includes(match.exclusiveFaction)) {
                 weight *= 5;
-            } else
-            if (match.parent) {
+            } else if (match.parent) {
                 weight *= 3;
-            } else
-            if (match.id !== 'support-lance' && match.id !== 'command-lance' && match.id !== 'battle-lance') {
+            } else if (match.id !== 'support-lance' && match.id !== 'command-lance' && match.id !== 'battle-lance') {
                 weight *= 2;
             }
-            weightedMatches.push(...Array(weight).fill(match));
+            weights.push(weight);
+            totalWeight += weight;
         }
-        // Pick a random match from the weighted list
-        return weightedMatches[Math.floor(Math.random() * weightedMatches.length)];
+        // Pick a random match using weighted selection (no temp array allocation)
+        let roll = Math.random() * totalWeight;
+        for (let i = 0; i < matches.length; i++) {
+            roll -= weights[i];
+            if (roll <= 0) return matches[i];
+        }
+        return matches[matches.length - 1];
     }
 
     // Helper methods
@@ -978,7 +984,11 @@ export class LanceTypeIdentifierUtil {
         let totalDamageAtRange = 0;
         for (const comp of unit.comp) {
             if (!comp.r) continue;
-            const maxRange = Math.max(...comp.r.split('/').map(r => parseInt(r)));
+            let maxRange = 0;
+            for (const r of comp.r.split('/')) {
+                const parsed = parseInt(r);
+                if (parsed > maxRange) maxRange = parsed;
+            }
             if (maxRange < atRange) continue;
             
             // Check damage

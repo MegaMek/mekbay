@@ -265,16 +265,16 @@ export class C3NetworkUtil {
 
     /** Get all unit IDs in a network */
     public static getNetworkUnitIds(network: SerializedC3NetworkGroup): string[] {
-        const ids: string[] = [];
+        const idSet = new Set<string>();
         if (network.peerIds) {
-            ids.push(...network.peerIds);
+            for (const id of network.peerIds) idSet.add(id);
         } else if (network.masterId) {
-            ids.push(network.masterId);
+            idSet.add(network.masterId);
             for (const m of network.members ?? []) {
-                ids.push(this.parseMember(m).unitId);
+                idSet.add(this.parseMember(m).unitId);
             }
         }
-        return [...new Set(ids)];
+        return Array.from(idSet);
     }
 
     /** Get all units in a network */
@@ -1198,7 +1198,12 @@ export class C3NetworkUtil {
         };
         collect(network);
         const unitMap = new Map(allUnits.map(u => [u.id, u]));
-        return [...unitIds].map(id => unitMap.get(id)).filter((u): u is CBTForceUnit => !!u);
+        const result: CBTForceUnit[] = [];
+        for (const id of unitIds) {
+            const u = unitMap.get(id);
+            if (u) result.push(u);
+        }
+        return result;
     }
 
     // ==================== Color Management ====================

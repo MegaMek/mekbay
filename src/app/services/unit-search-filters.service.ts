@@ -300,10 +300,11 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
     }
 
     // Check if we need quantity counting (any non-default constraint)
-    const needsQuantityCounting = [...orList, ...andList, ...notList].some(
-        item => item.count > 1 || item.countOperator || item.countMax !== undefined || 
-                item.countIncludeRanges || item.countExcludeRanges
-    );
+    const hasQuantityConstraint = (item: MultiStateOption) =>
+        item.count > 1 || item.countOperator || item.countMax !== undefined ||
+        item.countIncludeRanges || item.countExcludeRanges;
+    const needsQuantityCounting = orList.some(hasQuantityConstraint) ||
+        andList.some(hasQuantityConstraint) || notList.some(hasQuantityConstraint);
     const isComponentFilter = key === 'componentName';
 
     return units.filter(unit => {
@@ -1043,9 +1044,10 @@ export class UnitSearchFiltersService {
 
     private applyFilters(units: Unit[], state: FilterState): Unit[] {
         let results = units;
-        const activeFilters = Object.entries(state)
-            .filter(([, s]) => s.interactedWith)
-            .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
+        const activeFilters: Record<string, any> = {};
+        for (const [key, s] of Object.entries(state)) {
+            if (s.interactedWith) activeFilters[key] = s.value;
+        }
 
         const currentGame = this.gameService.currentGameSystem();
 
@@ -1402,9 +1404,10 @@ export class UnitSearchFiltersService {
         const _tagsVersion = this.tagsVersion();
 
         let baseUnits = this.units;
-        const activeFilters = Object.entries(state)
-            .filter(([, s]) => s.interactedWith)
-            .reduce((acc, [key, s]) => ({ ...acc, [key]: s.value }), {} as Record<string, any>);
+        const activeFilters: Record<string, any> = {};
+        for (const [key, s] of Object.entries(state)) {
+            if (s.interactedWith) activeFilters[key] = s.value;
+        }
 
         const selectedEraNames = activeFilters['era'] as string[] || [];
         const selectedFactionEntries = activeFilters['faction'] as MultiStateSelection || {};
