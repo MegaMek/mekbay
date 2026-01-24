@@ -198,7 +198,7 @@ export class ForceBuilderService {
         return true;
     }
 
-    async removeForce(name: string = 'New Force') {
+    async removeForce() {
         // Prompt to save current force if needed
         const shouldContinue = await this.promptSaveForceIfNeeded();
         if (!shouldContinue) {
