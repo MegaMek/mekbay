@@ -116,8 +116,8 @@ export type BroadcastPayload = {
 })
 export class DataService {
     private logger = inject(LoggerService);
-    private dialogsService = inject(DialogsService);
     private broadcast?: BroadcastChannel;
+    private broadcastHandler?: (ev: MessageEvent) => void;
     private injector = inject(Injector);
     private http = inject(HttpClient);
     private dbService = inject(DbService);
@@ -322,11 +322,14 @@ export class DataService {
         try {
             if (typeof BroadcastChannel !== 'undefined') {
                 this.broadcast = new BroadcastChannel('mekbay-updates');
-
-                this.broadcast.addEventListener('message', (ev) => {
+                this.broadcastHandler = (ev: MessageEvent) => {
                     void this.handleStoreUpdate(ev.data as any);
-                });
+                };
+                this.broadcast.addEventListener('message', this.broadcastHandler);
                 inject(DestroyRef).onDestroy(() => {
+                    if (this.broadcast && this.broadcastHandler) {
+                        this.broadcast.removeEventListener('message', this.broadcastHandler);
+                    }
                     this.broadcast?.close();
                 });
             };
@@ -358,8 +361,13 @@ export class DataService {
                 document.removeEventListener('visibilitychange', onVisibility);
                 window.removeEventListener('online', onOnline);
                 this.broadcast?.close();
+                // Clear pending debounced saves and reject their promises to prevent memory leaks
                 for (const [, entry] of this.saveForceCloudDebounce) {
                     clearTimeout(entry.timeout);
+                    // Reject pending promises to notify callers
+                    for (const { reject } of entry.resolvers) {
+                        reject(new Error('Service destroyed'));
+                    }
                 }
                 this.saveForceCloudDebounce.clear();
             });
@@ -587,8 +595,10 @@ export class DataService {
         };
 
         for (const unit of units) {
-            unit._chassis = DataService.removeAccents(unit.chassis?.toLowerCase() || '');
-            unit._model = DataService.removeAccents(unit.model?.toLowerCase() || '');
+            // Combine chassis + model into single search key to save memory
+            const chassis = DataService.removeAccents(unit.chassis?.toLowerCase() || '');
+            const model = DataService.removeAccents(unit.model?.toLowerCase() || '');
+            unit._searchKey = `${chassis} ${model}`;
             unit._displayType = this.formatUnitType(unit.type);
             unit._mdSumNoPhysical = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp) : 0;
             unit._mdSumNoPhysicalNoOneshots = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp, true) : 0;
