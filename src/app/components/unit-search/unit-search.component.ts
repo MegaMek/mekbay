@@ -716,23 +716,50 @@ export class UnitSearchComponent {
         const vp = this.viewport();
         if (!vp) return;
         
-        const itemHeight = this.itemSize();
-        const itemTop = index * itemHeight;
-        const itemBottom = itemTop + itemHeight;
+        const vpElement = vp.elementRef.nativeElement;
+        const renderedRange = vp.getRenderedRange();
         
-        const scrollOffset = vp.measureScrollOffset();
-        const viewportSize = vp.getViewportSize();
-        const visibleTop = scrollOffset;
-        const visibleBottom = scrollOffset + viewportSize;
-        
-        if (itemTop < visibleTop) {
-            // Item is above the visible area - scroll up to show it at top
-            vp.scrollToOffset(itemTop, 'smooth');
-        } else if (itemBottom > visibleBottom) {
-            // Item is below the visible area - scroll down to show it at bottom
-            vp.scrollToOffset(itemBottom - viewportSize, 'smooth');
+        // Check if the item is within the rendered range
+        if (index < renderedRange.start || index >= renderedRange.end) {
+            // Item is not rendered at all, need to scroll to it
+            vp.scrollToIndex(index, 'smooth');
+            return;
         }
-        // Otherwise it's already visible, do nothing
+        
+        // Find the rendered items
+        const items = vpElement.querySelectorAll('.results-dropdown-item:not(.no-results)');
+        const localIndex = index - renderedRange.start;
+        
+        if (localIndex < 0 || localIndex >= items.length) {
+            // Safety fallback
+            vp.scrollToIndex(index, 'smooth');
+            return;
+        }
+        
+        const itemElement = items[localIndex] as HTMLElement;
+        const itemRect = itemElement.getBoundingClientRect();
+        const vpRect = vpElement.getBoundingClientRect();
+        
+        // Check if item is fully visible within the viewport
+        const isAbove = itemRect.top < vpRect.top;
+        const isBelow = itemRect.bottom > vpRect.bottom;
+        
+        if (!isAbove && !isBelow) {
+            // Item is fully visible, no scrolling needed
+            return;
+        }
+        
+        const currentOffset = vp.measureScrollOffset();
+        
+        if (isAbove) {
+            // Item is above the visible area - scroll up by the exact amount needed
+            const scrollAmount = vpRect.top - itemRect.top;
+            vp.scrollToOffset(currentOffset - scrollAmount, 'smooth');
+        } else {
+            // Item is below the visible area - scroll down by the exact amount needed
+            const scrollAmount = itemRect.bottom - vpRect.bottom;
+            vp.scrollToOffset(currentOffset + scrollAmount, 'smooth');
+        }
     }
 
     highlight(text: string): string {

@@ -194,9 +194,13 @@ export class UnitDetailsDialogComponent {
             });
         });
         
-        // Emit index changes
+        let isFirstRun = true;
         effect(() => {
             const index = this.unitIndex();
+            if (isFirstRun) {
+                isFirstRun = false;
+                return; // Skip initial emission to prevent scroll on dialog open
+            }
             this.indexChange.emit(index);
         });
         
