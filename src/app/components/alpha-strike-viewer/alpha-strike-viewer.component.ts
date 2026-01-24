@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, inject, computed, effect, ElementRef, viewChildren, signal, DestroyRef, viewChild, afterNextRender, Injector, ApplicationRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, computed, effect, ElementRef, viewChildren, signal, DestroyRef, viewChild, Injector, ApplicationRef } from '@angular/core';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { OptionsService } from '../../services/options.service';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -127,8 +127,6 @@ export class AlphaStrikeViewerComponent {
         return Math.floor(Math.max(MIN_CELL_WIDTH, cellWidth));
     });
     
-    private resizeObserver: ResizeObserver | null = null;
-    
     // Pinch gesture state
     private readonly pointers = new Map<number, Point>();
     
@@ -155,7 +153,6 @@ export class AlphaStrikeViewerComponent {
     constructor() {
         this.setupEffects();
         this.destroyRef.onDestroy(() => {
-            this.resizeObserver?.disconnect();
             this.cardRenderItemsCache.clear();
             this.pointers.clear();
         });
@@ -241,7 +238,7 @@ export class AlphaStrikeViewerComponent {
         });
         
         // Setup touch event listeners to prevent iOS native pinch gestures
-        effect(() => {
+        effect((onCleanup) => {
             const container = this.viewerContainer()?.nativeElement;
             if (!container) return;
             
@@ -253,39 +250,38 @@ export class AlphaStrikeViewerComponent {
             
             container.addEventListener('touchmove', preventPinchZoom, { passive: false });
             
-            this.destroyRef.onDestroy(() => {
+            onCleanup(() => {
                 container.removeEventListener('touchmove', preventPinchZoom);
             });
         });
         
         // Setup ResizeObserver to track container width
-        effect(() => {
+        effect((onCleanup) => {
             const container = this.viewerContainer()?.nativeElement;
             if (!container) return;
             
-            this.resizeObserver?.disconnect();
-            
-            this.resizeObserver = new ResizeObserver((entries) => {
+            const observer = new ResizeObserver((entries) => {
                 const entry = entries[0];
                 if (entry) {
                     this.containerWidth.set(entry.contentRect.width);
                 }
             });
             
-            this.resizeObserver.observe(container);
+            observer.observe(container);
+            
+            onCleanup(() => {
+                observer.disconnect();
+            });
         });
         
         // Calculate optimal column count on initial render
-        afterNextRender(() => {
-            // Wait for initial container width to be set by ResizeObserver
-            const unsubscribe = effect(() => {
-                const width = this.containerWidth();
-                if (width > 0) {
-                    this.calculateOptimalColumns();
-                    // Only run once - clean up after initial calculation
-                    unsubscribe.destroy();
-                }
-            }, { injector: this.injector });
+        let initialColumnsCalculated = false;
+        effect(() => {
+            const width = this.containerWidth();
+            if (width > 0 && !initialColumnsCalculated) {
+                initialColumnsCalculated = true;
+                this.calculateOptimalColumns();
+            }
         });
         
         // On resize, clamp columns if they no longer fit
@@ -298,7 +294,7 @@ export class AlphaStrikeViewerComponent {
         });
         
         // Setup scroll listeners to update picker position
-        effect(() => {
+        effect((onCleanup) => {
             const container = this.viewerContainer()?.nativeElement;
             if (!container) return;
             
@@ -308,7 +304,7 @@ export class AlphaStrikeViewerComponent {
             
             container.addEventListener('scroll', onScroll, { passive: true });
             
-            this.destroyRef.onDestroy(() => {
+            onCleanup(() => {
                 container.removeEventListener('scroll', onScroll);
             });
         });
