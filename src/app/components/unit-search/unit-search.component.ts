@@ -1087,6 +1087,13 @@ export class UnitSearchComponent {
 
     toggleExpandedView() {
         const isExpanded = this.expandedView();
+        
+        // Reset viewport scroll position before switching
+        const vp = this.viewport();
+        if (vp) {
+            vp.scrollToOffset(0);
+        }
+        
         if (isExpanded) {
             const currentForce = this.forceBuilderService.currentForce();
             if (currentForce && currentForce.units().length > 0) {

@@ -2469,11 +2469,12 @@ export class PageViewerComponent implements AfterViewInit {
         this.shadowPageCleanups.forEach(cleanup => cleanup());
         this.shadowPageCleanups = [];
         
-        const content = this.contentRef().nativeElement;
+        // Remove shadow elements from DOM and clear references
         this.shadowPageElements.forEach(el => {
-            if (el.parentElement === content) {
-                content.removeChild(el);
+            if (el.parentElement) {
+                el.parentElement.removeChild(el);
             }
+            el.innerHTML = '';
         });
         this.shadowPageElements = [];
     }
@@ -2581,15 +2582,17 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     private clearPages(): void {
-        const content = this.contentRef().nativeElement;
-        
         // Clear shadow pages first
         this.clearShadowPages();
         
+        // Remove page elements from DOM and clear references
         this.pageElements.forEach(el => {
-            if (el.parentElement === content) {
-                content.removeChild(el);
+            // Try to remove from parent, regardless of whether it's the expected content element
+            if (el.parentElement) {
+                el.parentElement.removeChild(el);
             }
+            // Also clear any internal references the element might have
+            el.innerHTML = '';
         });
         this.pageElements = [];
         this.displayedUnits = [];
