@@ -2874,6 +2874,15 @@ export class PageViewerComponent implements AfterViewInit {
     // ========== Cleanup ==========
 
     private cleanup(): void {
+        // Cancel any pending swipe animation
+        if (this.swipeAnimationCallback) {
+            const swipeWrapper = this.swipeWrapperRef()?.nativeElement;
+            if (swipeWrapper) {
+                swipeWrapper.removeEventListener('transitionend', this.swipeAnimationCallback);
+            }
+            this.swipeAnimationCallback = null;
+        }
+        
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
