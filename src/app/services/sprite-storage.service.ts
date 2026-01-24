@@ -410,6 +410,8 @@ export class SpriteStorageService {
      */
     public async reinitialize(): Promise<void> {
         this._loading.set(true);
+        this.spriteImageCache.clear();
+        this.extractedIconCache.clear();
         await this.initializeSprites();
     }
 
@@ -422,6 +424,9 @@ export class SpriteStorageService {
             URL.revokeObjectURL(url);
         }
         this.spriteUrlCache.clear();
+        this.spriteImageCache.clear();
+        this.extractedIconCache.clear();
+
         this.manifest = null;
         this.manifestPromise = null;
 
