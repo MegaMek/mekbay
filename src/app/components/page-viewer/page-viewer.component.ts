@@ -220,6 +220,7 @@ export class PageViewerComponent implements AfterViewInit {
     private displayedUnits: CBTForceUnit[] = [];
     private pageElements: HTMLDivElement[] = [];
     private shadowPageElements: HTMLDivElement[] = []; // Cloned shadow pages for neighbor preview
+    private shadowPageCleanups: (() => void)[] = []; // Cleanup functions for shadow page event listeners
 
     // Interaction services - keyed by unit ID for persistence across renders
     private interactionServices = new Map<string, SvgInteractionService>();
@@ -2464,6 +2465,10 @@ export class PageViewerComponent implements AfterViewInit {
      * Clears all shadow page elements.
      */
     private clearShadowPages(): void {
+        // Run cleanup functions for shadow page event listeners
+        this.shadowPageCleanups.forEach(cleanup => cleanup());
+        this.shadowPageCleanups = [];
+        
         const content = this.contentRef().nativeElement;
         this.shadowPageElements.forEach(el => {
             if (el.parentElement === content) {
@@ -2525,8 +2530,8 @@ export class PageViewerComponent implements AfterViewInit {
         };
         shadowWrapper.addEventListener('click', clickHandler);
         
-        // Store cleanup function
-        this.eventListenerCleanups.push(() => {
+        // Store cleanup function for this specific shadow page
+        this.shadowPageCleanups.push(() => {
             shadowWrapper.removeEventListener('click', clickHandler);
         });
         
