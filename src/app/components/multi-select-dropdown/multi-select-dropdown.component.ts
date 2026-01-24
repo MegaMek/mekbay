@@ -136,6 +136,9 @@ export class MultiSelectDropdownComponent {
     });
 
     filteredOptions = computed(() => {
+        // Return empty array when closed
+        if (!this.isOpen()) return [];
+        
         const searchTokens = parseSearchQuery(this.filterText());
         const nameFiltered = this.options().filter(option => 
             matchesSearch(option.name, searchTokens, true) || 

@@ -27,7 +27,7 @@
     <div #leftThumb class="thumb thumb-left" [style.left.%]="valueToPercent(left())"
         [class.active]="isLeftThumbActive()" [class.clamped]="isLeftThumbClamped()" [class.focused]="focusedThumb() === 'min'"
         (pointerdown)="startDrag('min', $event)" (focus)="onThumbFocus('min')"
-        (blur)="onThumbBlur()" (dblclick)="resetThumb('min', $event)" (dbltap)="resetThumb('min', $event)" [attr.tabindex]="disabled() ? -1 : 0">
+        (blur)="onThumbBlur()" (dblclick)="resetThumb('min', $event)" [attr.tabindex]="disabled() ? -1 : 0">
         @if (dragging() === 'min' || focusedThumb() === 'min') {
         <div class="thumb-label">
             {{ left() | formatNumber}}
@@ -39,7 +39,7 @@
     <div #rightThumb class="thumb thumb-right" [style.left.%]="valueToPercent(right())"
         [class.active]="isRightThumbActive()" [class.clamped]="isRightThumbClamped()" [class.focused]="focusedThumb() === 'max'"
         (pointerdown)="startDrag('max', $event)" (focus)="onThumbFocus('max')"
-        (blur)="onThumbBlur()" (dblclick)="resetThumb('max', $event)" (dbltap)="resetThumb('max', $event)" [attr.tabindex]="disabled() ? -1 : 0">
+        (blur)="onThumbBlur()" (dblclick)="resetThumb('max', $event)" [attr.tabindex]="disabled() ? -1 : 0">
         @if (dragging() === 'max' || focusedThumb() === 'max') {
         <div class="thumb-label">
             {{ right() | formatNumber }}

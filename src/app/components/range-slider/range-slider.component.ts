@@ -32,7 +32,7 @@
  */
 
 
-import { Component, signal, computed, ElementRef, input, output, effect, ChangeDetectionStrategy, viewChild } from '@angular/core';
+import { Component, signal, computed, ElementRef, input, output, effect, ChangeDetectionStrategy, viewChild, inject, DestroyRef } from '@angular/core';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 /*
  * Author: Drake
@@ -116,8 +116,18 @@ export class RangeSliderComponent {
             this.left.set(this.alignToStep(newLeft));
             this.right.set(this.alignToStep(newRight));
         });
-        effect((cleanup) => {
-            cleanup(() => { clearTimeout(this.debounceTimer) });
+
+        inject(DestroyRef).onDestroy(() => {
+            clearTimeout(this.debounceTimer);
+            // Clean up any active drag listeners
+            try {
+                const container = this.containerRef()?.nativeElement;
+                if (container) {
+                    container.removeEventListener('pointermove', this.onDrag);
+                    container.removeEventListener('pointerup', this.onDragEnd);
+                    container.removeEventListener('pointercancel', this.onDragEnd);
+                }
+            } catch { /* ignore */ }
         });
     }
 

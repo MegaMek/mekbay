@@ -92,7 +92,7 @@ export interface SemanticDisplayItem {
     state: 'or' | 'and' | 'not';
 }
 
-type DropdownFilterOptions = {
+export type DropdownFilterOptions = {
     type: 'dropdown';
     label: string;
     options: { name: string, img?: string, displayName?: string }[];
@@ -103,7 +103,7 @@ type DropdownFilterOptions = {
     displayItems?: SemanticDisplayItem[];  // Structured display items with state for proper styling
 };
 
-type RangeFilterOptions = {
+export type RangeFilterOptions = {
     type: 'range';
     label: string;
     totalRange: [number, number];
@@ -436,71 +436,104 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
     });
 }
 
+/** Dropdown filter configuration */
+export interface DropdownFilterConfig {
+    key: string;
+    label: string;
+    semanticKey?: string;
+    game?: GameSystem;
+    sortOptions?: string[];
+    external?: boolean;
+    multistate?: boolean;
+    countable?: boolean;
+}
+
+/** Range filter configuration */
+export interface RangeFilterConfig {
+    key: string;
+    label: string;
+    semanticKey?: string;
+    game?: GameSystem;
+    curve?: number;
+    stepSize?: number;
+    ignoreValues?: any[];
+}
+
+/** Semantic-only filter configuration (not shown in UI) */
+export interface SemanticFilterConfig {
+    key: string;
+    label: string;
+    semanticKey?: string;
+}
+
+/** Dropdown filters - separated for clean iteration */
+export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
+    { key: 'era', semanticKey: 'era', label: 'Era', external: true },
+    { key: 'faction', semanticKey: 'faction', label: 'Faction', external: true, multistate: true },
+    { key: 'type', semanticKey: 'type', label: 'Type', game: GameSystem.CLASSIC },
+    { key: 'as.TP', semanticKey: 'type', label: 'Type', game: GameSystem.ALPHA_STRIKE },
+    { key: 'subtype', semanticKey: 'subtype', label: 'Subtype', game: GameSystem.CLASSIC },
+    { key: 'techBase', semanticKey: 'tech', label: 'Tech', sortOptions: ['Inner Sphere', 'Clan', 'Mixed'] },
+    { key: 'role', semanticKey: 'role', label: 'Role' },
+    { key: 'weightClass', semanticKey: 'weight', label: 'Weight Class', game: GameSystem.CLASSIC, sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*'] },
+    { key: 'level', semanticKey: 'rules', label: 'Rules', game: GameSystem.CLASSIC, sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial'] },
+    { key: 'c3', semanticKey: 'network', label: 'Network', game: GameSystem.CLASSIC },
+    { key: 'moveType', semanticKey: 'motive', label: 'Motive', game: GameSystem.CLASSIC },
+    { key: 'as.MV', semanticKey: 'move', label: 'Move', game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.specials', semanticKey: 'specials', label: 'Specials', multistate: true, game: GameSystem.ALPHA_STRIKE },
+    { key: 'componentName', semanticKey: 'equipment', label: 'Equipment', multistate: true, countable: true, game: GameSystem.CLASSIC },
+    { key: 'features', semanticKey: 'features', label: 'Features', multistate: true, game: GameSystem.CLASSIC },
+    { key: 'quirks', semanticKey: 'quirks', label: 'Quirks', multistate: true, game: GameSystem.CLASSIC },
+    { key: 'source', semanticKey: 'source', label: 'Source' },
+    { key: 'forcePack', semanticKey: 'pack', label: 'Force Packs', external: true },
+    { key: '_tags', semanticKey: 'tags', label: 'Tags', multistate: true },
+]);
+
+/** Range filters - separated for clean iteration */
+export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
+    { key: 'bv', semanticKey: 'bv', label: 'BV', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'as.PV', semanticKey: 'pv', label: 'PV', curve: DEFAULT_FILTER_CURVE, game: GameSystem.ALPHA_STRIKE },
+    { key: 'tons', semanticKey: 'tons', label: 'Tons', curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: GameSystem.CLASSIC },
+    { key: 'armor', semanticKey: 'armor', label: 'Armor', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'armorPer', semanticKey: 'armorpct', label: 'Armor %', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'internal', semanticKey: 'structure', label: 'Structure / Squad Size', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: '_mdSumNoPhysical', semanticKey: 'firepower', label: 'Firepower', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'dpt', semanticKey: 'dpt', label: 'Damage/Turn', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'heat', semanticKey: 'heat', label: 'Total Weapons Heat', curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
+    { key: 'dissipation', semanticKey: 'dissipation', label: 'Dissipation', curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
+    { key: '_dissipationEfficiency', semanticKey: 'efficiency', label: 'Heat Efficiency', curve: 1, game: GameSystem.CLASSIC },
+    { key: '_maxRange', semanticKey: 'range', label: 'Range', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'walk', semanticKey: 'walk', label: 'Walk MP', curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'run', semanticKey: 'run', label: 'Run MP', curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'jump', semanticKey: 'jump', label: 'Jump MP', curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'umu', semanticKey: 'umu', label: 'UMU MP', curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'year', semanticKey: 'year', label: 'Year', curve: 1 },
+    { key: 'cost', semanticKey: 'cost', label: 'Cost', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'as.SZ', semanticKey: 'sz', label: 'Size', curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.TMM', semanticKey: 'tmm', label: 'TMM', curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.OV', semanticKey: 'ov', label: 'Overheat Value', curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.Th', semanticKey: 'th', label: 'Threshold', curve: 1, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgS', semanticKey: 'dmgs', label: 'Damage (Short)', curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgM', semanticKey: 'dmgm', label: 'Damage (Medium)', curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgL', semanticKey: 'dmgl', label: 'Damage (Long)', curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgE', semanticKey: 'dmge', label: 'Damage (Extreme)', curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.Arm', semanticKey: 'a', label: 'Armor', curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.Str', semanticKey: 's', label: 'Structure', curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+]);
+
+/** Semantic-only filters (not shown in UI, only for query parsing) */
+export const SEMANTIC_FILTERS: readonly SemanticFilterConfig[] = Object.freeze([
+    { key: 'name', semanticKey: 'name', label: 'Internal Name' },
+    { key: 'id', semanticKey: 'mul', label: 'MUL ID' },
+    { key: 'chassis', semanticKey: 'chassis', label: 'Chassis' },
+    { key: 'model', semanticKey: 'model', label: 'Model' },
+]);
+
+/** Combined ADVANCED_FILTERS for backwards compatibility and semantic parsing */
 export const ADVANCED_FILTERS: AdvFilterConfig[] = [
-    { key: 'era', semanticKey: 'era', label: 'Era', type: AdvFilterType.DROPDOWN, external: true },
-    { key: 'faction', semanticKey: 'faction', label: 'Faction', type: AdvFilterType.DROPDOWN, external: true, multistate: true },
-    { key: 'type', semanticKey: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
-    { key: 'as.TP', semanticKey: 'type', label: 'Type', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
-    { key: 'subtype', semanticKey: 'subtype', label: 'Subtype', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
-    {
-        key: 'techBase', semanticKey: 'tech', label: 'Tech', type: AdvFilterType.DROPDOWN,
-        sortOptions: ['Inner Sphere', 'Clan', 'Mixed']
-    },
-    { key: 'role', semanticKey: 'role', label: 'Role', type: AdvFilterType.DROPDOWN },
-    {
-        key: 'weightClass', semanticKey: 'weight', label: 'Weight Class', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
-        sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*']
-    },
-    {
-        key: 'level', semanticKey: 'rules', label: 'Rules', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC,
-        sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial']
-    },
-    { key: 'c3', semanticKey: 'network', label: 'Network', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
-    { key: 'moveType', semanticKey: 'motive', label: 'Motive', type: AdvFilterType.DROPDOWN, game: GameSystem.CLASSIC },
-    { key: 'as.MV', semanticKey: 'move', label: 'Move', type: AdvFilterType.DROPDOWN, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.specials', semanticKey: 'specials', label: 'Specials', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.ALPHA_STRIKE },
-    { key: 'componentName', semanticKey: 'equipment', label: 'Equipment', type: AdvFilterType.DROPDOWN, multistate: true, countable: true, game: GameSystem.CLASSIC },
-    { key: 'features', semanticKey: 'features', label: 'Features', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
-    { key: 'quirks', semanticKey: 'quirks', label: 'Quirks', type: AdvFilterType.DROPDOWN, multistate: true, game: GameSystem.CLASSIC },
-    { key: 'source', semanticKey: 'source', label: 'Source', type: AdvFilterType.DROPDOWN },
-    { key: 'forcePack', semanticKey: 'pack', label: 'Force Packs', type: AdvFilterType.DROPDOWN, external: true },
-    { key: '_tags', semanticKey: 'tags', label: 'Tags', type: AdvFilterType.DROPDOWN, multistate: true },
-    { key: 'bv', semanticKey: 'bv', label: 'BV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'as.PV', semanticKey: 'pv', label: 'PV', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.ALPHA_STRIKE },
-    { key: 'tons', semanticKey: 'tons', label: 'Tons', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: GameSystem.CLASSIC },
-    { key: 'armor', semanticKey: 'armor', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'armorPer', semanticKey: 'armorpct', label: 'Armor %', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'internal', semanticKey: 'structure', label: 'Structure / Squad Size', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: '_mdSumNoPhysical', semanticKey: 'firepower', label: 'Firepower', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'dpt', semanticKey: 'dpt', label: 'Damage/Turn', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'heat', semanticKey: 'heat', label: 'Total Weapons Heat', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
-    { key: 'dissipation', semanticKey: 'dissipation', label: 'Dissipation', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
-    { key: '_dissipationEfficiency', semanticKey: 'efficiency', label: 'Heat Efficiency', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.CLASSIC },
-    { key: '_maxRange', semanticKey: 'range', label: 'Range', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'walk', semanticKey: 'walk', label: 'Walk MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'run', semanticKey: 'run', label: 'Run MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'jump', semanticKey: 'jump', label: 'Jump MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'umu', semanticKey: 'umu', label: 'UMU MP', type: AdvFilterType.RANGE, curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'year', semanticKey: 'year', label: 'Year', type: AdvFilterType.RANGE, curve: 1 },
-    { key: 'cost', semanticKey: 'cost', label: 'Cost', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-
-    /* Alpha Strike specific filters (but some are above) */
-    { key: 'as.SZ', semanticKey: 'sz', label: 'Size', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.TMM', semanticKey: 'tmm', label: 'TMM', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.OV', semanticKey: 'ov', label: 'Overheat Value', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.Th', semanticKey: 'th', label: 'Threshold', type: AdvFilterType.RANGE, curve: 1, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgS', semanticKey: 'dmgs', label: 'Damage (Short)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgM', semanticKey: 'dmgm', label: 'Damage (Medium)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgL', semanticKey: 'dmgl', label: 'Damage (Long)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgE', semanticKey: 'dmge', label: 'Damage (Extreme)', type: AdvFilterType.RANGE, curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.Arm', semanticKey: 'a', label: 'Armor', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.Str', semanticKey: 's', label: 'Structure', type: AdvFilterType.RANGE, curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
-
-    /* Invisible filters (semantic mode only) */
-    { key: 'name', semanticKey: 'name', label: 'Internal Name', type: AdvFilterType.SEMANTIC },
-    { key: 'id', semanticKey: 'mul', label: 'MUL ID', type: AdvFilterType.SEMANTIC },
-    { key: 'chassis', semanticKey: 'chassis', label: 'Chassis', type: AdvFilterType.SEMANTIC },
-    { key: 'model', semanticKey: 'model', label: 'Model', type: AdvFilterType.SEMANTIC },
+    ...DROPDOWN_FILTERS.map(f => ({ ...f, type: AdvFilterType.DROPDOWN as const })),
+    ...RANGE_FILTERS.map(f => ({ ...f, type: AdvFilterType.RANGE as const })),
+    ...SEMANTIC_FILTERS.map(f => ({ ...f, type: AdvFilterType.SEMANTIC as const })),
 ];
 
 export const SORT_OPTIONS: SortOption[] = [
@@ -551,6 +584,19 @@ export class UnitSearchFiltersService {
     private urlStateService = inject(UrlStateService);
 
     ADVANCED_FILTERS = ADVANCED_FILTERS;
+    
+    /** Dropdown filter configs for current game system (pre-filtered, no pipes needed in template) */
+    readonly dropdownConfigs = computed((): readonly DropdownFilterConfig[] => {
+        const gs = this.gameService.currentGameSystem();
+        return DROPDOWN_FILTERS.filter(f => !f.game || f.game === gs);
+    });
+    
+    /** Range filter configs for current game system (pre-filtered, no pipes needed in template) */
+    readonly rangeConfigs = computed((): readonly RangeFilterConfig[] => {
+        const gs = this.gameService.currentGameSystem();
+        return RANGE_FILTERS.filter(f => !f.game || f.game === gs);
+    });
+    
     pilotGunnerySkill = signal(4);
     pilotPilotingSkill = signal(5);
     searchText = signal('');
