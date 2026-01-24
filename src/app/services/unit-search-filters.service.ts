@@ -561,6 +561,8 @@ export class UnitSearchFiltersService {
     advOpen = signal(false);
     private totalRangesCache: Record<string, [number, number]> = {};
     private availableNamesCache = new Map<string, string[]>();
+    private availableNamesCacheOrder: string[] = [];
+    private readonly availableNamesCacheMaxEntries = 50;
     private urlStateInitialized = signal(false);
     
     /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
@@ -1513,7 +1515,7 @@ export class UnitSearchFiltersService {
                         }
 
                         availableNames = Array.from(nameSet);
-                        this.availableNamesCache.set(namesCacheKey, availableNames);
+                        this.setAvailableNamesCache(namesCacheKey, availableNames);
                     }
 
                     let filteredAvailableNames = availableNames;
@@ -2611,9 +2613,27 @@ export class UnitSearchFiltersService {
         this.tagsVersion.update(v => v + 1);
 
         // Clear any cached tag-related data
+        const remainingOrder: string[] = [];
         for (const [key] of this.availableNamesCache) {
             if (key.includes('_tags')) {
                 this.availableNamesCache.delete(key);
+                continue;
+            }
+            remainingOrder.push(key);
+        }
+        this.availableNamesCacheOrder = remainingOrder;
+    }
+
+    private setAvailableNamesCache(key: string, value: string[]): void {
+        if (!this.availableNamesCache.has(key)) {
+            this.availableNamesCacheOrder.push(key);
+        }
+        this.availableNamesCache.set(key, value);
+
+        while (this.availableNamesCacheOrder.length > this.availableNamesCacheMaxEntries) {
+            const oldest = this.availableNamesCacheOrder.shift();
+            if (oldest) {
+                this.availableNamesCache.delete(oldest);
             }
         }
     }
