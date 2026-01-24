@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2, untracked, afterNextRender, Injector } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2, untracked, afterNextRender, Injector } from '@angular/core';
 import { Portal, PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { UnitSearchComponent } from '../unit-search/unit-search.component';
@@ -7,7 +7,7 @@ import { OptionsService } from '../../services/options.service';
 import { SidebarFooterComponent } from '../sidebar-footer/sidebar-footer.component';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { ForceBuilderViewerComponent } from '../force-builder-viewer/force-builder-viewer.component';
-import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '../../directives/swipe.directive';
+import { SwipeDirective, SwipeEndEvent, SwipeStartEvent } from '../../directives/swipe.directive';
 
 /*
  * Main Sidebar component
@@ -83,6 +83,8 @@ export class SidebarComponent {
     });
 
     constructor() {
+        inject(DestroyRef).onDestroy(() => this.cleanupLipListeners());
+        
         effect((cleanup) => {
             let offset = 0;
             let width = 0;

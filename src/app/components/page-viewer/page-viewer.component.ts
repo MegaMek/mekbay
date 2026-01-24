@@ -918,8 +918,11 @@ export class PageViewerComponent implements AfterViewInit {
         // Trim from left (slots that are too far left)
         while (this.swipeLeftmostOffset < trimLeftBoundary && this.swipeSlots.length > effectiveVisible + 2) {
             const slotToRemove = this.swipeSlots.shift();
-            if (slotToRemove?.parentElement === content) {
-                content.removeChild(slotToRemove);
+            if (slotToRemove) {
+                if (slotToRemove.parentElement === content) {
+                    content.removeChild(slotToRemove);
+                }
+                slotToRemove.innerHTML = '';
             }
             this.swipeSlotUnitAssignments.shift();
             this.swipeLeftmostOffset++;
@@ -929,8 +932,11 @@ export class PageViewerComponent implements AfterViewInit {
         // Trim from right (slots that are too far right)
         while (this.swipeRightmostOffset > trimRightBoundary && this.swipeSlots.length > effectiveVisible + 2) {
             const slotToRemove = this.swipeSlots.pop();
-            if (slotToRemove?.parentElement === content) {
-                content.removeChild(slotToRemove);
+            if (slotToRemove) {
+                if (slotToRemove.parentElement === content) {
+                    content.removeChild(slotToRemove);
+                }
+                slotToRemove.innerHTML = '';
             }
             this.swipeSlotUnitAssignments.pop();
             this.swipeRightmostOffset--;
@@ -1250,6 +1256,7 @@ export class PageViewerComponent implements AfterViewInit {
             if (el.parentElement === content) {
                 content.removeChild(el);
             }
+            el.innerHTML = '';
         });
         this.swipeSlots = [];
         this.swipeSlotUnitAssignments = [];
@@ -1783,6 +1790,7 @@ export class PageViewerComponent implements AfterViewInit {
             if (el.parentElement === content) {
                 content.removeChild(el);
             }
+            el.innerHTML = '';
         });
         this.pageElements = [];
         this.displayedUnits = [];
