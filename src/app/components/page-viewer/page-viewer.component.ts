@@ -612,19 +612,23 @@ export class PageViewerComponent implements AfterViewInit {
         const scaledPageWidth = PAGE_WIDTH * scale + PAGE_GAP * scale;
         const threshold = scaledPageWidth * SWIPE_COMMIT_THRESHOLD;
 
-        // Determine if swipe should commit based on velocity (flick)
-        const flickPrev = velocity > SWIPE_VELOCITY_THRESHOLD;
-        const flickNext = velocity < -SWIPE_VELOCITY_THRESHOLD;
-        
-        // Calculate how many pages we've swiped past
+        // Calculate how many pages we've swiped past based on distance first
         let pagesToMove = 0;
         
-        if (flickPrev) {
-            pagesToMove = -1;
-        } else if (flickNext) {
-            pagesToMove = 1;
-        } else if (Math.abs(totalDx) > threshold) {
+        if (Math.abs(totalDx) > threshold) {
             pagesToMove = -Math.round(totalDx / scaledPageWidth);
+        }
+        
+        // Only check velocity (flick) if distance-based calculation resulted in 0 pages
+        if (pagesToMove === 0) {
+            const flickPrev = velocity > SWIPE_VELOCITY_THRESHOLD;
+            const flickNext = velocity < -SWIPE_VELOCITY_THRESHOLD;
+            
+            if (flickPrev) {
+                pagesToMove = -1;
+            } else if (flickNext) {
+                pagesToMove = 1;
+            }
         }
         
         // Clamp pagesToMove
