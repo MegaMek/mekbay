@@ -46,15 +46,27 @@ export function escapeRegExp(s: string): string {
 }
 
 /**
+ * Cache for wildcard pattern RegExp objects to avoid repeated allocations.
+ * Maps pattern string to compiled RegExp.
+ */
+const wildcardRegexCache = new Map<string, RegExp>();
+
+/**
  * Convert a wildcard pattern (e.g., "AC*" or "*/3/*") to a RegExp.
  * Supports * as a wildcard for any characters.
+ * Results are cached to avoid repeated RegExp creation in hot loops.
  * @param pattern The wildcard pattern.
  * @returns A case-insensitive RegExp matching the pattern.
  */
 export function wildcardToRegex(pattern: string): RegExp {
+    const cached = wildcardRegexCache.get(pattern);
+    if (cached) return cached;
+    
     const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
     const regexStr = '^' + escaped.replace(/\*/g, '.*') + '$';
-    return new RegExp(regexStr, 'i');
+    const regex = new RegExp(regexStr, 'i');
+    wildcardRegexCache.set(pattern, regex);
+    return regex;
 }
 
 /**

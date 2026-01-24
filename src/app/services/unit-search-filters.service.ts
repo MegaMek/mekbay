@@ -1137,6 +1137,8 @@ export class UnitSearchFiltersService {
                 const andPatterns = wildcardPatterns?.filter(p => p.state === 'and') || [];
                 
                 if (hasSearchTerms || hasWildcards) {
+                    // Pre-normalize search terms
+                    const searchTermsLower = searchTerms.map(t => t.toLowerCase());
                     results = results.filter(u => {
                         const unitValue = getProperty(u, conf.key);
                         if (unitValue == null) return false;
@@ -1160,8 +1162,8 @@ export class UnitSearchFiltersService {
                         }
 
                         // Check exact matches (OR logic)
-                        for (const term of searchTerms) {
-                            if (unitStr === term.toLowerCase()) return true;
+                        for (const term of searchTermsLower) {
+                            if (unitStr === term) return true;
                         }
 
                         // Check include wildcard patterns (OR logic)

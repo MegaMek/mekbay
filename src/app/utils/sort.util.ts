@@ -213,8 +213,9 @@ function scoreTokenInText(
     const rawToken = token.token ?? '';
     if (!rawToken) return 0;
 
-    const tokenLower = removeAccents(rawToken).toLowerCase();
-    const tokenAlpha = tokenLower.replace(/[^a-z0-9]/gi, '');
+    const normalized = normalizeForRelevance(rawToken);
+    const tokenLower = normalized.lower;
+    const tokenAlpha = normalized.alphaNum;
 
     // Exact tokens: prioritize whole-token matches with boundaries.
     if (token.mode === 'exact') {
@@ -287,7 +288,7 @@ function sequentialMatchBonus(
     let matchCount = 0;
     
     for (const t of tokens) {
-        const tokenAlpha = removeAccents(t.token).toLowerCase().replace(/[^a-z0-9]/gi, '');
+        const tokenAlpha = normalizeForRelevance(t.token).alphaNum;
         if (!tokenAlpha) continue;
         
         const idx = textAlphaNum.indexOf(tokenAlpha, lastEnd);
