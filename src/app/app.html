@@ -4,7 +4,7 @@
         [unitSearchComponent]="unitSearchComponentRef()"></sidebar>
     }
     <div class="extended-search-container">
-        <div [cdkPortalOutlet]="unitSearchPortalExtended"></div>
+        <div [cdkPortalOutlet]="unitSearchPortalExtended()"></div>
     </div>
     <div class="main-content">
 
@@ -90,7 +90,7 @@
                         </div>
                     </div>
                     <div class="search-container">
-                        <div [cdkPortalOutlet]="unitSearchPortalMain"></div>
+                        <div [cdkPortalOutlet]="unitSearchPortalMain()"></div>
                     </div>
                     @if (this.dataService.isDownloading() || this.dataService.isCloudForceLoading()) {
                     <div class="spinner-container">

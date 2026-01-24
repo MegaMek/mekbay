@@ -121,9 +121,9 @@ export class App {
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
     public readonly unitSearchComponentRef = viewChild(UnitSearchComponent);
     public readonly sidebar = viewChild(SidebarComponent);
-    protected unitSearchPortal!: DomPortal<ElementRef>;
-    protected unitSearchPortalMain!: DomPortal<any>;
-    protected unitSearchPortalExtended!: DomPortal<any>;
+    protected unitSearchPortal: DomPortal<ElementRef> | null = null;
+    protected unitSearchPortalMain = signal<DomPortal<any> | undefined>(undefined);
+    protected unitSearchPortalExtended = signal<DomPortal<any> | undefined>(undefined);
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
 
     constructor() {
@@ -159,20 +159,33 @@ export class App {
         });
         effect(() => {
             const unitSearchContainer = this.unitSearchContainer();
+            const hasUnits = this.hasUnits();
+            const expandedView = this.unitSearchFiltersService.expandedView();
+            
             if (unitSearchContainer) {
+                // Detach portal if attached
                 if (this.unitSearchPortal?.isAttached) {
                     this.unitSearchPortal.detach();
                 }
-                this.unitSearchPortal = new DomPortal(unitSearchContainer);
-                if (this.unitSearchFiltersService.expandedView()) {
-                    this.unitSearchPortalExtended = this.unitSearchPortal;
+                
+                // Clear all outlet
+                this.unitSearchPortalExtended.set(undefined);
+                this.unitSearchPortalMain.set(undefined);
+                this.unitSearchPortalForceBuilder.set(undefined);
+                
+                // Create portal
+                if (!this.unitSearchPortal) {
+                    this.unitSearchPortal = new DomPortal(unitSearchContainer);
+                }
+                
+                // Assign portal to the appropriate outlet based on current state
+                if (expandedView) {
+                    this.unitSearchPortalExtended.set(this.unitSearchPortal);
+                } else if (hasUnits && this.sidebar()) {
+                    this.unitSearchPortalForceBuilder.set(this.unitSearchPortal);
                 } else {
-                    if (this.sidebar()) {
-                        this.unitSearchPortalForceBuilder.set(this.unitSearchPortal);
-                    } else {
-                        this.unitSearchPortalMain = this.unitSearchPortal;
-                        this.unitSearchComponentRef()?.buttonOnly.set(false);
-                    }
+                    this.unitSearchPortalMain.set(this.unitSearchPortal);
+                    this.unitSearchComponentRef()?.buttonOnly.set(false);
                 }
             }
         });
