@@ -3,6 +3,7 @@ import { Component, ChangeDetectionStrategy, inject, input, output, TemplateRef,
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import { LayoutService } from '../../../../services/layout.service';
+import { takeUntil } from 'rxjs';
 
 export type Phase = 'movement' | 'weapon' | 'physical' | 'heat';
 
@@ -90,8 +91,8 @@ export class PhaseSelectorComponent {
         }
 
         this.overlayRef.attach(new TemplatePortal(tpl, this.vcr));
-        this.overlayRef.backdropClick().subscribe(() => this.closeDropdown());
-        this.overlayRef.keydownEvents().subscribe(e => {
+        this.overlayRef.backdropClick().pipe(takeUntil(this.overlayRef.detachments())).subscribe(() => this.closeDropdown());
+        this.overlayRef.keydownEvents().pipe(takeUntil(this.overlayRef.detachments())).subscribe(e => {
             if (e.key === 'Escape') this.closeDropdown();
         });
 

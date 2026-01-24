@@ -32,10 +32,10 @@
  */
 
 import { Injectable, inject, Injector, afterNextRender } from '@angular/core';
-import { firstValueFrom, Subject } from 'rxjs';
+import { firstValueFrom, Subject, take, takeUntil } from 'rxjs';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
-import { Overlay, OverlayRef } from '@angular/cdk/overlay';
+import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { DIALOG_DATA, DialogRef as CdkDialogRef } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/portal';
@@ -119,11 +119,11 @@ export class DialogsService {
         const compRef = overlayRef.attach(portal);
 
         if (opts?.hasBackdrop ?? true) {
-            overlayRef.backdropClick().subscribe(() => {
+            overlayRef.backdropClick().pipe(takeUntil(overlayRef.detachments())).subscribe(() => {
                 if (!opts?.disableClose && !isCloseBlocked()) close(undefined);
             });
         }
-        overlayRef.keydownEvents().subscribe(ev => {
+        overlayRef.keydownEvents().pipe(takeUntil(overlayRef.detachments())).subscribe(ev => {
             if (!opts?.disableClose && !isCloseBlocked() && (ev.key === 'Escape' || ev.key === 'Esc')) {
                 ev.preventDefault();
                 close(undefined);
@@ -147,7 +147,7 @@ export class DialogsService {
                 }
             } catch { /* ignore */ }
         }, { injector: this.injector });
-        overlayRef.detachments().subscribe(() => {
+        overlayRef.detachments().pipe(take(1)).subscribe(() => {
             if (!closed.closed) {
                 closed.next(undefined);
                 closed.complete();

@@ -36,6 +36,7 @@ import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { DOCUMENT } from '@angular/common';
 import { inject } from '@angular/core';
+import { take, takeUntil } from 'rxjs';
 import { LayoutService } from './layout.service';
 
 /*
@@ -157,7 +158,7 @@ export class OverlayManagerService {
 
         // Subscribe to detachments to clean up managed entry when overlay is closed externally
         // (e.g., by scroll strategy close)
-        overlayRef.detachments().subscribe(() => {
+        overlayRef.detachments().pipe(take(1)).subscribe(() => {
             // Only clean up if the entry still exists and hasn't been cleaned up yet
             if (this.managed.get(key) === entry) {
                 // Dispose the overlay if it was detached externally (not already disposed)
@@ -196,7 +197,7 @@ export class OverlayManagerService {
         }
 
         if (opts?.hasBackdrop) {
-            overlayRef.backdropClick().subscribe(() => {
+            overlayRef.backdropClick().pipe(takeUntil(overlayRef.detachments())).subscribe(() => {
                 if (this.isCloseBlocked(entry)) return;
                 this.closeManagedOverlay(key);
             });

@@ -35,6 +35,8 @@ import { DestroyRef, Directive, ElementRef, Input, inject } from '@angular/core'
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { TooltipComponent, TooltipContent } from '../components/tooltip/tooltip.component';
+import { take } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Directive({
     selector: '[tooltip]',
@@ -46,6 +48,7 @@ export class TooltipDirective {
 
     private overlay = inject(Overlay);
     private host = inject(ElementRef<HTMLElement>);
+    private destroyRef = inject(DestroyRef);
     private overlayRef: OverlayRef | null = null;
     private showTimeout: any = null;
     private isVisible = false;
@@ -58,7 +61,7 @@ export class TooltipDirective {
         el.addEventListener('pointerdown', this.onPointerDown, { passive: true });
         el.addEventListener('pointercancel', this.hideImmediate, { passive: true });
     
-        inject(DestroyRef).onDestroy(() => {
+        this.destroyRef.onDestroy(() => {
             this.clearShowTimeout();
             this.hideImmediate();
             const el = this.host.nativeElement;
@@ -89,11 +92,6 @@ export class TooltipDirective {
             const related = ev.relatedTarget as Node | null;
             if (related && this.host.nativeElement.contains(related)) return;
         }
-        this.clearShowTimeout();
-        this.hideImmediate();
-    };
-
-    private onPointerLeave = (ev?: PointerEvent) => {
         this.clearShowTimeout();
         this.hideImmediate();
     };
@@ -172,7 +170,9 @@ export class TooltipDirective {
             document.removeEventListener('pointerdown', onDocumentPointerDown as any);
             overlayEl.removeEventListener('pointerdown', this.hideImmediate as any);
         };
-        this.overlayRef!.detachments().subscribe(cleanup);
+        this.overlayRef!.detachments()
+            .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+            .subscribe(cleanup);
     }
 
     private hideImmediate = () => {
