@@ -585,13 +585,13 @@ export class UnitSearchFiltersService {
 
     ADVANCED_FILTERS = ADVANCED_FILTERS;
     
-    /** Dropdown filter configs for current game system (pre-filtered, no pipes needed in template) */
+    /** Dropdown filter configs for current game system */
     readonly dropdownConfigs = computed((): readonly DropdownFilterConfig[] => {
         const gs = this.gameService.currentGameSystem();
         return DROPDOWN_FILTERS.filter(f => !f.game || f.game === gs);
     });
     
-    /** Range filter configs for current game system (pre-filtered, no pipes needed in template) */
+    /** Range filter configs for current game system */
     readonly rangeConfigs = computed((): readonly RangeFilterConfig[] => {
         const gs = this.gameService.currentGameSystem();
         return RANGE_FILTERS.filter(f => !f.game || f.game === gs);

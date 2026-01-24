@@ -37,7 +37,7 @@ import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-inter
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
-import { UnitSearchFiltersService, ADVANCED_FILTERS, SORT_OPTIONS, AdvFilterType, SortOption, SerializedSearchFilter, AdvFilterConfig } from '../../services/unit-search-filters.service';
+import { UnitSearchFiltersService, SORT_OPTIONS, AdvFilterType, SortOption, SerializedSearchFilter } from '../../services/unit-search-filters.service';
 import { HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { Unit, UnitComponent } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -78,24 +78,9 @@ import { GameSystem } from '../../models/common.model';
 import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 
-@Pipe({ name: 'dropdownFilters', pure: true })
-export class DropdownFiltersPipe implements PipeTransform {
-    transform(filters: readonly AdvFilterConfig[], gs: GameSystem): AdvFilterConfig[] {
-        return filters.filter(c => c.type === AdvFilterType.DROPDOWN && (!c.game || c.game === gs));
-    }
-}
-
-@Pipe({ name: 'rangeFilters', pure: true })
-export class RangeFiltersPipe implements PipeTransform {
-    transform(filters: readonly AdvFilterConfig[], gs: GameSystem): AdvFilterConfig[] {
-        return filters.filter(c => c.type === AdvFilterType.RANGE && (!c.game || c.game === gs));
-    }
-}
-
-
-
 @Pipe({
     name: 'expandedComponents',
+    standalone: true,
     pure: true // Pure pipes are only called when the input changes
 })
 export class ExpandedComponentsPipe implements PipeTransform {
@@ -122,7 +107,7 @@ export class ExpandedComponentsPipe implements PipeTransform {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, TooltipDirective, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent, UnitDetailsPanelComponent, DropdownFiltersPipe, RangeFiltersPipe],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, UnitComponentItemComponent, AdjustedBV, AdjustedPV, TooltipDirective, FormatNumberPipe, FormatTonsPipe, ExpandedComponentsPipe, FilterAmmoPipe, StatBarSpecsPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent, UnitDetailsPanelComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {
@@ -153,7 +138,9 @@ export class UnitSearchComponent {
 
     public readonly AdvFilterType = AdvFilterType;
     public readonly SORT_OPTIONS = SORT_OPTIONS;
-    public readonly ADVANCED_FILTERS = ADVANCED_FILTERS;
+    
+    readonly dropdownFilters = this.filtersService.dropdownConfigs;
+    readonly rangeFilters = this.filtersService.rangeConfigs;
 
     private searchDebounceTimer: any;
     private heightTrackingDebounceTimer: any;

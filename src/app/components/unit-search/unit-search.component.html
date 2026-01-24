@@ -238,7 +238,7 @@
         </div>
         } @else {
         <!-- Dropdown filters -->
-        @for (conf of (ADVANCED_FILTERS | dropdownFilters:gameSystem()); track conf.key) {
+        @for (conf of dropdownFilters(); let i = $index; track i) {
           @let filterOpts = $any(filtersService.advOptions()[conf.key]);
           <div class="filter-row" [class.semantic-only]="filterOpts?.semanticOnly">
             <multi-select-dropdown class="dropdown"
@@ -255,7 +255,7 @@
           </div>
         }
         <!-- Range Filters -->
-        @for (conf of (ADVANCED_FILTERS | rangeFilters:gameSystem()); track conf.key) {
+        @for (conf of rangeFilters(); let i = $index; track i) {
           @let rangeOpts = $any(filtersService.advOptions()[conf.key]);
           <div class="filter-row" [class.semantic-only]="rangeOpts?.semanticOnly">
             <div class="range">
