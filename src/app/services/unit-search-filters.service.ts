@@ -180,7 +180,10 @@ function getMergedTags(unit: Unit): string[] {
     const nameTags = unit._nameTags ?? [];
     const chassisTags = unit._chassisTags ?? [];
     // Merge and deduplicate
-    return Array.from(new Set([...chassisTags, ...nameTags]));
+    const merged = new Set<string>();
+    for (const tag of chassisTags) merged.add(tag);
+    for (const tag of nameTags) merged.add(tag);
+    return Array.from(merged);
 }
 
 /** Check if any element in sourceSet exists in targetSet. */
@@ -1717,20 +1720,26 @@ export class UnitSearchFiltersService {
                     };
                     continue;
                 } else {
-                    let allOptions: string[];
-                    // For source filter, flatten the array of sources per unit
+                    const optionSet = new Set<string>();
                     if (conf.key === 'source') {
-                        allOptions = Array.from(new Set(contextUnits
-                            .flatMap(u => {
-                                const val = getProperty(u, conf.key);
-                                return Array.isArray(val) ? val : (val ? [val] : []);
-                            })
-                            .filter(v => v != null && v !== '')));
+                        // For source filter, flatten the array of sources per unit
+                        for (const u of contextUnits) {
+                            const val = getProperty(u, conf.key);
+                            if (Array.isArray(val)) {
+                                for (const v of val) {
+                                    if (v != null && v !== '') optionSet.add(v);
+                                }
+                            } else if (val != null && val !== '') {
+                                optionSet.add(val);
+                            }
+                        }
                     } else {
-                        allOptions = Array.from(new Set(contextUnits
-                            .map(u => getProperty(u, conf.key))
-                            .filter(v => v != null && v !== '')));
+                        for (const u of contextUnits) {
+                            const v = getProperty(u, conf.key);
+                            if (v != null && v !== '') optionSet.add(v);
+                        }
                     }
+                    const allOptions = Array.from(optionSet);
                     const sortedOptions = sortAvailableDropdownOptions(allOptions, conf.sortOptions);
                     
                     // For source filter, add displayName from sourcebook lookup
@@ -1874,7 +1883,17 @@ export class UnitSearchFiltersService {
                     vals = this.getValidFilterValues(contextUnits, conf);
                 }
 
-                const availableRange = vals.length ? [Math.min(...vals), Math.max(...vals)] : totalRange;
+                let availableRange: [number, number];
+                if (vals.length > 0) {
+                    let min = vals[0], max = vals[0];
+                    for (let i = 1; i < vals.length; i++) {
+                        if (vals[i] < min) min = vals[i];
+                        if (vals[i] > max) max = vals[i];
+                    }
+                    availableRange = [min, max];
+                } else {
+                    availableRange = totalRange as [number, number];
+                }
 
                 // Get the original filter value (before clamping) for visualization
                 const filterStateEntry = state[conf.key];
