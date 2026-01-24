@@ -47,6 +47,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { TabOverflowMenuComponent } from './tab-overflow-menu.component';
 
@@ -275,7 +276,7 @@ export class BaseDialogComponent implements AfterViewInit {
         componentRef.setInput('tabs', this.overflowTabs());
         componentRef.setInput('activeTab', this.activeTab());
         
-        componentRef.instance.tabSelected.subscribe((tab: string) => {
+        outputToObservable(componentRef.instance.tabSelected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((tab: string) => {
             this.overlayManager.closeManagedOverlay(OVERFLOW_OVERLAY_KEY);
             this.activeTabChange.emit(tab);
         });
