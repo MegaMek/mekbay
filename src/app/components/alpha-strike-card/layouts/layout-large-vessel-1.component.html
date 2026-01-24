@@ -137,7 +137,7 @@
             @let abilities = pilotAbilities();
             @if (abilities.length > 0) {
             <div class="pilot-abilities">
-                @for (ability of abilities; track $index) {
+                @for (ability of abilities; track formatPilotAbility(ability)) {
                 <div class="pilot-ability" (click)="onPilotAbilityClick(ability)">{{ formatPilotAbility(ability) }}</div>
                 }
             </div>

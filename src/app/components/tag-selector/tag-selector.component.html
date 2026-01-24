@@ -9,7 +9,7 @@
             <span class="tag-label">Add new tag to unit...</span>
         </button>
         <div class="tag-list">
-            @for (tag of nameTags(); let i = $index; track i) {
+            @for (tag of nameTags(); track tag) {
                 <button 
                     type="button"
                     class="tag-option"
@@ -47,7 +47,7 @@
             <span class="tag-label">Add new tag to all variants...</span>
         </button>
         <div class="tag-list">
-            @for (tag of chassisTags(); let i = $index; track i) {
+            @for (tag of chassisTags(); track tag) {
                 <button 
                     type="button"
                     class="tag-option tag-option-chassis-item"
