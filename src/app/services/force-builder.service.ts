@@ -1073,12 +1073,7 @@ export class ForceBuilderService {
         } else {
             // Force pack with customized units (ResolvedPack)
             const pack = result as ResolvedPack;
-            // Check if user wants to save current force before creating new one
-            const canProceed = await this.promptSaveForceIfNeeded();
-            if (!canProceed) {
-                return;
-            }
-
+            
             if (pack.units && pack.units.length > 0) {
                 await this.createNewForce();
                 const group = this.addGroup();
