@@ -81,6 +81,7 @@ export interface AdvFilterConfig {
     countable?: boolean; // if true, show amount next to options
     stepSize?: number; // for range sliders, defines the step size
     semanticKey?: string; // Simplified key for semantic filter mode (e.g., 'tmm' instead of 'as.TMM')
+    valueNormalizer?: (value: string) => string; // Optional function to normalize semantic filter values
 }
 
 // Use SemanticFilterState from semantic-filter.util as our FilterState
@@ -173,6 +174,23 @@ export const AS_MOVEMENT_MODE_DISPLAY_NAMES: Record<string, string> = {
     'f': 'Foot',
     'm': 'Motorized',
 };
+
+/**
+ * Normalize a motive value to its display name (case-insensitive).
+ * Accepts a code ('j', 'J') or display name ('jump', 'JUMP', 'Jump', etc.).
+ * Returns the canonical display name or the original value if not recognized.
+ * 
+ * O(n) but n≈20, so negligible vs Map overhead.
+ */
+export function normalizeMotiveValue(value: string): string {
+    const lower = value.toLowerCase();
+    for (const [code, displayName] of Object.entries(AS_MOVEMENT_MODE_DISPLAY_NAMES)) {
+        if (code === lower || displayName.toLowerCase() === lower) {
+            return displayName;
+        }
+    }
+    return value;
+}
 
 function sortAvailableDropdownOptions(options: string[], predefinedOrder?: string[]): string[] {
     if (predefinedOrder && predefinedOrder.length > 0) {
@@ -501,6 +519,8 @@ export interface DropdownFilterConfig {
     external?: boolean;
     multistate?: boolean;
     countable?: boolean;
+    /** Optional function to normalize semantic filter values (e.g., motive code 'j' -> 'Jump') */
+    valueNormalizer?: (value: string) => string;
 }
 
 /** Range filter configuration */
@@ -534,7 +554,7 @@ export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
     { key: 'level', semanticKey: 'rules', label: 'Rules', game: GameSystem.CLASSIC, sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial'] },
     { key: 'c3', semanticKey: 'network', label: 'Network', game: GameSystem.CLASSIC },
     { key: 'moveType', semanticKey: 'motive', label: 'Motive', game: GameSystem.CLASSIC },
-    { key: 'as._motive', semanticKey: 'motive', label: 'Motive', game: GameSystem.ALPHA_STRIKE, sortOptions: Object.values(AS_MOVEMENT_MODE_DISPLAY_NAMES) },
+    { key: 'as._motive', semanticKey: 'motive', label: 'Motive', game: GameSystem.ALPHA_STRIKE, sortOptions: Object.values(AS_MOVEMENT_MODE_DISPLAY_NAMES), valueNormalizer: normalizeMotiveValue },
     { key: 'as.specials', semanticKey: 'specials', label: 'Specials', multistate: true, game: GameSystem.ALPHA_STRIKE },
     { key: 'componentName', semanticKey: 'equipment', label: 'Equipment', multistate: true, countable: true, game: GameSystem.CLASSIC },
     { key: 'features', semanticKey: 'features', label: 'Features', multistate: true, game: GameSystem.CLASSIC },

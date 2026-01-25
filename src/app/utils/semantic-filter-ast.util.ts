@@ -1320,6 +1320,9 @@ function evaluateDropdownFilter(
     const unitValues = Array.isArray(unitValue) ? unitValue : [unitValue];
     const unitStrings = unitValues.map(v => String(v).toLowerCase());
     
+    // Apply value normalizer if defined (motive code 'j' -> 'Jump')
+    const normalizeValue = conf.valueNormalizer || ((v: string) => v);
+    
     // Check if we need quantity counting (for countable filters like equipment)
     const needsQuantityCounting = conf.countable && context.getCountableValues;
     const countableValues = needsQuantityCounting ? context.getCountableValues!(unit, conf.key) : null;
@@ -1328,7 +1331,8 @@ function evaluateDropdownFilter(
     if (operator === '&=') {
         for (const val of values) {
             const { name, constraint } = parseValueWithQuantity(val);
-            const lowerName = name.toLowerCase();
+            const normalizedName = normalizeValue(name);
+            const lowerName = normalizedName.toLowerCase();
             const isWildcard = name.includes('*');
             
             let matchFound = false;
@@ -1378,7 +1382,8 @@ function evaluateDropdownFilter(
     // For = (OR) and != operators
     for (const val of values) {
         const { name, constraint } = parseValueWithQuantity(val);
-        const lowerName = name.toLowerCase();
+        const normalizedName = normalizeValue(name);
+        const lowerName = normalizedName.toLowerCase();
         const isWildcard = name.includes('*');
         
         let matchFound = false;

@@ -106,11 +106,12 @@
         <h3>Linked Filters (Alpha Strike)</h3>
         <p>The <code>motive</code> and <code>mv</code> filters work together. When both are active, movement value filtering only applies to the selected motive types:</p>
         <div class="examples">
-            <div class="example"><code class="allow-select">motive=j</code><span class="desc">→ Units with Jump movement</span></div>
+            <div class="example"><code class="allow-select">motive=j</code><span class="desc">→ Units with Jump movement (or use <code>motive=jump</code>)</span></div>
             <div class="example"><code class="allow-select">mv=8-12</code><span class="desc">→ Units with any movement value between 8-12</span></div>
             <div class="example"><code class="allow-select">motive=j mv>=6</code><span class="desc">→ Units with Jump movement of 6+</span></div>
             <div class="example"><code class="allow-select">motive=w,t mv=4-8</code><span class="desc">→ Units with Wheeled or Tracked movement between 4-8</span></div>
         </div>
+        <p class="note"><strong>Tip:</strong> Motive accepts codes (j, w, t, h, v, g) or full names (Jump, Wheeled, Tracked, Hover, VTOL, WiGE).</p>
         <p class="note"><strong>Note:</strong> Without a motive filter, <code>mv</code> checks any movement mode. With a motive filter, only the selected modes are checked.</p>
     </section>
 

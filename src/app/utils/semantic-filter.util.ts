@@ -617,6 +617,9 @@ export function tokensToFilterState(
             };
 
         } else if (conf.type === AdvFilterType.DROPDOWN) {
+            // Get the value normalizer if defined (for motive codes -> display names)
+            const normalizeValue = conf.valueNormalizer || ((v: string) => v);
+            
             if (conf.multistate) {
                 // Handle multistate dropdowns (supports include/exclude, wildcards, and quantity constraints)
                 const selection: MultiStateSelection = {};
@@ -662,15 +665,16 @@ export function tokensToFilterState(
                             // If no constraint, it means "has at least one" which is the default
                         } else {
                             // Regular value (non-countable)
+                            const normalizedVal = normalizeValue(val);
                             // If already exists, update state with priority: not > and > or
-                            if (selection[val]) {
+                            if (selection[normalizedVal]) {
                                 if (state === 'not') {
-                                    selection[val].state = 'not';
-                                } else if (state === 'and' && selection[val].state === 'or') {
-                                    selection[val].state = 'and';
+                                    selection[normalizedVal].state = 'not';
+                                } else if (state === 'and' && selection[normalizedVal].state === 'or') {
+                                    selection[normalizedVal].state = 'and';
                                 }
                             } else {
-                                selection[val] = { name: val, state, count: 1 };
+                                selection[normalizedVal] = { name: normalizedVal, state, count: 1 };
                             }
                         }
                     }
@@ -784,7 +788,7 @@ export function tokensToFilterState(
                             if (val.includes('*')) {
                                 wildcardPatterns.push({ pattern: val, state: 'or' });
                             } else {
-                                values.push(val);
+                                values.push(normalizeValue(val));
                             }
                         }
                     }
