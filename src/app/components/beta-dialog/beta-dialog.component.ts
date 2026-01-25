@@ -78,7 +78,7 @@ import { APP_VERSION_STRING } from '../../build-meta';
     `],
 })
 export class BetaDialogComponent {
-    dialogRef = inject(DialogRef<BetaDialogComponent>);
+    private dialogRef = inject(DialogRef<void>);
     data = inject(DIALOG_DATA, { optional: true });
     appVersionString = APP_VERSION_STRING;
 

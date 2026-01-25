@@ -90,7 +90,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
   `
 })
 export class LicenseDialogComponent {
-    dialogRef = inject(DialogRef<LicenseDialogComponent>);
+    private dialogRef = inject(DialogRef<void>);
     data = inject(DIALOG_DATA, { optional: true });
 
     onClose() {

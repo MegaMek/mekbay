@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, ElementRef, afterNextRender, inject, input, output, viewChild, Injector, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, afterNextRender, inject, input, output, viewChild, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit } from '../../models/units.model';
 import { UnitCardCompactComponent } from '../unit-card-compact/unit-card-compact.component';
@@ -95,7 +95,6 @@ import { TagClickEvent } from '../unit-tags/unit-tags.component';
     `]
 })
 export class VariantDropdownPanelComponent {
-    private injector = inject(Injector);
     private taggingService = inject(TaggingService);
     gameService = inject(GameService);
 
@@ -110,7 +109,7 @@ export class VariantDropdownPanelComponent {
 
     constructor() {
         // Scroll to current variant after render
-        afterNextRender(() => this.scrollToCurrent(), { injector: this.injector });
+        afterNextRender(() => this.scrollToCurrent());
     }
 
     onSelect(variant: Unit): void {

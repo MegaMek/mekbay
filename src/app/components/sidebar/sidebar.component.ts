@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2, untracked, afterNextRender, Injector } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2 } from '@angular/core';
 import { Portal, PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import { UnitSearchComponent } from '../unit-search/unit-search.component';
@@ -24,7 +24,6 @@ import { SwipeDirective, SwipeEndEvent, SwipeStartEvent } from '../../directives
 export class SidebarComponent {
     readonly COLLAPSED_WIDTH = 72;
     readonly EXPANDED_WIDTH = 360;
-    injector = inject(Injector);
     elRef = inject(ElementRef<HTMLElement>);
     layout = inject(LayoutService);
     options = inject(OptionsService);

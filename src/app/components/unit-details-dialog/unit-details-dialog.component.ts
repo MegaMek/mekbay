@@ -84,10 +84,10 @@ export interface UnitDetailsDialogData {
     }
 })
 export class UnitDetailsDialogComponent {
-    dataService = inject(DataService);
+    private dataService = inject(DataService);
     gameService = inject(GameService);
     forceBuilderService = inject(ForceBuilderService);
-    dialogRef = inject(DialogRef<UnitDetailsDialogComponent>);
+    private dialogRef = inject(DialogRef<void>);
     data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     toastService = inject(ToastService);
     floatingOverlayService = inject(FloatingOverlayService);

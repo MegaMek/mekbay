@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, signal, ChangeDetectionStrategy, viewChild, ElementRef, Injector, afterNextRender, computed } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
@@ -58,11 +58,10 @@ export type ForcePackDialogResult = PackUnitEntry[] | null;
     styleUrls: ['./force-pack-dialog.component.css']
 })
 export class ForcePackDialogComponent {
-    dialogRef = inject(DialogRef<ForcePackDialogResult>);
-    dataService = inject(DataService);
+    private dialogRef = inject(DialogRef<ForcePackDialogResult>);
+    private dataService = inject(DataService);
     gameService = inject(GameService);
-    dialogsService = inject(DialogsService);
-    injector = inject(Injector);
+    private dialogsService = inject(DialogsService);
 
     packs = signal<ResolvedPack[]>([]);
     selectedPack = signal<ResolvedPack | null>(null);
@@ -81,10 +80,7 @@ export class ForcePackDialogComponent {
     });
 
     constructor() {
-        (async () => {
-            this.packs.set(resolveForcePacks(this.dataService));
-            afterNextRender(() => this.searchInput()?.nativeElement?.focus(), { injector: this.injector });
-        })();
+        this.packs.set(resolveForcePacks(this.dataService));
     }
 
     onSearchForcePack(text: string) {

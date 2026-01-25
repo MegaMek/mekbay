@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
+import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
@@ -44,7 +44,7 @@ import { OptionsService } from '../../services/options.service';
 import { GameService } from '../../services/game.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { PackUnitEntry, ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
+import { ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
 import { CustomizeForcePackDialogComponent, CustomizeForcePackDialogData, CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
 
 /*
@@ -86,12 +86,11 @@ export type ForceLoadDialogResult = LoadForceEntry | ResolvedPack | null;
     styleUrls: ['./force-load-dialog.component.css']
 })
 export class ForceLoadDialogComponent {
-    dialogRef = inject(DialogRef<ForceLoadDialogResult>);
-    dataService = inject(DataService);
+    private dialogRef = inject(DialogRef<ForceLoadDialogResult>);
+    private dataService = inject(DataService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
-    dialogsService = inject(DialogsService);
-    injector = inject(Injector);
+    private dialogsService = inject(DialogsService);
     searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
     forces = signal<LoadForceEntry[]>([]);
@@ -134,50 +133,26 @@ export class ForceLoadDialogComponent {
     });
 
     constructor() {
-        // Track pending afterNextRender to cancel on effect re-run or destroy
-        let pendingFocusRef: { destroy: () => void } | null = null;
-        let destroyed = false;
-        
         // Load forces on init
-        this.loadForces(() => destroyed);
+        this.loadForces();
         
-        effect(() => {
-            // Cancel any previous pending focus callback
-            pendingFocusRef?.destroy();
-            pendingFocusRef = null;
-            
-            if (!this.loading()) {
-                pendingFocusRef = afterNextRender(() => {
-                    pendingFocusRef = null;
-                    this.searchInput()?.nativeElement?.focus();
-                }, { injector: this.injector });
-            }
-        });
+        // Resolve force packs
         effect(() => {
             this.packs.set(resolveForcePacks(this.dataService));
         });
-        
-        inject(DestroyRef).onDestroy(() => {
-            destroyed = true;
-            pendingFocusRef?.destroy();
-        });
     }
 
-    private async loadForces(isDestroyed: () => boolean): Promise<void> {
+    private async loadForces(): Promise<void> {
         this.loading.set(true);
         try {
             const result = await this.dataService.listForces();
-            // Check if component was destroyed while waiting
-            if (isDestroyed()) return;
             const enriched = (result || []).map(f => {
                 f._searchText = this.computeSearchText(f);
                 return f;
             });
             this.forces.set(enriched);
         } finally {
-            if (!isDestroyed()) {
-                this.loading.set(false);
-            }
+            this.loading.set(false);
         }
     }
 

@@ -31,13 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, inject, Injector, afterNextRender } from '@angular/core';
-import { firstValueFrom, Subject, take, takeUntil } from 'rxjs';
+import { Injectable, inject } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
-import { Overlay } from '@angular/cdk/overlay';
-import { ComponentPortal } from '@angular/cdk/portal';
-import { DIALOG_DATA, DialogRef as CdkDialogRef } from '@angular/cdk/dialog';
+import { Dialog, DialogRef as CdkDialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/portal';
 
 /*
@@ -45,14 +43,13 @@ import { ComponentType } from '@angular/cdk/portal';
  */
 export interface DialogRef<T = any, R = any> {
     componentInstance: T;
-    closed: Subject<R | undefined>;
+    closed: CdkDialogRef<R, T>['closed'];
     close: (result?: R) => void;
 }
 
 @Injectable({ providedIn: 'root' })
 export class DialogsService {
-    private overlay = inject(Overlay);
-    private injector = inject(Injector);
+    private dialog = inject(Dialog);
 
     // Generic dialog creator using CDK Overlay, compatible with components expecting CDK Dialog
     public createDialog<R = any, T = any, D = unknown>(
@@ -62,7 +59,6 @@ export class DialogsService {
             panelClass?: string | string[];
             backdropClass?: string | string[];
             disableClose?: boolean;
-            disableCloseForMs?: number;
             hasBackdrop?: boolean;
             width?: string;
             height?: string;
@@ -70,96 +66,23 @@ export class DialogsService {
             maxHeight?: string;
         }
     ): DialogRef<T, R> {
-        const positionStrategy = this.overlay.position().global()
-            .centerHorizontally()
-            .centerVertically();
-
-        const overlayRef = this.overlay.create({
-            positionStrategy,
-            hasBackdrop: opts?.hasBackdrop ?? true,
-            backdropClass: opts?.backdropClass ?? 'cdk-overlay-dark-backdrop',
+        const cdkRef = this.dialog.open<R, D, T>(component, {
+            data: opts?.data,
             panelClass: opts?.panelClass,
-            scrollStrategy: this.overlay.scrollStrategies.block(),
+            backdropClass: opts?.backdropClass ?? 'cdk-overlay-dark-backdrop',
+            disableClose: opts?.disableClose,
+            hasBackdrop: opts?.hasBackdrop ?? true,
             width: opts?.width,
             height: opts?.height,
             maxWidth: opts?.maxWidth ?? '100dvw',
-            maxHeight: opts?.maxHeight ?? '100dvh'
-        });
-
-        const closed = new Subject<R | undefined>();
-        
-        // Block closing for a short period to prevent the triggering click from closing the dialog
-        const blockMs = opts?.disableCloseForMs ?? 150;
-        let closeBlockedUntil = blockMs > 0 ? performance.now() + blockMs : 0;
-        const isCloseBlocked = () => closeBlockedUntil > 0 && performance.now() < closeBlockedUntil;
-        
-        const close = (result?: R) => {
-            try {
-                if (!closed.closed) {
-                    closed.next(result);
-                    closed.complete();
-                }
-            } finally {
-                // Dispose after notifying listeners
-                if (overlayRef?.hasAttached()) {
-                    overlayRef.dispose();
-                }
-            }
-        };
-
-        const injector = Injector.create({
-            parent: this.injector,
-            providers: [
-                { provide: CdkDialogRef, useValue: { close, closed } as Partial<CdkDialogRef<R>> },
-                { provide: DIALOG_DATA, useValue: opts?.data }
-            ]
-        });
-
-        const portal = new ComponentPortal<T>(component, null, injector);
-        const compRef = overlayRef.attach(portal);
-
-        if (opts?.hasBackdrop ?? true) {
-            overlayRef.backdropClick().pipe(takeUntil(overlayRef.detachments())).subscribe(() => {
-                if (!opts?.disableClose && !isCloseBlocked()) close(undefined);
-            });
-        }
-        overlayRef.keydownEvents().pipe(takeUntil(overlayRef.detachments())).subscribe(ev => {
-            if (!opts?.disableClose && !isCloseBlocked() && (ev.key === 'Escape' || ev.key === 'Esc')) {
-                ev.preventDefault();
-                close(undefined);
-            }
-        });
-        afterNextRender(() => {
-            try {
-                const panel = overlayRef.overlayElement as HTMLElement;
-                const focusable = panel.querySelector<HTMLElement>(
-                    'input, select, textarea, [contenteditable="true"], button, [href], [tabindex]:not([tabindex="-1"])'
-                );
-                if (focusable) {
-                    focusable.focus();
-                } else {
-                    // If no focusable element found, focus the first child to trap focus
-                    const firstChild = panel.firstElementChild as HTMLElement;
-                    if (firstChild) {
-                        firstChild.setAttribute('tabindex', '-1');
-                        firstChild.focus();
-                    }
-                }
-            } catch { /* ignore */ }
-        }, { injector: this.injector });
-        overlayRef.detachments().pipe(take(1)).subscribe(() => {
-            if (!closed.closed) {
-                closed.next(undefined);
-                closed.complete();
-            }
-            // Ensure overlay is disposed when detached externally
-            try { overlayRef.dispose(); } catch { /* already disposed */ }
+            maxHeight: opts?.maxHeight ?? '100dvh',
+            autoFocus: 'first-tabbable'
         });
 
         return {
-            componentInstance: compRef.instance as T,
-            closed,
-            close
+            componentInstance: cdkRef.componentInstance!,
+            closed: cdkRef.closed,
+            close: (result?: R) => cdkRef.close(result)
         };
     }
 
