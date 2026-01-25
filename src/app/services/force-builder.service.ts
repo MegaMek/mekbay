@@ -672,12 +672,12 @@ export class ForceBuilderService {
 
     private monitorWebSocketConnection() {
         // Monitor WebSocket connection state changes
-        effect(async () => {
+        effect(() => {
             const isConnected = this.wsService.wsConnected();
             if (isConnected) {
-                // WebSocket just came online
-                untracked(async () => { // Avoid triggering effect re-entrance
-                    await this.checkForCloudConflict();
+                // WebSocket just came online - fire and forget :D
+                untracked(() => {
+                    this.checkForCloudConflict();
                 });
             }
         });
@@ -870,75 +870,79 @@ export class ForceBuilderService {
     }
 
     private loadUnitsFromUrlOnStartup() {
-        effect(async () => {
+        effect(() => {
             const isDataReady = this.dataService.isDataReady();
             // This effect runs when data is ready, but we only execute the logic once.
             if (isDataReady && !this.urlStateInitialized()) {
-                // Use UrlStateService to get initial URL params (captured before any routing effects)
-                const instanceParam = this.urlStateService.getInitialParam('instance');
-                let loadedInstance = null;
-                if (instanceParam) {
-                    // Try to find an existing force with this instance ID in the storage.
-                    loadedInstance = await untracked(async () => {
-                        const loadedInstance = await this.dataService.getForce(instanceParam);
-                        if (loadedInstance) {
-                            if (!loadedInstance.owned()) {
-                                this.dialogsService.showNotice('Reports indicate another commander owns this force. Clone to adopt it for yourself.', 'Captured Intel');
-                            }
-                            this.setForce(loadedInstance);
-                            this.selectUnit(loadedInstance.units()[0]);
-                        }
-                        return loadedInstance;
-                    });
-                }
-                if (!loadedInstance) {
-                    // If no instance ID or not found, create a new force.
-                    if (instanceParam) {
-                        //We remove the failed instance ID from the URL
-                        this.urlStateService.setParams({ instance: null });
-                    }
-                    const unitsParam = this.urlStateService.getInitialParam('units');
-                    const forceNameParam = this.urlStateService.getInitialParam('name');
-                    const gameSystemParam = this.urlStateService.getInitialParam('gs') ?? GameSystem.CLASSIC;
-                    let newForce: Force;
-                    if (gameSystemParam === GameSystem.ALPHA_STRIKE) {
-                        newForce = new ASForce('New Force', this.dataService, this.unitInitializer, this.injector);
-                    } else {
-                        newForce = new CBTForce('New Force', this.dataService, this.unitInitializer, this.injector);
-                    }
-                    newForce.loading = true;
-                    try {
-                        if (forceNameParam) {
-                            newForce.setName(forceNameParam);
-                        }
-                        if (unitsParam) {
-                            // parseUnitsFromUrl now handles group creation internally
-                            // and adds units directly to the force
-                            const forceUnits = this.parseUnitsFromUrl(newForce, unitsParam);
-
-                            if (forceUnits.length > 0) {
-                                this.logger.info(`ForceBuilderService: Loaded ${forceUnits.length} units from URL on startup.`);
-                                // Remove empty groups that may have been created during parsing
-                                newForce.removeEmptyGroups();
-                                if (this.layoutService.isMobile()) {
-                                    this.layoutService.openMenu();
-                                }
-                            }
-                        }
-                    } finally {
-                        newForce.loading = false;
-                    }
-                    if (newForce.units().length > 0) {
-                        this.setForce(newForce);
-                        this.selectUnit(newForce.units()[0]);
-                    }
-                }
-                // Mark as initialized so the update effect can start running.
-                this.urlStateInitialized.set(true);
-                // Signal that we're done reading URL state
-                this.urlStateService.markConsumerReady('force-builder');
+                // Fire the async work without awaiting
+                untracked(() => {
+                    this.initializeFromUrl();
+                });
             }
         });
+    }
+
+    private async initializeFromUrl(): Promise<void> {
+        // Use UrlStateService to get initial URL params (captured before any routing effects)
+        const instanceParam = this.urlStateService.getInitialParam('instance');
+        let loadedInstance = null;
+        if (instanceParam) {
+            // Try to find an existing force with this instance ID in the storage.
+            loadedInstance = await this.dataService.getForce(instanceParam);
+            if (loadedInstance) {
+                if (!loadedInstance.owned()) {
+                    this.dialogsService.showNotice('Reports indicate another commander owns this force. Clone to adopt it for yourself.', 'Captured Intel');
+                }
+                this.setForce(loadedInstance);
+                this.selectUnit(loadedInstance.units()[0]);
+            }
+        }
+        if (!loadedInstance) {
+            // If no instance ID or not found, create a new force.
+            if (instanceParam) {
+                //We remove the failed instance ID from the URL
+                this.urlStateService.setParams({ instance: null });
+            }
+            const unitsParam = this.urlStateService.getInitialParam('units');
+            const forceNameParam = this.urlStateService.getInitialParam('name');
+            const gameSystemParam = this.urlStateService.getInitialParam('gs') ?? GameSystem.CLASSIC;
+            let newForce: Force;
+            if (gameSystemParam === GameSystem.ALPHA_STRIKE) {
+                newForce = new ASForce('New Force', this.dataService, this.unitInitializer, this.injector);
+            } else {
+                newForce = new CBTForce('New Force', this.dataService, this.unitInitializer, this.injector);
+            }
+            newForce.loading = true;
+            try {
+                if (forceNameParam) {
+                    newForce.setName(forceNameParam);
+                }
+                if (unitsParam) {
+                    // parseUnitsFromUrl now handles group creation internally
+                    // and adds units directly to the force
+                    const forceUnits = this.parseUnitsFromUrl(newForce, unitsParam);
+
+                    if (forceUnits.length > 0) {
+                        this.logger.info(`ForceBuilderService: Loaded ${forceUnits.length} units from URL on startup.`);
+                        // Remove empty groups that may have been created during parsing
+                        newForce.removeEmptyGroups();
+                        if (this.layoutService.isMobile()) {
+                            this.layoutService.openMenu();
+                        }
+                    }
+                }
+            } finally {
+                newForce.loading = false;
+            }
+            if (newForce.units().length > 0) {
+                this.setForce(newForce);
+                this.selectUnit(newForce.units()[0]);
+            }
+        }
+        // Mark as initialized so the update effect can start running.
+        this.urlStateInitialized.set(true);
+        // Signal that we're done reading URL state
+        this.urlStateService.markConsumerReady('force-builder');
     }
 
     /**
