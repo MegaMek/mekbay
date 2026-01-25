@@ -100,13 +100,8 @@ export class CBTForceUnit extends ForceUnit {
             this.svgServiceInjector = null;
         }
         this._svgService = null;
-        // Remove SVG from DOM if still attached to prevent memory leaks
-        const currentSvg = this.svg();
-        if (currentSvg?.parentElement) {
-            currentSvg.parentElement.removeChild(currentSvg);
-        }
-        this.svg.set(null);
         this.loadingPromise = null;
+        this.unitInitializer.deinitializeUnit(this);
         super.destroy();
     }
 

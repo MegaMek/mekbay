@@ -79,6 +79,48 @@ export class UnitInitializerService {
         unit.initialized = true;
     }
 
+    /**
+     * Cleans up a ForceUnit by clearing element references from crits, inventory, and locations.
+     * This releases SVG nodes that were captured during initialization.
+     * @param unit The ForceUnit to deinitialize.
+     */
+    deinitializeUnit(unit: CBTForceUnit): void {
+        if (!unit.initialized) {
+            return;
+        }
+
+        // Clear element references from crits
+        for (const crit of unit.getCritSlots()) {
+            crit.el = undefined;
+        }
+        unit.setCritSlots([], true);
+
+        // Clear element references from inventory
+        for (const item of unit.getInventory()) {
+            item.el = undefined;
+            item.critSlots = [];
+            if (item.linkedWith) {
+                for (const linked of item.linkedWith) {
+                    linked.el = undefined;
+                    linked.critSlots = [];
+                }
+            }
+        }
+        unit.setInventory([], true);
+
+        // Clear locations
+        unit.locations = undefined;
+
+        // Remove SVG from DOM if still attached
+        const currentSvg = unit.svg();
+        if (currentSvg?.parentElement) {
+            currentSvg.parentElement.removeChild(currentSvg);
+        }
+        unit.svg.set(null);
+
+        unit.initialized = false;
+    }
+
 
     /**
      * Extracts armor and structure locations from the SVG and saves them to the unit.
