@@ -10,7 +10,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { DataService } from '../../services/data.service';
 import { CBTPrintUtil } from '../../utils/cbtprint.util';
 import { ASPrintUtil } from '../../utils/asprint.util';
-import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
+import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
 import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { CBTForce } from '../../models/cbt-force.model';
@@ -40,6 +40,7 @@ export class SidebarFooterComponent {
     dataService = inject(DataService);
     compactModeService = inject(CompactModeService);
     menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
+    private menuTracker = inject(MenuTracker);
 
     compactMode = computed(() => {
         return this.compactModeService.compactMode();
@@ -120,8 +121,26 @@ export class SidebarFooterComponent {
         if (!menuTriggers) { return; }
         menuTriggers.forEach(t => {
             try {
-                (t as any).closeMenu?.() ?? (t as any).close?.();
+                if (t.isOpen()) {
+                    t.close();
+                }
+                // Workaround for CDK bug: MenuTracker never clears _openMenuTrigger,
+                // causing memory leaks when menu triggers are destroyed.
+                this.clearMenuTrackerReference(t);
             } catch(ignored) {}
         });
+    }
+
+    /**
+     * CDK's MenuTracker holds a static reference to the last opened trigger forever.
+     * This causes memory leaks when components with menu triggers are destroyed.
+     * This is a workaround until CDK provides a proper cleanup API.
+     * Thank you Angular team for not making this public API.
+     */
+    private clearMenuTrackerReference(trigger: CdkMenuTrigger): void {
+        const tracker = MenuTracker as unknown as { _openMenuTrigger?: CdkMenuTrigger };
+        if (tracker._openMenuTrigger === trigger) {
+            tracker._openMenuTrigger = undefined;
+        }
     }
 }

@@ -120,7 +120,6 @@ export class App {
 
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
     public readonly unitSearchComponentRef = viewChild(UnitSearchComponent);
-    public readonly sidebar = viewChild(SidebarComponent);
     protected unitSearchPortal: DomPortal<ElementRef> | null = null;
     protected unitSearchPortalMain = signal<DomPortal<any> | undefined>(undefined);
     protected unitSearchPortalExtended = signal<DomPortal<any> | undefined>(undefined);
@@ -181,7 +180,8 @@ export class App {
                 // Assign portal to the appropriate outlet based on current state
                 if (expandedView) {
                     this.unitSearchPortalExtended.set(this.unitSearchPortal);
-                } else if (hasUnits && this.sidebar()) {
+                } else if (hasUnits) {
+                    // Note: When hasUnits is true, the sidebar exists (they share the same @if condition)
                     this.unitSearchPortalForceBuilder.set(this.unitSearchPortal);
                 } else {
                     this.unitSearchPortalMain.set(this.unitSearchPortal);

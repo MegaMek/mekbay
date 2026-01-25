@@ -82,7 +82,14 @@ export class SidebarComponent {
     });
 
     constructor() {
-        inject(DestroyRef).onDestroy(() => this.cleanupLipListeners());
+        inject(DestroyRef).onDestroy(() => {
+            this.cleanupLipListeners();
+            // Detach portal if still attached to prevent DOM node retention
+            const portal = this.unitSearchPortal();
+            if (portal?.isAttached) {
+                portal.detach();
+            }
+        });
         
         effect((cleanup) => {
             let offset = 0;
