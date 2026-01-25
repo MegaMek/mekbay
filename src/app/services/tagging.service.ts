@@ -70,6 +70,12 @@ export class TaggingService {
      * @returns Promise that resolves when the tagging operation is complete
      */
     async openTagSelector(units: Unit[], anchorElement?: HTMLElement | null): Promise<void> {
+        // Toggle: close if already open, otherwise open
+        if (this.overlayManager.has('tagSelector')) {
+            this.overlayManager.closeManagedOverlay('tagSelector');
+            return;
+        }
+
         if (units.length === 0) return;
 
         // Get all unique tags from all units (for both sections)
