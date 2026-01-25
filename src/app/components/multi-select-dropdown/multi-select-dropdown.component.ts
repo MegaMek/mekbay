@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector, effect } from '@angular/core';
+import { Component, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector, effect, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LayoutService } from '../../services/layout.service';
 import { highlightMatches, matchesSearch, parseSearchQuery } from '../../utils/search.util';
@@ -82,6 +82,8 @@ export class MultiSelectDropdownComponent {
     private elementRef = inject(ElementRef);
     private injector = inject(Injector);
     private layoutService = inject(LayoutService);
+    private destroyRef = inject(DestroyRef);
+    private destroyed = false;
     filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
     optionsEl = viewChild<ElementRef<HTMLDivElement>>('optionsEl');
     
@@ -184,6 +186,10 @@ export class MultiSelectDropdownComponent {
     };
 
     constructor() {
+        this.destroyRef.onDestroy(() => {
+            this.destroyed = true;
+            this.isOpen.set(false);
+        });
         effect((cleanup) => {
             document.addEventListener('multi-select-dropdown-open', this.openListener as EventListener);
             cleanup(() => {
@@ -211,6 +217,7 @@ export class MultiSelectDropdownComponent {
         }
         this.filterText.set('');
         afterNextRender(() => {
+            if (this.destroyed) return;
             if (this.isOpen()) {
                 const inputEl = this.filterInput()?.nativeElement;
                 if (inputEl) {
@@ -226,6 +233,7 @@ export class MultiSelectDropdownComponent {
         this.isOpen.set(true);
         this.filterText.set('');
         afterNextRender(() => {
+            if (this.destroyed) return;
             const container = this.optionsEl()?.nativeElement;
             if (!container) return;
 
