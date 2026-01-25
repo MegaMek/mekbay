@@ -144,24 +144,375 @@
                     (longPress)="multiSelectUnit(unit)">
 
                     @if (this.expandedView()) {
-                        <!-- Expanded View Cards -->
+                        <!-- Expanded View Cards (DON'T put it into a ngTemplateOutlet, it leaks in virtual scroll!!) -->
                         @if (gameService.isAlphaStrike()) {
-                        <ng-container *ngTemplateOutlet="expandedViewASCard; context: { unit: unit }"></ng-container>
+                        <!-- AS Expanded Card -->
+                        <div class="expanded-unit-card as-card-view">
+                            <div class="expanded-header">
+                                <div class="expanded-image">
+                                    <unit-icon [unit]="unit" [size]="56"></unit-icon>
+                                </div>
+                                <div class="expanded-title">
+                                    <div class="expanded-model" [innerHTML]="highlight(unit.model)"></div>
+                                    <div class="expanded-chassis" [innerHTML]="highlight(unit.chassis)"></div>
+                                </div>
+                                <div class="expanded-subtitle">
+                                    @if (unit.role && unit.role !== 'None') {
+                                    <div class="subtitle-line role">{{ unit.role }}</div>
+                                    }
+                                    <div class="subtitle-line">
+                                        <span>{{ unit.as.TP }}</span>
+                                        <span> • {{ unit.weightClass }}</span>
+                                    </div>
+                                    <div class="subtitle-line">
+                                        <unit-tags [unit]="unit" mode="full" (tagClick)="onAddTag($event)" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="expanded-content as-view">
+                                <div class="expanded-basic">
+                                    <div class="expanded-basic-info">
+                                        <div class="info-item">
+                                            <span class="info-label muted">PV:</span>
+                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label muted">Size:</span>
+                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">{{ unit.as.SZ }}</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label muted">TMM:</span>
+                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">{{ unit.as.TMM }}</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label muted">Movement:</span>
+                                            <span class="info-value">{{ formatASMovement(unit) }}</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label muted">Armor:</span>
+                                            <span class="info-value">{{ unit.as.Arm }}</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label muted">Structure:</span>
+                                            <span class="info-value">{{ unit.as.Str }}</span>
+                                        </div>
+                                        @if (!unit.as.usesArcs) {
+                                        <div class="info-item">
+                                            <span class="info-label muted">Damage:</span>
+                                            <span class="info-value">{{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }}</span>
+                                        </div>
+                                        }
+                                        @if (unit.as.usesOV) {
+                                        <div class="info-item">
+                                            <span class="info-label muted">Overheat:</span>
+                                            <span class="info-value">{{ unit.as.OV }}</span>
+                                        </div>
+                                        }
+                                        @if (unit.as.usesTh) {
+                                        <div class="info-item">
+                                            <span class="info-label muted">Thrust:</span>
+                                            <span class="info-value">{{ unit.as.Th }}</span>
+                                        </div>
+                                        }
+                                        <div class="info-item">
+                                            <span class="info-label muted">Intro Year: </span>
+                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">{{ unit.year }} @if(unit._era?.img) { <img [src]="unit._era.img" class="era-icon" [alt]="unit._era?.name" [title]="unit._era?.name" /> }</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label muted">Tech:</span>
+                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'techBase'">{{ unit.techBase }}</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label muted">Tons:</span>
+                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">{{ unit.tons | formatTons }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="expanded-right">
+                                    @if (unit.as.specials && unit.as.specials.length > 0) {
+                                    <div class="components-header">Special:</div>
+                                    <div class="expanded-specials">
+                                        <div class="specials-pills">
+                                            @for (special of unit.as.specials; let last = $last; let i = $index; track i) {
+                                            <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <!-- AS Table Row View -->
+                        <div class="as-table-row">
+                            <div class="as-td as-td-icon"><unit-icon [unit]="unit" [size]="36"></unit-icon></div>
+                            <div class="as-td as-td-name">
+                                <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
+                                <span class="as-td-chassis" [innerHTML]="highlight(unit.chassis)"></span>
+                            </div>
+                            <div class="as-td as-td-type">{{ unit.as.TP }}</div>
+                            <div class="as-td as-td-role">{{ unit.role !== 'None' ? unit.role : '' }}</div>
+                            <div class="as-td as-td-pv" [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
+                            <div class="as-td as-td-sz" [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">{{ unit.as.SZ }}</div>
+                            <div class="as-td as-td-mv">{{ formatASMovement(unit) }}</div>
+                            <div class="as-td as-td-tmm" [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">{{ unit.as.TMM }}</div>
+                            <div class="as-td as-td-dmg">@if (!unit.as.usesArcs) { {{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }} }</div>
+                            <div class="as-td as-td-arm">{{ unit.as.Arm }}</div>
+                            <div class="as-td as-td-str">{{ unit.as.Str }}</div>
+                            <div class="as-td as-td-ov">@if (unit.as.usesOV) { {{ unit.as.OV }} }</div>
+                            <div class="as-td as-td-specials">
+                                @for (special of unit.as.specials; let i = $index; track i) {
+                                <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
+                                }
+                            </div>
+                            <div class="as-td as-td-tags">
+                                <unit-tags [unit]="unit" mode="full" size="small" (tagClick)="onAddTag($event)" />
+                            </div>
+                        </div>
                         } @else {
-                        <ng-container *ngTemplateOutlet="expandedCardTpl; context: { unit: unit }"></ng-container>
+                        <!-- BT Expanded Card -->
+                        <div class="expanded-unit-card">
+                            <div class="expanded-header">
+                                <div class="expanded-image">
+                                    <unit-icon [unit]="unit" [size]="56"></unit-icon>
+                                </div>
+                                <div class="expanded-title">
+                                    <div class="expanded-model" [innerHTML]="highlight(unit.model)"></div>
+                                    <div class="expanded-chassis" [innerHTML]="highlight(unit.chassis)"></div>
+                                </div>
+                                <div class="expanded-subtitle">
+                                    @if (unit.role && unit.role !== 'None') {
+                                    <div class="subtitle-line role">{{ unit.role }}</div>
+                                    }
+                                    <div class="subtitle-line">
+                                        <span>{{ unit.type }}@if(unit.subtype && unit.subtype !== unit.type){<span> - {{ unit.subtype }}</span>}</span>
+                                        <span> • {{ unit.weightClass }}</span>
+                                    </div>
+                                    <div class="subtitle-line">
+                                        <unit-tags [unit]="unit" mode="full" (tagClick)="onAddTag($event)" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="expanded-content">
+                                <div class="expanded-basic">
+                                    <div class="expanded-basic-info">
+                                        <div class="info-item">
+                                            <span class="info-label muted">BV:</span>
+                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">{{ unit | adjustedBV:gunnery:piloting | formatNumber:true:false }}</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label muted">Tons:</span>
+                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">{{ unit.tons | formatTons }}</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label muted">Rules:</span>
+                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'level'">{{ unit.level }}</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label muted">Intro Year: </span>
+                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">{{ unit.year }} @if(unit._era?.img) { <img [src]="unit._era.img" class="era-icon" [alt]="unit._era?.name" [title]="unit._era?.name" /> }</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label muted">Tech:</span>
+                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'techBase'">{{ unit.techBase }}</span>
+                                        </div>
+                                        @if (unit.cost) {
+                                        <div class="info-item">
+                                            <span class="info-label muted">C-Bill:</span>
+                                            <span class="info-value">{{ unit.cost | formatNumber:true:false }}</span>
+                                        </div>
+                                        }
+                                        @if (unit.armorType) {
+                                        <div class="info-item">
+                                            <span class="info-label muted">Armor:</span>
+                                            <span class="info-value">{{ unit.armorType }}</span>
+                                        </div>
+                                        }
+                                        @if (unit.structureType) {
+                                        <div class="info-item">
+                                            <span class="info-label muted">Structure:</span>
+                                            <span class="info-value">{{ unit.structureType }}</span>
+                                        </div>
+                                        }
+                                        @if (unit.moveType) {
+                                        <div class="info-item">
+                                            <span class="info-label muted">Motive:</span>
+                                            <span class="info-value">{{ unit.moveType }}</span>
+                                        </div>
+                                        }
+                                        @if (unit.engine) {
+                                        <div class="info-item">
+                                            <span class="info-label muted">Engine:</span>
+                                            <span class="info-value">@if(unit.engineRating){ {{ unit.engineRating }} }{{ unit.engine }}</span>
+                                        </div>
+                                        }
+                                        @if (unit.c3) {
+                                        <div class="info-item">
+                                            <span class="info-label muted">Network:</span>
+                                            <span class="info-value">{{ unit.c3 }}</span>
+                                        </div>
+                                        }
+                                        @if (unit.walk) {
+                                        <div class="info-item">
+                                            <span class="info-label muted">Movement:</span>
+                                            <span class="info-value">{{ unit.walk }} / {{ unit.run }} @if(unit.run2 != unit.run){ [{{ unit.run2 }}]} @if(unit.jump){ / {{ unit.jump }} } @if (unit.umu) { / {{ unit.umu }}}</span>
+                                        </div>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="expanded-stats">
+                                    <div class="stat-bars-columns">
+                                        @if((unit | statBarSpecs); as specsList) {
+                                        @for (spec of specsList; let i = $index; track i) {
+                                        <div class="stat-bar-row" [tooltip]="spec.description ?? null">
+                                            <div class="stat-bar">
+                                                <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
+                                            </div>
+                                            <span class="stat-label">{{ spec.label }}</span>
+                                            <span class="stat-value">{{ spec.valueText ?? spec.value }}</span>
+                                        </div>
+                                        }
+                                        }
+                                    </div>
+                                </div>
+                                <div class="expanded-right">
+                                    @if ((unit.comp | expandedComponents); as componentsList) {
+                                    @if (componentsList.length > 0) {
+                                    <div class="components-header">Equipment</div>
+                                    <div class="expanded-components">
+                                        <div class="components-pills">
+                                            @for (comp of componentsList; let last = $last; let i = $index; track i) {
+                                            <unit-component-item [unit]="unit" [comp]="comp" displayStyle="tiny"></unit-component-item>
+                                            }
+                                        </div>
+                                    </div>
+                                    }
+                                    }
+                                    @if ((unit.comp | filterAmmo); as ammoList) {
+                                    @if (ammoList.length > 0) {
+                                    <div class="ammo-list">
+                                        <span class="info-label muted">Ammo: </span>
+                                        @for (comp of ammoList; let last = $last; let i = $index; track i) {
+                                        <unit-component-item [unit]="unit" [comp]="comp" displayStyle="text"></unit-component-item>@if(!last){<span>, </span>}
+                                        }
+                                    </div>
+                                    }
+                                    }
+                                </div>
+                            </div>
+                        </div>
                         }
                     } @else {
-                        <!-- Compact View Card -->
-                        <ng-container *ngTemplateOutlet="compactCardTpl; context: { unit: unit, gunnery: gunnery, piloting: piloting }"></ng-container>
+                        <!-- Compact View Card (DON'T put it into a ngTemplateOutlet, it leaks in virtual scroll!!) -->
+                        <unit-icon [unit]="unit" [size]="48"></unit-icon>
+                        <div class="unit-data-container">
+                            <div class="secondary-info">
+                                <div class="model" [innerHTML]="highlight(unit.model)"></div>
+                                @if (unit.role && (unit.role !== 'None')) {
+                                <div class="role" [class.sort-slot]="this.filtersService.selectedSort() === 'role'">{{ unit.role }}</div>
+                                }
+                            </div>
+                            <div class="primary-info">
+                                <div class="chassis" [innerHTML]="highlight(unit.chassis)"></div>
+                            </div>
+                            <div class="third-info">
+                                <div class="info-area">
+                                    @if (gameService.isAlphaStrike()) {
+                                    <div class="info-slot centered slim" [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">
+                                        <span class="value">PV: {{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:true }}</span>
+                                    </div>
+                                    <div class="info-slot centered slim" [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">
+                                        <span class="value">SZ: {{ unit.as.SZ }}</span>
+                                    </div>
+                                    <div class="info-slot centered slim" [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">
+                                        <span class="value">TMM: {{ unit.as.TMM }}</span>
+                                    </div>
+                                    } @else {
+                                    <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
+                                        <span class="value">BV: {{ unit | adjustedBV:gunnery:piloting | formatNumber:true:true }}</span>
+                                    </div>
+                                    <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
+                                        <span class="value">{{ unit.tons | formatTons }}</span>
+                                        <img src="/images/weight.svg" class="icon" alt="Tonnage">
+                                    </div>
+                                    }
+                                    <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
+                                        <span class="value">{{ unit.year }}</span>
+                                        @if (unit._era?.img) {
+                                        <img [src]="unit._era?.img" class="icon era-icon" alt="Era" [title]="unit._era?.name" />
+                                        }
+                                    </div>
+                                    @if (getSortSlot(unit); as slot) {
+                                    <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
+                                        <span class="value">
+                                            @if(slot.label) { {{ slot.label }}: } {{ slot.value }}
+                                        </span>
+                                        @if (slot.img) {<img [src]="slot.img" class="icon" [alt]="slot.alt">}
+                                    </div>
+                                    }
+                                </div>
+                                <span class="spanner"></span>
+                                <unit-tags [unit]="unit" mode="compact" (tagClick)="onAddTag($event)" />
+                            </div>
+                        </div>
                     }
                 </div>
             </cdk-virtual-scroll-viewport>
 
             @if (this.selectedUnits().size > 0) {
-            <ng-container *ngTemplateOutlet="selectionFooterTpl"></ng-container>
+                <div class="selection-footer">
+                    <div class="selected-count">{{ this.selectedUnits().size }} units selected</div>
+                    <span class="spanner"></span>
+                    <button [disabled]="this.forceBuilderService.readOnlyForce()" type="button" class="bt-button"
+                        (click)="addSelectedUnits()">ADD TO FORCE</button>
+                    <button type="button" class="bt-button" (click)="selectAll()">SELECT ALL</button>
+                    <button type="button" class="bt-button" (click)="clearSelection()">CLEAR</button>
+                </div>
             }
             @if (this.filtersService.filteredUnits().length > 0) {
-            <ng-container *ngTemplateOutlet="resultsFooterTpl"></ng-container>
+                <div class="results-footer">
+                    <div class="results-count">{{ this.filtersService.filteredUnits().length }} result{{
+                        this.filtersService.filteredUnits().length === 1 ? '' : 's' }}</div>
+                    <span class="spanner"></span>
+                    <div class="results-sort">
+                        <select class="bt-input sort-select"
+                            (change)="this.filtersService.setSortOrder($any($event.target).value)">
+                            @for (opt of SORT_OPTIONS; let i = $index; track i) {
+                            @if (!opt.gameSystem || opt.gameSystem === this.gameSystem()) {
+                            <option [value]="opt.key" [selected]="opt.key === this.filtersService.selectedSort()">{{ opt.label }}</option>
+                            }
+                            }
+                        </select><button type="button" class="bt-button sort-direction-btn"
+                            (click)="this.filtersService.setSortDirection(this.filtersService.selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
+                            [title]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
+                            [attr.aria-label]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+                            @if (this.filtersService.selectedSortDirection() === 'asc') {
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                                aria-hidden="true" role="img">
+                                <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                            </svg>
+                            } @else {
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                                aria-hidden="true" role="img">
+                                <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                            </svg>
+                            }
+                        </button>
+                    </div>
+                    <button class="bt-button square share-btn" (click)="openShareSearch($event)" title="Share Search Results">
+                        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path fill-rule="evenodd" clip-rule="evenodd"
+                                d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z" />
+                        </svg>
+                    </button>
+                </div>          
             }
             } @else {
             <div class="results-dropdown-item no-results">No results</div>
@@ -345,65 +696,6 @@
             <span class="spanner"></span>
             <unit-tags [unit]="unit" mode="compact" (tagClick)="onAddTag($event)" />
         </div>
-    </div>
-</ng-template>
-
-<!-- Shared Footer Templates -->
-<ng-template #selectionFooterTpl>
-    <div class="selection-footer">
-        <div class="selected-count">{{ this.selectedUnits().size }} units selected</div>
-        <span class="spanner"></span>
-        <button [disabled]="this.forceBuilderService.readOnlyForce()" type="button" class="bt-button"
-            (click)="addSelectedUnits()">ADD TO FORCE</button>
-        <button type="button" class="bt-button" (click)="selectAll()">SELECT ALL</button>
-        <button type="button" class="bt-button" (click)="clearSelection()">CLEAR</button>
-    </div>
-</ng-template>
-
-<ng-template #resultsFooterTpl>
-    <div class="results-footer">
-        <div class="results-count">{{ this.filtersService.filteredUnits().length }} result{{
-            this.filtersService.filteredUnits().length === 1 ? '' : 's' }}</div>
-        <span class="spanner"></span>
-        <div class="results-sort">
-            <select class="bt-input sort-select"
-                (change)="this.filtersService.setSortOrder($any($event.target).value)">
-                @for (opt of SORT_OPTIONS; let i = $index; track i) {
-                @if (!opt.gameSystem || opt.gameSystem === this.gameSystem()) {
-                <option [value]="opt.key" [selected]="opt.key === this.filtersService.selectedSort()">{{ opt.label }}</option>
-                }
-                }
-            </select><button type="button" class="bt-button sort-direction-btn"
-                (click)="this.filtersService.setSortDirection(this.filtersService.selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
-                [title]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
-                [attr.aria-label]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
-                @if (this.filtersService.selectedSortDirection() === 'asc') {
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                    aria-hidden="true" role="img">
-                    <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                    <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                    <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                    <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                        stroke-linejoin="round" />
-                </svg>
-                } @else {
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                    aria-hidden="true" role="img">
-                    <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                    <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                    <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                    <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                        stroke-linejoin="round" />
-                </svg>
-                }
-            </button>
-        </div>
-        <button class="bt-button square share-btn" (click)="openShareSearch($event)" title="Share Search Results">
-            <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path fill-rule="evenodd" clip-rule="evenodd"
-                    d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z" />
-            </svg>
-        </button>
     </div>
 </ng-template>
 

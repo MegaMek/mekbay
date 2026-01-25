@@ -471,7 +471,9 @@ export class UnitSearchComponent {
     }
 
     trackByUnitId(index: number, unit: Unit) {
-        return unit.name;
+        // Track by index to force position-based recycling in virtual scroll
+        // Tracking by unit.name causes orphaned DOM nodes for who knows what reason...
+        return index;
     }
 
     focusInput() {
@@ -636,6 +638,7 @@ export class UnitSearchComponent {
     }
 
     clearAdvFilters() {
+        this.viewport()?.scrollToIndex(0);
         this.filtersService.resetFilters();
         this.activeIndex.set(null);
     }
