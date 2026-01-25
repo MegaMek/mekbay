@@ -136,17 +136,11 @@ export class ForceLoadDialogComponent {
     constructor() {
         // Track pending afterNextRender to cancel on effect re-run or destroy
         let pendingFocusRef: { destroy: () => void } | null = null;
+        let destroyed = false;
         
-        effect(async () => {
-            this.loading.set(true);
-            const result = await this.dataService.listForces();
-            const enriched = (result || []).map(f => {
-                f._searchText = this.computeSearchText(f);
-                return f;
-            });
-            this.forces.set(enriched);
-            this.loading.set(false);
-        });
+        // Load forces on init
+        this.loadForces(() => destroyed);
+        
         effect(() => {
             // Cancel any previous pending focus callback
             pendingFocusRef?.destroy();
@@ -164,8 +158,27 @@ export class ForceLoadDialogComponent {
         });
         
         inject(DestroyRef).onDestroy(() => {
+            destroyed = true;
             pendingFocusRef?.destroy();
         });
+    }
+
+    private async loadForces(isDestroyed: () => boolean): Promise<void> {
+        this.loading.set(true);
+        try {
+            const result = await this.dataService.listForces();
+            // Check if component was destroyed while waiting
+            if (isDestroyed()) return;
+            const enriched = (result || []).map(f => {
+                f._searchText = this.computeSearchText(f);
+                return f;
+            });
+            this.forces.set(enriched);
+        } finally {
+            if (!isDestroyed()) {
+                this.loading.set(false);
+            }
+        }
     }
 
     private computeSearchText(force: LoadForceEntry): string {
