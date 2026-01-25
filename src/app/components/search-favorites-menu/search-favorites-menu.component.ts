@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, output, signal, afterNextRender, computed } from '@angular/core';
-import { CdkMenuModule } from '@angular/cdk/menu';
+import { Component, ChangeDetectionStrategy, input, output, signal, afterNextRender, computed, DestroyRef, inject, viewChildren } from '@angular/core';
+import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
 import { SerializedSearchFilter } from '../../services/unit-search-filters.service';
 
 @Component({
@@ -271,6 +271,26 @@ export class SearchFavoritesMenuComponent {
     constructor() {
         afterNextRender(() => {
             this.ready.set(true);
+        });
+        
+        // Cleanup CDK MenuTracker reference on destroy to prevent memory leak
+        inject(DestroyRef).onDestroy(() => this.cleanupMenuTriggers());
+    }
+    
+    private menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
+    
+    private cleanupMenuTriggers(): void {
+        const triggers = this.menuTriggers();
+        if (!triggers) return;
+        triggers.forEach(t => {
+            try {
+                if (t.isOpen()) t.close();
+                // CDK bug workaround: MenuTracker never clears _openMenuTrigger
+                const tracker = MenuTracker as unknown as { _openMenuTrigger?: CdkMenuTrigger };
+                if (tracker._openMenuTrigger === t) {
+                    tracker._openMenuTrigger = undefined;
+                }
+            } catch {}
         });
     }
 
