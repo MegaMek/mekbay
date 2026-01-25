@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, inject, input, signal, effect, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, input, signal, effect, computed, DestroyRef } from '@angular/core';
 
 import { SpriteStorageService, SpriteIconInfo } from '../../services/sprite-storage.service';
 import { Unit } from '../../models/units.model';
@@ -57,6 +57,7 @@ const DEFAULT_HEIGHT = 72;
 })
 export class UnitIconComponent {
   private spriteService = inject(SpriteStorageService);
+  private destroyed = false;
   
   isLoading = this.spriteService.loading;
   
@@ -112,6 +113,10 @@ export class UnitIconComponent {
   });
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => {
+      this.destroyed = true;
+    });
+    
     effect(() => {
       const path = this.unit()?.icon;
       const loading = this.isLoading();
@@ -130,6 +135,8 @@ export class UnitIconComponent {
 
       // Fallback to async load
       this.spriteService.getSpriteInfo(path).then(info => {
+        // Guard against setting state on destroyed component
+        if (this.destroyed) return;
         this.spriteData.set(info);
       }).catch(() => {
         this.spriteData.set(null);

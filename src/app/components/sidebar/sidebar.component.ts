@@ -106,6 +106,8 @@ export class SidebarComponent {
             document.documentElement.classList.toggle('sidebar-docked', offset > 0);
 
             cleanup(() => {
+                document.documentElement.style.removeProperty('--sidebar-expanded-width');
+                document.documentElement.style.removeProperty('--sidebar-width');
                 document.documentElement.style.removeProperty('--sidebar-offset');
                 document.documentElement.classList.remove('sidebar-docked');
             });

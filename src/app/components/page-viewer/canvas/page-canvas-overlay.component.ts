@@ -210,6 +210,9 @@ export class PageCanvasOverlayComponent {
         return this.canvasOverlay().nativeElement;
     }
 
+    // Destroyed flag to prevent async callbacks from running after component is destroyed
+    private destroyed = false;
+
     constructor() {
         // Track pending afterNextRender to clean up on destroy or re-run
         let pendingAfterRenderRef: { destroy: () => void } | null = null;
@@ -235,7 +238,7 @@ export class PageCanvasOverlayComponent {
                 
                 // Load saved canvas data
                 this.dbService.getCanvasData(this.unitCanvasId()).then(data => {
-                    if (!data) return;
+                    if (!data || this.destroyed) return;
                     this.importImageData(data);
                 });
             }, { injector: this.injector });
@@ -248,6 +251,7 @@ export class PageCanvasOverlayComponent {
 
         // Cleanup on destroy
         inject(DestroyRef).onDestroy(() => {
+            this.destroyed = true;
             pendingAfterRenderRef?.destroy();
             initialRenderRef.destroy();
             
