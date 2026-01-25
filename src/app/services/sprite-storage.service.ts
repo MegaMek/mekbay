@@ -280,6 +280,12 @@ export class SpriteStorageService {
 
             await this.dbPut(SPRITES_STORE, unitType, blob);
 
+            // Revoke old URL if exists
+            const oldUrl = this.spriteUrlCache.get(unitType);
+            if (oldUrl) {
+                URL.revokeObjectURL(oldUrl);
+            }
+
             // Add to memory cache
             const objectUrl = URL.createObjectURL(blob);
             this.spriteUrlCache.set(unitType, objectUrl);
@@ -410,8 +416,15 @@ export class SpriteStorageService {
      */
     public async reinitialize(): Promise<void> {
         this._loading.set(true);
+        
+        // Revoke all existing object URLs to prevent memory leaks
+        for (const url of this.spriteUrlCache.values()) {
+            URL.revokeObjectURL(url);
+        }
+        this.spriteUrlCache.clear();
         this.spriteImageCache.clear();
         this.extractedIconCache.clear();
+        
         await this.initializeSprites();
     }
 

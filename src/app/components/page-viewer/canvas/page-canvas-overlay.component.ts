@@ -545,17 +545,19 @@ export class PageCanvasOverlayComponent {
         if (!ctx) return;
 
         const img = new window.Image();
+        const objectUrl = URL.createObjectURL(blob);
         img.onload = () => {
             const canvasWidth = this.canvasWidth();
             const canvasHeight = this.canvasHeight();
             ctx.clearRect(0, 0, canvasWidth, canvasHeight);
             ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
-            URL.revokeObjectURL(img.src);
+            URL.revokeObjectURL(objectUrl);
         };
         img.onerror = (err) => {
+            URL.revokeObjectURL(objectUrl);
             this.logger.error('Failed to load image for canvas import: ' + err);
         };
-        img.src = URL.createObjectURL(blob);
+        img.src = objectUrl;
     }
 
     /**
