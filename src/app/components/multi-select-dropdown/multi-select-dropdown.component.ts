@@ -86,6 +86,7 @@ export class MultiSelectDropdownComponent {
     private destroyed = false;
     filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
     optionsEl = viewChild<ElementRef<HTMLDivElement>>('optionsEl');
+    optionsDropdownEl = viewChild<ElementRef<HTMLDivElement>>('optionsDropdown');
     
     label = input<string>('');
     multiselect = input<boolean>(true);
@@ -103,6 +104,8 @@ export class MultiSelectDropdownComponent {
     showUnavailableToggle = computed(() => this.multistate() && this.options().some(o => o.available === false));
     isOpen = signal(false);
     filterText = signal('');
+    /** Bumped after dropdown renders to force height recalculation */
+    private layoutVersion = signal(0);
 
     private displayNameMap = computed(() => {
         const map = new Map<string, string>();
@@ -130,11 +133,30 @@ export class MultiSelectDropdownComponent {
 
     maxHeightOptions = computed(() => {
         const windowHeight = this.layoutService.windowHeight();
-        const el = this.optionsEl()?.nativeElement;
-        if (!el) return 248;
-        const rect = el.getBoundingClientRect();
-        const spaceBelow = windowHeight - rect.bottom - 32;
-        return Math.max(spaceBelow, 248);
+        const isOpen = this.isOpen();
+        this.layoutVersion(); // Force recalc after render
+        
+        // Default when closed or elements not ready
+        if (!isOpen) return 248;
+        
+        const dropdown = this.optionsDropdownEl()?.nativeElement;
+        if (!dropdown) return 248;
+        
+        const rect = dropdown.getBoundingClientRect();
+        
+        // If dropdown isn't visible yet (hidden attribute still applied), use default
+        if (rect.height === 0) return 248;
+        
+        // Check if filter row is visible
+        const hasFilterRow = this.options().length > 20 || this.showUnavailableToggle();
+        const filterRowHeight = hasFilterRow ? 50 : 0;
+        const bottomPadding = 16;
+        
+        // Calculate available height from dropdown top to viewport bottom
+        const availableForList = windowHeight - rect.top - filterRowHeight - bottomPadding;
+        
+        // Minimum height of 120px to ensure usability
+        return Math.max(120, availableForList);
     });
 
     filteredOptions = computed(() => {
@@ -219,6 +241,8 @@ export class MultiSelectDropdownComponent {
         afterNextRender(() => {
             if (this.destroyed) return;
             if (this.isOpen()) {
+                // Bump layout version to recalculate max height now that dropdown is visible
+                this.layoutVersion.update(v => v + 1);
                 const inputEl = this.filterInput()?.nativeElement;
                 if (inputEl) {
                     inputEl.focus();
@@ -234,6 +258,9 @@ export class MultiSelectDropdownComponent {
         this.filterText.set('');
         afterNextRender(() => {
             if (this.destroyed) return;
+            // Bump layout version to recalculate max height now that dropdown is visible
+            this.layoutVersion.update(v => v + 1);
+            
             const container = this.optionsEl()?.nativeElement;
             if (!container) return;
 

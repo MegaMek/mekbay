@@ -40,7 +40,7 @@
         }
     </div>
 
-    <div class="options-dropdown framed-borders has-shadow" [hidden]="!isOpen()">
+    <div #optionsDropdown class="options-dropdown framed-borders has-shadow" [hidden]="!isOpen()">
         <div class="filter-container" [hidden]="!(options().length > 20 || showUnavailableToggle())" (click)="$event.stopPropagation()">
             <div class="filter-row">
                 <input 
