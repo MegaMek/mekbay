@@ -146,6 +146,34 @@ type AdvFilterOptions = DropdownFilterOptions | RangeFilterOptions;
 const DEFAULT_FILTER_CURVE = 0;
 export const FACTION_EXTINCT = 3;
 
+/** 
+ * Alpha Strike movement mode display names.
+ * Keys are the movement mode codes from MVm, values are human-readable names.
+ * Empty string "" represents standard/ground movement.
+ */
+export const AS_MOVEMENT_MODE_DISPLAY_NAMES: Record<string, string> = {
+    '': 'Standard',
+    'j': 'Jump',
+    'qt': 'QuadVee (Tracked)',
+    'qw': 'QuadVee (Wheeled)',
+    'i': 'Airship',
+    'a': 'Aerodyne',
+    'h': 'Hover',
+    'n': 'Naval (Surface)',
+    's': 'Submersible',
+    'r': 'Rail',
+    'k': 'Satellite',
+    't': 'Tracked',
+    'v': 'VTOL',
+    'w': 'Wheeled',
+    'w(b)': 'Wheeled (Bicycle)',
+    'w(m)': 'Wheeled (Monocycle)',
+    'g': 'WiGE',
+    'p': 'Spheroid',
+    'f': 'Foot',
+    'm': 'Motorized',
+};
+
 function sortAvailableDropdownOptions(options: string[], predefinedOrder?: string[]): string[] {
     if (predefinedOrder && predefinedOrder.length > 0) {
         const optionsSet = new Set(options);
@@ -202,6 +230,33 @@ function getProperty(obj: any, key?: string) {
     // Special handling for _tags: merge _nameTags and _chassisTags
     if (key === '_tags') {
         return getMergedTags(obj as Unit);
+    }
+    // Special handling for AS motive (movement mode display names)
+    if (key === 'as._motive') {
+        const mvm = (obj as Unit).as?.MVm;
+        if (!mvm) return [];
+        
+        // Return display names in the order defined by AS_MOVEMENT_MODE_DISPLAY_NAMES
+        const result: string[] = [];
+        for (const mode of Object.keys(AS_MOVEMENT_MODE_DISPLAY_NAMES)) {
+            if (mode in mvm) {
+                result.push(AS_MOVEMENT_MODE_DISPLAY_NAMES[mode]);
+            }
+        }
+        // Include any modes not in the map (fallback)
+        for (const mode of Object.keys(mvm)) {
+            if (!(mode in AS_MOVEMENT_MODE_DISPLAY_NAMES)) {
+                result.push(mode);
+            }
+        }
+        return result;
+    }
+    // Special handling for AS movement value (max from MVm)
+    if (key === 'as._mv') {
+        const mvm = (obj as Unit).as?.MVm;
+        if (!mvm) return 0;
+        const values = Object.values(mvm);
+        return values.length > 0 ? Math.max(...values) : 0;
     }
     // If key does not contain dot, fast path
     if (key.indexOf('.') === -1) return (obj as any)[key];
@@ -479,7 +534,7 @@ export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
     { key: 'level', semanticKey: 'rules', label: 'Rules', game: GameSystem.CLASSIC, sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial'] },
     { key: 'c3', semanticKey: 'network', label: 'Network', game: GameSystem.CLASSIC },
     { key: 'moveType', semanticKey: 'motive', label: 'Motive', game: GameSystem.CLASSIC },
-    { key: 'as.MV', semanticKey: 'move', label: 'Move', game: GameSystem.ALPHA_STRIKE },
+    { key: 'as._motive', semanticKey: 'motive', label: 'Motive', game: GameSystem.ALPHA_STRIKE, sortOptions: Object.values(AS_MOVEMENT_MODE_DISPLAY_NAMES) },
     { key: 'as.specials', semanticKey: 'specials', label: 'Specials', multistate: true, game: GameSystem.ALPHA_STRIKE },
     { key: 'componentName', semanticKey: 'equipment', label: 'Equipment', multistate: true, countable: true, game: GameSystem.CLASSIC },
     { key: 'features', semanticKey: 'features', label: 'Features', multistate: true, game: GameSystem.CLASSIC },
@@ -511,6 +566,7 @@ export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
     { key: 'cost', semanticKey: 'cost', label: 'Cost', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
     { key: 'as.SZ', semanticKey: 'sz', label: 'Size', curve: 1, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.TMM', semanticKey: 'tmm', label: 'TMM', curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as._mv', semanticKey: 'mv', label: 'Movement', curve: 1, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.OV', semanticKey: 'ov', label: 'Overheat Value', curve: 1, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.Th', semanticKey: 'th', label: 'Threshold', curve: 1, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
     { key: 'as.dmg._dmgS', semanticKey: 'dmgs', label: 'Damage (Short)', curve: 1, game: GameSystem.ALPHA_STRIKE },
@@ -928,6 +984,19 @@ export class UnitSearchFiltersService {
                     }
                 }
                 this.totalRangesCache['as.PV'] = min <= max ? [min, max] : [0, 0];
+            } else if (conf.key === 'as._mv') {
+                // Special handling for AS movement - collect ALL values from MVm
+                let min = Infinity, max = -Infinity;
+                for (const u of this.units) {
+                    const mvm = u.as?.MVm;
+                    if (mvm) {
+                        for (const v of Object.values(mvm) as number[]) {
+                            if (v < min) min = v;
+                            if (v > max) max = v;
+                        }
+                    }
+                }
+                this.totalRangesCache['as._mv'] = min <= max ? [min, max] : [0, 0];
             } else {
                 const allValues = this.getValidFilterValues(this.units, conf);
                 if (allValues.length > 0) {
@@ -1294,6 +1363,36 @@ export class UnitSearchFiltersService {
                         if (isExcluded(adjustedPV)) return false;
                         return isIncluded(adjustedPV);
                     });
+                } else if (conf.key === 'as._mv') {
+                    // Special handling for AS movement - linked to motive filter
+                    // Get selected motive codes from the state
+                    const motiveFilterState = state['as._motive'];
+                    let selectedMotiveCodes: Set<string> | null = null;
+                    if (motiveFilterState?.interactedWith) {
+                        const selectedDisplayNames = new Set(motiveFilterState.value as string[]);
+                        selectedMotiveCodes = new Set(
+                            Object.entries(AS_MOVEMENT_MODE_DISPLAY_NAMES)
+                                .filter(([_, displayName]) => selectedDisplayNames.has(displayName))
+                                .map(([code, _]) => code)
+                        );
+                    }
+                    
+                    results = results.filter(u => {
+                        const mvm = u.as?.MVm;
+                        if (!mvm) return false;
+                        
+                        // Get values to check based on motive filter
+                        const valuesToCheck: number[] = selectedMotiveCodes === null
+                            ? Object.values(mvm)
+                            : Object.entries(mvm)
+                                .filter(([code, _]) => selectedMotiveCodes!.has(code))
+                                .map(([_, v]) => v);
+                        
+                        if (valuesToCheck.length === 0) return false;
+                        
+                        // At least one value must be in range and not excluded
+                        return valuesToCheck.some(v => !isExcluded(v) && isIncluded(v));
+                    });
                 } else {
                     results = results.filter(u => {
                         const unitValue = getProperty(u, conf.key);
@@ -1317,6 +1416,22 @@ export class UnitSearchFiltersService {
 
         // AST handles all filtering: text search, semantic filters, and boolean logic
         const ast = this.semanticParsedAST();
+        
+        // Get selected motive modes for linked movement filtering
+        const effectiveState = this.effectiveFilterState();
+        const motiveState = effectiveState['as._motive'];
+        const selectedMotiveDisplayNames: Set<string> | null = motiveState?.interactedWith 
+            ? new Set(motiveState.value as string[])
+            : null;
+        // Convert display names to mode codes for MVm lookup
+        const selectedMotiveCodes: Set<string> | null = selectedMotiveDisplayNames
+            ? new Set(
+                Object.entries(AS_MOVEMENT_MODE_DISPLAY_NAMES)
+                    .filter(([_, displayName]) => selectedMotiveDisplayNames.has(displayName))
+                    .map(([code, _]) => code)
+              )
+            : null;
+        
         const context: EvaluatorContext = {
             getProperty,
             getAdjustedBV: (unit: Unit) => this.getAdjustedBV(unit),
@@ -1340,7 +1455,26 @@ export class UnitSearchFiltersService {
             },
             // External filter handlers for era and faction
             unitBelongsToEra: (unit: Unit, eraName: string) => this.unitBelongsToEra(unit, eraName),
-            unitBelongsToFaction: (unit: Unit, factionName: string) => this.unitBelongsToFaction(unit, factionName)
+            unitBelongsToFaction: (unit: Unit, factionName: string) => this.unitBelongsToFaction(unit, factionName),
+            // AS movement values linked to motive filter
+            getASMovementValues: (unit: Unit) => {
+                const mvm = unit.as?.MVm;
+                if (!mvm) return [];
+                
+                if (selectedMotiveCodes === null) {
+                    // No motive filter active - return all movement values
+                    return Object.values(mvm);
+                }
+                
+                // Filter by selected motive codes
+                const values: number[] = [];
+                for (const [code, value] of Object.entries(mvm)) {
+                    if (selectedMotiveCodes.has(code)) {
+                        values.push(value);
+                    }
+                }
+                return values;
+            }
         };
         let results = filterUnitsWithAST(this.units, ast.ast, context);
 
@@ -1628,7 +1762,7 @@ export class UnitSearchFiltersService {
                         }
                     }
 
-                    const sortedNames = sortAvailableDropdownOptions(availableNames);
+                    const sortedNames = sortAvailableDropdownOptions(availableNames, conf.sortOptions);
                     const filteredSet = new Set(filteredAvailableNames);
 
                     // Precompute total counts per component name
@@ -1786,6 +1920,16 @@ export class UnitSearchFiltersService {
                                 optionSet.add(val);
                             }
                         }
+                    } else if (conf.key === 'as._motive') {
+                        // For AS motive filter, getProperty returns array of display names
+                        for (const u of contextUnits) {
+                            const val = getProperty(u, conf.key);
+                            if (Array.isArray(val)) {
+                                for (const v of val) {
+                                    if (v != null && v !== '') optionSet.add(v);
+                                }
+                            }
+                        }
                     } else {
                         for (const u of contextUnits) {
                             const v = getProperty(u, conf.key);
@@ -1932,6 +2076,15 @@ export class UnitSearchFiltersService {
                     vals = contextUnits
                         .map(u => this.getAdjustedPV(u))
                         .filter(pv => pv > 0);
+                } else if (conf.key === 'as._mv') {
+                    // Special handling for AS movement - collect ALL values from MVm
+                    vals = [];
+                    for (const u of contextUnits) {
+                        const mvm = u.as?.MVm;
+                        if (mvm) {
+                            vals.push(...Object.values(mvm) as number[]);
+                        }
+                    }
                 } else {
                     vals = this.getValidFilterValues(contextUnits, conf);
                 }

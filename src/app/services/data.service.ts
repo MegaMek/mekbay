@@ -592,6 +592,13 @@ export class DataService {
                     unit.as.dmg._dmgL = parseFloat(unit.as.dmg.dmgL) || 0;
                     unit.as.dmg._dmgE = parseFloat(unit.as.dmg.dmgE) || 0;
                 }
+                // Normalize MVm: if a unit only has jump movement, treat it as also having standard movement
+                if (unit.as.MVm) {
+                    const mvmKeys = Object.keys(unit.as.MVm);
+                    if (mvmKeys.length === 1 && mvmKeys[0] === 'j') {
+                        unit.as.MVm[''] = unit.as.MVm['j'];
+                    }
+                }
             }
             if (unit.comp) {
                 if (unit.armorType) {

@@ -978,6 +978,13 @@ export interface EvaluatorContext {
     unitBelongsToEra?: (unit: any, eraName: string) => boolean;
     /** Check if a unit belongs to a specific faction (external filter) */
     unitBelongsToFaction?: (unit: any, factionName: string) => boolean;
+    /** 
+     * Get AS movement values filtered by active motive selection.
+     * Returns array of movement values to check for range filtering.
+     * If motive filter is active, returns only values for selected modes.
+     * If no motive filter, returns all movement values.
+     */
+    getASMovementValues?: (unit: any) => number[];
 }
 
 /**
@@ -1002,6 +1009,13 @@ function evaluateSingleFilterConfig(
         unitValue = context.getAdjustedBV(unit);
     } else if (conf.key === 'as.PV' && context.getAdjustedPV) {
         unitValue = context.getAdjustedPV(unit);
+    } else if (conf.key === 'as._mv' && context.getASMovementValues) {
+        // Special handling for AS movement value - linked to motive filter
+        // Returns array of values to check (filtered by active motive selection)
+        const mvValues = context.getASMovementValues(unit);
+        if (mvValues.length === 0) return operator === '!=';
+        // For range filter, check if ANY value matches the range
+        return evaluateRangeFilterMultiValue(mvValues, operator, values, conf);
     } else if (conf.countable && context.getCountableValues) {
         // For countable filters (equipment, etc.), get names from counts
         const counts = context.getCountableValues(unit, conf.key);
@@ -1177,6 +1191,74 @@ function evaluateRangeFilter(
     
     // For = operator with no match, return false; for != return true
     return operator === '!=' || operator === '>' || operator === '>=' || operator === '<' || operator === '<=';
+}
+
+/**
+ * Evaluate a range filter against multiple numeric values.
+ * Returns true if ANY of the values matches the filter.
+ * Used for linked filters like as._mv where we check multiple movement mode values.
+ */
+function evaluateRangeFilterMultiValue(
+    unitValues: number[],
+    operator: SemanticOperator,
+    values: string[],
+    conf: AdvFilterConfig
+): boolean {
+    if (unitValues.length === 0) return operator === '!=';
+    
+    // For exclusion operator, ALL values must pass (not match)
+    // For inclusion operators, ANY value matching is sufficient
+    if (operator === '!=') {
+        // All values must not match any of the filter values
+        for (const unitValue of unitValues) {
+            for (const val of values) {
+                const rangeMatch = val.match(/^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/);
+                if (rangeMatch) {
+                    const min = parseFloat(rangeMatch[1]);
+                    const max = parseFloat(rangeMatch[2]);
+                    if (unitValue >= min && unitValue <= max) return false;
+                    continue;
+                }
+                const filterNum = parseFloat(val);
+                if (!isNaN(filterNum) && unitValue === filterNum) return false;
+            }
+        }
+        return true;
+    } else {
+        // At least one value must match the range
+        for (const unitValue of unitValues) {
+            for (const val of values) {
+                const rangeMatch = val.match(/^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/);
+                if (rangeMatch) {
+                    const min = parseFloat(rangeMatch[1]);
+                    const max = parseFloat(rangeMatch[2]);
+                    if (unitValue >= min && unitValue <= max) return true;
+                    continue;
+                }
+                const filterNum = parseFloat(val);
+                if (!isNaN(filterNum)) {
+                    switch (operator) {
+                        case '=':
+                            if (unitValue === filterNum) return true;
+                            break;
+                        case '>':
+                            if (unitValue > filterNum) return true;
+                            break;
+                        case '>=':
+                            if (unitValue >= filterNum) return true;
+                            break;
+                        case '<':
+                            if (unitValue < filterNum) return true;
+                            break;
+                        case '<=':
+                            if (unitValue <= filterNum) return true;
+                            break;
+                    }
+                }
+            }
+        }
+        return false;
+    }
 }
 
 /**
