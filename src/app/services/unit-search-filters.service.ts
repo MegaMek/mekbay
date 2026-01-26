@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, signal, computed, effect, inject } from '@angular/core';
+import { Injectable, signal, computed, effect, inject, untracked } from '@angular/core';
 import { Unit } from '../models/units.model';
 import { DataService } from './data.service';
 import { CountOperator, MultiState, MultiStateSelection, MultiStateOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
@@ -616,7 +616,7 @@ export const SORT_OPTIONS: SortOption[] = [
     { key: '', label: 'Relevance' },
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
-        .filter(f => !['era', 'faction', 'forcePack', 'componentName', 'source', '_tags', 'as.specials', 'name', 'chassis', 'model'].includes(f.key))
+        .filter(f => !['era', 'faction', 'forcePack', 'componentName', 'source', '_tags', 'as.specials', 'name', 'chassis', 'model', 'as._motive', 'quirks', 'features'].includes(f.key))
         .map(f => ({
             key: f.key,
             label: f.label,
@@ -829,6 +829,18 @@ export class UnitSearchFiltersService {
                     this.recalculatePVRange();
                 }
             }
+        });
+        // Reset sort when game system changes (sort options differ between CBT and AS)
+        let previousGameSystem: GameSystem | null = null;
+        effect(() => {
+            const currentGameSystem = this.gameService.currentGameSystem();
+            if (previousGameSystem !== null && previousGameSystem !== currentGameSystem) {
+                // Game system changed, reset sort to relevance
+                untracked(() => {
+                    this.selectedSort.set('');
+                });
+            }
+            previousGameSystem = currentGameSystem;
         });
         // When query becomes complex, convert UI-only filters to semantic text
         // This ensures filters aren't silently applied without being visible

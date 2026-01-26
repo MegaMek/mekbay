@@ -867,26 +867,131 @@ export class UnitSearchComponent {
         } catch { /* ignore */ }
     }
 
-    private getDisplaySortKey(): string {
-        const key = this.filtersService.selectedSort();
-        // These keys are shown in the main unit card, we don't need to repeat them in the slot
-        if (['name', 'bv', 'tons', 'year', 'role'].includes(key)) {
-            return '';
-        }
-        if (this.expandedView()) {
-            if (['techBase', 'level'].includes(key)) {
-                return '';
+    /**
+     * Keys that are grouped together in the UI display.
+     * When any key in a group is displayed, sorting by any other key in the group
+     * should highlight that display (not create a separate sort slot).
+     */
+    private static readonly SORT_KEY_GROUPS: Record<string, readonly string[]> = {
+        // AS damage displayed as S/M/L composite
+        'as.damage': ['as.dmg._dmgS', 'as.dmg._dmgM', 'as.dmg._dmgL', 'as.dmg._dmgE'],
+        // CBT movement displayed as "walk / run / jump / umu"
+        'movement': ['walk', 'run', 'jump', 'umu'],
+    };
+
+    /**
+     * Displayed keys/groups per view mode.
+     * Uses group names from SORT_KEY_GROUPS or individual key names.
+     */
+    private static readonly VIEW_DISPLAYED_KEYS: Record<string, readonly string[]> = {
+        'compact-cbt': ['name', 'bv', 'tons', 'year', 'role'],
+        'compact-as': ['name', 'as.PV', 'as.SZ', 'as.TMM', 'year', 'role'],
+        'expanded-cbt': [
+            'name', 'bv', 'tons', 'year', 'role',
+            'level', 'techBase', 'cost', 'moveType', 'c3', 'movement', // 'movement' is a group
+            'armorType', 'structureType', 'engine' // Note: 'armor' and 'internal' (numeric) are NOT displayed
+        ],
+        'expanded-as': [
+            'name', 'as.PV', 'as.SZ', 'as.TMM', 'year', 'role',
+            'as._mv', 'as.damage', // 'as.damage' is a group
+            'as.Arm', 'as.Str', 'as.OV', 'as.Th', 'as.TP', 'tons', 'techBase'
+        ],
+    };
+
+    /**
+     * Conditional display checks for keys that are only shown when certain conditions are met.
+     * If a key is in VIEW_DISPLAYED_KEYS but its condition returns false for a unit,
+     * getSortSlot will create a slot for it.
+     */
+    private static readonly CONDITIONAL_DISPLAY: Record<string, (unit: Unit) => boolean> = {
+        // AS conditional fields
+        'as.OV': (unit) => unit.as?.usesOV ?? false,
+        'as.Th': (unit) => unit.as?.usesTh ?? false,
+        'as.damage': (unit) => !unit.as?.usesArcs, // damage not shown for arc-based units
+        'as.dmg._dmgS': (unit) => !unit.as?.usesArcs,
+        'as.dmg._dmgM': (unit) => !unit.as?.usesArcs,
+        'as.dmg._dmgL': (unit) => !unit.as?.usesArcs,
+        'as.dmg._dmgE': (unit) => !unit.as?.usesArcs,
+        // CBT conditional fields
+        'cost': (unit) => !!unit.cost,
+        'c3': (unit) => !!unit.c3,
+        'moveType': (unit) => !!unit.moveType,
+        'armorType': (unit) => !!unit.armorType,
+        'structureType': (unit) => !!unit.structureType,
+        'engine': (unit) => !!unit.engine,
+        'movement': (unit) => !!unit.walk, // movement group shown only if walk exists
+        'walk': (unit) => !!unit.walk,
+        'run': (unit) => !!unit.walk,
+        'jump': (unit) => !!unit.jump,
+        'umu': (unit) => !!unit.umu,
+    };
+
+    /** 
+     * Check if the current sort key matches any of the provided keys or groups.
+     * Use in templates: [class.sort-slot]="isSortActive('as.PV')" or isSortActive('as.damage')
+     */
+    isSortActive(...keysOrGroups: string[]): boolean {
+        const currentSort = this.filtersService.selectedSort();
+        if (!currentSort) return false;
+        
+        for (const keyOrGroup of keysOrGroups) {
+            // Check if it's a group name
+            const group = UnitSearchComponent.SORT_KEY_GROUPS[keyOrGroup];
+            if (group) {
+                if (group.includes(currentSort)) return true;
+            } else if (keyOrGroup === currentSort) {
+                return true;
             }
         }
-        return key;
+        return false;
+    }
+
+    /** Get the current view mode key */
+    private getViewMode(): string {
+        const isAS = this.gameService.isAlphaStrike();
+        const isExpanded = this.expandedView();
+        if (isAS) return isExpanded ? 'expanded-as' : 'compact-as';
+        return isExpanded ? 'expanded-cbt' : 'compact-cbt';
+    }
+
+    /** 
+     * Check if a sort key is actually displayed for a specific unit.
+     * Considers both view mode and conditional display rules.
+     */
+    private isSortKeyDisplayedForUnit(sortKey: string, unit: Unit): boolean {
+        const viewKeys = UnitSearchComponent.VIEW_DISPLAYED_KEYS[this.getViewMode()] || [];
+        
+        for (const keyOrGroup of viewKeys) {
+            // Check if it's a group
+            const group = UnitSearchComponent.SORT_KEY_GROUPS[keyOrGroup];
+            if (group) {
+                if (group.includes(sortKey)) {
+                    // Check group-level condition first, then individual key condition
+                    const groupCondition = UnitSearchComponent.CONDITIONAL_DISPLAY[keyOrGroup];
+                    if (groupCondition && !groupCondition(unit)) return false;
+                    const keyCondition = UnitSearchComponent.CONDITIONAL_DISPLAY[sortKey];
+                    return keyCondition ? keyCondition(unit) : true;
+                }
+            } else if (keyOrGroup === sortKey) {
+                // Check if there's a conditional display check
+                const condition = UnitSearchComponent.CONDITIONAL_DISPLAY[sortKey];
+                return condition ? condition(unit) : true;
+            }
+        }
+        return false;
     }
 
     getSortSlot(unit: Unit): { key: string; value: string; label?: string; img?: string; alt: string; numeric: boolean } | null {
-        const key = this.getDisplaySortKey();
+        const key = this.filtersService.selectedSort();
         if (!key) return null;
+        
+        // If this key is already displayed for this unit, don't show a separate slot
+        if (this.isSortKeyDisplayedForUnit(key, unit)) return null;
+        
         const opt: SortOption | undefined = this.SORT_OPTIONS.find(o => o.key === key);
 
-        const raw = (unit as any)[key];
+        // Use nested property access for dotted keys like 'as.PV'
+        const raw = this.getNestedProperty(unit, key);
         let numeric = typeof raw === 'number';
         let value: string;
 
@@ -905,6 +1010,19 @@ export class UnitSearchComponent {
             alt: opt?.label || key,
             numeric
         };
+    }
+
+    /** Get a nested property value using dot notation (e.g., 'as.PV') */
+    private getNestedProperty(obj: any, key: string): any {
+        if (!obj || !key) return undefined;
+        if (!key.includes('.')) return obj[key];
+        const parts = key.split('.');
+        let cur: any = obj;
+        for (const p of parts) {
+            if (cur == null) return undefined;
+            cur = cur[p];
+        }
+        return cur;
     }
 
     getTypeColor(typeCode: string): string {

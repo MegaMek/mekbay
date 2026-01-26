@@ -174,58 +174,64 @@
                                     <div class="expanded-basic-info">
                                         <div class="info-item">
                                             <span class="info-label muted">PV:</span>
-                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('as.PV')">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label muted">Size:</span>
-                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">{{ unit.as.SZ }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('as.SZ')">{{ unit.as.SZ }}</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label muted">TMM:</span>
-                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">{{ unit.as.TMM }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('as.TMM')">{{ unit.as.TMM }}</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label muted">Movement:</span>
-                                            <span class="info-value">{{ formatASMovement(unit) }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('as._mv')">{{ formatASMovement(unit) }}</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label muted">Armor:</span>
-                                            <span class="info-value">{{ unit.as.Arm }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('as.Arm')">{{ unit.as.Arm }}</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label muted">Structure:</span>
-                                            <span class="info-value">{{ unit.as.Str }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('as.Str')">{{ unit.as.Str }}</span>
                                         </div>
                                         @if (!unit.as.usesArcs) {
                                         <div class="info-item">
                                             <span class="info-label muted">Damage:</span>
-                                            <span class="info-value">{{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('as.damage')">{{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }}</span>
                                         </div>
                                         }
                                         @if (unit.as.usesOV) {
                                         <div class="info-item">
                                             <span class="info-label muted">Overheat:</span>
-                                            <span class="info-value">{{ unit.as.OV }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('as.OV')">{{ unit.as.OV }}</span>
                                         </div>
                                         }
                                         @if (unit.as.usesTh) {
                                         <div class="info-item">
-                                            <span class="info-label muted">Thrust:</span>
-                                            <span class="info-value">{{ unit.as.Th }}</span>
+                                            <span class="info-label muted">Threshold:</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('as.Th')">{{ unit.as.Th }}</span>
                                         </div>
                                         }
                                         <div class="info-item">
                                             <span class="info-label muted">Intro Year: </span>
-                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">{{ unit.year }} @if(unit._era?.img) { <img [src]="unit._era.img" class="era-icon" [alt]="unit._era?.name" [title]="unit._era?.name" /> }</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('year')">{{ unit.year }} @if(unit._era?.img) { <img [src]="unit._era.img" class="era-icon" [alt]="unit._era?.name" [title]="unit._era?.name" /> }</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label muted">Tech:</span>
-                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'techBase'">{{ unit.techBase }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('techBase')">{{ unit.techBase }}</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label muted">Tons:</span>
-                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">{{ unit.tons | formatTons }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('tons')">{{ unit.tons | formatTons }}</span>
                                         </div>
+                                        @if (getSortSlot(unit); as slot) {
+                                        <div class="info-item">
+                                            <span class="info-label muted">{{ slot.label }}</span>
+                                            <span class="info-value sort-slot">{{ slot.value }} @if (slot.img) {<img [src]="slot.img" class="icon" [alt]="slot.alt">}</span>
+                                        </div>
+                                        }
                                     </div>
                                 </div>
                                 <div class="expanded-right">
@@ -249,16 +255,16 @@
                                 <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
                                 <span class="as-td-chassis" [innerHTML]="highlight(unit.chassis)"></span>
                             </div>
-                            <div class="as-td as-td-type">{{ unit.as.TP }}</div>
-                            <div class="as-td as-td-role">{{ unit.role !== 'None' ? unit.role : '' }}</div>
-                            <div class="as-td as-td-pv" [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
-                            <div class="as-td as-td-sz" [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">{{ unit.as.SZ }}</div>
-                            <div class="as-td as-td-mv">{{ formatASMovement(unit) }}</div>
-                            <div class="as-td as-td-tmm" [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">{{ unit.as.TMM }}</div>
-                            <div class="as-td as-td-dmg">@if (!unit.as.usesArcs) { {{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }} }</div>
-                            <div class="as-td as-td-arm">{{ unit.as.Arm }}</div>
-                            <div class="as-td as-td-str">{{ unit.as.Str }}</div>
-                            <div class="as-td as-td-ov">@if (unit.as.usesOV) { {{ unit.as.OV }} }</div>
+                            <div class="as-td as-td-type" [class.sort-slot]="isSortActive('as.TP')">{{ unit.as.TP }}</div>
+                            <div class="as-td as-td-role" [class.sort-slot]="isSortActive('role')">{{ unit.role !== 'None' ? unit.role : '' }}</div>
+                            <div class="as-td as-td-pv" [class.sort-slot]="isSortActive('as.PV')">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
+                            <div class="as-td as-td-sz" [class.sort-slot]="isSortActive('as.SZ')">{{ unit.as.SZ }}</div>
+                            <div class="as-td as-td-mv" [class.sort-slot]="isSortActive('as._mv')">{{ formatASMovement(unit) }}</div>
+                            <div class="as-td as-td-tmm" [class.sort-slot]="isSortActive('as.TMM')">{{ unit.as.TMM }}</div>
+                            <div class="as-td as-td-dmg" [class.sort-slot]="isSortActive('as.damage')">@if (!unit.as.usesArcs) { {{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }} }</div>
+                            <div class="as-td as-td-arm" [class.sort-slot]="isSortActive('as.Arm')">{{ unit.as.Arm }}</div>
+                            <div class="as-td as-td-str" [class.sort-slot]="isSortActive('as.Str')">{{ unit.as.Str }}</div>
+                            <div class="as-td as-td-ov" [class.sort-slot]="isSortActive('as.OV')">@if (unit.as.usesOV) { {{ unit.as.OV }} }</div>
                             <div class="as-td as-td-specials">
                                 @for (special of unit.as.specials; let i = $index; track i) {
                                 <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
@@ -297,64 +303,70 @@
                                     <div class="expanded-basic-info">
                                         <div class="info-item">
                                             <span class="info-label muted">BV:</span>
-                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">{{ unit | adjustedBV:gunnery:piloting | formatNumber:true:false }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('bv')">{{ unit | adjustedBV:gunnery:piloting | formatNumber:true:false }}</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label muted">Tons:</span>
-                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">{{ unit.tons | formatTons }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('tons')">{{ unit.tons | formatTons }}</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label muted">Rules:</span>
-                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'level'">{{ unit.level }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('level')">{{ unit.level }}</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label muted">Intro Year: </span>
-                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">{{ unit.year }} @if(unit._era?.img) { <img [src]="unit._era.img" class="era-icon" [alt]="unit._era?.name" [title]="unit._era?.name" /> }</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('year')">{{ unit.year }} @if(unit._era?.img) { <img [src]="unit._era.img" class="era-icon" [alt]="unit._era?.name" [title]="unit._era?.name" /> }</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label muted">Tech:</span>
-                                            <span class="info-value" [class.sort-slot]="this.filtersService.selectedSort() === 'techBase'">{{ unit.techBase }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('techBase')">{{ unit.techBase }}</span>
                                         </div>
                                         @if (unit.cost) {
                                         <div class="info-item">
                                             <span class="info-label muted">C-Bill:</span>
-                                            <span class="info-value">{{ unit.cost | formatNumber:true:false }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('cost')">{{ unit.cost | formatNumber:true:false }}</span>
                                         </div>
                                         }
                                         @if (unit.armorType) {
                                         <div class="info-item">
                                             <span class="info-label muted">Armor:</span>
-                                            <span class="info-value">{{ unit.armorType }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('armorType')">{{ unit.armorType }}</span>
                                         </div>
                                         }
                                         @if (unit.structureType) {
                                         <div class="info-item">
                                             <span class="info-label muted">Structure:</span>
-                                            <span class="info-value">{{ unit.structureType }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('structureType')">{{ unit.structureType }}</span>
                                         </div>
                                         }
                                         @if (unit.moveType) {
                                         <div class="info-item">
                                             <span class="info-label muted">Motive:</span>
-                                            <span class="info-value">{{ unit.moveType }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('moveType')">{{ unit.moveType }}</span>
                                         </div>
                                         }
                                         @if (unit.engine) {
                                         <div class="info-item">
                                             <span class="info-label muted">Engine:</span>
-                                            <span class="info-value">@if(unit.engineRating){ {{ unit.engineRating }} }{{ unit.engine }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('engine')">@if(unit.engineRating){ {{ unit.engineRating }} }{{ unit.engine }}</span>
                                         </div>
                                         }
                                         @if (unit.c3) {
                                         <div class="info-item">
                                             <span class="info-label muted">Network:</span>
-                                            <span class="info-value">{{ unit.c3 }}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('c3')">{{ unit.c3 }}</span>
                                         </div>
                                         }
                                         @if (unit.walk) {
                                         <div class="info-item">
                                             <span class="info-label muted">Movement:</span>
-                                            <span class="info-value">{{ unit.walk }} / {{ unit.run }} @if(unit.run2 != unit.run){ [{{ unit.run2 }}]} @if(unit.jump){ / {{ unit.jump }} } @if (unit.umu) { / {{ unit.umu }}}</span>
+                                            <span class="info-value" [class.sort-slot]="isSortActive('movement')">{{ unit.walk }} / {{ unit.run }} @if(unit.run2 != unit.run){ [{{ unit.run2 }}]} @if(unit.jump){ / {{ unit.jump }} } @if (unit.umu) { / {{ unit.umu }}}</span>
+                                        </div>
+                                        }
+                                        @if (getSortSlot(unit); as slot) {
+                                        <div class="info-item">
+                                            <span class="info-label muted">{{ slot.label }}</span>
+                                            <span class="info-value sort-slot">{{ slot.value }} @if (slot.img) {<img [src]="slot.img" class="icon" [alt]="slot.alt">}</span>
                                         </div>
                                         }
                                     </div>
@@ -408,7 +420,7 @@
                             <div class="secondary-info">
                                 <div class="model" [innerHTML]="highlight(unit.model)"></div>
                                 @if (unit.role && (unit.role !== 'None')) {
-                                <div class="role" [class.sort-slot]="this.filtersService.selectedSort() === 'role'">{{ unit.role }}</div>
+                                <div class="role" [class.sort-slot]="isSortActive('role')">{{ unit.role }}</div>
                                 }
                             </div>
                             <div class="primary-info">
@@ -417,25 +429,25 @@
                             <div class="third-info">
                                 <div class="info-area">
                                     @if (gameService.isAlphaStrike()) {
-                                    <div class="info-slot centered slim" [class.sort-slot]="this.filtersService.selectedSort() === 'as.PV'">
+                                    <div class="info-slot centered slim" [class.sort-slot]="isSortActive('as.PV')">
                                         <span class="value">PV: {{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:true }}</span>
                                     </div>
-                                    <div class="info-slot centered slim" [class.sort-slot]="this.filtersService.selectedSort() === 'as.SZ'">
+                                    <div class="info-slot centered slim" [class.sort-slot]="isSortActive('as.SZ')">
                                         <span class="value">SZ: {{ unit.as.SZ }}</span>
                                     </div>
-                                    <div class="info-slot centered slim" [class.sort-slot]="this.filtersService.selectedSort() === 'as.TMM'">
+                                    <div class="info-slot centered slim" [class.sort-slot]="isSortActive('as.TMM')">
                                         <span class="value">TMM: {{ unit.as.TMM }}</span>
                                     </div>
                                     } @else {
-                                    <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'bv'">
+                                    <div class="info-slot numeric" [class.sort-slot]="isSortActive('bv')">
                                         <span class="value">BV: {{ unit | adjustedBV:gunnery:piloting | formatNumber:true:true }}</span>
                                     </div>
-                                    <div class="info-slot numeric" [class.sort-slot]="this.filtersService.selectedSort() === 'tons'">
+                                    <div class="info-slot numeric" [class.sort-slot]="isSortActive('tons')">
                                         <span class="value">{{ unit.tons | formatTons }}</span>
                                         <img src="/images/weight.svg" class="icon" alt="Tonnage">
                                     </div>
                                     }
-                                    <div class="info-slot" [class.sort-slot]="this.filtersService.selectedSort() === 'year'">
+                                    <div class="info-slot" [class.sort-slot]="isSortActive('year')">
                                         <span class="value">{{ unit.year }}</span>
                                         @if (unit._era?.img) {
                                         <img [src]="unit._era?.img" class="icon era-icon" alt="Era" [title]="unit._era?.name" />
