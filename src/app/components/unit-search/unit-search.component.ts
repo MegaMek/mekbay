@@ -203,6 +203,28 @@ export class UnitSearchComponent {
         const index = this.inlinePanelIndex();
         return index >= 0 && index < this.filtersService.filteredUnits().length - 1;
     });
+
+    /**
+     * For AS table view: returns the sort slot header label if the current sort
+     * is not already visible in the table columns, otherwise null.
+     */
+    readonly asTableSortSlotHeader = computed((): string | null => {
+        const key = this.filtersService.selectedSort();
+        if (!key) return null;
+        
+        // Check if key is directly in table columns
+        if (UnitSearchComponent.AS_TABLE_VISIBLE_KEYS.includes(key)) return null;
+        
+        // Check if key is in a group that's in table columns
+        for (const groupName of UnitSearchComponent.AS_TABLE_VISIBLE_GROUPS) {
+            const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
+            if (group && group.includes(key)) return null;
+        }
+        
+        // Key is not displayed in table - return the label
+        const opt: SortOption | undefined = this.SORT_OPTIONS.find(o => o.key === key);
+        return opt?.slotLabel || opt?.label || key;
+    });
     
     advPanelStyle = signal<{ left: string, top: string, width: string, height: string, columnsCount: number }>({
         left: '0px',
@@ -1010,6 +1032,38 @@ export class UnitSearchComponent {
             alt: opt?.label || key,
             numeric
         };
+    }
+
+    /** 
+     * Keys always visible in the AS table row.
+     * Used by both asTableSortSlotHeader and getAsTableSortSlot.
+     */
+    private static readonly AS_TABLE_VISIBLE_KEYS = ['as.TP', 'role', 'as.PV', 'as.SZ', 'as._mv', 'as.TMM', 'as.Arm', 'as.Str', 'as.OV'];
+    private static readonly AS_TABLE_VISIBLE_GROUPS = ['as.damage'];
+
+    /**
+     * Get the sort slot value for AS table row view.
+     * Returns null if the sort key is already visible in the table columns.
+     */
+    getAsTableSortSlot(unit: Unit): string | null {
+        const key = this.filtersService.selectedSort();
+        if (!key) return null;
+        
+        // Check if key is directly in table columns
+        if (UnitSearchComponent.AS_TABLE_VISIBLE_KEYS.includes(key)) return null;
+        
+        // Check if key is in a group that's in table columns
+        for (const groupName of UnitSearchComponent.AS_TABLE_VISIBLE_GROUPS) {
+            const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
+            if (group && group.includes(key)) return null;
+        }
+        
+        // Key is not displayed in table - return the formatted value
+        const raw = this.getNestedProperty(unit, key);
+        if (raw == null) return '—';
+        
+        const numeric = typeof raw === 'number';
+        return numeric ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
     }
 
     /** Get a nested property value using dot notation (e.g., 'as.PV') */

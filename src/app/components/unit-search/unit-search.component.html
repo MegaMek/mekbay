@@ -125,6 +125,9 @@
                 <div class="as-th as-th-arm">A</div>
                 <div class="as-th as-th-str">S</div>
                 <div class="as-th as-th-ov">OV</div>
+                @if (asTableSortSlotHeader(); as sortHeader) {
+                <div class="as-th as-th-sort-slot">{{ sortHeader }}</div>
+                }
                 <div class="as-th as-th-specials">Special</div>
                 <div class="as-th as-th-tags">Tags</div>
             </div>
@@ -265,6 +268,9 @@
                             <div class="as-td as-td-arm" [class.sort-slot]="isSortActive('as.Arm')">{{ unit.as.Arm }}</div>
                             <div class="as-td as-td-str" [class.sort-slot]="isSortActive('as.Str')">{{ unit.as.Str }}</div>
                             <div class="as-td as-td-ov" [class.sort-slot]="isSortActive('as.OV')">@if (unit.as.usesOV) { {{ unit.as.OV }} }</div>
+                            @if (getAsTableSortSlot(unit); as sortValue) {
+                            <div class="as-td as-td-sort-slot sort-slot">{{ sortValue }}</div>
+                            }
                             <div class="as-td as-td-specials">
                                 @for (special of unit.as.specials; let i = $index; track i) {
                                 <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
