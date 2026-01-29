@@ -330,26 +330,6 @@ export class UnitSearchComponent {
                 }
             });
         });
-        // Reset item size when view mode changes, compact cards are smaller than expanded cards
-        effect(() => {
-            const expanded = this.expandedView();
-            untracked(() => {
-                // Reset to appropriate default for the view mode
-                // Compact view: ~75px, Expanded view: ~200px (will be refined by height tracking)
-                this.itemSize.set(expanded ? 200 : 75);
-            });
-        });
-        // Cancel pending height tracking updates when view mode changes to prevent stale references
-        effect(() => {
-            this.expandedView();
-            this.resultsVisible();
-            untracked(() => {
-                if (this.heightTrackingDebounceTimer) {
-                    clearTimeout(this.heightTrackingDebounceTimer);
-                    this.heightTrackingDebounceTimer = undefined;
-                }
-            });
-        });
         // Auto-refresh favorites overlay when saved searches change (e.g., from cloud sync)
         effect(() => {
             this.savedSearchesService.version(); // Subscribe to changes
@@ -443,34 +423,55 @@ export class UnitSearchComponent {
 
     private setupItemHeightTracking() {
         const DEBOUNCE_MS = 100;
+        const SCROLL_DEBOUNCE_MS = 250;
+        let prevExpandedView: boolean | undefined;
 
-        const debouncedUpdateHeights = () => {
+        const measureHeights = () => {
+            // Query DOM directly
+            const dropdown = this.getActiveDropdownElement();
+            if (!dropdown) return;
+            
+            const items = dropdown.querySelectorAll('.results-dropdown-item:not(.no-results)');
+            if (items.length === 0) return;
+            const heights = Array.from(items).slice(0, 100).map(el => (el as HTMLElement).offsetHeight);
+            let avg = Math.round(heights.reduce((a, b) => a + b, 0) / heights.length);
+            const currentAvg = this.itemSize();
+            if (currentAvg !== avg) {
+                this.itemSize.set(avg);
+            }
+        };
+
+        const debouncedUpdateHeights = (debounceMs = DEBOUNCE_MS) => {
             if (this.heightTrackingDebounceTimer) {
                 clearTimeout(this.heightTrackingDebounceTimer);
             }
             this.heightTrackingDebounceTimer = setTimeout(() => {
                 // Early exit if results are no longer visible
                 if (!this.resultsVisible()) return;
-                
-                // Query DOM directly - no afterNextRender to avoid closure retention
-                const dropdown = this.getActiveDropdownElement();
-                if (!dropdown) return;
-                
-                const items = dropdown.querySelectorAll('.results-dropdown-item:not(.no-results)');
-                if (items.length === 0) return;
-                const heights = Array.from(items).slice(0, 100).map(el => (el as HTMLElement).offsetHeight);
-                let avg = Math.round(heights.reduce((a, b) => a + b, 0) / heights.length);
-                const currentAvg = this.itemSize();
-                if (currentAvg !== avg) {
-                    this.itemSize.set(avg);
-                }
-            }, DEBOUNCE_MS);
+                measureHeights();
+            }, debounceMs);
         };
 
         effect(() => {
+            const currentExpandedView = this.expandedView();
+            
+            // Cancel any pending timer and reset itemSize when view mode changes
+            untracked(() => {
+                if (this.heightTrackingDebounceTimer) {
+                    clearTimeout(this.heightTrackingDebounceTimer);
+                    this.heightTrackingDebounceTimer = undefined;
+                }
+                // Reset to default on view mode change (will be refined by height tracking)
+                if (prevExpandedView !== undefined && prevExpandedView !== currentExpandedView) {
+                    this.itemSize.set(75);
+                }
+                prevExpandedView = currentExpandedView;
+            });
+            
             if (!this.resultsVisible()) return;
             this.layoutService.isMobile();
-            if (this.expandedView()) {
+            this.gameService.currentGameSystem();
+            if (currentExpandedView) {
                 this.layoutService.windowWidth();
                 this.filtersService.advOpen();
                 this.advPanelUserColumns();

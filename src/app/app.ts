@@ -121,6 +121,7 @@ export class App {
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
     public readonly unitSearchComponentRef = viewChild(UnitSearchComponent);
     protected unitSearchPortal: DomPortal<ElementRef> | null = null;
+    private currentPortalOutlet: 'extended' | 'forceBuilder' | 'main' | null = null;
     protected unitSearchPortalMain = signal<DomPortal<any> | undefined>(undefined);
     protected unitSearchPortalExtended = signal<DomPortal<any> | undefined>(undefined);
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
@@ -162,30 +163,60 @@ export class App {
             const expandedView = this.unitSearchFiltersService.expandedView();
             
             if (unitSearchContainer) {
-                // Detach portal if attached
-                if (this.unitSearchPortal?.isAttached) {
-                    this.unitSearchPortal.detach();
-                }
-                
-                // Clear all outlet
-                this.unitSearchPortalExtended.set(undefined);
-                this.unitSearchPortalMain.set(undefined);
-                this.unitSearchPortalForceBuilder.set(undefined);
-                
-                // Create portal
+                // Create portal if needed
                 if (!this.unitSearchPortal) {
                     this.unitSearchPortal = new DomPortal(unitSearchContainer);
                 }
                 
-                // Assign portal to the appropriate outlet based on current state
+                // Determine target outlet
+                type OutletName = 'extended' | 'forceBuilder' | 'main';
+                let targetOutlet: OutletName;
                 if (expandedView) {
-                    this.unitSearchPortalExtended.set(this.unitSearchPortal);
+                    targetOutlet = 'extended';
                 } else if (hasUnits) {
-                    // Note: When hasUnits is true, the sidebar exists (they share the same @if condition)
-                    this.unitSearchPortalForceBuilder.set(this.unitSearchPortal);
+                    targetOutlet = 'forceBuilder';
                 } else {
-                    this.unitSearchPortalMain.set(this.unitSearchPortal);
-                    this.unitSearchComponentRef()?.buttonOnly.set(false);
+                    targetOutlet = 'main';
+                }
+                
+                // Only update if target changed
+                if (this.currentPortalOutlet === targetOutlet) {
+                    return;
+                }
+                
+                // Clear previous outlet
+                if (this.currentPortalOutlet) {
+                    switch (this.currentPortalOutlet) {
+                        case 'extended':
+                            this.unitSearchPortalExtended.set(undefined);
+                            break;
+                        case 'forceBuilder':
+                            this.unitSearchPortalForceBuilder.set(undefined);
+                            break;
+                        case 'main':
+                            this.unitSearchPortalMain.set(undefined);
+                            break;
+                    }
+                }
+                
+                // Detach portal if attached
+                if (this.unitSearchPortal.isAttached) {
+                    this.unitSearchPortal.detach();
+                }
+                
+                // Set new outlet
+                this.currentPortalOutlet = targetOutlet;
+                switch (targetOutlet) {
+                    case 'extended':
+                        this.unitSearchPortalExtended.set(this.unitSearchPortal);
+                        break;
+                    case 'forceBuilder':
+                        this.unitSearchPortalForceBuilder.set(this.unitSearchPortal);
+                        break;
+                    case 'main':
+                        this.unitSearchPortalMain.set(this.unitSearchPortal);
+                        this.unitSearchComponentRef()?.buttonOnly.set(false);
+                        break;
                 }
             }
         });
