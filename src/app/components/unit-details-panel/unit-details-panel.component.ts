@@ -38,6 +38,7 @@ import { GameService } from '../../services/game.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
 import { TaggingService } from '../../services/tagging.service';
+import { DialogsService } from '../../services/dialogs.service';
 import { REMOTE_HOST } from '../../models/common.model';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { BasePanelComponent } from '../base-panel/base-panel.component';
@@ -48,6 +49,8 @@ import { UnitDetailsIntelTabComponent } from '../unit-details-dialog/tabs/unit-d
 import { UnitDetailsFactionTabComponent } from '../unit-details-dialog/tabs/unit-details-factions-tab.component';
 import { UnitDetailsSheetTabComponent } from '../unit-details-dialog/tabs/unit-details-sheet-tab.component';
 import { UnitDetailsCardTabComponent } from '../unit-details-dialog/tabs/unit-details-card-tab.component';
+import { UnitDetailsVariantsTabComponent } from '../unit-details-dialog/tabs/unit-details-variants-tab.component';
+import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 
 /**
  * Inline unit details panel for expanded view mode.
@@ -66,7 +69,8 @@ import { UnitDetailsCardTabComponent } from '../unit-details-dialog/tabs/unit-de
         UnitDetailsIntelTabComponent,
         UnitDetailsFactionTabComponent,
         UnitDetailsSheetTabComponent,
-        UnitDetailsCardTabComponent
+        UnitDetailsCardTabComponent,
+        UnitDetailsVariantsTabComponent
     ],
     templateUrl: './unit-details-panel.component.html',
     styleUrl: './unit-details-panel.component.scss',
@@ -81,6 +85,7 @@ export class UnitDetailsPanelComponent {
     private forceBuilderService = inject(ForceBuilderService);
     private toastService = inject(ToastService);
     private taggingService = inject(TaggingService);
+    private dialogsService = inject(DialogsService);
     readonly unit = input<Unit | null>(null);
     readonly gunnerySkill = input<number | undefined>(undefined);
     readonly pilotingSkill = input<number | undefined>(undefined);
@@ -91,7 +96,7 @@ export class UnitDetailsPanelComponent {
     readonly next = output<void>();
 
     readonly tabs = computed<string[]>(() => {
-        return ['General', 'Intel', 'Factions', 'Sheet', 'Card'];
+        return ['General', 'Intel', 'Factions', 'Variants', 'Sheet', 'Card'];
     });
     /** Currently active tab */
     readonly activeTab = signal<string>(this.gameService.isAlphaStrike() ? 'Card' : 'General');
@@ -149,6 +154,18 @@ export class UnitDetailsPanelComponent {
         event.stopPropagation();
         const anchorEl = (event.currentTarget as HTMLElement) || (event.target as HTMLElement);
         await this.taggingService.openTagSelector([unit], anchorEl);
+    }
+
+    /** Handle variant card click - opens a dialog for that variant */
+    onVariantClick(event: { variant: Unit; variants: Unit[] }): void {
+        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+            data: <UnitDetailsDialogData>{
+                unitList: event.variants,
+                unitIndex: event.variants.indexOf(event.variant),
+                gunnerySkill: this.gunnerySkill(),
+                pilotingSkill: this.pilotingSkill()
+            }
+        });
     }
 
     /** Handle share button click */

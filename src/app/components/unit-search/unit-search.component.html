@@ -7,7 +7,7 @@
 
 <div class="searchbar-container" [class.expanded]="this.expandedView()">
     @if (buttonOnly() && !this.expandedView()) {
-    <button type="button" class="bt-button expand-btn square-large" (click)="toggleExpandedView()">
+    <button type="button" class="bt-button expand-btn square-large" (click)="toggleExpandedView()" title="Toggle Expanded View">
         <svg stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24" fill="none"
             xmlns="http://www.w3.org/2000/svg">
             <path
@@ -135,8 +135,8 @@
 
             <!-- Single Virtual Scroll Viewport -->
             <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
-                [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1350" tabindex="0">
-                <div class="results-dropdown-item unit-card"
+                [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1600" tabindex="0">
+                <div class="results-dropdown-item"
                     *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
                     [class.active]="activeIndex() === i"
                     [class.selected]="isUnitSelected(unit)"
@@ -147,111 +147,19 @@
                     (longPress)="multiSelectUnit(unit)">
 
                     @if (this.expandedView()) {
-                        <!-- Expanded View Cards (DON'T put it into a ngTemplateOutlet, it leaks in virtual scroll!!) -->
+                        <!-- Expanded View Cards -->
                         @if (gameService.isAlphaStrike()) {
-                        <!-- AS Expanded Card -->
-                        <div class="expanded-unit-card as-card-view">
-                            <div class="expanded-header">
-                                <div class="expanded-image">
-                                    <unit-icon [unit]="unit" [size]="56"></unit-icon>
-                                </div>
-                                <div class="expanded-title">
-                                    <div class="expanded-model" [innerHTML]="highlight(unit.model)"></div>
-                                    <div class="expanded-chassis" [innerHTML]="highlight(unit.chassis)"></div>
-                                </div>
-                                <div class="expanded-subtitle">
-                                    @if (unit.role && unit.role !== 'None') {
-                                    <div class="subtitle-line role">{{ unit.role }}</div>
-                                    }
-                                    <div class="subtitle-line">
-                                        <span>{{ unit.as.TP }}</span>
-                                        <span> • {{ unit.weightClass }}</span>
-                                    </div>
-                                    <div class="subtitle-line">
-                                        <unit-tags [unit]="unit" mode="full" (tagClick)="onAddTag($event)" />
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="expanded-content as-view">
-                                <div class="expanded-basic">
-                                    <div class="expanded-basic-info">
-                                        <div class="info-item">
-                                            <span class="info-label muted">PV:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('as.PV')">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label muted">Size:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('as.SZ')">{{ unit.as.SZ }}</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label muted">TMM:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('as.TMM')">{{ unit.as.TMM }}</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label muted">Movement:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('as._mv')">{{ formatASMovement(unit) }}</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label muted">Armor:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('as.Arm')">{{ unit.as.Arm }}</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label muted">Structure:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('as.Str')">{{ unit.as.Str }}</span>
-                                        </div>
-                                        @if (!unit.as.usesArcs) {
-                                        <div class="info-item">
-                                            <span class="info-label muted">Damage:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('as.damage')">{{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }}</span>
-                                        </div>
-                                        }
-                                        @if (unit.as.usesOV) {
-                                        <div class="info-item">
-                                            <span class="info-label muted">Overheat:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('as.OV')">{{ unit.as.OV }}</span>
-                                        </div>
-                                        }
-                                        @if (unit.as.usesTh) {
-                                        <div class="info-item">
-                                            <span class="info-label muted">Threshold:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('as.Th')">{{ unit.as.Th }}</span>
-                                        </div>
-                                        }
-                                        <div class="info-item">
-                                            <span class="info-label muted">Intro Year: </span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('year')">{{ unit.year }} @if(unit._era?.img) { <img [src]="unit._era.img" class="era-icon" [alt]="unit._era?.name" [title]="unit._era?.name" /> }</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label muted">Tech:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('techBase')">{{ unit.techBase }}</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label muted">Tons:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('tons')">{{ unit.tons | formatTons }}</span>
-                                        </div>
-                                        @if (getSortSlot(unit); as slot) {
-                                        <div class="info-item">
-                                            <span class="info-label muted">{{ slot.label }}</span>
-                                            <span class="info-value sort-slot">{{ slot.value }} @if (slot.img) {<img [src]="slot.img" class="icon" [alt]="slot.alt">}</span>
-                                        </div>
-                                        }
-                                    </div>
-                                </div>
-                                <div class="expanded-right">
-                                    @if (unit.as.specials && unit.as.specials.length > 0) {
-                                    <div class="components-header">Special:</div>
-                                    <div class="expanded-specials">
-                                        <div class="specials-pills">
-                                            @for (special of unit.as.specials; let last = $last; let i = $index; track i) {
-                                            <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
-                                            }
-                                        </div>
-                                    </div>
-                                    }
-                                </div>
-                            </div>
-                        </div>
-                        <!-- AS Table Row View -->
+                        <!-- AS Expanded Card (hidden at >= 1200px, replaced by table row) -->
+                        <unit-card-expanded class="as-card-view"
+                            [unit]="unit"
+                            [gunnery]="gunnery"
+                            [useHex]="useHex()"
+                            [sortKey]="currentSortKey()"
+                            [sortSlotLabel]="currentSortSlotLabel()"
+                            [searchTokens]="this.filtersService.searchTokens()"
+                            (tagClick)="onAddTag($event)">
+                        </unit-card-expanded>
+                        <!-- AS Table Row View (visible at >= 1200px) -->
                         <div class="as-table-row">
                             <div class="as-td as-td-icon"><unit-icon [unit]="unit" [size]="36"></unit-icon></div>
                             <div class="as-td as-td-name">
@@ -282,196 +190,28 @@
                         </div>
                         } @else {
                         <!-- BT Expanded Card -->
-                        <div class="expanded-unit-card">
-                            <div class="expanded-header">
-                                <div class="expanded-image">
-                                    <unit-icon [unit]="unit" [size]="56"></unit-icon>
-                                </div>
-                                <div class="expanded-title">
-                                    <div class="expanded-model" [innerHTML]="highlight(unit.model)"></div>
-                                    <div class="expanded-chassis" [innerHTML]="highlight(unit.chassis)"></div>
-                                </div>
-                                <div class="expanded-subtitle">
-                                    @if (unit.role && unit.role !== 'None') {
-                                    <div class="subtitle-line role">{{ unit.role }}</div>
-                                    }
-                                    <div class="subtitle-line">
-                                        <span>{{ unit.type }}@if(unit.subtype && unit.subtype !== unit.type){<span> - {{ unit.subtype }}</span>}</span>
-                                        <span> • {{ unit.weightClass }}</span>
-                                    </div>
-                                    <div class="subtitle-line">
-                                        <unit-tags [unit]="unit" mode="full" (tagClick)="onAddTag($event)" />
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="expanded-content">
-                                <div class="expanded-basic">
-                                    <div class="expanded-basic-info">
-                                        <div class="info-item">
-                                            <span class="info-label muted">BV:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('bv')">{{ unit | adjustedBV:gunnery:piloting | formatNumber:true:false }}</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label muted">Tons:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('tons')">{{ unit.tons | formatTons }}</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label muted">Rules:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('level')">{{ unit.level }}</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label muted">Intro Year: </span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('year')">{{ unit.year }} @if(unit._era?.img) { <img [src]="unit._era.img" class="era-icon" [alt]="unit._era?.name" [title]="unit._era?.name" /> }</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label muted">Tech:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('techBase')">{{ unit.techBase }}</span>
-                                        </div>
-                                        @if (unit.cost) {
-                                        <div class="info-item">
-                                            <span class="info-label muted">C-Bill:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('cost')">{{ unit.cost | formatNumber:true:false }}</span>
-                                        </div>
-                                        }
-                                        @if (unit.armorType) {
-                                        <div class="info-item">
-                                            <span class="info-label muted">Armor:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('armorType')">{{ unit.armorType }}</span>
-                                        </div>
-                                        }
-                                        @if (unit.structureType) {
-                                        <div class="info-item">
-                                            <span class="info-label muted">Structure:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('structureType')">{{ unit.structureType }}</span>
-                                        </div>
-                                        }
-                                        @if (unit.moveType) {
-                                        <div class="info-item">
-                                            <span class="info-label muted">Motive:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('moveType')">{{ unit.moveType }}</span>
-                                        </div>
-                                        }
-                                        @if (unit.engine) {
-                                        <div class="info-item">
-                                            <span class="info-label muted">Engine:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('engine')">@if(unit.engineRating){ {{ unit.engineRating }} }{{ unit.engine }}</span>
-                                        </div>
-                                        }
-                                        @if (unit.c3) {
-                                        <div class="info-item">
-                                            <span class="info-label muted">Network:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('c3')">{{ unit.c3 }}</span>
-                                        </div>
-                                        }
-                                        @if (unit.walk) {
-                                        <div class="info-item">
-                                            <span class="info-label muted">Movement:</span>
-                                            <span class="info-value" [class.sort-slot]="isSortActive('movement')">{{ unit.walk }} / {{ unit.run }} @if(unit.run2 != unit.run){ [{{ unit.run2 }}]} @if(unit.jump){ / {{ unit.jump }} } @if (unit.umu) { / {{ unit.umu }}}</span>
-                                        </div>
-                                        }
-                                        @if (getSortSlot(unit); as slot) {
-                                        <div class="info-item">
-                                            <span class="info-label muted">{{ slot.label }}</span>
-                                            <span class="info-value sort-slot">{{ slot.value }} @if (slot.img) {<img [src]="slot.img" class="icon" [alt]="slot.alt">}</span>
-                                        </div>
-                                        }
-                                    </div>
-                                </div>
-                                <div class="expanded-stats">
-                                    <div class="stat-bars-columns">
-                                        @if((unit | statBarSpecs); as specsList) {
-                                        @for (spec of specsList; let i = $index; track i) {
-                                        <div class="stat-bar-row" [tooltip]="spec.description ?? null">
-                                            <div class="stat-bar">
-                                                <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
-                                            </div>
-                                            <span class="stat-label">{{ spec.label }}</span>
-                                            <span class="stat-value">{{ spec.valueText ?? spec.value }}</span>
-                                        </div>
-                                        }
-                                        }
-                                    </div>
-                                </div>
-                                <div class="expanded-right">
-                                    @if ((unit.comp | expandedComponents); as componentsList) {
-                                    @if (componentsList.length > 0) {
-                                    <div class="components-header">Equipment</div>
-                                    <div class="expanded-components">
-                                        <div class="components-pills">
-                                            @for (comp of componentsList; let last = $last; let i = $index; track i) {
-                                            <unit-component-item [unit]="unit" [comp]="comp" displayStyle="tiny"></unit-component-item>
-                                            }
-                                        </div>
-                                    </div>
-                                    }
-                                    }
-                                    @if ((unit.comp | filterAmmo); as ammoList) {
-                                    @if (ammoList.length > 0) {
-                                    <div class="ammo-list">
-                                        <span class="info-label muted">Ammo: </span>
-                                        @for (comp of ammoList; let last = $last; let i = $index; track i) {
-                                        <unit-component-item [unit]="unit" [comp]="comp" displayStyle="text"></unit-component-item>@if(!last){<span>, </span>}
-                                        }
-                                    </div>
-                                    }
-                                    }
-                                </div>
-                            </div>
-                        </div>
+                        <unit-card-expanded
+                            [unit]="unit"
+                            [gunnery]="gunnery"
+                            [piloting]="piloting"
+                            [sortKey]="currentSortKey()"
+                            [sortSlotLabel]="currentSortSlotLabel()"
+                            [searchTokens]="this.filtersService.searchTokens()"
+                            (tagClick)="onAddTag($event)">
+                        </unit-card-expanded>
                         }
                     } @else {
-                        <!-- Compact View Card (DON'T put it into a ngTemplateOutlet, it leaks in virtual scroll!!) -->
-                        <unit-icon [unit]="unit" [size]="48"></unit-icon>
-                        <div class="unit-data-container">
-                            <div class="secondary-info">
-                                <div class="model" [innerHTML]="highlight(unit.model)"></div>
-                                @if (unit.role && (unit.role !== 'None')) {
-                                <div class="role" [class.sort-slot]="isSortActive('role')">{{ unit.role }}</div>
-                                }
-                            </div>
-                            <div class="primary-info">
-                                <div class="chassis" [innerHTML]="highlight(unit.chassis)"></div>
-                            </div>
-                            <div class="third-info">
-                                <div class="info-area">
-                                    @if (gameService.isAlphaStrike()) {
-                                    <div class="info-slot centered slim" [class.sort-slot]="isSortActive('as.PV')">
-                                        <span class="value">PV: {{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:true }}</span>
-                                    </div>
-                                    <div class="info-slot centered slim" [class.sort-slot]="isSortActive('as.SZ')">
-                                        <span class="value">SZ: {{ unit.as.SZ }}</span>
-                                    </div>
-                                    <div class="info-slot centered slim" [class.sort-slot]="isSortActive('as.TMM')">
-                                        <span class="value">TMM: {{ unit.as.TMM }}</span>
-                                    </div>
-                                    } @else {
-                                    <div class="info-slot numeric" [class.sort-slot]="isSortActive('bv')">
-                                        <span class="value">BV: {{ unit | adjustedBV:gunnery:piloting | formatNumber:true:true }}</span>
-                                    </div>
-                                    <div class="info-slot numeric" [class.sort-slot]="isSortActive('tons')">
-                                        <span class="value">{{ unit.tons | formatTons }}</span>
-                                        <img src="/images/weight.svg" class="icon" alt="Tonnage">
-                                    </div>
-                                    }
-                                    <div class="info-slot" [class.sort-slot]="isSortActive('year')">
-                                        <span class="value">{{ unit.year }}</span>
-                                        @if (unit._era?.img) {
-                                        <img [src]="unit._era?.img" class="icon era-icon" alt="Era" [title]="unit._era?.name" />
-                                        }
-                                    </div>
-                                    @if (getSortSlot(unit); as slot) {
-                                    <div class="info-slot sort-slot" [class.numeric]="slot.numeric && slot.img">
-                                        <span class="value">
-                                            @if(slot.label) { {{ slot.label }}: } {{ slot.value }}
-                                        </span>
-                                        @if (slot.img) {<img [src]="slot.img" class="icon" [alt]="slot.alt">}
-                                    </div>
-                                    }
-                                </div>
-                                <span class="spanner"></span>
-                                <unit-tags [unit]="unit" mode="compact" (tagClick)="onAddTag($event)" />
-                            </div>
-                        </div>
+                        <!-- Compact View Card -->
+                        <unit-card-expanded
+                            [unit]="unit"
+                            [gunnery]="gunnery"
+                            [piloting]="piloting"
+                            [expandedView]="false"
+                            [sortKey]="currentSortKey()"
+                            [sortSlotLabel]="currentSortSlotLabel()"
+                            [searchTokens]="this.filtersService.searchTokens()"
+                            (tagClick)="onAddTag($event)">
+                        </unit-card-expanded>
                     }
                 </div>
             </cdk-virtual-scroll-viewport>

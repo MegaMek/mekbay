@@ -52,11 +52,13 @@ import { UnitDetailsGeneralTabComponent } from './tabs/unit-details-general-tab.
 import { UnitDetailsIntelTabComponent } from './tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab.component';
 import { UnitDetailsSheetTabComponent } from './tabs/unit-details-sheet-tab.component';
+import { UnitDetailsVariantsTabComponent } from './tabs/unit-details-variants-tab.component';
 import { GameService } from '../../services/game.service';
 import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
 import { TaggingService } from '../../services/tagging.service';
 import { UrlStateService } from '../../services/url-state.service';
+import { DialogsService } from '../../services/dialogs.service';
 
 /*
  * Author: Drake
@@ -74,7 +76,7 @@ export interface UnitDetailsDialogData {
 @Component({
     selector: 'unit-details-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, SwipeDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitTagsComponent],
+    imports: [CommonModule, BaseDialogComponent, SwipeDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css'],
     host: {
@@ -93,6 +95,7 @@ export class UnitDetailsDialogComponent {
     floatingOverlayService = inject(FloatingOverlayService);
     private taggingService = inject(TaggingService);
     private urlStateService = inject(UrlStateService);
+    private dialogsService = inject(DialogsService);
     add = output<Unit>();
     select = output<Unit>();
     indexChange = output<number>();
@@ -100,7 +103,7 @@ export class UnitDetailsDialogComponent {
     incomingPanelRef = viewChild<ElementRef>('incomingPanel');
 
     tabs = computed<string[]>(() => {
-        return ['General', 'Intel', 'Factions', 'Sheet', 'Card'];
+        return ['General', 'Intel', 'Factions', 'Variants', 'Sheet', 'Card'];
     });
     activeTab = signal(this.gameService.isAlphaStrike() ? 'Card' : 'General');
 
@@ -328,6 +331,7 @@ export class UnitDetailsDialogComponent {
 
 
     async onAdd() {
+        if (this.data.selectMode) return;
         const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
         let gunnery;
         let piloting;
@@ -387,6 +391,21 @@ export class UnitDetailsDialogComponent {
         event.stopPropagation();
         const anchorEl = (event.currentTarget as HTMLElement) || (event.target as HTMLElement);
         await this.taggingService.openTagSelector([unit], anchorEl);
+    }
+
+    /** Handle variant card click - opens a new dialog for that variant */
+    onVariantClick(event: { variant: Unit; variants: Unit[] }): void {
+        if (this.data.selectMode) return;
+        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+            data: <UnitDetailsDialogData>{
+                unitList: event.variants,
+                unitIndex: event.variants.indexOf(event.variant),
+                gunnerySkill: this.gunnerySkill(),
+                pilotingSkill: this.pilotingSkill(),
+                hideAddButton: this.data.hideAddButton,
+                selectMode: this.data.selectMode
+            }
+        });
     }
 
     public shouldBlockSwipe = (): boolean => {

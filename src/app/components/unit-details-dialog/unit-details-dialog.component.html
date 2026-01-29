@@ -58,6 +58,16 @@
         </unit-details-general-tab>
       }
 
+      @if (activeTab() === 'Variants') {
+        <unit-details-variants-tab
+          [unit]="unit"
+          [gunnerySkill]="gunnerySkill()"
+          [pilotingSkill]="pilotingSkill()"
+          (variantClick)="onVariantClick($event)"
+          (tagClick)="onTagClick($event)">
+        </unit-details-variants-tab>
+      }
+
       @if (activeTab() === 'Factions') {
         <unit-details-factions-tab [unit]="unit"></unit-details-factions-tab>
       }
@@ -89,6 +99,16 @@
             [gunnerySkill]="gunnerySkill()"
             [pilotingSkill]="pilotingSkill()">
           </unit-details-general-tab>
+        }
+
+        @if (activeTab() === 'Variants') {
+          <unit-details-variants-tab
+            [unit]="incomingUnit()!"
+            [gunnerySkill]="gunnerySkill()"
+            [pilotingSkill]="pilotingSkill()"
+            (variantClick)="onVariantClick($event)"
+            (tagClick)="onTagClick($event)">
+          </unit-details-variants-tab>
         }
 
         @if (activeTab() === 'Factions') {

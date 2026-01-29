@@ -1,9 +1,9 @@
 <div class="unit-tags" [class.compact]="mode() === 'compact'" [class.full]="mode() === 'full'">
     @if (mode() === 'full') {
-        @for (tag of chassisTags(); track tag) {
+        @for (tag of chassisTags(); track $index) {
             <span class="tag tag-chassis">{{ tag }}</span>
         }
-        @for (tag of nameTags(); track tag) {
+        @for (tag of nameTags(); track $index) {
             <span class="tag tag-name">{{ tag }}</span>
         }
     }

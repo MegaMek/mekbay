@@ -1,0 +1,18 @@
+<!-- Variants Tab Content -->
+<div class="tab-content">
+    <div class="variants-list">
+        @for (variant of variants(); let last = $last; track variant.id) {
+            <unit-card-expanded
+                [unit]="variant"
+                [isSelected]="isCurrentUnit(variant)"
+                [gunnery]="gunnerySkill() ?? 4"
+                [piloting]="pilotingSkill() ?? 5"
+                (cardClick)="onVariantClick(variant, variants())"
+                (tagClick)="onTagClick($event)">
+            </unit-card-expanded>
+            @if (!last) {
+                <hr class="divider" />  
+            }
+        }
+    </div>
+</div>

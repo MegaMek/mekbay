@@ -257,8 +257,6 @@
     font-size: 1em;
     cursor: pointer;
     flex-direction: row;
-    overflow-x: hidden;
-    padding-right: 8px;
     gap: 4px;
     align-items: center;
     transition: background-color 0.2s;
@@ -386,283 +384,6 @@
     height: 18px;
 }
 
-.unit-card .info-slot.sort-slot {
-    background-color: var(--bt-yellow-background);
-}
-
-.unit-card .role.sort-slot {
-    color: var(--bt-yellow-background-light);
-}
-
-.unit-card .info-slot-era {
-    display: flex;
-    gap: 4px;
-    justify-content: center;
-    padding-top: 4px;
-}
-
-.unit-card .era-icon {
-    margin: -6px -4px -4px 0px;
-    height: 17px;
-    width: 17px;
-}
-
-@container (min-width: 600px) {
-    .unit-card .primary-info {
-        display: flex;
-        flex-direction: row;
-        align-items: baseline;
-        justify-content: space-between;
-    }
-
-    .unit-card .primary-info .chassis {
-        flex-grow: 1;
-        min-width: 0;
-    }
-
-    .info-area {
-        flex-shrink: 0;
-        min-width: 0;
-    }
-}
-
-
-/* Expanded View Styles */
-.results-dropdown-item.expanded {
-    min-height: auto;
-    padding: 12px;
-}
-
-.expanded-unit-card {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    width: 100%;
-}
-
-.expanded-header {
-    display: flex;
-    gap: 0px 12px;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.expanded-title {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.expanded-image {
-    flex-shrink: 0;
-    order: -1;
-}
-
-.expanded-model {
-    font-size: 0.9em;
-    color: var(--text-color-secondary);
-}
-
-.expanded-chassis {
-    font-size: 1.2em;
-    font-weight: bold;
-    color: var(--text-color);
-}
-
-.expanded-subtitle {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 0.85em;
-    color: var(--text-color-secondary);
-    text-align: right;
-    align-items: flex-end;
-    min-width: 0;
-    margin-left: auto;
-}
-
-.role {
-    font-style: italic;
-    flex-shrink: 0;
-    min-width: 0;
-    text-align: right;
-}
-
-.subtitle-line {
-    white-space: nowrap;
-}
-
-.info-item {
-    display: flex; 
-    align-items: flex-start;
-    gap: 4px;
-}
-
-.expanded-content {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 12px;
-}
-
-@container (min-width: 768px) {
-    .expanded-content {
-        grid-template-columns: 1.3fr 1fr;
-    }
-    .expanded-right:last-child {
-        grid-column: 1 / -1;
-    }
-}
-
-@container (min-width: 1024px) {
-    .expanded-content {
-        grid-template-columns: 1.6fr 1fr 1fr;
-    }
-    .expanded-right:last-child {
-        grid-column: auto;
-    }
-}
-
-.expanded-basic-info {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 4px 12px;
-    padding: 4px;
-}
-
-@container (max-width: 768px) {
-    .expanded-basic-info {
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-        font-size: 0.9em;
-    }
-}
-
-/* Alpha Strike expanded view */
-.expanded-content.as-view {
-    grid-template-columns: 1fr;
-}
-
-@container (min-width: 600px) {
-    .expanded-content.as-view {
-        grid-template-columns: 2fr 1fr;
-    }
-    .expanded-content.as-view .expanded-basic {
-        grid-column: 1;
-    }
-    .expanded-content.as-view .expanded-right {
-        grid-column: 2;
-    }
-}
-
-.expanded-content.as-view .expanded-basic-info {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-}
-
-.info-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 8px;
-}
-
-.info-label {
-    color: var(--text-color-secondary);
-    white-space: nowrap;
-}
-
-.info-value {
-    font-weight: bold;
-    color: var(--text-color);
-    text-align: right;
-}
-
-.info-value img {
-    vertical-align: middle;
-    margin-top: -2px;
-}
-
-.info-value.sort-slot {
-    color: var(--bt-yellow);
-}
-
-
-.stat-bars-columns {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 6px;
-    padding: 4px;
-    box-sizing: border-box;
-}
-
-.stat-bar-row {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: stretch;
-    position: relative;
-    border-bottom: 1px solid #fff;
-    padding-bottom: 1px;
-}
-
-.stat-bar {
-    flex: 1 1 0;
-    height: 20px;
-    position: absolute;
-    display: flex;
-    align-items: center;
-    overflow: hidden;
-    width: 100%;
-}
-
-.stat-bar-fill {
-    background: #777;
-    height: 100%;
-    transition: width 0.3s;
-}
-
-.stat-label {
-    color: #fff;
-    position: absolute;
-    left: 4px;
-    font-weight: 500;
-    font-variant: small-caps;
-    letter-spacing: 0.04em;
-    font-size: 0.9em;
-}
-
-.stat-value {
-    min-width: 36px;
-    text-align: right;
-    font-weight: bold;
-    color: #fff;
-    font-size: 1em;
-    padding: 1px;
-    position: relative;
-    width: 100%;
-}
-
-
-.expanded-right {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 4px;
-}
-
-.components-header {
-    color: var(--text-color-secondary);
-}
-
-.expanded-components {
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-.components-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-}
-
 /* Pilot skills */
 .pilot-skills-section {
     margin-bottom: 0;
@@ -701,67 +422,7 @@
     font-size: 1em;
 }
 
-.ammo-list {
-    margin-top: 4px;
-    font-size: 0.85em;
-}
-
-.ammo-pill {
-    white-space: nowrap;
-    line-height: 1.4em;
-}
-
-.ammo-pill:hover {
-    text-decoration: underline var(--text-color) dotted;
-}
-
-.component-pill:hover {
-    filter: brightness(1.3);
-}
-
-/* Alpha Strike Expanded View Styles */
-.as-damage-section {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.as-damage-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-wrap: wrap;
-}
-
-.as-damage-label {
-    font-size: 0.75em;
-    color: var(--text-color-secondary);
-    text-transform: uppercase;
-    min-width: 12px;
-}
-
-.as-damage-value {
-    font-size: 1em;
-    font-weight: 600;
-    min-width: 20px;
-    margin-right: 8px;
-}
-
-.as-damage-value:last-child {
-    margin-right: 0;
-}
-
-.expanded-specials {
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-.specials-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-}
-
+/* Special pill for AS table view */
 .special-pill {
     display: inline-block;
     padding: 2px 6px;
@@ -793,7 +454,7 @@
 }
 
 @container results-container (min-width: 1200px) {
-    .results-dropdown-viewport {
+    .results-dropdown-viewport:has(.as-table-row) {
         scrollbar-gutter: stable;
     }
 
@@ -918,8 +579,8 @@
         color: var(--bt-yellow);
     }
 
-    /* Adjust row items in table view */
-    .results-dropdown-item.unit-card {
+    /* Adjust row items in table view (only when AS table row is visible) */
+    .results-dropdown-item:has(.as-table-row) {
         min-height: 48px;
         padding: 4px 12px;
     }

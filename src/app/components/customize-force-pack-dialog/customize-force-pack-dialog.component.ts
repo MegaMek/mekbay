@@ -116,7 +116,12 @@ export class CustomizeForcePackDialogComponent {
         
         return this.dataService.getUnits()
             .filter(u => u.type === targetType && u.chassis === targetChassis)
-            .sort(compareUnitsByName);
+            .sort((a, b) => {
+                // Sort by year first, then by name
+                const yearDiff = (a.year ?? 0) - (b.year ?? 0);
+                if (yearDiff !== 0) return yearDiff;
+                return compareUnitsByName(a, b);
+            });
     });
 
     // Computed total BV/PV
@@ -279,6 +284,7 @@ export class CustomizeForcePackDialogComponent {
                 data: {
                     unitList: variants,
                     unitIndex: variantIdx >= 0 ? variantIdx : 0,
+                    hideAddButton: true,
                     selectMode: true
                 } as UnitDetailsDialogData
             }

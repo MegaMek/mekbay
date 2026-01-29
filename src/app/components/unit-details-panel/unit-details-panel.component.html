@@ -57,6 +57,16 @@
                     </unit-details-general-tab>
                 }
 
+                @if (activeTab() === 'Variants') {
+                    <unit-details-variants-tab
+                        [unit]="currentUnit"
+                        [gunnerySkill]="gunnerySkill()"
+                        [pilotingSkill]="pilotingSkill()"
+                        (variantClick)="onVariantClick($event)"
+                        (tagClick)="onTagClick($event)">
+                    </unit-details-variants-tab>
+                }
+
                 @if (activeTab() === 'Factions') {
                     <unit-details-factions-tab [unit]="currentUnit"></unit-details-factions-tab>
                 }
