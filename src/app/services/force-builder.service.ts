@@ -58,6 +58,7 @@ import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
 import { ASForceUnit } from '../models/as-force-unit.model';
+import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
@@ -841,27 +842,34 @@ export class ForceBuilderService {
 
     /**
      * Generates URL parameters for units within a group.
-     * Format: unitName:gunnery:piloting
+     * Format for CBT: unitName:gunnery:piloting
+     * Format for AS: unitName:skill
      */
     private generateUnitParams(units: ForceUnit[]): string[] {
         return units.map(fu => {
             const unit = fu.getUnit();
-            const crewMembers = fu.getCrewMembers();
-
             let unitParam = unit.name;
 
-            // Add crew skills
-            if (crewMembers.length > 0) {
-                const crewSkills: string[] = [];
+            // Handle Alpha Strike units (single pilot skill)
+            if (fu instanceof ASForceUnit) {
+                const skill = fu.pilotSkill();
+                unitParam += `:${skill}`;
+                return unitParam;
+            }
 
-                for (const crew of crewMembers) {
-                    const gunnery = crew.getSkill('gunnery');
-                    const piloting = crew.getSkill('piloting');
-                    crewSkills.push(`${gunnery}`, `${piloting}`);
-                }
-
-                if (crewSkills.length > 0) {
-                    unitParam += ':' + crewSkills.join(':');
+            // Handle CBT units (crew members with gunnery/piloting)
+            if (fu instanceof CBTForceUnit) {
+                const crewMembers = fu.getCrewMembers();
+                if (crewMembers.length > 0) {
+                    const crewSkills: string[] = [];
+                    for (const crew of crewMembers) {
+                        const gunnery = crew.getSkill('gunnery');
+                        const piloting = crew.getSkill('piloting');
+                        crewSkills.push(`${gunnery}`, `${piloting}`);
+                    }
+                    if (crewSkills.length > 0) {
+                        unitParam += ':' + crewSkills.join(':');
+                    }
                 }
             }
 
@@ -997,7 +1005,8 @@ export class ForceBuilderService {
 
     /**
      * Parses individual unit parameters from a comma-separated string.
-     * Format: unitName:gunnery:piloting,unitName2:gunnery:piloting
+     * Format for CBT: unitName:gunnery:piloting,unitName2:gunnery:piloting
+     * Format for AS: unitName:skill,unitName2:skill
      */
     private parseUnitParams(force: Force, unitsStr: string, unitMap: Map<string, Unit>, group?: UnitGroup): ForceUnit[] {
         if (!unitsStr.trim()) return [];
@@ -1029,25 +1038,36 @@ export class ForceBuilderService {
                 }
             }
 
-            // Parse crew skills if present
+            // Parse skills if present
             if (parts.length > 1) {
-                const crewSkills = parts.slice(1);
-                const crewMembers = forceUnit.getCrewMembers();
+                forceUnit.disabledSaving = true;
 
-                // Process crew skills in pairs (gunnery, piloting)
-                for (let i = 0; i < crewSkills.length && i < crewMembers.length * 2; i += 2) {
-                    const crewIndex = Math.floor(i / 2);
-                    const gunnery = parseInt(crewSkills[i]);
-                    const piloting = parseInt(crewSkills[i + 1]);
-
-                    if (!isNaN(gunnery) && !isNaN(piloting) && crewMembers[crewIndex]) {
-                        // Temporarily disable saving during initialization
-                        forceUnit.disabledSaving = true;
-                        crewMembers[crewIndex].setSkill('gunnery', gunnery);
-                        crewMembers[crewIndex].setSkill('piloting', piloting);
-                        forceUnit.disabledSaving = false;
+                // Handle Alpha Strike units
+                if (forceUnit instanceof ASForceUnit) {
+                    const skill = parseInt(parts[1]);
+                    if (!isNaN(skill)) {
+                        forceUnit.setPilotSkill(skill);
                     }
                 }
+                // Handle CBT units (crew members with gunnery/piloting)
+                else if (forceUnit instanceof CBTForceUnit) {
+                    const crewSkills = parts.slice(1);
+                    const crewMembers = forceUnit.getCrewMembers();
+
+                    // Process crew skills in pairs (gunnery, piloting)
+                    for (let i = 0; i < crewSkills.length && i < crewMembers.length * 2; i += 2) {
+                        const crewIndex = Math.floor(i / 2);
+                        const gunnery = parseInt(crewSkills[i]);
+                        const piloting = parseInt(crewSkills[i + 1]);
+
+                        if (!isNaN(gunnery) && !isNaN(piloting) && crewMembers[crewIndex]) {
+                            crewMembers[crewIndex].setSkill('gunnery', gunnery);
+                            crewMembers[crewIndex].setSkill('piloting', piloting);
+                        }
+                    }
+                }
+
+                forceUnit.disabledSaving = false;
             }
 
             forceUnits.push(forceUnit);
