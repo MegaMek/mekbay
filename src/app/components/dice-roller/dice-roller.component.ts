@@ -31,13 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import { Component, effect, input, output, signal, DestroyRef, inject } from '@angular/core';
+import { Component, effect, input, output, signal, DestroyRef, inject, ChangeDetectionStrategy } from '@angular/core';
 
 /*
  * Author: Drake
  */
 @Component({
     selector: 'dice-roller',
+    changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './dice-roller.component.html',
     styleUrls: ['./dice-roller.component.scss']
 })
