@@ -126,15 +126,13 @@
     display: flex;
     flex-direction: row;
     align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
 }
 
-.header-row-top {
-    flex-wrap: wrap-reverse;
-}
 
-.header-row-bottom {
-    flex-wrap: wrap;
+.header-row.right {
+    justify-content: flex-end;
 }
 
 .header-model {
@@ -142,7 +140,7 @@
     font-weight: normal;
     color: var(--text-color-secondary);
     text-transform: none;
-    margin-right: 8px;
+    margin-right: 24px;
 }
 
 .header-chassis {
@@ -166,11 +164,6 @@
 .header-details .role {
     font-size: 0.9em;
     text-transform: none;
-}
-
-.header-tags {
-    margin-left: auto;
-    margin-right: 28px;
 }
 
 .basic-info-block .era-icon {

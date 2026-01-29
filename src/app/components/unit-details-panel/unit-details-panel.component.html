@@ -11,11 +11,10 @@
                 <unit-icon [unit]="currentUnit" [size]="56"></unit-icon>
             </div>
             <div class="header-content">
-                <div class="header-row header-row-top">
+                <div class="header-row">
                     <div class="header-model allow-select">{{ currentUnit.model }}</div>
-                    <unit-tags class="header-tags" [unit]="currentUnit" [mode]="'full'" (tagClick)="onTagClick($event)"></unit-tags>
                 </div>
-                <div class="header-row header-row-bottom">
+                <div class="header-row">
                     <div class="header-chassis allow-select">{{ currentUnit.chassis }}</div>
                     <div class="header-details">
                         @if (currentUnit.role && currentUnit.role !== 'None') {
@@ -26,6 +25,9 @@
                             <img src="/images/weight.svg" class="icon" alt="tons">
                         </div>
                     </div>
+                </div>
+                <div class="header-row right">
+                    <unit-tags class="header-tags" [unit]="currentUnit" [mode]="'full'" (tagClick)="onTagClick($event)"></unit-tags>
                 </div>
             </div>
         </div>
