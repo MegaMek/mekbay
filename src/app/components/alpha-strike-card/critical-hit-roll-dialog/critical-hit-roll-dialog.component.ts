@@ -211,6 +211,7 @@ const CRIT_TABLE_DROPSHIP: Record<number, CritTableEntry> = {
                 [rollDurationMs]="600"
                 [freezeOnRollEnd]="500"
                 (finished)="onMainRollFinished($event)"
+                (click)="reroll()"
             />
             </div>
             
@@ -229,6 +230,7 @@ const CRIT_TABLE_DROPSHIP: Record<number, CritTableEntry> = {
                             </div>
                         </div>
                     }
+                    <div class="reroll-hint">Click dice to reroll</div>
                 </div>
                 
             }
@@ -257,7 +259,6 @@ const CRIT_TABLE_DROPSHIP: Record<number, CritTableEntry> = {
             } @else if (canApply()) {
                 <button (click)="apply()" class="bt-button primary">APPLY</button>
             }
-            <button (click)="reroll()" class="bt-button">REROLL</button>
             <button (click)="close()" class="bt-button">DISMISS</button>
         </div>
     </div>
@@ -350,6 +351,16 @@ const CRIT_TABLE_DROPSHIP: Record<number, CritTableEntry> = {
             font-size: 0.95em;
         }
 
+        .reroll-hint {
+            margin-top: 8px;
+            font-size: 0.85em;
+            color: #888;
+            font-style: italic;
+        }
+
+        dice-roller {
+            cursor: pointer;
+        }
 
         [dialog-actions] {
             padding-top: 8px;

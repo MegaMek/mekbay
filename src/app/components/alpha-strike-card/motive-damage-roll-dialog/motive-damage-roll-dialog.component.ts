@@ -149,6 +149,7 @@ const MOTIVE_DAMAGE_TABLE: Record<number, MotiveTableEntry> = {
                 [rollDurationMs]="600"
                 [freezeOnRollEnd]="500"
                 (finished)="onMainRollFinished($event)"
+                (click)="reroll()"
             />
             </div>
             
@@ -157,6 +158,7 @@ const MOTIVE_DAMAGE_TABLE: Record<number, MotiveTableEntry> = {
                     <div class="result-type" [class.no-effect]="result()!.pipKey === null">
                         {{ result()!.effectType }}
                     </div>
+                    <div class="reroll-hint">Click dice to reroll</div>
                 </div>
             }
             
@@ -171,7 +173,6 @@ const MOTIVE_DAMAGE_TABLE: Record<number, MotiveTableEntry> = {
             @if (canApply()) {
                 <button (click)="apply()" class="bt-button primary">APPLY</button>
             }
-            <button (click)="reroll()" class="bt-button">REROLL</button>
             <button (click)="close()" class="bt-button">DISMISS</button>
         </div>
     </div>
@@ -246,6 +247,17 @@ const MOTIVE_DAMAGE_TABLE: Record<number, MotiveTableEntry> = {
             border: 1px solid rgba(255, 100, 0, 0.5);
             color: #ffaa00;
             font-size: 0.95em;
+        }
+
+        .reroll-hint {
+            margin-top: 8px;
+            font-size: 0.85em;
+            color: #888;
+            font-style: italic;
+        }
+
+        dice-roller {
+            cursor: pointer;
         }
 
         [dialog-actions] {
