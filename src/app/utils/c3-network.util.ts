@@ -938,6 +938,9 @@ export class C3NetworkUtil {
             return { networks: result, success: false, message: 'Network not found' };
         }
 
+        // Get the network's masterId before modifying
+        const networkMasterId = result[idx].masterId;
+
         result[idx] = {
             ...result[idx],
             members: result[idx].members!.filter(m => m !== memberStr)
@@ -947,7 +950,8 @@ export class C3NetworkUtil {
         }
         if (this.isMasterMember(memberStr)) {
             const { unitId, compIndex } = this.parseMember(memberStr);
-            if (compIndex !== undefined) {
+            // Check if this is an internal link (member's unitId equals network's masterId)
+            if (compIndex !== undefined && unitId === networkMasterId) {
                 // If it was an internal link, we have to dissolve also the subnetwork if any
                 const subnetwork = this.findMasterNetwork(unitId, compIndex, result);
                 if (subnetwork) {
