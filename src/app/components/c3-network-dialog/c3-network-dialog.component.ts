@@ -1658,7 +1658,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             
             const slaveGroup = unitGroupMap.get(slaveNode.unit.id) || '';
             
-            // Find best master pin: prefer same group, then single-pin masters
+            // Find best master pin: prefer same group, then single-pin masters, then heavier/slower
             // Sort candidates for this slave
             const candidates = [...allMasterPins].sort((a, b) => {
                 const aGroup = unitGroupMap.get(a.node.unit.id) || '';
@@ -1666,7 +1666,19 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const aMatch = aGroup === slaveGroup ? 0 : 1;
                 const bMatch = bGroup === slaveGroup ? 0 : 1;
                 if (aMatch !== bMatch) return aMatch - bMatch;
-                return a.pinCount - b.pinCount; // Prefer single-pin masters
+                
+                // Prefer single-pin masters (they can only be sub-masters)
+                if (a.pinCount !== b.pinCount) return a.pinCount - b.pinCount;
+                
+                // Prefer heavier units as masters (higher tonnage = lower sort value)
+                const aTonnage = a.node.unit.getUnit().tons ?? 0;
+                const bTonnage = b.node.unit.getUnit().tons ?? 0;
+                if (aTonnage !== bTonnage) return bTonnage - aTonnage;
+                
+                // Prefer slower units as masters (lower movement = lower sort value)
+                const aMove = a.node.unit.getUnit().walk ?? 99;
+                const bMove = b.node.unit.getUnit().walk ?? 99;
+                return aMove - bMove;
             });
             
             for (const masterPin of candidates) {
@@ -1734,7 +1746,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     return getGmAvailableSlots(candidate, networks) > 0;
                 });
                 
-                // Sort: prefer those with networks (to consolidate), then same group
+                // Sort: prefer those with networks, then same group, then heavier/slower units as GMs
                 externalCandidates.sort((a, b) => {
                     const aHasNet = pinHasNetwork(a, networks) ? 0 : 1;
                     const bHasNet = pinHasNetwork(b, networks) ? 0 : 1;
@@ -1744,7 +1756,17 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     const bGroup = unitGroupMap.get(b.node.unit.id) || '';
                     const aMatch = aGroup === masterGroup ? 0 : 1;
                     const bMatch = bGroup === masterGroup ? 0 : 1;
-                    return aMatch - bMatch;
+                    if (aMatch !== bMatch) return aMatch - bMatch;
+                    
+                    // Prefer heavier units as GMs (higher tonnage = lower sort value)
+                    const aTonnage = a.node.unit.getUnit().tons ?? 0;
+                    const bTonnage = b.node.unit.getUnit().tons ?? 0;
+                    if (aTonnage !== bTonnage) return bTonnage - aTonnage;
+                    
+                    // Prefer slower units as GMs (lower movement = lower sort value)
+                    const aMove = a.node.unit.getUnit().walk ?? 99;
+                    const bMove = b.node.unit.getUnit().walk ?? 99;
+                    return aMove - bMove;
                 });
                 
                 for (const gmPin of externalCandidates) {
