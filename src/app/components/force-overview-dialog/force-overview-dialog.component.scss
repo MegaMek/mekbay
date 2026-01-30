@@ -142,8 +142,17 @@
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
         gap: 8px;
-        align-items: start;
-        align-content: start;
+        // items in same row match tallest height
+
+        .drag-item {
+            display: flex;
+            flex-direction: column;
+
+            // unit-block has display:contents, ::ng-deep to reach the inner .unit-card
+            ::ng-deep .unit-card {
+                flex: 1;
+            }
+        }
     }
 }
 
