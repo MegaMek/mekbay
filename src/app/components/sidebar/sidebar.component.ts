@@ -57,7 +57,7 @@ export class SidebarComponent {
     public sidebarExpandedWidth = computed(() => {
         const width = this.layout.windowWidth();
         const drawerWidth = this.EXPANDED_WIDTH > width - 32 ? width : this.EXPANDED_WIDTH;
-        return Math.max(320, drawerWidth);
+        return Math.max(320, Math.min(width*0.92, drawerWidth));
     });
 
     public drawerTransform = computed(() => {
