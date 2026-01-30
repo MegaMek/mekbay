@@ -1124,6 +1124,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     protected isNodeDisconnectTarget(node: C3Node): boolean {
+        // Don't show disconnect target on the same node we're connecting from
+        // (user must target specific pins for self-connections)
+        const conn = this.connectingFrom();
+        if (conn && conn.node.unit.id === node.unit.id) return false;
+
         return (this.connectionState().alreadyConnectedPins.get(node.unit.id)?.length ?? 0) > 0;
     }
 
@@ -1322,7 +1327,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     // pinEl is inside .pin-container, get index of .pin-container within .pins-container
                     const pinContainer = pinEl?.closest('.pin-container');
                     const pinsContainer = pinContainer?.parentElement;
-                    let targetPin = pinContainer ? Array.from(pinsContainer?.querySelectorAll(':scope > .pin-container') || []).indexOf(pinContainer) : -1;
+                    const explicitTargetPin = pinContainer ? Array.from(pinsContainer?.querySelectorAll(':scope > .pin-container') || []).indexOf(pinContainer) : -1;
+                    let targetPin = explicitTargetPin;
                     if (targetPin < 0 || !this.isPinValidTarget(targetNode, targetPin)) {
                         const validPins = this.getValidPinsForTarget(targetNode);
                         targetPin = validPins.length > 0 ? validPins[0] : -1;
@@ -1337,15 +1343,25 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         );
 
                         if (existingConnection) {
-                            if (existingConnection.memberStr) {
-                                const result = C3NetworkUtil.removeMemberFromNetwork(this.networks(), existingConnection.networkId, existingConnection.memberStr);
-                                this.networks.set(result.networks);
-                            } else {
-                                const result = C3NetworkUtil.cancelConnectionForPin(this.networks(), conn.node.unit.id, conn.compIndex, sourceComp.role);
-                                this.networks.set(result.networks);
+                            // For self-connections (same unit), only allow removal if:
+                            // 1. User explicitly targeted a valid pin (not auto-selected)
+                            // 2. The target pin is different from the source pin
+                            const isSelfConnection = conn.node.unit.id === targetNode.unit.id;
+                            const isExplicitDifferentPin = explicitTargetPin >= 0 
+                                && this.isPinValidTarget(targetNode, explicitTargetPin) 
+                                && explicitTargetPin !== conn.compIndex;
+                            
+                            if (!isSelfConnection || isExplicitDifferentPin) {
+                                if (existingConnection.memberStr) {
+                                    const result = C3NetworkUtil.removeMemberFromNetwork(this.networks(), existingConnection.networkId, existingConnection.memberStr);
+                                    this.networks.set(result.networks);
+                                } else {
+                                    const result = C3NetworkUtil.cancelConnectionForPin(this.networks(), conn.node.unit.id, conn.compIndex, sourceComp.role);
+                                    this.networks.set(result.networks);
+                                }
+                                this.hasModifications.set(true);
+                                this.toastService.showToast('Connection removed', 'success');
                             }
-                            this.hasModifications.set(true);
-                            this.toastService.showToast('Connection removed', 'success');
                         } else if (!this.data.readOnly) {
                             const result = C3NetworkUtil.createConnection(this.getNetworkContext(), conn.node, conn.compIndex, targetNode, targetPin);
                             if (result.success) {
