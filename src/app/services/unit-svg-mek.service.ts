@@ -679,9 +679,9 @@ export class UnitSvgMekService extends UnitSvgService {
                         break;
                 }
             } else {
-                // Physical weapons are marked as F_CLUB and they have physical=false. 
+                // Physical weapons are marked as F_CLUB/F_HAND_WEAPON and they have physical=false. 
                 // TODO: make them physical=true
-                if (entry.equipment?.flags.has('F_CLUB')) {
+                if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
                     const equipDamageEl = entry.el.querySelector(`:scope > .damage > text`);
                     if (equipDamageEl) {
                         let originalText = equipDamageEl.getAttribute('originalText');

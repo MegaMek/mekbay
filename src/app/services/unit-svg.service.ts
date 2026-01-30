@@ -894,7 +894,7 @@ export class UnitSvgService {
                 }
             }
             if (entry.equipment instanceof WeaponEquipment) {
-                if ((entry.equipment.hasNoRange()) && !entry.equipment.flags.has('F_CLUB')) {
+                if ((entry.equipment.hasNoRange()) && !entry.equipment.flags.has('F_CLUB') && !entry.equipment.flags.has('F_HAND_WEAPON')) {
                     if (!entry.parent || !entry.parent.equipment || (entry.parent.equipment instanceof WeaponEquipment && entry.parent.equipment.hasNoRange())) {
                         return null; // No range defined not by itself, not by parent, skip calculate hit modifier
                     }
