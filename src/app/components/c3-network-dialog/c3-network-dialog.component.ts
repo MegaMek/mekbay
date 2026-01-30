@@ -1583,7 +1583,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         // ========== MASTER-SLAVE NETWORKS ==========
         // The goal is to:
-        // 1. Connect all slaves to master pins (prefer single-pin masters first as they can't be GMs)
+        // 1. Connect all slaves to master pins (prefer single-pin masters first)
         // 2. Connect master networks together using multi-pin masters as Grand Masters
         // 3. Connect any orphan masters
 
