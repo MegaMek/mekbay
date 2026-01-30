@@ -52,13 +52,14 @@ import { UnitDetailsGeneralTabComponent } from './tabs/unit-details-general-tab.
 import { UnitDetailsIntelTabComponent } from './tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab.component';
 import { UnitDetailsSheetTabComponent } from './tabs/unit-details-sheet-tab.component';
-import { UnitDetailsVariantsTabComponent } from './tabs/unit-details-variants-tab.component';
+import { UnitDetailsVariantsTabComponent, VariantsTabState, DEFAULT_VARIANTS_TAB_STATE } from './tabs/unit-details-variants-tab.component';
 import { GameService } from '../../services/game.service';
 import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
 import { TaggingService } from '../../services/tagging.service';
 import { UrlStateService } from '../../services/url-state.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { LayoutService } from '../../services/layout.service';
 
 /*
  * Author: Drake
@@ -86,12 +87,12 @@ export interface UnitDetailsDialogData {
     }
 })
 export class UnitDetailsDialogComponent {
-    private dataService = inject(DataService);
     gameService = inject(GameService);
     forceBuilderService = inject(ForceBuilderService);
     private dialogRef = inject(DialogRef<void>);
     data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     toastService = inject(ToastService);
+    layoutService = inject(LayoutService);
     floatingOverlayService = inject(FloatingOverlayService);
     private taggingService = inject(TaggingService);
     private urlStateService = inject(UrlStateService);
@@ -141,6 +142,9 @@ export class UnitDetailsDialogComponent {
     // CSS custom properties for panel positions
     currentPanelOffset = signal('0');
     incomingPanelOffset = signal('100%');
+
+    /** View mode for variants tab (persisted while dialog is open) */
+    variantsTabState = signal<VariantsTabState>({ ...DEFAULT_VARIANTS_TAB_STATE });
 
     // Header unit - shows the most visible unit during swipe
     headerUnit = computed(() => {

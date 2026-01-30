@@ -133,6 +133,7 @@
         display: flex;
         flex-direction: row;
         align-items: center;
+        margin-right: 6px;
     }
 
     ::ng-deep .tab-actions-button {
@@ -144,6 +145,7 @@
         outline: none;
         height: 24px;
         pointer-events: auto;
+        padding: 0px;
     }
     ::ng-deep .tab-actions-button:hover {
         color: var(--text-color);

@@ -260,38 +260,36 @@
     gap: 4px;
     align-items: center;
     transition: background-color 0.2s;
-}
-
-.results-dropdown-item:hover {
-    background-color: var(--background-highlight);
-}
-
-.results-dropdown-item.active {
-    background-color: var(--background-highlight);
-}
-
-.results-dropdown-item:last-child {
-    border-bottom: none;
-}
-
-.results-dropdown-item.selected {
-    background-color: var(--bt-yellow-background-bright);
-}
-
-.results-dropdown-item.no-results {
-  color: var(--text-color-secondary);
-  font-style: italic;
-  justify-content: center;
-  align-items: center;
-  display: flex;
-  height: 100%;
-  width: 100%;
-  min-height: 80px;
-}
-
-.results-dropdown-item.no-results:hover {
-    background-color: transparent;
-    cursor: default;
+    
+    &.active {
+        background-color: var(--background-highlight);
+    }
+    
+    &:hover {
+        background-color: var(--background-highlight);
+    }
+    
+    &:last-child {
+        border-bottom: none;
+    }
+    
+    &.selected {
+        background-color: var(--bt-yellow-background);
+        &:hover {
+            background-color: var(--bt-yellow-background-bright);
+        }
+    }
+    
+    &.no-results {
+      color: var(--text-color-secondary);
+      font-style: italic;
+      justify-content: center;
+      align-items: center;
+      display: flex;
+      height: 100%;
+      width: 100%;
+      min-height: 80px;
+    }
 }
 
 /* Limit the slider width */

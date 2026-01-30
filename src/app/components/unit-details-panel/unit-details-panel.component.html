@@ -11,11 +11,8 @@
                 <unit-icon [unit]="currentUnit" [size]="56"></unit-icon>
             </div>
             <div class="header-content">
-                <div class="header-row">
+                <div class="header-row reverse-wrap">
                     <div class="header-model allow-select">{{ currentUnit.model }}</div>
-                </div>
-                <div class="header-row">
-                    <div class="header-chassis allow-select">{{ currentUnit.chassis }}</div>
                     <div class="header-details">
                         @if (currentUnit.role && currentUnit.role !== 'None') {
                             <div class="role"><strong>{{ currentUnit.role }}</strong></div>
@@ -26,7 +23,8 @@
                         </div>
                     </div>
                 </div>
-                <div class="header-row right">
+                <div class="header-row">
+                    <div class="header-chassis allow-select">{{ currentUnit.chassis }}</div>
                     <unit-tags class="header-tags" [unit]="currentUnit" [mode]="'full'" (tagClick)="onTagClick($event)"></unit-tags>
                 </div>
             </div>
@@ -62,6 +60,8 @@
                         [unit]="currentUnit"
                         [gunnerySkill]="gunnerySkill()"
                         [pilotingSkill]="pilotingSkill()"
+                        [state]="variantsTabState()"
+                        (stateChange)="variantsTabState.set($event)"
                         (variantClick)="onVariantClick($event)"
                         (tagClick)="onTagClick($event)">
                     </unit-details-variants-tab>

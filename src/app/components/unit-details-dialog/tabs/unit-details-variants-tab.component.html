@@ -1,16 +1,72 @@
-<!-- Variants Tab Content -->
 <div class="tab-content">
-    <div class="variants-list">
-        @for (variant of variants(); let last = $last; track variant.id) {
+    <div class="tab-header glass">
+        <div class="sort-controls">
+            <select class="bt-input sort-select"
+                (change)="setSortOrder($any($event.target).value)">
+                @for (opt of SORT_OPTIONS; let i = $index; track i) {
+                    @if (!opt.gameSystem || opt.gameSystem === gameSystem()) {
+                        <option [value]="opt.key" [selected]="opt.key === selectedSort()">{{ opt.label }}</option>
+                    }
+                }
+            </select>
+            <button type="button" class="bt-button sort-direction-btn"
+                (click)="setSortDirection(selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
+                [title]="selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
+                [attr.aria-label]="selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+                @if (selectedSortDirection() === 'asc') {
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                        aria-hidden="true" role="img">
+                        <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                } @else {
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                        aria-hidden="true" role="img">
+                        <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                }
+            </button>
+        </div>
+        <button type="button" class="bt-button view-toggle-btn" (click)="toggleViewMode()" 
+            [title]="viewMode() === 'expanded' ? 'Switch to compact view' : 'Switch to expanded view'">
+            @if (viewMode() === 'expanded') {
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+                <span>Compact</span>
+            } @else {
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="6" rx="1"/>
+                    <rect x="3" y="14" width="18" height="6" rx="1"/>
+                </svg>
+                <span>Expanded</span>
+            }
+        </button>
+    </div>
+    <div class="variants-list" [class.compact]="viewMode() === 'compact'">
+        @for (variant of variants(); let last = $last; track variant.name) {
             <unit-card-expanded
                 [unit]="variant"
                 [isSelected]="isCurrentUnit(variant)"
                 [gunnery]="gunnerySkill() ?? 4"
                 [piloting]="pilotingSkill() ?? 5"
+                [expandedView]="viewMode() === 'expanded'"
+                [sortKey]="selectedSort()"
+                [sortSlotLabel]="selectedSortLabel()"
                 (cardClick)="onVariantClick(variant, variants())"
                 (tagClick)="onTagClick($event)">
             </unit-card-expanded>
-            @if (!last) {
+            @if (!last && viewMode() === 'expanded') {
                 <hr class="divider" />  
             }
         }

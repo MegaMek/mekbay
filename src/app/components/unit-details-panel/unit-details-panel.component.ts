@@ -49,7 +49,7 @@ import { UnitDetailsIntelTabComponent } from '../unit-details-dialog/tabs/unit-d
 import { UnitDetailsFactionTabComponent } from '../unit-details-dialog/tabs/unit-details-factions-tab.component';
 import { UnitDetailsSheetTabComponent } from '../unit-details-dialog/tabs/unit-details-sheet-tab.component';
 import { UnitDetailsCardTabComponent } from '../unit-details-dialog/tabs/unit-details-card-tab.component';
-import { UnitDetailsVariantsTabComponent } from '../unit-details-dialog/tabs/unit-details-variants-tab.component';
+import { UnitDetailsVariantsTabComponent, VariantsTabState, DEFAULT_VARIANTS_TAB_STATE } from '../unit-details-dialog/tabs/unit-details-variants-tab.component';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 
 /**
@@ -100,6 +100,9 @@ export class UnitDetailsPanelComponent {
     });
     /** Currently active tab */
     readonly activeTab = signal<string>(this.gameService.isAlphaStrike() ? 'Card' : 'General');
+
+    /** View mode for variants tab (persisted while panel is open) */
+    readonly variantsTabState = signal<VariantsTabState>({ ...DEFAULT_VARIANTS_TAB_STATE });
 
     /** Whether the force is read-only */
     readonly readOnlyForce = computed(() => this.forceBuilderService.readOnlyForce());

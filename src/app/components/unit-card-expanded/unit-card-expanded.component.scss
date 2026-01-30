@@ -10,21 +10,11 @@
     width: 100%;
     box-sizing: border-box;
     cursor: pointer;
-    transition: background-color 0.2s;
-    border-bottom: 1px solid #666;
     padding: 8px;
 }
 
-.unit-card-expanded:hover {
-    background-color: var(--background-highlight);
-}
-
 .unit-card-expanded.selected {
-    background-color: var(--bt-yellow-background-bright);
-}
-
-.unit-card-expanded:last-child {
-    border-bottom: none;
+    background-color: var(--accent-color-background);
 }
 
 .no-unit {
@@ -282,6 +272,9 @@
         margin: -6px -4px -4px 0px;
     }
 
+    &.selected {
+        background-color: var(--accent-color-background);
+    }
 }
 
 .unit-data-container {
