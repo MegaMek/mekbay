@@ -27,7 +27,7 @@
             <unit-tags class="header-tags" [unit]="headerUnit()" [mode]="'full'"
                 (tagClick)="onTagClick($event)"></unit-tags>
 
-            @if (layoutService.isPhone()) {
+            @if (!shareButtonInActions()) {
             <button class="tab-actions-button" (click)="onShare()">
                 <svg fill="currentColor" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path fill-rule="evenodd" clip-rule="evenodd"
@@ -37,7 +37,7 @@
             }
         </div>
     </div>
-    @if (!layoutService.isPhone()) {
+    @if (shareButtonInActions()) {
         <div tab-actions>
             <button class="tab-actions-button" (click)="onShare()">
                 <svg fill="currentColor" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

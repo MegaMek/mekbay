@@ -102,6 +102,7 @@ export class UnitDetailsDialogComponent {
     indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
     incomingPanelRef = viewChild<ElementRef>('incomingPanel');
+    shareButtonInActions = computed(() => this.layoutService.windowWidth() > 600);
 
     tabs = computed<string[]>(() => {
         return ['General', 'Intel', 'Factions', 'Variants', 'Sheet', 'Card'];
