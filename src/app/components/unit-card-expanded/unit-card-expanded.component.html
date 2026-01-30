@@ -1,4 +1,4 @@
-@if (unit(); as u) {
+@if (resolvedUnit(); as u) {
 @if (expandedView()) {
 <div class="unit-card-expanded" 
      [class.selected]="isSelected()"
@@ -12,7 +12,10 @@
         </div>
         <div class="expanded-title">
             <div class="expanded-model" [innerHTML]="highlight(u.model)"></div>
-            <div class="expanded-chassis" [innerHTML]="highlight(u.chassis)"></div>
+            <div class="expanded-chassis">
+                <span [innerHTML]="highlight(u.chassis)"></span>
+                @if (alias(); as pilotName) { <span class="inline-alias">({{ pilotName }})</span> }
+            </div>
         </div>
         <div class="expanded-subtitle">
             @if (u.role && u.role !== 'None') {
@@ -32,8 +35,14 @@
             <div class="expanded-basic-info">
                 <div class="info-item">
                     <span class="info-label muted">PV:</span>
-                    <span class="info-value" [class.sort-slot]="isSortActive('as.PV')">{{ u.as.PV | adjustedPV:gunnery() | formatNumber:true:false }}</span>
+                    <span class="info-value" [class.sort-slot]="isSortActive('as.PV')">{{ resolvedBv() ?? (u.as.PV | adjustedPV:gunnery()) | formatNumber:true:false }}</span>
                 </div>
+                @if (pilotStats(); as stats) {
+                <div class="info-item interactive" (click)="onPilotClick($event)" title="Edit Pilot">
+                    <span class="info-label muted">Pilot Skill:</span>
+                    <span class="info-value pilot-skill-value">{{ stats }}</span>
+                </div>
+                }
                 <div class="info-item">
                     <span class="info-label muted">Size:</span>
                     <span class="info-value" [class.sort-slot]="isSortActive('as.SZ')">{{ u.as.SZ }}</span>
@@ -113,7 +122,10 @@
         </div>
         <div class="expanded-title">
             <div class="expanded-model" [innerHTML]="highlight(u.model)"></div>
-            <div class="expanded-chassis" [innerHTML]="highlight(u.chassis)"></div>
+            <div class="expanded-chassis">
+                <span [innerHTML]="highlight(u.chassis)"></span>
+                @if (alias(); as pilotName) { <span class="inline-alias">({{ pilotName }})</span> }
+            </div>
         </div>
         <div class="expanded-subtitle">
             @if (u.role && u.role !== 'None') {
@@ -133,8 +145,14 @@
             <div class="expanded-basic-info">
                 <div class="info-item">
                     <span class="info-label muted">BV:</span>
-                    <span class="info-value" [class.sort-slot]="isSortActive('bv')">{{ u | adjustedBV:gunnery():piloting() | formatNumber:true:false }}</span>
+                    <span class="info-value" [class.sort-slot]="isSortActive('bv')">{{ resolvedBv() ?? (u | adjustedBV:gunnery():piloting()) | formatNumber:true:false }}</span>
                 </div>
+                @if (pilotStats(); as stats) {
+                <div class="info-item interactive" (click)="onPilotClick($event)" title="Edit Pilot">
+                    <span class="info-label muted">Pilot Skills:</span>
+                    <span class="info-value pilot-skill-value">{{ stats }}</span>
+                </div>
+                }
                 <div class="info-item">
                     <span class="info-label muted">Tons:</span>
                     <span class="info-value" [class.sort-slot]="isSortActive('tons')">{{ u.tons | formatTons }}</span>
@@ -160,13 +178,13 @@
                 @if (u.armorType) {
                 <div class="info-item">
                     <span class="info-label muted">Armor:</span>
-                    <span class="info-value" [class.sort-slot]="isSortActive('armorType')">{{ u.armorType }}</span>
+                    <span class="info-value" [class.sort-slot]="isSortActive('armorType')">{{ formatArmorType(u.armorType) }}</span>
                 </div>
                 }
                 @if (u.structureType) {
                 <div class="info-item">
                     <span class="info-label muted">Structure:</span>
-                    <span class="info-value" [class.sort-slot]="isSortActive('structureType')">{{ u.structureType }}</span>
+                    <span class="info-value" [class.sort-slot]="isSortActive('structureType')">{{ formatStructureType(u.structureType) }}</span>
                 </div>
                 }
                 @if (u.moveType) {
@@ -257,6 +275,7 @@
         </div>
         <div class="primary-info">
             <div class="chassis" [innerHTML]="highlight(u.chassis)"></div>
+            @if (alias(); as pilotName) { <span class="alias">({{ pilotName }})</span>  }
         </div>
         <div class="third-info">
             <div class="info-area">
@@ -277,6 +296,12 @@
                 <div class="info-slot numeric" [class.sort-slot]="isSortActive('tons')">
                     <span class="value">{{ u.tons | formatTons }}</span>
                     <img src="/images/weight.svg" class="icon" alt="Tonnage">
+                </div>
+                }
+                @if (pilotStats(); as stats) {
+                <div class="info-slot numeric slim pilot-info interactive" (click)="onPilotClick($event)" title="Edit Pilot">
+                    <span class="value">{{ stats }}</span>
+                    <img src="/images/helmet.svg" class="icon" alt="Pilot">
                 </div>
                 }
                 <div class="info-slot" [class.sort-slot]="isSortActive('year')">

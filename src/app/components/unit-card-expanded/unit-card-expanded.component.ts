@@ -34,6 +34,9 @@
 import { ChangeDetectionStrategy, Component, inject, input, output, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit } from '../../models/units.model';
+import { ForceUnit } from '../../models/force-unit.model';
+import { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { ASForceUnit } from '../../models/as-force-unit.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
@@ -50,6 +53,7 @@ import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { ExpandedComponentsPipe } from '../../pipes/expanded-components.pipe';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { SearchTokensGroup, highlightMatches } from '../../utils/search.util';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 
 /**
  * Author: Drake
@@ -81,14 +85,93 @@ export class UnitCardExpandedComponent {
     private dialogsService = inject(DialogsService);
     private abilityLookup = inject(AsAbilityLookupService);
 
-    /** The unit to display */
-    unit = input.required<Unit>();
+    /** 
+     * The unit to display. Can be either a Unit or a ForceUnit.
+     * When passing a ForceUnit, alias/gunnery/piloting are automatically extracted.
+     */
+    unit = input.required<Unit | ForceUnit>();
 
-    /** Gunnery skill for BV/PV adjustment */
-    gunnery = input(4);
+    /** Gunnery skill for BV/PV adjustment. Ignored when unit is a ForceUnit. */
+    gunneryInput = input(DEFAULT_GUNNERY_SKILL, { alias: 'gunnery' });
 
-    /** Piloting skill for BV adjustment */
-    piloting = input(5);
+    /** Piloting skill for BV adjustment. Ignored when unit is a ForceUnit. */
+    pilotingInput = input(DEFAULT_PILOTING_SKILL, { alias: 'piloting' });
+
+    /** Check if the input is a ForceUnit */
+    private isForceUnit(u: Unit | ForceUnit): u is ForceUnit {
+        return u instanceof ForceUnit;
+    }
+
+    /** Resolved Unit - extracts the Unit from ForceUnit if needed */
+    readonly resolvedUnit = computed<Unit>(() => {
+        const u = this.unit();
+        return this.isForceUnit(u) ? u.getUnit() : u;
+    });
+
+    /** Resolved alias - from ForceUnit */
+    readonly alias = computed<string | undefined>(() => {
+        const u = this.unit();
+        if (this.isForceUnit(u)) {
+            return u.alias();
+        }
+        return undefined;
+    });
+
+    /** Resolved gunnery skill - from ForceUnit crew or input */
+    readonly gunnery = computed<number>(() => {
+        const u = this.unit();
+        if (this.isForceUnit(u)) {
+            if (u instanceof CBTForceUnit) {
+                const crewMembers = u.getCrewMembers();
+                const pilot = crewMembers[0];
+                return pilot?.getSkill?.('gunnery') ?? DEFAULT_GUNNERY_SKILL;
+            } else if (u instanceof ASForceUnit) {
+                return u.pilotSkill();
+            }
+            return DEFAULT_GUNNERY_SKILL;
+        }
+        return this.gunneryInput();
+    });
+
+    /** Resolved piloting skill - from ForceUnit crew or input */
+    readonly piloting = computed<number>(() => {
+        const u = this.unit();
+        if (this.isForceUnit(u)) {
+            if (u instanceof CBTForceUnit) {
+                const crewMembers = u.getCrewMembers();
+                const pilot = crewMembers[0];
+                return pilot?.getSkill?.('piloting') ?? DEFAULT_PILOTING_SKILL;
+            } else if (u instanceof ASForceUnit) {
+                // AS uses same skill for both
+                return u.pilotSkill();
+            }
+            return DEFAULT_PILOTING_SKILL;
+        }
+        return this.pilotingInput();
+    });
+
+    /** Whether the input is a ForceUnit (has pilot stats) */
+    readonly hasForceUnit = computed<boolean>(() => {
+        return this.isForceUnit(this.unit());
+    });
+
+    /** Pilot stats string from ForceUnit (e.g., "4/5") */
+    readonly pilotStats = computed<string | null>(() => {
+        const u = this.unit();
+        if (this.isForceUnit(u)) {
+            return u.getPilotStats?.() ?? null;
+        }
+        return null;
+    });
+
+    /** Resolved BV/PV value - uses ForceUnit's getBv if available, otherwise calculates from skills */
+    readonly resolvedBv = computed<number | null>(() => {
+        const u = this.unit();
+        if (this.isForceUnit(u)) {
+            return u.getBv();
+        }
+        return null; // Let the pipe calculate it
+    });
 
     /** Whether this unit is currently selected/active */
     isSelected = input(false);
@@ -113,6 +196,9 @@ export class UnitCardExpandedComponent {
 
     /** Emitted when the tag button is clicked */
     tagClick = output<TagClickEvent>();
+
+    /** Emitted when the pilot info is clicked (only for ForceUnit) */
+    pilotClick = output<ForceUnit>();
 
     /**
      * Keys that are grouped together in the UI display.
@@ -173,7 +259,7 @@ export class UnitCardExpandedComponent {
     /** Computed sort slot - shows the sort value if not already displayed */
     sortSlot = computed<{ value: string; label: string | null } | null>(() => {
         const key = this.sortKey();
-        const unit = this.unit();
+        const unit = this.resolvedUnit();
         if (!key || !unit) return null;
 
         // If this key is already displayed for this unit, don't show a separate slot
@@ -203,6 +289,15 @@ export class UnitCardExpandedComponent {
 
     onTagClick(event: TagClickEvent): void {
         this.tagClick.emit(event);
+    }
+
+    /** Handle pilot info click - emits pilotClick if this is a ForceUnit */
+    onPilotClick(event: Event): void {
+        event.stopPropagation();
+        const u = this.unit();
+        if (this.isForceUnit(u)) {
+            this.pilotClick.emit(u);
+        }
     }
 
     /** Handle AS special ability click - opens ability info dialog */
@@ -350,5 +445,17 @@ export class UnitCardExpandedComponent {
             cur = cur[p];
         }
         return cur;
+    }
+
+    /** Format armor type - removes " Armor" suffix if present */
+    formatArmorType(armorType: string | undefined): string {
+        if (!armorType) return '';
+        return armorType.endsWith(' Armor') ? armorType.slice(0, -6) : armorType;
+    }
+
+    /** Format structure type - removes " Structure" suffix if present */
+    formatStructureType(structureType: string | undefined): string {
+        if (!structureType) return '';
+        return structureType.endsWith(' Structure') ? structureType.slice(0, -10) : structureType;
     }
 }

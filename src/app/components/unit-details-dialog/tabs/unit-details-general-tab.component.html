@@ -26,11 +26,11 @@
     }
     <div><span class="muted">C-Bill Cost: </span><strong>{{ formatThousands(unit().cost) }}</strong></div>
     @if (unit().armorType) {
-        <div><span class="muted">Armor Type: </span><strong>{{ unit().armorType }}</strong>
+        <div><span class="muted">Armor Type: </span><strong>{{ formatArmorType(unit().armorType) }}</strong>
     </div>
 }
 @if (unit().structureType) {
-    <div><span class="muted">Structure Type: </span><strong>{{ unit().structureType
+    <div><span class="muted">Structure Type: </span><strong>{{ formatStructureType(unit().structureType)
 }}</strong></div>
 }
 @if (unit().engine) {

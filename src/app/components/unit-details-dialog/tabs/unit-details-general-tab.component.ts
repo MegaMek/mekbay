@@ -699,4 +699,16 @@ export class UnitDetailsGeneralTabComponent {
         result.sort((a, b) => a.p - b.p);
         return result;
     }
+
+    /** Format armor type - removes " Armor" suffix if present */
+    formatArmorType(armorType: string | undefined): string {
+        if (!armorType) return '';
+        return armorType.endsWith(' Armor') ? armorType.slice(0, -6) : armorType;
+    }
+
+    /** Format structure type - removes " Structure" suffix if present */
+    formatStructureType(structureType: string | undefined): string {
+        if (!structureType) return '';
+        return structureType.endsWith(' Structure') ? structureType.slice(0, -10) : structureType;
+    }
 }

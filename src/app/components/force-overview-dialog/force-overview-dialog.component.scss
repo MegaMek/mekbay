@@ -1,0 +1,452 @@
+/*
+ * MekBay - A BattleTech MegaMek unit management system.
+ * Copyright (C) 2025 - present The MegaMek Team
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
+ * for more details.
+ */
+
+:host {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+    background: var(--background-color);
+}
+
+.dialog-header {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 8px 8px 8px 16px;
+    background-color: var(--background-color-menu);
+    border-bottom: 2px solid var(--border-color);
+
+    h2 {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 500;
+        color: var(--text-primary, #fff);
+    }
+
+    .force-name {
+        &.clickable {
+            cursor: pointer;
+            transition: color 0.2s;
+
+            &:hover {
+                color: var(--bt-yellow);
+            }
+        }
+    }
+}
+
+.dialog-header-actions {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    gap: 8px;
+
+    .force-total {
+        font-size: 0.9em;
+        font-weight: bold;
+        color: var(--text-color);
+        white-space: nowrap;
+    }
+    
+    .unit-count {
+        font-size: 0.9em;
+        color: var(--text-color-secondary);
+        white-space: nowrap;
+    }
+}
+
+// Content - scrollable area
+.dialog-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.units-list {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    overflow-y: auto;
+    gap: 16px;
+    container-type: inline-size;
+}
+
+.group-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.group-header {
+    display: flex;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    align-items: center;
+    padding: 6px 12px;
+    background-color: var(--background-color-menu);
+}
+
+.group-name {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+
+    &.clickable {
+        cursor: pointer;
+        transition: color 0.2s;
+
+        &:hover {
+            color: var(--bt-yellow);
+        }
+    }
+}
+
+.group-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.group-bv {
+    font-size: 0.85rem;
+    font-weight: bold;
+    color: var(--text-color);
+}
+
+.group-units {
+    display: flex;
+    flex-direction: column;
+    padding-left: 8px;
+    padding-right: 8px;
+    gap: 2px;
+    min-height: 48px;
+
+    &.compact {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+        gap: 8px;
+        align-items: start;
+        align-content: start;
+    }
+}
+
+.divider {
+    margin: 4px 0;
+    border: none;
+    border-top: 1px solid var(--border-color);
+}
+
+// Drag and Drop
+.drag-item {
+    cursor: grab;
+
+    &.cdk-drag-preview {
+        opacity: 0.9;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+
+    &.cdk-drag-placeholder {
+        opacity: 0.4;
+    }
+}
+
+.cdk-drag-animating {
+    transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.cdk-drop-list-dragging .drag-item:not(.cdk-drag-placeholder) {
+    transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.empty-group-placeholder {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-color-secondary);
+    font-style: italic;
+    border: 2px dashed var(--border-color);
+    cursor: pointer;
+
+    &:hover {
+        border-color: var(--bt-yellow);
+        color: var(--text-color);
+    }
+}
+
+.new-group-dropzone {
+    min-height: 60px;
+    min-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    padding: 16px;
+    border: 2px dashed var(--bt-yellow);
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.2s ease;
+
+    &.visible {
+        opacity: 1;
+    }
+}
+
+.new-group-placeholder {
+    color: var(--bt-yellow);
+    font-weight: 500;
+}
+
+// Hide placeholder text when dropzone has a drag preview inside
+.new-group-dropzone:has(.cdk-drag-placeholder) .new-group-placeholder {
+    display: none;
+}
+
+.empty-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 48px 16px;
+    color: var(--text-color-secondary);
+    font-style: italic;
+}
+
+.dialog-footer {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    padding: 8px;
+    gap: 8px;
+    background-color: var(--background-color-menu);
+    border-top: 2px solid var(--border-color);
+}
+
+.spanner {
+    flex: 1;
+}
+
+.sort-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sort-select {
+    height: 32px;
+    padding: 0 8px;
+    font-size: 13px;
+
+    option {
+        background-color: #222;
+        color: #fff;
+    }
+}
+
+.sort-direction-btn {
+    height: 32px;
+    width: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #bbb;
+    cursor: pointer;
+
+    &:hover {
+        color: white;
+    }
+
+    svg {
+        width: 18px;
+        height: 18px;
+    }
+}
+
+.view-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    svg {
+        flex-shrink: 0;
+    }
+}
+
+/* Special pill for AS table view */
+.special-pill {
+    display: inline-block;
+    padding: 2px 6px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+    white-space: nowrap;
+}
+
+.special-pill:hover {
+    background-color: var(--bt-yellow-background-bright);
+    border-color: var(--bt-yellow);
+    color: var(--bt-yellow);
+}
+
+// AS Table Mode - controlled by isTableMode() computed signal
+.units-list.as-table-mode {
+    gap: 0;
+
+    .group-header {
+        top: 34px; // Below the AS table header
+        z-index: 2;
+    }
+
+    .as-card-view {
+        display: none;
+    }
+
+    .divider {
+        display: none;
+    }
+}
+
+.as-table-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background-color: #333;
+    border-bottom: 2px solid #555;
+    font-weight: bold;
+    font-size: 0.85em;
+    color: var(--text-color-secondary);
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    height: 34px;
+}
+
+.as-table-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 4px 12px;
+    min-height: 48px;
+    box-sizing: border-box;
+    border-bottom: 1px solid #444;
+    transition: background-color 0.2s;
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--background-highlight);
+    }
+}
+
+/* Common column styles */
+.as-th, .as-td {
+    flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Column widths */
+.as-th-icon, .as-td-icon { width: 40px; flex-shrink: 0; }
+.as-th-name, .as-td-name { flex: 1 1 180px; min-width: 120px; }
+.as-th-type, .as-td-type { width: 50px; text-align: center; }
+.as-th-role, .as-td-role { width: 130px; }
+.as-th-pv, .as-td-pv { width: 45px; text-align: right; font-weight: bold; }
+.as-th-skill, .as-td-skill { width: 40px; text-align: center; }
+.as-td-skill { color: var(--primary-focus-color); }
+.as-th-sz, .as-td-sz { width: 30px; text-align: center; }
+.as-th-mv, .as-td-mv { width: 65px; text-align: center; }
+.as-th-tmm, .as-td-tmm { width: 40px; text-align: center; }
+.as-th-dmg, .as-td-dmg { width: 60px; text-align: center; }
+.as-th-arm, .as-td-arm { width: 40px; text-align: center; }
+.as-th-str, .as-td-str { width: 40px; text-align: center; }
+.as-th-ov, .as-td-ov { width: 30px; text-align: center; }
+.as-th-sort-slot, .as-td-sort-slot { width: 80px; text-align: center; flex-shrink: 1; }
+.as-th-specials, .as-td-specials { flex: 1 1 160px; min-width: 100px; }
+.as-th-tags, .as-td-tags { width: 160px; flex-shrink: 1; text-align: right; }
+
+/* Table cell content styles */
+.as-td-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.as-td-name {
+    display: flex;
+    flex-direction: column;
+}
+
+.as-td-alias {
+    font-weight: normal;
+    margin-left: 4px;
+}
+
+.as-td-chassis {
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.as-td-model {
+    font-size: 0.85em;
+    color: var(--text-color-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.as-td-role {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.as-td-skill.clickable {
+    cursor: pointer;
+
+    &:hover {
+        filter: brightness(1.2);
+    }
+}
+
+.as-td-specials {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+}
+
+.as-td-specials .special-pill {
+    padding: 1px 4px;
+    font-size: 0.8em;
+}
+
+.as-td-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.as-td.sort-slot {
+    color: var(--bt-yellow);
+}

@@ -32,6 +32,7 @@
     -webkit-tap-highlight-color: transparent;
     --semantic-color: #17a2b8;
     --semantic-color-highlight: #8fe7ed;
+    --primary-focus-color: rgb(154, 154, 255);
 
     --highlight-color: #8885;
 
@@ -188,10 +189,10 @@ hr {
     width: 100vw;
     pointer-events: auto;
     padding: 16px;
-    max-height: 100%;
+    max-height: 100vh;
 
     &.fullheight {
-        height: 100%;
+        height: 100vh;
     }
 }
 
@@ -584,7 +585,7 @@ hr {
     }
 
     &.primary {
-        color: rgb(154, 154, 255);
+        color: var(--primary-focus-color);
         background-image:
             linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)), linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)),
             linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)), linear-gradient(rgb(58, 58, 255), rgb(58, 58, 255)),
@@ -741,6 +742,11 @@ hr.divider {
     .primary-info {
         container-type: inline-size;
         flex-grow: 1;
+        gap: 4px;
+
+        .chassis {
+            font-weight: bold;
+        }
     }
 
     .secondary-info {

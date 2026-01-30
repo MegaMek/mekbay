@@ -53,6 +53,7 @@ import { ForcePackDialogComponent, ForcePackDialogResult } from '../components/f
 import { SerializedForce } from '../models/force-serialization';
 import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
 import { EditASPilotDialogComponent, EditASPilotDialogData, EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
+import { C3NetworkDialogComponent, C3NetworkDialogData, C3NetworkDialogResult } from '../components/c3-network-dialog/c3-network-dialog.component';
 import { CrewMember, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
@@ -1347,6 +1348,31 @@ export class ForceBuilderService {
             if (abilitiesChanged) {
                 unit.setPilotAbilities(result.abilities);
             }
+        }
+    }
+
+    /**
+     * Opens the C3 Network dialog for configuring C3 networks.
+     * @param force The force to configure networks for
+     * @param readOnly Whether the dialog should be read-only
+     */
+    public async openC3Network(force: Force, readOnly: boolean = false): Promise<void> {
+        const ref = this.dialogsService.createDialog<C3NetworkDialogResult>(C3NetworkDialogComponent, {
+            data: <C3NetworkDialogData>{
+                force: force,
+                readOnly: readOnly
+            },
+            width: '100dvw',
+            height: '100dvh',
+            maxWidth: '100dvw',
+            maxHeight: '100dvh',
+            panelClass: 'c3-network-dialog-panel'
+        });
+
+        const result = await firstValueFrom(ref.closed);
+        if (result?.updated) {
+            force.setNetwork(result.networks);
+            this.toastService.showToast('C3 network configuration changed', 'success');
         }
     }
 

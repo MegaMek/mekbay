@@ -15,6 +15,7 @@ import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dia
 import { CompactModeService } from '../../services/compact-mode.service';
 import { CBTForce } from '../../models/cbt-force.model';
 import { ASForce } from '../../models/as-force.model';
+import { ForceOverviewDialogComponent } from '../force-overview-dialog/force-overview-dialog.component';
 
 /*
  * Sidebar footer component
@@ -40,7 +41,6 @@ export class SidebarFooterComponent {
     dataService = inject(DataService);
     compactModeService = inject(CompactModeService);
     menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
-    private menuTracker = inject(MenuTracker);
 
     compactMode = computed(() => {
         return this.compactModeService.compactMode();
@@ -56,6 +56,15 @@ export class SidebarFooterComponent {
         return force.units().length > 0 && !force.instanceId() && !force.readOnly();
     });
 
+    /**
+     * Returns true if the force has any units (for showing Overview menu item)
+     */
+    hasUnits = computed(() => {
+        const force = this.forceBuilderService.currentForce();
+        if (!force) return false;
+        return force.units().length > 0;
+    });
+
     constructor() {
         inject(DestroyRef).onDestroy(() => this.closeAllMenus());
     }
@@ -66,6 +75,14 @@ export class SidebarFooterComponent {
 
     showOptionsDialog(): void {
         this.dialogsService.createDialog(OptionsDialogComponent);
+    }
+
+    showForceOverview(): void {
+        const currentForce = this.forceBuilderService.currentForce();
+        if (!currentForce) return;
+        this.dialogsService.createDialog(ForceOverviewDialogComponent, {
+            data: { force: currentForce }
+        });
     }
 
     showLoadForceDialog(): void {

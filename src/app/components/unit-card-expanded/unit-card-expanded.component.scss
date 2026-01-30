@@ -10,6 +10,7 @@
     width: 100%;
     box-sizing: border-box;
     padding: 8px;
+    container-type: inline-size;
 }
 
 .unit-card-expanded.selected {
@@ -53,6 +54,16 @@
     font-size: 1.2em;
     font-weight: bold;
     color: var(--text-color);
+
+    .inline-alias {
+        font-size: 0.75em;
+        font-weight: normal;
+        margin-left: 4px;
+    }
+}
+
+.expanded-alias {
+    font-size: 0.85em;
 }
 
 .expanded-subtitle {
@@ -107,6 +118,15 @@
     justify-content: space-between;
     align-items: baseline;
     gap: 8px;
+
+    &.interactive {
+        cursor: pointer;
+        transition: color 0.2s;
+
+        &:hover {
+            color: var(--bt-yellow);
+        }
+    }
 }
 
 .info-label {
@@ -118,6 +138,14 @@
     font-weight: bold;
     color: var(--text-color);
     text-align: right;
+
+    &.pilot-skill-value {
+        color: var(--primary-focus-color);
+
+        &:hover {
+            filter: brightness(1.2);
+        }
+    }
 }
 
 .info-value.sort-slot {
@@ -260,6 +288,26 @@
     align-items: center;
     padding-right: 8px;
 
+    .alias {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .pilot-info {
+        background-color: rgba(176, 135, 0, 0.5);
+
+        &.interactive {
+            cursor: pointer;
+            transition: filter 0.2s, background-color 0.2s;
+
+            &:hover {
+                background-color: rgba(176, 135, 0, 0.8);
+                filter: brightness(1.2);
+            }
+        }
+    }
+
     .role.sort-slot {
         color: var(--bt-yellow-background-light);
     }
@@ -300,12 +348,6 @@
         display: flex;
         flex-direction: row;
         align-items: baseline;
-        justify-content: space-between;
-    }
-
-    .primary-info .chassis {
-        flex-grow: 1;
-        min-width: 0;
     }
 
     .info-area {
