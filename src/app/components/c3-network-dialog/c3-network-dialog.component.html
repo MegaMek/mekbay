@@ -342,9 +342,11 @@
             </div>
             }
         </div>
-
-        @if (!data.readOnly && networks().length > 0) {
-        <button class="clear-all-btn bt-button danger" (click)="clearAllNetworks()">CLEAR ALL</button>
+        @if (!data.readOnly) {
+            <button class="auto-btn bt-button primary" (click)="autoConfigureNetworks()">AUTO CONFIGURE</button>
+            @if (networks().length > 0) {
+            <button class="clear-all-btn bt-button danger" (click)="clearAllNetworks()">CLEAR ALL</button>
+            }
         }
     </div>
 </div>

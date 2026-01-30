@@ -62,10 +62,8 @@ export class C3Handler extends EquipmentInteractionHandler {
 
         const ref = context.dialogsService.createDialog<C3NetworkDialogResult>(C3NetworkDialogComponent, {
             data: <C3NetworkDialogData>{
-                units: force.units,
-                networks: force.c3Networks,
-                readOnly: equipment.owner.readOnly(),
-                gameSystem: force.gameSystem
+                force: force,
+                readOnly: equipment.owner.readOnly()
             },
             width: '100dvw',
             height: '100dvh',

@@ -50,7 +50,8 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceUnit } from '../../models/force-unit.model';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { C3NetworkUtil, C3NetworkContext } from '../../utils/c3-network.util';
-import { C3NetworkType, C3Node, C3Role } from '../../models/c3-network.model';
+import { C3NetworkType, C3Node, C3Role, C3_NETWORK_LIMITS, C3_MAX_NETWORK_TOTAL } from '../../models/c3-network.model';
+import { Force, UnitGroup } from '../../models/force.model';
 import { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { GameSystem } from '../../models/common.model';
 import { ToastService } from '../../services/toast.service';
@@ -62,13 +63,8 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
 
 export interface C3NetworkDialogData {
-    /** Units to display - can be an array or a signal for reactive updates */
-    units: ForceUnit[] | Signal<ForceUnit[]>;
-    /** Networks configuration - can be an array or a signal for reactive updates */
-    networks: SerializedC3NetworkGroup[] | Signal<SerializedC3NetworkGroup[]>;
+    force: Force;
     readOnly?: boolean;
-    /** Game system - determines if BV/tax display is available */
-    gameSystem?: GameSystem;
 }
 
 export interface C3NetworkDialogResult {
@@ -179,7 +175,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected sidebarAnimated = signal(false);
     protected showBvDetails = signal(false);
     protected connectionsAboveNodes = computed(() => this.optionsService.options().c3NetworkConnectionsAboveNodes);
-    protected isClassicGame = computed(() => this.data.gameSystem === GameSystem.CLASSIC);
+    protected isClassicGame = computed(() => this.data.force.gameSystem === GameSystem.CLASSIC);
 
     // Flag to skip initial effect trigger
     private initialized = false;
@@ -227,19 +223,19 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         this.watchForRemoteUpdates();
     }
 
-    /** Check if a value is a Signal */
-    private isSignal<T>(value: T | Signal<T>): value is Signal<T> {
-        return typeof value === 'function';
-    }
-
-    /** Get current units value (reads from signal if provided) */
+    /** Get current units value from force */
     private getUnits(): ForceUnit[] {
-        return this.isSignal(this.data.units) ? this.data.units() : this.data.units;
+        return this.data.force.units();
     }
 
-    /** Get current networks value (reads from signal if provided) */
+    /** Get current networks value from force */
     private getNetworks(): SerializedC3NetworkGroup[] {
-        return this.isSignal(this.data.networks) ? this.data.networks() : this.data.networks;
+        return this.data.force.c3Networks();
+    }
+
+    /** Get groups from force for auto-configure */
+    private getGroups(): UnitGroup[] {
+        return this.data.force.groups();
     }
 
     /**
@@ -248,15 +244,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
      * changes to the provided signals and update the dialog accordingly.
      */
     private watchForRemoteUpdates(): void {
-        // Only set up reactive watching if signals are provided
-        const hasReactiveUnits = this.isSignal(this.data.units);
-        const hasReactiveNetworks = this.isSignal(this.data.networks);
-        if (!hasReactiveUnits && !hasReactiveNetworks) return;
-
         effect(() => {
-            // Read the current values from the signals (this creates dependencies)
-            const forceNetworks = this.getNetworks();
-            const forceUnits = this.getUnits();
+            // Read the current values from the force signals (this creates dependencies)
+            const forceNetworks = this.data.force.c3Networks();
+            const forceUnits = this.data.force.units();
 
             // Use untracked to avoid circular dependencies when reading local state
             untracked(() => {
@@ -1479,6 +1470,633 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             this.networks.set(result.networks);
         }
         this.hasModifications.set(true);
+    }
+
+    /**
+     * Auto-configure networks based on groups and C3 rules.
+     * - For peer networks: connect units in the same group first, balance network sizes
+     * - For master-slave networks: connect internal pins first, then connect slaves to masters
+     */
+    protected autoConfigureNetworks(): void {
+        if (this.data.readOnly) return;
+
+        const nodes = this.nodes();
+        const groups = this.getGroups();
+        let networks = [...this.networks()];
+
+        // Build group membership map
+        const unitGroupMap = new Map<string, string>();
+        for (const group of groups) {
+            for (const unit of group.units()) {
+                unitGroupMap.set(unit.id, group.id);
+            }
+        }
+
+        // Separate nodes by network type
+        const peerNodes: C3Node[] = [];
+        const masterNodes: C3Node[] = [];
+        const slaveOnlyNodes: C3Node[] = [];
+
+        for (const node of nodes) {
+            const hasPeer = node.c3Components.some(c => c.role === C3Role.PEER);
+            const hasMaster = node.c3Components.some(c => c.role === C3Role.MASTER);
+            const hasSlave = node.c3Components.some(c => c.role === C3Role.SLAVE);
+
+            if (hasPeer) {
+                peerNodes.push(node);
+            } else if (hasMaster) {
+                masterNodes.push(node);
+            } else if (hasSlave) {
+                slaveOnlyNodes.push(node);
+            }
+        }
+
+        // ========== PEER NETWORKS (with balanced distribution) ==========
+        // Group peers by network type first
+        const peersByType = new Map<C3NetworkType, C3Node[]>();
+        for (const node of peerNodes) {
+            const peerComp = node.c3Components.find(c => c.role === C3Role.PEER);
+            if (!peerComp) continue;
+            const existing = peersByType.get(peerComp.networkType) || [];
+            existing.push(node);
+            peersByType.set(peerComp.networkType, existing);
+        }
+
+        for (const [networkType, allPeersOfType] of peersByType) {
+            const limit = C3_NETWORK_LIMITS[networkType];
+            
+            // Sort peers by group to keep same-group units together
+            allPeersOfType.sort((a, b) => {
+                const aGroup = unitGroupMap.get(a.unit.id) || '';
+                const bGroup = unitGroupMap.get(b.unit.id) || '';
+                return aGroup.localeCompare(bGroup);
+            });
+
+            const totalPeers = allPeersOfType.length;
+            if (totalPeers < 2) continue;
+
+            // Calculate balanced network distribution
+            // numNetworks = ceil(totalPeers / limit)
+            // base = floor(totalPeers / numNetworks)
+            // remainder = totalPeers % numNetworks
+            // Create (numNetworks - remainder) networks with base members
+            // Create remainder networks with (base + 1) members
+            const numNetworks = Math.ceil(totalPeers / limit);
+            const base = Math.floor(totalPeers / numNetworks);
+            const remainder = totalPeers % numNetworks;
+
+            // Build balanced chunks
+            const chunks: C3Node[][] = [];
+            let idx = 0;
+            for (let i = 0; i < numNetworks; i++) {
+                const chunkSize = i < (numNetworks - remainder) ? base : base + 1;
+                if (chunkSize >= 2) {
+                    chunks.push(allPeersOfType.slice(idx, idx + chunkSize));
+                }
+                idx += chunkSize;
+            }
+
+            // Connect peers within each balanced chunk
+            for (const chunk of chunks) {
+                if (chunk.length < 2) continue;
+                
+                const ctx = this.getNetworkContext();
+                ctx.networks = networks;
+                
+                // Connect all to the first node
+                for (let j = 1; j < chunk.length; j++) {
+                    const peerComp0 = chunk[0].c3Components.findIndex(c => c.role === C3Role.PEER);
+                    const peerCompJ = chunk[j].c3Components.findIndex(c => c.role === C3Role.PEER);
+                    if (peerComp0 >= 0 && peerCompJ >= 0) {
+                        const canConnect = C3NetworkUtil.canConnectToPin(chunk[0], peerComp0, chunk[j], peerCompJ, ctx.networks);
+                        if (canConnect.valid) {
+                            const result = C3NetworkUtil.createConnection(ctx, chunk[0], peerComp0, chunk[j], peerCompJ);
+                            if (result.success) {
+                                networks = result.networks;
+                                ctx.networks = networks;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ========== MASTER-SLAVE NETWORKS ==========
+        // The goal is to:
+        // 1. Connect all slaves to master pins (prefer single-pin masters first as they can't be GMs)
+        // 2. Connect master networks together using multi-pin masters as Grand Masters
+        // 3. Connect any orphan masters
+
+        // Collect all master pins with metadata
+        interface MasterPin {
+            node: C3Node;
+            compIndex: number;
+            pinCount: number; // total master pins on this node
+        }
+        const allMasterPins: MasterPin[] = [];
+        for (const node of masterNodes) {
+            const masterComps = node.c3Components
+                .map((c, idx) => ({ comp: c, idx }))
+                .filter(x => x.comp.role === C3Role.MASTER);
+            for (const mc of masterComps) {
+                allMasterPins.push({
+                    node,
+                    compIndex: mc.idx,
+                    pinCount: masterComps.length
+                });
+            }
+        }
+
+        // Sort master pins: prefer single-pin masters first (they must be regular masters, not GMs)
+        // Within same pin count, sort by group
+        allMasterPins.sort((a, b) => {
+            if (a.pinCount !== b.pinCount) return a.pinCount - b.pinCount;
+            const aGroup = unitGroupMap.get(a.node.unit.id) || '';
+            const bGroup = unitGroupMap.get(b.node.unit.id) || '';
+            return aGroup.localeCompare(bGroup);
+        });
+
+        const slaveLimit = 3; // C3 slaves per master pin
+
+        // Helper to count how many more slaves a master pin can accept
+        const getAvailableSlaveSlots = (pin: MasterPin, nets: SerializedC3NetworkGroup[]): number => {
+            const net = C3NetworkUtil.findMasterNetwork(pin.node.unit.id, pin.compIndex, nets);
+            if (!net) return slaveLimit;
+            // Count only slave members (not sub-masters)
+            const slaveMembers = (net.members || []).filter(m => {
+                const parsed = C3NetworkUtil.parseMember(m);
+                return parsed.compIndex === undefined; // Slaves don't have compIndex
+            }).length;
+            return slaveLimit - slaveMembers;
+        };
+
+        // Helper to check if a pin is already a child of another master
+        const isPinChild = (pin: MasterPin, nets: SerializedC3NetworkGroup[]): boolean => {
+            const memberStr = C3NetworkUtil.createMasterMember(pin.node.unit.id, pin.compIndex);
+            return nets.some(n => n.members?.includes(memberStr));
+        };
+
+        // Helper to check if a pin has an active network
+        const pinHasNetwork = (pin: MasterPin, nets: SerializedC3NetworkGroup[]): boolean => {
+            const net = C3NetworkUtil.findMasterNetwork(pin.node.unit.id, pin.compIndex, nets);
+            return !!(net && net.members && net.members.length > 0);
+        };
+
+        // Step 1: Connect all slaves to master pins
+        const connectedSlaves = new Set<string>();
+        const allSlaveNodes = [...slaveOnlyNodes].sort((a, b) => {
+            const aGroup = unitGroupMap.get(a.unit.id) || '';
+            const bGroup = unitGroupMap.get(b.unit.id) || '';
+            return aGroup.localeCompare(bGroup);
+        });
+
+        for (const slaveNode of allSlaveNodes) {
+            if (connectedSlaves.has(slaveNode.unit.id)) continue;
+            
+            const slaveCompIdx = slaveNode.c3Components.findIndex(c => c.role === C3Role.SLAVE);
+            if (slaveCompIdx < 0) continue;
+            
+            const slaveGroup = unitGroupMap.get(slaveNode.unit.id) || '';
+            
+            // Find best master pin: prefer same group, then single-pin masters
+            // Sort candidates for this slave
+            const candidates = [...allMasterPins].sort((a, b) => {
+                const aGroup = unitGroupMap.get(a.node.unit.id) || '';
+                const bGroup = unitGroupMap.get(b.node.unit.id) || '';
+                const aMatch = aGroup === slaveGroup ? 0 : 1;
+                const bMatch = bGroup === slaveGroup ? 0 : 1;
+                if (aMatch !== bMatch) return aMatch - bMatch;
+                return a.pinCount - b.pinCount; // Prefer single-pin masters
+            });
+            
+            for (const masterPin of candidates) {
+                const available = getAvailableSlaveSlots(masterPin, networks);
+                if (available <= 0) continue;
+                
+                const ctx = this.getNetworkContext();
+                ctx.networks = networks;
+                
+                const canConnect = C3NetworkUtil.canConnectToPin(
+                    masterPin.node, masterPin.compIndex, 
+                    slaveNode, slaveCompIdx, 
+                    networks
+                );
+                
+                if (canConnect.valid) {
+                    const result = C3NetworkUtil.createConnection(
+                        ctx, 
+                        masterPin.node, masterPin.compIndex, 
+                        slaveNode, slaveCompIdx
+                    );
+                    if (result.success) {
+                        networks = result.networks;
+                        connectedSlaves.add(slaveNode.unit.id);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Step 2: Connect master networks into hierarchies
+        // Algorithm:
+        // 1. Try external connections for ALL masters first
+        // 2. Only if no external connection was possible, try ONE internal connection
+        // 3. After any internal connection, restart external check for all (it may unlock new GMs)
+        
+        const gmLimit = 3;
+        
+        // Helper to get available slots under a GM pin
+        const getGmAvailableSlots = (pin: MasterPin, nets: SerializedC3NetworkGroup[]): number => {
+            const net = C3NetworkUtil.findMasterNetwork(pin.node.unit.id, pin.compIndex, nets);
+            return gmLimit - (net?.members?.length ?? 0);
+        };
+        
+        let hierarchyChanged = true;
+        while (hierarchyChanged) {
+            hierarchyChanged = false;
+            
+            // Get all masters that have networks but are not yet children
+            const mastersNeedingGm = () => allMasterPins.filter(pin => {
+                const hasNet = pinHasNetwork(pin, networks);
+                const isChild = isPinChild(pin, networks);
+                return hasNet && !isChild;
+            });
+            
+            // Pass 1: Try external connections for ALL masters
+            let externalConnectionMade = false;
+            for (const masterPin of mastersNeedingGm()) {
+                const masterGroup = unitGroupMap.get(masterPin.node.unit.id) || '';
+                
+                // Find external GM candidates only (other nodes)
+                const externalCandidates = allMasterPins.filter(candidate => {
+                    if (candidate.node.unit.id === masterPin.node.unit.id) return false; // Same node = internal
+                    if (isPinChild(candidate, networks)) return false;
+                    return getGmAvailableSlots(candidate, networks) > 0;
+                });
+                
+                // Sort: prefer those with networks (to consolidate), then same group
+                externalCandidates.sort((a, b) => {
+                    const aHasNet = pinHasNetwork(a, networks) ? 0 : 1;
+                    const bHasNet = pinHasNetwork(b, networks) ? 0 : 1;
+                    if (aHasNet !== bHasNet) return aHasNet - bHasNet;
+                    
+                    const aGroup = unitGroupMap.get(a.node.unit.id) || '';
+                    const bGroup = unitGroupMap.get(b.node.unit.id) || '';
+                    const aMatch = aGroup === masterGroup ? 0 : 1;
+                    const bMatch = bGroup === masterGroup ? 0 : 1;
+                    return aMatch - bMatch;
+                });
+                
+                for (const gmPin of externalCandidates) {
+                    const ctx = this.getNetworkContext();
+                    ctx.networks = networks;
+                    
+                    const canConnect = C3NetworkUtil.canConnectToPin(
+                        masterPin.node, masterPin.compIndex,
+                        gmPin.node, gmPin.compIndex,
+                        networks
+                    );
+                    
+                    if (canConnect.valid) {
+                        const result = C3NetworkUtil.createConnection(
+                            ctx,
+                            masterPin.node, masterPin.compIndex,
+                            gmPin.node, gmPin.compIndex
+                        );
+                        if (result.success) {
+                            networks = result.networks;
+                            externalConnectionMade = true;
+                            hierarchyChanged = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (externalConnectionMade) break; // Restart the whole loop
+            }
+            
+            // Pass 2: If no external connection was made, try ONE internal connection
+            // Only consider masters on nodes with multiple pins (single-pin masters can't have internal connections)
+            if (!externalConnectionMade) {
+                for (const masterPin of mastersNeedingGm().filter(p => p.pinCount > 1)) {
+                    // Find internal GM candidates (same node, different pin)
+                    const internalCandidates = allMasterPins.filter(candidate => {
+                        if (candidate.node.unit.id !== masterPin.node.unit.id) return false; // Must be same node
+                        if (candidate.compIndex === masterPin.compIndex) return false; // Not same pin
+                        if (isPinChild(candidate, networks)) return false;
+                        return getGmAvailableSlots(candidate, networks) > 0;
+                    });
+                    for (const gmPin of internalCandidates) {
+                        const ctx = this.getNetworkContext();
+                        ctx.networks = networks;
+                        
+                        const canConnect = C3NetworkUtil.canConnectToPin(
+                            masterPin.node, masterPin.compIndex,
+                            gmPin.node, gmPin.compIndex,
+                            networks
+                        );
+                        if (canConnect.valid) {
+                            const result = C3NetworkUtil.createConnection(
+                                ctx,
+                                masterPin.node, masterPin.compIndex,
+                                gmPin.node, gmPin.compIndex
+                            );
+                            if (result.success) {
+                                networks = result.networks;
+                                hierarchyChanged = true; // Restart to try external again for everyone
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (hierarchyChanged) break; // Only do ONE internal, then restart external
+                }
+            }
+        }
+
+        // Step 3: Connect orphan master pins (masters with no connections at all)
+        // Same logic: external first, then internal
+        hierarchyChanged = true;
+        while (hierarchyChanged) {
+            hierarchyChanged = false;
+            
+            const orphanPins = () => allMasterPins.filter(pin => {
+                const hasNet = pinHasNetwork(pin, networks);
+                const isChild = isPinChild(pin, networks);
+                return !hasNet && !isChild;
+            });
+            
+            // Pass 1: External connections
+            let externalConnectionMade = false;
+            for (const orphanPin of orphanPins()) {
+                const orphanGroup = unitGroupMap.get(orphanPin.node.unit.id) || '';
+                
+                const externalCandidates = allMasterPins.filter(candidate => {
+                    if (candidate.node.unit.id === orphanPin.node.unit.id) return false;
+                    return getGmAvailableSlots(candidate, networks) > 0;
+                });
+                
+                externalCandidates.sort((a, b) => {
+                    const aHasNet = pinHasNetwork(a, networks) ? 0 : 1;
+                    const bHasNet = pinHasNetwork(b, networks) ? 0 : 1;
+                    if (aHasNet !== bHasNet) return aHasNet - bHasNet;
+                    
+                    const aGroup = unitGroupMap.get(a.node.unit.id) || '';
+                    const bGroup = unitGroupMap.get(b.node.unit.id) || '';
+                    const aMatch = aGroup === orphanGroup ? 0 : 1;
+                    const bMatch = bGroup === orphanGroup ? 0 : 1;
+                    return aMatch - bMatch;
+                });
+                
+                for (const gmPin of externalCandidates) {
+                    const ctx = this.getNetworkContext();
+                    ctx.networks = networks;
+                    
+                    const canConnect = C3NetworkUtil.canConnectToPin(
+                        orphanPin.node, orphanPin.compIndex,
+                        gmPin.node, gmPin.compIndex,
+                        networks
+                    );
+                    
+                    if (canConnect.valid) {
+                        const result = C3NetworkUtil.createConnection(
+                            ctx,
+                            orphanPin.node, orphanPin.compIndex,
+                            gmPin.node, gmPin.compIndex
+                        );
+                        if (result.success) {
+                            networks = result.networks;
+                            externalConnectionMade = true;
+                            hierarchyChanged = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (externalConnectionMade) break;
+            }
+            
+            // Pass 2: Internal connections if no external
+            if (!externalConnectionMade) {
+                for (const orphanPin of orphanPins()) {
+                    const internalCandidates = allMasterPins.filter(candidate => {
+                        if (candidate.node.unit.id !== orphanPin.node.unit.id) return false;
+                        if (candidate.compIndex === orphanPin.compIndex) return false;
+                        if (isPinChild(candidate, networks)) return false;
+                        return getGmAvailableSlots(candidate, networks) > 0;
+                    });
+                    
+                    for (const gmPin of internalCandidates) {
+                        const ctx = this.getNetworkContext();
+                        ctx.networks = networks;
+                        
+                        const canConnect = C3NetworkUtil.canConnectToPin(
+                            orphanPin.node, orphanPin.compIndex,
+                            gmPin.node, gmPin.compIndex,
+                            networks
+                        );
+                        
+                        if (canConnect.valid) {
+                            const result = C3NetworkUtil.createConnection(
+                                ctx,
+                                orphanPin.node, orphanPin.compIndex,
+                                gmPin.node, gmPin.compIndex
+                            );
+                            if (result.success) {
+                                networks = result.networks;
+                                hierarchyChanged = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (hierarchyChanged) break;
+                }
+            }
+        }
+
+        // Validate and clean the networks
+        const unitsMap = new Map(this.getUnits().map(u => [u.id, u.getUnit()]));
+        networks = C3NetworkUtil.validateAndCleanNetworks(networks, unitsMap);
+
+        this.networks.set(networks);
+
+        // ========== ARRANGE NODES BY NETWORK ==========
+        this.arrangeNodesByNetwork(networks);
+        this.resolveAllNodeCollisions();
+
+        this.hasModifications.set(true);
+        this.toastService.showToast('Networks auto-configured', 'success');
+
+        // Fit view to show all nodes
+        setTimeout(() => this.fitViewToNodes(), 50);
+    }
+
+    /**
+     * Arrange nodes visually by their network membership.
+     * - Peer networks: arranged in a circle
+     * - Master-slave networks: master in center with slaves around it
+     * - Unconnected nodes: placed in a separate area
+     */
+    private arrangeNodesByNetwork(networks: SerializedC3NetworkGroup[]): void {
+        const nodes = this.nodes();
+        const nodesById = this.nodesById();
+        const nodeSpacing = this.NODE_RADIUS + 20;
+        const groupSpacing = 700; // Fixed spacing between network groups
+
+        // Track which nodes have been positioned
+        const positionedNodeIds = new Set<string>();
+
+        // Collect network groups for layout
+        interface NetworkLayout {
+            type: 'peer' | 'master-slave';
+            nodeIds: string[];
+            masterId?: string;
+        }
+        const networkLayouts: NetworkLayout[] = [];
+
+        // Process peer networks
+        for (const net of networks) {
+            if (net.peerIds && net.peerIds.length >= 2) {
+                const validIds = net.peerIds.filter(id => nodesById.has(id));
+                if (validIds.length > 0) {
+                    networkLayouts.push({
+                        type: 'peer',
+                        nodeIds: validIds
+                    });
+                }
+            }
+        }
+
+        // Process master-slave networks (only top-level ones)
+        const topLevelNetworks = C3NetworkUtil.getTopLevelNetworks(networks);
+        for (const net of topLevelNetworks) {
+            if (net.masterId && net.members && net.members.length > 0) {
+                const nodeIds: string[] = [net.masterId];
+                
+                // Collect all member unit IDs (including sub-networks)
+                const collectMembers = (network: SerializedC3NetworkGroup) => {
+                    for (const memberStr of network.members || []) {
+                        const parsed = C3NetworkUtil.parseMember(memberStr);
+                        if (parsed.unitId !== network.masterId && !nodeIds.includes(parsed.unitId)) {
+                            nodeIds.push(parsed.unitId);
+                        }
+                        if (parsed.compIndex !== undefined) {
+                            const subNet = C3NetworkUtil.findMasterNetwork(parsed.unitId, parsed.compIndex, networks);
+                            if (subNet) collectMembers(subNet);
+                        }
+                    }
+                };
+                collectMembers(net);
+
+                const validIds = nodeIds.filter(id => nodesById.has(id));
+                if (validIds.length > 0) {
+                    networkLayouts.push({
+                        type: 'master-slave',
+                        nodeIds: validIds,
+                        masterId: net.masterId
+                    });
+                }
+            }
+        }
+
+        // Add unconnected nodes as individual "groups"
+        const unconnectedNodes = nodes.filter(n => {
+            const id = n.unit.id;
+            return !networkLayouts.some(l => l.nodeIds.includes(id));
+        });
+
+        // Get aspect ratio from canvas (for grid shape preference)
+        const el = this.svgCanvas()?.nativeElement;
+        const canvasW = el?.clientWidth || 1200;
+        const canvasH = el?.clientHeight || 800;
+        const aspectRatio = canvasW / canvasH;
+
+        // Calculate grid layout based on aspect ratio
+        const totalGroups = networkLayouts.length + (unconnectedNodes.length > 0 ? 1 : 0);
+        if (totalGroups === 0) {
+            this.nodes.set([...nodes]);
+            return;
+        }
+
+        // Determine grid columns/rows based on aspect ratio
+        let cols = Math.max(1, Math.round(Math.sqrt(totalGroups * aspectRatio)));
+        let rows = Math.ceil(totalGroups / cols);
+        
+        // Adjust to better fill the space
+        while (cols > 1 && (cols - 1) * rows >= totalGroups) cols--;
+        rows = Math.ceil(totalGroups / cols);
+
+        // Position each network group in a grid cell with fixed spacing
+        let groupIndex = 0;
+        for (const layout of networkLayouts) {
+            const layoutNodes = layout.nodeIds.map(id => nodesById.get(id)).filter((n): n is C3Node => !!n);
+            if (layoutNodes.length === 0) continue;
+            if (layoutNodes.every(n => positionedNodeIds.has(n.unit.id))) continue;
+
+            const col = groupIndex % cols;
+            const row = Math.floor(groupIndex / cols);
+            
+            // Use fixed spacing for cell centers
+            const centerX = groupSpacing / 2 + col * groupSpacing;
+            const centerY = groupSpacing / 2 + row * groupSpacing;
+
+            if (layout.type === 'peer') {
+                const count = layoutNodes.length;
+                const radius = count <= 3 ? nodeSpacing * 0.8 : (count * nodeSpacing) / (2 * Math.PI);
+
+                for (let i = 0; i < count; i++) {
+                    const angle = (2 * Math.PI * i) / count - Math.PI / 2;
+                    layoutNodes[i].x = centerX + radius * Math.cos(angle);
+                    layoutNodes[i].y = centerY + radius * Math.sin(angle);
+                    positionedNodeIds.add(layoutNodes[i].unit.id);
+                }
+            } else {
+                const masterNode = layoutNodes.find(n => n.unit.id === layout.masterId);
+                const slaveNodes = layoutNodes.filter(n => n.unit.id !== layout.masterId);
+                const slaveCount = slaveNodes.length;
+
+                if (masterNode) {
+                    masterNode.x = centerX;
+                    masterNode.y = centerY;
+                    positionedNodeIds.add(masterNode.unit.id);
+                }
+
+                const radius = slaveCount <= 3 ? nodeSpacing * 0.8 : (slaveCount * nodeSpacing) / (2 * Math.PI);
+                for (let i = 0; i < slaveCount; i++) {
+                    const angle = (2 * Math.PI * i) / slaveCount - Math.PI / 2;
+                    slaveNodes[i].x = centerX + radius * Math.cos(angle);
+                    slaveNodes[i].y = centerY + radius * Math.sin(angle);
+                    positionedNodeIds.add(slaveNodes[i].unit.id);
+                }
+            }
+
+            groupIndex++;
+        }
+
+        // Position unconnected nodes in remaining cell(s)
+        if (unconnectedNodes.length > 0) {
+            const col = groupIndex % cols;
+            const row = Math.floor(groupIndex / cols);
+            const cellCenterX = groupSpacing / 2 + col * groupSpacing;
+            const cellCenterY = groupSpacing / 2 + row * groupSpacing;
+
+            // Arrange in a small grid within the cell
+            const unconnectedCols = Math.ceil(Math.sqrt(unconnectedNodes.length * aspectRatio));
+            const unconnectedRows = Math.ceil(unconnectedNodes.length / unconnectedCols);
+            const startX = cellCenterX - ((unconnectedCols - 1) * nodeSpacing) / 2;
+            const startY = cellCenterY - ((unconnectedRows - 1) * nodeSpacing) / 2;
+
+            for (let i = 0; i < unconnectedNodes.length; i++) {
+                const c = i % unconnectedCols;
+                const r = Math.floor(i / unconnectedCols);
+                unconnectedNodes[i].x = startX + c * nodeSpacing;
+                unconnectedNodes[i].y = startY + r * nodeSpacing;
+            }
+        }
+
+        // Trigger update
+        this.nodes.set([...nodes]);
     }
 
     protected saveAndClose() {

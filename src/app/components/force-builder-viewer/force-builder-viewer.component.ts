@@ -196,10 +196,8 @@ export class ForceBuilderViewerComponent {
 
         const ref = this.dialogsService.createDialog<C3NetworkDialogResult>(C3NetworkDialogComponent, {
             data: <C3NetworkDialogData>{
-                units: force.units,
-                networks: force.c3Networks,
-                readOnly: unit.readOnly(),
-                gameSystem: force.gameSystem
+                force: force,
+                readOnly: unit.readOnly()
             },
             width: '100dvw',
             height: '100dvh',
