@@ -154,6 +154,7 @@ function unitToASRow(unit: Unit): Record<string, unknown> {
         techBase: unit.techBase,
         techRating: unit.techRating,
         source: unit.source?.join(', ') ?? '',
+        role: unit.role,
         SZ: as?.SZ ?? '',
         usesOV: as?.usesOV ?? '',
         OV: as?.OV ?? '',
