@@ -758,7 +758,7 @@ hr.divider {
         color: var(--text-color-secondary);
         font-size: 0.8em;
         gap: 8px;
-        min-height: 8px; // Reserve some space even if empty
+        min-height: 15px; // Reserve some space even if empty
 
         .model {
             flex-grow: 1;
