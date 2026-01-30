@@ -15,18 +15,17 @@
     box-sizing: border-box;
 }
 
-.tab-header {
+.tab-footer {
     display: flex;
     justify-content: flex-end;
     align-items: center;
     padding: 8px;
     position: sticky;
-    margin-bottom: 8px;
     gap: 8px;
-    top: 0;
+    bottom: 0;
     z-index: 1;
     border-top: 1px solid var(--border-color);
-    margin-bottom: auto;
+    margin-top: auto;
 }
 
 .sort-controls {

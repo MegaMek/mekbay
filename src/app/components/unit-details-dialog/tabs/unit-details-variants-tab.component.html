@@ -1,5 +1,23 @@
 <div class="tab-content">
-    <div class="tab-header glass">
+    <div class="variants-list" [class.compact]="viewMode() === 'compact'">
+        @for (variant of variants(); let last = $last; track variant.name) {
+            <unit-card-expanded
+                [unit]="variant"
+                [isSelected]="isCurrentUnit(variant)"
+                [gunnery]="gunnerySkill() ?? 4"
+                [piloting]="pilotingSkill() ?? 5"
+                [expandedView]="viewMode() === 'expanded'"
+                [sortKey]="selectedSort()"
+                [sortSlotLabel]="selectedSortLabel()"
+                (cardClick)="onVariantClick(variant, variants())"
+                (tagClick)="onTagClick($event)">
+            </unit-card-expanded>
+            @if (!last && viewMode() === 'expanded') {
+                <hr class="divider" />  
+            }
+        }
+    </div>
+    <div class="tab-footer glass">
         <div class="sort-controls">
             <select class="bt-input sort-select"
                 (change)="setSortOrder($any($event.target).value)">
@@ -52,23 +70,5 @@
                 <span>Expanded</span>
             }
         </button>
-    </div>
-    <div class="variants-list" [class.compact]="viewMode() === 'compact'">
-        @for (variant of variants(); let last = $last; track variant.name) {
-            <unit-card-expanded
-                [unit]="variant"
-                [isSelected]="isCurrentUnit(variant)"
-                [gunnery]="gunnerySkill() ?? 4"
-                [piloting]="pilotingSkill() ?? 5"
-                [expandedView]="viewMode() === 'expanded'"
-                [sortKey]="selectedSort()"
-                [sortSlotLabel]="selectedSortLabel()"
-                (cardClick)="onVariantClick(variant, variants())"
-                (tagClick)="onTagClick($event)">
-            </unit-card-expanded>
-            @if (!last && viewMode() === 'expanded') {
-                <hr class="divider" />  
-            }
-        }
     </div>
 </div>
