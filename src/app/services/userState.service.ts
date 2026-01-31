@@ -45,6 +45,7 @@ export class UserStateService {
     private dbService = inject(DbService);
     private userData = signal<UserData>({ uuid: '' });
     public uuid = computed<string>(() => this.userData().uuid);
+    public publicId = computed<string | undefined>(() => this.userData().publicId);
 
     constructor() {
         this.initUserData();
@@ -86,6 +87,20 @@ export class UserStateService {
         } else {
             userData.uuid = trimmed;
         }
+        this.userData.set({ ...userData });
+        await this.dbService.saveUserData(userData);
+    }
+
+    /**
+     * Set the public ID received from the server.
+     * This is called automatically when registering with the server.
+     */
+    public async setPublicId(publicId: string): Promise<void> {
+        const userData = this.userData();
+        if (userData.publicId === publicId) {
+            return;
+        }
+        userData.publicId = publicId;
         this.userData.set({ ...userData });
         await this.dbService.saveUserData(userData);
     }

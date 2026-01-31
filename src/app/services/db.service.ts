@@ -166,6 +166,7 @@ export interface SavedSearchSyncState {
 
 export interface UserData {
     uuid: string;
+    publicId?: string;
     tabSubs?: string[];
 }
 

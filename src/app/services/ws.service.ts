@@ -82,6 +82,7 @@ export class WsService {
 
     constructor() {
         this.initializeService();
+        this.setupUserStateHandler();
         
         // Watch for uuid - connect when available, re-register if uuid changes
         effect(() => {
@@ -94,6 +95,17 @@ export class WsService {
             } else if (uuid !== this.lastRegisteredUuid && this.wsConnected()) {
                 // UUID changed while connected - re-register
                 this.registerSession();
+            }
+        });
+    }
+
+    /**
+     * Setup handler for userState responses from server
+     */
+    private setupUserStateHandler(): void {
+        this.registerMessageHandler('userState', (msg) => {
+            if (msg.publicId) {
+                this.userStateService.setPublicId(msg.publicId);
             }
         });
     }
