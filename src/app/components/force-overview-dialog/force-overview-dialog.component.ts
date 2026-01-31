@@ -114,7 +114,7 @@ export class ForceOverviewDialogComponent {
     private newGroupDropzone = viewChild<ElementRef<HTMLElement>>('newGroupDropzone');
 
     /** Reference to scrollable units list */
-    private unitsList = viewChild<ElementRef<HTMLElement>>('unitsList');
+    private scrollContainer = viewChild<ElementRef<HTMLElement>>('scrollContainer');
 
     /** Flag for unit drag/sorting */
     readonly isUnitDragging = signal<boolean>(false);
@@ -416,7 +416,7 @@ export class ForceOverviewDialogComponent {
     onUnitDragMoved(event: CdkDragMove<any>): void {
         if (this.isReadOnly()) return;
 
-        const scrollRef = this.unitsList?.();
+        const scrollRef = this.scrollContainer?.();
         if (!scrollRef) {
             this.stopAutoScrollLoop();
             return;
@@ -472,7 +472,7 @@ export class ForceOverviewDialogComponent {
 
             const v = this.autoScrollVelocity();
             if (Math.abs(v) > 0.5) {
-                const scrollRef = this.unitsList?.();
+                const scrollRef = this.scrollContainer?.();
                 if (scrollRef) {
                     const el = scrollRef.nativeElement as HTMLElement;
                     const delta = v * dt;

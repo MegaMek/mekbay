@@ -253,7 +253,7 @@ export class ForceBuilderService {
         }
         let newForceUnit;
         try {
-            newForceUnit = currentForce.addUnit(unit);
+            newForceUnit = currentForce.addUnit(unit, group);
         } catch (error) {
             this.toastService.showToast(error instanceof Error ? error.message : (error as string), 'error');
             return null;

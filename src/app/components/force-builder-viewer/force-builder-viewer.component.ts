@@ -175,13 +175,18 @@ export class ForceBuilderViewerComponent {
 
     showUnitInfo(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
-        const unitList = this.forceBuilderService.currentForce()?.units();
+        const force = this.forceBuilderService.currentForce();
+        if (!force) return;
+        const unitList = force.units();
         if (!unitList) return;
         const unitIndex = unitList.findIndex(u => u.id === unit.id);
+        // Find the group containing this unit
+        const targetGroup = force.groups().find(g => g.units().some(u => u.id === unit.id));
         const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: unitList,
-                unitIndex: unitIndex
+                unitIndex: unitIndex,
+                targetGroup: targetGroup
             }
         });
 

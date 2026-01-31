@@ -6,8 +6,8 @@
     </div>
 </div>
 
-<div class="dialog-content" cdkDropListGroup>
-    <div #unitsList class="units-list" [class.compact]="viewMode() === 'compact'" [class.single-group]="hasSingleGroup()" [class.as-table-mode]="isTableMode()">
+<div class="dialog-content" #scrollContainer cdkDropListGroup>
+    <div class="units-list" [class.compact]="viewMode() === 'compact'" [class.single-group]="hasSingleGroup()" [class.as-table-mode]="isTableMode()">
         <!-- Table Header for AS Table View -->
         @if (isTableMode()) {
             <div class="as-table-header">

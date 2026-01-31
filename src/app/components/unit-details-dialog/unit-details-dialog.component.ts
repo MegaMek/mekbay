@@ -35,11 +35,11 @@ import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output,
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { Unit } from '../../models/units.model';
-import { DataService } from '../../services/data.service';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
 import { ForceUnit } from '../../models/force-unit.model';
+import { UnitGroup } from '../../models/force.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
@@ -72,6 +72,8 @@ export interface UnitDetailsDialogData {
     hideAddButton?: boolean;
     /** When true, ADD only emits the unit without adding to force */
     selectMode?: boolean;
+    /** Target group to add units to (used when adding from force builder) */
+    targetGroup?: UnitGroup;
 }
 
 @Component({
@@ -354,6 +356,7 @@ export class UnitDetailsDialogComponent {
             selectedUnit,
             gunnery,
             piloting,
+            this.data.targetGroup,
         );
         if (addedUnit) {
             this.toastService.showToast(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');

@@ -144,7 +144,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
      */
     protected abstract deserializeForceUnit(data: SerializedUnit): TUnit;
 
-    public addUnit(unit: Unit): TUnit {
+    public addUnit(unit: Unit, targetGroup?: UnitGroup<TUnit>): TUnit {
         if (this.units().length >= MAX_UNITS) {
             throw new Error(`Cannot add more than ${MAX_UNITS} units to a single force`);
         }
@@ -153,12 +153,12 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             this.addGroup(DEFAULT_GROUP_NAME);
         }
 
-        // Pick the last group
+        // Use provided target group or pick the last group
         const groups = this.groups();
-        const targetGroup = groups[groups.length - 1];
+        const group = targetGroup && groups.includes(targetGroup) ? targetGroup : groups[groups.length - 1];
 
-        const units = targetGroup.units();
-        targetGroup.units.set([...units, forceUnit]);
+        const units = group.units();
+        group.units.set([...units, forceUnit]);
         if (this.instanceId()) {
             this.emitChanged();
         }
