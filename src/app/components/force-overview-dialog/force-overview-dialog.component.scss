@@ -19,10 +19,15 @@
     overflow: hidden;
     padding: 0;
     background: var(--background-color);
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
 }
 
 .dialog-header {
     display: flex;
+    flex: 0 0 auto;
     justify-content: space-between;
     flex-wrap: wrap;
     align-items: center;
@@ -72,8 +77,11 @@
 // Content - scrollable area
 .dialog-content {
     display: flex;
-    flex: 1;
-    overflow: hidden;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     position: relative;
 }
 
@@ -81,7 +89,6 @@
     display: flex;
     flex-direction: column;
     width: 100%;
-    overflow-y: auto;
     gap: 16px;
     container-type: inline-size;
 }
@@ -226,17 +233,9 @@
     display: none;
 }
 
-.empty-state {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 48px 16px;
-    color: var(--text-color-secondary);
-    font-style: italic;
-}
-
 .dialog-footer {
     display: flex;
+    flex: 0 0 auto;
     justify-content: flex-start;
     align-items: center;
     padding: 8px;

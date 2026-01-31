@@ -123,10 +123,6 @@
                     }
                 </div>
             </div>
-        } @empty {
-            <div class="empty-state">
-                <p>No units in this force.</p>
-            </div>
         }
         @if (canDragDrop() && !hasMaxGroups()) {
             <div #newGroupDropzone class="group-container new-group-dropzone" cdkDropList id="new-group-dropzone"
