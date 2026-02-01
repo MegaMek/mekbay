@@ -186,6 +186,26 @@ input {
   border-bottom: 1px solid var(--border-color);
 }
 
+.subscriber-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--primary-focus-color);
+  color: var(--primary-focus-color);
+  font-size: 0.75em;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.subscriber-count svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
 .tag-actions {
   display: flex;
   gap: 4px;

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { OptionsService } from '../../services/options.service';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
@@ -75,6 +75,7 @@ export class OptionsDialogComponent {
     tagsService = inject(TagsService);
     taggingService = inject(TaggingService);
     toastService = inject(ToastService);
+    destroyRef = inject(DestroyRef);
     isIOS = isIOS();
     
     tabs = computed(() => {
@@ -107,10 +108,46 @@ export class OptionsDialogComponent {
     unitsCount = computed(() => this.dataService.getUnits().length);
     equipmentCount = computed(() => Object.keys(this.dataService.getEquipments()).length);
 
+    /** Subscriber counts for own tags: tagId (lowercase) -> count */
+    tagSubscriberCounts = signal<Record<string, number>>({});
+    /** Whether subscriber counts are loading */
+    subscriberCountsLoading = signal(false);
+
     constructor() {
         this.updateSheetCacheSize();
         this.updateCanvasMemorySize();
         this.updateUnitIconsCount();
+        this.loadTagSubscriberCounts();
+    }
+
+    /**
+     * Load subscriber counts for the user's own tags.
+     * Uses a flag to prevent using results if the dialog is closed before completion.
+     */
+    private loadTagSubscriberCounts(): void {
+        let cancelled = false;
+        this.destroyRef.onDestroy(() => { cancelled = true; });
+
+        this.subscriberCountsLoading.set(true);
+        this.publicTagsService.getOwnTagSubscriberCounts().then(counts => {
+            if (cancelled) return;
+            if (counts) {
+                this.tagSubscriberCounts.set(counts);
+            }
+            this.subscriberCountsLoading.set(false);
+        }).catch(() => {
+            if (cancelled) return;
+            this.subscriberCountsLoading.set(false);
+        });
+    }
+
+    /**
+     * Get subscriber count for a specific tag.
+     * @param tagName The tag name (display name, not necessarily lowercase)
+     * @returns Subscriber count, or 0 if not found
+     */
+    getSubscriberCount(tagName: string): number {
+        return this.tagSubscriberCounts()[tagName.toLowerCase()] || 0;
     }
 
     updateSheetCacheSize() {

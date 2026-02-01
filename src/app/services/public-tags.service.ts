@@ -675,4 +675,32 @@ export class PublicTagsService {
         }
         return Array.from(names);
     }
+
+    /**
+     * Get subscriber counts for the current user's own tags.
+     * Returns a map of tagId (lowercase) -> subscriber count.
+     * Returns null if WebSocket is not connected or user is not registered.
+     */
+    public async getOwnTagSubscriberCounts(): Promise<Record<string, number> | null> {
+        const uuid = this.userStateService.uuid();
+        if (!uuid) return null;
+
+        try {
+            const ws = this.wsService.getWebSocket();
+            if (!ws || ws.readyState !== WebSocket.OPEN) return null;
+
+            const response = await this.wsService.sendAndWaitForResponse({
+                action: 'getOwnTagSubscriberCounts',
+                uuid
+            });
+
+            if (response?.counts) {
+                return response.counts as Record<string, number>;
+            }
+            return {};
+        } catch (err) {
+            this.logger.error('Failed to get tag subscriber counts: ' + err);
+            return null;
+        }
+    }
 }
