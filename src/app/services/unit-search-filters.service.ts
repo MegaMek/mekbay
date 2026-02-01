@@ -649,7 +649,8 @@ function getUnitComponentData(unit: Unit) {
         const componentCounts = new Map<string, number>();
 
         for (const component of unit.comp) {
-            const name = component.n;
+            // Store lowercase for case-insensitive matching
+            const name = component.n.toLowerCase();
             componentNames.add(name);
             componentCounts.set(name, (componentCounts.get(name) || 0) + component.q);
         }
