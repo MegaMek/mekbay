@@ -708,7 +708,7 @@ export class UnitSearchFiltersService {
     readonly pendingForeignTags = signal<Array<{ publicId: string; tagName: string }>>([]);
     
     /** 
-     * Public tags parameter for URL. Format: publicId1@tag1,publicId2@tag2
+     * Public tags parameter for URL. Format: publicId1:tag1,publicId2:tag2
      * Computed from current search text, filter state, and tag sources.
      */
     readonly publicTagsParam = computed(() => {
@@ -2327,7 +2327,7 @@ export class UnitSearchFiltersService {
                 }
 
                 // Parse public tags mapping from URL (for both semantic query and dropdown tags)
-                // Format: pt=publicId1@tag1,publicId2@tag2
+                // Format: pt=publicId1:tag1,publicId2:tag2
                 const ptParam = this.urlStateService.getInitialParam('pt');
                 const foreignTags = this.parsePublicTagsParam(ptParam, searchParam, parsedFilterState);
                 if (foreignTags.length > 0) {
@@ -2335,8 +2335,8 @@ export class UnitSearchFiltersService {
                     const existing = this.pendingForeignTags();
                     const merged = [...existing];
                     for (const ft of foreignTags) {
-                        const key = `${ft.publicId}@${ft.tagName}`.toLowerCase();
-                        if (!existing.some(e => `${e.publicId}@${e.tagName}`.toLowerCase() === key)) {
+                        const key = `${ft.publicId}:${ft.tagName}`.toLowerCase();
+                        if (!existing.some(e => `${e.publicId}:${e.tagName}`.toLowerCase() === key)) {
                             merged.push(ft);
                         }
                     }
@@ -2521,12 +2521,12 @@ export class UnitSearchFiltersService {
 
     /**
      * Generate the public tags (pt) query parameter for all tags (semantic + dropdown).
-     * Maps tag names to their publicId@tagName format for public/foreign tags.
-     * Format: publicId1@tag1,publicId2@tag2
+     * Maps tag names to their publicId:tagName format for public/foreign tags.
+     * Format: publicId1:tag1,publicId2:tag2
      * 
      * This separates tag names from their source information, allowing:
      * - Clean filter URLs: `filters=_tags:MyTag,OtherTag`
-     * - Source mapping: `pt=abc123@MyTag,def456@OtherTag`
+     * - Source mapping: `pt=abc123:MyTag,def456:OtherTag`
      */
     private generatePublicTagsParam(searchText: string, filterState: FilterState): string | null {
         // Collect all tag names from both sources
@@ -2584,10 +2584,10 @@ export class UnitSearchFiltersService {
             
             // Add local tag mapping
             if (localTagName && myPublicId) {
-                const key = `${myPublicId}@${localTagName}`.toLowerCase();
+                const key = `${myPublicId}:${localTagName}`.toLowerCase();
                 if (!includedKeys.has(key)) {
                     includedKeys.add(key);
-                    parts.push(`${myPublicId}@${localTagName}`);
+                    parts.push(`${myPublicId}:${encodeURIComponent(localTagName)}`);
                 }
             }
             
@@ -2596,10 +2596,10 @@ export class UnitSearchFiltersService {
                 .filter(pt => pt.tagName.toLowerCase() === tagNameLower);
             
             for (const pt of matchingPublicTags) {
-                const key = `${pt.publicId}@${pt.tagName}`.toLowerCase();
+                const key = `${pt.publicId}:${pt.tagName}`.toLowerCase();
                 if (!includedKeys.has(key)) {
                     includedKeys.add(key);
-                    parts.push(`${pt.publicId}@${pt.tagName}`);
+                    parts.push(`${pt.publicId}:${encodeURIComponent(pt.tagName)}`);
                 }
             }
             
@@ -2608,10 +2608,10 @@ export class UnitSearchFiltersService {
                 .filter(pt => pt.tagName.toLowerCase() === tagNameLower);
             
             for (const pt of matchingPendingTags) {
-                const key = `${pt.publicId}@${pt.tagName}`.toLowerCase();
+                const key = `${pt.publicId}:${pt.tagName}`.toLowerCase();
                 if (!includedKeys.has(key)) {
                     includedKeys.add(key);
-                    parts.push(`${pt.publicId}@${pt.tagName}`);
+                    parts.push(`${pt.publicId}:${encodeURIComponent(pt.tagName)}`);
                 }
             }
         }
@@ -2705,7 +2705,7 @@ export class UnitSearchFiltersService {
 
     /**
      * Parse the public tags (pt) query parameter to identify foreign tags.
-     * Format: publicId1@tag1,publicId2@tag2
+     * Format: publicId1:tag1,publicId2:tag2
      * 
      * Checks which tags are actually in use (semantic query OR dropdown filters)
      * and returns only the foreign ones that need to be fetched/subscribed.
@@ -2749,13 +2749,13 @@ export class UnitSearchFiltersService {
             
             const mappings = ptParam.split(',');
             for (const mapping of mappings) {
-                const atIndex = mapping.indexOf('@');
+                const atIndex = mapping.indexOf(':');
                 if (atIndex === -1) {
                     continue;
                 };
                 
                 const publicId = mapping.substring(0, atIndex);
-                const tagName = mapping.substring(atIndex + 1);
+                const tagName = decodeURIComponent(mapping.substring(atIndex + 1));
                 
                 // Skip if this is the user's own tag
                 if (myPublicId && publicId === myPublicId) {
@@ -2772,7 +2772,7 @@ export class UnitSearchFiltersService {
                     .some(pt => pt.publicId === publicId && 
                                pt.tagName.toLowerCase() === tagName.toLowerCase());
                 
-                this.logger.info(`Public tag from URL: ${publicId}@${tagName}, subscribed: ${isSubscribed}`);
+                this.logger.info(`Public tag from URL: ${publicId}:${tagName}, subscribed: ${isSubscribed}`);
                 if (!isSubscribed) {
                     foreignTags.push({ publicId, tagName });
                 }
@@ -3030,34 +3030,6 @@ export class UnitSearchFiltersService {
      */
     public getTotalRanges(): Record<string, [number, number]> {
         return this.totalRangesCache;
-    }
-
-    /**
-     * Convert current filter state to semantic text.
-     * @deprecated Use updateSemanticTextForFilter for targeted updates instead.
-     */
-    public getSemanticText(): string {
-        return filterStateToSemanticText(
-            this.effectiveFilterState(),
-            this.effectiveTextSearch(),
-            this.gameService.currentGameSystem(),
-            this.totalRangesCache
-        );
-    }
-
-    /**
-     * Update search text with semantic text representation of current filters.
-     * @deprecated Use updateSemanticTextForFilter for targeted updates instead.
-     */
-    public syncSearchTextFromFilters(): void {
-        if (this.isSyncingToText) return;
-        this.isSyncingToText = true;
-        try {
-            const semanticText = this.getSemanticText();
-            this.searchText.set(semanticText);
-        } finally {
-            this.isSyncingToText = false;
-        }
     }
 
     // Collect all unique tags from all units (merged name + chassis)
