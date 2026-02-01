@@ -54,7 +54,7 @@ import { SerializedForce } from '../models/force-serialization';
 import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
 import { EditASPilotDialogComponent, EditASPilotDialogData, EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
 import { C3NetworkDialogComponent, C3NetworkDialogData, C3NetworkDialogResult } from '../components/c3-network-dialog/c3-network-dialog.component';
-import { CrewMember, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
+import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
@@ -836,15 +836,15 @@ export class ForceBuilderService {
             const unitParams = this.generateUnitParams(group.units());
             const groupName = group.nameLock ? group.name() : '';
             // Format: groupName~unit1,unit2 (name is optional)
-            const prefix = groupName ? `${encodeURIComponent(groupName)}~` : '';
+            const prefix = groupName ? `${groupName}~` : '';
             return prefix + unitParams.join(',');
         });
     }
 
     /**
      * Generates URL parameters for units within a group.
-     * Format for CBT: unitName:gunnery:piloting
-     * Format for AS: unitName:skill
+     * Format for CBT: unitName:gunnery:piloting (skills omitted if all defaults)
+     * Format for AS: unitName:skill (skill omitted if default 4)
      */
     private generateUnitParams(units: ForceUnit[]): string[] {
         return units.map(fu => {
@@ -854,7 +854,10 @@ export class ForceBuilderService {
             // Handle Alpha Strike units (single pilot skill)
             if (fu instanceof ASForceUnit) {
                 const skill = fu.pilotSkill();
-                unitParam += `:${skill}`;
+                // Only include skill if not default (4)
+                if (skill !== DEFAULT_GUNNERY_SKILL) {
+                    unitParam += `:${skill}`;
+                }
                 return unitParam;
             }
 
@@ -862,14 +865,22 @@ export class ForceBuilderService {
             if (fu instanceof CBTForceUnit) {
                 const crewMembers = fu.getCrewMembers();
                 if (crewMembers.length > 0) {
-                    const crewSkills: string[] = [];
-                    for (const crew of crewMembers) {
-                        const gunnery = crew.getSkill('gunnery');
-                        const piloting = crew.getSkill('piloting');
-                        crewSkills.push(`${gunnery}`, `${piloting}`);
-                    }
-                    if (crewSkills.length > 0) {
-                        unitParam += ':' + crewSkills.join(':');
+                    // Check if any crew member has non-default skills
+                    const hasNonDefaultSkills = crewMembers.some(crew => 
+                        crew.getSkill('gunnery') !== DEFAULT_GUNNERY_SKILL ||
+                        crew.getSkill('piloting') !== DEFAULT_PILOTING_SKILL
+                    );
+                    
+                    if (hasNonDefaultSkills) {
+                        const crewSkills: string[] = [];
+                        for (const crew of crewMembers) {
+                            const gunnery = crew.getSkill('gunnery');
+                            const piloting = crew.getSkill('piloting');
+                            crewSkills.push(`${gunnery}`, `${piloting}`);
+                        }
+                        if (crewSkills.length > 0) {
+                            unitParam += ':' + crewSkills.join(':');
+                        }
                     }
                 }
             }
@@ -979,7 +990,7 @@ export class ForceBuilderService {
                 // Check if group has a name (format: groupName~units)
                 if (groupParam.includes('~')) {
                     const [namePart, unitsPart] = groupParam.split('~', 2);
-                    groupName = decodeURIComponent(namePart);
+                    groupName = namePart;
                     unitsStr = unitsPart || '';
                 } else {
                     unitsStr = groupParam;
@@ -1006,8 +1017,8 @@ export class ForceBuilderService {
 
     /**
      * Parses individual unit parameters from a comma-separated string.
-     * Format for CBT: unitName:gunnery:piloting,unitName2:gunnery:piloting
-     * Format for AS: unitName:skill,unitName2:skill
+     * Format for CBT: unitName[:gunnery:piloting] (skills optional, defaults to 4/5)
+     * Format for AS: unitName[:skill] (skill optional, defaults to 4)
      */
     private parseUnitParams(force: Force, unitsStr: string, unitMap: Map<string, Unit>, group?: UnitGroup): ForceUnit[] {
         if (!unitsStr.trim()) return [];

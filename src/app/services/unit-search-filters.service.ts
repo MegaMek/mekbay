@@ -707,6 +707,20 @@ export class UnitSearchFiltersService {
     /** Pending foreign tags to import from URL. Format: Array of { publicId, tagName } */
     readonly pendingForeignTags = signal<Array<{ publicId: string; tagName: string }>>([]);
     
+    /** 
+     * Public tags parameter for URL. Format: publicId1@tag1,publicId2@tag2
+     * Computed from current search text, filter state, and tag sources.
+     */
+    readonly publicTagsParam = computed(() => {
+        this.tagsVersion();
+        this.pendingForeignTags();
+        
+        return this.generatePublicTagsParam(
+            this.searchText(),
+            this.filterState()
+        );
+    });
+    
     /** Callback to show foreign tag import dialog - set by component layer */
     private showForeignTagDialogCallback: ((publicId: string, tagNames: string[]) => Promise<'ignore' | 'temporary' | 'subscribe'>) | null = null;
     
@@ -2233,7 +2247,7 @@ export class UnitSearchFiltersService {
                 // Load search query (may contain semantic filters)
                 const searchParam = this.urlStateService.getInitialParam('q');
                 if (searchParam) {
-                    this.searchText.set(decodeURIComponent(searchParam));
+                    this.searchText.set(searchParam);
                     hasFilters = true;
                 }
 
@@ -2250,6 +2264,7 @@ export class UnitSearchFiltersService {
 
                 // Load UI filters from filters param (these are separate from semantic filters in q)
                 const filtersParam = this.urlStateService.getInitialParam('filters');
+                let parsedFilterState: FilterState = {};
                 if (filtersParam) {
                     hasFilters = true;
                     try {
@@ -2304,10 +2319,28 @@ export class UnitSearchFiltersService {
                                 validFilters[key] = state;
                             }
                         }
+                        parsedFilterState = validFilters;
                         this.filterState.set(validFilters);
                     } catch (error) {
                         this.logger.warn('Failed to parse filters from URL: ' + error);
                     }
+                }
+
+                // Parse public tags mapping from URL (for both semantic query and dropdown tags)
+                // Format: pt=publicId1@tag1,publicId2@tag2
+                const ptParam = this.urlStateService.getInitialParam('pt');
+                const foreignTags = this.parsePublicTagsParam(ptParam, searchParam, parsedFilterState);
+                if (foreignTags.length > 0) {
+                    // Merge with any existing pending foreign tags
+                    const existing = this.pendingForeignTags();
+                    const merged = [...existing];
+                    for (const ft of foreignTags) {
+                        const key = `${ft.publicId}@${ft.tagName}`.toLowerCase();
+                        if (!existing.some(e => `${e.publicId}@${e.tagName}`.toLowerCase() === key)) {
+                            merged.push(ft);
+                        }
+                    }
+                    this.pendingForeignTags.set(merged);
                 }
 
                 const expandedParam = this.urlStateService.getInitialParam('expanded');
@@ -2399,7 +2432,7 @@ export class UnitSearchFiltersService {
         const queryParams: any = {};
 
         // Add search query if present (contains semantic filters)
-        queryParams.q = search.trim() ? encodeURIComponent(search.trim()) : null;
+        queryParams.q = search.trim() || null;
         
         // UI-only filters (not in semantic text) are saved in filters param
         // Exclude any filters that are represented in semantic text
@@ -2411,6 +2444,9 @@ export class UnitSearchFiltersService {
         }
         const filtersParam = this.generateCompactFiltersParam(uiOnlyFilters);
         queryParams.filters = filtersParam ? filtersParam : null;
+        
+        // Public tags param is stored in a signal, updated when tags change
+        queryParams.pt = this.publicTagsParam();
 
         // Add sort if not default
         queryParams.sort = (selectedSort !== '') ? selectedSort : null;
@@ -2453,74 +2489,16 @@ export class UnitSearchFiltersService {
                 if (conf.multistate) {
                     const selection = filterState.value as MultiStateSelection;
                     const subParts: string[] = [];
-                    
-                    // Track which publicId@tagName combos are already included
-                    // Key: lowercase "publicId@tagName" for deduplication
-                    const includedTags = new Set<string>();
 
                     for (const [name, selectionValue] of Object.entries(selection)) {
                         if (selectionValue.state !== false) {
-                            if (key === '_tags') {
-                                const myPublicId = this.userStateService.publicId();
-                                const lowerName = name.toLowerCase();
-                                
-                                // Check if user has this as a local tag
-                                const nameTags = this.tagsService.getNameTags();
-                                const chassisTags = this.tagsService.getChassisTags();
-                                const hasLocalTag = Object.keys(nameTags).some(t => t.toLowerCase() === lowerName) ||
-                                                   Object.keys(chassisTags).some(t => t.toLowerCase() === lowerName);
-                                
-                                // Add local tag if user has it
-                                if (hasLocalTag && myPublicId) {
-                                    const localTagKey = `${myPublicId}@${name}`.toLowerCase();
-                                    if (!includedTags.has(localTagKey)) {
-                                        includedTags.add(localTagKey);
-                                        let part = encodeURIComponent(`${myPublicId}@${name}`);
-                                        if (selectionValue.state === 'and') part += '.';
-                                        else if (selectionValue.state === 'not') part += '!';
-                                        if (selectionValue.count > 1) part += `~${selectionValue.count}`;
-                                        subParts.push(part);
-                                    }
-                                }
-                                
-                                // Add ALL subscribed public tags with this name (could be multiple from different users)
-                                const matchingPublicTags = this.publicTagsService.getSubscribedTags()
-                                    .filter(pt => pt.tagName.toLowerCase() === lowerName);
-                                
-                                for (const pt of matchingPublicTags) {
-                                    const publicTagKey = `${pt.publicId}@${pt.tagName}`.toLowerCase();
-                                    if (!includedTags.has(publicTagKey)) {
-                                        includedTags.add(publicTagKey);
-                                        let part = encodeURIComponent(`${pt.publicId}@${pt.tagName}`);
-                                        if (selectionValue.state === 'and') part += '.';
-                                        else if (selectionValue.state === 'not') part += '!';
-                                        if (selectionValue.count > 1) part += `~${selectionValue.count}`;
-                                        subParts.push(part);
-                                    }
-                                }
-                            } else {
-                                // Non-tag multistate filter
-                                let part = encodeURIComponent(name);
-                                if (selectionValue.state === 'and') part += '.';
-                                else if (selectionValue.state === 'not') part += '!';
-                                if (selectionValue.count > 1) part += `~${selectionValue.count}`;
-                                subParts.push(part);
-                            }
-                        }
-                    }
-                    
-                    // For _tags filter, also include ACTIVE public tags that aren't already in selection
-                    // (e.g., temporarily imported tags not in the multistate selection)
-                    if (key === '_tags') {
-                        const publicTags = this.publicTagsService.getAllPublicTags();
-                        for (const pt of publicTags) {
-                            const tagKey = `${pt.publicId}@${pt.tagName}`.toLowerCase();
-                            // Only add if not already included via selection
-                            if (!includedTags.has(tagKey)) {
-                                const part = encodeURIComponent(`${pt.publicId}@${pt.tagName}`);
-                                subParts.push(part);
-                                includedTags.add(tagKey);
-                            }
+                            // For all multistate filters (including _tags), just output the name
+                            // Public tag mappings are handled separately in the 'pt' parameter
+                            let part = name;
+                            if (selectionValue.state === 'and') part += '.';
+                            else if (selectionValue.state === 'not') part += '!';
+                            if (selectionValue.count > 1) part += `~${selectionValue.count}`;
+                            subParts.push(part);
                         }
                     }
 
@@ -2530,9 +2508,7 @@ export class UnitSearchFiltersService {
                 } else {
                     const values = filterState.value as string[];
                     if (values.length > 0) {
-                        // URL encode each value to handle spaces and special characters
-                        const encodedValues = values.map(v => encodeURIComponent(v));
-                        parts.push(`${key}:${encodedValues.join(',')}`);
+                        parts.push(`${key}:${values.join(',')}`);
                     }
                 }
             }
@@ -2541,10 +2517,108 @@ export class UnitSearchFiltersService {
         return parts.length > 0 ? parts.join('|') : null;
     }
 
+    /**
+     * Generate the public tags (pt) query parameter for all tags (semantic + dropdown).
+     * Maps tag names to their publicId@tagName format for public/foreign tags.
+     * Format: publicId1@tag1,publicId2@tag2
+     * 
+     * This separates tag names from their source information, allowing:
+     * - Clean filter URLs: `filters=_tags:MyTag,OtherTag`
+     * - Source mapping: `pt=abc123@MyTag,def456@OtherTag`
+     */
+    private generatePublicTagsParam(searchText: string, filterState: FilterState): string | null {
+        // Collect all tag names from both sources
+        const tagNames = new Set<string>();
+        
+        // 1. Tags from semantic query
+        if (searchText.trim()) {
+            const parsed = parseSemanticQueryAST(searchText, this.gameService.currentGameSystem());
+            const tagTokens = parsed.tokens.filter(t => t.field === 'tags');
+            for (const token of tagTokens) {
+                for (const value of token.values) {
+                    tagNames.add(value.toLowerCase());
+                }
+            }
+        }
+        
+        // 2. Tags from filterState (dropdown UI)
+        const tagsFilter = filterState['_tags'];
+        if (tagsFilter?.interactedWith && tagsFilter.value) {
+            const selection = tagsFilter.value as MultiStateSelection;
+            for (const [name, selectionValue] of Object.entries(selection)) {
+                if (selectionValue.state !== false) {
+                    tagNames.add(name.toLowerCase());
+                }
+            }
+        }
+        
+        if (tagNames.size === 0) return null;
+        
+        const myPublicId = this.userStateService.publicId();
+        const parts: string[] = [];
+        const includedKeys = new Set<string>();
+        
+        for (const tagNameLower of tagNames) {
+            // Check if user has this as a local tag
+            const nameTags = this.tagsService.getNameTags();
+            const chassisTags = this.tagsService.getChassisTags();
+            
+            // Find the original case version of the tag
+            let localTagName: string | null = null;
+            for (const t of Object.keys(nameTags)) {
+                if (t.toLowerCase() === tagNameLower) {
+                    localTagName = t;
+                    break;
+                }
+            }
+            if (!localTagName) {
+                for (const t of Object.keys(chassisTags)) {
+                    if (t.toLowerCase() === tagNameLower) {
+                        localTagName = t;
+                        break;
+                    }
+                }
+            }
+            
+            // Add local tag mapping
+            if (localTagName && myPublicId) {
+                const key = `${myPublicId}@${localTagName}`.toLowerCase();
+                if (!includedKeys.has(key)) {
+                    includedKeys.add(key);
+                    parts.push(`${myPublicId}@${localTagName}`);
+                }
+            }
+            
+            // Add all public tags (subscribed + temporary) with this name
+            const matchingPublicTags = this.publicTagsService.getAllPublicTags()
+                .filter(pt => pt.tagName.toLowerCase() === tagNameLower);
+            
+            for (const pt of matchingPublicTags) {
+                const key = `${pt.publicId}@${pt.tagName}`.toLowerCase();
+                if (!includedKeys.has(key)) {
+                    includedKeys.add(key);
+                    parts.push(`${pt.publicId}@${pt.tagName}`);
+                }
+            }
+            
+            // Add pending foreign tags (not yet subscribed but in URL)
+            const matchingPendingTags = this.pendingForeignTags()
+                .filter(pt => pt.tagName.toLowerCase() === tagNameLower);
+            
+            for (const pt of matchingPendingTags) {
+                const key = `${pt.publicId}@${pt.tagName}`.toLowerCase();
+                if (!includedKeys.has(key)) {
+                    includedKeys.add(key);
+                    parts.push(`${pt.publicId}@${pt.tagName}`);
+                }
+            }
+        }
+        
+        return parts.length > 0 ? parts.join(',') : null;
+    }
+
     private parseCompactFiltersFromUrl(filtersParam: string): FilterState {
         const filterState: FilterState = {};
-        const foreignTags: Array<{ publicId: string; tagName: string }> = [];
-        const myPublicId = this.userStateService.publicId();
 
         try {
             const parts = filtersParam.split('|');
@@ -2577,49 +2651,29 @@ export class UnitSearchFiltersService {
                         const items = valueStr.split(',');
 
                         for (const item of items) {
-                            let encodedName = item;
+                            let name = item;
                             let state: MultiState = 'or';
                             let count = 1;
 
                             // Parse count first
-                            const starIndex = encodedName.indexOf('~');
+                            const starIndex = name.indexOf('~');
                             if (starIndex !== -1) {
-                                count = parseInt(encodedName.substring(starIndex + 1)) || 1;
-                                encodedName = encodedName.substring(0, starIndex);
+                                count = parseInt(name.substring(starIndex + 1)) || 1;
+                                name = name.substring(0, starIndex);
                             }
 
                             // Parse state suffix
-                            if (encodedName.endsWith('.')) {
+                            if (name.endsWith('.')) {
                                 state = 'and';
-                                encodedName = encodedName.slice(0, -1);
-                            } else if (encodedName.endsWith('!')) {
+                                name = name.slice(0, -1);
+                            } else if (name.endsWith('!')) {
                                 state = 'not';
-                                encodedName = encodedName.slice(0, -1);
+                                name = name.slice(0, -1);
                             } else {
                                 state = 'or'; // default state
                             }
 
-                            // Decode the name to restore spaces and special characters
-                            const name = decodeURIComponent(encodedName);
-                            
-                            // Special handling for _tags: detect foreign tags (publicId@tagName format)
-                            if (key === '_tags') {
-                                const atIndex = name.indexOf('@');
-                                if (atIndex !== -1) {
-                                    const publicId = name.substring(0, atIndex);
-                                    const tagName = name.substring(atIndex + 1);
-                                    
-                                    // If this is our own publicId (or we don't know our publicId yet), treat as local tag
-                                    if (!myPublicId || publicId === myPublicId) {
-                                        selection[tagName] = { name: tagName, state, count };
-                                    } else {
-                                        // Foreign tag - queue for import dialog
-                                        foreignTags.push({ publicId, tagName });
-                                    }
-                                    continue;
-                                }
-                            }
-                            
+                            // Tags are just plain names - foreign tag detection uses pt parameter
                             selection[name] = { name, state, count };
                         }
 
@@ -2630,10 +2684,7 @@ export class UnitSearchFiltersService {
                             };
                         }
                     } else {
-                        // Decode each value to restore spaces and special characters
-                        const values = valueStr.split(',')
-                            .filter(Boolean)
-                            .map(v => decodeURIComponent(v));
+                        const values = valueStr.split(',').filter(Boolean);
                         if (values.length > 0) {
                             filterState[key] = {
                                 value: values,
@@ -2643,16 +2694,92 @@ export class UnitSearchFiltersService {
                     }
                 }
             }
-            
-            // Set pending foreign tags for later processing
-            if (foreignTags.length > 0) {
-                this.pendingForeignTags.set(foreignTags);
-            }
         } catch (error) {
             this.logger.warn('Failed to parse compact filters from URL: ' + error);
         }
 
         return filterState;
+    }
+
+    /**
+     * Parse the public tags (pt) query parameter to identify foreign tags.
+     * Format: publicId1@tag1,publicId2@tag2
+     * 
+     * Checks which tags are actually in use (semantic query OR dropdown filters)
+     * and returns only the foreign ones that need to be fetched/subscribed.
+     * Local tags (matching user's publicId) are filtered out.
+     */
+    private parsePublicTagsParam(
+        ptParam: string | null | undefined,
+        searchParam: string | null | undefined,
+        filterState: FilterState
+    ): Array<{ publicId: string; tagName: string }> {
+        if (!ptParam) return [];
+        
+        const myPublicId = this.userStateService.publicId();
+        const foreignTags: Array<{ publicId: string; tagName: string }> = [];
+        
+        try {
+            const referencedTagNames = new Set<string>();
+            
+            // 1. Tags from semantic query
+            if (searchParam) {
+                const parsed = parseSemanticQueryAST(searchParam, this.gameService.currentGameSystem());
+                const tagTokens = parsed.tokens.filter(t => t.field === 'tags');
+                
+                for (const token of tagTokens) {
+                    for (const value of token.values) {
+                        referencedTagNames.add(value.toLowerCase());
+                    }
+                }
+            }
+            
+            // 2. Tags from dropdown filters
+            const tagsFilter = filterState['_tags'];
+            if (tagsFilter?.value && typeof tagsFilter.value === 'object' && !Array.isArray(tagsFilter.value)) {
+                const tagSelection = tagsFilter.value as MultiStateSelection;
+                for (const tagName of Object.keys(tagSelection)) {
+                    referencedTagNames.add(tagName.toLowerCase());
+                }
+            }
+            
+            if (referencedTagNames.size === 0) return [];
+            
+            const mappings = ptParam.split(',');
+            for (const mapping of mappings) {
+                const atIndex = mapping.indexOf('@');
+                if (atIndex === -1) {
+                    continue;
+                };
+                
+                const publicId = mapping.substring(0, atIndex);
+                const tagName = mapping.substring(atIndex + 1);
+                
+                // Skip if this is the user's own tag
+                if (myPublicId && publicId === myPublicId) {
+                    continue;
+                };
+                
+                // Only include if this tag is actually referenced
+                if (!referencedTagNames.has(tagName.toLowerCase())) {
+                    continue;
+                }
+                
+                // Check if already subscribed to this tag
+                const isSubscribed = this.publicTagsService.getSubscribedTags()
+                    .some(pt => pt.publicId === publicId && 
+                               pt.tagName.toLowerCase() === tagName.toLowerCase());
+                
+                this.logger.info(`Public tag from URL: ${publicId}@${tagName}, subscribed: ${isSubscribed}`);
+                if (!isSubscribed) {
+                    foreignTags.push({ publicId, tagName });
+                }
+            }
+        } catch (error) {
+            this.logger.warn('Failed to parse public tags param from URL: ' + error);
+        }
+        
+        return foreignTags;
     }
 
     setFilter(key: string, value: any) {

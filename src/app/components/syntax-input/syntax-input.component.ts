@@ -157,8 +157,13 @@ export class SyntaxInputComponent {
         });
     }
 
-    /** Focus the input element */
+    /** Focus the input element (if no overlay/dialog is open) */
     focus() {
+        // Don't focus if a CDK overlay/dialog is open - prevents aria-hidden accessibility warning
+        const overlayContainer = document.querySelector('.cdk-overlay-container');
+        if (overlayContainer && overlayContainer.children.length > 0) {
+            return;
+        }
         this.inputEl()?.nativeElement.focus();
     }
 

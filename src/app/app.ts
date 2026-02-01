@@ -233,9 +233,7 @@ export class App {
                 const sharedUnitName = this.urlStateService.getInitialParam('shareUnit');
                 const tab = this.urlStateService.getInitialParam('tab') ?? undefined;
                 if (sharedUnitName) {
-                    // Find the unit by model name (decode first)
-                    const unitNameDecoded = decodeURIComponent(sharedUnitName);
-                    const unit = this.dataService.getUnitByName(unitNameDecoded);
+                    const unit = this.dataService.getUnitByName(sharedUnitName);
                     if (unit) {
                         this.showSingleUnitDetails(unit, tab);
                     }
