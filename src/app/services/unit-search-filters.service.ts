@@ -1789,11 +1789,15 @@ export class UnitSearchFiltersService {
                         const andEntries = Object.entries(selection).filter(([_, sel]) => sel.state === 'and');
 
                         if (andEntries.length > 0) {
-                            const andMap = new Map(andEntries.map(([name, sel]) => [name, sel.count]));
+                            // Use lowercase for all multistate filter comparisons for case-insensitivity
+                            const andMap = new Map(andEntries.map(([name, sel]) => [
+                                name.toLowerCase(),
+                                sel.count
+                            ]));
                             const notSet = new Set(
                                 Object.entries(selection)
                                     .filter(([_, sel]) => sel.state === 'not')
-                                    .map(([name]) => name)
+                                    .map(([name]) => name.toLowerCase())
                             );
 
                             // Pre-filter units that satisfy AND conditions
@@ -1811,10 +1815,10 @@ export class UnitSearchFiltersService {
                                         if ((cached.componentCounts.get(name) || 0) < requiredCount) return false;
                                     }
                                 } else {
-                                    // Handle other properties (simplified for brevity)
+                                    // Handle other properties with case-insensitive matching
                                     const propValue = getProperty(unit, conf.key);
                                     const values = Array.isArray(propValue) ? propValue : [propValue];
-                                    const valueSet = new Set(values);
+                                    const valueSet = new Set(values.map(v => String(v).toLowerCase()));
 
                                     for (const notName of notSet) {
                                         if (valueSet.has(notName)) return false;
@@ -1856,6 +1860,7 @@ export class UnitSearchFiltersService {
                         for (const unit of contextUnits) {
                             const cached = getUnitComponentData(unit);
                             for (const [name, count] of cached.componentCounts) {
+                                // Cache stores lowercase, so we accumulate by lowercase key
                                 totalCountsMap.set(name, (totalCountsMap.get(name) || 0) + count);
                             }
                         }
@@ -1869,8 +1874,9 @@ export class UnitSearchFiltersService {
                         };
 
                         // Add count only if needed and for component filters
+                        // Use lowercase lookup since cache stores lowercase keys
                         if (totalCountsMap) {
-                            option.count = totalCountsMap.get(name) || 0;
+                            option.count = totalCountsMap.get(name.toLowerCase()) || 0;
                         }
 
                         return option;
