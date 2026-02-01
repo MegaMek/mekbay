@@ -127,7 +127,6 @@ input {
   align-items: center;
   padding: 0.5em;
   background: var(--background-color-secondary);
-  border-radius: 4px;
   gap: 1em;
 }
 
@@ -165,7 +164,7 @@ input {
   display: flex;
   flex-direction: column;
   margin: 0.5em;
-  gap: 0.5em;
+  gap: 4px;
 }
 
 .tag-row {
@@ -173,10 +172,8 @@ input {
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
-  padding: 0.4em 0.5em;
   background: var(--background-color-secondary);
-  border-radius: 4px;
-  gap: 0.5em;
+  gap: 8px;
 }
 
 .tag-row .tag-name {
@@ -186,6 +183,7 @@ input {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: bold;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .tag-actions {
