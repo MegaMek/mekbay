@@ -16,6 +16,7 @@ import { CompactModeService } from '../../services/compact-mode.service';
 import { CBTForce } from '../../models/cbt-force.model';
 import { ASForce } from '../../models/as-force.model';
 import { ForceOverviewDialogComponent } from '../force-overview-dialog/force-overview-dialog.component';
+import { C3NetworkUtil } from '../../utils/c3-network.util';
 
 /*
  * Sidebar footer component
@@ -65,6 +66,20 @@ export class SidebarFooterComponent {
         return force.units().length > 0;
     });
 
+    /**
+     * Returns true if the force has any units with C3 network capability
+     */
+    hasC3Units = computed(() => {
+        const force = this.forceBuilderService.currentForce();
+        if (!force) return false;
+        const units = force.units();
+        if (units.length === 0) return false;
+        return units.some(forceUnit => {
+            const unit = forceUnit.getUnit();
+            return C3NetworkUtil.getC3Components(unit).length > 0;
+        });
+    });
+
     constructor() {
         inject(DestroyRef).onDestroy(() => this.closeAllMenus());
     }
@@ -83,6 +98,13 @@ export class SidebarFooterComponent {
         this.dialogsService.createDialog(ForceOverviewDialogComponent, {
             data: { force: currentForce }
         });
+    }
+
+    showC3NetworkDialog(): void {
+        const currentForce = this.forceBuilderService.currentForce();
+        if (!currentForce) return;
+        const readOnly = this.forceBuilderService.readOnlyForce();
+        this.forceBuilderService.openC3Network(currentForce, readOnly);
     }
 
     showLoadForceDialog(): void {
