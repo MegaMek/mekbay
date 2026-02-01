@@ -48,6 +48,44 @@ import { PublicTagsService } from './public-tags.service';
 // const PRECONFIGURED_TAGS = [];
 
 /**
+ * Maximum length for tag names.
+ */
+export const TAG_MAX_LENGTH = 16;
+
+/**
+ * Allowed characters in tag names: alphanumeric, space, hyphen, underscore, apostrophe.
+ * These are safe for URL serialization (don't conflict with ,|.:!~() delimiters).
+ */
+export const TAG_ALLOWED_PATTERN = /^[a-zA-Z0-9 \-_']+$/;
+
+/**
+ * Forbidden characters in tag names (used for error message).
+ */
+export const TAG_FORBIDDEN_CHARS = ', | . ! ~ : " ( )';
+
+/**
+ * Validate a tag name for allowed characters and length.
+ * @returns null if valid, or an error message string if invalid.
+ */
+export function validateTagName(tag: string): string | null {
+    const trimmed = tag.trim();
+    
+    if (trimmed.length === 0) {
+        return 'Tag name cannot be empty.';
+    }
+    
+    if (trimmed.length > TAG_MAX_LENGTH) {
+        return `Tag is too long. Maximum length is ${TAG_MAX_LENGTH} characters.`;
+    }
+    
+    if (!TAG_ALLOWED_PATTERN.test(trimmed)) {
+        return `Tag contains invalid characters. Only letters, numbers, spaces, hyphens, underscores, and apostrophes are allowed.`;
+    }
+    
+    return null; // Valid
+}
+
+/**
  * Service for handling unit tagging operations.
  * Provides a unified interface for adding/removing tags from units.
  */
@@ -178,8 +216,11 @@ export class TaggingService {
                 if (!newTag || newTag.trim().length === 0) {
                     return;
                 }
-                if (newTag.length > 16) {
-                    await this.dialogsService.showError('Tag is too long. Maximum length is 16 characters.', 'Invalid Tag');
+                
+                // Validate tag name
+                const validationError = validateTagName(newTag);
+                if (validationError) {
+                    await this.dialogsService.showError(validationError, 'Invalid Tag');
                     return;
                 }
 
@@ -295,8 +336,11 @@ export class TaggingService {
         if (!newTag || newTag.trim().length === 0) {
             return false;
         }
-        if (newTag.length > 16) {
-            await this.dialogsService.showError('Tag is too long. Maximum length is 16 characters.', 'Invalid Tag');
+        
+        // Validate tag name
+        const validationError = validateTagName(newTag);
+        if (validationError) {
+            await this.dialogsService.showError(validationError, 'Invalid Tag');
             return false;
         }
 

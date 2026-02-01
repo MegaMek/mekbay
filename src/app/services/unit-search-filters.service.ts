@@ -2587,7 +2587,7 @@ export class UnitSearchFiltersService {
                 const key = `${myPublicId}:${localTagName}`.toLowerCase();
                 if (!includedKeys.has(key)) {
                     includedKeys.add(key);
-                    parts.push(`${myPublicId}:${encodeURIComponent(localTagName)}`);
+                    parts.push(`${myPublicId}:${localTagName}`);
                 }
             }
             
@@ -2599,7 +2599,7 @@ export class UnitSearchFiltersService {
                 const key = `${pt.publicId}:${pt.tagName}`.toLowerCase();
                 if (!includedKeys.has(key)) {
                     includedKeys.add(key);
-                    parts.push(`${pt.publicId}:${encodeURIComponent(pt.tagName)}`);
+                    parts.push(`${pt.publicId}:${pt.tagName}`);
                 }
             }
             
@@ -2611,7 +2611,7 @@ export class UnitSearchFiltersService {
                 const key = `${pt.publicId}:${pt.tagName}`.toLowerCase();
                 if (!includedKeys.has(key)) {
                     includedKeys.add(key);
-                    parts.push(`${pt.publicId}:${encodeURIComponent(pt.tagName)}`);
+                    parts.push(`${pt.publicId}:${pt.tagName}`);
                 }
             }
         }
@@ -2755,7 +2755,7 @@ export class UnitSearchFiltersService {
                 };
                 
                 const publicId = mapping.substring(0, atIndex);
-                const tagName = decodeURIComponent(mapping.substring(atIndex + 1));
+                const tagName = mapping.substring(atIndex + 1);
                 
                 // Skip if this is the user's own tag
                 if (myPublicId && publicId === myPublicId) {
