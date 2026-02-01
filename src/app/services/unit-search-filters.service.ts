@@ -2059,8 +2059,13 @@ export class UnitSearchFiltersService {
                     if (selection && typeof selection === 'object') {
                         const activeSelections = Object.entries(selection)
                             .filter(([_, sel]) => sel.state !== false);
-                        const unavailableSelections = activeSelections
-                            .filter(([name, _]) => !availableOptionNames.has(name));
+                        
+                        // Only check unavailability if there ARE available options
+                        // If availableOptionNames is empty, it means no units match current filters,
+                        // not that the selected values are invalid
+                        const unavailableSelections = availableOptionNames.size > 0
+                            ? activeSelections.filter(([name, _]) => !availableOptionNames.has(name))
+                            : [];
                         
                         // Check for quantity constraints that can't be shown in UI
                         // UI can only represent: no operator (implicit >=1) or >= operator
@@ -2128,11 +2133,16 @@ export class UnitSearchFiltersService {
                     // For regular dropdowns, check string array
                     const selectedValues = filterValue as string[];
                     if (selectedValues && Array.isArray(selectedValues) && selectedValues.length > 0) {
-                        const unavailableValues = selectedValues.filter(v => !availableOptionNames.has(v));
-                        if (unavailableValues.length > 0 && unavailableValues.length === selectedValues.length) {
-                            // All selected values are unavailable - semantic only mode
-                            semanticOnly = true;
-                            displayText = unavailableValues.join(', ');
+                        // Only check unavailability if there ARE available options
+                        // If availableOptionNames is empty, it means no units match current filters,
+                        // not that the selected values are invalid
+                        if (availableOptionNames.size > 0) {
+                            const unavailableValues = selectedValues.filter(v => !availableOptionNames.has(v));
+                            if (unavailableValues.length > 0 && unavailableValues.length === selectedValues.length) {
+                                // All selected values are unavailable - semantic only mode
+                                semanticOnly = true;
+                                displayText = unavailableValues.join(', ');
+                            }
                         }
                     }
                 }
