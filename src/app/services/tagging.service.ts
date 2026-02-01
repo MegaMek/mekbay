@@ -53,15 +53,15 @@ import { PublicTagsService } from './public-tags.service';
 export const TAG_MAX_LENGTH = 16;
 
 /**
- * Allowed characters in tag names: alphanumeric, space, hyphen, underscore, apostrophe.
+ * Allowed characters in tag names.
  * These are safe for URL serialization (don't conflict with ,|.:!~() delimiters).
  */
-export const TAG_ALLOWED_PATTERN = /^[a-zA-Z0-9 \-_']+$/;
+export const TAG_ALLOWED_PATTERN = /^[a-zA-Z0-9 \-_'=><]+$/;
 
 /**
- * Forbidden characters in tag names (used for error message).
+ * List of allowed symbols for display in error messages.
  */
-export const TAG_FORBIDDEN_CHARS = ', | . ! ~ : " ( )';
+export const TAG_ALLOWED_SYMBOLS = "- _ ' = > <";
 
 /**
  * Validate a tag name for allowed characters and length.
@@ -79,7 +79,7 @@ export function validateTagName(tag: string): string | null {
     }
     
     if (!TAG_ALLOWED_PATTERN.test(trimmed)) {
-        return `Tag contains invalid characters. Only letters, numbers, spaces, hyphens, underscores, and apostrophes are allowed.`;
+        return `Tag contains invalid characters. Allowed: letters, numbers, spaces, ${TAG_ALLOWED_SYMBOLS}`;
     }
     
     return null; // Valid

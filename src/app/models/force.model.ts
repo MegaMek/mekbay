@@ -46,8 +46,8 @@ import { C3NetworkUtil } from '../utils/c3-network.util';
  * Author: Drake
  */
 const DEFAULT_GROUP_NAME = 'Main';
-const MAX_GROUPS = 12;
-const MAX_UNITS = 50;
+const MAX_GROUPS = 50;
+const MAX_UNITS = 100;
 
 export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     force: Force;
