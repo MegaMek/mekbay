@@ -2383,6 +2383,8 @@ export class UnitSearchFiltersService {
                 this.dataService.getEras().forEach(era => values.add(era.name));
             } else if (conf.key === 'faction') {
                 this.dataService.getFactions().forEach(faction => values.add(faction.name));
+            } else if (conf.key === 'forcePack') {
+                getForcePacks().forEach(pack => values.add(pack.name));
             }
         } else {
             if (conf.key === 'componentName') {
