@@ -32,6 +32,18 @@
     background-color: rgba(78, 201, 176, 0.2);
 }
 
+/* Public tags from other users (blue tint) */
+.tag-public {
+    background-color: rgba(66, 133, 244, 0.2);
+    border-color: rgba(66, 133, 244, 0.6);
+    color: #8ab4f8;
+}
+
+.tag-public.subscribed {
+    background-color: rgba(66, 133, 244, 0.3);
+    border-style: solid;
+}
+
 /* Add tag button */
 .add-tag-btn {
     display: flex;

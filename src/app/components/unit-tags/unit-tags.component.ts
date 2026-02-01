@@ -33,8 +33,9 @@
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit } from '../../models/units.model';
+import { Unit, PublicTagInfo } from '../../models/units.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import { PublicTagsService } from '../../services/public-tags.service';
 
 /** Event data emitted when the tag button is clicked */
 export interface TagClickEvent {
@@ -58,6 +59,7 @@ export interface TagClickEvent {
 })
 export class UnitTagsComponent {
     private filtersService = inject(UnitSearchFiltersService);
+    private publicTagsService = inject(PublicTagsService);
     unit = input.required<Unit>();
 
     /** 
@@ -82,7 +84,14 @@ export class UnitTagsComponent {
         return [...(this.unit()._chassisTags ?? [])];
     });
 
-    totalTagCount = computed(() => this.nameTags().length + this.chassisTags().length);
+    /** Public tags from other users (temporary or subscribed) */
+    publicTags = computed((): PublicTagInfo[] => {
+        this.filtersService.tagsVersion(); // dependency for cache invalidation
+        this.publicTagsService.version(); // dependency for public tags updates
+        return this.publicTagsService.getPublicTagsForUnit(this.unit());
+    });
+
+    totalTagCount = computed(() => this.nameTags().length + this.chassisTags().length + this.publicTags().length);
     hasTags = computed(() => this.totalTagCount() > 0);
 
     onTagClick(event: MouseEvent): void {

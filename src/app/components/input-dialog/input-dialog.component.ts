@@ -69,13 +69,13 @@ export interface InputDialogData {
                 [value]="data.defaultValue ?? ''"
                 [attr.min]="data.inputType === 'number' ? (data.minimumValue ?? 0) : null"
                 [attr.max]="data.inputType === 'number' && data.maximumValue !== undefined ? data.maximumValue : null"
-                (keydown.enter)="submit()"
+                (keydown.enter)="$event.preventDefault(); $event.stopPropagation(); submit()"
                 (input)="onInputChange($event)"
                 required
             />
         </div>
         <div dialog-actions>
-            @for (btn of buttons; let i = $index; track i) {
+            @for (btn of buttons; track btn.label) {
                 <button
                     (click)="btn.value === 'ok' ? submit() : close(null)"
                     [disabled]="btn.value === 'ok' && !isInputValid()"

@@ -6,6 +6,9 @@
         @for (tag of nameTags(); track $index) {
             <span class="tag tag-name">{{ tag }}</span>
         }
+        @for (pt of publicTags(); track pt.publicId + ':' + pt.tag) {
+            <span class="tag tag-public" [class.subscribed]="pt.subscribed" [title]="'From: ' + pt.publicId">{{ pt.tag }}</span>
+        }
     }
     <a class="add-tag-btn" (click)="onTagClick($event)" title="Add tag" aria-label="Add tag">
         @if (mode() === 'compact') {

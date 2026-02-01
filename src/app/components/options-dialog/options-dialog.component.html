@@ -64,6 +64,93 @@
                     <p>By setting the same ID on multiple devices, you can share your saved forces across them.</p>
                 </div>
             </div>
+            <div class="option-col">
+                <label>Public ID:</label>
+                <div class="option-row">
+                    <span class="readonly-value">{{ userPublicId() }}</span>
+                </div>
+                <div class="description">
+                    <p>Your Public ID is assigned by the server and can be shared with others to let them subscribe to your public tags.</p>
+                </div>
+            </div>
+        </div>
+        }
+        @if (activeTab() === 'Tags') {
+        <div class="tab-content">
+            <div class="option-col tags-description">
+                <div class="description">
+                    <p>Share your tags with others by copying the link and sending it to them.</p>
+                </div>
+            </div>
+            @if (userOwnTags().length > 0) {
+            <div class="tags-list">
+                @for (tag of userOwnTags(); track $index) {
+                <div class="tag-row">
+                    <span class="tag-name">{{ tag }}</span>
+                    <div class="tag-actions">
+                        <button class="bt-button icon" (click)="onCopyTagLink(tag)" title="Copy shareable link">
+                            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z"/></svg>
+                        </button>
+                        <button class="bt-button icon" (click)="onRenameTag(tag)" title="Rename this tag">
+                            <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                        </button>
+                        <button class="bt-button icon danger" (click)="onDeleteTag(tag)" title="Delete this tag">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M6 7V18C6 19.1046 6.89543 20 8 20H16C17.1046 20 18 19.1046 18 18V7M6 7H5M6 7H8M18 7H19M18 7H16M10 11V16M14 11V16M8 7V5C8 3.89543 8.89543 3 10 3H14C15.1046 3 16 3.89543 16 5V7M8 7H16"/></svg>
+                        </button>
+                    </div>
+                </div>
+                }
+            </div>
+            } @else {
+            <div class="empty-state">
+                <p>You don't have any tags yet. Create tags by searching units and clicking on the tag button 
+                    <svg class="inline-icon" fill="none" stroke="currentColor" width="20px" height="20px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                        <path d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z" stroke-width="1.5" />
+                        <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </p>
+            </div>
+            }
+
+            <div class="option-section-title">Subscribed Tags</div>
+            <div class="description" style="padding: 0 0.5em;">
+                <p>Tags you've subscribed to from other users.</p>
+            </div>
+            @if (!showSubscriptionInput()) {
+            <div class="option-row">
+                <button class="bt-button" (click)="onShowSubscriptionInput()">ADD SUBSCRIPTION</button>
+            </div>
+            } @else {
+            <div class="option-col subscription-input-container">
+                <div class="option-row">
+                    <input #subscriptionInput class="bt-input" [class.error]="!!subscriptionError()" 
+                        type="text" placeholder="publicId:tagName" 
+                        (keydown)="onSubscriptionKeydown($event)" />
+                    <button class="bt-button" (click)="onAddSubscription(subscriptionInput.value)">ADD</button>
+                    <button class="bt-button secondary" (click)="onCancelSubscription()">CANCEL</button>
+                </div>
+                @if (subscriptionError()) {
+                <div class="error-msg">{{ subscriptionError() }}</div>
+                }
+            </div>
+            }
+            @if (subscribedTags().length > 0) {
+            <div class="subscribed-tags-list">
+                @for (tag of subscribedTags(); track tag.publicId + ':' + tag.tagName) {
+                <div class="subscribed-tag-row">
+                    <span class="tag-info">
+                        <span class="tag-name">{{ tag.tagName }}</span>
+                        <span class="tag-owner">from {{ tag.publicId }}</span>
+                    </span>
+                    <button class="bt-button danger small" (click)="onUnsubscribePublicTag(tag.publicId, tag.tagName)">Unsubscribe</button>
+                </div>
+                }
+            </div>
+            } @else {
+            <div class="empty-state">
+                <p>You haven't subscribed to any public tags yet.</p>
+            </div>
+            }
         </div>
         }
         @if (activeTab() === 'Sheets') {

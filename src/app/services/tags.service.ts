@@ -32,7 +32,7 @@
  */
 
 import { Injectable, inject, signal } from '@angular/core';
-import { DbService, TagData, TagOp, StoredTags, StoredChassisTags } from './db.service';
+import { DbService, TagData, TagDataLegacy, TagEntry, UnitTagData, TagOp, StoredTags, StoredChassisTags } from './db.service';
 import { WsService } from './ws.service';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
@@ -101,33 +101,107 @@ export class TagsService {
     /** Initialize and load tags from storage */
     public async initialize(): Promise<void> {
         try {
-            this.cachedTagData = await this.dbService.getAllTagData();
+            const data = await this.dbService.getAllTagData();
+            
+            if (!data) {
+                // No data - start fresh with V3
+                this.cachedTagData = { tags: {}, timestamp: 0, formatVersion: 3 };
+            } else if (data.formatVersion === 3) {
+                // Already V3, use directly
+                this.cachedTagData = data as TagData;
+            } else {
+                // Legacy V1 format - migrate to V3
+                const legacyData = data as TagDataLegacy;
+                this.cachedTagData = this.migrateV1ToV3(
+                    legacyData.nameTags || {},
+                    legacyData.chassisTags || {},
+                    legacyData.timestamp || 0
+                );
+                await this.dbService.saveAllTagData(this.cachedTagData);
+                this.logger.info('Migrated tags from V1 to V3 format');
+            }
+            
             this.version.update(v => v + 1);
         } catch (err) {
             this.logger.error('Failed to load tags: ' + err);
         }
     }
+    
+    /**
+     * Migrate V1 format to V3 format.
+     * V1: main = { unitName: [tags] }, chassis = { chassisKey: [tags] }
+     * V3: tags = { lowercaseTagId: { label, units: {}, chassis: {} } }
+     */
+    private migrateV1ToV3(
+        nameTags: Record<string, string[]>,
+        chassisTags: Record<string, string[]>,
+        timestamp: number
+    ): TagData {
+        const tags: Record<string, TagEntry> = {};
+        
+        // Convert V1 nameTags: unitName -> [tags]
+        for (const [unitName, tagList] of Object.entries(nameTags)) {
+            for (const tag of tagList) {
+                const tagId = tag.toLowerCase();
+                if (!tags[tagId]) {
+                    tags[tagId] = { label: tag, units: {}, chassis: {} };
+                }
+                tags[tagId].units[unitName] = {};
+            }
+        }
+        
+        // Convert V1 chassisTags: chassisKey -> [tags]
+        for (const [chassisKey, tagList] of Object.entries(chassisTags)) {
+            for (const tag of tagList) {
+                const tagId = tag.toLowerCase();
+                if (!tags[tagId]) {
+                    tags[tagId] = { label: tag, units: {}, chassis: {} };
+                }
+                tags[tagId].chassis[chassisKey] = {};
+            }
+        }
+        
+        return { tags, timestamp, formatVersion: 3 };
+    }
 
     /** Get cached tag data (or load from storage if not cached) */
     public async getTagData(): Promise<TagData> {
         if (!this.cachedTagData) {
-            this.cachedTagData = await this.dbService.getAllTagData() ?? {
-                nameTags: {},
-                chassisTags: {},
-                timestamp: 0
-            };
+            await this.initialize();
         }
-        return this.cachedTagData;
+        return this.cachedTagData!;
     }
 
-    /** Get all name tags */
+    /** 
+     * Get all name tags in V2-compatible format for UI.
+     * Derives from V3: { tagId: { units: {unitName: {}} } } -> { tag: [unitNames] }
+     */
     public getNameTags(): StoredTags {
-        return this.cachedTagData?.nameTags ?? {};
+        if (!this.cachedTagData) return {};
+        const result: StoredTags = {};
+        for (const [tagId, entry] of Object.entries(this.cachedTagData.tags)) {
+            const unitNames = Object.keys(entry.units);
+            if (unitNames.length > 0) {
+                result[entry.label] = unitNames;
+            }
+        }
+        return result;
     }
 
-    /** Get all chassis tags */
+    /** 
+     * Get all chassis tags in V2-compatible format for UI.
+     * Derives from V3: { tagId: { chassis: {chassisKey: {}} } } -> { tag: [chassisKeys] }
+     */
     public getChassisTags(): StoredChassisTags {
-        return this.cachedTagData?.chassisTags ?? {};
+        if (!this.cachedTagData) return {};
+        const result: StoredChassisTags = {};
+        for (const [tagId, entry] of Object.entries(this.cachedTagData.tags)) {
+            const chassisKeys = Object.keys(entry.chassis);
+            if (chassisKeys.length > 0) {
+                result[entry.label] = chassisKeys;
+            }
+        }
+        return result;
     }
 
     // ================== Tag Modification ==================
@@ -146,9 +220,8 @@ export class TagsService {
         action: 'add' | 'remove'
     ): Promise<void> {
         const tagData = await this.getTagData();
-
         const trimmedTag = tag.trim();
-        const lowerTag = trimmedTag.toLowerCase();
+        const tagId = trimmedTag.toLowerCase();
         const now = Date.now();
         const ops: TagOp[] = [];
 
@@ -166,31 +239,20 @@ export class TagsService {
                 if (action === 'add') {
                     // When adding a chassis tag, remove any existing name tag with the same value
                     // This "expands" the tag from unit-specific to chassis-wide
-                    if (tagData.nameTags[unit.name]?.some(t => t.toLowerCase() === lowerTag)) {
-                        tagData.nameTags[unit.name] = tagData.nameTags[unit.name]
-                            .filter(t => t.toLowerCase() !== lowerTag);
-                        if (tagData.nameTags[unit.name].length === 0) {
-                            delete tagData.nameTags[unit.name];
-                        }
+                    if (this.hasUnitTag(tagData, tagId, unit.name)) {
+                        this.removeUnitTag(tagData, tagId, unit.name);
                         ops.push({ k: unit.name, t: trimmedTag, c: 0, a: 0, ts: now });
                     }
 
                     // Add to chassis tags if not already present
-                    if (!tagData.chassisTags[chassisKey]) {
-                        tagData.chassisTags[chassisKey] = [];
-                    }
-                    if (!tagData.chassisTags[chassisKey].some(t => t.toLowerCase() === lowerTag)) {
-                        tagData.chassisTags[chassisKey].push(trimmedTag);
+                    if (!this.hasChassisTag(tagData, tagId, chassisKey)) {
+                        this.addChassisTag(tagData, trimmedTag, chassisKey);
                         ops.push({ k: chassisKey, t: trimmedTag, c: 1, a: 1, ts: now });
                     }
                 } else {
                     // Remove from chassis tags
-                    if (tagData.chassisTags[chassisKey]?.some(t => t.toLowerCase() === lowerTag)) {
-                        tagData.chassisTags[chassisKey] = tagData.chassisTags[chassisKey]
-                            .filter(t => t.toLowerCase() !== lowerTag);
-                        if (tagData.chassisTags[chassisKey].length === 0) {
-                            delete tagData.chassisTags[chassisKey];
-                        }
+                    if (this.hasChassisTag(tagData, tagId, chassisKey)) {
+                        this.removeChassisTag(tagData, tagId, chassisKey);
                         ops.push({ k: chassisKey, t: trimmedTag, c: 1, a: 0, ts: now });
                     }
                 }
@@ -200,20 +262,13 @@ export class TagsService {
                 processedKeys.add(`n:${unit.name}`);
 
                 if (action === 'add') {
-                    if (!tagData.nameTags[unit.name]) {
-                        tagData.nameTags[unit.name] = [];
-                    }
-                    if (!tagData.nameTags[unit.name].some(t => t.toLowerCase() === lowerTag)) {
-                        tagData.nameTags[unit.name].push(trimmedTag);
+                    if (!this.hasUnitTag(tagData, tagId, unit.name)) {
+                        this.addUnitTag(tagData, trimmedTag, unit.name);
                         ops.push({ k: unit.name, t: trimmedTag, c: 0, a: 1, ts: now });
                     }
                 } else {
-                    if (tagData.nameTags[unit.name]?.some(t => t.toLowerCase() === lowerTag)) {
-                        tagData.nameTags[unit.name] = tagData.nameTags[unit.name]
-                            .filter(t => t.toLowerCase() !== lowerTag);
-                        if (tagData.nameTags[unit.name].length === 0) {
-                            delete tagData.nameTags[unit.name];
-                        }
+                    if (this.hasUnitTag(tagData, tagId, unit.name)) {
+                        this.removeUnitTag(tagData, tagId, unit.name);
                         ops.push({ k: unit.name, t: trimmedTag, c: 0, a: 0, ts: now });
                     }
                 }
@@ -221,7 +276,9 @@ export class TagsService {
         }
 
         // No actual changes made
-        if (ops.length === 0) return;
+        if (ops.length === 0) {
+            return;
+        }
 
         // Update timestamp
         tagData.timestamp = now;
@@ -244,8 +301,7 @@ export class TagsService {
      */
     public async removeTagFromUnits(units: Unit[], tag: string): Promise<void> {
         const tagData = await this.getTagData();
-
-        const lowerTag = tag.toLowerCase();
+        const tagId = tag.toLowerCase();
         const now = Date.now();
         const ops: TagOp[] = [];
 
@@ -256,28 +312,18 @@ export class TagsService {
         for (const unit of units) {
             const chassisKey = TagsService.getChassisTagKey(unit);
 
-            // Remove from name tags
-            if (!processedNameKeys.has(unit.name) && tagData.nameTags[unit.name]?.some(t => t.toLowerCase() === lowerTag)) {
+            // Remove from unit tags
+            if (!processedNameKeys.has(unit.name) && this.hasUnitTag(tagData, tagId, unit.name)) {
                 processedNameKeys.add(unit.name);
-                const originalTag = tagData.nameTags[unit.name].find(t => t.toLowerCase() === lowerTag) || tag;
-                tagData.nameTags[unit.name] = tagData.nameTags[unit.name]
-                    .filter(t => t.toLowerCase() !== lowerTag);
-                if (tagData.nameTags[unit.name].length === 0) {
-                    delete tagData.nameTags[unit.name];
-                }
-                ops.push({ k: unit.name, t: originalTag, c: 0, a: 0, ts: now });
+                this.removeUnitTag(tagData, tagId, unit.name);
+                ops.push({ k: unit.name, t: tag, c: 0, a: 0, ts: now });
             }
 
             // Remove from chassis tags
-            if (!processedChassisKeys.has(chassisKey) && tagData.chassisTags[chassisKey]?.some(t => t.toLowerCase() === lowerTag)) {
+            if (!processedChassisKeys.has(chassisKey) && this.hasChassisTag(tagData, tagId, chassisKey)) {
                 processedChassisKeys.add(chassisKey);
-                const originalTag = tagData.chassisTags[chassisKey].find(t => t.toLowerCase() === lowerTag) || tag;
-                tagData.chassisTags[chassisKey] = tagData.chassisTags[chassisKey]
-                    .filter(t => t.toLowerCase() !== lowerTag);
-                if (tagData.chassisTags[chassisKey].length === 0) {
-                    delete tagData.chassisTags[chassisKey];
-                }
-                ops.push({ k: chassisKey, t: originalTag, c: 1, a: 0, ts: now });
+                this.removeChassisTag(tagData, tagId, chassisKey);
+                ops.push({ k: chassisKey, t: tag, c: 1, a: 0, ts: now });
             }
         }
 
@@ -301,16 +347,241 @@ export class TagsService {
     }
 
     /**
+     * Check if a tag exists in the specified tag type (case-insensitive).
+     * @returns The actual tag label if it exists, or null if not found
+     */
+    public async tagExists(tag: string, tagType: 'name' | 'chassis'): Promise<string | null> {
+        const tagData = await this.getTagData();
+        const tagId = tag.toLowerCase();
+        const entry = tagData.tags[tagId];
+        if (!entry) return null;
+        
+        if (tagType === 'name') {
+            return Object.keys(entry.units).length > 0 ? entry.label : null;
+        } else {
+            return Object.keys(entry.chassis).length > 0 ? entry.label : null;
+        }
+    }
+
+    /**
+     * Check if a tag ID exists at all (regardless of whether it has units or chassis).
+     * @returns The actual tag label if it exists, or null if not found
+     */
+    public async tagIdExists(tag: string): Promise<string | null> {
+        const tagData = await this.getTagData();
+        const tagId = tag.toLowerCase();
+        const entry = tagData.tags[tagId];
+        return entry ? entry.label : null;
+    }
+
+    /**
+     * Rename a tag (including case-only changes).
+     * If the target tag exists and merge is true, merges ALL collections (units + chassis) from source into target.
+     * If merge is false and target exists, returns 'conflict'.
+     * 
+     * For merges, pushes full state to cloud (ops can't represent merge properly).
+     * This ensures subscribers get the complete merged data.
+     * 
+     * @returns 'success', 'not-found', or 'conflict'
+     */
+    public async renameTag(
+        oldTag: string, 
+        newTag: string, 
+        merge: boolean = false
+    ): Promise<'success' | 'not-found' | 'conflict'> {
+        const tagData = await this.getTagData();
+        const trimmedOld = oldTag.trim();
+        const trimmedNew = newTag.trim();
+        const oldId = trimmedOld.toLowerCase();
+        const newId = trimmedNew.toLowerCase();
+        const now = Date.now();
+
+        // Check if old tag exists
+        const oldEntry = tagData.tags[oldId];
+        if (!oldEntry) {
+            console.warn(`[TagsService] Tag "${trimmedOld}" not found for renaming`);
+            return 'not-found';
+        }
+
+        // Check if tag has any items at all
+        const hasUnits = Object.keys(oldEntry.units).length > 0;
+        const hasChassis = Object.keys(oldEntry.chassis).length > 0;
+        if (!hasUnits && !hasChassis) {
+            return 'not-found';
+        }
+
+        // Check if new tag already exists (different tag ID)
+        const newEntry = tagData.tags[newId];
+        const isConflict = newEntry && newId !== oldId;
+        
+        if (isConflict && !merge) {
+            return 'conflict';
+        }
+
+        const isMerge = isConflict && merge;
+
+        if (newId === oldId) {
+            // Just case change - update label and use incremental sync
+            oldEntry.label = trimmedNew;
+            tagData.timestamp = now;
+
+            // Generate rename ops for both collections that have items
+            const ops: TagOp[] = [];
+            if (hasUnits) {
+                ops.push({
+                    k: '',
+                    t: oldEntry.label,
+                    c: 0,  // units
+                    a: 2,  // rename
+                    ts: now,
+                    n: trimmedNew
+                });
+            }
+            if (hasChassis) {
+                ops.push({
+                    k: '',
+                    t: oldEntry.label,
+                    c: 1,  // chassis
+                    a: 2,  // rename
+                    ts: now,
+                    n: trimmedNew
+                });
+            }
+
+            await this.dbService.appendTagOps(ops, tagData);
+            this.cachedTagData = tagData;
+            this.refreshUnitsCallback?.(tagData);
+            this.notifyStoreUpdatedCallback?.();
+            this.version.update(v => v + 1);
+            void this.syncToCloud(ops);
+        } else {
+            // Different ID - merge or move
+            // For merge: combine both collections and delete source
+            // This requires full state sync since ops can't represent merge
+
+            if (!newEntry) {
+                // Create new entry with target label
+                tagData.tags[newId] = { 
+                    label: trimmedNew, 
+                    units: {}, 
+                    chassis: {} 
+                };
+            }
+
+            // Merge BOTH units and chassis from old to new
+            Object.assign(tagData.tags[newId].units, oldEntry.units);
+            Object.assign(tagData.tags[newId].chassis, oldEntry.chassis);
+
+            // Delete the old tag entirely
+            delete tagData.tags[oldId];
+
+            tagData.timestamp = now;
+
+            if (isMerge) {
+                // Merge operation: clear ops and push full state
+                // This ensures all clients and subscribers get the complete merged data
+                await this.dbService.saveAllTagData(tagData);
+                this.cachedTagData = tagData;
+                this.refreshUnitsCallback?.(tagData);
+                this.notifyStoreUpdatedCallback?.();
+                this.version.update(v => v + 1);
+
+                // Push full state to cloud - this triggers broadcast to other sessions
+                // and notifies public tag subscribers with full state
+                void this.pushFullStateToCloud();
+            } else {
+                // Simple rename (not merge) - use rename ops
+                const ops: TagOp[] = [];
+                if (hasUnits) {
+                    ops.push({
+                        k: '',
+                        t: trimmedOld,
+                        c: 0,
+                        a: 2,
+                        ts: now,
+                        n: trimmedNew
+                    });
+                }
+                if (hasChassis) {
+                    ops.push({
+                        k: '',
+                        t: trimmedOld,
+                        c: 1,
+                        a: 2,
+                        ts: now,
+                        n: trimmedNew
+                    });
+                }
+
+                await this.dbService.appendTagOps(ops, tagData);
+                this.cachedTagData = tagData;
+                this.refreshUnitsCallback?.(tagData);
+                this.notifyStoreUpdatedCallback?.();
+                this.version.update(v => v + 1);
+                void this.syncToCloud(ops);
+            }
+        }
+
+        return 'success';
+    }
+
+    /**
+     * Delete a tag entirely from both units and chassis.
+     * This removes the tag and all its associations.
+     */
+    public async deleteTag(tag: string): Promise<void> {
+        const tagData = await this.getTagData();
+        const tagId = tag.toLowerCase();
+        const now = Date.now();
+        const ops: TagOp[] = [];
+
+        const entry = tagData.tags[tagId];
+        if (!entry) return;
+
+        // Generate remove ops for each unit
+        for (const unitName of Object.keys(entry.units)) {
+            ops.push({ k: unitName, t: entry.label, c: 0, a: 0, ts: now });
+        }
+
+        // Generate remove ops for each chassis
+        for (const chassisKey of Object.keys(entry.chassis)) {
+            ops.push({ k: chassisKey, t: entry.label, c: 1, a: 0, ts: now });
+        }
+
+        // Delete the tag
+        delete tagData.tags[tagId];
+
+        // No changes made
+        if (ops.length === 0) {
+            return;
+        }
+
+        // Update timestamp
+        tagData.timestamp = now;
+
+        // Save state and operations atomically
+        await this.dbService.appendTagOps(ops, tagData);
+
+        // Update cached data and notify
+        this.cachedTagData = tagData;
+        this.refreshUnitsCallback?.(tagData);
+        this.notifyStoreUpdatedCallback?.();
+        this.version.update(v => v + 1);
+
+        // Sync operations to cloud (incremental, fire-and-forget)
+        void this.syncToCloud(ops);
+    }
+
+    /**
      * Check if a tag is assigned at the chassis level for any of the given units.
      */
     public async isChassisTag(units: Unit[], tag: string): Promise<boolean> {
         const tagData = await this.getTagData();
-        const lowerTag = tag.toLowerCase();
+        const tagId = tag.toLowerCase();
 
         for (const unit of units) {
             const chassisKey = TagsService.getChassisTagKey(unit);
-            const chassisTags = tagData.chassisTags[chassisKey] ?? [];
-            if (chassisTags.some(t => t.toLowerCase() === lowerTag)) {
+            if (this.hasChassisTag(tagData, tagId, chassisKey)) {
                 return true;
             }
         }
@@ -323,22 +594,74 @@ export class TagsService {
      */
     public async getTagType(unit: Unit, tag: string): Promise<'chassis' | 'name' | null> {
         const tagData = await this.getTagData();
-        const lowerTag = tag.toLowerCase();
+        const tagId = tag.toLowerCase();
         const chassisKey = TagsService.getChassisTagKey(unit);
 
         // Check chassis tags first
-        const chassisTags = tagData.chassisTags[chassisKey] ?? [];
-        if (chassisTags.some(t => t.toLowerCase() === lowerTag)) {
+        if (this.hasChassisTag(tagData, tagId, chassisKey)) {
             return 'chassis';
         }
 
-        // Check name tags
-        const nameTags = tagData.nameTags[unit.name] ?? [];
-        if (nameTags.some(t => t.toLowerCase() === lowerTag)) {
+        // Check unit tags
+        if (this.hasUnitTag(tagData, tagId, unit.name)) {
             return 'name';
         }
 
         return null;
+    }
+    
+    // ================== V3 Format Helpers ==================
+    // V3 format: tags = { tagId: { label, units: {}, chassis: {} } }
+    // Tag IDs are always lowercase for O(1) lookup
+    
+    /** Check if a unit has a specific tag */
+    private hasUnitTag(tagData: TagData, tagId: string, unitName: string): boolean {
+        return tagData.tags[tagId]?.units[unitName] !== undefined;
+    }
+    
+    /** Check if a chassis has a specific tag */
+    private hasChassisTag(tagData: TagData, tagId: string, chassisKey: string): boolean {
+        return tagData.tags[tagId]?.chassis[chassisKey] !== undefined;
+    }
+    
+    /** Add a tag to a unit */
+    private addUnitTag(tagData: TagData, tag: string, unitName: string): void {
+        const tagId = tag.toLowerCase();
+        if (!tagData.tags[tagId]) {
+            tagData.tags[tagId] = { label: tag, units: {}, chassis: {} };
+        }
+        tagData.tags[tagId].units[unitName] = {};
+    }
+    
+    /** Remove a tag from a unit */
+    private removeUnitTag(tagData: TagData, tagId: string, unitName: string): void {
+        const entry = tagData.tags[tagId];
+        if (!entry) return;
+        delete entry.units[unitName];
+        // Clean up empty tag
+        if (Object.keys(entry.units).length === 0 && Object.keys(entry.chassis).length === 0) {
+            delete tagData.tags[tagId];
+        }
+    }
+    
+    /** Add a tag to a chassis */
+    private addChassisTag(tagData: TagData, tag: string, chassisKey: string): void {
+        const tagId = tag.toLowerCase();
+        if (!tagData.tags[tagId]) {
+            tagData.tags[tagId] = { label: tag, units: {}, chassis: {} };
+        }
+        tagData.tags[tagId].chassis[chassisKey] = {};
+    }
+    
+    /** Remove a tag from a chassis */
+    private removeChassisTag(tagData: TagData, tagId: string, chassisKey: string): void {
+        const entry = tagData.tags[tagId];
+        if (!entry) return;
+        delete entry.chassis[chassisKey];
+        // Clean up empty tag
+        if (Object.keys(entry.units).length === 0 && Object.keys(entry.chassis).length === 0) {
+            delete tagData.tags[tagId];
+        }
     }
 
     // ================== Cloud Sync ==================
@@ -429,9 +752,7 @@ export class TagsService {
             const syncState = await this.dbService.getTagSyncState();
             const localData = await this.getTagData();
             const hasPendingOps = syncState.pendingOps.length > 0;
-            const hasLocalTags = 
-                Object.keys(localData.nameTags).length > 0 || 
-                Object.keys(localData.chassisTags).length > 0;
+            const hasLocalTags = Object.keys(localData.tags).length > 0;
 
             // Request server state info (timestamp) and any ops since our last sync
             const response = await this.wsService.sendAndWaitForResponse({
@@ -490,15 +811,20 @@ export class TagsService {
 
     /**
      * Apply cloud state (either full state or incremental ops).
+     * Server sends V3 format directly to protocol v2+ clients.
      */
     private async applyCloudState(response: any, serverTs: number): Promise<void> {
         if (response.fullState) {
-            // Server sent full state (migration or first sync)
-            const cloudData = response.fullState as TagData;
-            await this.dbService.saveAllTagData(cloudData);
+            // Server sent full state in V3 format
+            const v3Data: TagData = {
+                tags: response.fullState.tags || {},
+                timestamp: serverTs,
+                formatVersion: 3
+            };
+            await this.dbService.saveAllTagData(v3Data);
             await this.dbService.clearPendingTagOps(serverTs);
-            this.cachedTagData = cloudData;
-            this.refreshUnitsCallback?.(cloudData);
+            this.cachedTagData = v3Data;
+            this.refreshUnitsCallback?.(v3Data);
             this.notifyStoreUpdatedCallback?.();
             this.version.update(v => v + 1);
         } else if (response.ops && response.ops.length > 0) {
@@ -519,7 +845,7 @@ export class TagsService {
     }
 
     /**
-     * Merge cloud state with local pending operations.
+     * Merge cloud state with local pending operations (V3 format).
      */
     private async mergeCloudAndLocal(response: any, pendingOps: TagOp[], serverTs: number): Promise<void> {
         // Start with current local state
@@ -527,21 +853,24 @@ export class TagsService {
 
         // Apply cloud changes first (server ops or full state)
         if (response.fullState) {
-            // Merge cloud state into local: cloud additions get added, but don't remove local tags
-            const cloudData = response.fullState as TagData;
-            for (const [key, tags] of Object.entries(cloudData.nameTags || {})) {
-                if (!tagData.nameTags[key]) tagData.nameTags[key] = [];
-                for (const tag of tags) {
-                    if (!tagData.nameTags[key].some(t => t.toLowerCase() === tag.toLowerCase())) {
-                        tagData.nameTags[key].push(tag);
+            // Merge cloud V3 state into local: cloud additions get added, but don't remove local tags
+            const cloudTags = response.fullState.tags || {};
+            for (const [tagId, cloudEntry] of Object.entries(cloudTags) as [string, TagEntry][]) {
+                if (!tagData.tags[tagId]) {
+                    // New tag from cloud - add it
+                    tagData.tags[tagId] = { ...cloudEntry };
+                } else {
+                    // Tag exists locally - merge units and chassis
+                    const localEntry = tagData.tags[tagId];
+                    for (const [unitKey, unitData] of Object.entries(cloudEntry.units)) {
+                        if (!localEntry.units[unitKey]) {
+                            localEntry.units[unitKey] = unitData;
+                        }
                     }
-                }
-            }
-            for (const [key, tags] of Object.entries(cloudData.chassisTags || {})) {
-                if (!tagData.chassisTags[key]) tagData.chassisTags[key] = [];
-                for (const tag of tags) {
-                    if (!tagData.chassisTags[key].some(t => t.toLowerCase() === tag.toLowerCase())) {
-                        tagData.chassisTags[key].push(tag);
+                    for (const [chassisKey, chassisData] of Object.entries(cloudEntry.chassis)) {
+                        if (!localEntry.chassis[chassisKey]) {
+                            localEntry.chassis[chassisKey] = chassisData;
+                        }
                     }
                 }
             }
@@ -567,51 +896,50 @@ export class TagsService {
     }
 
     /**
-     * Apply tag operations to tag data.
+     * Apply tag operations to tag data (V3 format).
+     * Actions: 0 = remove, 1 = add, 2 = rename
      */
     private applyTagOps(tagData: TagData, ops: TagOp[]): void {
         for (const op of ops) {
-            const { k: key, t: tag, c: category, a: action } = op;
-            const lowerTag = tag.toLowerCase();
+            const { k: key, t: tag, c: category, a: action, q: quantity, n: newTag } = op;
+            const tagId = tag.toLowerCase();
 
-            if (category === 1) {
-                // Chassis tag
-                if (action === 1) {
-                    // Add
-                    if (!tagData.chassisTags[key]) {
-                        tagData.chassisTags[key] = [];
-                    }
-                    if (!tagData.chassisTags[key].some(t => t.toLowerCase() === lowerTag)) {
-                        tagData.chassisTags[key].push(tag);
-                    }
+            if (action === 2 && newTag) {
+                // Rename: move entry from old tagId to new tagId
+                const oldTagId = tagId;
+                const newTagId = newTag.toLowerCase();
+                if (tagData.tags[oldTagId]) {
+                    const entry = tagData.tags[oldTagId];
+                    entry.label = newTag; // Update to new case
+                    tagData.tags[newTagId] = entry;
+                    delete tagData.tags[oldTagId];
+                }
+            } else if (action === 1) {
+                // Add
+                if (!tagData.tags[tagId]) {
+                    tagData.tags[tagId] = { label: tag, units: {}, chassis: {} };
+                } else if (tagData.tags[tagId].label !== tag) {
+                    // Update case if different
+                    tagData.tags[tagId].label = tag;
+                }
+                const entry = tagData.tags[tagId];
+                if (category === 1) {
+                    entry.chassis[key] = quantity != null ? { q: quantity } : {};
                 } else {
-                    // Remove
-                    if (tagData.chassisTags[key]) {
-                        tagData.chassisTags[key] = tagData.chassisTags[key]
-                            .filter(t => t.toLowerCase() !== lowerTag);
-                        if (tagData.chassisTags[key].length === 0) {
-                            delete tagData.chassisTags[key];
-                        }
-                    }
+                    entry.units[key] = quantity != null ? { q: quantity } : {};
                 }
             } else {
-                // Name tag
-                if (action === 1) {
-                    // Add
-                    if (!tagData.nameTags[key]) {
-                        tagData.nameTags[key] = [];
+                // Remove (action === 0)
+                if (tagData.tags[tagId]) {
+                    const entry = tagData.tags[tagId];
+                    if (category === 1) {
+                        delete entry.chassis[key];
+                    } else {
+                        delete entry.units[key];
                     }
-                    if (!tagData.nameTags[key].some(t => t.toLowerCase() === lowerTag)) {
-                        tagData.nameTags[key].push(tag);
-                    }
-                } else {
-                    // Remove
-                    if (tagData.nameTags[key]) {
-                        tagData.nameTags[key] = tagData.nameTags[key]
-                            .filter(t => t.toLowerCase() !== lowerTag);
-                        if (tagData.nameTags[key].length === 0) {
-                            delete tagData.nameTags[key];
-                        }
+                    // Clean up empty entries
+                    if (Object.keys(entry.units).length === 0 && Object.keys(entry.chassis).length === 0) {
+                        delete tagData.tags[tagId];
                     }
                 }
             }

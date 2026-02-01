@@ -225,6 +225,17 @@ export interface Unit {
     _era?: Era; // Cached era for this unit
     _nameTags: string[]; // Tags assigned to this specific unit name
     _chassisTags: string[]; // Tags assigned to the chassis (applies to all variants)
+    _publicTags?: PublicTagInfo[]; // Tags from other users (temporary or subscribed)
+}
+
+/** Information about a public tag from another user */
+export interface PublicTagInfo {
+    /** The tag name */
+    tag: string;
+    /** The publicId of the tag owner */
+    publicId: string;
+    /** Whether this is a permanent subscription */
+    subscribed: boolean;
 }
 
 export interface Units {

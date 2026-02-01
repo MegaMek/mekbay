@@ -54,7 +54,7 @@ import { LoggerService } from './logger.service';
  * Author: Drake
  */
 const DB_NAME = 'mekbay';
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 const DB_STORE = 'store';
 const UNITS_KEY = 'units';
 const EQUIPMENT_KEY = 'equipment';
@@ -66,6 +66,7 @@ const CANVAS_STORE = 'canvasStore';
 const FORCE_STORE = 'forceStore';
 const TAGS_STORE = 'tagsStore';
 const SAVED_SEARCHES_STORE = 'savedSearchesStore';
+const PUBLIC_TAGS_STORE = 'publicTagsStore';
 const OPTIONS_KEY = 'options';
 const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
@@ -81,16 +82,20 @@ export interface StoredSheet {
     size: number; // Size of the blob in bytes
 }
 
+/**
+ * Tag data keyed by tag name -> unit names array (V2 format)
+ * Previously was unit name -> tags array (V1 format)
+ */
 export interface StoredTags {
-    [unitName: string]: string[];
+    [tagName: string]: string[];
 }
 
 /**
- * Chassis tags are stored by chassis+type key to apply to all variants of a chassis.
- * Key format: `${chassis}|${type}` e.g. "Atlas|Mek"
+ * Chassis tags keyed by tag name -> chassis key array (V2 format)
+ * Previously was chassis|type key -> tags array (V1 format)
  */
 export interface StoredChassisTags {
-    [chassisTypeKey: string]: string[];
+    [tagName: string]: string[];
 }
 
 /**
@@ -98,29 +103,85 @@ export interface StoredChassisTags {
  * Uses short property names for wire efficiency.
  */
 export interface TagOp {
-    /** Key: unit name (for name tags) or chassis|type (for chassis tags) */
+    /** Key: unit name (for name tags) or chassis|type (for chassis tags). Empty for rename. */
     k: string;
-    /** Tag name */
+    /** Tag name (original tag name for rename) */
     t: string;
     /** Category: 0=name, 1=chassis */
     c: 0 | 1;
-    /** Action: 0=remove, 1=add */
-    a: 0 | 1;
+    /** Action: 0=remove, 1=add, 2=rename */
+    a: 0 | 1 | 2;
     /** Timestamp in milliseconds */
     ts: number;
+    /** New tag name (only for rename action) */
+    n?: string;
+    /** Quantity (only for add, if > 1) */
+    q?: number;
 }
 
 /**
- * Combined tag data structure for local storage and cloud sync.
- * Contains both name-specific and chassis-wide tags.
+ * Data attached to a unit/chassis within a tag.
+ * Currently supports quantity, extensible for future properties.
+ */
+export interface UnitTagData {
+    /** Quantity, only present if > 1 */
+    q?: number;
+}
+
+/**
+ * A single tag entry containing its display label and associated units/chassis.
+ * Keys in units/chassis objects are the unit/chassis names.
+ */
+export interface TagEntry {
+    /** Display name with original case (e.g., "My Favorites") */
+    label: string;
+    /** Map of unit names to their tag data */
+    units: Record<string, UnitTagData>;
+    /** Map of chassis keys to their tag data */
+    chassis: Record<string, UnitTagData>;
+}
+
+/**
+ * V3 Tag data format - uses lowercase tag IDs as keys.
+ * This is the current storage format.
  */
 export interface TagData {
-    /** Tags keyed by unit name */
-    nameTags: StoredTags;
-    /** Tags keyed by chassis|type */
-    chassisTags: StoredChassisTags;
+    /** Map of lowercase tagId -> TagEntry */
+    tags: Record<string, TagEntry>;
+    /** Format version: 3 for V3 format */
+    formatVersion: 3;
     /** Timestamp of last modification for sync purposes */
     timestamp: number;
+}
+
+/**
+ * Legacy V1/V2 tag data format for migration.
+ * V1: nameTags = { unitName: [tags] }, chassisTags = { chassisKey: [tags] }
+ * V2: nameTags = { tag: [unitNames] }, chassisTags = { tag: [chassisKeys] }
+ */
+export interface TagDataLegacy {
+    nameTags: Record<string, string[]>;
+    chassisTags: Record<string, string[]>;
+    formatVersion?: number;
+    timestamp: number;
+}
+
+/**
+ * Public tag data from another user (subscribed or temporary)
+ */
+export interface PublicTagData {
+    /** The publicId of the tag owner */
+    publicId: string;
+    /** Tag name */
+    tagName: string;
+    /** Unit names with this tag */
+    unitNames: string[];
+    /** Chassis keys with this tag */
+    chassisKeys: string[];
+    /** Whether this is a permanent subscription */
+    subscribed: boolean;
+    /** Timestamp of last sync for incremental updates */
+    timestamp?: number;
 }
 
 /**
@@ -168,6 +229,8 @@ export interface UserData {
     uuid: string;
     publicId?: string;
     tabSubs?: string[];
+    /** Tag subscriptions: "publicId:tagName" pairs */
+    tagSubscriptions?: string[];
 }
 
 @Injectable({
@@ -286,6 +349,7 @@ export class DbService {
                 this.createStoreIfMissing(db, transaction, TAGS_STORE);
                 this.createStoreIfMissing(db, transaction, SAVED_SEARCHES_STORE);
                 this.createStoreIfMissing(db, transaction, CANVAS_STORE);
+                this.createStoreIfMissing(db, transaction, PUBLIC_TAGS_STORE);
             };
 
             request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
@@ -517,36 +581,51 @@ export class DbService {
     }
 
     /**
-     * Get all tag data (name tags, chassis tags, and timestamp) in a single read transaction.
+     * Get all tag data in a single read transaction.
+     * Reads V3 format ('tags' key) if available, otherwise reads legacy V1 format ('main', 'chassis' keys).
+     * Returns null if no data exists, or TagData | TagDataLegacy depending on what's stored.
      */
-    public async getAllTagData(): Promise<TagData | null> {
+    public async getAllTagData(): Promise<TagData | TagDataLegacy | null> {
         const db = await this.dbPromise;
         if (!db) return null; // Degraded mode
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(TAGS_STORE, 'readonly');
             const store = transaction.objectStore(TAGS_STORE);
 
-            const nameTags: StoredTags = {};
-            const chassisTags: StoredChassisTags = {};
-            let timestamp = 0;
-
+            // Try V3 format first
+            const tagsRequest = store.get('tags');
+            // Also read legacy keys for migration
             const mainRequest = store.get('main');
             const chassisRequest = store.get('chassis');
             const timestampRequest = store.get('timestamp');
+            const formatVersionRequest = store.get('formatVersion');
 
             transaction.oncomplete = () => {
-                resolve({
-                    nameTags: mainRequest.result || {},
-                    chassisTags: chassisRequest.result || {},
-                    timestamp: timestampRequest.result || 0
-                });
+                // If we have V3 'tags' key, return V3 format
+                if (tagsRequest.result) {
+                    resolve({
+                        tags: tagsRequest.result,
+                        timestamp: timestampRequest.result || 0,
+                        formatVersion: 3
+                    } as TagData);
+                } else if (mainRequest.result || chassisRequest.result) {
+                    // Legacy V1 format
+                    resolve({
+                        nameTags: mainRequest.result || {},
+                        chassisTags: chassisRequest.result || {},
+                        timestamp: timestampRequest.result || 0,
+                        formatVersion: formatVersionRequest.result
+                    } as TagDataLegacy);
+                } else {
+                    resolve(null);
+                }
             };
             transaction.onerror = () => reject(transaction.error);
         });
     }
 
     /**
-     * Save all tag data (name tags, chassis tags, and timestamp) in a single write transaction.
+     * Save V3 tag data and clean up legacy keys.
      */
     public async saveAllTagData(data: TagData): Promise<void> {
         const db = await this.dbPromise;
@@ -555,9 +634,14 @@ export class DbService {
             const transaction = db.transaction(TAGS_STORE, 'readwrite');
             const store = transaction.objectStore(TAGS_STORE);
 
-            store.put(data.nameTags, 'main');
-            store.put(data.chassisTags, 'chassis');
+            // Save V3 format
+            store.put(data.tags, 'tags');
             store.put(data.timestamp, 'timestamp');
+            store.put(3, 'formatVersion');
+
+            // Delete legacy keys (migration cleanup)
+            store.delete('main');
+            store.delete('chassis');
 
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
@@ -606,7 +690,7 @@ export class DbService {
     }
 
     /**
-     * Append operations to pending queue and update state atomically.
+     * Append operations to pending queue and update V3 tag data atomically.
      */
     public async appendTagOps(ops: TagOp[], tagData: TagData): Promise<void> {
         const db = await this.dbPromise;
@@ -622,11 +706,15 @@ export class DbService {
                 const currentPending: TagOp[] = pendingRequest.result || [];
                 const newPending = [...currentPending, ...ops];
                 
-                // Save all in one transaction
-                store.put(tagData.nameTags, 'main');
-                store.put(tagData.chassisTags, 'chassis');
+                // Save V3 format
+                store.put(tagData.tags, 'tags');
                 store.put(tagData.timestamp, 'timestamp');
+                store.put(3, 'formatVersion');
                 store.put(newPending, 'pendingOps');
+                
+                // Clean up legacy keys if they exist
+                store.delete('main');
+                store.delete('chassis');
             };
 
             transaction.oncomplete = () => resolve();
@@ -772,6 +860,74 @@ export class DbService {
             store.put(searches, 'main');
             store.put([], 'pendingOps');
             store.put(syncTs, 'lastSyncTs');
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    // ================== Public Tags (Subscribed) ==================
+
+    /**
+     * Get all subscribed public tags from IndexedDB.
+     * Returns a map of subKey -> PublicTagData
+     */
+    public async getSubscribedPublicTags(): Promise<Map<string, PublicTagData>> {
+        const db = await this.dbPromise;
+        if (!db) return new Map(); // Degraded mode
+        
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(PUBLIC_TAGS_STORE, 'readonly');
+            const store = transaction.objectStore(PUBLIC_TAGS_STORE);
+            const request = store.get('subscribed');
+
+            request.onsuccess = () => {
+                const data = request.result as Record<string, PublicTagData> | undefined;
+                if (data) {
+                    resolve(new Map(Object.entries(data)));
+                } else {
+                    resolve(new Map());
+                }
+            };
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    /**
+     * Save all subscribed public tags to IndexedDB.
+     */
+    public async saveSubscribedPublicTags(tags: Map<string, PublicTagData>): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
+
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(PUBLIC_TAGS_STORE, 'readwrite');
+            const store = transaction.objectStore(PUBLIC_TAGS_STORE);
+            
+            // Convert Map to plain object for storage
+            const data: Record<string, PublicTagData> = {};
+            for (const [key, value] of tags) {
+                data[key] = value;
+            }
+            
+            store.put(data, 'subscribed');
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /**
+     * Clear all subscribed public tags from IndexedDB.
+     */
+    public async clearSubscribedPublicTags(): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
+
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(PUBLIC_TAGS_STORE, 'readwrite');
+            const store = transaction.objectStore(PUBLIC_TAGS_STORE);
+            store.delete('subscribed');
 
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);

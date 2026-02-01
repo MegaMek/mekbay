@@ -35,6 +35,7 @@ import { computed, inject, Injectable, signal, viewChild } from '@angular/core';
 import { generateUUID } from './ws.service';
 import { Options } from '../models/options.model';
 import { DbService, UserData } from './db.service';
+import { LoggerService } from './logger.service';
 
 /*
  * Author: Drake
@@ -43,6 +44,7 @@ import { DbService, UserData } from './db.service';
 export class UserStateService {
     public isRegistered = signal<boolean>(false);
     private dbService = inject(DbService);
+    private logger = inject(LoggerService);
     private userData = signal<UserData>({ uuid: '' });
     public uuid = computed<string>(() => this.userData().uuid);
     public publicId = computed<string | undefined>(() => this.userData().publicId);
@@ -55,6 +57,7 @@ export class UserStateService {
         const userData = await this.dbService.getUserData();
         if (userData) {
             this.userData.set(userData);
+            this.logger.info(`User publicId: ${userData.publicId ?? 'not set'}`);
             return;
         }
         // Fallback for older versions that didn't have a user table
@@ -103,6 +106,7 @@ export class UserStateService {
         userData.publicId = publicId;
         this.userData.set({ ...userData });
         await this.dbService.saveUserData(userData);
+        this.logger.info(`User publicId updated: ${publicId}`);
     }
 
 }

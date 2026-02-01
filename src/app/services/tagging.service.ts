@@ -36,15 +36,16 @@ import { outputToObservable } from '@angular/core/rxjs-interop';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { firstValueFrom, takeUntil } from 'rxjs';
-import { Unit } from '../models/units.model';
+import { Unit, PublicTagInfo } from '../models/units.model';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { OverlayManagerService } from './overlay-manager.service';
 import { DialogsService } from './dialogs.service';
 import { TagSelectorComponent, TagSelectionEvent } from '../components/tag-selector/tag-selector.component';
 import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
 import { DataService } from './data.service';
+import { PublicTagsService } from './public-tags.service';
 
-const PRECONFIGURED_TAGS = ['Favorites', 'My Collection'];
+// const PRECONFIGURED_TAGS = [];
 
 /**
  * Service for handling unit tagging operations.
@@ -56,6 +57,7 @@ const PRECONFIGURED_TAGS = ['Favorites', 'My Collection'];
 export class TaggingService {
     private filtersService = inject(UnitSearchFiltersService);
     private dataService = inject(DataService);
+    private publicTagsService = inject(PublicTagsService);
     private overlayManager = inject(OverlayManagerService);
     private dialogsService = inject(DialogsService);
     private overlay = inject(Overlay);
@@ -83,14 +85,14 @@ export class TaggingService {
         const allChassisTags = this.filtersService.getAllChassisTags();
 
         // Add preconfigured tags to both sections if not present
-        for (const preconfiguredTag of PRECONFIGURED_TAGS) {
-            if (!allNameTags.includes(preconfiguredTag)) {
-                allNameTags.unshift(preconfiguredTag);
-            }
-            if (!allChassisTags.includes(preconfiguredTag)) {
-                allChassisTags.unshift(preconfiguredTag);
-            }
-        }
+        // for (const preconfiguredTag of PRECONFIGURED_TAGS) {
+        //     if (!allNameTags.includes(preconfiguredTag)) {
+        //         allNameTags.unshift(preconfiguredTag);
+        //     }
+        //     if (!allChassisTags.includes(preconfiguredTag)) {
+        //         allChassisTags.unshift(preconfiguredTag);
+        //     }
+        // }
 
         const portal = new ComponentPortal(TagSelectorComponent, null, this.injector);
         const { componentRef, closed } = this.overlayManager.createManagedOverlay(
@@ -108,6 +110,19 @@ export class TaggingService {
         // Pass data to the component
         componentRef.instance.nameTags.set(allNameTags);
         componentRef.instance.chassisTags.set(allChassisTags);
+        
+        // Get public tags for all selected units
+        const publicTagsSet = new Map<string, PublicTagInfo>();
+        for (const unit of units) {
+            const publicTags = this.publicTagsService.getPublicTagsForUnit(unit);
+            for (const pt of publicTags) {
+                const key = `${pt.publicId}:${pt.tag.toLowerCase()}`;
+                if (!publicTagsSet.has(key)) {
+                    publicTagsSet.set(key, pt);
+                }
+            }
+        }
+        componentRef.instance.publicTags.set(Array.from(publicTagsSet.values()));
 
         // Calculate tag states for all selected units
         const updateTagStates = () => {
@@ -186,6 +201,26 @@ export class TaggingService {
             updateTagStates();
             this.filtersService.invalidateTagsCache();
         });
+
+        // Handle unsubscribe from public tag
+        outputToObservable(componentRef.instance.unsubscribeRequested).pipe(takeUntil(closed)).subscribe(async (pt: PublicTagInfo) => {
+            // Block tag selector from closing while confirmation dialog is open
+            this.overlayManager.blockCloseUntil('tagSelector');
+            let success: boolean;
+            try {
+                success = await this.publicTagsService.unsubscribeWithConfirmation(pt.publicId, pt.tag);
+            } finally {
+                // Unblock after small delay to prevent immediate close from residual events
+                setTimeout(() => this.overlayManager.unblockClose('tagSelector'), 100);
+            }
+            
+            if (!success) return;
+            
+            // Update the public tags list in the selector
+            componentRef.instance.publicTags.update(tags => 
+                tags.filter(t => !(t.publicId === pt.publicId && t.tag.toLowerCase() === pt.tag.toLowerCase()))
+            );
+        });
     }
 
     /**
@@ -239,5 +274,92 @@ export class TaggingService {
      */
     async openTagSelectorForUnit(unit: Unit, anchorElement?: HTMLElement | null): Promise<void> {
         return this.openTagSelector([unit], anchorElement);
+    }
+
+    /**
+     * Renames a tag with user prompts for new name and merge confirmation.
+     * Can be called from any context (tag selector, options dialog, etc.)
+     * 
+     * @param oldTag The current tag name to rename
+     * @param tagType Whether this is a 'name' or 'chassis' tag (optional - will check both if not specified)
+     * @returns true if rename was successful, false if cancelled or failed
+     */
+    async renameTag(oldTag: string, tagType?: 'name' | 'chassis'): Promise<boolean> {
+        const newTag = await this.dialogsService.prompt(
+            'Enter new tag name:',
+            `Rename Tag "${oldTag}"`,
+            oldTag
+        );
+
+        // User cancelled or entered empty string
+        if (!newTag || newTag.trim().length === 0) {
+            return false;
+        }
+        if (newTag.length > 16) {
+            await this.dialogsService.showError('Tag is too long. Maximum length is 16 characters.', 'Invalid Tag');
+            return false;
+        }
+
+        const trimmedNew = newTag.trim();
+        
+        // No change (case-insensitive for same tag, but allow case changes)
+        if (trimmedNew.toLowerCase() === oldTag.toLowerCase() && trimmedNew === oldTag) {
+            return false;
+        }
+
+        // Determine tag type if not specified - check both stores
+        let effectiveTagType = tagType;
+        if (!effectiveTagType) {
+            const nameExists = await this.dataService.tagExists(oldTag, 'name');
+            const chassisExists = await this.dataService.tagExists(oldTag, 'chassis');
+            if (nameExists && chassisExists) {
+                // Tag exists in both - rename both
+                effectiveTagType = 'name'; // Will handle chassis below
+            } else if (nameExists) {
+                effectiveTagType = 'name';
+            } else if (chassisExists) {
+                effectiveTagType = 'chassis';
+            } else {
+                await this.dialogsService.showError('Tag not found.', 'Rename Failed');
+                return false;
+            }
+        }
+
+        // Check if the target tag already exists (and is a different tag)
+        const existingTag = await this.dataService.tagIdExists(trimmedNew);
+        const isDifferentTag = existingTag && existingTag.toLowerCase() !== oldTag.toLowerCase();
+        
+        let merge = false;
+        if (isDifferentTag) {
+            // Prompt user to merge
+            merge = await this.dialogsService.requestConfirmation(
+                `A tag named "${existingTag}" already exists. Would you like to merge "${oldTag}" into "${existingTag}"? All units from both tags will be combined.`,
+                'Merge Tags?',
+                'info'
+            );
+            
+            if (!merge) {
+                // User declined merge, abort rename
+                return false;
+            }
+        }
+
+        // Rename (or merge) the tag - renameTag now handles BOTH collections automatically
+        const result = await this.dataService.renameTag(oldTag, trimmedNew, merge);
+        
+        if (result === 'not-found') {
+            await this.dialogsService.showError('Tag not found.', 'Rename Failed');
+            return false;
+        }
+        if (result === 'conflict') {
+            // Should not happen since we already prompted for merge
+            await this.dialogsService.showError('Tag name conflict.', 'Rename Failed');
+            return false;
+        }
+
+        // No need to rename "other type" separately - renameTag now merges BOTH collections
+
+        this.filtersService.invalidateTagsCache();
+        return true;
     }
 }

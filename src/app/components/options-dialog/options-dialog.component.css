@@ -106,3 +106,133 @@ input {
 .log-error {
   color: #d32f2f;
 }
+
+.readonly-value {
+  color: var(--text-color-secondary);
+  font-family: monospace;
+  font-size: 0.9em;
+  user-select: all;
+}
+
+.subscribed-tags-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.5em;
+}
+
+.subscribed-tag-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5em;
+  background: var(--background-color-secondary);
+  border-radius: 4px;
+  gap: 1em;
+}
+
+.tag-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  min-width: 0;
+  flex: 1;
+}
+
+.tag-name {
+  font-weight: bold;
+}
+
+.tag-owner {
+  font-size: 0.8em;
+  color: var(--text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bt-button.small {
+  padding: 0.3em 0.6em;
+  font-size: 0.85em;
+}
+
+.tags-description {
+  margin-top: 1em;
+}
+
+/* Tags tab styles */
+.tags-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0.5em;
+  gap: 0.5em;
+}
+
+.tag-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4em 0.5em;
+  background: var(--background-color-secondary);
+  border-radius: 4px;
+  gap: 0.5em;
+}
+
+.tag-row .tag-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: bold;
+}
+
+.tag-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.tag-actions .bt-button.icon {
+  padding: 4px;
+}
+
+.tag-actions .bt-button.icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.subscription-input-container {
+  margin: 0.5em;
+}
+
+.subscription-input-container .option-row {
+  padding: 0;
+}
+
+.empty-state {
+  padding: 1em;
+  text-align: center;
+  color: var(--text-color-secondary);
+  font-style: italic;
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+.inline-icon {
+  vertical-align: middle;
+  display: inline-block;
+  margin: 0 0.1em;
+}
+
+.bt-button.secondary {
+  background: var(--background-color-secondary);
+  color: var(--text-color);
+}
+
+.bt-button.secondary:hover {
+  background: var(--background-color-tertiary);
+}

@@ -71,7 +71,7 @@ export interface ConfirmDialogData<T = any> {
             }
         </div>
         <div dialog-actions>
-            @for (btn of data.buttons; let i = $index; track i) {
+            @for (btn of data.buttons; track btn.label) {
                 <button
                     (click)="close(btn.value)"
                     class="bt-button" [ngClass]="btn.class"

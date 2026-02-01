@@ -136,6 +136,11 @@ export class App {
         this.dataService.initialize();
         this.savedSearchesService.initialize();
         this.savedSearchesService.registerWsHandlers();
+        
+        // Set up foreign tag import dialog callback
+        this.unitSearchFiltersService.setForeignTagDialogCallback(
+            (publicId, tagNames) => this.showForeignTagImportDialog(tagNames)
+        );
 
         // iOS doesn't fire beforeinstallprompt, so we check manually
         if (isIOS() && !isRunningStandalone()) {
@@ -243,6 +248,9 @@ export class App {
                 }
                 // Signal that we're done reading URL state
                 this.urlStateService.markConsumerReady('app');
+                
+                // Process any pending foreign tags from URL (async, don't block)
+                this.unitSearchFiltersService.processPendingForeignTags();
             }
         });
         inject(DestroyRef).onDestroy(() => {
@@ -406,5 +414,26 @@ export class App {
 
     closeMenu() {
         this.layoutService.closeMenu();
+    }
+
+    
+    
+    /**
+     * Show the foreign tag import dialog and wait for user choice.
+     * @param tagNames Array of tag names being imported
+     * @returns User's choice: 'ignore', 'temporary', or 'subscribe'
+     */
+    async showForeignTagImportDialog(tagNames: string[]): Promise<'ignore' | 'temporary' | 'subscribe'> {
+        const tagList = tagNames.join(', ');
+        return this.dialogService.choose<'ignore' | 'temporary' | 'subscribe'>(
+            'Import Foreign Tags',
+            `The URL contains tags from another user: ${tagList}.\n\nHow would you like to handle these tags?`,
+            [
+                { label: 'IGNORE', value: 'ignore' },
+                { label: 'TEMPORARY', value: 'temporary' },
+                { label: 'SUBSCRIBE', value: 'subscribe' }
+            ],
+            'ignore'
+        );
     }
 }

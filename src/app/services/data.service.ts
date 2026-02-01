@@ -38,6 +38,7 @@ import { Faction, Factions } from '../models/factions.model';
 import { Era, Eras } from '../models/eras.model';
 import { DbService, TagData, SavedSearchOp, StoredSavedSearches } from './db.service';
 import { TagsService } from './tags.service';
+import { PublicTagsService } from './public-tags.service';
 import { ADVANCED_FILTERS, AdvFilterType, SerializedSearchFilter } from './unit-search-filters.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { Equipment, EquipmentData, EquipmentMap, RawEquipmentData, createEquipment } from '../models/equipment.model';
@@ -125,6 +126,7 @@ export class DataService {
     private userStateService = inject(UserStateService);
     private unitInitializer = inject(UnitInitializerService);
     private tagsService = inject(TagsService);
+    private publicTagsService = inject(PublicTagsService);
     private destroyRef = inject(DestroyRef);
 
     isDataReady = signal(false);
@@ -382,20 +384,51 @@ export class DataService {
 
         // Register WS message handlers for tag sync (handled by TagsService)
         this.tagsService.registerWsHandlers();
+
+        // Wire up PublicTagsService callback
+        this.publicTagsService.setRefreshUnitsCallback(() => {
+            this.applyPublicTagsToUnits();
+        });
+
+        // Initialize PublicTagsService (loads cached tags from IndexedDB)
+        this.publicTagsService.initialize();
+
+        // Register WS handlers for public tag sync
+        this.publicTagsService.registerWsHandlers();
     }
 
     /**
      * Apply tag data to all loaded units.
      * Called by TagsService when tags change.
+     * 
+     * V3 format: tags = { tagId: { label, units: {unitName: {}}, chassis: {chassisKey: {}} } }
      */
     private applyTagDataToUnits(tagData: TagData | null): void {
-        const nameTags = tagData?.nameTags || {};
-        const chassisTags = tagData?.chassisTags || {};
+        const tags = tagData?.tags || {};
 
         for (const unit of this.getUnits()) {
             const chassisKey = DataService.getChassisTagKey(unit);
-            unit._nameTags = nameTags[unit.name] ?? [];
-            unit._chassisTags = chassisTags[chassisKey] ?? [];
+            
+            // V3 format: find all tags that have this unit in their units map
+            unit._nameTags = Object.values(tags)
+                .filter(entry => entry.units[unit.name] !== undefined)
+                .map(entry => entry.label);
+            
+            // V3 format: find all tags that have this chassis in their chassis map
+            unit._chassisTags = Object.values(tags)
+                .filter(entry => entry.chassis[chassisKey] !== undefined)
+                .map(entry => entry.label);
+        }
+        this.tagsVersion.set(this.tagsVersion() + 1);
+    }
+
+    /**
+     * Apply public tags to all loaded units.
+     * Called by PublicTagsService when public tags change (import/subscribe/update).
+     */
+    private applyPublicTagsToUnits(): void {
+        for (const unit of this.getUnits()) {
+            unit._publicTags = this.publicTagsService.getPublicTagsForUnit(unit);
         }
         this.tagsVersion.set(this.tagsVersion() + 1);
     }
@@ -824,11 +857,18 @@ export class DataService {
         try {
             await this.checkForUpdate();
             this.logger.info('All data stores are ready.');
+            // Apply public tags to units now that data is ready
+            // (PublicTagsService.initialize() may have loaded cached tags before units were ready)
+            this.applyPublicTagsToUnits();
             this.isDataReady.set(true);
         } catch (error) {
             this.logger.error('Failed to initialize data: ' + error);
             // Check if we have any data loaded despite the error
             const hasData = this.remoteStores.every(store => !!this.data[store.key as keyof LocalStore]);
+            if (hasData) {
+                // Apply public tags even on partial load
+                this.applyPublicTagsToUnits();
+            }
             this.isDataReady.set(hasData);
         } finally {
             this.isDownloading.set(false);
@@ -1290,6 +1330,36 @@ export class DataService {
      */
     public async removeTagFromUnits(units: Unit[], tag: string): Promise<void> {
         return this.tagsService.removeTagFromUnits(units, tag);
+    }
+
+    /**
+     * Check if a tag exists in a specific collection (case-insensitive).
+     * @returns The actual tag name if it exists (with original case), or null if not found
+     */
+    public async tagExists(tag: string, tagType: 'name' | 'chassis'): Promise<string | null> {
+        return this.tagsService.tagExists(tag, tagType);
+    }
+
+    /**
+     * Check if a tag ID exists at all (regardless of collection).
+     * @returns The actual tag name if it exists (with original case), or null if not found
+     */
+    public async tagIdExists(tag: string): Promise<string | null> {
+        return this.tagsService.tagIdExists(tag);
+    }
+
+    /**
+     * Rename a tag (including case-only changes).
+     * If merge is true and target exists, merges BOTH collections (units + chassis) into target.
+     * Delegates to TagsService.
+     * @returns 'success', 'not-found', or 'conflict'
+     */
+    public async renameTag(
+        oldTag: string, 
+        newTag: string, 
+        merge: boolean = false
+    ): Promise<'success' | 'not-found' | 'conflict'> {
+        return this.tagsService.renameTag(oldTag, newTag, merge);
     }
 
     /**

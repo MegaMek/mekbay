@@ -45,6 +45,10 @@ import { GameService } from '../../services/game.service';
 import { GameSystem } from '../../models/common.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
+import { PublicTagsService } from '../../services/public-tags.service';
+import { TagsService } from '../../services/tags.service';
+import { TaggingService } from '../../services/tagging.service';
+import { ToastService } from '../../services/toast.service';
 
 /*
  * Author: Drake
@@ -67,15 +71,34 @@ export class OptionsDialogComponent {
     dialogsService = inject(DialogsService);
     spriteStorageService = inject(SpriteStorageService);
     dataService = inject(DataService);
+    publicTagsService = inject(PublicTagsService);
+    tagsService = inject(TagsService);
+    taggingService = inject(TaggingService);
+    toastService = inject(ToastService);
     isIOS = isIOS();
     
     tabs = computed(() => {
-        return ['General', 'Sheets', 'Alpha Strike', 'Advanced', 'Logs'];
+        return ['General', 'Tags', 'Sheets', 'Alpha Strike', 'Advanced', 'Logs'];
     });
     activeTab = signal(this.tabs()[0]);
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
+    subscriptionInput = viewChild<ElementRef<HTMLInputElement>>('subscriptionInput');
     userUuid = computed(() => this.userStateService.uuid() || '');
+    userPublicId = computed(() => this.userStateService.publicId() || 'Not registered');
+    subscribedTags = computed(() => {
+        this.publicTagsService.version(); // depend on version for reactivity
+        return this.publicTagsService.getSubscribedTags();
+    });
+    userOwnTags = computed(() => {
+        this.tagsService.version(); // depend on version for reactivity
+        const nameTags = this.tagsService.getNameTags();
+        const chassisTags = this.tagsService.getChassisTags();
+        const allTags = new Set([...Object.keys(nameTags), ...Object.keys(chassisTags)]);
+        return Array.from(allTags).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    });
+    showSubscriptionInput = signal(false);
+    subscriptionError = signal('');
     userUuidError = '';
     sheetCacheSize = signal(0);
     sheetCacheCount = signal(0);
@@ -318,5 +341,133 @@ export class OptionsDialogComponent {
             this.userUuidError = e?.message || 'An unknown error occurred.';
             return;
         }
+    }
+
+    async onUnsubscribePublicTag(publicId: string, tagName: string) {
+        await this.publicTagsService.unsubscribeWithConfirmation(publicId, tagName);
+    }
+
+    onShowSubscriptionInput() {
+        this.showSubscriptionInput.set(true);
+        this.subscriptionError.set('');
+        // Focus input after render
+        setTimeout(() => {
+            this.subscriptionInput()?.nativeElement.focus();
+        }, 0);
+    }
+
+    onCancelSubscription() {
+        this.showSubscriptionInput.set(false);
+        this.subscriptionError.set('');
+        const input = this.subscriptionInput();
+        if (input) input.nativeElement.value = '';
+    }
+
+    async onSubscriptionKeydown(event: KeyboardEvent) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            this.onCancelSubscription();
+        } else if (event.key === 'Enter') {
+            event.preventDefault();
+            const input = this.subscriptionInput();
+            if (input) {
+                await this.onAddSubscription(input.nativeElement.value);
+            }
+        }
+    }
+
+    async onAddSubscription(value: string) {
+        this.subscriptionError.set('');
+        const trimmed = value.trim();
+        
+        if (!trimmed) {
+            this.subscriptionError.set('Please enter a subscription in the format publicId:tagName');
+            return;
+        }
+
+        // Parse publicId:tagName format
+        const colonIndex = trimmed.indexOf(':');
+        if (colonIndex === -1) {
+            this.subscriptionError.set('Invalid format. Use publicId:tagName (e.g., abc123:MyTag)');
+            return;
+        }
+
+        const publicId = trimmed.substring(0, colonIndex).trim();
+        const tagName = trimmed.substring(colonIndex + 1).trim();
+
+        if (!publicId || !tagName) {
+            this.subscriptionError.set('Both publicId and tagName are required');
+            return;
+        }
+
+        // Check if trying to subscribe to own tags
+        if (publicId === this.userPublicId()) {
+            this.subscriptionError.set('You cannot subscribe to your own tags');
+            return;
+        }
+
+        // Check if already subscribed
+        if (this.publicTagsService.isTagSubscribed(publicId, tagName)) {
+            this.subscriptionError.set('Already subscribed to this tag');
+            return;
+        }
+
+        try {
+            const success = await this.publicTagsService.subscribe(publicId, tagName);
+            if (success) {
+                this.showSubscriptionInput.set(false);
+                const input = this.subscriptionInput();
+                if (input) input.nativeElement.value = '';
+            } else {
+                this.subscriptionError.set('Failed to subscribe. The tag may not exist or is not public.');
+            }
+        } catch (e: any) {
+            this.subscriptionError.set(e?.message || 'Failed to subscribe');
+        }
+    }
+
+    async onCopyTagLink(tagName: string) {
+        const publicId = this.userPublicId();
+        if (publicId === 'Not registered') {
+            this.toastService.showToast('You need to be registered to share tags', 'error');
+            return;
+        }
+        const link = `${publicId}:${tagName}`;
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(link);
+            } else {
+                // Fallback for older browsers (iOS < 13.4, older Firefox)
+                const textArea = document.createElement('textarea');
+                textArea.value = link;
+                textArea.style.position = 'fixed';
+                textArea.style.opacity = '0';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+            }
+            this.toastService.showToast(`Copied: ${link}`, 'success');
+        } catch {
+            this.toastService.showToast('Failed to copy to clipboard', 'error');
+        }
+    }
+
+    async onDeleteTag(tagName: string) {
+        const confirmed = await this.dialogsService.requestConfirmation(
+            `Are you sure you want to delete the tag "${tagName}"? This will remove the tag from all units.`,
+            'Delete Tag',
+            'danger'
+        );
+        if (!confirmed) return;
+
+        await this.tagsService.deleteTag(tagName);
+        this.toastService.showToast(`Tag "${tagName}" deleted`, 'success');
+    }
+
+    async onRenameTag(tagName: string) {
+        await this.taggingService.renameTag(tagName);
     }
 }

@@ -32,8 +32,10 @@
     transition: background-color 0.2s;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
+    user-select: none;
+    box-sizing: border-box;
+    min-width: 0;
 }
 
 .tag-option:hover {
@@ -88,12 +90,10 @@
     flex-shrink: 0;
 }
 
-.tag-remove-btn {
+.tag-action-btn {
     background: transparent;
     border: none;
     color: #999;
-    font-size: 1.4em;
-    font-weight: bold;
     cursor: pointer;
     padding: 0;
     height: 24px;
@@ -105,6 +105,11 @@
     transition: color 0.2s;
     flex-shrink: 0;
     line-height: 1;
+}
+
+.tag-remove-btn {
+    font-size: 1.4em;
+    font-weight: bold;
 }
 
 .tag-remove-btn:hover {
@@ -121,4 +126,31 @@
 
 .tag-list .tag-option:last-child {
     border-bottom: none;
+}
+
+/* Public tags section */
+.tag-section-header {
+    padding: 6px 10px;
+    font-size: 0.8em;
+    color: var(--text-color-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tag-section-public .tag-option-public {
+    color: #8ab4f8;
+    cursor: default;
+}
+
+.tag-option-public:hover {
+    background-color: transparent;
+}
+
+.tag-option-public.subscribed {
+    color: #58a6ff;
+}
+
+.tag-subscribed-icon {
+    font-size: 1.1em;
+    opacity: 0.7;
 }

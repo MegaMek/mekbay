@@ -32,6 +32,7 @@
  */
 
 import { ChangeDetectionStrategy, Component, output, signal } from '@angular/core';
+import { PublicTagInfo } from '../../models/units.model';
 
 
 /*
@@ -56,6 +57,8 @@ export class TagSelectorComponent {
     nameTags = signal<string[]>([]);
     /** All unique tags available for chassis-wide tagging */
     chassisTags = signal<string[]>([]);
+    /** Public tags from other users (read-only) */
+    publicTags = signal<PublicTagInfo[]>([]);
     /** Tags assigned to ALL selected units via name */
     assignedNameTags = signal<string[]>([]);
     /** Tags assigned to SOME (but not all) selected units via name */
@@ -67,6 +70,7 @@ export class TagSelectorComponent {
     
     tagSelected = output<TagSelectionEvent>();
     tagRemoved = output<TagSelectionEvent>();
+    unsubscribeRequested = output<PublicTagInfo>();
 
     onNameTagClick(tag: string) {
         // Don't allow clicking if covered by chassis tag or already fully assigned
@@ -99,6 +103,11 @@ export class TagSelectorComponent {
 
     onAddNewChassisTag() {
         this.tagSelected.emit({ tag: '__new__', tagType: 'chassis' });
+    }
+
+    onUnsubscribe(pt: PublicTagInfo, event: MouseEvent) {
+        event.stopPropagation();
+        this.unsubscribeRequested.emit(pt);
     }
 
     /** Tag is assigned to ALL selected units */

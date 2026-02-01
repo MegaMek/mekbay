@@ -53,6 +53,9 @@ export function generateUUID(): string {
     });
 }
 
+/** Client protocol version - increment when breaking changes are made */
+export const PROTOCOL_VERSION = 2;
+
 @Injectable({
     providedIn: 'root'
 })
@@ -285,7 +288,7 @@ export class WsService {
         const uuid = this.userStateService.uuid();
         this.lastRegisteredUuid = uuid;
         try {
-            this.send({ action: 'register', sessionId: this.wsSessionId, uuid });
+            this.send({ action: 'register', sessionId: this.wsSessionId, uuid, version: PROTOCOL_VERSION });
         } catch (error) {
             this.logger.error(`Failed to register session: ${error}`);
         }

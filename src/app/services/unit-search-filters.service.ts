@@ -51,6 +51,9 @@ import { parseSemanticQueryAST, ParseResult, ParseError, filterUnitsWithAST, Eva
 import { wildcardToRegex } from '../utils/string.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
+import { UserStateService } from './userState.service';
+import { PublicTagsService } from './public-tags.service';
+import { TagsService } from './tags.service';
 
 /*
  * Author: Drake
@@ -219,16 +222,19 @@ function sortAvailableDropdownOptions(options: string[], predefinedOrder?: strin
 }
 
 /**
- * Get merged tags (name + chassis) for a unit.
- * Returns a deduplicated array combining both tag types.
+ * Get merged tags (name + chassis + public) for a unit.
+ * Returns a deduplicated array combining all tag types.
+ * Public tags are also included so they can be used for filtering.
  */
 function getMergedTags(unit: Unit): string[] {
     const nameTags = unit._nameTags ?? [];
     const chassisTags = unit._chassisTags ?? [];
+    const publicTags = unit._publicTags ?? [];
     // Merge and deduplicate
     const merged = new Set<string>();
     for (const tag of chassisTags) merged.add(tag);
     for (const tag of nameTags) merged.add(tag);
+    for (const pt of publicTags) merged.add(pt.tag);
     return Array.from(merged);
 }
 
@@ -384,7 +390,7 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
         let unitData: { names: Set<string>; counts?: Map<string, number> };
 
         if (isComponentFilter) {
-            // Use cached component data for performance
+            // Use cached component data for performance (already lowercase)
             const cached = getUnitComponentData(unit);
             unitData = {
                 names: cached.componentNames,
@@ -393,14 +399,16 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
         } else {
             const propValue = getProperty(unit, key);
             const unitValues = Array.isArray(propValue) ? propValue : [propValue];
-            const names = new Set(unitValues.filter(v => v != null));
+            // Store lowercase for case-insensitive matching
+            const names = new Set(unitValues.filter(v => v != null).map(v => String(v).toLowerCase()));
 
             unitData = { names };
             if (needsQuantityCounting) {
                 const counts = new Map<string, number>();
                 for (const value of unitValues) {
                     if (value != null) {
-                        counts.set(value, (counts.get(value) || 0) + 1);
+                        const lowerValue = String(value).toLowerCase();
+                        counts.set(lowerValue, (counts.get(lowerValue) || 0) + 1);
                     }
                 }
                 unitData.counts = counts;
@@ -454,11 +462,12 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
         // NOT: Exclude if any NOT constraint is satisfied
         if (notList.length > 0) {
             for (const item of notList) {
-                if (!unitData.names.has(item.name)) continue;  // Item not present, OK
+                const lowerName = item.name.toLowerCase();
+                if (!unitData.names.has(lowerName)) continue;  // Item not present, OK
                 
                 // Item is present - check quantity constraint
                 if (needsQuantityCounting && unitData.counts) {
-                    const unitCount = unitData.counts.get(item.name) || 0;
+                    const unitCount = unitData.counts.get(lowerName) || 0;
                     // For NOT, we exclude if the quantity constraint IS satisfied
                     // e.g., equipment!=AC/2:2 means exclude units with exactly 2 AC/2s
                     if (checkQuantityConstraint(unitCount, item)) {
@@ -474,10 +483,11 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
         // AND: Must have all items with satisfied quantity constraints
         if (andList.length > 0) {
             for (const item of andList) {
-                if (!unitData.names.has(item.name)) return false;  // Must have item
+                const lowerName = item.name.toLowerCase();
+                if (!unitData.names.has(lowerName)) return false;  // Must have item
                 
                 if (needsQuantityCounting && unitData.counts) {
-                    const unitCount = unitData.counts.get(item.name) || 0;
+                    const unitCount = unitData.counts.get(lowerName) || 0;
                     if (!checkQuantityConstraint(unitCount, item)) {
                         return false;
                     }
@@ -489,10 +499,11 @@ function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiSta
         if (orList.length > 0) {
             let hasMatch = false;
             for (const item of orList) {
-                if (!unitData.names.has(item.name)) continue;
+                const lowerName = item.name.toLowerCase();
+                if (!unitData.names.has(lowerName)) continue;
                 
                 if (needsQuantityCounting && unitData.counts) {
-                    const unitCount = unitData.counts.get(item.name) || 0;
+                    const unitCount = unitData.counts.get(lowerName) || 0;
                     if (checkQuantityConstraint(unitCount, item)) {
                         hasMatch = true;
                         break;
@@ -658,6 +669,9 @@ export class UnitSearchFiltersService {
     gameService = inject(GameService);
     logger = inject(LoggerService);
     private urlStateService = inject(UrlStateService);
+    private userStateService = inject(UserStateService);
+    private publicTagsService = inject(PublicTagsService);
+    private tagsService = inject(TagsService);
 
     ADVANCED_FILTERS = ADVANCED_FILTERS;
     
@@ -689,6 +703,20 @@ export class UnitSearchFiltersService {
     
     /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
     readonly tagsVersion = signal(0);
+    
+    /** Pending foreign tags to import from URL. Format: Array of { publicId, tagName } */
+    readonly pendingForeignTags = signal<Array<{ publicId: string; tagName: string }>>([]);
+    
+    /** Callback to show foreign tag import dialog - set by component layer */
+    private showForeignTagDialogCallback: ((publicId: string, tagNames: string[]) => Promise<'ignore' | 'temporary' | 'subscribe'>) | null = null;
+    
+    /**
+     * Set the callback for showing the foreign tag import dialog.
+     * This must be called from the component layer to wire up UI integration.
+     */
+    setForeignTagDialogCallback(callback: (publicId: string, tagNames: string[]) => Promise<'ignore' | 'temporary' | 'subscribe'>): void {
+        this.showForeignTagDialogCallback = callback;
+    }
 
     /** Whether to automatically convert UI filter changes to semantic text */
     readonly autoConvertToSemantic = computed(() => 
@@ -1333,14 +1361,19 @@ export class UnitSearchFiltersService {
                 const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
                 
                 if (hasRegularValues || hasWildcards) {
+                    // Pre-compute lowercase set for case-insensitive matching
+                    const valLowerSet = hasRegularValues 
+                        ? new Set((val as string[]).map(v => String(v).toLowerCase()))
+                        : null;
+                    
                     results = results.filter(u => {
                         const v = getProperty(u, conf.key);
                         const unitValues = Array.isArray(v) ? v : [v];
                         
-                        // Check regular values first
-                        if (hasRegularValues) {
+                        // Check regular values first (case-insensitive)
+                        if (valLowerSet) {
                             for (const uv of unitValues) {
-                                if (val.includes(uv)) return true;
+                                if (uv != null && valLowerSet.has(String(uv).toLowerCase())) return true;
                             }
                         }
                         
@@ -1445,6 +1478,10 @@ export class UnitSearchFiltersService {
     // All filters applied using AST-based filtering
     filteredUnits = computed(() => {
         if (!this.isDataReady()) return [];
+
+        // Depend on tagsVersion so we recompute when tags change (user tags or public tags)
+        // This is needed because unit._tags/_publicTags are mutated in place, not via signals
+        const _tagsVersion = this.tagsVersion();
 
         // AST handles all filtering: text search, semantic filters, and boolean logic
         const ast = this.semanticParsedAST();
@@ -2224,16 +2261,26 @@ export class UnitSearchFiltersService {
                             if (!conf) continue; // Skip unknown filter keys
 
                             if (conf.type === AdvFilterType.DROPDOWN) {
-                                // Get all available values for this dropdown
-                                const availableValues = this.getAvailableDropdownValues(conf);
+                                // Skip validation for _tags - tags are user-specific and may not
+                                // be loaded into units yet when parsing URL. Trust the URL values.
+                                if (key === '_tags') {
+                                    validFilters[key] = state;
+                                    continue;
+                                }
+                                
+                                // Get case-insensitive lookup map (lowercase -> proper case)
+                                const availableValuesMap = this.getAvailableDropdownValuesMap(conf);
 
                                 if (conf.multistate) {
                                     const selection = state.value as MultiStateSelection;
                                     const validSelection: MultiStateSelection = {};
 
                                     for (const [name, selectionValue] of Object.entries(selection)) {
-                                        if (availableValues.has(name)) {
-                                            validSelection[name] = selectionValue;
+                                        const lowerName = name.toLowerCase();
+                                        const properCase = availableValuesMap.get(lowerName);
+                                        if (properCase) {
+                                            // Use proper case for the key, but preserve selection value
+                                            validSelection[properCase] = { ...selectionValue, name: properCase };
                                         }
                                     }
 
@@ -2242,7 +2289,10 @@ export class UnitSearchFiltersService {
                                     }
                                 } else {
                                     const values = state.value as string[];
-                                    const validValues = values.filter(v => availableValues.has(v));
+                                    // Map to proper case, filtering out unavailable values
+                                    const validValues = values
+                                        .map(v => availableValuesMap.get(v.toLowerCase()))
+                                        .filter((v): v is string => v !== undefined);
 
                                     if (validValues.length > 0) {
                                         validFilters[key] = { value: validValues, interactedWith: true };
@@ -2323,6 +2373,19 @@ export class UnitSearchFiltersService {
         return values;
     }
 
+    /**
+     * Get a case-insensitive lookup map for dropdown values.
+     * Maps lowercase value -> proper case value.
+     */
+    private getAvailableDropdownValuesMap(conf: AdvFilterConfig): Map<string, string> {
+        const values = this.getAvailableDropdownValues(conf);
+        const map = new Map<string, string>();
+        for (const v of values) {
+            map.set(v.toLowerCase(), v);
+        }
+        return map;
+    }
+
     queryParameters = computed(() => {
         const search = this.searchText();
         const filterState = this.filterState();
@@ -2390,22 +2453,74 @@ export class UnitSearchFiltersService {
                 if (conf.multistate) {
                     const selection = filterState.value as MultiStateSelection;
                     const subParts: string[] = [];
+                    
+                    // Track which publicId@tagName combos are already included
+                    // Key: lowercase "publicId@tagName" for deduplication
+                    const includedTags = new Set<string>();
 
                     for (const [name, selectionValue] of Object.entries(selection)) {
                         if (selectionValue.state !== false) {
-                            // URL encode names that might contain spaces or special characters
-                            let part = encodeURIComponent(name);
-
-                            // Use single characters for states
-                            if (selectionValue.state === 'and') part += '.';
-                            else if (selectionValue.state === 'not') part += '!';
-                            // 'or' state is default, no suffix needed
-
-
-                            if (selectionValue.count > 1) {
-                                part += `~${selectionValue.count}`;
+                            if (key === '_tags') {
+                                const myPublicId = this.userStateService.publicId();
+                                const lowerName = name.toLowerCase();
+                                
+                                // Check if user has this as a local tag
+                                const nameTags = this.tagsService.getNameTags();
+                                const chassisTags = this.tagsService.getChassisTags();
+                                const hasLocalTag = Object.keys(nameTags).some(t => t.toLowerCase() === lowerName) ||
+                                                   Object.keys(chassisTags).some(t => t.toLowerCase() === lowerName);
+                                
+                                // Add local tag if user has it
+                                if (hasLocalTag && myPublicId) {
+                                    const localTagKey = `${myPublicId}@${name}`.toLowerCase();
+                                    if (!includedTags.has(localTagKey)) {
+                                        includedTags.add(localTagKey);
+                                        let part = encodeURIComponent(`${myPublicId}@${name}`);
+                                        if (selectionValue.state === 'and') part += '.';
+                                        else if (selectionValue.state === 'not') part += '!';
+                                        if (selectionValue.count > 1) part += `~${selectionValue.count}`;
+                                        subParts.push(part);
+                                    }
+                                }
+                                
+                                // Add ALL subscribed public tags with this name (could be multiple from different users)
+                                const matchingPublicTags = this.publicTagsService.getSubscribedTags()
+                                    .filter(pt => pt.tagName.toLowerCase() === lowerName);
+                                
+                                for (const pt of matchingPublicTags) {
+                                    const publicTagKey = `${pt.publicId}@${pt.tagName}`.toLowerCase();
+                                    if (!includedTags.has(publicTagKey)) {
+                                        includedTags.add(publicTagKey);
+                                        let part = encodeURIComponent(`${pt.publicId}@${pt.tagName}`);
+                                        if (selectionValue.state === 'and') part += '.';
+                                        else if (selectionValue.state === 'not') part += '!';
+                                        if (selectionValue.count > 1) part += `~${selectionValue.count}`;
+                                        subParts.push(part);
+                                    }
+                                }
+                            } else {
+                                // Non-tag multistate filter
+                                let part = encodeURIComponent(name);
+                                if (selectionValue.state === 'and') part += '.';
+                                else if (selectionValue.state === 'not') part += '!';
+                                if (selectionValue.count > 1) part += `~${selectionValue.count}`;
+                                subParts.push(part);
                             }
-                            subParts.push(part);
+                        }
+                    }
+                    
+                    // For _tags filter, also include ACTIVE public tags that aren't already in selection
+                    // (e.g., temporarily imported tags not in the multistate selection)
+                    if (key === '_tags') {
+                        const publicTags = this.publicTagsService.getAllPublicTags();
+                        for (const pt of publicTags) {
+                            const tagKey = `${pt.publicId}@${pt.tagName}`.toLowerCase();
+                            // Only add if not already included via selection
+                            if (!includedTags.has(tagKey)) {
+                                const part = encodeURIComponent(`${pt.publicId}@${pt.tagName}`);
+                                subParts.push(part);
+                                includedTags.add(tagKey);
+                            }
                         }
                     }
 
@@ -2428,6 +2543,8 @@ export class UnitSearchFiltersService {
 
     private parseCompactFiltersFromUrl(filtersParam: string): FilterState {
         const filterState: FilterState = {};
+        const foreignTags: Array<{ publicId: string; tagName: string }> = [];
+        const myPublicId = this.userStateService.publicId();
 
         try {
             const parts = filtersParam.split('|');
@@ -2484,6 +2601,25 @@ export class UnitSearchFiltersService {
 
                             // Decode the name to restore spaces and special characters
                             const name = decodeURIComponent(encodedName);
+                            
+                            // Special handling for _tags: detect foreign tags (publicId@tagName format)
+                            if (key === '_tags') {
+                                const atIndex = name.indexOf('@');
+                                if (atIndex !== -1) {
+                                    const publicId = name.substring(0, atIndex);
+                                    const tagName = name.substring(atIndex + 1);
+                                    
+                                    // If this is our own publicId (or we don't know our publicId yet), treat as local tag
+                                    if (!myPublicId || publicId === myPublicId) {
+                                        selection[tagName] = { name: tagName, state, count };
+                                    } else {
+                                        // Foreign tag - queue for import dialog
+                                        foreignTags.push({ publicId, tagName });
+                                    }
+                                    continue;
+                                }
+                            }
+                            
                             selection[name] = { name, state, count };
                         }
 
@@ -2506,6 +2642,11 @@ export class UnitSearchFiltersService {
                         }
                     }
                 }
+            }
+            
+            // Set pending foreign tags for later processing
+            if (foreignTags.length > 0) {
+                this.pendingForeignTags.set(foreignTags);
             }
         } catch (error) {
             this.logger.warn('Failed to parse compact filters from URL: ' + error);
@@ -2853,6 +2994,129 @@ export class UnitSearchFiltersService {
             remainingOrder.push(key);
         }
         this.availableNamesCacheOrder = remainingOrder;
+    }
+    
+    /**
+     * Process pending foreign tags detected from URL.
+     * Groups tags by publicId and shows import dialog for each group.
+     * Must be called after the UI is ready and the dialog callback is set.
+     */
+    public async processPendingForeignTags(): Promise<void> {
+        const pending = this.pendingForeignTags();
+        if (pending.length === 0 || !this.showForeignTagDialogCallback) {
+            return;
+        }
+        
+        // Separate already-subscribed tags from those needing user action
+        const alreadySubscribed: Array<{ publicId: string; tagName: string }> = [];
+        const needsDialog: Array<{ publicId: string; tagName: string }> = [];
+        
+        for (const tag of pending) {
+            if (this.publicTagsService.isTagSubscribed(tag.publicId, tag.tagName)) {
+                alreadySubscribed.push(tag);
+            } else {
+                needsDialog.push(tag);
+            }
+        }
+        
+        // Add already-subscribed tags to filter state immediately
+        if (alreadySubscribed.length > 0) {
+            this.filterState.update(current => {
+                const currentTags = current['_tags'];
+                const currentSelection = (currentTags?.interactedWith ? currentTags.value : {}) as MultiStateSelection;
+                const newSelection = { ...currentSelection };
+                
+                for (const { tagName } of alreadySubscribed) {
+                    if (!newSelection[tagName]) {
+                        newSelection[tagName] = { name: tagName, state: 'or', count: 1 };
+                    }
+                }
+                
+                return {
+                    ...current,
+                    ['_tags']: {
+                        value: newSelection,
+                        interactedWith: true
+                    }
+                };
+            });
+        }
+        
+        // If no tags need dialog, we're done
+        if (needsDialog.length === 0) {
+            this.pendingForeignTags.set([]);
+            return;
+        }
+        
+        // Group by publicId
+        const byPublicId = new Map<string, string[]>();
+        for (const { publicId, tagName } of needsDialog) {
+            let tags = byPublicId.get(publicId);
+            if (!tags) {
+                tags = [];
+                byPublicId.set(publicId, tags);
+            }
+            tags.push(tagName);
+        }
+        
+        // Collect tags that were successfully imported
+        const importedTags: string[] = [];
+        
+        // Process each group
+        for (const [publicId, tagNames] of byPublicId) {
+            try {
+                const choice = await this.showForeignTagDialogCallback(publicId, tagNames);
+                
+                if (choice === 'ignore') {
+                    // Do nothing
+                    continue;
+                } else if (choice === 'temporary') {
+                    const success = await this.publicTagsService.importTemporary(publicId, tagNames);
+                    if (success) {
+                        importedTags.push(...tagNames);
+                    }
+                } else if (choice === 'subscribe') {
+                    // Subscribe to each tag
+                    for (const tagName of tagNames) {
+                        const success = await this.publicTagsService.subscribe(publicId, tagName);
+                        if (success) {
+                            importedTags.push(tagName);
+                        }
+                    }
+                }
+            } catch (err) {
+                this.logger.error('Failed to process foreign tags: ' + err);
+            }
+        }
+        
+        // Add imported tags to the filter state so they get evaluated
+        if (importedTags.length > 0) {
+            this.filterState.update(current => {
+                const currentTags = current['_tags'];
+                const currentSelection = (currentTags?.interactedWith ? currentTags.value : {}) as MultiStateSelection;
+                const newSelection = { ...currentSelection };
+                
+                for (const tagName of importedTags) {
+                    if (!newSelection[tagName]) {
+                        newSelection[tagName] = { name: tagName, state: 'or', count: 1 };
+                    }
+                }
+                
+                return {
+                    ...current,
+                    ['_tags']: {
+                        value: newSelection,
+                        interactedWith: true
+                    }
+                };
+            });
+        }
+        
+        // Clear pending
+        this.pendingForeignTags.set([]);
+        
+        // Refresh to apply the imported tags
+        this.invalidateTagsCache();
     }
 
     /**
