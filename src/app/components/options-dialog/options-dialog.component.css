@@ -245,12 +245,3 @@ input {
   display: inline-block;
   margin: 0 0.1em;
 }
-
-.bt-button.secondary {
-  background: var(--background-color-secondary);
-  color: var(--text-color);
-}
-
-.bt-button.secondary:hover {
-  background: var(--background-color-tertiary);
-}

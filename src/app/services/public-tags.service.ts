@@ -454,11 +454,12 @@ export class PublicTagsService {
     }
 
     /**
-     * Subscribe to tags permanently
+     * Subscribe to tags permanently.
+     * Returns an object with success status and optional error message.
      */
-    public async subscribe(publicId: string, tagName: string): Promise<boolean> {
+    public async subscribe(publicId: string, tagName: string): Promise<{ success: boolean; error?: string }> {
         const uuid = this.userStateService.uuid();
-        if (!uuid) return false;
+        if (!uuid) return { success: false, error: 'Not logged in' };
 
         try {
             const response = await this.wsService.sendAndWaitForResponse({
@@ -469,7 +470,7 @@ export class PublicTagsService {
             });
 
             if (!response?.success) {
-                return false;
+                return { success: false, error: response?.error };
             }
 
             // Use actual tag name from response (has correct case)
@@ -508,10 +509,10 @@ export class PublicTagsService {
 
             this.version.update(v => v + 1);
             this.refreshUnitsCallback?.();
-            return true;
+            return { success: true };
         } catch (err) {
             this.logger.error('Failed to subscribe to tag: ' + err);
-            return false;
+            return { success: false, error: 'Failed to subscribe' };
         }
     }
 

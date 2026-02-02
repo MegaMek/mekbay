@@ -132,8 +132,8 @@
                     <input #subscriptionInput class="bt-input" [class.error]="!!subscriptionError()" 
                         type="text" placeholder="publicId:tagName" 
                         (keydown)="onSubscriptionKeydown($event)" />
-                    <button class="bt-button" (click)="onAddSubscription(subscriptionInput.value)">ADD</button>
-                    <button class="bt-button secondary" (click)="onCancelSubscription()">CANCEL</button>
+                    <button class="bt-button primary" (click)="onAddSubscription(subscriptionInput.value)">ADD</button>
+                    <button class="bt-button" (click)="onCancelSubscription()">CANCEL</button>
                 </div>
                 @if (subscriptionError()) {
                 <div class="error-msg">{{ subscriptionError() }}</div>

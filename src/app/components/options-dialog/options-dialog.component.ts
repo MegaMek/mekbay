@@ -451,13 +451,22 @@ export class OptionsDialogComponent {
         }
 
         try {
-            const success = await this.publicTagsService.subscribe(publicId, tagName);
-            if (success) {
+            const result = await this.publicTagsService.subscribe(publicId, tagName);
+            if (result.success) {
                 this.showSubscriptionInput.set(false);
                 const input = this.subscriptionInput();
                 if (input) input.nativeElement.value = '';
             } else {
-                this.subscriptionError.set('Failed to subscribe. The tag may not exist or is not public.');
+                // Show specific error from server if available
+                if (result.error === 'User not found') {
+                    this.subscriptionError.set('Invalid public ID. The user does not exist.');
+                } else if (result.error === 'Tag not found') {
+                    this.subscriptionError.set('Tag not found. The tag does not exist for this user.');
+                } else if (result.error === 'Cannot subscribe to your own tags') {
+                    this.subscriptionError.set('You cannot subscribe to your own tags');
+                } else {
+                    this.subscriptionError.set(result.error || 'Failed to subscribe. The tag may not exist or is not public.');
+                }
             }
         } catch (e: any) {
             this.subscriptionError.set(e?.message || 'Failed to subscribe');
