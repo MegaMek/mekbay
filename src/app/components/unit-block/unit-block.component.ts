@@ -260,6 +260,15 @@ export class UnitBlockComponent {
         return forceUnit.getUnit()?.as?.MV ?? '';
     });
 
+    showTMM = computed<boolean>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return true;
+        if (forceUnit instanceof ASForceUnit) {
+            return !forceUnit.isAerospace();
+        }
+        return true;
+    });
+
     private getMovementEntries(mvm: Record<string, number> | undefined): Array<[string, number]> {
         if (!mvm) return [];
         const entries = Object.entries(mvm)

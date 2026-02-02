@@ -250,7 +250,7 @@ export interface AlphaStrikeUnitStats {
     TP: ASUnitTypeCode;
     PV: number;
     SZ: number;
-    TMM: number;
+    TMM: number | null | undefined;
     usesOV: boolean;
     OV: number;
     MV: string;

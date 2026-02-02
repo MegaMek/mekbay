@@ -176,102 +176,8 @@ export class ASForceUnit extends ForceUnit {
         const crewHits = this.state.getCommittedCritHits('crew');
         if (crewHits > 1) return true;
         
-        // Check if Thrust reaches 0 (only for units with Th)
-        const baseTh = this.unit.as.Th;
-        if (baseTh > 0) {
-            const effectiveTh = this.calculateEffectiveThrust();
-            if (effectiveTh <= 0) return true;
-        }
-        
         return false;
     });
-
-    /**
-     * Core Thrust calculation logic.
-     * @param orderedCrits Ordered crits array
-     * @param engineHits Engine critical hits count
-     */
-    private calculateThrust(
-        orderedCrits: { key: string; timestamp: number }[],
-        engineHits: number
-    ): number {
-        const base = this.unit.as.Th;
-        if (base <= 0) return base;
-        
-        let current = base;
-        let engineHitCount = 0;
-        
-        for (const crit of orderedCrits) {
-            if (current <= 0) break;
-            
-            switch (crit.key) {
-                case 'engine':
-                    engineHitCount++;
-                    if (this.isVessel()) {
-                        if (engineHitCount === engineHits) { // Apply only on the last engine hit with his timestamp
-                            if (engineHitCount === 1) {
-                                // 1st hit: -25% of original THR (round normally, minimum 1 lost)
-                                const reduction = Math.max(1, Math.round(base * 0.25));
-                                current = Math.max(0, current - reduction);
-                            } else if (engineHitCount === 2) {
-                                // 2nd hit: -50% of original THR (round normally, minimum 1 lost)
-                                const reduction = Math.max(1, Math.round(base * 0.50));
-                                current = Math.max(0, current - reduction);
-                            } else if (engineHitCount >= 3) {
-                                // 3rd hit: THR = 0 (crash/destroyed)
-                                current = 0;
-                            }
-                        }
-                    } else {
-                        if (engineHitCount === 1) {
-                            const reduction = Math.max(1, Math.ceil(base * 0.5));
-                            current = Math.max(0, current - reduction);
-                        } else if (engineHitCount >= 2) {
-                            current = 0;
-                        }
-                    }
-                    break;
-                case 'thruster':
-                    // -1 THR per hit
-                    current = Math.max(0, current - 1);
-                    break;
-            }
-        }
-        
-        return current;
-    }
-
-    /**
-     * Calculate effective Thrust after applying committed Engine and Thruster critical hits.
-     * 
-     * Engine Hit (Aerospace Fighters, Conventional Fighters, Fixed-Wing Support Vehicles):
-     * - 1st hit: -50% of original THR (round down, minimum 1 lost)
-     * - 2nd hit: THR = 0
-     * 
-     * Engine Hit (DropShips/Small Craft):
-     * - 1st hit: -25% of original THR (round normally, minimum 1 lost)
-     * - 2nd hit: -50% of original THR (round normally, minimum 1 lost)
-     * - 3rd hit: THR = 0
-     * 
-     * Thruster Hit:
-     * - -1 THR
-     */
-    public calculateEffectiveThrust(): number {
-        return this.calculateThrust(
-            this.state.getCommittedCritsOrdered(),
-            this.state.getCommittedCritHits('engine')
-        );
-    }
-
-    /**
-     * Calculate preview Thrust including pending critical hits.
-     */
-    public calculatePreviewThrust(): number {
-        return this.calculateThrust(
-            this.state.getPreviewCritsOrdered(),
-            this.state.getPreviewCritHits('engine')
-        );
-    }
 
     /**
      * Get pending crit change for a given key.
@@ -574,6 +480,14 @@ export class ASForceUnit extends ForceUnit {
         return type === 'DA' || type === 'DS' || type === 'SC' || type === 'WS' || type === 'SS' || type === 'JS';
     });
 
+    isAerospace = computed<boolean>(() => {
+        const type = this.unit.as.TP;
+        const movements = this.unit.as.MVm;
+        return type === 'AF' || type === 'CF' || type === 'DA' || type === 'DS' 
+            || type === 'SC' || type === 'WS' || type === 'SS' || type === 'JS'
+            || (movements['a'] !== undefined) || (movements['p'] !== undefined) || (movements['k'] !== undefined);
+    });
+
     isVehicle = computed<boolean>(() => {
         const type = this.unit.as.TP;
         return type === 'CV' || type === 'SV';
@@ -610,6 +524,9 @@ export class ASForceUnit extends ForceUnit {
             if (typeof inches !== 'number' || inches <= 0) continue;
 
             let reducedInches: number;
+            if (this.isAerospace()) {
+                reducedInches = this.applyAerospaceThrustReductionWithCrits(inches, orderedCrits);
+            } else
             if (this.isVehicle()) {
                 reducedInches = this.applyVehicleMotiveReductionWithCrits(inches, orderedCrits);
             } else {
@@ -892,6 +809,75 @@ export class ASForceUnit extends ForceUnit {
                     break;
             }
         }
+        return current;
+    }
+
+    /**
+     * Apply aerospace Thrust critical hits to movement value with provided crits.
+     * 
+     * Rules:
+     * - Thruster Hit: -1 Thrust. Can only occur ONCE per unit; subsequent thruster crits are ignored.
+     * - Engine Hit (Fighters/Fixed-Wing): 
+     *   1st hit = half current thrust (round down, min 1 lost)
+     *   2nd hit = thrust reduced to 0 (destroyed)
+     * - Engine Hit (DropShips/Small Craft):
+     *   1st hit = -25% of ORIGINAL thrust (round normally, min 1 lost)
+     *   2nd hit = -50% of ORIGINAL thrust (round normally, min 1 lost)
+     *   3rd hit = thrust reduced to 0 (destroyed)
+     * 
+     * Order matters: each crit is applied when it occurs, affecting subsequent calculations.
+     */
+    private applyAerospaceThrustReductionWithCrits(
+        baseInches: number,
+        orderedCrits: { key: string; timestamp: number }[]
+    ): number {
+        let current = baseInches;
+        let engineHitCount = 0;
+        let thrusterHitApplied = false;
+        
+        for (const crit of orderedCrits) {
+            if (current <= 0) break;
+            
+            switch (crit.key) {
+                case 'engine':
+                    engineHitCount++;
+                    if (this.isVessel()) {
+                        // DropShips/Small Craft rules - percentages based on ORIGINAL thrust
+                        if (engineHitCount === 1) {
+                            // 1st hit: -25% of original THR (round normally, minimum 1 lost)
+                            const reduction = Math.max(1, Math.round(baseInches * 0.25));
+                            current = Math.max(0, current - reduction);
+                        } else if (engineHitCount === 2) {
+                            // 2nd hit: -50% of original THR (round normally, minimum 1 lost)
+                            const reduction = Math.max(1, Math.round(baseInches * 0.50));
+                            current = Math.max(0, current - reduction);
+                        } else if (engineHitCount >= 3) {
+                            // 3rd hit: THR = 0 (crash/destroyed)
+                            current = 0;
+                        }
+                    } else {
+                        // Aerospace Fighters/Conventional Fighters/Fixed-Wing Support Vehicles
+                        if (engineHitCount === 1) {
+                            // 1st hit: half current thrust (round down, minimum 1 lost)
+                            const halfThrust = Math.floor(current / 2);
+                            const reduction = Math.max(1, current - halfThrust);
+                            current = Math.max(0, current - reduction);
+                        } else if (engineHitCount >= 2) {
+                            // 2nd hit: thrust = 0 (crash/destroyed)
+                            current = 0;
+                        }
+                    }
+                    break;
+                case 'thruster':
+                    // Thruster hit can only occur once; subsequent hits are "No Critical Hit"
+                    if (!thrusterHitApplied) {
+                        thrusterHitApplied = true;
+                        current = Math.max(0, current - 1);
+                    }
+                    break;
+            }
+        }
+
         return current;
     }
 

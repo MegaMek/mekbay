@@ -356,11 +356,24 @@ export abstract class AsLayoutBaseComponent {
         return this.forceUnit()?.getHeat() ?? 0;
     });
 
-    effectiveTh = computed<number>(() => {
-        const base = this.asStats().Th;
+    movementDisplay = computed<string>(() => {
         const fu = this.forceUnit();
-        if (!fu || base <= 0) return base;
-        return fu.calculateEffectiveThrust();
+        if (!fu) {
+            const movements = this.asStats().MVm;
+            return Object.entries(movements)
+                .map(([mode, inches]) => this.formatMovement(inches, mode))
+                .join('/');
+        }
+
+        const effectiveMv = fu.effectiveMovement();
+        const entries = this.getMovementEntries(effectiveMv);
+        if (entries.length === 0) {
+            return '';
+        };
+
+        return entries
+            .map(([mode, inches]) => this.formatMovement(inches, mode))
+            .join('/');
     });
 
     // ===== Critical Hit Effects on Stats =====
@@ -423,6 +436,22 @@ export abstract class AsLayoutBaseComponent {
             return specialAbilityState;
         });
     });
+
+    getMovementEntries(mvm: Record<string, number> | undefined): Array<[string, number]> {
+        if (!mvm) return [];
+
+        const entries = Object.entries(mvm)
+            .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
+
+        return entries;
+    }
+    
+    formatMovement(inches: number, suffix: string = ''): string {
+        if (this.useHex()) {
+            return Math.ceil(inches / 2) + suffix;
+        }
+        return inches + '"' + suffix;
+    }
 
     formatPilotAbility(selection: AbilitySelection): string {
         if (typeof selection === 'string') {

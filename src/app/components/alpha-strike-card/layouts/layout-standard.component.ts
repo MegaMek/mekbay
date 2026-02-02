@@ -99,19 +99,6 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         return this.criticalHitsVariant() === 'vehicle' || this.criticalHitsVariant() === 'aerofighter';
     });
 
-    movementDisplay = computed<string>(() => {
-        const fu = this.forceUnit();
-        if (!fu) return this.asStats().MV ?? '';
-
-        const effectiveMv = fu.effectiveMovement();
-        const entries = this.getMovementEntries(effectiveMv);
-        if (entries.length === 0) return this.asStats().MV ?? '';
-
-        return entries
-            .map(([mode, inches]) => this.formatMovement(inches, mode))
-            .join('/');
-    });
-
     // Sprint movement (x1.5 of ground movement)
     sprintMove = computed<string | null>(() => {
         const fu = this.forceUnit();
@@ -185,6 +172,14 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         return this.asStats().dmg.dmgE;
     });
 
+    isAerospace = computed<boolean>(() => {
+        const type = this.asStats().TP;
+        const movements = this.asStats().MVm;
+        return type === 'AF' || type === 'CF' || type === 'DA' || type === 'DS' 
+            || type === 'SC' || type === 'WS' || type === 'SS' || type === 'JS' 
+            || (movements['a'] !== undefined) || (movements['p'] !== undefined) || (movements['k'] !== undefined);
+    });
+
     constructor() {
         super();
         const afterRenderRef = afterNextRender(() => {
@@ -226,21 +221,5 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
 
         const ratio = statsEl.clientHeight / hostHeight;
         this.chassisSmall.set(ratio > this.statsToHostHeightThreshold);
-    }
-
-    private getMovementEntries(mvm: Record<string, number> | undefined): Array<[string, number]> {
-        if (!mvm) return [];
-
-        const entries = Object.entries(mvm)
-            .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
-
-        return entries;
-    }
-
-    private formatMovement(inches: number, suffix: string = ''): string {
-        if (this.useHex()) {
-            return Math.ceil(inches / 2) + suffix;
-        }
-        return inches + '"' + suffix;
     }
 }

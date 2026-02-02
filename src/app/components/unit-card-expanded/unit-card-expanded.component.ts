@@ -172,6 +172,19 @@ export class UnitCardExpandedComponent {
         }
         return null; // Let the pipe calculate it
     });
+    
+    isAerospace = computed<boolean>(() => {
+        const unit = this.resolvedUnit();
+        const type = unit.as.TP;
+        const movements = unit.as.MVm;
+        return type === 'AF' || type === 'CF' || type === 'DA' || type === 'DS' 
+            || type === 'SC' || type === 'WS' || type === 'SS' || type === 'JS'
+            || (movements['a'] !== undefined) || (movements['p'] !== undefined) || (movements['k'] !== undefined);
+    });
+
+    showTMM = computed<boolean>(() => {
+        return !this.isAerospace();
+    });
 
     /** Whether this unit is currently selected/active */
     isSelected = input(false);

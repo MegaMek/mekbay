@@ -49,7 +49,7 @@
                 </div>
                 <div class="info-item">
                     <span class="info-label muted">TMM:</span>
-                    <span class="info-value" [class.sort-slot]="isSortActive('as.TMM')">{{ u.as.TMM }}</span>
+                    <span class="info-value" [class.sort-slot]="isSortActive('as.TMM')">{{ u.as.TMM ?? '—' }}</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label muted">Movement:</span>
@@ -286,9 +286,11 @@
                 <div class="info-slot centered slim" [class.sort-slot]="isSortActive('as.SZ')">
                     <span class="value">SZ: {{ u.as.SZ }}</span>
                 </div>
-                <div class="info-slot centered slim" [class.sort-slot]="isSortActive('as.TMM')">
-                    <span class="value">TMM: {{ u.as.TMM }}</span>
-                </div>
+                @if (showTMM()) {
+                    <div class="info-slot centered slim" [class.sort-slot]="isSortActive('as.TMM')">
+                        <span class="value">TMM: {{ u.as.TMM }}</span>
+                    </div>
+                }
                 } @else {
                 <div class="info-slot numeric" [class.sort-slot]="isSortActive('bv')">
                     <span class="value">BV: {{ u | adjustedBV:gunnery():piloting() | formatNumber:true:true }}</span>

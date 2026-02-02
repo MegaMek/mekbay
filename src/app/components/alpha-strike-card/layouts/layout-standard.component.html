@@ -55,9 +55,11 @@
                     <div class="stats-row">
                         <span class="stat-item"><span class="as-caption">TP:</span>&nbsp;<span class="as-value">{{ asStats().TP }}</span></span>
                         <span class="stat-item"><span class="as-caption">SZ:</span>&nbsp;<span class="as-value">{{ asStats().SZ }}</span></span>
+                        @if (!isAerospace()) {
                         <span class="stat-item"><span class="as-caption">TMM:</span>&nbsp;<span class="as-value">{{ tmmDisplay() }}</span></span>
+                        }
                         <div class="right-column">
-                            <span class="stat-item"><span class="as-caption">MV:</span>&nbsp;<span class="as-value">{{ movementDisplay() }}</span></span>
+                            <span class="stat-item"><span class="as-caption">{{ isAerospace() ? 'THR' : 'MV' }}:</span>&nbsp;<span class="as-value">{{ movementDisplay() }}</span></span>
                             @if (sprintMove()) {
                             <span class="sprint-text">Sprint: {{ sprintMove() }}</span>
                             }
@@ -211,7 +213,7 @@
                     @if (asStats().usesTh) {
                     <div class="thrust-display">
                         <span class="as-caption">TH:</span>
-                        <span class="as-value">{{ effectiveTh() }}</span>
+                        <span class="as-value">{{ asStats().Th }}</span>
                     </div>
                     }
                 </div>
