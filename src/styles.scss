@@ -95,6 +95,14 @@ body {
     cursor: default;
 }
 
+/* Hex symbol for movement display - scaled and raised like inch mark */
+.hex-symbol {
+    line-height: 0;
+    font-size: 0.8em;
+    position: relative;
+    top: -0.3em;
+}
+
 a {
     color: #fff;
     text-decoration: underline;

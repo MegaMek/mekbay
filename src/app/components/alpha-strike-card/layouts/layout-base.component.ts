@@ -448,7 +448,7 @@ export abstract class AsLayoutBaseComponent {
     
     formatMovement(inches: number, suffix: string = ''): string {
         if (this.useHex()) {
-            return Math.ceil(inches / 2) + suffix;
+            return Math.ceil(inches / 2) + '<span class="hex-symbol">⬢</span>' + suffix;
         }
         return inches + '"' + suffix;
     }

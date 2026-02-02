@@ -278,7 +278,7 @@ export class UnitBlockComponent {
 
     private formatMovement(inches: number, suffix: string = ''): string {
         if (this.optionsService.options().ASUseHex) {
-            return Math.ceil(inches / 2) + suffix;
+            return Math.ceil(inches / 2) + '<span class="hex-symbol">⬢</span>' + suffix;
         }
         return inches + '"' + suffix;
     }
