@@ -181,12 +181,10 @@ export class ForceBuilderViewerComponent {
         if (!unitList) return;
         const unitIndex = unitList.findIndex(u => u.id === unit.id);
         // Find the group containing this unit
-        const targetGroup = force.groups().find(g => g.units().some(u => u.id === unit.id));
         const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: unitList,
-                unitIndex: unitIndex,
-                targetGroup: targetGroup
+                unitIndex: unitIndex
             }
         });
 

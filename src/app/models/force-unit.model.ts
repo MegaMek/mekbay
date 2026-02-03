@@ -37,7 +37,7 @@ import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
 import { SerializedUnit } from './force-serialization';
-import { Force } from './force.model';
+import { Force, UnitGroup } from './force.model';
 import { ForceUnitState } from './force-unit-state.model';
 import { CrewMember } from './crew-member.model';
 
@@ -125,6 +125,12 @@ export abstract class ForceUnit {
 
     getUnit(): Unit {
         return this.unit;
+    }
+
+    getGroup(): UnitGroup<ForceUnit> | null {
+        return this.force.groups().find(group => 
+            group.units().some(u => u === this)
+        ) ?? null;
     }
 
     abstract getBv: Signal<number>;

@@ -72,8 +72,6 @@ export interface UnitDetailsDialogData {
     hideAddButton?: boolean;
     /** When true, ADD only emits the unit without adding to force */
     selectMode?: boolean;
-    /** Target group to add units to (used when adding from force builder) */
-    targetGroup?: UnitGroup;
 }
 
 @Component({
@@ -342,6 +340,10 @@ export class UnitDetailsDialogComponent {
         const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
         let gunnery;
         let piloting;
+        let targetGroup;
+        if (this.unit instanceof ForceUnit) {
+            targetGroup = this.unit.getGroup() || undefined;
+        }
         if (this.unit instanceof CBTForceUnit) {
             gunnery = this.unit.getCrewMember(0).getSkill('gunnery');
             piloting = this.unit.getCrewMember(0).getSkill('piloting');
@@ -356,7 +358,7 @@ export class UnitDetailsDialogComponent {
             selectedUnit,
             gunnery,
             piloting,
-            this.data.targetGroup,
+            targetGroup
         );
         if (addedUnit) {
             this.toastService.showToast(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
