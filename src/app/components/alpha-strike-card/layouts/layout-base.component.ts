@@ -359,8 +359,8 @@ export abstract class AsLayoutBaseComponent {
     movementDisplay = computed<string>(() => {
         const fu = this.forceUnit();
         if (!fu) {
-            const movements = this.asStats().MVm;
-            return Object.entries(movements)
+            return Object.entries(this.asStats().MVm)
+                .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
                 .map(([mode, inches]) => this.formatMovement(inches, mode))
                 .join('/');
         }

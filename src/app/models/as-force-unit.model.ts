@@ -509,16 +509,24 @@ export class ASForceUnit extends ForceUnit {
         const mvm = this.unit.as.MVm;
         if (!mvm) return {};
 
-        const mvByMode: { [mode: string]: number } = {};
-
         const entries = Object.entries(mvm);
-        if (entries.length === 1) {
-            // Single movement, if is "j", we create a ground entry as well "" with same value
-            const [mode, inches] = entries[0];
-            if (mode === 'j') {
-                entries.unshift(['', inches]);
-            }
+        if (entries.length === 0) return {};
+
+        // Single movement: if only "j", create a ground entry as well "" with same value
+        if (entries.length === 1 && entries[0][0] === 'j') {
+            entries.unshift(['', entries[0][1]]);
         }
+
+        // TSM (Triple Strength Myomer): At heat 1+, gain 2" ground Move.
+        // At heat 1, also ignore the 2" loss from overheating.        
+        const hasTsm = heat >= 1 && this.unit.as.specials?.includes('TSM');
+        // At heat level 1, TSM negates the 2" movement loss from overheating
+        const heatReduction = (hasTsm && heat === 1) ? 0 : heat * 2;
+        const tsmBonus = hasTsm ? 2 : 0;
+
+        // Build result with '' first if present
+        const result: { [mode: string]: number } = {};
+        let groundValue: number | undefined;
 
         for (const [mode, inches] of entries) {
             if (typeof inches !== 'number' || inches <= 0) continue;
@@ -526,8 +534,7 @@ export class ASForceUnit extends ForceUnit {
             let reducedInches: number;
             if (this.isAerospace()) {
                 reducedInches = this.applyAerospaceThrustReductionWithCrits(inches, orderedCrits);
-            } else
-            if (this.isVehicle()) {
+            } else if (this.isVehicle()) {
                 reducedInches = this.applyVehicleMotiveReductionWithCrits(inches, orderedCrits);
             } else {
                 reducedInches = this.applyMpHitsReduction(inches, mpHits);
@@ -535,37 +542,21 @@ export class ASForceUnit extends ForceUnit {
 
             // Apply heat reduction only to ground movement (not 'j')
             if (mode !== 'j') {
-                let heatReduction = heat * 2;
-                let tsmBonus = 0;
-
-                // TSM (Triple Strength Myomer): At heat 1+, gain 2" ground Move.
-                // At heat 1, also ignore the 2" loss from overheating.
-                const hasTsm = this.unit.as.specials?.some(s => s === 'TSM');
-                if (heat >= 1 && hasTsm) {
-                    tsmBonus = 2;
-                    if (heat === 1) {
-                        // At heat level 1, TSM negates the 2" movement loss from overheating
-                        heatReduction = 0;
-                    }
-                }
-
                 reducedInches = Math.max(0, reducedInches - heatReduction + tsmBonus);
             }
-            mvByMode[mode] = reducedInches;
-        }
 
-        if (Object.keys(mvByMode).length === 0) return {};
-
-        // Build result with '' always first
-        const result: { [mode: string]: number } = {};
-        if ('' in mvByMode) {
-            result[''] = mvByMode[''];
-        }
-        for (const [mode, mv] of Object.entries(mvByMode)) {
-            if (mode !== '') {
-                result[mode] = mv;
+            if (mode === '') {
+                groundValue = reducedInches;
+            } else {
+                result[mode] = reducedInches;
             }
         }
+
+        // Insert ground value first if present
+        if (groundValue !== undefined) {
+            return { '': groundValue, ...result };
+        }
+
         return result;
     }
 
