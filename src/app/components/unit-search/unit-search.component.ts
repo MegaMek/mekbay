@@ -834,8 +834,10 @@ export class UnitSearchComponent {
 
         const addSub = ref.componentInstance?.add.subscribe(() => {
             if (this.forceBuilderService.currentForce()?.units().length === 1) {
-                this.closeAllPanels();
                 this.expandedView.set(false);
+                queueMicrotask(() => {
+                    this.closeAllPanels();
+                });
             }
             this.blurInput();
             this.unitDetailsDialogOpen.set(false);
