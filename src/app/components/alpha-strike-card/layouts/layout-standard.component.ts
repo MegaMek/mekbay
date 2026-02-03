@@ -52,7 +52,7 @@ import {
     AsCriticalHitsEmplacementComponent,
 } from '../critical-hits';
 import { AsLayoutBaseComponent } from './layout-base.component';
-import { formatMovement } from '../../../models/as-common';
+import { formatMovement, isAerospace } from '../../../models/as-common';
 
 /*
  * Author: Drake
@@ -176,9 +176,7 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     isAerospace = computed<boolean>(() => {
         const type = this.asStats().TP;
         const movements = this.asStats().MVm;
-        return type === 'AF' || type === 'CF' || type === 'DA' || type === 'DS' 
-            || type === 'SC' || type === 'WS' || type === 'SS' || type === 'JS' 
-            || (movements['a'] !== undefined) || (movements['p'] !== undefined) || (movements['k'] !== undefined);
+        return isAerospace(type, movements);
     });
 
     constructor() {

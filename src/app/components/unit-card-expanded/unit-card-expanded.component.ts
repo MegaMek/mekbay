@@ -54,7 +54,7 @@ import { ExpandedComponentsPipe } from '../../pipes/expanded-components.pipe';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { SearchTokensGroup, highlightMatches } from '../../utils/search.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
-import { formatMovement } from '../../models/as-common';
+import { formatMovement, isAerospace } from '../../models/as-common';
 
 /**
  * Author: Drake
@@ -178,9 +178,7 @@ export class UnitCardExpandedComponent {
         const unit = this.resolvedUnit();
         const type = unit.as.TP;
         const movements = unit.as.MVm;
-        return type === 'AF' || type === 'CF' || type === 'DA' || type === 'DS' 
-            || type === 'SC' || type === 'WS' || type === 'SS' || type === 'JS'
-            || (movements['a'] !== undefined) || (movements['p'] !== undefined) || (movements['k'] !== undefined);
+        return isAerospace(type, movements);
     });
 
     showTMM = computed<boolean>(() => {

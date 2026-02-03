@@ -45,6 +45,7 @@ import { CrewMember } from './crew-member.model';
 import { ASCustomPilotAbility } from './as-abilities.model';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { SpecialAbilityState } from '../components/alpha-strike-card/layouts/layout-base.component';
+import { isAerospace } from './as-common';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
 export type AbilitySelection = string | ASCustomPilotAbility;
@@ -483,9 +484,7 @@ export class ASForceUnit extends ForceUnit {
     isAerospace = computed<boolean>(() => {
         const type = this.unit.as.TP;
         const movements = this.unit.as.MVm;
-        return type === 'AF' || type === 'CF' || type === 'DA' || type === 'DS' 
-            || type === 'SC' || type === 'WS' || type === 'SS' || type === 'JS'
-            || (movements['a'] !== undefined) || (movements['p'] !== undefined) || (movements['k'] !== undefined);
+        return isAerospace(type, movements);
     });
 
     isVehicle = computed<boolean>(() => {
