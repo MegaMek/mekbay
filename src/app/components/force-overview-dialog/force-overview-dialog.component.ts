@@ -279,7 +279,7 @@ export class ForceOverviewDialogComponent {
         const unitIndex = unitList.findIndex(u => u.id === vm.forceUnit.id);
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
-                unitList: unitList,
+                unitList: this.data.force.units,
                 unitIndex: unitIndex
             }
         });
@@ -348,7 +348,7 @@ export class ForceOverviewDialogComponent {
         const unitIndex = unitList.findIndex(u => u.id === forceUnit.id);
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
-                unitList: unitList,
+                unitList: this.data.force.units,
                 unitIndex: unitIndex
             }
         });

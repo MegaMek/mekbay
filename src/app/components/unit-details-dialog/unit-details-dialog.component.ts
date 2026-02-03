@@ -31,15 +31,15 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed } from '@angular/core';
+import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, Signal, isSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { Unit } from '../../models/units.model';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, takeUntil } from 'rxjs';
+import { outputToObservable } from '@angular/core/rxjs-interop';
 import { ToastService } from '../../services/toast.service';
 import { ForceUnit } from '../../models/force-unit.model';
-import { UnitGroup } from '../../models/force.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
@@ -65,13 +65,15 @@ import { LayoutService } from '../../services/layout.service';
  * Author: Drake
  */
 export interface UnitDetailsDialogData {
-    unitList: Unit[] | ForceUnit[];
+    unitList: Unit[] | Signal<ForceUnit[]>;
     unitIndex: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
     hideAddButton?: boolean;
     /** When true, ADD only emits the unit without adding to force */
     selectMode?: boolean;
+    /** When set, show CHANGE button that replaces the original unit with the selected variant */
+    originalForceUnit?: ForceUnit;
 }
 
 @Component({
@@ -99,20 +101,27 @@ export class UnitDetailsDialogComponent {
     private dialogsService = inject(DialogsService);
     add = output<Unit>();
     select = output<Unit>();
+    change = output<{ oldUnit: ForceUnit; newUnit: Unit }>();
     indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
     incomingPanelRef = viewChild<ElementRef>('incomingPanel');
     shareButtonInActions = computed(() => this.layoutService.windowWidth() > 600);
+
+    /** Computed property to determine if we're in change mode */
+    isChangeMode = computed(() => !!this.data.originalForceUnit);
 
     tabs = computed<string[]>(() => {
         return ['General', 'Intel', 'Factions', 'Variants', 'Sheet', 'Card'];
     });
     activeTab = signal(this.gameService.isAlphaStrike() ? 'Card' : 'General');
 
-    unitList: Unit[] | ForceUnit[] = this.data.unitList;
+    unitList = computed<Unit[] | ForceUnit[]>(() => {
+        const input = this.data.unitList;
+        return isSignal(input) ? input() : input;
+    });
     unitIndex = signal(this.data.unitIndex);
     gunnerySkill = computed<number | undefined>(() => {
-        const currentUnit = this.unitList[this.unitIndex()]
+        const currentUnit = this.unitList()[this.unitIndex()]
         if (currentUnit instanceof CBTForceUnit) {
             return currentUnit.getCrewMember(0).getSkill('gunnery');
         } else
@@ -122,7 +131,7 @@ export class UnitDetailsDialogComponent {
         return this.data.gunnerySkill;
     });
     pilotingSkill = computed<number | undefined>(() => {
-        const currentUnit = this.unitList[this.unitIndex()]
+        const currentUnit = this.unitList()[this.unitIndex()]
         if (currentUnit instanceof CBTForceUnit) {
             return currentUnit.getCrewMember(0).getSkill('piloting');
         } else
@@ -175,7 +184,7 @@ export class UnitDetailsDialogComponent {
     });
 
     get unit(): Unit {
-        const currentUnit = this.unitList[this.unitIndex()]
+        const currentUnit = this.unitList()[this.unitIndex()]
         if (currentUnit instanceof ForceUnit) {
             return currentUnit.getUnit();
         }
@@ -248,15 +257,15 @@ export class UnitDetailsDialogComponent {
     }
 
     get hasPrev(): boolean {
-        return this.unitList && this.unitIndex() > 0;
+        return this.unitList() && this.unitIndex() > 0;
     }
 
     get hasNext(): boolean {
-        return this.unitList && this.unitIndex() < this.unitList.length - 1;
+        return this.unitList() && this.unitIndex() < this.unitList().length - 1;
     }
 
     private getUnitAtIndex(index: number): Unit {
-        const item = this.unitList[index];
+        const item = this.unitList()[index];
         if (item instanceof ForceUnit) {
             return item.getUnit();
         }
@@ -367,6 +376,25 @@ export class UnitDetailsDialogComponent {
         this.onClose();
     }
 
+    async onChange() {
+        const originalUnit = this.data.originalForceUnit;
+        if (!originalUnit) return;
+        
+        const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
+        
+        // Call the service to replace the unit (includes confirmation dialog)
+        const result = await this.forceBuilderService.replaceUnit(originalUnit, selectedUnit);
+        
+        if (result) {
+            this.toastService.showToast(
+                `Changed ${originalUnit.getUnit().chassis} ${originalUnit.getUnit().model} to ${selectedUnit.chassis} ${selectedUnit.model}.`,
+                'success'
+            );
+            this.change.emit({ oldUnit: originalUnit, newUnit: selectedUnit });
+            this.onClose();
+        }
+    }
+
     onClose() {
         this.dialogRef.close();
     }
@@ -406,14 +434,36 @@ export class UnitDetailsDialogComponent {
     /** Handle variant card click - opens a new dialog for that variant */
     onVariantClick(event: { variant: Unit; variants: Unit[] }): void {
         if (this.data.selectMode) return;
-        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+        
+        // Determine if we should enable change mode:
+        let originalForceUnit: ForceUnit | undefined;
+        // Check if current unit is a ForceUnit (user is browsing force units)
+        const currentItem = this.unitList()[this.unitIndex()];
+        if (currentItem instanceof ForceUnit) {
+            originalForceUnit = currentItem;
+        }
+    
+        const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: event.variants,
                 unitIndex: event.variants.indexOf(event.variant),
                 gunnerySkill: this.gunnerySkill(),
                 pilotingSkill: this.pilotingSkill(),
                 hideAddButton: this.data.hideAddButton,
-                selectMode: this.data.selectMode
+                selectMode: this.data.selectMode,
+                originalForceUnit
+            }
+        });
+        
+        // When a unit change occurs in the variant dialog, navigate to the newly selected unit.
+        outputToObservable(ref.componentInstance.change).pipe(takeUntil(ref.closed)).subscribe(() => {
+            // Navigate to the newly selected unit (replaceUnit selects the new unit)
+            const selectedUnit = this.forceBuilderService.selectedUnit();
+            if (selectedUnit) {
+                const newIndex = this.unitList().findIndex(u => u.id === selectedUnit.id);
+                if (newIndex >= 0) {
+                    this.unitIndex.set(newIndex);
+                }
             }
         });
     }
@@ -427,7 +477,7 @@ export class UnitDetailsDialogComponent {
 
         // Block if single item list (no prev and no next)
         const index = this.unitIndex();
-        return (index === 0 && !this.hasNext) || (index === this.unitList.length - 1 && !this.hasPrev);
+        return (index === 0 && !this.hasNext) || (index === this.unitList().length - 1 && !this.hasPrev);
     };
 
     public onSwipeStart(event: SwipeStartEvent): void {
@@ -512,7 +562,7 @@ export class UnitDetailsDialogComponent {
         const incoming = this.incomingUnit();
         if (incoming) {
             const currentIdx = this.unitIndex();
-            const incomingIdx = this.unitList.findIndex(u => {
+            const incomingIdx = this.unitList().findIndex(u => {
                 const unit = u instanceof ForceUnit ? u.getUnit() : u;
                 return unit === incoming;
             });

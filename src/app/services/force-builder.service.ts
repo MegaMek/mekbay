@@ -424,6 +424,129 @@ export class ForceBuilderService {
         }
     }
 
+    /**
+     * Replaces a unit in the force with a new one, carrying over pilot info.
+     * Shows a confirmation dialog warning about losing damage state.
+     * @param originalUnit The ForceUnit to replace
+     * @param newUnitData The new Unit data to replace with
+     * @returns The new ForceUnit if successful, null if cancelled
+     */
+    async replaceUnit(originalUnit: ForceUnit, newUnitData: Unit): Promise<ForceUnit | null> {
+        const currentForce = this.currentForce();
+        if (!currentForce) {
+            return null;
+        }
+
+        // Check if the original unit belongs to this force
+        const allUnits = currentForce.units();
+        if (!allUnits.some(u => u.id === originalUnit.id)) {
+            this.toastService.showToast('Unit not found in current force.', 'error');
+            return null;
+        }
+
+        // Build confirmation message
+        const oldUnitName = `${originalUnit.getUnit().chassis} ${originalUnit.getUnit().model}`.trim();
+        const newUnitName = `${newUnitData.chassis} ${newUnitData.model}`.trim();
+
+        const result = await this.dialogsService.choose(
+            'Change Unit',
+            `Replace "${oldUnitName}" with "${newUnitName}"?\n\nThe new unit will be created fresh. Any damage or modifications on the current unit will be lost.\n\nPilot name and skills will be carried over.`,
+            [
+                { label: 'CHANGE', value: 'change', class: 'primary' },
+                { label: 'CANCEL', value: 'cancel' }
+            ],
+            'cancel'
+        );
+
+        if (result !== 'change') {
+            return null;
+        }
+
+        // Find the group containing the original unit, fall back to last group
+        const groups = currentForce.groups();
+        const originalGroup = originalUnit.getGroup() || groups[groups.length - 1];
+
+        // Collect pilot info from the original unit
+        let pilotName: string | undefined;
+        let gunnerySkill: number | undefined;
+        let pilotingSkill: number | undefined;
+        let pilotAbilities: any[] | undefined;
+
+        if (originalUnit instanceof CBTForceUnit) {
+            const crew = originalUnit.getCrewMembers();
+            if (crew.length > 0) {
+                const pilot = crew[0];
+                pilotName = pilot.getName() || undefined;
+                gunnerySkill = pilot.getSkill('gunnery');
+                pilotingSkill = pilot.getSkill('piloting');
+            }
+        } else if (originalUnit instanceof ASForceUnit) {
+            pilotName = originalUnit.alias();
+            gunnerySkill = originalUnit.getPilotSkill();
+            pilotingSkill = gunnerySkill;
+            pilotAbilities = [...originalUnit.pilotAbilities()];
+        }
+
+        // Remove the old unit
+        const wasSelected = this.selectedUnit()?.id === originalUnit.id;
+        
+        // Clean up C3 networks before removing
+        currentForce.removeUnit(originalUnit);
+        this.dataService.deleteCanvasDataOfUnit(originalUnit);
+
+        // Add the new unit to the same group
+        let newForceUnit: ForceUnit;
+        try {
+            newForceUnit = currentForce.addUnit(newUnitData, originalGroup);
+        } catch (error) {
+            this.toastService.showToast(error instanceof Error ? error.message : (error as string), 'error');
+            return null;
+        }
+
+        // Apply pilot info to the new unit
+        newForceUnit.disabledSaving = true;
+
+        if (newForceUnit instanceof CBTForceUnit) {
+            const crew = newForceUnit.getCrewMembers();
+            if (crew.length > 0) {
+                const pilot = crew[0];
+                if (pilotName) {
+                    pilot.setName(pilotName);
+                }
+                if (gunnerySkill !== undefined) {
+                    pilot.setSkill('gunnery', gunnerySkill);
+                }
+                if (pilotingSkill !== undefined) {
+                    pilot.setSkill('piloting', pilotingSkill);
+                }
+            }
+        } else if (newForceUnit instanceof ASForceUnit) {
+            if (pilotName) {
+                newForceUnit.setPilotName(pilotName);
+            }
+            if (gunnerySkill !== undefined) {
+                newForceUnit.setPilotSkill(gunnerySkill);
+            }
+            if (pilotAbilities && pilotAbilities.length > 0) {
+                newForceUnit.setPilotAbilities(pilotAbilities);
+            }
+        }
+
+        newForceUnit.disabledSaving = false;
+
+        // Select the new unit if the old one was selected
+        if (wasSelected) {
+            this.selectUnit(newForceUnit);
+        }
+
+        this.generateForceNameIfNeeded();
+        if (originalGroup) {
+            this.generateGroupNameIfNeeded(originalGroup);
+        }
+
+        return newForceUnit;
+    }
+
     public async requestCloneForce() {
         const currentForce = this.currentForce();
         if (!currentForce) return;
