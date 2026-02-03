@@ -81,6 +81,15 @@
     width: 100%;
 }
 
+.variants-list unit-card-expanded {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.variants-list unit-card-expanded:hover {
+    background-color: var(--hover-highlight-transparent);
+}
+
 .variants-list.compact {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
