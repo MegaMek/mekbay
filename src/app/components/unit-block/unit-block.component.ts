@@ -280,7 +280,7 @@ export class UnitBlockComponent {
         if (this.optionsService.options().ASUseHex) {
             return Math.ceil(inches / 2) + '<span class="hex-symbol">⬢</span>' + suffix;
         }
-        return inches + '"' + suffix;
+        return inches + '″' + suffix;
     }
 
     bvTooltip = computed<TooltipLine[] | null>(() => {

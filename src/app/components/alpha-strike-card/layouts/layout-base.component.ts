@@ -450,7 +450,7 @@ export abstract class AsLayoutBaseComponent {
         if (this.useHex()) {
             return Math.ceil(inches / 2) + '<span class="hex-symbol">⬢</span>' + suffix;
         }
-        return inches + '"' + suffix;
+        return inches + '″' + suffix;
     }
 
     formatPilotAbility(selection: AbilitySelection): string {

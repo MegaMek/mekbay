@@ -1154,7 +1154,7 @@ export class UnitSearchComponent {
                 if (this.useHex()) {
                     return Math.ceil(inches / 2) + mode;
                 }
-                return inches + '"' + mode;
+                return inches + '″' + mode;
             })
             .join('/');
     }
