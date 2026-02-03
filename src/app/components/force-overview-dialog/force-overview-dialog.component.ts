@@ -57,6 +57,7 @@ import { TaggingService } from '../../services/tagging.service';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { AdjustedPV } from '../../pipes/adjusted-pv.pipe';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
+import { formatMovement } from '../../models/as-common';
 
 export interface ForceOverviewDialogData {
     force: Force;
@@ -629,19 +630,13 @@ export class ForceOverviewDialogComponent {
 
         if (entries.length === 0) return unit.as.MV ?? '';
 
-        entries.sort((a, b) => {
-            if (a[0] === '') return -1;
-            if (b[0] === '') return 1;
-            return 0;
-        });
-
         return entries
-            .map(([mode, inches]) => {
-                if (this.useHex()) {
-                    return Math.ceil(inches / 2) + mode;
-                }
-                return inches + '″' + mode;
-            })
+            .sort((a, b) => {
+                if (a[0] === '') return -1;
+                if (b[0] === '') return 1;
+                return 0;
+            })            
+            .map(([mode, inches]) => formatMovement(inches, mode, this.useHex()))
             .join('/');
     }
 

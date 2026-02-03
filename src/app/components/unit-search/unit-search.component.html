@@ -170,7 +170,7 @@
                             <div class="as-td as-td-role" [class.sort-slot]="isSortActive('role')">{{ unit.role !== 'None' ? unit.role : '' }}</div>
                             <div class="as-td as-td-pv" [class.sort-slot]="isSortActive('as.PV')">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
                             <div class="as-td as-td-sz" [class.sort-slot]="isSortActive('as.SZ')">{{ unit.as.SZ }}</div>
-                            <div class="as-td as-td-mv" [class.sort-slot]="isSortActive('as._mv')">{{ formatASMovement(unit) }}</div>
+                            <div class="as-td as-td-mv" [class.sort-slot]="isSortActive('as._mv')" [innerHTML]="formatASMovement(unit)"></div>
                             <div class="as-td as-td-tmm" [class.sort-slot]="isSortActive('as.TMM')">{{ unit.as.TMM ?? '—' }}</div>
                             <div class="as-td as-td-dmg" [class.sort-slot]="isSortActive('as.damage')">@if (!unit.as.usesArcs) { {{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }} }</div>
                             <div class="as-td as-td-arm" [class.sort-slot]="isSortActive('as.Arm')">{{ unit.as.Arm }}</div>

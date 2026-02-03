@@ -71,6 +71,7 @@ import { generateUUID } from '../../services/ws.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
+import { formatMovement } from '../../models/as-common';
 
 @Component({
     selector: 'unit-search',
@@ -105,7 +106,7 @@ export class UnitSearchComponent {
     readonly filtersOnLeft = computed(() => this.optionsService.options().unitSearchExpandedViewLayout === 'filters-list-panel');
 
     public readonly SORT_OPTIONS = SORT_OPTIONS;
-    
+
     readonly dropdownFilters = this.filtersService.dropdownConfigs;
     readonly rangeFilters = this.filtersService.rangeConfigs;
 
@@ -123,12 +124,12 @@ export class UnitSearchComponent {
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
     favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
-    
+
     /** Query the active dropdown element directly from DOM to avoid viewChild retention */
     private getActiveDropdownElement(): HTMLElement | null {
         return document.querySelector('.results-dropdown') as HTMLElement | null;
     }
-    
+
     /** viewChild for CdkVirtualScrollViewport - only used for scrolling operations!!! */
     private viewport = viewChild(CdkVirtualScrollViewport);
 
@@ -143,28 +144,28 @@ export class UnitSearchComponent {
     activeIndex = signal<number | null>(null);
     selectedUnits = signal<Set<string>>(new Set());
     private unitDetailsDialogOpen = signal(false);
-    
+
     /** Unit currently selected for inline details panel in expanded view */
     inlinePanelUnit = signal<Unit | null>(null);
-    
+
     /** Minimum window width to show the inline details panel */
     private readonly INLINE_PANEL_MIN_WIDTH = 2100;
-    
+
     /** Whether to show the inline details panel (expanded view + sufficient screen width) */
     showInlinePanel = computed(() => {
         return this.expandedView() && this.layoutService.windowWidth() >= this.INLINE_PANEL_MIN_WIDTH;
     });
-    
+
     /** Index of the currently selected unit in the filtered list */
     private inlinePanelIndex = computed(() => {
         const unit = this.inlinePanelUnit();
         if (!unit) return -1;
         return this.filtersService.filteredUnits().findIndex(u => u.name === unit.name);
     });
-    
+
     /** Whether there is a previous unit to navigate to in the inline panel */
     inlinePanelHasPrev = computed(() => this.inlinePanelIndex() > 0);
-    
+
     /** Whether there is a next unit to navigate to in the inline panel */
     inlinePanelHasNext = computed(() => {
         const index = this.inlinePanelIndex();
@@ -178,16 +179,16 @@ export class UnitSearchComponent {
     readonly asTableSortSlotHeader = computed((): string | null => {
         const key = this.filtersService.selectedSort();
         if (!key) return null;
-        
+
         // Check if key is directly in table columns
         if (UnitSearchComponent.AS_TABLE_VISIBLE_KEYS.includes(key)) return null;
-        
+
         // Check if key is in a group that's in table columns
         for (const groupName of UnitSearchComponent.AS_TABLE_VISIBLE_GROUPS) {
             const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
             if (group && group.includes(key)) return null;
         }
-        
+
         // Key is not displayed in table - return the label
         const opt: SortOption | undefined = this.SORT_OPTIONS.find(o => o.key === key);
         return opt?.slotLabel || opt?.label || key;
@@ -203,7 +204,7 @@ export class UnitSearchComponent {
         const opt = this.SORT_OPTIONS.find(o => o.key === key);
         return opt?.slotLabel ?? null;
     });
-    
+
     advPanelStyle = signal<{ left: string, top: string, width: string, height: string, columnsCount: number }>({
         left: '0px',
         top: '0px',
@@ -216,7 +217,7 @@ export class UnitSearchComponent {
         width: '100%',
         height: '100%',
     });
-    
+
     /** Style for the expanded results wrapper when advanced panel is docked */
     expandedWrapperStyle = computed(() => {
         const { top: safeTop, bottom: safeBottom, right: safeRight } = this.layoutService.getSafeAreaInsets();
@@ -334,12 +335,12 @@ export class UnitSearchComponent {
         // Track pending afterNextRender callbacks to cancel on effect re-run or destroy
         let pendingFocusRef: { destroy: () => void } | null = null;
         let pendingResizeObserverRef: { destroy: () => void } | null = null;
-        
+
         effect(() => {
             // Cancel any previous pending focus callback
             pendingFocusRef?.destroy();
             pendingFocusRef = null;
-            
+
             if (this.autoFocus() &&
                 this.filtersService.isDataReady() &&
                 this.syntaxInput()) {
@@ -408,7 +409,7 @@ export class UnitSearchComponent {
             // Query DOM directly
             const dropdown = this.getActiveDropdownElement();
             if (!dropdown) return;
-            
+
             const items = dropdown.querySelectorAll('.results-dropdown-item:not(.no-results)');
             if (items.length === 0) return;
             const heights = Array.from(items).slice(0, 100).map(el => (el as HTMLElement).offsetHeight);
@@ -432,7 +433,7 @@ export class UnitSearchComponent {
 
         effect(() => {
             const currentExpandedView = this.expandedView();
-            
+
             // Cancel any pending timer and reset itemSize when view mode changes
             untracked(() => {
                 if (this.heightTrackingDebounceTimer) {
@@ -445,7 +446,7 @@ export class UnitSearchComponent {
                 }
                 prevExpandedView = currentExpandedView;
             });
-            
+
             if (!this.resultsVisible()) return;
             this.layoutService.isMobile();
             this.gameService.currentGameSystem();
@@ -571,9 +572,9 @@ export class UnitSearchComponent {
         const doublePanelWidth = 600;
         const gap = 4;
         const filtersOnLeft = this.filtersOnLeft() && this.expandedView(); // Only applies in expanded view
-        
+
         // Calculate available space based on layout direction
-        const spaceAvailable = filtersOnLeft 
+        const spaceAvailable = filtersOnLeft
             ? buttonRect.left - gap - 10  // Space to the left of button
             : window.innerWidth - buttonRect.right - gap - 10;  // Space to the right of button
 
@@ -713,42 +714,42 @@ export class UnitSearchComponent {
     private scrollToMakeVisible(index: number) {
         const vp = this.viewport();
         if (!vp) return;
-        
+
         const vpElement = vp.elementRef.nativeElement;
         const renderedRange = vp.getRenderedRange();
-        
+
         // Check if the item is within the rendered range
         if (index < renderedRange.start || index >= renderedRange.end) {
             // Item is not rendered at all, need to scroll to it
             vp.scrollToIndex(index, 'smooth');
             return;
         }
-        
+
         // Find the rendered items
         const items = vpElement.querySelectorAll('.results-dropdown-item:not(.no-results)');
         const localIndex = index - renderedRange.start;
-        
+
         if (localIndex < 0 || localIndex >= items.length) {
             // Safety fallback
             vp.scrollToIndex(index, 'smooth');
             return;
         }
-        
+
         const itemElement = items[localIndex] as HTMLElement;
         const itemRect = itemElement.getBoundingClientRect();
         const vpRect = vpElement.getBoundingClientRect();
-        
+
         // Check if item is fully visible within the viewport
         const isAbove = itemRect.top < vpRect.top;
         const isBelow = itemRect.bottom > vpRect.bottom;
-        
+
         if (!isAbove && !isBelow) {
             // Item is fully visible, no scrolling needed
             return;
         }
-        
+
         const currentOffset = vp.measureScrollOffset();
-        
+
         if (isAbove) {
             // Item is above the visible area - scroll up by the exact amount needed
             const scrollAmount = vpRect.top - itemRect.top;
@@ -874,7 +875,7 @@ export class UnitSearchComponent {
     isSortActive(...keysOrGroups: string[]): boolean {
         const currentSort = this.filtersService.selectedSort();
         if (!currentSort) return false;
-        
+
         for (const keyOrGroup of keysOrGroups) {
             // Check if it's a group name
             const group = UnitSearchComponent.SORT_KEY_GROUPS[keyOrGroup];
@@ -901,20 +902,20 @@ export class UnitSearchComponent {
     getAsTableSortSlot(unit: Unit): string | null {
         const key = this.filtersService.selectedSort();
         if (!key) return null;
-        
+
         // Check if key is directly in table columns
         if (UnitSearchComponent.AS_TABLE_VISIBLE_KEYS.includes(key)) return null;
-        
+
         // Check if key is in a group that's in table columns
         for (const groupName of UnitSearchComponent.AS_TABLE_VISIBLE_GROUPS) {
             const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
             if (group && group.includes(key)) return null;
         }
-        
+
         // Key is not displayed in table - return the formatted value
         const raw = this.getNestedProperty(unit, key);
         if (raw == null) return '—';
-        
+
         const numeric = typeof raw === 'number';
         return numeric ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
     }
@@ -993,8 +994,8 @@ export class UnitSearchComponent {
     onAdvPanelDragMove = (event: PointerEvent) => {
         const delta = event.clientX - this.advPanelDragStartX;
         // When filters are on left, dragging right increases width; otherwise dragging left increases width
-        const newWidth = this.filtersOnLeft() 
-            ? this.advPanelDragStartWidth + delta 
+        const newWidth = this.filtersOnLeft()
+            ? this.advPanelDragStartWidth + delta
             : this.advPanelDragStartWidth - delta;
         // Snap to 1 or 2 columns
         if (newWidth > 450) {
@@ -1142,33 +1143,26 @@ export class UnitSearchComponent {
 
         if (entries.length === 0) return unit.as.MV ?? '';
 
-        // Sort so default movement comes first
-        entries.sort((a, b) => {
-            if (a[0] === '') return -1;
-            if (b[0] === '') return 1;
-            return 0;
-        });
-
         return entries
-            .map(([mode, inches]) => {
-                if (this.useHex()) {
-                    return Math.ceil(inches / 2) + mode;
-                }
-                return inches + '″' + mode;
+            .sort((a, b) => {
+                if (a[0] === '') return -1;
+                if (b[0] === '') return 1;
+                return 0;
             })
+            .map(([mode, inches]) => formatMovement(inches, mode, this.optionsService.options().ASUseHex))
             .join('/');
     }
 
     toggleExpandedView() {
         const isExpanded = this.expandedView();
-        
+
         if (isExpanded) {
             const currentForce = this.forceBuilderService.currentForce();
             if (currentForce && currentForce.units().length > 0) {
                 this.closeAllPanels();
                 this.blurInput();
             } else {
-                this.focusInput();   
+                this.focusInput();
             }
         } else {
             this.focusInput();
@@ -1221,13 +1215,13 @@ export class UnitSearchComponent {
             ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
             : this.savedSearchesService.getAllSearches();
         componentRef.setInput('favorites', favorites);
-        
+
         // Determine if saving is allowed (has search text or filters)
         const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
         const filterState = this.filtersService.filterState();
         const hasActiveFilters = Object.values(filterState).some(s => s.interactedWith);
         componentRef.setInput('canSave', hasSearchText || hasActiveFilters);
-        
+
         outputToObservable(componentRef.instance.select).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((favorite: SerializedSearchFilter) => {
             if (favorite) this.applyFavorite(favorite);
             this.overlayManager.closeManagedOverlay('favorites');
@@ -1270,7 +1264,7 @@ export class UnitSearchComponent {
             const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
             const filterState = this.filtersService.filterState();
             const hasActiveFilters = Object.values(filterState).some(s => s.interactedWith);
-            
+
             if (!hasSearchText && !hasActiveFilters) {
                 await this.dialogsService.showNotice(
                     'Please enter a search query or set some filters before saving a bookmark.',
@@ -1292,7 +1286,7 @@ export class UnitSearchComponent {
             const gsKey = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
             const id = generateUUID();
             const filter = this.filtersService.serializeCurrentSearchFilter(id, trimmed, gsKey);
-            
+
             await this.savedSearchesService.saveSearch(filter);
             // Refresh the overlay with the new bookmark
             this.refreshFavoritesOverlay();
@@ -1358,7 +1352,7 @@ export class UnitSearchComponent {
                 ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
                 : this.savedSearchesService.getAllSearches();
             this.favoritesCompRef.setInput('favorites', favorites);
-            
+
             // Also update canSave state
             const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
             const filterState = this.filtersService.filterState();

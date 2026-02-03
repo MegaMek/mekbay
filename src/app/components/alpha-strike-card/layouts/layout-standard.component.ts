@@ -52,6 +52,7 @@ import {
     AsCriticalHitsEmplacementComponent,
 } from '../critical-hits';
 import { AsLayoutBaseComponent } from './layout-base.component';
+import { formatMovement } from '../../../models/as-common';
 
 /*
  * Author: Drake
@@ -111,10 +112,10 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
 
         const defaultGround = groundEntries.find(([mode]) => mode === '') ?? groundEntries[0];
         const groundMoveInches = defaultGround[1];
-        if (groundMoveInches <= 0) return this.formatMovement(0);
+        if (groundMoveInches <= 0) return formatMovement(0, '', this.useHex());
 
         const sprintInches = Math.ceil(groundMoveInches * 1.5);
-        return this.formatMovement(sprintInches);
+        return formatMovement(sprintInches, '', this.useHex());
     });
 
     tmmDisplay = computed<string>(() => {

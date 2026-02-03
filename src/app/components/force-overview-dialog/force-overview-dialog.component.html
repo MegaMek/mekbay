@@ -89,7 +89,7 @@
                                     <div class="as-td as-td-pv" [class.sort-slot]="isSortActive('as.PV')">{{ vm.unit.as.PV | adjustedPV:getPilotSkill(vm) | formatNumber:true:false }}</div>
                                     <div class="as-td as-td-skill clickable" (click)="onPilotClick(vm.forceUnit); $event.stopPropagation()" title="Click to edit pilot">{{ getPilotSkill(vm) }}</div>
                                     <div class="as-td as-td-sz" [class.sort-slot]="isSortActive('as.SZ')">{{ vm.unit.as.SZ }}</div>
-                                    <div class="as-td as-td-mv" [class.sort-slot]="isSortActive('as._mv')">{{ formatASMovement(vm.unit) }}</div>
+                                    <div class="as-td as-td-mv" [class.sort-slot]="isSortActive('as._mv')" [innerHTML]="formatASMovement(vm.unit)"></div>
                                     <div class="as-td as-td-tmm" [class.sort-slot]="isSortActive('as.TMM')">{{ vm.unit.as.TMM }}</div>
                                     <div class="as-td as-td-dmg" [class.sort-slot]="isSortActive('as.damage')">@if (!vm.unit.as.usesArcs) { {{ vm.unit.as.dmg.dmgS }}/{{ vm.unit.as.dmg.dmgM }}/{{ vm.unit.as.dmg.dmgL }} }</div>
                                     <div class="as-td as-td-arm" [class.sort-slot]="isSortActive('as.Arm')">{{ vm.unit.as.Arm }}</div>
@@ -111,6 +111,7 @@
                                     [expandedView]="true"
                                     [sortKey]="selectedSort()"
                                     [sortSlotLabel]="selectedSortLabel()"
+                                    [useHex]="useHex()"
                                     (cardClick)="onUnitClick(vm)"
                                     (tagClick)="onTagClick($event)"
                                     (pilotClick)="onPilotClick($event)">

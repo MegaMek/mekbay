@@ -53,7 +53,7 @@
                 </div>
                 <div class="info-item">
                     <span class="info-label muted">Movement:</span>
-                    <span class="info-value" [class.sort-slot]="isSortActive('as._mv')">{{ formatASMovement(u) }}</span>
+                    <span class="info-value" [class.sort-slot]="isSortActive('as._mv')" [innerHTML]="formatASMovement(u)"></span>
                 </div>
                 <div class="info-item">
                     <span class="info-label muted">Armor:</span>

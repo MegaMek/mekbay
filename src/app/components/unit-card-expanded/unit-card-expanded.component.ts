@@ -54,6 +54,7 @@ import { ExpandedComponentsPipe } from '../../pipes/expanded-components.pipe';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { SearchTokensGroup, highlightMatches } from '../../utils/search.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
+import { formatMovement } from '../../models/as-common';
 
 /**
  * Author: Drake
@@ -334,20 +335,13 @@ export class UnitCardExpandedComponent {
 
         if (entries.length === 0) return unit.as.MV ?? '';
 
-        // Sort so default movement comes first
-        entries.sort((a, b) => {
-            if (a[0] === '') return -1;
-            if (b[0] === '') return 1;
-            return 0;
-        });
-
         return entries
-            .map(([mode, inches]) => {
-                if (this.useHex()) {
-                    return Math.ceil(inches / 2) + mode;
-                }
-                return inches + '″' + mode;
+            .sort((a, b) => {
+                if (a[0] === '') return -1;
+                if (b[0] === '') return 1;
+                return 0;
             })
+            .map(([mode, inches]) => formatMovement(inches, mode, this.useHex()))
             .join('/');
     }
 

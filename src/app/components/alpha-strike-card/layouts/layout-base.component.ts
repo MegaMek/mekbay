@@ -40,6 +40,7 @@ import { AsAbilityLookupService } from '../../../services/as-ability-lookup.serv
 import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility } from '../../../models/as-abilities.model';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
+import { formatMovement } from '../../../models/as-common';
 
 /*
  * Author: Drake
@@ -361,7 +362,7 @@ export abstract class AsLayoutBaseComponent {
         if (!fu) {
             return Object.entries(this.asStats().MVm)
                 .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
-                .map(([mode, inches]) => this.formatMovement(inches, mode))
+                .map(([mode, inches]) => formatMovement(inches, mode, this.useHex()))
                 .join('/');
         }
 
@@ -372,7 +373,7 @@ export abstract class AsLayoutBaseComponent {
         };
 
         return entries
-            .map(([mode, inches]) => this.formatMovement(inches, mode))
+            .map(([mode, inches]) => formatMovement(inches, mode, this.useHex()))
             .join('/');
     });
 
@@ -444,13 +445,6 @@ export abstract class AsLayoutBaseComponent {
             .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
 
         return entries;
-    }
-    
-    formatMovement(inches: number, suffix: string = ''): string {
-        if (this.useHex()) {
-            return Math.ceil(inches / 2) + '<span class="hex-symbol">⬢</span>' + suffix;
-        }
-        return inches + '″' + suffix;
     }
 
     formatPilotAbility(selection: AbilitySelection): string {
