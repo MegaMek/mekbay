@@ -629,7 +629,7 @@ export class DataService {
                 if (unit.as.MVm) {
                     const mvmKeys = Object.keys(unit.as.MVm);
                     if (mvmKeys.length === 1 && mvmKeys[0] === 'j') {
-                        unit.as.MVm[''] = unit.as.MVm['j'];
+                        unit.as.MVm = { '': unit.as.MVm['j'], ...unit.as.MVm };
                     }
                 }
             }
