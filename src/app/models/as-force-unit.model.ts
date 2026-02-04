@@ -123,7 +123,6 @@ export class ASForceUnit extends ForceUnit {
     setHeat(heat: number): void {
         this.state.heat.set(heat);
         this.setModified();
-        this.force.emitChanged();
     }
 
     // ===== State Access Methods =====
@@ -314,19 +313,16 @@ export class ASForceUnit extends ForceUnit {
     setPilotName(name: string | undefined): void {
         this._pilotName.set(name);
         this.setModified();
-        this.force.emitChanged();
     }
 
     setPilotSkill(skill: number): void {
         this._pilotSkill.set(skill);
         this.setModified();
-        this.force.emitChanged();
     }
 
     setPilotAbilities(abilities: AbilitySelection[]): void {
         this._pilotAbilities.set(abilities);
         this.setModified();
-        this.force.emitChanged();
     }
 
     public getPilotSkill = computed<number>(() => {

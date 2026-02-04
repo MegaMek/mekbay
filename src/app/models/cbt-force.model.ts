@@ -64,6 +64,29 @@ export class CBTForce extends Force<CBTForceUnit> {
         return new CBTForceUnit(unit, this, this.dataService, this.unitInitializer, this.injector);
     }
 
+    /**
+     * Transfers pilot data (name, gunnery, piloting skills) from one CBT unit to another.
+     */
+    protected override transferPilotData(fromUnit: CBTForceUnit, toUnit: CBTForceUnit): void {
+        const fromCrew = fromUnit.getCrewMembers();
+        const toCrew = toUnit.getCrewMembers();
+
+        // Transfer data for each crew member that exists in both units
+        const crewCount = Math.min(fromCrew.length, toCrew.length);
+        for (let i = 0; i < crewCount; i++) {
+            const fromMember = fromCrew[i];
+            const toMember = toCrew[i];
+            if (fromMember && toMember) {
+                const name = fromMember.getName();
+                if (name) {
+                    toMember.setName(name);
+                }
+                toMember.setSkill('gunnery', fromMember.getSkill('gunnery'));
+                toMember.setSkill('piloting', fromMember.getSkill('piloting'));
+            }
+        }
+    }
+
     protected override deserializeForceUnit(data: CBTSerializedUnit): CBTForceUnit {
         return CBTForceUnit.deserialize(data, this, this.dataService, this.unitInitializer, this.injector);
     }

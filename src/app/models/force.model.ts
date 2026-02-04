@@ -249,6 +249,78 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         this.units().forEach(unit => unit.load());
     }
 
+    /**
+     * Replaces a unit in the force with a new one, preserving pilot data and position.
+     * This is the core logic for unit replacement - dialogs and notifications should be handled by the caller.
+     * 
+     * @param originalUnit The ForceUnit to replace
+     * @param newUnitData The new Unit data to create the replacement from
+     * @returns Object containing the new ForceUnit and the group it was placed in, or null if failed
+     */
+    public replaceUnit(originalUnit: TUnit, newUnitData: Unit): { newUnit: TUnit; group: UnitGroup<TUnit> } | null {
+        // Find the group containing the original unit
+        const groups = this.groups();
+        let originalGroup: UnitGroup<TUnit> | null = null;
+        let originalIndex = -1;
+
+        for (const group of groups) {
+            const groupUnits = group.units();
+            const idx = groupUnits.findIndex(u => u.id === originalUnit.id);
+            if (idx !== -1) {
+                originalGroup = group;
+                originalIndex = idx;
+                break;
+            }
+        }
+
+        if (!originalGroup || originalIndex === -1) {
+            return null; // Unit not found in any group
+        }
+
+        // Create the new force unit
+        const newForceUnit = this.createForceUnit(newUnitData);
+
+        // Disable saving during transfer to avoid triggering saves prematurely
+        newForceUnit.disabledSaving = true;
+        try {
+            // Transfer pilot data from original to new unit
+            this.transferPilotData(originalUnit, newForceUnit);
+        } finally {
+            newForceUnit.disabledSaving = false;
+        }
+
+        // Remove old unit from C3 networks
+        const currentNetworks = this._c3Networks();
+        if (currentNetworks.length > 0 && C3NetworkUtil.isUnitConnected(originalUnit.id, currentNetworks)) {
+            const result = C3NetworkUtil.removeUnitFromAllNetworks(currentNetworks, originalUnit.id);
+            this._c3Networks.set(result.networks);
+        }
+
+        // Remove old unit from the group (without calling removeUnit which would also clean up empty groups)
+        const groupUnits = originalGroup.units();
+        const filteredUnits = groupUnits.filter(u => u.id !== originalUnit.id);
+
+        // Insert new unit at the original position
+        filteredUnits.splice(originalIndex, 0, newForceUnit);
+        originalGroup.units.set(filteredUnits);
+
+        // Destroy the old unit
+        originalUnit.destroy();
+
+        // Emit changed event
+        if (this.instanceId()) {
+            this.emitChanged();
+        }
+
+        return { newUnit: newForceUnit, group: originalGroup };
+    }
+
+    /**
+     * Transfers pilot data (name, skills, abilities) from one unit to another.
+     * Must be implemented by subclasses to handle game-system-specific pilot data.
+     */
+    protected abstract transferPilotData(fromUnit: TUnit, toUnit: TUnit): void;
+
     /** Serialize this Force instance to a plain object */
     public serialize(): SerializedForce {
         throw new Error('Force.serialize must be implemented by subclass');

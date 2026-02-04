@@ -64,6 +64,21 @@ export class ASForce extends Force<ASForceUnit> {
         return new ASForceUnit(unit, this, this.dataService, this.unitInitializer, this.injector);
     }
 
+    /**
+     * Transfers pilot data (name, skill, abilities) from one AS unit to another.
+     */
+    protected override transferPilotData(fromUnit: ASForceUnit, toUnit: ASForceUnit): void {
+        const pilotName = fromUnit.alias();
+        if (pilotName) {
+            toUnit.setPilotName(pilotName);
+        }
+        toUnit.setPilotSkill(fromUnit.pilotSkill());
+        const abilities = fromUnit.pilotAbilities();
+        if (abilities && abilities.length > 0) {
+            toUnit.setPilotAbilities([...abilities]);
+        }
+    }
+
     protected override deserializeForceUnit(data: ASSerializedUnit): ASForceUnit {
         return ASForceUnit.deserialize(data, this, this.dataService, this.unitInitializer, this.injector);
     }

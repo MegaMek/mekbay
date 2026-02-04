@@ -462,94 +462,21 @@ export class ForceBuilderService {
             return null;
         }
 
-        // Find the group containing the original unit, fall back to last group
-        const groups = currentForce.groups();
-        const originalGroup = originalUnit.getGroup() || groups[groups.length - 1];
-
-        // Find the index of the original unit within its group to preserve position
-        const originalGroupUnits = originalGroup?.units() || [];
-        const originalIndex = originalGroupUnits.findIndex(u => u.id === originalUnit.id);
-
-        // Collect pilot info from the original unit
-        let pilotName: string | undefined;
-        let gunnerySkill: number | undefined;
-        let pilotingSkill: number | undefined;
-        let pilotAbilities: any[] | undefined;
-
-        if (originalUnit instanceof CBTForceUnit) {
-            const crew = originalUnit.getCrewMembers();
-            if (crew.length > 0) {
-                const pilot = crew[0];
-                pilotName = pilot.getName() || undefined;
-                gunnerySkill = pilot.getSkill('gunnery');
-                pilotingSkill = pilot.getSkill('piloting');
-            }
-        } else if (originalUnit instanceof ASForceUnit) {
-            pilotName = originalUnit.alias();
-            gunnerySkill = originalUnit.getPilotSkill();
-            pilotingSkill = gunnerySkill;
-            pilotAbilities = [...originalUnit.pilotAbilities()];
-        }
-
-        // Remove the old unit
+        // Track if this unit was selected
         const wasSelected = this.selectedUnit()?.id === originalUnit.id;
-        
-        // Clean up C3 networks before removing
-        currentForce.removeUnit(originalUnit);
+
+        // Delete canvas data before replacement
         this.dataService.deleteCanvasDataOfUnit(originalUnit);
 
-        // Add the new unit to the same group
-        let newForceUnit: ForceUnit;
-        try {
-            newForceUnit = currentForce.addUnit(newUnitData, originalGroup);
-        } catch (error) {
-            this.toastService.showToast(error instanceof Error ? error.message : (error as string), 'error');
+        // Use the Force model's replaceUnit method for core logic
+        const replaceResult = currentForce.replaceUnit(originalUnit, newUnitData);
+
+        if (!replaceResult) {
+            this.toastService.showToast('Failed to replace unit.', 'error');
             return null;
         }
 
-        // Move the new unit to the original position within the group
-        if (originalGroup && originalIndex >= 0) {
-            const groupUnits = originalGroup.units();
-            const newUnitIndex = groupUnits.findIndex(u => u.id === newForceUnit.id);
-            if (newUnitIndex !== originalIndex && newUnitIndex >= 0) {
-                // Remove from current position and insert at original position
-                const updatedUnits = [...groupUnits];
-                updatedUnits.splice(newUnitIndex, 1);
-                updatedUnits.splice(originalIndex, 0, newForceUnit);
-                originalGroup.units.set(updatedUnits);
-            }
-        }
-
-        // Apply pilot info to the new unit
-        newForceUnit.disabledSaving = true;
-
-        if (newForceUnit instanceof CBTForceUnit) {
-            const crew = newForceUnit.getCrewMembers();
-            if (crew.length > 0) {
-                const pilot = crew[0];
-                if (pilotName) {
-                    pilot.setName(pilotName);
-                }
-                if (gunnerySkill !== undefined) {
-                    pilot.setSkill('gunnery', gunnerySkill);
-                }
-                if (pilotingSkill !== undefined) {
-                    pilot.setSkill('piloting', pilotingSkill);
-                }
-            }
-        } else if (newForceUnit instanceof ASForceUnit) {
-            if (pilotName) {
-                newForceUnit.setPilotName(pilotName);
-            }
-            if (gunnerySkill !== undefined) {
-                newForceUnit.setPilotSkill(gunnerySkill);
-            }
-            if (pilotAbilities && pilotAbilities.length > 0) {
-                newForceUnit.setPilotAbilities(pilotAbilities);
-            }
-        }
-
-        newForceUnit.disabledSaving = false;
+        const { newUnit: newForceUnit, group: originalGroup } = replaceResult;
 
         // Select the new unit if the old one was selected
         if (wasSelected) {

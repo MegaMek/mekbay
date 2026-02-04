@@ -346,8 +346,10 @@ export class ForceBuilderViewerComponent {
             this.forceBuilderService.generateGroupNameIfNeeded(toGroup);
         }
         force.removeEmptyGroups();
-        // Notify force that structure changed
-        force.emitChanged();
+        // Only emit change (trigger save) if force already has an instanceId
+        if (force.instanceId()) {
+            force.emitChanged();
+        }
     }
 
     connectedDropLists(): string[] {
@@ -389,8 +391,10 @@ export class ForceBuilderViewerComponent {
         this.forceBuilderService.generateGroupNameIfNeeded(newGroup);
         currentForce.removeEmptyGroups();
 
-        // Commit change
-        currentForce.emitChanged();
+        // Only emit change (trigger save) if force already has an instanceId
+        if (currentForce.instanceId()) {
+            currentForce.emitChanged();
+        }
 
         // Select the moved unit
         this.forceBuilderService.selectUnit(moved);
