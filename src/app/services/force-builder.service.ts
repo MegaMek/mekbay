@@ -412,7 +412,10 @@ export class ForceBuilderService {
         if (updatedUnits.length === 0) {
             const forceInstanceId = currentForce.instanceId();
             if (forceInstanceId) {
-                this.dataService.deleteForce(forceInstanceId); // Is the last unit, delete the force
+                // Cancel any pending debounced saves
+                currentForce.cancelPendingChanges();
+                await this.dataService.deleteForce(forceInstanceId); // Delete locally and from cloud
+                this.logger.info(`ForceBuilderService: Force with instance ID ${forceInstanceId} deleted as last unit was removed.`);
             }
             this.setForce(null);
             this.selectedUnit.set(null);
@@ -896,15 +899,12 @@ export class ForceBuilderService {
     /**
      * Generates URL parameters for all groups in the force.
      * Format: groupName~unit1,unit2|groupName2~unit3,unit4
-     * If a group has default name and no nameLock, the name is omitted.
      */
     private generateGroupParams(groups: UnitGroup[]): string[] {
         return groups.filter(g => g.units().length > 0).map(group => {
             const unitParams = this.generateUnitParams(group.units());
-            const groupName = group.nameLock ? group.name() : '';
-            // Format: groupName~unit1,unit2 (name is optional)
-            const prefix = groupName ? `${groupName}~` : '';
-            return prefix + unitParams.join(',');
+            const groupName = group.name();
+            return `${groupName}~${unitParams.join(',')}`;
         });
     }
 

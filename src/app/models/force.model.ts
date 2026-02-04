@@ -343,6 +343,17 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }, 300); // debounce
     }
 
+    /**
+     * Cancels any pending debounced save.
+     * Call this before deleting a force to prevent stale saves.
+     */
+    public cancelPendingChanges() {
+        if (this._debounceTimer) {
+            clearTimeout(this._debounceTimer);
+            this._debounceTimer = null;
+        }
+    }
+
     public abstract update(data: SerializedForce): void;
 
 }
