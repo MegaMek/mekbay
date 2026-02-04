@@ -135,12 +135,13 @@
         </button>
         @if (data.selectMode) {
         <button class="modal-btn bt-button" (click)="onSelect()">SELECT</button>
-        } @else if (isChangeMode()) {
-        <button [disabled]="this.forceBuilderService.readOnlyForce()" class="modal-btn bt-button"
-            (click)="onChange()">CHANGE</button>
         } @else if (!data.hideAddButton) {
         <button [disabled]="this.forceBuilderService.readOnlyForce()" class="modal-btn bt-button"
             (click)="onAdd()">ADD</button>
+        }
+        @if (isChangeMode()) {
+        <button [disabled]="isChangeDisabled()" class="modal-btn bt-button"
+            (click)="onChange()">CHANGE</button>
         }
         <button class="modal-btn bt-button" (click)="onClose()">DISMISS</button>
         <button [class.hidden]="!hasNext" class="nav-arrow nav-arrow-right" (click)="onNext()" aria-label="Next Unit">

@@ -108,7 +108,15 @@ export class UnitDetailsDialogComponent {
     shareButtonInActions = computed(() => this.layoutService.windowWidth() > 600);
 
     /** Computed property to determine if we're in change mode */
-    isChangeMode = computed(() => !!this.data.originalForceUnit);
+    isChangeMode = computed(() => {
+        return !!this.data.originalForceUnit;
+    });
+
+    isChangeDisabled = computed(() => {
+        return !this.data.originalForceUnit 
+            || this.forceBuilderService.readOnlyForce()
+            || this.data.originalForceUnit.getUnit().name === this.unit.name;
+    });
 
     tabs = computed<string[]>(() => {
         return ['General', 'Intel', 'Factions', 'Variants', 'Sheet', 'Card'];

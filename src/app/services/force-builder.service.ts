@@ -466,6 +466,10 @@ export class ForceBuilderService {
         const groups = currentForce.groups();
         const originalGroup = originalUnit.getGroup() || groups[groups.length - 1];
 
+        // Find the index of the original unit within its group to preserve position
+        const originalGroupUnits = originalGroup?.units() || [];
+        const originalIndex = originalGroupUnits.findIndex(u => u.id === originalUnit.id);
+
         // Collect pilot info from the original unit
         let pilotName: string | undefined;
         let gunnerySkill: number | undefined;
@@ -501,6 +505,19 @@ export class ForceBuilderService {
         } catch (error) {
             this.toastService.showToast(error instanceof Error ? error.message : (error as string), 'error');
             return null;
+        }
+
+        // Move the new unit to the original position within the group
+        if (originalGroup && originalIndex >= 0) {
+            const groupUnits = originalGroup.units();
+            const newUnitIndex = groupUnits.findIndex(u => u.id === newForceUnit.id);
+            if (newUnitIndex !== originalIndex && newUnitIndex >= 0) {
+                // Remove from current position and insert at original position
+                const updatedUnits = [...groupUnits];
+                updatedUnits.splice(newUnitIndex, 1);
+                updatedUnits.splice(originalIndex, 0, newForceUnit);
+                originalGroup.units.set(updatedUnits);
+            }
         }
 
         // Apply pilot info to the new unit
