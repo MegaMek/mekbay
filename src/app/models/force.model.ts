@@ -31,13 +31,13 @@
  * affiliated with Microsoft.
  */
 
-import { signal, computed, WritableSignal, EventEmitter, Injector } from '@angular/core';
+import { signal, computed, WritableSignal, Injector } from '@angular/core';
+import { Subject } from 'rxjs';
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
-import { LoggerService } from '../services/logger.service';
-import { SerializedForce, SerializedGroup, SerializedUnit, SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA } from './force-serialization';
+import { SerializedForce, SerializedUnit, SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
@@ -90,8 +90,9 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     cloud?: boolean = false; // Indicates if this force is stored in the cloud
     owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
     c3Networks = this._c3Networks.asReadonly(); 
-    public changed = new EventEmitter<void>();
-    private _debounceTimer: any = null;
+    /** Emits after each debounced mutation — subscribe to react to force changes. */
+    public readonly changed = new Subject<void>();
+    private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     protected dataService: DataService;
     protected unitInitializer: UnitInitializerService;
@@ -338,7 +339,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
         this._debounceTimer = setTimeout(() => {
             this.timestamp = new Date().toISOString();
-            this.changed.emit();
+            this.changed.next();
             this._debounceTimer = null;
         }, 300); // debounce
     }

@@ -39,7 +39,7 @@ import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subscription } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData } from '../components/rename-force-dialog/rename-force-dialog.component';
 import { RenameGroupDialogComponent, RenameGroupDialogData } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from './unit-initializer.service';
@@ -85,7 +85,7 @@ export class ForceBuilderService {
     public currentForce = signal<Force | null>(null);
     public selectedUnit = signal<ForceUnit | null>(null);
     private urlStateInitialized = signal(false);
-    private forceChangedSubscription: any;
+    private forceChangedSubscription: Subscription | null = null;
     private conflictDialogRef: any;
 
     constructor() {
@@ -97,10 +97,9 @@ export class ForceBuilderService {
         this.setForce(this.currentForce());
         this.monitorWebSocketConnection();
         inject(DestroyRef).onDestroy(() => {
-            // Clean up subscription
-            if (this.forceChangedSubscription) {
-                this.forceChangedSubscription.unsubscribe();
-            }
+            // Clean up force change subscription
+            this.forceChangedSubscription?.unsubscribe();
+            this.forceChangedSubscription = null;
             if (this.conflictDialogRef) {
                 this.conflictDialogRef.close();
                 this.conflictDialogRef = undefined;
@@ -130,9 +129,8 @@ export class ForceBuilderService {
     setForce(newForce: Force | null) {
         // Unsubscribe from previous force
         this.selectedUnit.set(null);
-        if (this.forceChangedSubscription) {
-            this.forceChangedSubscription.unsubscribe();
-        }
+        this.forceChangedSubscription?.unsubscribe();
+        this.forceChangedSubscription = null;
         const currentForce = this.currentForce();
         const currentForceInstanceId = currentForce?.instanceId();
         if (currentForceInstanceId) {
@@ -156,7 +154,7 @@ export class ForceBuilderService {
                 this.replaceForceInPlace(serializedForce);
             });
         }
-        // Subscribe to new force's changed event
+        // Subscribe to force changes for auto-save
         this.forceChangedSubscription = newForce.changed.subscribe(() => {
             this.dataService.saveForce(newForce);
             const forceInstanceId = newForce.instanceId();
