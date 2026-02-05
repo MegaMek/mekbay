@@ -1035,6 +1035,10 @@ export interface EvaluatorContext {
     getAllEraNames?: () => string[];
     /** Get all faction names (for wildcard expansion) */
     getAllFactionNames?: () => string[];
+    /** Check if a unit belongs to a specific force pack (external filter) */
+    unitBelongsToForcePack?: (unit: any, packName: string) => boolean;
+    /** Get all force pack names (for wildcard expansion) */
+    getAllForcePackNames?: () => string[];
     /** 
      * Get AS movement values filtered by active motive selection.
      * Returns array of movement values to check for range filtering.
@@ -1172,6 +1176,9 @@ function evaluateExternalFilter(
     } else if (conf.key === 'faction' && context.unitBelongsToFaction) {
         checkMembership = (name: string) => context.unitBelongsToFaction!(unit, name);
         getAllNames = context.getAllFactionNames;
+    } else if (conf.key === 'forcePack' && context.unitBelongsToForcePack) {
+        checkMembership = (name: string) => context.unitBelongsToForcePack!(unit, name);
+        getAllNames = context.getAllForcePackNames;
     } else {
         // External filter handler not provided, pass through
         return true;

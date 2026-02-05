@@ -697,6 +697,7 @@ export class UnitSearchFiltersService {
     expandedView = signal(false);
     advOpen = signal(false);
     private totalRangesCache: Record<string, [number, number]> = {};
+    private forcePackChassisCache: Map<string, Set<string>> | null = null;
     private availableNamesCache = new Map<string, string[]>();
     private availableNamesCacheOrder: string[] = [];
     private readonly availableNamesCacheMaxEntries = 50; // Limit cache size for multistate filter options
@@ -1132,6 +1133,50 @@ export class UnitSearchFiltersService {
         return false;
     }
 
+    /**
+     * Check if a unit belongs to a specific force pack by name.
+     * Used for external filter evaluation in AST.
+     * Matches by chassis+type combination.
+     */
+    public unitBelongsToForcePack(unit: Unit, packName: string): boolean {
+        // Build cache on first use
+        if (!this.forcePackChassisCache) {
+            this.buildForcePackChassisCache();
+        }
+        
+        const chassisSet = this.forcePackChassisCache!.get(packName);
+        if (!chassisSet) return false;
+        
+        const unitKey = `${unit.chassis}|${unit.type}`;
+        return chassisSet.has(unitKey);
+    }
+
+    /**
+     * Build cache of chassis|type sets for all force packs.
+     * Called once lazily on first use.
+     */
+    private buildForcePackChassisCache(): void {
+        this.forcePackChassisCache = new Map();
+        
+        // Build a lookup map from unit name to chassis|type key
+        const nameToChassisType = new Map<string, string>();
+        for (const unit of this.units) {
+            nameToChassisType.set(unit.name, `${unit.chassis}|${unit.type}`);
+        }
+        
+        // Build chassis sets for each force pack
+        for (const pack of getForcePacks()) {
+            const chassisSet = new Set<string>();
+            for (const packUnit of pack.units) {
+                const key = nameToChassisType.get(packUnit.name);
+                if (key) {
+                    chassisSet.add(key);
+                }
+            }
+            this.forcePackChassisCache.set(pack.name, chassisSet);
+        }
+    }
+
     private getUnitIdsForSelectedEras(selectedEraNames: string[]): Set<number> | null {
         if (!selectedEraNames || selectedEraNames.length === 0) return null;
         const unitIds = new Set<number>();
@@ -1565,12 +1610,14 @@ export class UnitSearchFiltersService {
                         return null;
                 }
             },
-            // External filter handlers for era and faction
+            // External filter handlers for era, faction, and force pack
             unitBelongsToEra: (unit: Unit, eraName: string) => this.unitBelongsToEra(unit, eraName),
             unitBelongsToFaction: (unit: Unit, factionName: string) => this.unitBelongsToFaction(unit, factionName),
+            unitBelongsToForcePack: (unit: Unit, packName: string) => this.unitBelongsToForcePack(unit, packName),
             // Get all names for wildcard expansion
             getAllEraNames: () => this.dataService.getEras().map(e => e.name),
             getAllFactionNames: () => this.dataService.getFactions().map(f => f.name),
+            getAllForcePackNames: () => getForcePacks().map(p => p.name),
             // AS movement values linked to motive filter
             getASMovementValues: (unit: Unit) => {
                 const mvm = unit.as?.MVm;
