@@ -978,6 +978,10 @@ export interface EvaluatorContext {
     unitBelongsToEra?: (unit: any, eraName: string) => boolean;
     /** Check if a unit belongs to a specific faction (external filter) */
     unitBelongsToFaction?: (unit: any, factionName: string) => boolean;
+    /** Get all era names (for wildcard expansion) */
+    getAllEraNames?: () => string[];
+    /** Get all faction names (for wildcard expansion) */
+    getAllFactionNames?: () => string[];
     /** 
      * Get AS movement values filtered by active motive selection.
      * Returns array of movement values to check for range filtering.
@@ -1087,6 +1091,7 @@ function evaluateFilter(
 
 /**
  * Evaluate an external filter (era, faction) that uses ID-based lookups.
+ * Supports wildcards (e.g., "Capel*" to match "Capellan Confederation").
  */
 function evaluateExternalFilter(
     unit: any,
@@ -1095,30 +1100,71 @@ function evaluateExternalFilter(
     conf: AdvFilterConfig,
     context: EvaluatorContext
 ): boolean {
-    // Determine the membership check function based on filter key
+    // Determine the membership check function and all names getter based on filter key
     let checkMembership: (name: string) => boolean;
+    let getAllNames: (() => string[]) | undefined;
     
     if (conf.key === 'era' && context.unitBelongsToEra) {
         checkMembership = (name: string) => context.unitBelongsToEra!(unit, name);
+        getAllNames = context.getAllEraNames;
     } else if (conf.key === 'faction' && context.unitBelongsToFaction) {
         checkMembership = (name: string) => context.unitBelongsToFaction!(unit, name);
+        getAllNames = context.getAllFactionNames;
     } else {
         // External filter handler not provided, pass through
         return true;
     }
     
+    // Expand wildcard patterns to actual names
+    const expandedValues: string[] = [];
+    for (const val of values) {
+        if (val.includes('*') && getAllNames) {
+            // Wildcard pattern - match against all available names
+            const regex = wildcardToRegex(val);
+            const allNames = getAllNames();
+            for (const name of allNames) {
+                if (regex.test(name)) {
+                    expandedValues.push(name);
+                }
+            }
+        } else {
+            // Regular value
+            expandedValues.push(val);
+        }
+    }
+    
     // Handle operators
     if (operator === '!=') {
         // Exclude if unit matches ANY of the values
-        for (const val of values) {
+        for (const val of expandedValues) {
             if (checkMembership(val)) {
                 return false;
             }
         }
         return true;
+    } else if (operator === '&=') {
+        // AND: unit must match ALL of the values (with wildcard expansion, at least one per original pattern)
+        for (const val of values) {
+            if (val.includes('*') && getAllNames) {
+                // For wildcard AND, at least one matching name must be satisfied
+                const regex = wildcardToRegex(val);
+                const allNames = getAllNames();
+                let matchFound = false;
+                for (const name of allNames) {
+                    if (regex.test(name) && checkMembership(name)) {
+                        matchFound = true;
+                        break;
+                    }
+                }
+                if (!matchFound) return false;
+            } else {
+                if (!checkMembership(val)) return false;
+            }
+        }
+        return true;
     } else {
         // Include if unit matches ANY of the values (OR logic for =)
-        for (const val of values) {
+        for (const val of expandedValues) {
             if (checkMembership(val)) {
                 return true;
             }

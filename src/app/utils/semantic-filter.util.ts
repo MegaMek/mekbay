@@ -778,21 +778,32 @@ export function tokensToFilterState(
                 }
 
             } else {
-                // Handle regular dropdowns (only include, no exclude)
+                // Handle regular dropdowns (include, exclude, and wildcards support)
                 const values: string[] = [];
                 const wildcardPatterns: WildcardPattern[] = [];
+                let semanticOnly = false;
 
                 for (const token of fieldTokens) {
-                    if (token.operator === '=') {
-                        for (const val of token.values) {
-                            if (val.includes('*')) {
-                                wildcardPatterns.push({ pattern: val, state: 'or' });
-                            } else {
+                    const state: 'or' | 'and' | 'not' = token.operator === '!=' ? 'not' : (token.operator === '&=' ? 'and' : 'or');
+                    
+                    // Mark as semantic-only if using exclude or AND operators (not representable in simple UI)
+                    if (token.operator === '!=' || token.operator === '&=') {
+                        semanticOnly = true;
+                    }
+                    
+                    for (const val of token.values) {
+                        if (val.includes('*')) {
+                            wildcardPatterns.push({ pattern: val, state });
+                            semanticOnly = true;
+                        } else {
+                            if (state === 'or') {
                                 values.push(normalizeValue(val));
+                            } else {
+                                // NOT and AND values also go to wildcard patterns for proper handling
+                                wildcardPatterns.push({ pattern: normalizeValue(val), state });
                             }
                         }
                     }
-                    // != for non-multistate dropdowns is not supported in UI
                 }
 
                 if (values.length > 0 || wildcardPatterns.length > 0) {
@@ -800,7 +811,7 @@ export function tokensToFilterState(
                         value: Array.from(new Set(values)), // Deduplicate
                         interactedWith: true,
                         wildcardPatterns: wildcardPatterns.length > 0 ? wildcardPatterns : undefined,
-                        semanticOnly: wildcardPatterns.length > 0 ? true : undefined
+                        semanticOnly: semanticOnly || undefined
                     };
                 }
             }

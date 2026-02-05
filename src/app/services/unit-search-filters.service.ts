@@ -1381,26 +1381,54 @@ export class UnitSearchFiltersService {
                         ? new Set((val as string[]).map(v => String(v).toLowerCase()))
                         : null;
                     
+                    // Separate wildcard patterns by state
+                    const orPatterns = wildcardPatterns?.filter(p => p.state === 'or') || [];
+                    const andPatterns = wildcardPatterns?.filter(p => p.state === 'and') || [];
+                    const notPatterns = wildcardPatterns?.filter(p => p.state === 'not') || [];
+                    
                     results = results.filter(u => {
                         const v = getProperty(u, conf.key);
                         const unitValues = Array.isArray(v) ? v : [v];
+                        const unitStrings = unitValues.filter(uv => uv != null).map(uv => String(uv).toLowerCase());
                         
-                        // Check regular values first (case-insensitive)
-                        if (valLowerSet) {
-                            for (const uv of unitValues) {
-                                if (uv != null && valLowerSet.has(String(uv).toLowerCase())) return true;
+                        // Check NOT patterns first - exclude if any match
+                        for (const p of notPatterns) {
+                            const regex = wildcardToRegex(p.pattern);
+                            for (const uv of unitStrings) {
+                                if (regex.test(uv)) return false;
                             }
                         }
                         
-                        // Check wildcard patterns
-                        if (hasWildcards) {
-                            for (const p of wildcardPatterns!) {
-                                if (p.state === 'or') {
-                                    const regex = wildcardToRegex(p.pattern);
-                                    for (const uv of unitValues) {
-                                        if (uv && regex.test(String(uv))) return true;
-                                    }
+                        // Check AND patterns - must have at least one match for each
+                        for (const p of andPatterns) {
+                            const regex = wildcardToRegex(p.pattern);
+                            let hasMatch = false;
+                            for (const uv of unitStrings) {
+                                if (regex.test(uv)) {
+                                    hasMatch = true;
+                                    break;
                                 }
+                            }
+                            if (!hasMatch) return false;
+                        }
+                        
+                        // If only NOT/AND patterns, include all remaining
+                        if (!valLowerSet && orPatterns.length === 0) {
+                            return true;
+                        }
+                        
+                        // Check regular values (OR logic, case-insensitive)
+                        if (valLowerSet) {
+                            for (const uv of unitStrings) {
+                                if (valLowerSet.has(uv)) return true;
+                            }
+                        }
+                        
+                        // Check OR wildcard patterns
+                        for (const p of orPatterns) {
+                            const regex = wildcardToRegex(p.pattern);
+                            for (const uv of unitStrings) {
+                                if (regex.test(uv)) return true;
                             }
                         }
                         
@@ -1540,6 +1568,9 @@ export class UnitSearchFiltersService {
             // External filter handlers for era and faction
             unitBelongsToEra: (unit: Unit, eraName: string) => this.unitBelongsToEra(unit, eraName),
             unitBelongsToFaction: (unit: Unit, factionName: string) => this.unitBelongsToFaction(unit, factionName),
+            // Get all names for wildcard expansion
+            getAllEraNames: () => this.dataService.getEras().map(e => e.name),
+            getAllFactionNames: () => this.dataService.getFactions().map(f => f.name),
             // AS movement values linked to motive filter
             getASMovementValues: (unit: Unit) => {
                 const mvm = unit.as?.MVm;
