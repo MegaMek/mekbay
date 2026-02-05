@@ -132,6 +132,16 @@
         <p class="note"><strong>Note:</strong> Filters at the same level are AND'd by default. Use <code>OR</code> to combine groups.</p>
     </section>
 
+    <!-- Escape Sequences -->
+    <section class="guide-section">
+        <h3>Escape Sequences</h3>
+        <p>Use backslash <code>\</code> to include special characters literally in text search:</p>
+        <div class="examples">
+            <div class="example"><code class="allow-select" (click)="appendToSearch('Puma \\(Adder\\)')">Puma \(Adder\)</code><span class="desc">→ Search for "Puma (Adder)" with literal parentheses</span></div>
+        </div>
+        <p class="note"><strong>Escapable characters:</strong> <code>( ) = &gt; &lt; ! &amp; " ' \</code></p>
+    </section>
+
     <!-- Available Fields - Classic BattleTech -->
     <section class="guide-section fields-section">
         <h3>Available Fields (Classic BattleTech)</h3>

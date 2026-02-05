@@ -39,6 +39,8 @@
  *   - Grouping: (filter1 filter2) - filters inside are AND'd by default
  *   - Boolean operators: OR, AND (case insensitive)
  *   - Nested groups: ((type=Mek bv>1000) OR (type=Aero bv<1500)) AND (firepower>=50)
+ *   - Escape sequences: Use backslash to escape special characters in text search
+ *     Escapable: ( ) = > < ! & " ' \
  * 
  * Default behavior:
  *   - Filters at the same level without explicit operator are AND'd together
@@ -49,12 +51,50 @@
  *   type=Mek OR type=Aero               -> type=Mek OR type=Aero
  *   (type=Mek bv>1000) OR type=Aero     -> (type=Mek AND bv>1000) OR type=Aero
  *   ((a=1) OR (b=2)) AND (c=3)          -> (a=1 OR b=2) AND c=3
+ *   Puma \(Adder\)                  -> searches for "Puma (Adder)"
+ *   name\=test                          -> searches for literal "name=test"
  */
 
 import { GameSystem } from '../models/common.model';
 import { ADVANCED_FILTERS, AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
 import { SemanticOperator, SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, QuantityConstraint } from './semantic-filter.util';
 import { wildcardToRegex } from './string.util';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/** Characters that have special meaning in the lexer and can be escaped with backslash */
+const ESCAPABLE_CHARS = new Set(['(', ')', '=', '>', '<', '!', '&', '"', "'", '\\']);
+
+/**
+ * Check if a character at position is escaped (preceded by backslash and is escapable).
+ */
+function isEscapedChar(input: string, pos: number): boolean {
+    return pos > 0 && input[pos - 1] === '\\' && ESCAPABLE_CHARS.has(input[pos]);
+}
+
+/**
+ * Check if position starts an escape sequence (backslash followed by escapable char).
+ */
+function isEscapeSequence(input: string, pos: number): boolean {
+    return input[pos] === '\\' && pos + 1 < input.length && ESCAPABLE_CHARS.has(input[pos + 1]);
+}
+
+/**
+ * Unescape special characters in text.
+ * Converts \X to X for any escapable character (parentheses, operators, quotes, backslash).
+ */
+export function unescapeText(text: string): string {
+    return text.replace(/\\([()=><!'"&\\])/g, '$1');
+}
+
+/**
+ * @deprecated Use unescapeText instead
+ */
+export function unescapeParens(text: string): string {
+    return unescapeText(text);
+}
 
 // ============================================================================
 // Types
@@ -152,17 +192,23 @@ function tokenize(input: string, semanticKeyMap: Map<string, AdvFilterConfig>): 
             continue;
         }
 
-        // Check for parentheses
-        if (char === '(') {
-            tokens.push({ type: 'LPAREN', value: '(', start: i, end: i + 1 });
-            i++;
-            continue;
-        }
+        // Check for escape sequences - treat as text
+        if (isEscapeSequence(input, i)) {
+            // This is an escape sequence, will be handled in TEXT collection below
+            // Fall through to TEXT parsing
+        } else {
+            // Check for parentheses (unescaped)
+            if (char === '(') {
+                tokens.push({ type: 'LPAREN', value: '(', start: i, end: i + 1 });
+                i++;
+                continue;
+            }
 
-        if (char === ')') {
-            tokens.push({ type: 'RPAREN', value: ')', start: i, end: i + 1 });
-            i++;
-            continue;
+            if (char === ')') {
+                tokens.push({ type: 'RPAREN', value: ')', start: i, end: i + 1 });
+                i++;
+                continue;
+            }
         }
 
         // Check for OR/AND keywords (case insensitive, must be followed by space or paren)
@@ -200,7 +246,7 @@ function tokenize(input: string, semanticKeyMap: Map<string, AdvFilterConfig>): 
             continue;
         }
 
-        // Otherwise, it's plain text - collect until whitespace, paren, or end
+        // Otherwise, it's plain text - collect until whitespace, unescaped paren, or end
         // Since we already checked for filters at position i and it failed,
         // we can safely collect all word characters until we hit a boundary
         const textStart = i;
@@ -209,7 +255,13 @@ function tokenize(input: string, semanticKeyMap: Map<string, AdvFilterConfig>): 
         while (textEnd < input.length) {
             const char = input[textEnd];
             
-            // Stop at whitespace or parentheses
+            // Handle escape sequences - skip the backslash and include the escaped char
+            if (isEscapeSequence(input, textEnd)) {
+                textEnd += 2; // Skip both backslash and the escaped char
+                continue;
+            }
+            
+            // Stop at whitespace or unescaped parentheses
             if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || 
                 char === '(' || char === ')') break;
             
@@ -634,7 +686,8 @@ class Parser {
      */
     private extractFromAST(node: ASTNode, textParts: string[], tokens: SemanticToken[]): void {
         if (node.type === 'text') {
-            textParts.push(node.value);
+            // Unescape escape sequences for the actual text search
+            textParts.push(unescapeText(node.value));
         } else if (node.type === 'filter') {
             tokens.push(node.token);
         } else if (node.type === 'group') {
@@ -1530,8 +1583,9 @@ export function evaluateASTNode(
     switch (node.type) {
         case 'text':
             // Text nodes filter by matching against unit's searchable text
+            // Unescape the text value before matching (e.g., \( -> ()
             if (context.matchesText) {
-                return context.matchesText(unit, node.value);
+                return context.matchesText(unit, unescapeText(node.value));
             }
             // If no text matcher provided, pass through
             return true;
@@ -1627,9 +1681,10 @@ function collectMatchingText(
     context: EvaluatorContext
 ): string[] {
     if (node.type === 'text') {
-        // Check if this text node matches the unit
-        if (context.matchesText && context.matchesText(unit, node.value)) {
-            return [node.value];
+        // Check if this text node matches the unit (use unescaped value for matching)
+        const unescapedValue = unescapeText(node.value);
+        if (context.matchesText && context.matchesText(unit, unescapedValue)) {
+            return [unescapedValue];
         }
         return [];
     }
