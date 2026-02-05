@@ -1589,6 +1589,16 @@ export class UnitSearchFiltersService {
                     }
                 }
                 return values;
+            },
+            // Display name lookup (allows matching by both key and display name)
+            // Add additional filter lookups here as needed
+            getDisplayName: (filterKey: string, value: string) => {
+                switch (filterKey) {
+                    case 'source':
+                        return this.dataService.getSourcebookTitle(value);
+                    default:
+                        return undefined;
+                }
             }
         };
         let results = filterUnitsWithAST(this.units, ast.ast, context);

@@ -1042,6 +1042,15 @@ export interface EvaluatorContext {
      * If no motive filter, returns all movement values.
      */
     getASMovementValues?: (unit: any) => number[];
+    /**
+     * Get display/alternative name for a value in a given filter.
+     * Allows matching by both the stored key and its display name.
+     * For example, source filter: key "TR:3050" -> display "Technical Readout: 3050"
+     * @param filterKey The filter key (e.g., 'source')
+     * @param value The stored value to look up
+     * @returns The display name, or undefined if no lookup exists
+     */
+    getDisplayName?: (filterKey: string, value: string) => string | undefined;
 }
 
 /**
@@ -1417,7 +1426,23 @@ function evaluateDropdownFilter(
     
     // Normalize unit value(s) to array
     const unitValues = Array.isArray(unitValue) ? unitValue : [unitValue];
-    const unitStrings = unitValues.map(v => String(v).toLowerCase());
+    let unitStrings = unitValues.map(v => String(v).toLowerCase());
+    
+    // Include display names for matching (allows matching by both key and display name)
+    // For example, source filter: key "TR:3050" can match "Technical Readout: 3050"
+    if (context.getDisplayName) {
+        const displayNames: string[] = [];
+        for (const val of unitValues) {
+            const displayName = context.getDisplayName(conf.key, String(val));
+            if (displayName && displayName.toLowerCase() !== String(val).toLowerCase()) {
+                displayNames.push(displayName.toLowerCase());
+            }
+        }
+        // Combine keys and display names for matching
+        if (displayNames.length > 0) {
+            unitStrings = [...unitStrings, ...displayNames];
+        }
+    }
     
     // Apply value normalizer if defined (motive code 'j' -> 'Jump')
     const normalizeValue = conf.valueNormalizer || ((v: string) => v);
@@ -1429,7 +1454,10 @@ function evaluateDropdownFilter(
     // For &= (AND) operator, ALL values must match
     if (operator === '&=') {
         for (const val of values) {
-            const { name, constraint } = parseValueWithQuantity(val);
+            // Only parse quantity for countable filters to avoid misinterpreting colons in values
+            const { name, constraint } = needsQuantityCounting 
+                ? parseValueWithQuantity(val) 
+                : { name: val, constraint: null };
             const normalizedName = normalizeValue(name);
             const lowerName = normalizedName.toLowerCase();
             const isWildcard = name.includes('*');
@@ -1480,7 +1508,10 @@ function evaluateDropdownFilter(
     
     // For = (OR) and != operators
     for (const val of values) {
-        const { name, constraint } = parseValueWithQuantity(val);
+        // Only parse quantity for countable filters to avoid misinterpreting colons in values
+        const { name, constraint } = needsQuantityCounting 
+            ? parseValueWithQuantity(val) 
+            : { name: val, constraint: null };
         const normalizedName = normalizeValue(name);
         const lowerName = normalizedName.toLowerCase();
         const isWildcard = name.includes('*');
