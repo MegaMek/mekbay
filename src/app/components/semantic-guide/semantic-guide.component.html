@@ -82,12 +82,17 @@
     <!-- Wildcards -->
     <section class="guide-section">
         <h3>Wildcards</h3>
-        <p>Use <code>*</code> as wildcard in dropdown values:</p>
+        <p>Use <code>*</code> as wildcard in any dropdown filter value:</p>
         <div class="examples">
+            <div class="example"><code class="allow-select">faction="Free Worlds*"</code><span class="desc">→ Free Worlds League and similar</span></div>
+            <div class="example"><code class="allow-select">faction!="Free Worlds*"</code><span class="desc">→ Exclude Free Worlds League and similar</span></div>
+            <div class="example"><code class="allow-select">era=*Republic</code><span class="desc">→ Any era ending with "Republic"</span></div>
             <div class="example"><code class="allow-select">equipment=AC*</code><span class="desc">→ Any AC (AC2, AC5, etc.)</span></div>
-            <div class="example"><code class="allow-select">equipment=*Laser*</code><span class="desc">→ Any equipment with "Laser" (ER Laser, Medium Laser, etc.)</span></div>
+            <div class="example"><code class="allow-select">equipment=*Laser*</code><span class="desc">→ Any equipment with "Laser"</span></div>
             <div class="example"><code class="allow-select">specials=AC*/4/*</code><span class="desc">→ Any AC special with a medium damage of 4</span></div>
+            <div class="example"><code class="allow-select">subtype=*Omni*</code><span class="desc">→ All Omni subtypes</span></div>
         </div>
+        <p class="note"><strong>Tip:</strong> Wildcards support all operators: <code>=</code> (include), <code>!=</code> (exclude), and <code>&amp;=</code> (require all).</p>
     </section>
 
     <!-- Virtual Keys -->
@@ -181,7 +186,7 @@
     @if (semanticFilters().length > 0) {
     <section class="guide-section fields-section">
         <h3>Text Search Fields (Semantic Only)</h3>
-        <p>These fields use exact match by default. Use <code>*</code> wildcards for partial matching. Supports <code>=</code>, <code>&amp;=</code>, and <code>!=</code>:</p>
+        <p>These fields are only available via text input (no UI panel). They use <strong>exact match</strong> by default, unlike the fuzzy text search. Use <code>*</code> wildcards for partial matching:</p>
         <div class="filter-list inline">
             @for (f of semanticFilters(); track f.key) {
                 <div class="filter-item">
@@ -201,6 +206,7 @@
             <div class="example"><code class="allow-select">model=*Prime</code><span class="desc">→ Prime variants only</span></div>
             <div class="example"><code class="allow-select">model!=*Prime</code><span class="desc">→ Exclude Prime variants</span></div>
         </div>
+        <p class="note"><strong>Note:</strong> <code>chassis</code> and <code>model</code> match exact field values, while plain text search (e.g., <code>crab</code>) does fuzzy matching across both fields.</p>
     </section>
     }
 </div>
