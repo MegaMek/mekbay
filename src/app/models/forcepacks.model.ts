@@ -1285,7 +1285,7 @@ const FORCE_PACKS: ForcePack[] = [
         "name": "BMKintaro_KTO20"
       },
       {
-        "name": "BMKraken_3"
+        "name": "BMHammerhead"
       },
       {
         "name": "BMHavoc_HVCP6"
