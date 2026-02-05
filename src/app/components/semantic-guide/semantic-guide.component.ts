@@ -34,7 +34,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GameService } from '../../services/game.service';
-import { ADVANCED_FILTERS, AdvFilterType } from '../../services/unit-search-filters.service';
+import { ADVANCED_FILTERS, AdvFilterType, UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { GameSystem } from '../../models/common.model';
 
 /*
@@ -62,12 +62,22 @@ interface FilterInfo {
 })
 export class SemanticGuideComponent {
     private gameService = inject(GameService);
+    private filtersService = inject(UnitSearchFiltersService);
 
     /** Whether to show a compact version (fewer examples, collapsible sections) */
     compact = input(false);
 
     gameSystem = this.gameService.currentGameSystem;
     isAlphaStrike = this.gameService.isAlphaStrike;
+
+    /**
+     * Append an example filter to the current search text.
+     */
+    appendToSearch(filterText: string): void {
+        const current = this.filtersService.searchText().trim();
+        const newText = current ? `${current} ${filterText}` : filterText;
+        this.filtersService.searchText.set(newText);
+    }
 
     /** Get filters for a specific game system */
     private getFiltersForSystem(gs: GameSystem | null): FilterInfo[] {
