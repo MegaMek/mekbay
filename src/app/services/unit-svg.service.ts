@@ -34,7 +34,7 @@
 import { Injectable, effect, inject, DestroyRef } from '@angular/core';
 import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, SkillType } from '../models/crew-member.model';
 import { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
-import { DataService } from './data.service';
+import { SheetService } from './sheet.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { linkedLocs } from "../models/common.model";
@@ -52,11 +52,11 @@ import { WeaponEquipment } from '../models/equipment.model';
 @Injectable()
 export class UnitSvgService {
     protected logger = inject(LoggerService);
+    private sheetService = inject(SheetService);
     private svgDimensions = { width: 0, height: 0 };
 
     constructor(
         protected unit: CBTForceUnit,
-        protected dataService: DataService,
         protected unitInitializer: UnitInitializerService
     ) {
         // Armor effect
@@ -84,7 +84,7 @@ export class UnitSvgService {
         }
 
         try {
-            const svg = await this.dataService.getSheet(this.unit.getUnit().sheets[0]);
+            const svg = await this.sheetService.getSheet(this.unit.getUnit().sheets[0]);
 
             // Do basic setup that doesn't require the DOM
             this.initializeSvg(svg);

@@ -28,6 +28,7 @@
                     cdkDropListOrientation="vertical" [cdkDropListData]="units"
                     [cdkDropListConnectedTo]="connectedDropLists()"
                     [cdkDropListDisabled]="compactMode() || forceBuilderService.readOnlyForce()"
+                    [cdkDropListAutoScrollDisabled]="true"
                     (cdkDropListDropped)="drop($event)">
                     @if (units.length === 0) {
                     <div class="empty-group-placeholder" (click)="onEmptyGroupClick(group)">
@@ -61,6 +62,7 @@
                 [cdkDropListConnectedTo]="connectedDropLists()" [cdkDropListData]="[]"
                 [class.visible]="isUnitDragging() && !hasEmptyGroups() && !forceBuilderService.currentForce()?.hasMaxGroups()"
                 [cdkDropListDisabled]="forceBuilderService.readOnlyForce()"
+                [cdkDropListAutoScrollDisabled]="true"
                 (cdkDropListDropped)="dropForNewGroup($event)">
                 <div class="group-name">New Group</div>
                 <div class="new-group-placeholder">Drop units here to form a new group</div>

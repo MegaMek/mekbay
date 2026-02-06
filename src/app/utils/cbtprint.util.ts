@@ -33,7 +33,7 @@
 
 import { ForceUnit } from '../models/force-unit.model';
 import { HeatProfile } from '../models/force-serialization';
-import { DataService } from '../services/data.service';
+import { SheetService } from '../services/sheet.service';
 import { OptionsService } from '../services/options.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 
@@ -42,7 +42,7 @@ import { CBTForceUnit } from '../models/cbt-force-unit.model';
  */
 export class CBTPrintUtil {
 
-    public static async multipagePrint(dataService: DataService, optionsService: OptionsService, forceUnits: CBTForceUnit[], clean: boolean = false, triggerPrint: boolean = true): Promise<void> {
+    public static async multipagePrint(sheetService: SheetService, optionsService: OptionsService, forceUnits: CBTForceUnit[], clean: boolean = false, triggerPrint: boolean = true): Promise<void> {
         if (forceUnits.length === 0) {
             console.warn('No units to export.');
             return;
@@ -72,7 +72,7 @@ export class CBTPrintUtil {
                 svg = unit.svg();
             }
             if (!svg) {
-                svg = await dataService.getSheet(unit.getUnit().sheets[0]);
+                svg = await sheetService.getSheet(unit.getUnit().sheets[0]);
             }
 
             await this.nextAnimationFrames(2);

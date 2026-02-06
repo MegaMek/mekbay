@@ -7,7 +7,7 @@ import { OptionsDialogComponent } from '../options-dialog/options-dialog.compone
 import { ToastService } from '../../services/toast.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { DataService } from '../../services/data.service';
+import { SheetService } from '../../services/sheet.service';
 import { CBTPrintUtil } from '../../utils/cbtprint.util';
 import { ASPrintUtil } from '../../utils/asprint.util';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
@@ -39,7 +39,7 @@ export class SidebarFooterComponent {
     toastService = inject(ToastService);
     forceBuilderService = inject(ForceBuilderService);
     dialogsService = inject(DialogsService);
-    dataService = inject(DataService);
+    sheetService = inject(SheetService);
     compactModeService = inject(CompactModeService);
     menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 
@@ -149,7 +149,7 @@ export class SidebarFooterComponent {
             return;
         }
         if (currentForce instanceof CBTForce) {
-            CBTPrintUtil.multipagePrint(this.dataService, this.optionsService, currentForce.units());
+            CBTPrintUtil.multipagePrint(this.sheetService, this.optionsService, currentForce.units());
         } else if (currentForce instanceof ASForce) {
             ASPrintUtil.multipagePrint(this.appRef, this.injector, this.optionsService, currentForce.groups());
         }

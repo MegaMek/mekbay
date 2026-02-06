@@ -39,7 +39,7 @@ import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subscription } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData } from '../components/rename-force-dialog/rename-force-dialog.component';
 import { RenameGroupDialogComponent, RenameGroupDialogData } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from './unit-initializer.service';
@@ -64,6 +64,7 @@ import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
 import { ResolvedPack } from '../utils/force-pack.util';
+import { buildForceQueryParams, parseForceFromUrl, ForceQueryParams } from '../utils/force-url.util';
 
 /*
  * Author: Drake
@@ -85,7 +86,7 @@ export class ForceBuilderService {
     public currentForce = signal<Force | null>(null);
     public selectedUnit = signal<ForceUnit | null>(null);
     private urlStateInitialized = signal(false);
-    private forceChangedSubscription: any;
+    private forceChangedSubscription: Subscription | null = null;
     private conflictDialogRef: any;
 
     constructor() {
@@ -97,10 +98,9 @@ export class ForceBuilderService {
         this.setForce(this.currentForce());
         this.monitorWebSocketConnection();
         inject(DestroyRef).onDestroy(() => {
-            // Clean up subscription
-            if (this.forceChangedSubscription) {
-                this.forceChangedSubscription.unsubscribe();
-            }
+            // Clean up force change subscription
+            this.forceChangedSubscription?.unsubscribe();
+            this.forceChangedSubscription = null;
             if (this.conflictDialogRef) {
                 this.conflictDialogRef.close();
                 this.conflictDialogRef = undefined;
@@ -130,9 +130,8 @@ export class ForceBuilderService {
     setForce(newForce: Force | null) {
         // Unsubscribe from previous force
         this.selectedUnit.set(null);
-        if (this.forceChangedSubscription) {
-            this.forceChangedSubscription.unsubscribe();
-        }
+        this.forceChangedSubscription?.unsubscribe();
+        this.forceChangedSubscription = null;
         const currentForce = this.currentForce();
         const currentForceInstanceId = currentForce?.instanceId();
         if (currentForceInstanceId) {
@@ -156,7 +155,7 @@ export class ForceBuilderService {
                 this.replaceForceInPlace(serializedForce);
             });
         }
-        // Subscribe to new force's changed event
+        // Subscribe to force changes for auto-save
         this.forceChangedSubscription = newForce.changed.subscribe(() => {
             this.dataService.saveForce(newForce);
             const forceInstanceId = newForce.instanceId();
@@ -874,87 +873,7 @@ export class ForceBuilderService {
         });
     }
 
-    queryParameters = computed(() => {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
-            return { units: null, name: null, instance: null };
-        }
-        const instanceId = currentForce.instanceId();
-        const groups = currentForce.groups() || [];
-        const units = currentForce.units() || [];
-        let forceName: string | undefined = currentForce?.name;
-        if (units.length === 0) {
-            forceName = undefined;
-        }
-        const groupParams = this.generateGroupParams(groups);
-        const gs = currentForce?.gameSystem;
-        return {
-            gs: gs,
-            units: groupParams.length > 0 ? groupParams.join('|') : null,
-            name: forceName || null,
-            instance: instanceId || null
-        };
-    });
-
-    /**
-     * Generates URL parameters for all groups in the force.
-     * Format: groupName~unit1,unit2|groupName2~unit3,unit4
-     */
-    private generateGroupParams(groups: UnitGroup[]): string[] {
-        return groups.filter(g => g.units().length > 0).map(group => {
-            const unitParams = this.generateUnitParams(group.units());
-            const groupName = group.name();
-            return `${groupName}~${unitParams.join(',')}`;
-        });
-    }
-
-    /**
-     * Generates URL parameters for units within a group.
-     * Format for CBT: unitName:gunnery:piloting (skills omitted if all defaults)
-     * Format for AS: unitName:skill (skill omitted if default 4)
-     */
-    private generateUnitParams(units: ForceUnit[]): string[] {
-        return units.map(fu => {
-            const unit = fu.getUnit();
-            let unitParam = unit.name;
-
-            // Handle Alpha Strike units (single pilot skill)
-            if (fu instanceof ASForceUnit) {
-                const skill = fu.pilotSkill();
-                // Only include skill if not default (4)
-                if (skill !== DEFAULT_GUNNERY_SKILL) {
-                    unitParam += `:${skill}`;
-                }
-                return unitParam;
-            }
-
-            // Handle CBT units (crew members with gunnery/piloting)
-            if (fu instanceof CBTForceUnit) {
-                const crewMembers = fu.getCrewMembers();
-                if (crewMembers.length > 0) {
-                    // Check if any crew member has non-default skills
-                    const hasNonDefaultSkills = crewMembers.some(crew => 
-                        crew.getSkill('gunnery') !== DEFAULT_GUNNERY_SKILL ||
-                        crew.getSkill('piloting') !== DEFAULT_PILOTING_SKILL
-                    );
-                    
-                    if (hasNonDefaultSkills) {
-                        const crewSkills: string[] = [];
-                        for (const crew of crewMembers) {
-                            const gunnery = crew.getSkill('gunnery');
-                            const piloting = crew.getSkill('piloting');
-                            crewSkills.push(`${gunnery}`, `${piloting}`);
-                        }
-                        if (crewSkills.length > 0) {
-                            unitParam += ':' + crewSkills.join(':');
-                        }
-                    }
-                }
-            }
-
-            return unitParam;
-        });
-    }
+    queryParameters = computed<ForceQueryParams>(() => buildForceQueryParams(this.currentForce()));
 
     private loadUnitsFromUrlOnStartup() {
         effect(() => {
@@ -1038,121 +957,7 @@ export class ForceBuilderService {
      * Legacy format (backward compatible): unit1,unit2,unit3
      */
     private parseUnitsFromUrl(force: Force, unitsParam: string): ForceUnit[] {
-        const allUnits = this.dataService.getUnits();
-        const unitMap = new Map(allUnits.map(u => [u.name, u]));
-        const allForceUnits: ForceUnit[] = [];
-
-        // Check if it's the new group format (contains '|' or '~')
-        const hasGroups = unitsParam.includes('|') || unitsParam.includes('~');
-
-        if (hasGroups) {
-            // New format with groups
-            const groupParams = unitsParam.split('|');
-            for (const groupParam of groupParams) {
-                if (!groupParam.trim()) continue;
-
-                let groupName: string | null = null;
-                let unitsStr: string;
-
-                // Check if group has a name (format: groupName~units)
-                if (groupParam.includes('~')) {
-                    const [namePart, unitsPart] = groupParam.split('~', 2);
-                    groupName = namePart;
-                    unitsStr = unitsPart || '';
-                } else {
-                    unitsStr = groupParam;
-                }
-
-                // Create or get group
-                const group = force.addGroup(groupName || 'Group');
-                if (groupName) {
-                    group.nameLock = true;
-                }
-
-                // Parse units for this group
-                const groupUnits = this.parseUnitParams(force, unitsStr, unitMap, group);
-                allForceUnits.push(...groupUnits);
-            }
-        } else {
-            // Legacy format without groups - all units in default group
-            const groupUnits = this.parseUnitParams(force, unitsParam, unitMap);
-            allForceUnits.push(...groupUnits);
-        }
-
-        return allForceUnits;
-    }
-
-    /**
-     * Parses individual unit parameters from a comma-separated string.
-     * Format for CBT: unitName[:gunnery:piloting] (skills optional, defaults to 4/5)
-     * Format for AS: unitName[:skill] (skill optional, defaults to 4)
-     */
-    private parseUnitParams(force: Force, unitsStr: string, unitMap: Map<string, Unit>, group?: UnitGroup): ForceUnit[] {
-        if (!unitsStr.trim()) return [];
-
-        const unitParams = unitsStr.split(',');
-        const forceUnits: ForceUnit[] = [];
-
-        for (const unitParam of unitParams) {
-            if (!unitParam.trim()) continue;
-
-            const parts = unitParam.split(':');
-            const unitName = parts[0];
-            const unit = unitMap.get(unitName);
-
-            if (!unit) {
-                this.logger.warn(`Unit "${unitName}" not found in dataService`);
-                continue;
-            }
-
-            const forceUnit = force.addUnit(unit);
-
-            // Move unit to the specified group if provided
-            if (group) {
-                // Remove from default group and add to specified group
-                const defaultGroup = force.groups().find(g => g.units().some(u => u.id === forceUnit.id));
-                if (defaultGroup && defaultGroup.id !== group.id) {
-                    defaultGroup.units.set(defaultGroup.units().filter(u => u.id !== forceUnit.id));
-                    group.units.set([...group.units(), forceUnit]);
-                }
-            }
-
-            // Parse skills if present
-            if (parts.length > 1) {
-                forceUnit.disabledSaving = true;
-
-                // Handle Alpha Strike units
-                if (forceUnit instanceof ASForceUnit) {
-                    const skill = parseInt(parts[1]);
-                    if (!isNaN(skill)) {
-                        forceUnit.setPilotSkill(skill);
-                    }
-                }
-                // Handle CBT units (crew members with gunnery/piloting)
-                else if (forceUnit instanceof CBTForceUnit) {
-                    const crewSkills = parts.slice(1);
-                    const crewMembers = forceUnit.getCrewMembers();
-
-                    // Process crew skills in pairs (gunnery, piloting)
-                    for (let i = 0; i < crewSkills.length && i < crewMembers.length * 2; i += 2) {
-                        const crewIndex = Math.floor(i / 2);
-                        const gunnery = parseInt(crewSkills[i]);
-                        const piloting = parseInt(crewSkills[i + 1]);
-
-                        if (!isNaN(gunnery) && !isNaN(piloting) && crewMembers[crewIndex]) {
-                            crewMembers[crewIndex].setSkill('gunnery', gunnery);
-                            crewMembers[crewIndex].setSkill('piloting', piloting);
-                        }
-                    }
-                }
-
-                forceUnit.disabledSaving = false;
-            }
-
-            forceUnits.push(forceUnit);
-        }
-
-        return forceUnits;
+        return parseForceFromUrl(force, unitsParam, this.dataService.getUnits(), this.logger);
     }
 
 
