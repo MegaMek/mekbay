@@ -39,7 +39,7 @@ import { CriticalSlot, HeatProfile, LocationData, MountedEquipment, ViewportTran
 import { ForceUnit } from './force-unit.model';
 import { CBTForce } from './cbt-force.model';
 import { UnitSvgService } from '../services/unit-svg.service';
-import { CrewMember } from './crew-member.model';
+import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
 import { CBTForceUnitState } from './cbt-force-unit-state.model';
 import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
@@ -139,13 +139,13 @@ export class CBTForceUnit extends ForceUnit {
             await runInInjectionContext(this.svgServiceInjector!, async () => {
                 switch (this.unit.type) {
                     case 'Mek':
-                        this._svgService = new UnitSvgMekService(this, this.dataService, this.unitInitializer);
+                        this._svgService = new UnitSvgMekService(this, this.unitInitializer);
                         break;
                     case 'Infantry':
-                        this._svgService = new UnitSvgInfantryService(this, this.dataService, this.unitInitializer);
+                        this._svgService = new UnitSvgInfantryService(this, this.unitInitializer);
                         break;
                     default:
-                        this._svgService = new UnitSvgService(this, this.dataService, this.unitInitializer);
+                        this._svgService = new UnitSvgService(this, this.unitInitializer);
                 }
                 await this._svgService.loadAndInitialize();
             });
@@ -408,41 +408,51 @@ export class CBTForceUnit extends ForceUnit {
         this.setModified();
     }
 
-    public baseBvPilotAdjusted = computed<number>(() => {
+    public gunnerySkill = computed<number>(() => {
         this.state.crew(); // Track crew changes
         const pilot = this.getCrewMember(0);
-        if (!pilot) return this.unit.bv; // Return base BV if no pilot
+        if (!pilot) return DEFAULT_GUNNERY_SKILL;
         let gunnery = pilot.getSkill('gunnery');
-        let piloting = pilot.getSkill('piloting');
-        let bv = this.unit.bv;
         if (this.unit.crewSize > 1) {
             const gunner = this.getCrewMember(1);
             if (gunner) {
                 gunnery = gunner.getSkill('gunnery');
             }
         }
-        let adjustedBv = BVCalculatorUtil.calculateAdjustedBV(
-            this.getUnit(),
-            gunnery,
-            piloting
-        );
-        return adjustedBv;
+        return gunnery;
+    });
+
+    public pilotingSkill = computed<number>(() => {
+        this.state.crew(); // Track crew changes
+        const pilot = this.getCrewMember(0);
+        if (!pilot) return DEFAULT_PILOTING_SKILL;
+        let piloting = pilot.getSkill('piloting');
+        return piloting;
     });
 
     public c3Tax = computed<number>(() => {
         const c3Networks = this.force.c3Networks();
-        let adjustedBv = this.baseBvPilotAdjusted();
         const c3Tax = C3NetworkUtil.calculateUnitC3Tax(
             this,
-            adjustedBv,
+            this.unit.bv,
             c3Networks,
             this.force.units()
         );
         return c3Tax;
     });
 
+    public pilotBV = computed<number>(() => {
+        const finalBv = this.getBv();
+        return finalBv - this.unit.bv - this.c3Tax();
+    });
+
     getBv = computed<number>(() => {
-        return this.baseBvPilotAdjusted() + this.c3Tax();
+        return BVCalculatorUtil.calculateAdjustedBV(
+            this.getUnit(),
+            this.unit.bv + this.c3Tax(),
+            this.gunnerySkill(),
+            this.pilotingSkill()
+        );
     });
 
     public repairAll() {

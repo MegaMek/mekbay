@@ -36,11 +36,10 @@ import { HttpClient } from '@angular/common/http';
 import { Unit, UnitComponent, Units } from '../models/units.model';
 import { Faction, Factions } from '../models/factions.model';
 import { Era, Eras } from '../models/eras.model';
-import { DbService, TagData, SavedSearchOp, StoredSavedSearches } from './db.service';
+import { DbService, TagData } from './db.service';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
-import { ADVANCED_FILTERS, AdvFilterType, SerializedSearchFilter } from './unit-search-filters.service';
-import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
+
 import { Equipment, EquipmentData, EquipmentMap, RawEquipmentData, createEquipment } from '../models/equipment.model';
 import { Quirk, Quirks } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
@@ -64,7 +63,6 @@ import { removeAccents } from '../utils/string.util';
  * Author: Drake
  */
 export const DOES_NOT_TRACK = 999;
-const SHEET_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export interface MinMaxStatsRange {
     armor: [number, number],
@@ -407,7 +405,7 @@ export class DataService {
         const tags = tagData?.tags || {};
 
         for (const unit of this.getUnits()) {
-            const chassisKey = DataService.getChassisTagKey(unit);
+            const chassisKey = TagsService.getChassisTagKey(unit);
             
             // V3 format: find all tags that have this unit in their units map
             unit._nameTags = Object.values(tags)
@@ -454,14 +452,6 @@ export class DataService {
         } catch (err) {
             this.logger.error('Error handling store update broadcast: ' + err);
         }
-    }
-
-    /**
-     * Generates the chassis tag key for a unit.
-     * Format: `${chassis}|${type}` to uniquely identify a chassis across types.
-     */
-    public static getChassisTagKey(unit: Unit): string {
-        return TagsService.getChassisTagKey(unit);
     }
 
     /**
@@ -904,80 +894,6 @@ export class DataService {
         }
     }
 
-    public async getSheet(sheetFileName: string): Promise<SVGSVGElement> {
-        const meta = await this.dbService.getSheetMeta(sheetFileName);
-        const now = Date.now();
-        const isFresh = meta && (now - meta.timestamp) < SHEET_CACHE_MAX_AGE_MS;
-
-        // If cache is fresh, use it without checking remote
-        if (isFresh) {
-            const sheet = await this.dbService.getSheet(sheetFileName);
-            if (sheet) {
-                this.logger.info(`Sheet ${sheetFileName} loaded from cache (fresh).`);
-                return sheet;
-            }
-        }
-
-        // Cache is stale or missing - check remote ETag
-        const remoteEtag = await this.getRemoteETag(`${REMOTE_HOST}/sheets/${sheetFileName}`);
-
-        // If offline or same ETag, use cached version and refresh timestamp
-        if (meta && (!remoteEtag || meta.etag === remoteEtag)) {
-            const sheet = await this.dbService.getSheet(sheetFileName);
-            if (sheet) {
-                if (remoteEtag) {
-                    // ETag matched, refresh timestamp so we don't check again for SHEET_CACHE_MAX_AGE_MS
-                    this.dbService.touchSheet(sheetFileName);
-                }
-                this.logger.info(`Sheet ${sheetFileName} loaded from cache (validated).`);
-                return sheet;
-            }
-        }
-
-        // Fetch fresh copy from remote
-        return this.fetchAndCacheSheet(sheetFileName);
-    }
-
-    private async fetchAndCacheSheet(sheetFileName: string): Promise<SVGSVGElement> {
-        this.logger.info(`Fetching sheet: ${sheetFileName}`);
-        const src = `${REMOTE_HOST}/sheets/${sheetFileName}`;
-
-        try {
-            const response = await firstValueFrom(
-                this.http.get(src, {
-                    reportProgress: false,
-                    observe: 'response' as const,
-                    responseType: 'text' as const,
-                })
-            );
-            const etag = response.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
-            const svgText = response.body;
-            if (!svgText) {
-                throw new Error(`No body received for sheet ${sheetFileName}`);
-            }
-
-            const parser = new DOMParser();
-            const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
-
-            if (svgDoc.getElementsByTagName('parsererror').length) {
-                throw new Error('Failed to parse SVG');
-            }
-
-            const svgElement = svgDoc.documentElement as unknown as SVGSVGElement;
-            if (!svgElement) {
-                throw new Error('Invalid SVG content: Failed to find the SVG root element after parsing.');
-            }
-
-            RsPolyfillUtil.fixSvg(svgElement);
-            await this.dbService.saveSheet(sheetFileName, svgElement, etag);
-            this.logger.info(`Sheet ${sheetFileName} fetched and cached.`);
-            return svgElement;
-        } catch (err) {
-            this.logger.error(`Failed to download sheet ${sheetFileName}: ` + err);
-            throw err;
-        }
-    }
-
     private isCloudNewer(localRaw: any, cloudRaw: any): boolean {
         const localTs = localRaw?.timestamp ? new Date(localRaw.timestamp).getTime() : 0;
         const cloudTs = cloudRaw?.timestamp ? new Date(cloudRaw.timestamp).getTime() : 0;
@@ -1306,289 +1222,6 @@ export class DataService {
         const response = await this.wsService.sendAndWaitForResponse(payload);
         return response.data || null;
     }
-
-    /* ----------------------------------------------------------
-     * Tags (delegated to TagsService)
-     */
-
-    /**
-     * Add or remove a tag from units, with support for chassis-wide tagging.
-     * Delegates to TagsService.
-     */
-    public async modifyTag(
-        units: Unit[], 
-        tag: string, 
-        tagType: 'name' | 'chassis',
-        action: 'add' | 'remove'
-    ): Promise<void> {
-        return this.tagsService.modifyTag(units, tag, tagType, action);
-    }
-
-    /**
-     * Remove a tag from units. Removes from both name and chassis tags.
-     * Delegates to TagsService.
-     */
-    public async removeTagFromUnits(units: Unit[], tag: string): Promise<void> {
-        return this.tagsService.removeTagFromUnits(units, tag);
-    }
-
-    /**
-     * Check if a tag exists in a specific collection (case-insensitive).
-     * @returns The actual tag name if it exists (with original case), or null if not found
-     */
-    public async tagExists(tag: string, tagType: 'name' | 'chassis'): Promise<string | null> {
-        return this.tagsService.tagExists(tag, tagType);
-    }
-
-    /**
-     * Check if a tag ID exists at all (regardless of collection).
-     * @returns The actual tag name if it exists (with original case), or null if not found
-     */
-    public async tagIdExists(tag: string): Promise<string | null> {
-        return this.tagsService.tagIdExists(tag);
-    }
-
-    /**
-     * Rename a tag (including case-only changes).
-     * If merge is true and target exists, merges BOTH collections (units + chassis) into target.
-     * Delegates to TagsService.
-     * @returns 'success', 'not-found', or 'conflict'
-     */
-    public async renameTag(
-        oldTag: string, 
-        newTag: string, 
-        merge: boolean = false
-    ): Promise<'success' | 'not-found' | 'conflict'> {
-        return this.tagsService.renameTag(oldTag, newTag, merge);
-    }
-
-    /**
-     * Check if a tag is assigned at the chassis level for any of the given units.
-     * Delegates to TagsService.
-     */
-    public async isChassisTag(units: Unit[], tag: string): Promise<boolean> {
-        return this.tagsService.isChassisTag(units, tag);
-    }
-
-    /**
-     * Get the tag type for a specific tag on a unit.
-     * Delegates to TagsService.
-     */
-    public async getTagType(unit: Unit, tag: string): Promise<'chassis' | 'name' | null> {
-        return this.tagsService.getTagType(unit, tag);
-    }
-
-    /**
-     * Fetch tags from cloud and merge with local if needed.
-     * Delegates to TagsService.
-     */
-    public async syncTagsFromCloud(): Promise<void> {
-        return this.tagsService.syncFromCloud();
-    }
-
-    /* ----------------------------------------------------------
-     * Saved Searches (Tactical Bookmarks)
-     */
-
-    /** Cached saved searches for quick access */
-    private cachedSavedSearches: StoredSavedSearches | null = null;
-    public savedSearchesVersion = signal(0);
-
-    /**
-     * Get all saved searches for a specific game system.
-     */
-    public async getSavedSearches(gameSystem: 'cbt' | 'as'): Promise<SerializedSearchFilter[]> {
-        if (!this.cachedSavedSearches) {
-            this.cachedSavedSearches = await this.dbService.getSavedSearches() ?? {};
-        }
-        return Object.values(this.cachedSavedSearches)
-            .filter(s => s.gameSystem === gameSystem)
-            .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
-    }
-
-    /**
-     * Save a new search or update an existing one.
-     */
-    public async saveSearch(search: SerializedSearchFilter): Promise<void> {
-        if (!this.cachedSavedSearches) {
-            this.cachedSavedSearches = await this.dbService.getSavedSearches() ?? {};
-        }
-        
-        this.cachedSavedSearches[search.id] = search;
-        
-        const op: SavedSearchOp = {
-            id: search.id,
-            a: 1, // add/update
-            data: search,
-            ts: Date.now()
-        };
-        
-        await this.dbService.appendSavedSearchOps([op], this.cachedSavedSearches);
-        this.savedSearchesVersion.update(v => v + 1);
-        
-        // Sync to cloud
-        this.syncSavedSearchesToCloud();
-    }
-
-    /**
-     * Delete a saved search by ID.
-     */
-    public async deleteSearch(id: string): Promise<void> {
-        if (!this.cachedSavedSearches) {
-            this.cachedSavedSearches = await this.dbService.getSavedSearches() ?? {};
-        }
-        
-        if (!this.cachedSavedSearches[id]) return;
-        
-        delete this.cachedSavedSearches[id];
-        
-        const op: SavedSearchOp = {
-            id,
-            a: 0, // delete
-            ts: Date.now()
-        };
-        
-        await this.dbService.appendSavedSearchOps([op], this.cachedSavedSearches);
-        this.savedSearchesVersion.update(v => v + 1);
-        
-        // Sync to cloud
-        this.syncSavedSearchesToCloud();
-    }
-
-    /**
-     * Rename a saved search.
-     */
-    public async renameSearch(id: string, newName: string): Promise<void> {
-        if (!this.cachedSavedSearches) {
-            this.cachedSavedSearches = await this.dbService.getSavedSearches() ?? {};
-        }
-        
-        const search = this.cachedSavedSearches[id];
-        if (!search) return;
-        
-        search.name = newName;
-        search.timestamp = Date.now();
-        
-        await this.saveSearch(search);
-    }
-
-    /**
-     * Sync saved searches to cloud.
-     */
-    private async syncSavedSearchesToCloud(): Promise<void> {
-        const ws = await this.canUseCloud();
-        if (!ws) return;
-
-        const uuid = this.userStateService.uuid();
-        if (!uuid) return;
-
-        try {
-            const syncState = await this.dbService.getSavedSearchSyncState();
-            if (syncState.pendingOps.length === 0) return;
-
-            const response = await this.wsService.sendAndWaitForResponse({
-                action: 'savedSearchOps',
-                uuid,
-                ops: syncState.pendingOps
-            });
-
-            if (response && response.action !== 'error') {
-                await this.dbService.clearPendingSavedSearchOps(response.serverTs ?? Date.now());
-            }
-        } catch (err) {
-            this.logger.error('Failed to sync saved searches to cloud: ' + err);
-        }
-    }
-
-    /**
-     * Sync saved searches from cloud on login/reconnect.
-     */
-    public async syncSavedSearchesFromCloud(): Promise<void> {
-        const ws = await this.canUseCloud();
-        if (!ws) return;
-
-        const uuid = this.userStateService.uuid();
-        if (!uuid) return;
-
-        try {
-            const syncState = await this.dbService.getSavedSearchSyncState();
-            const hasPendingOps = syncState.pendingOps.length > 0;
-
-            const response = await this.wsService.sendAndWaitForResponse({
-                action: 'getSavedSearches',
-                uuid,
-                since: syncState.lastSyncTs
-            });
-
-            if (!response || response.action === 'error') return;
-
-            const serverTs: number = response.serverTs ?? 0;
-
-            // Apply cloud state
-            if (response.searches) {
-                // Merge cloud searches with local
-                if (!this.cachedSavedSearches) {
-                    this.cachedSavedSearches = await this.dbService.getSavedSearches() ?? {};
-                }
-
-                // Apply cloud searches (cloud wins for conflicts unless we have pending ops)
-                for (const [id, search] of Object.entries(response.searches as StoredSavedSearches)) {
-                    const localSearch = this.cachedSavedSearches[id];
-                    const hasPendingForThis = hasPendingOps && syncState.pendingOps.some(op => op.id === id);
-                    
-                    if (!localSearch || (!hasPendingForThis && (search.timestamp ?? 0) >= (localSearch.timestamp ?? 0))) {
-                        this.cachedSavedSearches[id] = search;
-                    }
-                }
-
-                // Handle deletions from cloud
-                if (response.deletedIds && Array.isArray(response.deletedIds)) {
-                    for (const id of response.deletedIds) {
-                        const hasPendingForThis = hasPendingOps && syncState.pendingOps.some(op => op.id === id);
-                        if (!hasPendingForThis) {
-                            delete this.cachedSavedSearches[id];
-                        }
-                    }
-                }
-
-                await this.dbService.saveAllSavedSearchData(this.cachedSavedSearches, serverTs);
-                this.savedSearchesVersion.update(v => v + 1);
-            }
-
-            // Push pending ops if any
-            if (hasPendingOps) {
-                await this.syncSavedSearchesToCloud();
-            }
-        } catch (err) {
-            this.logger.error('Failed to sync saved searches from cloud: ' + err);
-        }
-    }
-
-    /**
-     * Handle remote saved search updates from other sessions.
-     */
-    public async handleRemoteSavedSearchOps(ops: SavedSearchOp[]): Promise<void> {
-        if (!ops || ops.length === 0) return;
-
-        if (!this.cachedSavedSearches) {
-            this.cachedSavedSearches = await this.dbService.getSavedSearches() ?? {};
-        }
-
-        for (const op of ops) {
-            if (op.a === 1 && op.data) {
-                this.cachedSavedSearches[op.id] = op.data;
-            } else if (op.a === 0) {
-                delete this.cachedSavedSearches[op.id];
-            }
-        }
-
-        await this.dbService.saveSavedSearches(this.cachedSavedSearches);
-        this.savedSearchesVersion.update(v => v + 1);
-    }
-
-    /**
-     * Link equipment data to loaded units.
-     */
 
     /* ----------------------------------------------------------
      * Canvas Data

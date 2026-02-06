@@ -1166,7 +1166,7 @@ export class C3NetworkUtil {
             for (const u of allUnits) {
                 const unitC3Comps = this.getC3Components(u.getUnit());
                 if (!unitC3Comps.some(c => c.networkType === C3NetworkType.NOVA)) continue;
-                novaNetworkTotalBv += u.baseBvPilotAdjusted();
+                novaNetworkTotalBv += u.getUnit().bv;
                 unitsCount += 1;
             }
             if (unitsCount < 2) return 0;
@@ -1185,7 +1185,7 @@ export class C3NetworkUtil {
             this.getC3Components(u.getUnit()).some(c => c.boosted)
         );
         const taxRate = hasBoosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
-        const networkTotalBv = networkedUnits.reduce((sum, u) => sum + u.baseBvPilotAdjusted(), 0);
+        const networkTotalBv = networkedUnits.reduce((sum, u) => sum + u.getUnit().bv, 0);
         return Math.round(networkTotalBv * taxRate);
     }
 

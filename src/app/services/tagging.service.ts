@@ -42,7 +42,7 @@ import { OverlayManagerService } from './overlay-manager.service';
 import { DialogsService } from './dialogs.service';
 import { TagSelectorComponent, TagSelectionEvent } from '../components/tag-selector/tag-selector.component';
 import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
-import { DataService } from './data.service';
+import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
 
 // const PRECONFIGURED_TAGS = [];
@@ -94,7 +94,7 @@ export function validateTagName(tag: string): string | null {
 })
 export class TaggingService {
     private filtersService = inject(UnitSearchFiltersService);
-    private dataService = inject(DataService);
+    private tagsService = inject(TagsService);
     private publicTagsService = inject(PublicTagsService);
     private overlayManager = inject(OverlayManagerService);
     private dialogsService = inject(DialogsService);
@@ -180,7 +180,7 @@ export class TaggingService {
 
         // Handle tag removal - cleanup when overlay closes
         outputToObservable(componentRef.instance.tagRemoved).pipe(takeUntil(closed)).subscribe(async (event: TagSelectionEvent) => {
-            await this.dataService.modifyTag(units, event.tag, event.tagType, 'remove');
+            await this.tagsService.modifyTag(units, event.tag, event.tagType, 'remove');
             updateTagStates();
             this.filtersService.invalidateTagsCache();
         });
@@ -238,7 +238,7 @@ export class TaggingService {
                 }
             }
 
-            await this.dataService.modifyTag(units, selectedTag, tagType, 'add');
+            await this.tagsService.modifyTag(units, selectedTag, tagType, 'add');
             updateTagStates();
             this.filtersService.invalidateTagsCache();
         });
@@ -354,8 +354,8 @@ export class TaggingService {
         // Determine tag type if not specified - check both stores
         let effectiveTagType = tagType;
         if (!effectiveTagType) {
-            const nameExists = await this.dataService.tagExists(oldTag, 'name');
-            const chassisExists = await this.dataService.tagExists(oldTag, 'chassis');
+            const nameExists = await this.tagsService.tagExists(oldTag, 'name');
+            const chassisExists = await this.tagsService.tagExists(oldTag, 'chassis');
             if (nameExists && chassisExists) {
                 // Tag exists in both - rename both
                 effectiveTagType = 'name'; // Will handle chassis below
@@ -370,7 +370,7 @@ export class TaggingService {
         }
 
         // Check if the target tag already exists (and is a different tag)
-        const existingTag = await this.dataService.tagIdExists(trimmedNew);
+        const existingTag = await this.tagsService.tagIdExists(trimmedNew);
         const isDifferentTag = existingTag && existingTag.toLowerCase() !== oldTag.toLowerCase();
         
         let merge = false;
@@ -389,7 +389,7 @@ export class TaggingService {
         }
 
         // Rename (or merge) the tag - renameTag now handles BOTH collections automatically
-        const result = await this.dataService.renameTag(oldTag, trimmedNew, merge);
+        const result = await this.tagsService.renameTag(oldTag, trimmedNew, merge);
         
         if (result === 'not-found') {
             await this.dialogsService.showError('Tag not found.', 'Rename Failed');

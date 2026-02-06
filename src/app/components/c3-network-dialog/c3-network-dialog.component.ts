@@ -58,6 +58,8 @@ import { ToastService } from '../../services/toast.service';
 import { OptionsService } from '../../services/options.service';
 import { LayoutService } from '../../services/layout.service';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
+import { C } from '@angular/cdk/keycodes';
+import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
@@ -582,9 +584,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const getUnitBvData = (node: C3Node | null): { baseBv?: number; c3Tax?: number } => {
             if (!isClassic || !node) return {};
             const cbtUnit = node.unit as CBTForceUnit;
-            const baseBv = cbtUnit.baseBvPilotAdjusted();
+            const unit = cbtUnit.getUnit();
+            const baseBv = unit.bv;
             const c3Tax = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, baseBv, networks, allUnits);
-            return { baseBv, c3Tax };
+            const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, baseBv+c3Tax, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
+            return { baseBv: (adjustedBv-c3Tax), c3Tax };
         };
 
         const buildNetworkVm = (network: SerializedC3NetworkGroup, isTopLevel: boolean): SidebarNetworkVm | null => {
@@ -702,17 +706,20 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const allUnits = nodes.map(n => n.unit as CBTForceUnit);
         
         let totalBaseBv = 0;
+        let totalFinalBv = 0;
         let totalTax = 0;
         
         for (const node of nodes) {
             const cbtUnit = node.unit as CBTForceUnit;
-            const baseBv = cbtUnit.baseBvPilotAdjusted();
-            const tax = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, baseBv, networks, allUnits);
-            totalBaseBv += baseBv;
+            const unit = cbtUnit.getUnit();
+            const tax = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, unit.bv, networks, allUnits);
+            const finalBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv + tax, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
+            totalBaseBv += unit.bv;
             totalTax += tax;
+            totalFinalBv += finalBv;
         }
         
-        return { totalBaseBv, totalTax, grandTotal: totalBaseBv + totalTax };
+        return { totalBaseBv: totalFinalBv - totalTax, totalTax, grandTotal: totalFinalBv };
     });
 
     protected pinConnectionState = computed(() => {

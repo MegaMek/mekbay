@@ -1,7 +1,7 @@
 import { Component, ChangeDetectionStrategy, signal, effect, input, inject, viewChild, ElementRef } from '@angular/core';
 
 import { Unit } from '../../models/units.model';
-import { DataService } from '../../services/data.service';
+import { SheetService } from '../../services/sheet.service';
 import { OptionsService } from '../../services/options.service';
 import { LoggerService } from '../../services/logger.service';
 import { REMOTE_HOST } from '../../models/common.model';
@@ -16,7 +16,7 @@ import { REMOTE_HOST } from '../../models/common.model';
 })
 export class SvgViewerLiteComponent {
     logger = inject(LoggerService);
-    private dataService = inject(DataService);
+    private sheetService = inject(SheetService);
     private optionsService = inject(OptionsService);
 
     unit = input<Unit | null>(null);
@@ -40,7 +40,7 @@ export class SvgViewerLiteComponent {
                 try {
                     const svgs: SVGSVGElement[] = [];
                     for (const sheetName of u.sheets) {
-                        const svg = await this.dataService.getSheet(sheetName);
+                        const svg = await this.sheetService.getSheet(sheetName);
                         const cloned = svg.cloneNode(true) as SVGSVGElement;
                         cloned.removeAttribute('id');
                         svgs.push(cloned);

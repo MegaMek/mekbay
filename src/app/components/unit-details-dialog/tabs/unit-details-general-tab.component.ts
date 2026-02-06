@@ -137,10 +137,11 @@ export class UnitDetailsGeneralTabComponent {
     adjustedBV = computed(() => {
         const gunnery = this.gunnerySkill();
         const piloting = this.pilotingSkill();
+        const unit = this.unit();
         if (gunnery === undefined || piloting === undefined) {
             return null;
         }
-        return BVCalculatorUtil.calculateAdjustedBV(this.unit(), gunnery, piloting);
+        return BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
     });
 
     trackByBay = (bay: UnitComponent) => `${bay.n}|${bay.t}|${bay.l}`;

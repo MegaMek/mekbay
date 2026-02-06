@@ -75,8 +75,7 @@ export class BVCalculatorUtil {
      * @param pilotingSkill - Piloting skill level (0-8+)
      * @returns Adjusted Battle Value rounded to nearest integer
      */
-    static calculateAdjustedBV(unit: Unit, gunnerySkill: number, pilotingSkill: number): number {
-        const baseBv = unit.bv;
+    static calculateAdjustedBV(unit: Unit, baseBv: number, gunnerySkill: number, pilotingSkill: number): number {
         if (unit.type === 'Infantry') {
             // Evaluate anti-mech capability for infantry units
             if (!canAntiMech(unit)) {
