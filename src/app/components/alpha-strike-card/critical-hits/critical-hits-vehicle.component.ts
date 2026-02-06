@@ -87,7 +87,7 @@ import { AsCritPipsComponent } from './crit-pips.component';
                         <div class="critical-pips">
                             <as-crit-pips [forceUnit]="forceUnit()" critKey="motive1" [maxPips]="2" />
                         </div>
-                        <span class="critical-desc" [innerHTML]="useHex() ? '-1<span class=&quot;hex-symbol&quot;>⬢</span> MV' : '-2&quot; MV'"></span>
+                        <span class="critical-desc" [innerHTML]="useHex() ? '-1<span class=&quot;hex-symbol&quot;>⬢</span> MV' : '-2″ MV'"></span>
                     </div>
                     <div class="critical-row centered-row" data-crit="motive2">
                         <div class="critical-pips">
