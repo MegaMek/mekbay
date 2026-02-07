@@ -174,10 +174,45 @@ export class ForceBuilderService {
         }
         // Subscribe to force changes for auto-save
         slot.changeSub = force.changed.subscribe(() => {
+            if (!force.owned()) {
+                // Adopt: clone with fresh IDs, swap into this slot, save the clone
+                this.adoptForce(slot);
+                return;
+            }
             this.dataService.saveForce(force);
             this.logger.info(`ForceBuilderService: Auto-saved force "${force.name}"`);
         });
         return slot;
+    }
+
+    /**
+     * Adopts a non-owned force by cloning it with fresh IDs,
+     * swapping the clone into the slot, and saving it.
+     */
+    private async adoptForce(slot: ForceSlot): Promise<void> {
+        const oldForce = slot.force;
+        const selectedIdx = oldForce.units().findIndex(u => u.id === this.selectedUnit()?.id);
+        const wasActive = this.currentForce() === oldForce;
+
+        const cloned = oldForce.clone();
+
+        // Tear down old slot
+        this.teardownForceSlot(slot);
+
+        // Re-setup slot with cloned force
+        const newSlot = this.setupForceSlot(cloned, slot.alignment);
+        this.loadedForces.update(slots => slots.map(s => s === slot ? newSlot : s));
+
+        if (wasActive) {
+            this.currentForce.set(cloned);
+            const units = cloned.units();
+            if (selectedIdx >= 0 && selectedIdx < units.length) {
+                this.selectUnit(units[selectedIdx]);
+            }
+        }
+
+        await this.dataService.saveForce(cloned);
+        this.logger.info(`ForceBuilderService: Adopted force "${cloned.name}" with fresh IDs.`);
     }
 
     /**
@@ -687,26 +722,21 @@ export class ForceBuilderService {
         if (!currentForce) {
             return false;
         }
-        
-        currentForce.loading = true;
+
+        const selectedIdx = currentForce.units().findIndex(u => u.id === this.selectedUnit()?.id);
+        const cloned = currentForce.clone();
+        cloned.loading = true;
         try {
-            currentForce.instanceId.set(generateUUID());
-            await this.dataService.saveForce(currentForce);
+            await this.dataService.saveForce(cloned);
         } finally {
-            currentForce.loading = false;
+            cloned.loading = false;
         }
-        
-        // Clear and re-set force in next microtask to trigger all subscriptions
-        const selectedUnit = this.selectedUnit();
-        this.currentForce.set(null);
-        this.selectedUnit.set(null);
-        queueMicrotask(() => {
-            this.setForce(currentForce);
-            if (selectedUnit) {
-                this.selectUnit(selectedUnit);
-            }
-        });
-        
+
+        // Unload old, load clone
+        this.setForce(cloned);
+        const units = cloned.units();
+        this.selectUnit(selectedIdx >= 0 && selectedIdx < units.length ? units[selectedIdx] : units[0] ?? null);
+
         this.toastService.showToast(`A copy of this force was created and saved. You can now edit the copy without affecting the original.`, 'success');
         return true;
     }
@@ -1022,9 +1052,21 @@ export class ForceBuilderService {
             await this.dataService.saveForce(localForce);
             this.toastService.showToast(`Local version of "${localForce.name}" kept and synced.`, 'success');
         } else if (result === 'cloneLocal') {
-            localForce.instanceId.set(generateUUID());
-            localForce.timestamp = new Date().toISOString();
-            localForce.setName(localForce.name + ' (Cloned)', false);
+            const selectedIdx = localForce.units().findIndex(u => u.id === this.selectedUnit()?.id);
+            const slot = this.getForceSlot(localForce);
+            const alignment = slot?.alignment ?? 'friendly';
+            const cloned = localForce.clone();
+            cloned.setName(localForce.name + ' (Cloned)', false);
+
+            // Unload old, load clone
+            this.removeLoadedForce(localForce);
+            this.addLoadedForce(cloned, alignment);
+            this.setActiveForce(cloned);
+            const units = cloned.units();
+            if (selectedIdx >= 0 && selectedIdx < units.length) {
+                this.selectUnit(units[selectedIdx]);
+            }
+            await this.dataService.saveForce(cloned, true);
             this.toastService.showToast('Local version has been cloned', 'success');
         }
     }

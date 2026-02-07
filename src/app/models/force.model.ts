@@ -357,4 +357,63 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
     public abstract update(data: SerializedForce): void;
 
+    /**
+     * Subclass factory: deserialize a SerializedForce into a new Force instance
+     * using this instance's injected services.
+     */
+    protected abstract deserializeFrom(serialized: SerializedForce): Force;
+
+    /**
+     * Clone this force (uses serialize + deserialize)
+     * Returns a brand-new owned Force with fresh instanceId, group ids,
+     * unit ids, and remapped C3 network references.
+     */
+    public clone(): Force {
+        const serialized = this.serialize();
+
+        // Build old→new unit ID map
+        const unitIdMap = new Map<string, string>();
+        serialized.instanceId = generateUUID();
+        if (serialized.groups) {
+            for (const group of serialized.groups) {
+                group.id = generateUUID();
+                for (const unit of group.units) {
+                    const newId = generateUUID();
+                    unitIdMap.set(unit.id, newId);
+                    unit.id = newId;
+                }
+            }
+        }
+
+        // Remap C3 network references
+        if (serialized.c3Networks) {
+            const remapId = (id: string): string => {
+                const parts = id.split(':');
+                const mapped = unitIdMap.get(parts[0]);
+                if (mapped) {
+                    parts[0] = mapped;
+                    return parts.join(':');
+                }
+                return id;
+            };
+            for (const network of serialized.c3Networks) {
+                network.id = generateUUID();
+                if (network.peerIds) {
+                    network.peerIds = network.peerIds.map(remapId);
+                }
+                if (network.masterId) {
+                    network.masterId = remapId(network.masterId);
+                }
+                if (network.members) {
+                    network.members = network.members.map(remapId);
+                }
+            }
+        }
+
+        serialized.timestamp = new Date().toISOString();
+        serialized.owned = true;
+
+        return this.deserializeFrom(serialized);
+    }
+
 }

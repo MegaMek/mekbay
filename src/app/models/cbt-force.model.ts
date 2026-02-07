@@ -36,7 +36,7 @@ import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { LoggerService } from '../services/logger.service';
-import { CBTSerializedUnit, C3_NETWORK_GROUP_SCHEMA, CBTSerializedForce, CBTSerializedGroup } from './force-serialization';
+import { CBTSerializedUnit, C3_NETWORK_GROUP_SCHEMA, CBTSerializedForce, CBTSerializedGroup, SerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
 import { Force, UnitGroup } from './force.model';
 import { Sanitizer } from '../utils/sanitizer.util';
@@ -173,6 +173,13 @@ export class CBTForce extends Force<CBTForceUnit> {
             groups: serializedGroups,
             c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
         } as CBTSerializedForce & { groups?: any[] };
+    }
+
+    protected override deserializeFrom(serialized: SerializedForce): CBTForce {
+        return CBTForce.deserialize(
+            serialized as CBTSerializedForce,
+            this.dataService, this.unitInitializer, this.injector
+        );
     }
 
     /**

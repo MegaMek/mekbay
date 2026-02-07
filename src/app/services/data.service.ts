@@ -952,15 +952,16 @@ export class DataService {
     }
 
     public async saveForce(force: Force, localOnly: boolean = false): Promise<void> {
-        if (!force.instanceId() || !force.owned()) {
+        if (!force.instanceId()) {
             force.instanceId.set(generateUUID());
-            force.owned.set(true);
         }
         await this.dbService.saveForce(force.serialize());
         if (!localOnly) {
             this.saveForceCloud(force);
         }
     }
+
+
 
     public async saveSerializedForceToLocalStorage(serialized: SerializedForce): Promise<void> {
         await this.dbService.saveForce(serialized);

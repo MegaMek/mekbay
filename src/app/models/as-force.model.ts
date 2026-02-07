@@ -36,7 +36,7 @@ import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { LoggerService } from '../services/logger.service';
-import { ASSerializedUnit, C3_NETWORK_GROUP_SCHEMA, ASSerializedForce, AS_SERIALIZED_FORCE_SCHEMA, ASSerializedGroup } from './force-serialization';
+import { ASSerializedUnit, C3_NETWORK_GROUP_SCHEMA, ASSerializedForce, AS_SERIALIZED_FORCE_SCHEMA, ASSerializedGroup, SerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
 import { Force, UnitGroup } from './force.model';
 import { Sanitizer } from '../utils/sanitizer.util';
@@ -166,6 +166,13 @@ export class ASForce extends Force<ASForceUnit> {
             groups: serializedGroups,
             c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
         } as ASSerializedForce & { groups?: any[] };
+    }
+
+    protected override deserializeFrom(serialized: SerializedForce): ASForce {
+        return ASForce.deserialize(
+            serialized as ASSerializedForce,
+            this.dataService, this.unitInitializer, this.injector
+        );
     }
 
     /**
