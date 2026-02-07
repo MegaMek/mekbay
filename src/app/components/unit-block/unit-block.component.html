@@ -125,7 +125,7 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
         </div>
         <div class="third-info">
             <div class="info-area">
-                @if (gameService.isAlphaStrike()) {
+                @if (isAlphaStrike()) {
                     <div class="info-slot centered slim">
                         <span class="value">PV: {{ fu?.getBv() | formatNumber:true }}</span>
                     </div>

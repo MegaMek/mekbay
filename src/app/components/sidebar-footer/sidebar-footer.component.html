@@ -96,9 +96,9 @@
         <div class="popup-menu glass framed-borders has-shadow" cdkMenu>
             <button class="menu-item" cdkMenuItem (click)="showForcePackDialog()">Add a Force
                 Pack...</button>
-            <!-- <hr />
-                <button class="menu-item" cdkMenuItem>Friendly Force</button>
-                <button class="menu-item" cdkMenuItem>Opposing Force</button> -->
+            <hr class="divider" />
+            <button class="menu-item" cdkMenuItem (click)="addExternalForce('friendly')">Add Friendly Force...</button>
+            <button class="menu-item" cdkMenuItem (click)="addExternalForce('enemy')">Add Opposing Force...</button>
         </div>
     </ng-template>
     <ng-template #generalMenu>

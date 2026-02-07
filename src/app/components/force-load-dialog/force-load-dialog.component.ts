@@ -42,6 +42,7 @@ import { Pipe, PipeTransform } from "@angular/core";
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { OptionsService } from '../../services/options.service';
 import { GameService } from '../../services/game.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
@@ -75,7 +76,14 @@ export class FormatTimestamp implements PipeTransform {
     }
 }
 
-export type ForceLoadDialogResult = LoadForceEntry | ResolvedPack | null;
+export type ForceLoadMode = 'load' | 'add';
+
+export interface ForceLoadDialogEnvelope {
+    result: LoadForceEntry | ResolvedPack;
+    mode: ForceLoadMode;
+}
+
+export type ForceLoadDialogResult = ForceLoadDialogEnvelope | null;
 
 @Component({
     selector: 'force-load-dialog',
@@ -88,6 +96,7 @@ export type ForceLoadDialogResult = LoadForceEntry | ResolvedPack | null;
 export class ForceLoadDialogComponent {
     private dialogRef = inject(DialogRef<ForceLoadDialogResult>);
     private dataService = inject(DataService);
+    private forceBuilderService = inject(ForceBuilderService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
@@ -101,6 +110,13 @@ export class ForceLoadDialogComponent {
     activeTab = signal(this.tabs[0]);
 
     searchText = signal<string>('');
+
+    /** Check if the currently selected force is already loaded */
+    isSelectedForceLoaded = computed<boolean>(() => {
+        const sel = this.selectedForce();
+        if (!sel?.instanceId) return false;
+        return this.forceBuilderService.loadedForces().some(s => s.force.instanceId() === sel.instanceId);
+    });
     gameTypeFilter = signal<'all' | 'cbt' | 'as'>('all');
     
     filteredForces = computed<LoadForceEntry[]>(() => {
@@ -210,12 +226,19 @@ export class ForceLoadDialogComponent {
     }
 
     async onLoad() {
+        await this.closeWithMode('load');
+    }
+
+    async onAdd() {
+        await this.closeWithMode('add');
+    }
+
+    private async closeWithMode(mode: ForceLoadMode) {
         const force = this.selectedForce();
         const pack = this.selectedPack();
         
         if (force) {
-            // Loading a saved force - close with result
-            this.dialogRef.close(force);
+            this.dialogRef.close({ result: force, mode });
             return;
         }
         
@@ -230,12 +253,11 @@ export class ForceLoadDialogComponent {
 
             const result = await firstValueFrom(ref.closed);
             if (result?.units) {
-                // User confirmed - close with the customized pack
                 const customizedPack: ResolvedPack = {
                     ...pack,
                     units: result.units
                 };
-                this.dialogRef.close(customizedPack);
+                this.dialogRef.close({ result: customizedPack, mode });
             }
             // If dismissed (null), stay on this dialog
         }

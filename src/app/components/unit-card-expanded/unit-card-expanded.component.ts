@@ -41,6 +41,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { GameService } from '../../services/game.service';
+import { GameSystem } from '../../models/common.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
@@ -174,6 +175,15 @@ export class UnitCardExpandedComponent {
         return null; // Let the pipe calculate it
     });
     
+    /** Derives Alpha Strike status from the ForceUnit's force when available, falls back to global game mode. */
+    isAlphaStrike = computed<boolean>(() => {
+        const u = this.unit();
+        if (this.isForceUnit(u)) {
+            return u.force.gameSystem === GameSystem.ALPHA_STRIKE;
+        }
+        return this.gameService.isAlphaStrike();
+    });
+
     isAerospace = computed<boolean>(() => {
         const unit = this.resolvedUnit();
         const type = unit.as.TP;
@@ -373,7 +383,7 @@ export class UnitCardExpandedComponent {
 
     /** Get the current view mode key */
     private getViewMode(): string {
-        const isAS = this.gameService.isAlphaStrike();
+        const isAS = this.isAlphaStrike();
         const expanded = this.expandedView();
         if (expanded) {
             return isAS ? 'expanded-as' : 'expanded-cbt';

@@ -47,7 +47,7 @@ import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { REMOTE_HOST } from '../../models/common.model';
+import { REMOTE_HOST, GameSystem } from '../../models/common.model';
 import { UnitDetailsGeneralTabComponent } from './tabs/unit-details-general-tab.component';
 import { UnitDetailsIntelTabComponent } from './tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab.component';
@@ -121,13 +121,27 @@ export class UnitDetailsDialogComponent {
     tabs = computed<string[]>(() => {
         return ['General', 'Intel', 'Factions', 'Variants', 'Sheet', 'Card'];
     });
-    activeTab = signal(this.gameService.isAlphaStrike() ? 'Card' : 'General');
+    activeTab = signal(this.deriveInitialIsAlphaStrike() ? 'Card' : 'General');
 
     unitList = computed<Unit[] | ForceUnit[]>(() => {
         const input = this.data.unitList;
         return isSignal(input) ? input() : input;
     });
     unitIndex = signal(this.data.unitIndex);
+
+    /** Derives game system from the current unit's force (when ForceUnit), otherwise falls back to global. */
+    currentGameSystem = computed<GameSystem>(() => {
+        const list = this.unitList();
+        const item = list[this.unitIndex()];
+        if (item instanceof ForceUnit) {
+            return item.force.gameSystem;
+        }
+        return this.gameService.currentGameSystem();
+    });
+
+    isAlphaStrike = computed<boolean>(() => {
+        return this.currentGameSystem() === GameSystem.ALPHA_STRIKE;
+    });
     gunnerySkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
         if (currentUnit instanceof CBTForceUnit) {
@@ -197,6 +211,17 @@ export class UnitDetailsDialogComponent {
             return currentUnit.getUnit();
         }
         return currentUnit;
+    }
+
+    /** Reads the game system directly from dialog data (used for field initializers before computeds are available). */
+    private deriveInitialIsAlphaStrike(): boolean {
+        const input = this.data.unitList;
+        const list = isSignal(input) ? input() : input;
+        const item = list[this.data.unitIndex];
+        if (item instanceof ForceUnit) {
+            return item.force.gameSystem === GameSystem.ALPHA_STRIKE;
+        }
+        return this.gameService.isAlphaStrike();
     }
 
     get hostHasFluff(): boolean {
@@ -416,7 +441,7 @@ export class UnitDetailsDialogComponent {
         const domain = window.location.origin + window.location.pathname;
         const unitName = encodeURIComponent(this.unit.name);
         const tab = encodeURIComponent(this.activeTab());
-        const shareUrl = `${domain}?gs=${this.gameService.currentGameSystem()}&shareUnit=${unitName}&tab=${tab}`;
+        const shareUrl = `${domain}?gs=${this.currentGameSystem()}&shareUnit=${unitName}&tab=${tab}`;
         const shareText = `${this.unit.chassis} ${this.unit.model}`;
         if (navigator.share) {
             navigator.share({

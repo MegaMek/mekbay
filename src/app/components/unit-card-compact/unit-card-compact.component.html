@@ -26,7 +26,7 @@
         </div>
         <div class="third-info">
             <div class="info-area">
-                @if (gameService.isAlphaStrike()) {
+                @if (isAlphaStrike()) {
                     <div class="info-slot centered slim">
                         <span class="value">PV: {{ u.as.PV | adjustedPV:gunnery() | formatNumber:true:true }}</span>
                     </div>

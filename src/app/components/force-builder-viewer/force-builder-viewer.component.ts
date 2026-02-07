@@ -37,11 +37,9 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { Force, UnitGroup } from '../../models/force.model';
 import { ForceUnit } from '../../models/force-unit.model';
-import { GameSystem } from '../../models/common.model';
-import { DragDropModule, CdkDragDrop, moveItemInArray, CdkDragMove } from '@angular/cdk/drag-drop'
+import { DragDropModule, CdkDragDrop, moveItemInArray, CdkDragMove, transferArrayItem } from '@angular/cdk/drag-drop'
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
-import { ShareForceDialogComponent, ShareForceDialogData } from '../share-force-dialog/share-force-dialog.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
@@ -68,19 +66,37 @@ export class ForceBuilderViewerComponent {
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
     private newGroupDropzone = viewChild<ElementRef<HTMLElement>>('newGroupDropzone');
     forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
+    private forceSlotHeaders = viewChildren<ElementRef<HTMLElement>>('forceSlotHeader');
 
     miniMode = input<boolean>(false);
+
+    loadedSlots = computed(() => this.forceBuilderService.loadedForces());
 
     compactMode = computed(() => {
         return this.compactModeService.compactMode();
     });
 
-    hasEmptyGroups = computed(() => {
-        return this.forceBuilderService.currentForce()?.groups().some(g => g.units().length === 0);
+    /**
+     * Alignment styling (friendly/enemy) is shown on non-owned forces only when:
+     * - at least one owned force is loaded, OR
+     * - both friendly and enemy forces are loaded
+     */
+    showAlignmentStyling = computed<boolean>(() => {
+        const slots = this.loadedSlots();
+        if (slots.length < 2) return false;
+        const hasOwned = slots.some(s => !s.force.readOnly());
+        if (hasOwned) return true;
+        const alignments = new Set(slots.map(s => s.alignment));
+        return alignments.has('friendly') && alignments.has('enemy');
     });
+
+    hasOwnedForce = computed<boolean>(() => this.loadedSlots().some(s => !s.force.readOnly()));
+
+    hasEmptyGroups = this.forceBuilderService.hasEmptyGroups;
 
     // --- Gesture State ---
     public readonly isUnitDragging = signal<boolean>(false); // Flag for unit drag/sorting
+    private headerResizeObserver?: ResizeObserver;
 
     //Units autoscroll
     private autoScrollVelocity = signal<number>(0);     // px/sec (+ down, - up)
@@ -89,14 +105,6 @@ export class ForceBuilderViewerComponent {
     private readonly AUTOSCROLL_EDGE = 80;   // px threshold from edge to start scrolling
     private readonly AUTOSCROLL_MAX = 500;  // px/sec max scroll speed (deepest in edge zone)
     private readonly AUTOSCROLL_MIN = 10;   // px/sec at the outer boundary of the edge zone
-
-    hasSingleGroup = computed(() => {
-        return this.forceBuilderService.currentForce()?.groups().length === 1;
-    });
-
-    isAlphaStrike = computed(() => {
-        return this.forceBuilderService.currentForce()?.gameSystem === GameSystem.ALPHA_STRIKE;
-    });
 
     constructor() {
         // Track pending afterNextRender to clean up on effect re-run or destroy
@@ -116,15 +124,22 @@ export class ForceBuilderViewerComponent {
             }
         });
         
+        // Observe force-slot-header heights for two-level sticky positioning
+        effect(() => {
+            const headers = this.forceSlotHeaders();
+            this.setupHeaderObserver(headers);
+        });
+
         inject(DestroyRef).onDestroy(() => {
             pendingScrollRef?.destroy();
             this.stopAutoScrollLoop();
+            this.headerResizeObserver?.disconnect();
         });
     }
 
     onUnitKeydown(event: KeyboardEvent, index: number) {
-        const units = this.forceBuilderService.currentForce()?.units();
-        if (!units || units.length === 0) return;
+        const units = this.forceBuilderService.forceUnitsOrEmpty();
+        if (units.length === 0) return;
         if (event.key === 'ArrowDown') {
             if (index < units.length - 1) {
                 event.preventDefault();
@@ -142,8 +157,6 @@ export class ForceBuilderViewerComponent {
         }
     }
 
-    forceName =  computed(() => this.forceBuilderService.currentForce()?.name);
-
     selectUnit(unit: ForceUnit) {
         this.forceBuilderService.selectUnit(unit);
         if (this.layoutService.isMobile()) {
@@ -155,7 +168,7 @@ export class ForceBuilderViewerComponent {
         event.stopPropagation();
         await this.forceBuilderService.removeUnit(unit);
         // If this was the last unit, close the menu (offcanvas OFF mode)
-        if (this.forceBuilderService.forceUnits()?.length === 0) {
+        if (!this.forceBuilderService.hasUnits()) {
             this.layoutService.closeMenu();
         }
     }
@@ -176,7 +189,7 @@ export class ForceBuilderViewerComponent {
 
     showUnitInfo(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
-        const force = this.forceBuilderService.currentForce();
+        const force = this.findForceOfUnit(unit);
         if (!force) return;
         const unitList = force.units();
         if (!unitList) return;
@@ -192,9 +205,21 @@ export class ForceBuilderViewerComponent {
 
     async openC3Network(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
-        const force = this.forceBuilderService.currentForce();
+        const force = this.findForceOfUnit(unit);
         if (!force) return;
         await this.forceBuilderService.openC3Network(force, unit.readOnly());
+    }
+
+    /**
+     * Finds which loaded force contains a given unit.
+     */
+    private findForceOfUnit(unit: ForceUnit): Force | undefined {
+        for (const slot of this.forceBuilderService.loadedForces()) {
+            if (slot.force.units().some(u => u.id === unit.id)) {
+                return slot.force;
+            }
+        }
+        return this.forceBuilderService.currentForce() ?? undefined;
     }
 
     async editPilot(event: MouseEvent, unit: ForceUnit) {
@@ -311,13 +336,31 @@ export class ForceBuilderViewerComponent {
         this.lastAutoScrollTs = undefined;
     }
 
+    /**
+     * Sets up a ResizeObserver on force-slot-header elements so that
+     * --force-header-height is kept in sync on each .force-slot.
+     * Group headers use this variable for their sticky top offset.
+     */
+    private setupHeaderObserver(headers: readonly ElementRef<HTMLElement>[]) {
+        this.headerResizeObserver?.disconnect();
+        if (headers.length === 0) return;
+
+        this.headerResizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const el = entry.target as HTMLElement;
+                const forceSlot = el.closest('.force-slot') as HTMLElement;
+                if (forceSlot) {
+                    forceSlot.style.setProperty('--force-header-height', `${el.offsetHeight}px`);
+                }
+            }
+        });
+
+        for (const header of headers) {
+            this.headerResizeObserver.observe(header.nativeElement);
+        }
+    }
+
     drop(event: CdkDragDrop<ForceUnit[]>) {
-        if (this.forceBuilderService.readOnlyForce()) return;
-
-        const force = this.forceBuilderService.currentForce();
-        if (!force) return;
-        const groups = force.groups();
-
         const groupIdFromContainer = (id?: string) => id && id.startsWith('group-') ? id.substring('group-'.length) : null;
 
         const fromGroupId = groupIdFromContainer(event.previousContainer?.id);
@@ -325,46 +368,80 @@ export class ForceBuilderViewerComponent {
 
         if (!fromGroupId || !toGroupId) return;
 
-        const fromGroup = groups.find(g => g.id === fromGroupId);
-        const toGroup = groups.find(g => g.id === toGroupId);
-        if (!fromGroup || !toGroup) return;
+        // Find which force contains the source and target groups
+        const fromResult = this.findGroupAndForce(fromGroupId);
+        const toResult = this.findGroupAndForce(toGroupId);
+        if (!fromResult || !toResult) return;
+
+        const { force: fromForce, group: fromGroup } = fromResult;
+        const { force: toForce, group: toGroup } = toResult;
+
+        // Prevent drops onto readonly forces
+        if (toForce.readOnly()) return;
         
         // No-op if same group and same index
         if (fromGroup === toGroup && event.previousIndex === event.currentIndex) {
             return;
         }
-        // Work with snapshots of the signals' arrays and then write them back.
-        if (fromGroup === toGroup) {
-            const units = [...fromGroup.units()]; // snapshot
-            moveItemInArray(units, event.previousIndex, event.currentIndex);
-            fromGroup.units.set(units);
-        } else {
-            const fromUnits = [...fromGroup.units()];
-            const toUnits = [...toGroup.units()];
 
-            // Remove from source
+        if (fromForce === toForce) {
+            // Same force: reorder within or between groups
+            if (fromGroup === toGroup) {
+                const units = [...fromGroup.units()];
+                moveItemInArray(units, event.previousIndex, event.currentIndex);
+                fromGroup.units.set(units);
+            } else {
+                const fromUnits = [...fromGroup.units()];
+                const toUnits = [...toGroup.units()];
+                const [moved] = fromUnits.splice(event.previousIndex, 1);
+                if (!moved) return;
+                const insertIndex = Math.min(Math.max(0, event.currentIndex), toUnits.length);
+                toUnits.splice(insertIndex, 0, moved);
+                fromGroup.units.set(fromUnits);
+                toGroup.units.set(toUnits);
+                this.forceBuilderService.generateGroupNameIfNeeded(fromGroup);
+                this.forceBuilderService.generateGroupNameIfNeeded(toGroup);
+            }
+            fromForce.removeEmptyGroups();
+            if (fromForce.instanceId()) {
+                fromForce.emitChanged();
+            }
+        } else {
+            // Cross-force move: remove from source force, add to target force
+            if (fromForce.readOnly()) return; // can't remove from read-only
+            const fromUnits = [...fromGroup.units()];
             const [moved] = fromUnits.splice(event.previousIndex, 1);
             if (!moved) return;
-
-            // Insert into destination at the requested index
+            const toUnits = [...toGroup.units()];
             const insertIndex = Math.min(Math.max(0, event.currentIndex), toUnits.length);
             toUnits.splice(insertIndex, 0, moved);
-
             fromGroup.units.set(fromUnits);
             toGroup.units.set(toUnits);
-            this.forceBuilderService.generateGroupNameIfNeeded(fromGroup);
-            this.forceBuilderService.generateGroupNameIfNeeded(toGroup);
-        }
-        force.removeEmptyGroups();
-        // Only emit change (trigger save) if force already has an instanceId
-        if (force.instanceId()) {
-            force.emitChanged();
+            fromForce.removeEmptyGroups();
+            if (fromForce.instanceId()) fromForce.emitChanged();
+            if (toForce.instanceId()) toForce.emitChanged();
         }
     }
 
+    /**
+     * Finds a group and its owning force across all loaded forces.
+     */
+    private findGroupAndForce(groupId: string): { force: Force; group: UnitGroup } | null {
+        for (const slot of this.forceBuilderService.loadedForces()) {
+            const group = slot.force.groups().find(g => g.id === groupId);
+            if (group) return { force: slot.force, group };
+        }
+        return null;
+    }
+
     connectedDropLists(): string[] {
-        const groups = this.forceBuilderService.currentForce()?.groups() || [];
-        const ids = groups.map(g => `group-${g.id}`);
+        const ids: string[] = [];
+        for (const slot of this.forceBuilderService.loadedForces()) {
+            if (slot.force.readOnly()) continue; // exclude read-only forces from drop targets
+            for (const g of slot.force.groups()) {
+                ids.push(`group-${g.id}`);
+            }
+        }
         if (this.newGroupDropzone()?.nativeElement) {
             ids.push('new-group-dropzone');
         }
@@ -419,8 +496,9 @@ export class ForceBuilderViewerComponent {
         }
     }
 
-    promptChangeForceName() {
-        if (this.forceBuilderService.readOnlyForce()) return;
+    promptChangeForceName(force?: Force) {
+        if (force?.readOnly()) return;
+        if (!force && this.forceBuilderService.readOnlyForce()) return;
         this.forceBuilderService.promptChangeForceName();
     }
 
@@ -429,19 +507,89 @@ export class ForceBuilderViewerComponent {
         this.forceBuilderService.promptChangeGroupName(group);
     }
 
+    setActiveForce(force: Force) {
+        this.forceBuilderService.setActiveForce(force);
+    }
+
     shareForce() {
-        const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce) return;
-        this.dialogsService.createDialog(ShareForceDialogComponent, {
-            data: { force: currentForce }
-        });
+        this.forceBuilderService.shareForce();
     }
 
     onEmptyGroupClick(group: UnitGroup) {
-        if (this.forceBuilderService.readOnlyForce()) return;
+        const result = this.findGroupAndForce(group.id);
+        if (!result || result.force.readOnly()) return;
         if (group.units().length === 0) {
             this.forceBuilderService.removeGroup(group);
         }
     }
 
+    /** Connected group drop list IDs for group drag-drop (only non-readonly forces) */
+    connectedGroupDropLists(): string[] {
+        const ids: string[] = [];
+        for (const slot of this.forceBuilderService.loadedForces()) {
+            if (slot.force.readOnly()) continue;
+            ids.push(`force-groups-${slot.force.instanceId() || slot.force.name}`);
+        }
+        return ids;
+    }
+
+    /** Handle group drag-drop for reordering within a force or moving between forces */
+    dropGroup(event: CdkDragDrop<UnitGroup[]>) {
+        const fromForceId = event.previousContainer.id;
+        const toForceId = event.container.id;
+
+        const findForceByContainerId = (containerId: string): Force | undefined => {
+            for (const slot of this.forceBuilderService.loadedForces()) {
+                const id = `force-groups-${slot.force.instanceId() || slot.force.name}`;
+                if (id === containerId) return slot.force;
+            }
+            return undefined;
+        };
+
+        const fromForce = findForceByContainerId(fromForceId);
+        const toForce = findForceByContainerId(toForceId);
+        if (!fromForce || !toForce) return;
+        if (toForce.readOnly()) return;
+
+        if (fromForce === toForce) {
+            // Reorder groups within the same force
+            if (event.previousIndex === event.currentIndex) return;
+            const groups = [...fromForce.groups()];
+            moveItemInArray(groups, event.previousIndex, event.currentIndex);
+            fromForce.groups.set(groups);
+            if (fromForce.instanceId()) fromForce.emitChanged();
+        } else {
+            // Move group between forces
+            if (fromForce.readOnly()) return;
+            const fromGroups = [...fromForce.groups()];
+            const toGroups = [...toForce.groups()];
+            transferArrayItem(fromGroups, toGroups, event.previousIndex, event.currentIndex);
+            // Re-parent the moved group
+            const movedGroup = toGroups[event.currentIndex];
+            if (movedGroup) {
+                (movedGroup as any).force = toForce; // update parent reference
+            }
+            fromForce.groups.set(fromGroups);
+            toForce.groups.set(toGroups);
+            // Ensure source force has at least one group
+            if (fromGroups.length === 0) {
+                fromForce.addGroup('Group');
+            }
+            if (fromForce.instanceId()) fromForce.emitChanged();
+            if (toForce.instanceId()) toForce.emitChanged();
+        }
+    }
+
+    /** Remove a force from the loaded forces with confirmation */
+    async removeForceFromSlot(event: MouseEvent, force: Force) {
+        event.stopPropagation();
+        const confirmed = await this.dialogsService.requestConfirmation(
+            `Remove "${force.name}" from the loaded forces?`,
+            'Remove Force',
+            'danger'
+        );
+        if (confirmed) {
+            this.forceBuilderService.removeLoadedForce(force);
+        }
+    }
 }

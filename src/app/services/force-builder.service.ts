@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, signal, effect, computed, Injector, inject, untracked, DestroyRef } from '@angular/core';
+import { Injectable, signal, effect, computed, Injector, inject, untracked, DestroyRef, ApplicationRef } from '@angular/core';
 import { Unit } from '../models/units.model';
 import { Force, UnitGroup } from '../models/force.model';
 import { ForceUnit } from '../models/force-unit.model';
@@ -47,6 +47,8 @@ import { DialogsService } from './dialogs.service';
 import { generateUUID, WsService } from './ws.service';
 import { ToastService } from './toast.service';
 import { LoggerService } from './logger.service';
+import { SheetService } from './sheet.service';
+import { OptionsService } from './options.service';
 import { LoadForceEntry } from '../models/load-force-entry.model';
 import { ForceLoadDialogComponent, ForceLoadDialogResult } from '../components/force-load-dialog/force-load-dialog.component';
 import { ForcePackDialogComponent, ForcePackDialogResult } from '../components/force-pack-dialog/force-pack-dialog.component';
@@ -54,6 +56,8 @@ import { SerializedForce } from '../models/force-serialization';
 import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
 import { EditASPilotDialogComponent, EditASPilotDialogData, EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
 import { C3NetworkDialogComponent, C3NetworkDialogData, C3NetworkDialogResult } from '../components/c3-network-dialog/c3-network-dialog.component';
+import { ShareForceDialogComponent } from '../components/share-force-dialog/share-force-dialog.component';
+import { ForceOverviewDialogComponent } from '../components/force-overview-dialog/force-overview-dialog.component';
 import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
@@ -65,6 +69,9 @@ import { UrlStateService } from './url-state.service';
 import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
 import { ResolvedPack } from '../utils/force-pack.util';
 import { buildForceQueryParams, parseForceFromUrl, ForceQueryParams } from '../utils/force-url.util';
+import { CBTPrintUtil } from '../utils/cbtprint.util';
+import { ASPrintUtil } from '../utils/asprint.util';
+import { ForceSlot, ForceAlignment } from '../models/force-slot.model';
 
 /*
  * Author: Drake
@@ -85,8 +92,8 @@ export class ForceBuilderService {
 
     public currentForce = signal<Force | null>(null);
     public selectedUnit = signal<ForceUnit | null>(null);
+    public loadedForces = signal<ForceSlot[]>([]);
     private urlStateInitialized = signal(false);
-    private forceChangedSubscription: Subscription | null = null;
     private conflictDialogRef: any;
 
     constructor() {
@@ -95,90 +102,210 @@ export class ForceBuilderService {
         
         this.loadUnitsFromUrlOnStartup();
         this.updateUrlOnForceChange();
-        this.setForce(this.currentForce());
         this.monitorWebSocketConnection();
         inject(DestroyRef).onDestroy(() => {
-            // Clean up force change subscription
-            this.forceChangedSubscription?.unsubscribe();
-            this.forceChangedSubscription = null;
+            // Clean up all loaded force slots
+            for (const slot of this.loadedForces()) {
+                this.teardownForceSlot(slot);
+            }
             if (this.conflictDialogRef) {
                 this.conflictDialogRef.close();
                 this.conflictDialogRef = undefined;
             }
-            // Clean up units in the current force
-            this.currentForce()?.units().forEach(unit => unit.destroy());
         });
     }
 
-    get force(): Force | null {
-        return this.currentForce();
-    }
+    /** Current force's units as a non-nullable array (empty when no force). */
+    forceUnitsOrEmpty = computed<ForceUnit[]>(() => this.currentForce()?.units() ?? []);
+    /** True when a force is loaded (non-null). */
+    hasForce = computed<boolean>(() => this.currentForce() !== null);
+    /** True when the current force has one or more units. */
+    hasUnits = computed<boolean>(() => this.forceUnitsOrEmpty().length > 0);
+    /** Current force's name, or empty string. */
+    forceName = computed<string>(() => this.currentForce()?.name ?? '');
+    /** Current force's groups, or empty array. */
+    forceGroups = computed<UnitGroup[]>(() => this.currentForce()?.groups() ?? []);
+    /** Current force's game system, or null. */
+    forceGameSystem = computed<GameSystem | null>(() => this.currentForce()?.gameSystem ?? null);
+    /** True when current force is Alpha Strike. */
+    isAlphaStrike = computed<boolean>(() => this.currentForce()?.gameSystem === GameSystem.ALPHA_STRIKE);
+    /** True when the current force has exactly one group. */
+    hasSingleGroup = computed<boolean>(() => (this.currentForce()?.groups().length ?? 0) === 1);
+    /** True when any group in the current force has zero units. */
+    hasEmptyGroups = computed<boolean>(() => this.currentForce()?.groups().some(g => g.units().length === 0) ?? false);
+    /** Number of units in the current force. */
+    unitCount = computed<number>(() => this.currentForce()?.units().length ?? 0);
+    /** True when a single unit exists in the current force. */
+    hasSingleUnit = computed<boolean>(() => (this.currentForce()?.units().length ?? 0) === 1);
+    /** True when current force can be saved (has units, no instanceId, not readOnly). */
+    canSaveForce = computed<boolean>(() => {
+        const f = this.currentForce();
+        return !!f && f.units().length > 0 && !f.instanceId() && !f.readOnly();
+    });
 
-    forceUnits = computed<ForceUnit[] | undefined>(() => this.currentForce()?.units());
-    hasUnits = computed<boolean>(() => {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
-            return false;
-        }
-        return currentForce.units().length > 0;
+    /** All units across all loaded forces (flat list). */
+    allLoadedUnits = computed<ForceUnit[]>(() => {
+        return this.loadedForces().flatMap(s => s.force.units());
     });
 
     readOnlyForce = computed<boolean>(() => {
         return this.currentForce()?.readOnly() ?? false;
     });
 
-    setForce(newForce: Force | null) {
-        // Unsubscribe from previous force
-        this.selectedUnit.set(null);
-        this.forceChangedSubscription?.unsubscribe();
-        this.forceChangedSubscription = null;
-        const currentForce = this.currentForce();
-        const currentForceInstanceId = currentForce?.instanceId();
-        if (currentForceInstanceId) {
-            this.wsService.unsubscribeFromForceUpdates(currentForceInstanceId);
-        }
-        // Clean up old units before setting the new force
-        currentForce?.units().forEach(unit => unit.destroy());
-        this.currentForce.set(newForce);
-        if (!newForce) {
-            this.clearForceUrlParams();
-            return;
-        }
-        const instanceId = newForce.instanceId();
-        this.logger.info(`ForceBuilderService: Setting new force with name "${newForce.name}"${instanceId ? ` and instance ID ${instanceId}` : ''}"`);
+    /* ----------------------------------------
+     * Multi-Force Slot Management
+     */
+
+    /**
+     * Creates a ForceSlot, sets up WS and change subscriptions for a force.
+     */
+    private setupForceSlot(force: Force, alignment: ForceAlignment): ForceSlot {
+        const slot: ForceSlot = { force, alignment, changeSub: null };
+        const instanceId = force.instanceId();
+        this.logger.info(`ForceBuilderService: Setting up force slot for "${force.name}"${instanceId ? ` (instance: ${instanceId})` : ''}`);
         if (instanceId) {
             this.wsService.subscribeToForceUpdates(instanceId, (serializedForce: SerializedForce) => {
-                if (serializedForce.instanceId !== newForce.instanceId()) {
-                    this.logger.warn(`Received force update for instance ID ${serializedForce.instanceId}, but current force has instance ID ${newForce.instanceId()}. Ignoring update.`);
+                if (serializedForce.instanceId !== force.instanceId()) {
+                    this.logger.warn(`Received force update for instance ID ${serializedForce.instanceId}, but force has instance ID ${force.instanceId()}. Ignoring.`);
                     return;
                 }
-                this.replaceForceInPlace(serializedForce);
+                this.replaceForceInPlace(force, serializedForce);
             });
         }
         // Subscribe to force changes for auto-save
-        this.forceChangedSubscription = newForce.changed.subscribe(() => {
-            this.dataService.saveForce(newForce);
-            const forceInstanceId = newForce.instanceId();
-            this.logger.info(`ForceBuilderService: Auto-saved force with instance ID ${forceInstanceId}`);
+        slot.changeSub = force.changed.subscribe(() => {
+            this.dataService.saveForce(force);
+            this.logger.info(`ForceBuilderService: Auto-saved force "${force.name}"`);
         });
+        return slot;
     }
-    
-    private async replaceForceInPlace(serializedForce: SerializedForce) {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
-            return;
+
+    /**
+     * Tears down a ForceSlot — unsubscribes WS, change subscription, and destroys units.
+     */
+    private teardownForceSlot(slot: ForceSlot): void {
+        slot.changeSub?.unsubscribe();
+        slot.changeSub = null;
+        const instanceId = slot.force.instanceId();
+        if (instanceId) {
+            this.wsService.unsubscribeFromForceUpdates(instanceId);
         }
+        slot.force.units().forEach(unit => unit.destroy());
+    }
+
+    /**
+     * Adds a force to the loaded forces list with the given alignment.
+     * If no active force is set, this force becomes the active one.
+     */
+    addLoadedForce(force: Force, alignment: ForceAlignment = 'friendly'): void {
+        const slot = this.setupForceSlot(force, alignment);
+        this.loadedForces.update(slots => [...slots, slot]);
+        if (!this.currentForce()) {
+            this.currentForce.set(force);
+        }
+    }
+
+    /**
+     * Removes a specific force from the loaded forces list and cleans up its resources.
+     */
+    removeLoadedForce(force: Force): void {
+        const slot = this.loadedForces().find(s => s.force === force);
+        if (!slot) return;
+        this.teardownForceSlot(slot);
+        this.loadedForces.update(slots => slots.filter(s => s !== slot));
+        // Clear selection if the selected unit was in the removed force
+        const selectedUnit = this.selectedUnit();
+        if (selectedUnit && force.units().some(u => u.id === selectedUnit.id)) {
+            this.selectedUnit.set(null);
+        }
+        // If this was the active force, switch to the first remaining one
+        if (this.currentForce() === force) {
+            const remaining = this.loadedForces();
+            this.currentForce.set(remaining.length > 0 ? remaining[0].force : null);
+        }
+    }
+
+    /**
+     * Sets which loaded force is the "active" one (for adding units, editing, etc.).
+     */
+    setActiveForce(force: Force | null): void {
+        this.currentForce.set(force);
+    }
+
+    /**
+     * Returns the ForceSlot for a given force, or undefined if not loaded.
+     */
+    getForceSlot(force: Force): ForceSlot | undefined {
+        return this.loadedForces().find(s => s.force === force);
+    }
+
+    /**
+     * Loads a force by instance ID and adds it to the loaded forces.
+     * Used for adding external forces (e.g., from other users).
+     * @returns true if the force was loaded and added successfully.
+     */
+    async addForceById(instanceId: string, alignment: ForceAlignment = 'friendly'): Promise<boolean> {
+        // Check if already loaded
+        if (this.loadedForces().some(s => s.force.instanceId() === instanceId)) {
+            this.toastService.showToast('This force is already loaded.', 'info');
+            return false;
+        }
+        const force = await this.dataService.getForce(instanceId);
+        if (!force) {
+            this.toastService.showToast('Force not found.', 'error');
+            return false;
+        }
+        this.addLoadedForce(force, alignment);
+        this.toastService.showToast(`Force "${force.name}" added.`, 'success');
+        return true;
+    }
+
+    /* ----------------------------------------
+     * Force Setting / Loading (backward-compatible)
+     */
+
+    /**
+     * Clears all loaded forces and sets a single force as the only loaded & active force.
+     * Pass null to clear everything.
+     */
+    setForce(newForce: Force | null) {
+        this.selectedUnit.set(null);
+        // Teardown all existing slots
+        for (const slot of this.loadedForces()) {
+            this.teardownForceSlot(slot);
+        }
+        this.loadedForces.set([]);
+        this.currentForce.set(null);
+        if (newForce) {
+            this.addLoadedForce(newForce);
+            this.currentForce.set(newForce);
+        } else {
+            this.clearForceUrlParams();
+        }
+    }
+
+    /**
+     * Handles an incoming WS update for a specific force, updating it in-place.
+     */
+    private async replaceForceInPlace(targetForce: Force, serializedForce: SerializedForce) {
+        if (!targetForce) return;
         try {
-            this.urlStateInitialized.set(false); // Reset URL state initialization
+            this.urlStateInitialized.set(false);
             const selectedUnitId = this.selectedUnit()?.id;
-            const selectedIndex = currentForce.units().findIndex(u => u.id === selectedUnitId);
-            currentForce.update(serializedForce);
+            // Only restore selection if the selected unit was in this force
+            const wasInThisForce = selectedUnitId && targetForce.units().some(u => u.id === selectedUnitId);
+            const selectedIndex = wasInThisForce
+                ? targetForce.units().findIndex(u => u.id === selectedUnitId)
+                : -1;
+            targetForce.update(serializedForce);
             this.dataService.saveSerializedForceToLocalStorage(serializedForce);
-            // Restore selected unit if possible
-            const newSelectedUnit = currentForce.units().find(u => u.id === selectedUnitId);
-            this.selectUnit(newSelectedUnit || currentForce.units()[selectedIndex] || currentForce.units()[0] || null);
+            // Restore selected unit if it was in this force
+            if (wasInThisForce) {
+                const newSelectedUnit = targetForce.units().find(u => u.id === selectedUnitId);
+                this.selectUnit(newSelectedUnit || targetForce.units()[selectedIndex] || targetForce.units()[0] || null);
+            }
         } finally {
-            this.urlStateInitialized.set(true); // Re-enable URL state initialization
+            this.urlStateInitialized.set(true);
         }
     }
 
@@ -189,12 +316,28 @@ export class ForceBuilderService {
             return false; // User cancelled, do not load new force
         }
 
-        this.urlStateInitialized.set(false); // Reset URL state initialization
+        this.urlStateInitialized.set(false);
         try {
             this.setForce(force);
             this.selectUnit(force.units()[0] || null);
         } finally {
-            this.urlStateInitialized.set(true); // Re-enable URL state initialization
+            this.urlStateInitialized.set(true);
+        }
+        return true;
+    }
+
+    /**
+     * Adds a force to the loaded forces without replacing existing ones.
+     * Unlike loadForce(), this preserves currently loaded forces.
+     */
+    async addForce(force: Force, alignment: ForceAlignment = 'friendly'): Promise<boolean> {
+        this.urlStateInitialized.set(false);
+        try {
+            this.addLoadedForce(force, alignment);
+            this.setActiveForce(force);
+            this.selectUnit(force.units()[0] || null);
+        } finally {
+            this.urlStateInitialized.set(true);
         }
         return true;
     }
@@ -203,10 +346,29 @@ export class ForceBuilderService {
         // Prompt to save current force if needed
         const shouldContinue = await this.promptSaveForceIfNeeded();
         if (!shouldContinue) {
-            return false; // User cancelled, do not load new force
+            return false; // User cancelled
         }
+        const forceToRemove = this.currentForce();
+        if (forceToRemove) {
+            this.removeLoadedForce(forceToRemove);
+        } else {
+            this.setForce(null);
+        }
+        if (this.loadedForces().length === 0) {
+            this.clearForceUrlParams();
+        }
+        this.logger.info('ForceBuilderService: Force removed.');
+        return true;
+    }
+
+    /**
+     * Removes all loaded forces and resets to a clean state.
+     */
+    async removeAllForces() {
+        const shouldContinue = await this.promptSaveForceIfNeeded();
+        if (!shouldContinue) return false;
         this.setForce(null);
-        this.logger.info('ForceBuilderService: Current force removed.');
+        this.logger.info('ForceBuilderService: All forces removed.');
         return true;
     }
 
@@ -737,6 +899,43 @@ export class ForceBuilderService {
         currentForce.removeGroup(group);
     }
 
+    public shareForce(): void {
+        const currentForce = this.currentForce();
+        if (!currentForce) return;
+        this.dialogsService.createDialog(ShareForceDialogComponent, {
+            data: { force: currentForce }
+        });
+    }
+
+    public showForceOverview(): void {
+        const currentForce = this.currentForce();
+        if (!currentForce) return;
+        this.dialogsService.createDialog(ForceOverviewDialogComponent, {
+            data: { force: currentForce }
+        });
+    }
+
+    public showC3NetworkForCurrentForce(): void {
+        const currentForce = this.currentForce();
+        if (!currentForce) return;
+        this.openC3Network(currentForce, this.readOnlyForce());
+    }
+
+    public printAll(): void {
+        const currentForce = this.currentForce();
+        if (!currentForce) return;
+        // Lazy-inject UI services to avoid circular dependencies
+        const appRef = this.injector.get(ApplicationRef);
+        if (currentForce instanceof CBTForce) {
+            const sheetService = this.injector.get(SheetService);
+            const optionsService = this.injector.get(OptionsService);
+            CBTPrintUtil.multipagePrint(sheetService, optionsService, currentForce.units());
+        } else if (currentForce instanceof ASForce) {
+            const optionsService = this.injector.get(OptionsService);
+            ASPrintUtil.multipagePrint(appRef, this.injector, optionsService, currentForce.groups());
+        }
+    }
+
     /* ----------------------------------------
      * Remote conflict detection and resolution
      */
@@ -755,52 +954,45 @@ export class ForceBuilderService {
     }
 
     private async checkForCloudConflict(): Promise<void> {
-        const currentForce = this.currentForce();
-        if (!currentForce) return;
-        const instanceId = currentForce.instanceId();
+        // Check all loaded forces for conflicts
+        for (const slot of this.loadedForces()) {
+            const force = slot.force;
+            const instanceId = force.instanceId();
+            if (!instanceId) continue;
+            this.logger.info('Checking for cloud conflict for force with instance ID ' + instanceId);
+            try {
+                const cloudForce = await this.dataService.getForce(instanceId, force.owned());
+                if (!cloudForce) continue;
+                const localTimestamp = force.timestamp ? new Date(force.timestamp).getTime() : 0;
+                const cloudTimestamp = cloudForce.timestamp ? new Date(cloudForce.timestamp).getTime() : 0;
 
-        // Only check if we have a saved force with an instance ID
-        if (!instanceId) return;
-        this.logger.info('Checking for cloud conflict for force with instance ID ' + instanceId);
-
-        try {
-            // Fetch the cloud version. If the local is owned, we fetch only owned versions too.
-            const cloudForce = await this.dataService.getForce(instanceId, currentForce.owned());
-            if (!cloudForce) return; // No cloud version exists
-            // Compare timestamps
-            const localTimestamp = currentForce.timestamp ? new Date(currentForce.timestamp).getTime() : 0;
-            const cloudTimestamp = cloudForce.timestamp ? new Date(cloudForce.timestamp).getTime() : 0;
-
-            if (cloudTimestamp > localTimestamp) {
-                this.logger.warn('Conflict detected between local and cloud force versions.');
-                // If the local force is not owned, automatically load the cloud version
-                if (!currentForce.owned()) {
-                    this.logger.info(`ForceBuilderService: Force with instance ID ${instanceId} downloading cloud version.`);
-                    this.urlStateInitialized.set(false); // Reset URL state initialization
-                    try {
-                        this.setForce(cloudForce);
-                        this.selectUnit(cloudForce.units()[0] || null);
-                    } finally {
-                        this.urlStateInitialized.set(true); // Re-enable URL state initialization
+                if (cloudTimestamp > localTimestamp) {
+                    this.logger.warn(`Conflict detected for force "${force.name}" (${instanceId}).`);
+                    if (!force.owned()) {
+                        this.logger.info(`ForceBuilderService: Force "${force.name}" downloading cloud version.`);
+                        this.urlStateInitialized.set(false);
+                        try {
+                            this.replaceForceInPlace(force, await this.dataService.getForce(instanceId, false) as any);
+                        } finally {
+                            this.urlStateInitialized.set(true);
+                        }
+                        this.toastService.showToast(`Cloud version of "${force.name}" loaded.`, 'success');
+                        continue;
                     }
-                    this.toastService.showToast('Cloud version loaded successfully', 'success');
-                    return;
+                    await this.handleCloudConflict(force, cloudForce, localTimestamp, cloudTimestamp);
                 }
-                // Cloud version is newer - show conflict dialog
-                await this.handleCloudConflict(cloudForce, localTimestamp, cloudTimestamp);
+            } catch (error) {
+                this.logger.error(`Error checking for cloud conflict on "${force.name}": ${error}`);
             }
-        } catch (error) {
-            this.logger.error(`Error checking for cloud conflict: ${error}`);
         }
     }
 
-    private async handleCloudConflict(cloudForce: Force, localTimestamp: number, cloudTimestamp: number): Promise<void> {
+    private async handleCloudConflict(localForce: Force, cloudForce: Force, localTimestamp: number, cloudTimestamp: number): Promise<void> {
         const formatDate = (timestamp: number) => {
             if (!timestamp) return 'Unknown';
             return new Date(timestamp).toLocaleString();
         };
         if (this.conflictDialogRef) {
-            // Conflict dialog is already open, we replace it
             this.conflictDialogRef.close();
             this.conflictDialogRef = undefined;
         }
@@ -809,7 +1001,7 @@ export class ForceBuilderService {
             disableClose: true,
             data: <ConfirmDialogData<string>>{
                 title: 'Sync Conflict Detected',
-                message: `While you were offline, this force was modified on another device. The cloud version is newer than your current version. (${formatDate(cloudTimestamp)} > ${formatDate(localTimestamp)})`,
+                message: `"${localForce.name}" was modified on another device while you were offline. The cloud version is newer. (${formatDate(cloudTimestamp)} > ${formatDate(localTimestamp)})`,
                 buttons: [
                     { label: 'LOAD CLOUD', value: 'cloud', class: 'primary' },
                     { label: 'KEEP LOCAL', value: 'local' },
@@ -819,28 +1011,22 @@ export class ForceBuilderService {
         });
 
         const result = await firstValueFrom(this.conflictDialogRef.closed);
-        const currentForce = this.currentForce();
-        if (!currentForce) {
-            return;
-        }
         if (result === 'cloud') {
-            // Load the cloud version
-            await this.loadForce(cloudForce);
-            await this.dataService.saveForce(currentForce, true);
-            this.toastService.showToast('Cloud version loaded successfully', 'success');
+            // Replace the local force in-place with the cloud version
+            const serialized = cloudForce.serialize();
+            localForce.update(serialized);
+            await this.dataService.saveForce(localForce, true);
+            this.toastService.showToast(`Cloud version of "${localForce.name}" loaded.`, 'success');
         } else if (result === 'local') {
-            // Keep local version and overwrite cloud
-            currentForce.timestamp = new Date().toISOString();
-            await this.dataService.saveForce(currentForce);
-            this.toastService.showToast('Local version kept and synced to cloud', 'success');
+            localForce.timestamp = new Date().toISOString();
+            await this.dataService.saveForce(localForce);
+            this.toastService.showToast(`Local version of "${localForce.name}" kept and synced.`, 'success');
         } else if (result === 'cloneLocal') {
-            // clone local version as a new force
-            currentForce.instanceId.set(generateUUID());
-            currentForce.timestamp = new Date().toISOString();
-            currentForce.setName(currentForce.name + ' (Cloned)', false);
+            localForce.instanceId.set(generateUUID());
+            localForce.timestamp = new Date().toISOString();
+            localForce.setName(localForce.name + ' (Cloned)', false);
             this.toastService.showToast('Local version has been cloned', 'success');
         }
-        // else: dialog was closed without selection, do nothing. If they interact, it will overwrite the cloud.
     }
 
 
@@ -967,9 +1153,11 @@ export class ForceBuilderService {
 
     async showLoadForceDialog(): Promise<void> {
         const ref = this.dialogsService.createDialog<ForceLoadDialogResult>(ForceLoadDialogComponent);
-        const result = await firstValueFrom(ref.closed);
+        const envelope = await firstValueFrom(ref.closed);
         
-        if (!result) return;
+        if (!envelope) return;
+        const { result, mode } = envelope;
+        const isAdd = mode === 'add';
 
         if (result instanceof LoadForceEntry) {
             const requestedForce = await this.dataService.getForce(result.instanceId, true);
@@ -977,17 +1165,39 @@ export class ForceBuilderService {
                 this.toastService.showToast('Failed to load force.', 'error');
                 return;
             }
-            this.loadForce(requestedForce);
+            if (isAdd) {
+                await this.addForce(requestedForce);
+            } else {
+                await this.loadForce(requestedForce);
+            }
         } else {
             // Force pack with customized units (ResolvedPack)
             const pack = result as ResolvedPack;
             
             if (pack.units && pack.units.length > 0) {
-                await this.createNewForce();
-                const group = this.addGroup();
-                for (const unit of pack.units) {
-                    if (!unit?.unit) continue;
-                    this.addUnit(unit.unit, undefined, undefined, group);
+                if (isAdd) {
+                    // In add mode, create a new force and add it alongside existing ones
+                    const gameService = this.injector.get(GameService);
+                    const gameSystem = gameService.currentGameSystem();
+                    let newForce: Force;
+                    if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                        newForce = new ASForce('New Force', this.dataService, this.unitInitializer, this.injector);
+                    } else {
+                        newForce = new CBTForce('New Force', this.dataService, this.unitInitializer, this.injector);
+                    }
+                    await this.addForce(newForce);
+                    const group = this.addGroup();
+                    for (const unit of pack.units) {
+                        if (!unit?.unit) continue;
+                        this.addUnit(unit.unit, undefined, undefined, group);
+                    }
+                } else {
+                    await this.createNewForce();
+                    const group = this.addGroup();
+                    for (const unit of pack.units) {
+                        if (!unit?.unit) continue;
+                        this.addUnit(unit.unit, undefined, undefined, group);
+                    }
                 }
             }
         }

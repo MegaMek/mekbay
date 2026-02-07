@@ -39,7 +39,7 @@ import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-inter
 import { firstValueFrom } from 'rxjs';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
-import { GameService } from '../../services/game.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { LayoutService } from '../../services/layout.service';
@@ -86,7 +86,7 @@ export class CustomizeForcePackDialogComponent {
     private destroyRef = inject(DestroyRef);
     private taggingService = inject(TaggingService);
     layoutService = inject(LayoutService);
-    gameService = inject(GameService);
+    forceBuilderService = inject(ForceBuilderService);
 
     // The pack we're customizing
     pack = this.data.pack;

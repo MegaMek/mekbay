@@ -833,7 +833,7 @@ export class UnitSearchComponent {
         });
 
         const addSub = ref.componentInstance?.add.subscribe(() => {
-            if (this.forceBuilderService.currentForce()?.units().length === 1) {
+            if (this.forceBuilderService.hasSingleUnit()) {
                 this.expandedView.set(false);
                 queueMicrotask(() => {
                     this.closeAllPanels();
@@ -1056,8 +1056,8 @@ export class UnitSearchComponent {
     }
 
     /** Handle unit added from inline panel */
-    onInlinePanelAdd(unit: Unit): void {
-        if (this.forceBuilderService.currentForce()?.units().length === 1) {
+    onInlinePanelAdd(): void {
+        if (this.forceBuilderService.hasSingleUnit()) {
             // If this is the first unit being added, close the search panel
             this.closeAllPanels();
             this.expandedView.set(false);
@@ -1159,8 +1159,7 @@ export class UnitSearchComponent {
         const isExpanded = this.expandedView();
 
         if (isExpanded) {
-            const currentForce = this.forceBuilderService.currentForce();
-            if (currentForce && currentForce.units().length > 0) {
+            if (this.forceBuilderService.hasUnits()) {
                 this.closeAllPanels();
                 this.blurInput();
             } else {
@@ -1212,7 +1211,7 @@ export class UnitSearchComponent {
         this.favoritesCompRef = componentRef;
 
         // Get favorites - filter by game system only if a force is loaded
-        const hasForce = this.forceBuilderService.currentForce() !== null;
+        const hasForce = this.forceBuilderService.hasForce();
         const favorites = hasForce
             ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
             : this.savedSearchesService.getAllSearches();
@@ -1349,7 +1348,7 @@ export class UnitSearchComponent {
         // Update favorites data in-place without closing overlay
         if (this.favoritesCompRef && this.overlayManager.has('favorites')) {
             // Get favorites - filter by game system only if a force is loaded
-            const hasForce = this.forceBuilderService.currentForce() !== null;
+            const hasForce = this.forceBuilderService.hasForce();
             const favorites = hasForce
                 ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
                 : this.savedSearchesService.getAllSearches();

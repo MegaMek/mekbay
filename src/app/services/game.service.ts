@@ -86,10 +86,10 @@ export class GameService {
          * 3. User options (default fallback)
          */
         effect(() => {
-            const currentForce = this.forceBuilderService.currentForce();
+            const forceGameSystem = this.forceBuilderService.forceGameSystem();
             let gameSystem: GameSystem;
-            if (currentForce) {
-                gameSystem = currentForce.gameSystem;
+            if (forceGameSystem) {
+                gameSystem = forceGameSystem;
             } else {
                 const override = this.gameSystemOverride();
                 const optionsGameSystem = this.optionsService.options().gameSystem;
@@ -116,7 +116,7 @@ export class GameService {
             }
             // Skip URL update if a force is loaded - ForceBuilderService handles all URL params
             // including `gs` when a force exists, avoiding race conditions between the two services
-            const hasForce = this.forceBuilderService.currentForce() !== null;
+            const hasForce = this.forceBuilderService.hasForce();
             if (hasForce) {
                 return;
             }

@@ -1,21 +1,13 @@
 
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, ElementRef, Injector, viewChildren, ApplicationRef } from '@angular/core';
-import { PortalModule } from '@angular/cdk/portal';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, ElementRef, viewChildren } from '@angular/core';
 import { LayoutService } from '../../services/layout.service';
-import { OptionsService } from '../../services/options.service';
 import { OptionsDialogComponent } from '../options-dialog/options-dialog.component';
 import { ToastService } from '../../services/toast.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { SheetService } from '../../services/sheet.service';
-import { CBTPrintUtil } from '../../utils/cbtprint.util';
-import { ASPrintUtil } from '../../utils/asprint.util';
+import { ForceAlignment } from '../../models/force-slot.model';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
-import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
 import { CompactModeService } from '../../services/compact-mode.service';
-import { CBTForce } from '../../models/cbt-force.model';
-import { ASForce } from '../../models/as-force.model';
-import { ForceOverviewDialogComponent } from '../force-overview-dialog/force-overview-dialog.component';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
 
 /*
@@ -26,20 +18,16 @@ import { C3NetworkUtil } from '../../utils/c3-network.util';
     selector: 'sidebar-footer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [PortalModule, CdkMenuModule],
+    imports: [CdkMenuModule],
     templateUrl: './sidebar-footer.component.html',
     styleUrls: ['./sidebar-footer.component.scss'],
 })
 export class SidebarFooterComponent {
-    injector = inject(Injector);
-    appRef = inject(ApplicationRef);
     elRef = inject(ElementRef<HTMLElement>);
     layoutService = inject(LayoutService);
-    optionsService = inject(OptionsService);
     toastService = inject(ToastService);
     forceBuilderService = inject(ForceBuilderService);
     dialogsService = inject(DialogsService);
-    sheetService = inject(SheetService);
     compactModeService = inject(CompactModeService);
     menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 
@@ -51,28 +39,18 @@ export class SidebarFooterComponent {
     /**
      * Returns true if the force can be saved (has units, no instanceId, and is not readOnly)
      */
-    canSaveForce = computed(() => {
-        const force = this.forceBuilderService.currentForce();
-        if (!force) return false;
-        return force.units().length > 0 && !force.instanceId() && !force.readOnly();
-    });
+    canSaveForce = this.forceBuilderService.canSaveForce;
 
     /**
      * Returns true if the force has any units (for showing Overview menu item)
      */
-    hasUnits = computed(() => {
-        const force = this.forceBuilderService.currentForce();
-        if (!force) return false;
-        return force.units().length > 0;
-    });
+    hasUnits = this.forceBuilderService.hasUnits;
 
     /**
      * Returns true if the force has any units with C3 network capability
      */
     hasC3Units = computed(() => {
-        const force = this.forceBuilderService.currentForce();
-        if (!force) return false;
-        const units = force.units();
+        const units = this.forceBuilderService.forceUnitsOrEmpty();
         if (units.length === 0) return false;
         return units.some(forceUnit => {
             const unit = forceUnit.getUnit();
@@ -93,18 +71,11 @@ export class SidebarFooterComponent {
     }
 
     showForceOverview(): void {
-        const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce) return;
-        this.dialogsService.createDialog(ForceOverviewDialogComponent, {
-            data: { force: currentForce }
-        });
+        this.forceBuilderService.showForceOverview();
     }
 
     showC3NetworkDialog(): void {
-        const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce) return;
-        const readOnly = this.forceBuilderService.readOnlyForce();
-        this.forceBuilderService.openC3Network(currentForce, readOnly);
+        this.forceBuilderService.showC3NetworkForCurrentForce();
     }
 
     showLoadForceDialog(): void {
@@ -113,6 +84,15 @@ export class SidebarFooterComponent {
 
     showForcePackDialog(): void {
         this.forceBuilderService.showForcePackDialog();
+    }
+
+    async addExternalForce(alignment: ForceAlignment): Promise<void> {
+        const instanceId = await this.dialogsService.prompt(
+            'Enter the Force Instance ID to load:',
+            alignment === 'friendly' ? 'Add Friendly Force' : 'Add Opposing Force'
+        );
+        if (!instanceId) return;
+        await this.forceBuilderService.addForceById(instanceId.trim(), alignment);
     }
 
     async requestRemoveForce(): Promise<void> {
@@ -136,23 +116,11 @@ export class SidebarFooterComponent {
     }
 
     shareForce() {
-        const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce) return;
-        this.dialogsService.createDialog(ShareForceDialogComponent, {
-            data: { force: currentForce }
-        });
+        this.forceBuilderService.shareForce();
     }
 
     printAll(): void {
-        const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce) {
-            return;
-        }
-        if (currentForce instanceof CBTForce) {
-            CBTPrintUtil.multipagePrint(this.sheetService, this.optionsService, currentForce.units());
-        } else if (currentForce instanceof ASForce) {
-            ASPrintUtil.multipagePrint(this.appRef, this.injector, this.optionsService, currentForce.groups());
-        }
+        this.forceBuilderService.printAll();
     }
 
     closeAllMenus(): void {

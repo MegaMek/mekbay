@@ -283,8 +283,8 @@ export class RenameForceDialogComponent {
     }
 
     selectFaction(factionName: string) {
-        const units = this.forceBuilder.forceUnits();
-        if (!units) return;
+        const units = this.forceBuilder.forceUnitsOrEmpty();
+        if (units.length === 0) return;
         const forceName = ForceNamerUtil.generateForceNameForFaction(units, factionName);
         const nativeEl = this.inputRef().nativeElement;
         if (!nativeEl) return;
@@ -294,8 +294,8 @@ export class RenameForceDialogComponent {
 
     private computeFactionsData(): FactionDisplay[] | null {
         const factions = this.forceBuilder.getAllFactionsAvailable();
-        const totalUnits = this.forceBuilder.forceUnits()?.length;
-        if (!totalUnits || !factions || factions.size === 0) {
+        const totalUnits = this.forceBuilder.unitCount();
+        if (totalUnits === 0 || !factions || factions.size === 0) {
             return null;
         }
         const allFactions = this.dataService.getFactions();

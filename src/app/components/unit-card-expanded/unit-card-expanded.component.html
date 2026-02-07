@@ -4,7 +4,7 @@
      [class.selected]="isSelected()"
      (click)="onCardClick()">
     
-    @if (gameService.isAlphaStrike()) {
+    @if (isAlphaStrike()) {
     <!-- Alpha Strike Expanded Card -->
     <div class="expanded-header">
         <div class="expanded-image">
@@ -279,7 +279,7 @@
         </div>
         <div class="third-info">
             <div class="info-area">
-                @if (gameService.isAlphaStrike()) {
+                @if (isAlphaStrike()) {
                 <div class="info-slot centered slim" [class.sort-slot]="isSortActive('as.PV')">
                     <span class="value">PV: {{ u.as.PV | adjustedPV:gunnery() | formatNumber:true:true }}</span>
                 </div>

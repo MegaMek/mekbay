@@ -25,6 +25,66 @@
     }
 }
 
+.force-slot {
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.2s, background-color 0.2s;
+    box-sizing: border-box;
+    min-width: 0;
+
+    &.friendly {
+        background-color: rgba(var(--friendly-color), 0.04);
+    }
+
+    &.enemy {
+        background-color: rgba(var(--enemy-color), 0.04);
+    }
+
+    &.mini-mode {
+        border-left: none;
+        padding-left: 0;
+    }
+
+    & + .force-slot {
+        margin-top: 0;
+    }
+}
+
+.force-separator {
+    margin: 0.5em 0;
+}
+
+.force-slot-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: var(--background-color-menu);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 2px;
+
+    .friendly & {
+        background-color: color-mix(in srgb, var(--background-color-menu) 85%, rgb(var(--friendly-color)));
+    }
+
+    .enemy & {
+        background-color: color-mix(in srgb, var(--background-color-menu) 85%, rgb(var(--enemy-color)));
+    }
+}
+
+.force-slot-footer {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
+}
+
 .force-name {
     font-size: 0.9em;
     font-weight: bold;
@@ -37,15 +97,48 @@
     justify-content: center;
 }
 
+.force-total {
+    font-size: 0.8em;
+    font-weight: bold;
+    color: var(--text-color-secondary);
+}
+
+.btn-remove-force {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: none;
+    border: none;
+    color: var(--text-color-tertiary);
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+
+    &:hover {
+        color: red;
+    }
+}
+
 .group-header {
     position: sticky;
-    top: 0px;
+    top: var(--force-header-height, 0px);
     z-index: 1;
     background-color: var(--background-highlight);
     padding: 4px 2px;
     display: flex;
     flex-direction: column;
     gap: 4px;
+
+    .friendly & {
+        background-color: color-mix(in srgb, var(--background-highlight) 85%, rgb(var(--friendly-color)));
+    }
+
+    .enemy & {
+        background-color: color-mix(in srgb, var(--background-highlight) 85%, rgb(var(--enemy-color)));
+    }
 }
 
 .group-name {
@@ -63,6 +156,15 @@
 .group-name:hover,
 .force-name:hover {
     color: var(--bt-yellow);
+}
+
+.read-only .group-name,
+.read-only .force-name {
+    cursor: default;
+
+    &:hover {
+        color: inherit;
+    }
 }
 
 .group-footer {
@@ -149,6 +251,7 @@
     min-width: 0;
     max-height: 0;
     opacity: 0;
+    border: none;
 }
 
 .new-group-dropzone.visible {
@@ -177,7 +280,7 @@
     flex-direction: column;
 }
 
-.footer {
+.force-slot-footer {
     display: flex;
     flex: 0 0 auto;
     flex-direction: column;
@@ -204,14 +307,6 @@
     }
 }
 
-.force-view {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    flex: 1 1 auto;
-    min-height: 0;
-}
-
 .cdk-drag-preview {
     font-family: 'Roboto', sans-serif;
     background-color: var(--background-color-menu);
@@ -232,4 +327,14 @@
 
 .force-units-list.cdk-drop-list-dragging .force-unit-item:not(.cdk-drag-placeholder) {
     transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+// Group drag-drop styles
+.force-units-list.cdk-drop-list-dragging .group-container:not(.cdk-drag-placeholder) {
+    transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.group-container.cdk-drag-placeholder {
+    opacity: 0.3;
+    border: 2px dashed var(--text-color-tertiary);
 }

@@ -9,7 +9,7 @@
 
     <div dialog-body>
         <div class="pack-info">
-            @if (gameService.isAlphaStrike()) {
+            @if (forceBuilderService.isAlphaStrike()) {
                 <span class="pack-value">PV: {{ totalPV() | number }}</span>
             } @else {
                 <span class="pack-value">BV: {{ totalBV() | number }}</span>
@@ -24,6 +24,7 @@
                     @let isModified = cu.unit?.name !== cu.originalUnit?.name;
                     <unit-card-compact
                         [unit]="cu.unit"
+                        [gameSystem]="forceBuilderService.forceGameSystem()"
                         [isSelected]="isOpen"
                         [isModified]="isModified"
                         [showInfoButton]="true"
@@ -40,6 +41,7 @@
                 <div class="docked-panel-container">
                     <variant-dropdown-panel
                         [variants]="variantsForSelected()"
+                        [gameSystem]="forceBuilderService.forceGameSystem()"
                         [originalUnitName]="selectedUnit?.originalUnit?.name ?? null"
                         [currentUnitName]="selectedUnit?.unit?.name ?? null"
                         (selected)="onDockedVariantSelect($event)"
