@@ -275,7 +275,7 @@
 .components-matrix {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px 16px;
+    gap: 1.25em 16px;
     justify-content: center;
     align-items: stretch;
     width: 100%;
