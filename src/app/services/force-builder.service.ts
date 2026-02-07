@@ -103,6 +103,15 @@ export class ForceBuilderService {
         this.loadUnitsFromUrlOnStartup();
         this.updateUrlOnForceChange();
         this.monitorWebSocketConnection();
+
+        // When cloud rejects a save (not_owner), adopt the force with fresh IDs
+        this.dataService.forceNeedsAdoption.subscribe(force => {
+            const slot = this.loadedForces().find(s => s.force === force);
+            if (slot) {
+                this.adoptForce(slot);
+            }
+        });
+
         inject(DestroyRef).onDestroy(() => {
             // Clean up all loaded force slots
             for (const slot of this.loadedForces()) {
@@ -195,6 +204,12 @@ export class ForceBuilderService {
         const wasActive = this.currentForce() === oldForce;
 
         const cloned = oldForce.clone();
+
+        // Delete the old (non-owned) force from local storage only
+        const oldInstanceId = oldForce.instanceId();
+        if (oldInstanceId) {
+            this.dataService.deleteLocalForce(oldInstanceId);
+        }
 
         // Tear down old slot
         this.teardownForceSlot(slot);

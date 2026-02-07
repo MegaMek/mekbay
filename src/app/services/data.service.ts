@@ -51,7 +51,7 @@ import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
 import { DialogsService } from './dialogs.service';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subject } from 'rxjs';
 import { GameSystem, REMOTE_HOST } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
@@ -130,6 +130,9 @@ export class DataService {
     isDataReady = signal(false);
     isDownloading = signal(false);
     public isCloudForceLoading = signal(false);
+
+    /** Emits when a cloud save is rejected (not_owner) and the force needs adoption. */
+    public forceNeedsAdoption = new Subject<Force>();
 
     private data: LocalStore = {};
     private unitNameMap = new Map<string, Unit>();
@@ -1037,6 +1040,11 @@ export class DataService {
         }
     }
 
+    /** Delete a force from local storage only (no cloud request). */
+    public async deleteLocalForce(instanceId: string): Promise<void> {
+        await this.dbService.deleteForce(instanceId);
+    }
+
     private async listForcesCloud(): Promise<LoadForceEntry[]> {
         const ws = await this.canUseCloud();
         if (!ws) return [];
@@ -1155,15 +1163,9 @@ export class DataService {
             };
             const response = await this.wsService.sendAndWaitForResponse(payload);
             if (response && response.code === 'not_owner') {
-                this.logger.warn('Cannot save force to cloud: not the owner, we regenerated a new instanceId.');
-                const oldInstanceId = force.instanceId();
-                force.instanceId.set(generateUUID());
-                force.owned.set(true);
-                // Save again (this will schedule another debounce for the new instanceId)
-                await this.saveForce(force);
-                if (oldInstanceId) {
-                    this.dbService.deleteForce(oldInstanceId); // Clean up old local copy
-                }
+                this.logger.warn('Cannot save force to cloud: not the owner.');
+                // Signal that this force needs adoption (clone with fresh IDs)
+                this.forceNeedsAdoption.next(force);
             }
             for (const r of resolvers) r.resolve();
         } catch (err) {
