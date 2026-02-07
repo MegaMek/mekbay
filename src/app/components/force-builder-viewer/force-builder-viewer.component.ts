@@ -45,6 +45,7 @@ import { ShareForceDialogComponent, ShareForceDialogData } from '../share-force-
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
+import { TouchScrollDirective } from '../../directives/touch-scroll.directive';
 
 /*
  * Author: Drake
@@ -53,7 +54,7 @@ import { ToastService } from '../../services/toast.service';
     selector: 'force-builder-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DragDropModule, UnitBlockComponent],
+    imports: [CommonModule, DragDropModule, UnitBlockComponent, TouchScrollDirective],
     templateUrl: './force-builder-viewer.component.html',
     styleUrls: ['./force-builder-viewer.component.scss']
 })
@@ -85,9 +86,9 @@ export class ForceBuilderViewerComponent {
     private autoScrollVelocity = signal<number>(0);     // px/sec (+ down, - up)
     private autoScrollRafId?: number;
     private lastAutoScrollTs?: number;
-    private readonly AUTOSCROLL_EDGE = 64;   // px threshold from edge to start scrolling
-    private readonly AUTOSCROLL_MAX = 600;   // px/sec max scroll speed
-    private readonly AUTOSCROLL_MIN = 40;
+    private readonly AUTOSCROLL_EDGE = 80;   // px threshold from edge to start scrolling
+    private readonly AUTOSCROLL_MAX = 1000;  // px/sec max scroll speed (deepest in edge zone)
+    private readonly AUTOSCROLL_MIN = 200;   // px/sec at the outer boundary of the edge zone
 
     hasSingleGroup = computed(() => {
         return this.forceBuilderService.currentForce()?.groups().length === 1;
@@ -239,13 +240,13 @@ export class ForceBuilderViewerComponent {
         if (topDist < this.AUTOSCROLL_EDGE) {
             ratio = (this.AUTOSCROLL_EDGE - topDist) / this.AUTOSCROLL_EDGE; // 0..1
             ratio = Math.max(0, Math.min(1, ratio));
-            ratio = ratio * ratio; // ease-in
-            this.autoScrollVelocity.set(-Math.max(this.AUTOSCROLL_MIN, ratio * this.AUTOSCROLL_MAX));
+            const speed = this.AUTOSCROLL_MIN + ratio * (this.AUTOSCROLL_MAX - this.AUTOSCROLL_MIN);
+            this.autoScrollVelocity.set(-speed);
         } else if (bottomDist < this.AUTOSCROLL_EDGE) {
             ratio = (this.AUTOSCROLL_EDGE - bottomDist) / this.AUTOSCROLL_EDGE;
             ratio = Math.max(0, Math.min(1, ratio));
-            ratio = ratio * ratio;
-            this.autoScrollVelocity.set(Math.max(this.AUTOSCROLL_MIN, ratio * this.AUTOSCROLL_MAX));
+            const speed = this.AUTOSCROLL_MIN + ratio * (this.AUTOSCROLL_MAX - this.AUTOSCROLL_MIN);
+            this.autoScrollVelocity.set(speed);
         } else {
             this.autoScrollVelocity.set(0);
         }

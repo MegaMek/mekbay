@@ -6,7 +6,7 @@
             EDIT</button>
         }
     }
-    <div #scrollableContent class="scrollable-content" cdkScrollable>
+    <div #scrollableContent class="scrollable-content" cdkScrollable touchScroll [touchScrollDisabled]="isUnitDragging()">
         <div class="force-units-list" [class.single-group]="hasSingleGroup()">
             @let groups = forceBuilderService.currentForce()?.groups();
             @for (group of groups; let gi = $index; track group.id) {
