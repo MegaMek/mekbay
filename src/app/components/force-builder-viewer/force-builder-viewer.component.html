@@ -16,7 +16,7 @@
                         <button class="bt-button btn-clone primary" (click)="forceBuilderService.requestCloneForce()">CLONE FORCE TO EDIT</button>
                     }
                     @if (loadedSlots().length > 1) {
-                        <div class="force-total">{{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ slotForce.totalBv() | number }}</div>
+                        <div class="force-total">Total {{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ slotForce.totalBv() | number }}</div>
                         <button class="btn-remove-force" (click)="removeForceFromSlot($event, slotForce)" title="Remove force">
                             <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
@@ -95,14 +95,15 @@
                 </div>
                 }
             </div>
-            @if (!miniMode()) {
-                <div class="force-slot-footer">
-                    @if (slotForce.groups().length > 1) {
-                    <div class="row total-bv">Total {{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ slotForce.totalBv() | number }}</div>
-                    }
-                </div>
-            }
         </div>
         }
     </div>
+    @if (!miniMode() && loadedSlots().length === 1) {
+        @let singleForce = loadedSlots()[0].force;
+        @if (singleForce.groups().length > 1) {
+            <div class="force-slot-footer">
+                <div class="row total-bv">Total {{ singleForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ singleForce.totalBv() | number }}</div>
+            </div>
+        }
+    }
 </div>
