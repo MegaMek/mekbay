@@ -87,8 +87,8 @@ export class ForceBuilderViewerComponent {
     private autoScrollRafId?: number;
     private lastAutoScrollTs?: number;
     private readonly AUTOSCROLL_EDGE = 80;   // px threshold from edge to start scrolling
-    private readonly AUTOSCROLL_MAX = 1000;  // px/sec max scroll speed (deepest in edge zone)
-    private readonly AUTOSCROLL_MIN = 200;   // px/sec at the outer boundary of the edge zone
+    private readonly AUTOSCROLL_MAX = 500;  // px/sec max scroll speed (deepest in edge zone)
+    private readonly AUTOSCROLL_MIN = 10;   // px/sec at the outer boundary of the edge zone
 
     hasSingleGroup = computed(() => {
         return this.forceBuilderService.currentForce()?.groups().length === 1;
@@ -227,25 +227,28 @@ export class ForceBuilderViewerComponent {
             return;
         }
         const container = scrollRef.nativeElement as HTMLElement;
-        const rect = container.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
 
-        // Get pointer Y position from event (or fallback to last known position)
-        const pointerY = (event.event as PointerEvent)?.clientY ?? event.pointerPosition?.y;
-        if (pointerY == null) {
+        // Use the drag preview (ghost) element's edges for distance calculation
+        const preview = document.querySelector('.cdk-drag-preview') as HTMLElement;
+        if (!preview) {
             this.stopAutoScrollLoop();
             return;
         }
+        const previewRect = preview.getBoundingClientRect();
 
-        const topDist = pointerY - rect.top;
-        const bottomDist = rect.bottom - pointerY;
+        // Distance from the ghost's top edge to the container's top edge
+        const topDist = previewRect.top - containerRect.top;
+        // Distance from the ghost's bottom edge to the container's bottom edge
+        const bottomDist = containerRect.bottom - previewRect.bottom;
 
         let ratio = 0;
-        if (topDist < this.AUTOSCROLL_EDGE) {
+        if (topDist < this.AUTOSCROLL_EDGE && topDist <= bottomDist) {
             ratio = (this.AUTOSCROLL_EDGE - topDist) / this.AUTOSCROLL_EDGE; // 0..1
             ratio = Math.max(0, Math.min(1, ratio));
             const speed = this.AUTOSCROLL_MIN + ratio * (this.AUTOSCROLL_MAX - this.AUTOSCROLL_MIN);
             this.autoScrollVelocity.set(-speed);
-        } else if (bottomDist < this.AUTOSCROLL_EDGE) {
+        } else if (bottomDist < this.AUTOSCROLL_EDGE && bottomDist < topDist) {
             ratio = (this.AUTOSCROLL_EDGE - bottomDist) / this.AUTOSCROLL_EDGE;
             ratio = Math.max(0, Math.min(1, ratio));
             const speed = this.AUTOSCROLL_MIN + ratio * (this.AUTOSCROLL_MAX - this.AUTOSCROLL_MIN);
