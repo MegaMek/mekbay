@@ -45,7 +45,7 @@ import { ShareForceDialogComponent, ShareForceDialogData } from '../share-force-
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
-import { TouchScrollDirective } from '../../directives/touch-scroll.directive';
+
 
 /*
  * Author: Drake
@@ -54,7 +54,7 @@ import { TouchScrollDirective } from '../../directives/touch-scroll.directive';
     selector: 'force-builder-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DragDropModule, UnitBlockComponent, TouchScrollDirective],
+    imports: [CommonModule, DragDropModule, UnitBlockComponent],
     templateUrl: './force-builder-viewer.component.html',
     styleUrls: ['./force-builder-viewer.component.scss']
 })
@@ -213,6 +213,9 @@ export class ForceBuilderViewerComponent {
     onUnitDragStart() {
         if (this.forceBuilderService.readOnlyForce()) return;
         this.isUnitDragging.set(true);
+        // Disable native scroll so it doesn't fight CDK drag
+        const el = this.scrollableContent()?.nativeElement;
+        if (el) el.style.overflowY = 'hidden';
     }
 
     onUnitDragMoved(event: CdkDragMove<any>) {
@@ -262,6 +265,9 @@ export class ForceBuilderViewerComponent {
         if (this.forceBuilderService.readOnlyForce()) return;
         this.stopAutoScrollLoop();
         this.isUnitDragging.set(false);
+        // Restore native scroll
+        const el = this.scrollableContent()?.nativeElement;
+        if (el) el.style.overflowY = 'auto';
     }
 
 
