@@ -256,7 +256,7 @@
 }
 
 .comp-loc {
-    background: #202020A0;
+    background: #141414A0;
     width: 60px;
     max-width: 60px;
     min-width: 60px;
@@ -275,7 +275,7 @@
 .components-matrix {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 4px 16px;
+    gap: 8px 16px;
     justify-content: center;
     align-items: stretch;
     width: 100%;
