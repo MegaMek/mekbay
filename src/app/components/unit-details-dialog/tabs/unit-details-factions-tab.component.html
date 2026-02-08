@@ -7,9 +7,18 @@
             @for (era of factionAvailability(); let i = $index; let isLastEra = $last; track i) {
                 <div class="era-name">
                     @if (era.eraImg) {
-                            <img [src]="era.eraImg" class="era-icon" alt="{{era.eraName}}" title="{{era.eraName}}" />
-                        }
-                    <strong>{{ era.eraName }}:</strong>
+                        <img [src]="era.eraImg" class="era-icon" alt="{{era.eraName}}" title="{{era.eraName}}" />
+                    }
+                    <div class="era-name-content">
+                        <strong>{{ era.eraName }}</strong>
+                        <div class="era-years">
+                            @if (era.eraYearTo) {
+                                ({{ era.eraYearFrom ?? '?' }}–{{ era.eraYearTo }})
+                            } @else {
+                                ({{ era.eraYearFrom ?? '?' }}+)
+                            }
+                        </div>
+                    </div>
                 </div>
                 <div class="faction-list">
                     @for (faction of era.factions; let isLast = $last; track faction.name) {

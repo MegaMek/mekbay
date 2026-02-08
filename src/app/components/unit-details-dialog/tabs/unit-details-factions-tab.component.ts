@@ -39,6 +39,8 @@ import { DataService } from '../../../services/data.service';
 export interface FactionAvailability {
     eraName: string;
     eraImg?: string;
+    eraYearFrom?: number;
+    eraYearTo?: number;
     factions: { name: string; img: string }[];
 }
 
@@ -77,6 +79,8 @@ export class UnitDetailsFactionTabComponent {
                 availability.push({
                     eraName: era.name,
                     eraImg: era.img,
+                    eraYearFrom: era.years.from,
+                    eraYearTo: !era.years.to || era.years.to >= 9999 ? undefined : era.years.to,
                     factions: factionsInEra
                 });
             }

@@ -23,19 +23,35 @@
     align-items: baseline;
 }
 
+.era-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
 .era-name {
     white-space: nowrap;
     display: flex;
-    align-items: baseline;
+    align-items: flex-start;
     gap: 4px;
+}
+
+.era-name-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.era-years {
+    font-size: 0.7em;
+    color: var(--text-color-secondary);
 }
 
 .era-icon {
     height: 1.2em;
     vertical-align: middle;
     position: relative;
-    top: 4px;
-    margin-bottom: -4px;
+    top: 0;
+    margin-bottom: 0;
 }
 
 .faction-list {
@@ -76,6 +92,9 @@ hr.divider {
     }
     hr.divider {
         width: 100%;
+    }
+    .era-name-content {
+        align-items: center;
     }
     .era-name {
         width: 100%;
