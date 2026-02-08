@@ -37,12 +37,61 @@ import { ForceUnit } from '../models/force-unit.model';
  * Author: Drake
  */
 
+/**
+ * Describes how a group of SPAs is distributed to units in a formation.
+ * Each formation may have one or more effect groups, each describing a set of
+ * abilities and the rules governing who receives them.
+ */
+export interface FormationEffectGroup {
+    /** SPA ids from AS_PILOT_ABILITIES that may be granted by this effect. */
+    abilityIds?: string[];
+    /** SCA ids from AS_COMMAND_ABILITIES whose effects are applied by this group. */
+    commandAbilityIds?: string[];
+    /**
+     * How abilities are selected from the list:
+     * - `choose-one`: One ability is chosen for all recipients (e.g. Recon Lance picks one SPA for everyone).
+     * - `choose-each`: Each recipient picks independently from the list (e.g. Command Lance).
+     * - `all`: All listed abilities are granted (used when only one ability in list, or all apply).
+     */
+    selection: 'choose-one' | 'choose-each' | 'all';
+    /**
+     * How recipients are determined:
+     * - `all`:               Every unit in the formation.
+     * - `half-round-down`:   Up to half the units (rounded down).
+     * - `half-round-up`:     Up to half the units (rounded up).
+     * - `percent-75`:        75% of the units (rounded normally).
+     * - `up-to-50-percent`:  Up to 50% of the units.
+     * - `fixed`:             A fixed number of units (see `count`).
+     * - `fixed-pairs`:       A fixed number of identical pairs (see `count`).
+     * - `conditional`:       Units matching a specific condition (see `condition`).
+     * - `remainder`:         Units not covered by another effect group.
+     * - `shared-pool`:       A shared resource pool for the formation (e.g. Lucky).
+     * - `role-filtered`:     All units matching a specific role (see `roleFilter`).
+     * - `commander`:         The designated commander unit only.
+     */
+    distribution: 'all' | 'half-round-down' | 'half-round-up' | 'percent-75'
+        | 'up-to-50-percent' | 'fixed' | 'fixed-pairs' | 'conditional'
+        | 'remainder' | 'shared-pool' | 'role-filtered' | 'commander';
+    /** Whether assignments rotate per turn (`true`) or are fixed at start of play (`false`/omitted). */
+    perTurn?: boolean;
+    /** Number of units or pairs for `fixed` / `fixed-pairs` distributions. */
+    count?: number;
+    /** Human-readable condition for `conditional` distribution. */
+    condition?: string;
+    /** Role name for `role-filtered` distribution. */
+    roleFilter?: string;
+    /** Maximum abilities from this group a single unit can receive (default 1). */
+    maxPerUnit?: number;
+}
+
 export interface FormationTypeDefinition {
     id: string;
     parent?: string;
     name: string;
     description: string;
     effectDescription?: string;
+    /** Structured SPA distribution rules for this formation's bonus ability. */
+    effectGroups?: FormationEffectGroup[];
     validator: (units: ForceUnit[]) => boolean;
     idealRole?: string;
     techBase?: 'Inner Sphere' | 'Clan' | 'Special';
