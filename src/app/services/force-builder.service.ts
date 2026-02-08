@@ -91,7 +91,7 @@ export class ForceBuilderService {
     private urlStateService = inject(UrlStateService);
 
     public currentForce = signal<Force | null>(null);
-    public selectedUnit = signal<ForceUnit | null>(null);
+    public selectedUnit = signal<ForceUnit | null>(null, { equal: () => false });
     public loadedForces = signal<ForceSlot[]>([]);
     private urlStateInitialized = signal(false);
     private conflictDialogRef: any;

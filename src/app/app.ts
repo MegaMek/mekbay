@@ -61,10 +61,7 @@ import { APP_VERSION_STRING } from './build-meta';
 import { LoggerService } from './services/logger.service';
 import { isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
-import { CBTForceUnit } from './models/cbt-force-unit.model';
-import { CBTForce } from './models/cbt-force.model';
-import { ASForceUnit } from './models/as-force-unit.model';
-import { ASForce } from './models/as-force.model';
+
 import { GameSystem } from './models/common.model';
 import { UrlStateService } from './services/url-state.service';
 
@@ -262,26 +259,6 @@ export class App {
     hasUnits = this.forceBuilderService.hasUnits;
 
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
-
-    // Type-safe computed signals for CBT game system
-    selectedCBTUnit = computed<CBTForceUnit | null>(() => {
-        if (this.gameService.isAlphaStrike()) return null;
-        return this.forceBuilderService.selectedUnit() as CBTForceUnit | null;
-    });
-    currentCBTForce = computed<CBTForce | null>(() => {
-        if (this.gameService.isAlphaStrike()) return null;
-        return this.forceBuilderService.currentForce() as CBTForce | null;
-    });
-
-    // Type-safe computed signals for Alpha Strike game system
-    selectedASUnit = computed<ASForceUnit | null>(() => {
-        if (!this.gameService.isAlphaStrike()) return null;
-        return this.forceBuilderService.selectedUnit() as ASForceUnit | null;
-    });
-    currentASForce = computed<ASForce | null>(() => {
-        if (!this.gameService.isAlphaStrike()) return null;
-        return this.forceBuilderService.currentForce() as ASForce | null;
-    });
 
     onOnline() {
         this.checkForUpdate();

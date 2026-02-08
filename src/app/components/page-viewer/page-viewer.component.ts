@@ -115,9 +115,8 @@ export class PageViewerComponent implements AfterViewInit {
     private layoutService = inject(LayoutService);
     canvasService = inject(PageViewerCanvasService);
 
-    // Inputs
-    unit = input<CBTForceUnit | null>(null);
-    force = input<CBTForce | null>(null);
+    readonly unit = computed(() => this.forceBuilder.selectedUnit() as CBTForceUnit | null, { equal: () => false });
+    readonly force = computed(() => this.forceBuilder.currentForce() as CBTForce | null);
     spaceEvenly = input(false);
     maxVisiblePageCount = input(99); // Limits max pages displayed even if viewport fits more
     shadowPages = input(true); // When true, shows faded clones of neighbor pages that can be clicked to navigate

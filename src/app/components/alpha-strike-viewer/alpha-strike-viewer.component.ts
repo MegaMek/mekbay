@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, inject, computed, effect, ElementRef, viewChildren, signal, DestroyRef, viewChild } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, computed, effect, ElementRef, viewChildren, signal, DestroyRef, viewChild } from '@angular/core';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { OptionsService } from '../../services/options.service';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -97,8 +97,8 @@ export class AlphaStrikeViewerComponent {
     private readonly destroyRef = inject(DestroyRef);
     private readonly dbService = inject(DbService);
     
-    unit = input<ASForceUnit | null>(null);
-    force = input<ASForce | null>(null);
+    readonly unit = computed(() => this.forceBuilderService.selectedUnit() as ASForceUnit | null, { equal: () => false });
+    readonly force = computed(() => this.forceBuilderService.currentForce() as ASForce | null);
     
     private readonly cardWrappers = viewChildren<ElementRef<HTMLElement>>('cardWrapper');
     private readonly viewerContainer = viewChild<ElementRef<HTMLElement>>('viewerContainer');

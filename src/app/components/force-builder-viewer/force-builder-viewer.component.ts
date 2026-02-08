@@ -115,7 +115,7 @@ export class ForceBuilderViewerComponent {
         effect(() => {
             const selected = this.forceBuilderService.selectedUnit();
             // Also track filter changes so we scroll even when the unit stays the same
-            const _filter = this.forceBuilderService.alignmentFilter();
+            this.forceBuilderService.alignmentFilter();
             // Cancel any previous pending scroll callback
             pendingScrollRef?.destroy();
             pendingScrollRef = null;

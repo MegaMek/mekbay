@@ -11,9 +11,9 @@
         @if (this.hasUnits()) {
         <div class="content-area">
             @if (gameService.isAlphaStrike()) {
-            <alpha-strike-viewer [unit]="selectedASUnit()" [force]="currentASForce()"></alpha-strike-viewer>
+            <alpha-strike-viewer></alpha-strike-viewer>
             } @else {
-            <page-viewer [unit]="selectedCBTUnit()" [force]="currentCBTForce()"></page-viewer>
+            <page-viewer></page-viewer>
             }
         </div>
         } @else {
