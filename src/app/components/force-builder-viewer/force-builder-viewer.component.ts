@@ -36,6 +36,7 @@ import { CommonModule } from '@angular/common';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { Force, UnitGroup } from '../../models/force.model';
+import { ForceSlot } from '../../models/force-slot.model';
 import { ForceUnit } from '../../models/force-unit.model';
 import { DragDropModule, CdkDragDrop, moveItemInArray, CdkDragMove, transferArrayItem } from '@angular/cdk/drag-drop'
 import { DialogsService } from '../../services/dialogs.service';
@@ -98,6 +99,7 @@ export class ForceBuilderViewerComponent {
     // --- Gesture State ---
     public readonly isUnitDragging = signal<boolean>(false); // Flag for unit drag/sorting
     public readonly isGroupDragging = signal<boolean>(false); // Flag for group drag/reorder
+    public readonly isForceDragging = signal<boolean>(false); // Flag for force-slot reorder
     private headerResizeObserver?: ResizeObserver;
 
     //Units autoscroll
@@ -728,6 +730,38 @@ export class ForceBuilderViewerComponent {
                 if (toForce.instanceId()) toForce.emitChanged();
             }
         }
+    }
+
+    // --- Force-level drag-drop ---
+    forceDragDisabled = computed(() => {
+        return this.forceBuilderService.filteredLoadedForces().length < 2;
+    });
+
+    onForceDragStart() {
+        this.isForceDragging.set(true);
+        const el = this.scrollableContent()?.nativeElement;
+        if (el) el.style.overflowY = 'hidden';
+    }
+
+    onForceDragEnd() {
+        this.stopAutoScrollLoop();
+        this.isForceDragging.set(false);
+        const el = this.scrollableContent()?.nativeElement;
+        if (el) el.style.overflowY = 'auto';
+    }
+
+    dropForce(event: CdkDragDrop<ForceSlot[]>) {
+        if (event.previousIndex === event.currentIndex) return;
+        // Map filtered indices to the full loadedForces array indices
+        const filtered = this.forceBuilderService.filteredLoadedForces();
+        const all = this.forceBuilderService.loadedForces();
+        const movedSlot = filtered[event.previousIndex];
+        const targetSlot = filtered[event.currentIndex];
+        if (!movedSlot || !targetSlot) return;
+        const fromIdx = all.indexOf(movedSlot);
+        const toIdx = all.indexOf(targetSlot);
+        if (fromIdx < 0 || toIdx < 0) return;
+        this.forceBuilderService.reorderLoadedForces(fromIdx, toIdx);
     }
 
     /** Remove a force from the loaded forces with confirmation */

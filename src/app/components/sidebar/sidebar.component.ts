@@ -271,7 +271,8 @@ export class SidebarComponent {
             return true;
         }
         if (this.forceBuilderViewer()?.isUnitDragging() 
-        || this.forceBuilderViewer()?.isGroupDragging()) {
+        || this.forceBuilderViewer()?.isGroupDragging() 
+        || this.forceBuilderViewer()?.isForceDragging()) {
             return true;
         }
         return false;

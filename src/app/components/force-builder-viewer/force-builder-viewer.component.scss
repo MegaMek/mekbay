@@ -54,6 +54,40 @@
     margin: 0.5em 0;
 }
 
+// Force-level drop list container
+.forces-drop-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+
+    // Gradient divider between force slots, matching hr.divider style
+    // (we can't use hr.divider directly because it would interfere with drag-and-drop)
+    .force-slot + .force-slot {
+        position: relative;
+
+        &::before {
+            content: '';
+            position: absolute;
+            top: -0.5em;
+            left: 6px;
+            right: 6px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #888, transparent);
+            pointer-events: none;
+        }
+    }
+}
+
+// Force-level drag-drop styles
+.forces-drop-list.cdk-drop-list-dragging .force-slot:not(.cdk-drag-placeholder) {
+    transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.force-slot.cdk-drag-placeholder {
+    opacity: 0.3;
+    border: 2px dashed var(--text-color-tertiary);
+}
+
 .force-slot-header {
     position: sticky;
     top: 0;

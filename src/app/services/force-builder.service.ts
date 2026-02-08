@@ -369,6 +369,19 @@ export class ForceBuilderService {
     }
 
     /**
+     * Reorders the loaded forces by moving a force from one index to another.
+     */
+    reorderLoadedForces(previousIndex: number, currentIndex: number): void {
+        if (previousIndex === currentIndex) return;
+        this.loadedForces.update(slots => {
+            const updated = [...slots];
+            const [moved] = updated.splice(previousIndex, 1);
+            if (moved) updated.splice(currentIndex, 0, moved);
+            return updated;
+        });
+    }
+
+    /**
      * Deletes a force from storage (local + cloud) and removes it from loaded forces.
      * Cancels any pending debounced saves before deletion.
      * Use when a force has been emptied and should be fully cleaned up.

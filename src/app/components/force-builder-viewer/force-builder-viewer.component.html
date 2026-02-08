@@ -1,16 +1,28 @@
 <div id="force-view" class="force-view">
     <div #scrollableContent class="scrollable-content" cdkScrollable>
+        <div class="forces-drop-list"
+            cdkDropList
+            cdkDropListOrientation="vertical"
+            [cdkDropListData]="loadedSlots()"
+            [cdkDropListDisabled]="forceDragDisabled() || compactMode() || miniMode()"
+            [cdkDropListAutoScrollDisabled]="true"
+            (cdkDropListDropped)="dropForce($event)">
         @for (slot of loadedSlots(); track slot.force; let first = $first) {
-        @if (!first) { <hr class="force-separator divider" /> }
         @let slotForce = slot.force;
         @let isActive = slotForce === forceBuilderService.currentForce();
         @let isReadOnly = slotForce.readOnly();
         @let showAlignment = showAlignmentStyling() && (isReadOnly || slot.alignment === 'enemy');
         <div class="force-slot" [class.friendly]="showAlignment && slot.alignment === 'friendly'"
             [class.enemy]="showAlignment && slot.alignment === 'enemy'" [class.active-force]="isActive" [class.mini-mode]="miniMode()" [class.read-only]="isReadOnly"
-            (click)="setActiveForce(slotForce)">
+            (click)="setActiveForce(slotForce)"
+            cdkDrag [cdkDragDisabled]="forceDragDisabled()"
+            (cdkDragStarted)="onForceDragStart()"
+            (cdkDragMoved)="onUnitDragMoved($event)"
+            (cdkDragEnded)="onForceDragEnd()"
+            cdkDragLockAxis="y"
+            [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
             @if (!miniMode()) {
-                <div class="force-slot-header" #forceSlotHeader>
+                <div class="force-slot-header" #forceSlotHeader cdkDragHandle>
                     <div class="force-name" (click)="promptChangeForceName(slotForce)">{{ slotForce.name }}</div>
                     @if (isReadOnly && !hasOwnedForce()) {
                         <button class="bt-button btn-clone primary" (click)="forceBuilderService.requestCloneForce()">CLONE FORCE TO EDIT</button>
@@ -115,6 +127,7 @@
             </div>
         </div>
         }
+        </div>
     </div>
     @if (!miniMode() && loadedSlots().length === 1) {
         @let singleForce = loadedSlots()[0].force;
