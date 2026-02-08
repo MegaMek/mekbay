@@ -452,12 +452,15 @@ export class ForceBuilderViewerComponent {
             toUnits.splice(insertIndex, 0, moved);
             fromGroup.units.set(fromUnits);
             toGroup.units.set(toUnits);
+            toForce.deduplicateIds();
             fromForce.removeEmptyGroups();
-            if (fromForce.instanceId()) fromForce.emitChanged();
-            if (toForce.instanceId()) toForce.emitChanged();
-
             if (wouldEmptyForce) {
-                this.forceBuilderService.removeLoadedForce(fromForce);
+                if (toForce.instanceId()) toForce.emitChanged();
+                this.forceBuilderService.setActiveForce(toForce);
+                this.forceBuilderService.deleteAndRemoveForce(fromForce);
+            } else {
+                if (fromForce.instanceId()) fromForce.emitChanged();
+                if (toForce.instanceId()) toForce.emitChanged();
             }
         }
     }
@@ -658,16 +661,13 @@ export class ForceBuilderViewerComponent {
             }
             fromForce.groups.set(fromGroups);
             toForce.groups.set(toGroups);
+            toForce.deduplicateIds();
 
             if (wouldEmptyForce) {
-                if (fromForce.instanceId()) fromForce.emitChanged();
                 if (toForce.instanceId()) toForce.emitChanged();
-                this.forceBuilderService.removeLoadedForce(fromForce);
+                this.forceBuilderService.setActiveForce(toForce);
+                this.forceBuilderService.deleteAndRemoveForce(fromForce);
             } else {
-                // Source force still has units — ensure it has at least one group
-                if (fromGroups.length === 0) {
-                    fromForce.addGroup('Group');
-                }
                 if (fromForce.instanceId()) fromForce.emitChanged();
                 if (toForce.instanceId()) toForce.emitChanged();
             }

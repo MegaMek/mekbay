@@ -6,8 +6,18 @@
     </div>
 </div>
 
-<div class="dialog-content" #scrollContainer cdkDropListGroup>
-    <div class="units-list" [class.compact]="viewMode() === 'compact'" [class.single-group]="hasSingleGroup()" [class.as-table-mode]="isTableMode()">
+<div class="dialog-content" #scrollContainer>
+    <div class="units-list" 
+        id="force-groups"
+        [class.compact]="viewMode() === 'compact'" 
+        [class.single-group]="hasSingleGroup()" 
+        [class.as-table-mode]="isTableMode()"
+        cdkDropList 
+        [cdkDropListData]="groups()" 
+        cdkDropListOrientation="vertical"
+        [cdkDropListAutoScrollDisabled]="true"
+        [cdkDropListDisabled]="!canDragDrop()"
+        (cdkDropListDropped)="dropGroup($event)">
         <!-- Table Header for AS Table View -->
         @if (isTableMode()) {
             <div class="as-table-header">
@@ -31,23 +41,33 @@
             </div>
         }
         @for (group of groups(); let gi = $index; track group.id) {
-            <div class="group-container">
+            <div class="group-container" cdkDrag
+                [cdkDragDisabled]="!canDragDrop() || hasSingleGroup()"
+                (cdkDragStarted)="onGroupDragStart()"
+                (cdkDragMoved)="onUnitDragMoved($event)"
+                (cdkDragEnded)="onGroupDragEnd()"
+                cdkDragLockAxis="y"
+                [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                 @if (!hasSingleGroup()) {
-                    <div class="group-header">
+                    <div class="group-header" cdkDragHandle>
                         <div class="group-name" [class.clickable]="!isReadOnly()" 
                             (click)="onGroupNameClick(group)" 
                             [title]="isReadOnly() ? '' : 'Click to rename'">{{ group.name() }}</div>
                         <div class="group-footer">
                             <span class="group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
+
                         </div>
                     </div>
                 }
                 @let units = group.units();
-                <div class="group-units" [class.compact]="viewMode() === 'compact'"
-                    cdkDropList id="group-{{ group.id }}"
+                <div class="group-units"
+                    cdkDropList 
+                    id="group-{{ group.id }}"
                     cdkDropListOrientation="mixed"
                     [cdkDropListData]="units"
+                    [cdkDropListConnectedTo]="connectedDropLists()"
                     [cdkDropListDisabled]="!canDragDrop()"
+                    [cdkDropListAutoScrollDisabled]="true"
                     (cdkDropListDropped)="drop($event)">
                     @if (viewMode() === 'compact' && units.length === 0) {
                         <div class="empty-group-placeholder" (click)="onEmptyGroupClick(group)">
@@ -56,7 +76,8 @@
                     }
                     @if (viewMode() === 'compact') {
                         @for (forceUnit of units; let last = $last; track forceUnit.id) {
-                            <div class="drag-item" cdkDrag
+                            <div class="drag-item" 
+                                cdkDrag
                                 cdkDragPreviewClass="glass"
                                 [cdkDragDisabled]="!canDragDrop()"
                                 (cdkDragStarted)="onUnitDragStart()"
@@ -126,10 +147,13 @@
             </div>
         }
         @if (canDragDrop() && !hasMaxGroups()) {
-            <div #newGroupDropzone class="group-container new-group-dropzone" cdkDropList id="new-group-dropzone"
-                [cdkDropListConnectedTo]="connectedDropLists()"
+            <div #newGroupDropzone class="group-container new-group-dropzone" 
+                cdkDropList 
+                id="new-group-dropzone"
                 [cdkDropListData]="[]"
-                [class.visible]="isUnitDragging() && !hasEmptyGroups()"
+                [cdkDropListConnectedTo]="connectedDropLists()"
+                [cdkDropListAutoScrollDisabled]="true"
+                [class.visible]="isUnitDragging() && !isGroupDragging() && !hasEmptyGroups()"
                 (cdkDropListDropped)="dropForNewGroup($event)">
                 <div class="new-group-placeholder">Drop units here to form a new group</div>
             </div>

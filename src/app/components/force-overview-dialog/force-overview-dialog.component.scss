@@ -92,7 +92,9 @@
 .group-container {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    .compact & {
+        gap: 8px;
+    }
 }
 
 .group-header {
@@ -104,6 +106,7 @@
     align-items: center;
     padding: 6px 12px;
     background-color: var(--background-color-menu);
+    cursor: grab;
 }
 
 .group-name {
@@ -136,12 +139,12 @@
 .group-units {
     display: flex;
     flex-direction: column;
-    padding-left: 8px;
-    padding-right: 8px;
     gap: 2px;
     min-height: 48px;
 
-    &.compact {
+    .compact & {
+        padding-left: 8px;
+        padding-right: 8px;
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
         gap: 8px;
@@ -185,6 +188,16 @@
 
 .cdk-drop-list-dragging .drag-item:not(.cdk-drag-placeholder) {
     transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+// Group drag-drop styles
+.units-list.cdk-drop-list-dragging .group-container:not(.cdk-drag-placeholder) {
+    transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.group-container.cdk-drag-placeholder {
+    opacity: 0.3;
+    border: 2px dashed var(--text-color-tertiary);
 }
 
 .empty-group-placeholder {

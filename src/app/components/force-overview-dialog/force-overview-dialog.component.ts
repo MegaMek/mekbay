@@ -120,12 +120,15 @@ export class ForceOverviewDialogComponent {
     /** Flag for unit drag/sorting */
     readonly isUnitDragging = signal<boolean>(false);
 
+    /** Flag for group drag/reorder */
+    readonly isGroupDragging = signal<boolean>(false);
+
     // --- Autoscroll State ---
     private autoScrollVelocity = signal<number>(0);
     private autoScrollRafId?: number;
     private lastAutoScrollTs?: number;
     private readonly AUTOSCROLL_EDGE = 64;   // px threshold from edge
-    private readonly AUTOSCROLL_MAX = 600;   // px/sec max scroll speed
+    private readonly AUTOSCROLL_MAX = 800;   // px/sec max scroll speed
     private readonly AUTOSCROLL_MIN = 40;    // px/sec min scroll speed
 
     /** Sort options available - Custom is the default order by the user */
@@ -413,6 +416,12 @@ export class ForceOverviewDialogComponent {
         this.isUnitDragging.set(true);
     }
 
+    /** Called when group drag starts */
+    onGroupDragStart(): void {
+        if (this.isReadOnly()) return;
+        this.isGroupDragging.set(true);
+    }
+
     /** Called when dragging moves */
     onUnitDragMoved(event: CdkDragMove<any>): void {
         if (this.isReadOnly()) return;
@@ -462,6 +471,12 @@ export class ForceOverviewDialogComponent {
         this.isUnitDragging.set(false);
     }
 
+    /** Called when group drag ends */
+    onGroupDragEnd(): void {
+        this.stopAutoScrollLoop();
+        this.isGroupDragging.set(false);
+    }
+
     private startAutoScrollLoop(): void {
         if (this.autoScrollRafId) return;
         this.lastAutoScrollTs = performance.now();
@@ -496,15 +511,17 @@ export class ForceOverviewDialogComponent {
         this.lastAutoScrollTs = undefined;
     }
 
-    /** Get connected drop lists for drag-drop */
-    connectedDropLists(): string[] {
-        const groups = this.groups();
-        const ids = groups.map(g => `group-${g.id}`);
+    /** Get connected drop lists for unit drag-drop across groups */
+    connectedDropLists = computed(() => {
+        const ids: string[] = [];
+        for (const g of this.data.force.groups()) {
+            ids.push(`group-${g.id}`);
+        }
         if (this.newGroupDropzone()?.nativeElement) {
             ids.push('new-group-dropzone');
         }
         return ids;
-    }
+    });
 
     /** Handle drop within or between groups */
     drop(event: CdkDragDrop<ForceUnit[]>): void {
@@ -579,6 +596,16 @@ export class ForceOverviewDialogComponent {
         this.forceBuilderService.generateGroupNameIfNeeded(newGroup);
         force.removeEmptyGroups();
         force.emitChanged();
+    }
+
+    /** Handle group drag-drop for reordering within the force */
+    dropGroup(event: CdkDragDrop<UnitGroup[]>): void {
+        if (this.isReadOnly()) return;
+        if (event.previousIndex === event.currentIndex) return;
+        const groups = [...this.data.force.groups()];
+        moveItemInArray(groups, event.previousIndex, event.currentIndex);
+        this.data.force.groups.set(groups);
+        this.data.force.emitChanged();
     }
 
     /** Handle click on empty group to remove it */

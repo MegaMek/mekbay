@@ -68,7 +68,7 @@ import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
 import { ResolvedPack } from '../utils/force-pack.util';
-import { buildForceQueryParams, parseForceFromUrl, ForceQueryParams } from '../utils/force-url.util';
+import { buildMultiForceQueryParams, parseForceFromUrl, ForceQueryParams } from '../utils/force-url.util';
 import { CBTPrintUtil } from '../utils/cbtprint.util';
 import { ASPrintUtil } from '../utils/asprint.util';
 import { ForceSlot, ForceAlignment } from '../models/force-slot.model';
@@ -343,17 +343,46 @@ export class ForceBuilderService {
     removeLoadedForce(force: Force): void {
         const slot = this.loadedForces().find(s => s.force === force);
         if (!slot) return;
+
+        // Determine switch targets BEFORE teardown (which destroys units)
+        const selectedUnit = this.selectedUnit();
+        const selectionWasInForce = selectedUnit && force.units().some(u => u.id === selectedUnit.id);
+        const wasActiveForce = this.currentForce() === force;
+        const remaining = this.loadedForces().filter(s => s !== slot);
+        const nextForce = remaining.length > 0 ? remaining[0].force : null;
+        const nextUnit = nextForce ? nextForce.units()[0] ?? null : null;
+
+        // Switch active force and selection before teardown
+        if (wasActiveForce) {
+            this.currentForce.set(nextForce);
+        }
+        if (selectionWasInForce) {
+            this.selectedUnit.set(wasActiveForce ? nextUnit : null);
+        }
+
+        // Flush any pending debounced save while the subscription is still alive
+        force.flushPendingChanges();
+
+        // Now safe to tear down and remove from the list
         this.teardownForceSlot(slot);
         this.loadedForces.update(slots => slots.filter(s => s !== slot));
-        // Clear selection if the selected unit was in the removed force
-        const selectedUnit = this.selectedUnit();
-        if (selectedUnit && force.units().some(u => u.id === selectedUnit.id)) {
-            this.selectedUnit.set(null);
+    }
+
+    /**
+     * Deletes a force from storage (local + cloud) and removes it from loaded forces.
+     * Cancels any pending debounced saves before deletion.
+     * Use when a force has been emptied and should be fully cleaned up.
+     */
+    async deleteAndRemoveForce(force: Force): Promise<void> {
+        const forceInstanceId = force.instanceId();
+        if (forceInstanceId) {
+            force.cancelPendingChanges();
+            await this.dataService.deleteForce(forceInstanceId);
+            this.logger.info(`ForceBuilderService: Force with instance ID ${forceInstanceId} deleted.`);
         }
-        // If this was the active force, switch to the first remaining one
-        if (this.currentForce() === force) {
-            const remaining = this.loadedForces();
-            this.currentForce.set(remaining.length > 0 ? remaining[0].force : null);
+        this.removeLoadedForce(force);
+        if (this.loadedForces().length === 0) {
+            this.clearForceUrlParams();
         }
     }
 
@@ -703,16 +732,23 @@ export class ForceBuilderService {
         }
 
         const currentUnits = currentForce.units();
+        const isLastUnit = currentUnits.length === 1;
         const idx = currentUnits.findIndex(u => u.id === unitToRemove.id);
         const unitGroup = currentForce.groups().find(group => {
             return group.units().some(u => u.id === unitToRemove.id);
         });
+
+        // If this is the last unit, switch force/selection BEFORE removal
+        if (isLastUnit) {
+            await this.deleteAndRemoveForce(currentForce);
+            return;
+        }
+
         currentForce.removeUnit(unitToRemove);
         this.dataService.deleteCanvasDataOfUnit(unitToRemove);
 
-        const updatedUnits = currentForce.units();
         if (this.selectedUnit()?.id === unitToRemove.id) {
-            // Select previous unit if possible, otherwise next, otherwise null
+            const updatedUnits = currentForce.units();
             let newSelected: ForceUnit | null = null;
             if (updatedUnits.length > 0) {
                 newSelected = updatedUnits[Math.max(0, idx - 1)] ?? updatedUnits[0];
@@ -720,22 +756,9 @@ export class ForceBuilderService {
             this.selectedUnit.set(newSelected);
         }
 
-        // If the last unit was removed and the force had an instanceId, remove the current force
-        if (updatedUnits.length === 0) {
-            const forceInstanceId = currentForce.instanceId();
-            if (forceInstanceId) {
-                // Cancel any pending debounced saves
-                currentForce.cancelPendingChanges();
-                await this.dataService.deleteForce(forceInstanceId); // Delete locally and from cloud
-                this.logger.info(`ForceBuilderService: Force with instance ID ${forceInstanceId} deleted as last unit was removed.`);
-            }
-            this.setForce(null);
-            this.selectedUnit.set(null);
-        } else {
-            this.generateForceNameIfNeeded();
-            if (unitGroup) {
-                this.generateGroupNameIfNeeded(unitGroup);
-            }
+        this.generateForceNameIfNeeded();
+        if (unitGroup) {
+            this.generateGroupNameIfNeeded(unitGroup);
         }
     }
 
@@ -1196,30 +1219,22 @@ export class ForceBuilderService {
 
     private updateUrlOnForceChange() {
         effect(() => {
-            const queryParameters = this.queryParameters();
+            const params = this.queryParameters();
             if (!this.urlStateInitialized()) {
                 return;
             }
             // Use centralized URL state service to avoid race conditions
-            if (queryParameters.instance) {
-                this.urlStateService.setParams({
-                    gs: null,
-                    units: null,
-                    name: null,
-                    instance: queryParameters.instance
-                });
-            } else {
-                this.urlStateService.setParams({
-                    gs: queryParameters.gs,
-                    units: queryParameters.units,
-                    name: queryParameters.name,
-                    instance: null
-                });
-            }
+            this.urlStateService.setParams({
+                gs: params.gs,
+                units: params.units,
+                name: params.name,
+                instance: params.instance
+            });
         });
     }
 
-    queryParameters = computed<ForceQueryParams>(() => buildForceQueryParams(this.currentForce()));
+    /** URL params representing ALL loaded forces. */
+    queryParameters = computed<ForceQueryParams>(() => buildMultiForceQueryParams(this.loadedForces()));
 
     private loadUnitsFromUrlOnStartup() {
         effect(() => {
@@ -1237,25 +1252,54 @@ export class ForceBuilderService {
     private async initializeFromUrl(): Promise<void> {
         // Use UrlStateService to get initial URL params (captured before any routing effects)
         const instanceParam = this.urlStateService.getInitialParam('instance');
-        let loadedInstance = null;
+        let loadedAnyInstance = false;
+
         if (instanceParam) {
-            // Try to find an existing force with this instance ID in the storage.
-            loadedInstance = await this.dataService.getForce(instanceParam);
-            if (loadedInstance) {
-                if (!loadedInstance.owned()) {
-                    this.dialogsService.showNotice('Reports indicate another commander owns this force. Clone to adopt it for yourself.', 'Captured Intel');
+            // Support comma-separated instance IDs for multi-force URLs
+            // Format: UUID1,enemy:UUID2,UUID3 — 'enemy:' prefix marks enemy alignment
+            const entries = instanceParam.split(',').map(e => e.trim()).filter(e => e.length > 0);
+            let showedOwnerNotice = false;
+
+            for (const entry of entries) {
+                let alignment: ForceAlignment = 'friendly';
+                let instanceId = entry;
+                if (entry.startsWith('enemy:')) {
+                    alignment = 'enemy';
+                    instanceId = entry.substring('enemy:'.length);
                 }
-                this.setForce(loadedInstance);
-                this.selectUnit(loadedInstance.units()[0]);
+                const force = await this.dataService.getForce(instanceId);
+                if (force) {
+                    if (!force.owned() && !showedOwnerNotice) {
+                        this.dialogsService.showNotice('Reports indicate another commander owns this force. Clone to adopt it for yourself.', 'Captured Intel');
+                        showedOwnerNotice = true;
+                    }
+                    if (!loadedAnyInstance) {
+                        // First instance: set as the primary force
+                        this.setForce(force);
+                        // Update alignment if enemy (setForce defaults to friendly)
+                        if (alignment === 'enemy') {
+                            const slot = this.getForceSlot(force);
+                            if (slot) slot.alignment = alignment;
+                        }
+                        this.selectUnit(force.units()[0]);
+                    } else {
+                        // Additional instances: add alongside existing forces
+                        this.addLoadedForce(force, alignment);
+                    }
+                    loadedAnyInstance = true;
+                } else {
+                    this.logger.warn(`ForceBuilderService: Instance "${instanceId}" not found, skipping.`);
+                }
             }
-        }
-        if (!loadedInstance) {
-            // If no instance ID or not found, create a new force.
-            if (instanceParam) {
-                //We remove the failed instance ID from the URL
+            if (!loadedAnyInstance) {
+                // None of the instance IDs were found — clear them from URL
                 this.urlStateService.setParams({ instance: null });
             }
-            const unitsParam = this.urlStateService.getInitialParam('units');
+        }
+
+        // Also check for an unsaved force (units param) — can coexist with saved forces
+        const unitsParam = this.urlStateService.getInitialParam('units');
+        if (unitsParam) {
             const forceNameParam = this.urlStateService.getInitialParam('name');
             const gameSystemParam = this.urlStateService.getInitialParam('gs') ?? GameSystem.CLASSIC;
             let newForce: Force;
@@ -1269,28 +1313,29 @@ export class ForceBuilderService {
                 if (forceNameParam) {
                     newForce.setName(forceNameParam);
                 }
-                if (unitsParam) {
-                    // parseUnitsFromUrl now handles group creation internally
-                    // and adds units directly to the force
-                    const forceUnits = this.parseUnitsFromUrl(newForce, unitsParam);
-
-                    if (forceUnits.length > 0) {
-                        this.logger.info(`ForceBuilderService: Loaded ${forceUnits.length} units from URL on startup.`);
-                        // Remove empty groups that may have been created during parsing
-                        newForce.removeEmptyGroups();
-                        if (this.layoutService.isMobile()) {
-                            this.layoutService.openMenu();
-                        }
+                const forceUnits = this.parseUnitsFromUrl(newForce, unitsParam);
+                if (forceUnits.length > 0) {
+                    this.logger.info(`ForceBuilderService: Loaded ${forceUnits.length} units from URL on startup.`);
+                    newForce.removeEmptyGroups();
+                    if (this.layoutService.isMobile()) {
+                        this.layoutService.openMenu();
                     }
                 }
             } finally {
                 newForce.loading = false;
             }
             if (newForce.units().length > 0) {
-                this.setForce(newForce);
+                if (!loadedAnyInstance) {
+                    // No saved forces loaded — unsaved force is the primary
+                    this.setForce(newForce);
+                } else {
+                    // Saved forces already loaded — add unsaved alongside
+                    this.addLoadedForce(newForce);
+                }
                 this.selectUnit(newForce.units()[0]);
             }
         }
+
         // Mark as initialized so the update effect can start running.
         this.urlStateInitialized.set(true);
         // Signal that we're done reading URL state

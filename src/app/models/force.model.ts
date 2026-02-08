@@ -234,6 +234,27 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
     }
 
+    /**
+     * Ensures no duplicate group or unit IDs exist within this force.
+     * If duplicates are found, regenerates them with fresh UUIDs.
+     */
+    public deduplicateIds(): void {
+        const seenGroupIds = new Set<string>();
+        const seenUnitIds = new Set<string>();
+        for (const group of this.groups()) {
+            if (seenGroupIds.has(group.id)) {
+                group.id = generateUUID();
+            }
+            seenGroupIds.add(group.id);
+            for (const unit of group.units()) {
+                if (seenUnitIds.has(unit.id)) {
+                    unit.id = generateUUID();
+                }
+                seenUnitIds.add(unit.id);
+            }
+        }
+    }
+
     public setUnits(newUnits: TUnit[]) {
         this.groups.set([]);
         const defaultGroup = this.addGroup(DEFAULT_GROUP_NAME);
@@ -371,6 +392,20 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             this.changed.next();
             this._debounceTimer = null;
         }, 300); // debounce
+    }
+
+    /**
+     * Flushes any pending debounced save, executing it immediately.
+     * Call this before tearing down a force slot so the save fires
+     * while the subscription is still active.
+     */
+    public flushPendingChanges() {
+        if (this._debounceTimer) {
+            clearTimeout(this._debounceTimer);
+            this._debounceTimer = null;
+            this.timestamp = new Date().toISOString();
+            this.changed.next();
+        }
     }
 
     /**

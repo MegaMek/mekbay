@@ -38,6 +38,7 @@ import { ASForceUnit } from '../models/as-force-unit.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { GameSystem } from '../models/common.model';
+import { ForceSlot } from '../models/force-slot.model';
 
 /**
  * Minimal logger interface for URL parsing warnings.
@@ -47,7 +48,8 @@ export interface UrlParseLogger {
 }
 
 /**
- * Parameters derived from a Force for URL serialization.
+ * Parameters derived from a Force (or set of forces) for URL serialization.
+ * For multi-force support, `instance` may contain comma-separated IDs.
  */
 export interface ForceQueryParams {
     gs: GameSystem | null;
@@ -76,6 +78,56 @@ export function buildForceQueryParams(force: Force | null): ForceQueryParams {
         units: groupParams.length > 0 ? groupParams.join('|') : null,
         name: forceName || null,
         instance: instanceId || null
+    };
+}
+
+/**
+ * Builds URL query parameters representing ALL loaded forces.
+ *
+ * - Saved forces (with instanceId) are combined into a comma-separated `instance` param.
+ *   Enemy forces are prefixed with `enemy:` (friendly is the default, no prefix).
+ *   Example: `instance=UUID1,enemy:UUID2,UUID3`
+ * - At most one unsaved force (without instanceId) is serialized via `gs`, `units`, `name`.
+ *   Unsaved forces are always friendly (our own force).
+ */
+export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams {
+    if (slots.length === 0) {
+        return { gs: null, units: null, name: null, instance: null };
+    }
+
+    // Collect instance IDs from saved forces, with alignment prefix
+    const instanceEntries: string[] = [];
+    let unsavedForce: Force | null = null;
+
+    for (const slot of slots) {
+        const id = slot.force.instanceId();
+        if (id) {
+            instanceEntries.push(slot.alignment === 'enemy' ? `enemy:${id}` : id);
+        } else if (!unsavedForce) {
+            // Only the first unsaved force is serialized (constraint: max one unsaved)
+            unsavedForce = slot.force;
+        }
+    }
+
+    // Build unsaved force params (gs/units/name)
+    let gs: GameSystem | null = null;
+    let units: string | null = null;
+    let name: string | null = null;
+
+    if (unsavedForce) {
+        gs = unsavedForce.gameSystem;
+        const groups = unsavedForce.groups() || [];
+        const groupParams = generateGroupUrlParams(groups);
+        units = groupParams.length > 0 ? groupParams.join('|') : null;
+        const forceName = unsavedForce.units().length > 0 ? unsavedForce.name : undefined;
+        name = forceName || null;
+    }
+
+    return {
+        gs,
+        units,
+        name,
+        instance: instanceEntries.length > 0 ? instanceEntries.join(',') : null
     };
 }
 

@@ -45,7 +45,7 @@
                     cdkDragLockAxis="y"
                     [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                     @if (!miniMode()) {
-                        <div class="group-header">
+                        <div class="group-header" cdkDragHandle>
                             <div class="group-name" (click)="promptChangeGroupName(group)">{{ group.name() }}</div>
                             <div class="group-footer">
                                 <span class="group-bv">{{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
