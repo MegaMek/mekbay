@@ -20,7 +20,7 @@
     grid-template-columns: auto 1fr;
     padding: 16px;
     gap: 8px 16px;
-    align-items: baseline;
+    align-items: start;
 }
 
 .era-wrapper {
@@ -39,11 +39,13 @@
 .era-name-content {
     display: flex;
     flex-direction: column;
+    line-height: 1.6;
 }
 
 .era-years {
     font-size: 0.7em;
     color: var(--text-color-secondary);
+    line-height: 1;
 }
 
 .era-icon {
