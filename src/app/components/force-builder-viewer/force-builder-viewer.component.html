@@ -22,7 +22,15 @@
             cdkDragLockAxis="y"
             [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
             @if (!miniMode()) {
+                @let forceCollapsed = isForceCollapsed(slotForce);
                 <div class="force-slot-header" #forceSlotHeader cdkDragHandle>
+                    @if (slotForce.groups().length > 1) {
+                    <button class="btn-toggle-collapse" (click)="toggleForceCollapsed($event, slotForce)" [title]="forceCollapsed ? 'Expand force' : 'Collapse force'">
+                        <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="forceCollapsed">
+                            <path d="M0 2l5 6 5-6z"/>
+                        </svg>
+                    </button>
+                    }
                     <div class="force-name" (click)="promptChangeForceName(slotForce)">{{ slotForce.name }}</div>
                     @if (isReadOnly && !hasOwnedForce()) {
                         <button class="bt-button btn-clone primary" (click)="forceBuilderService.requestCloneForce()">CLONE FORCE TO EDIT</button>
@@ -49,6 +57,7 @@
                 (cdkDropListDropped)="dropGroup($event)">
                 @let groups = slotForce.groups();
                 @for (group of groups; let gi = $index; track group.id) {
+                @let groupCollapsed = isGroupCollapsed(group.id);
                 <div class="group-container" cdkDrag 
                     [cdkDragDisabled]="isReadOnly || groupsDragDisabled()"
                     (cdkDragStarted)="onGroupDragStart()"
@@ -58,6 +67,11 @@
                     [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                     @if (!miniMode()) {
                         <div class="group-header" cdkDragHandle>
+                            <button class="btn-toggle-collapse group-toggle" (click)="toggleGroupCollapsed($event, group.id)" [title]="groupCollapsed ? 'Expand group' : 'Collapse group'">
+                                <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="groupCollapsed">
+                                    <path d="M0 2l5 6 5-6z"/>
+                                </svg>
+                            </button>
                             <div class="group-name" (click)="promptChangeGroupName(group)">{{ group.name() }}</div>
                             <div class="group-footer">
                                 <span class="group-bv">{{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
@@ -68,6 +82,7 @@
                             <hr />
                         }
                     }
+                    @if (!groupCollapsed) {
                     @let units = group.units();
                     <div class="group-units" 
                         [class.compact-mode]="compactMode()" 
@@ -104,10 +119,11 @@
                         </div>
                         }
                     </div>
+                    }
                 </div>
                 }
                 @if (!compactMode() && !miniMode() && isActive && !isGroupDragging()) {
-                    @if (!isReadOnly && !isUnitDragging() && !slotForce.hasMaxGroups()) {
+                    @if (!isReadOnly && !isUnitDragging() && !slotForce.hasMaxGroups() && !hasEmptyGroups()) {
                     <button class="bt-button btn-add-group" (click)="forceBuilderService.addGroup()">+ Add Group</button>
                     }
                     <div #newGroupDropzone 

@@ -108,6 +108,39 @@
     }
 }
 
+// Collapse/expand toggle button (shared between force + group)
+.btn-toggle-collapse {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    background: none;
+    border: none;
+    color: var(--text-color-tertiary);
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+
+    &:hover {
+        color: var(--text-color);
+    }
+
+    svg {
+        transition: transform 0.2s ease;
+    }
+
+    svg.collapsed {
+        transform: rotate(-90deg);
+    }
+
+    &.group-toggle {
+        top: 2px;
+        left: 0;
+    }
+}
+
 .force-slot-footer {
     display: flex;
     flex: 0 0 auto;

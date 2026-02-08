@@ -96,6 +96,45 @@ export class ForceBuilderViewerComponent {
 
     hasEmptyGroups = this.forceBuilderService.hasEmptyGroups;
 
+    // --- Collapsed/Expanded State ---
+    /** Set of group IDs that are currently collapsed. */
+    private collapsedGroups = signal<Set<string>>(new Set());
+
+    /** Returns true when ALL groups in the force are collapsed. */
+    isForceCollapsed(force: Force): boolean {
+        const groups = force.groups();
+        if (groups.length === 0) return false;
+        const set = this.collapsedGroups();
+        return groups.every(g => set.has(g.id));
+    }
+
+    isGroupCollapsed(groupId: string): boolean {
+        return this.collapsedGroups().has(groupId);
+    }
+
+    /** Toggle all groups in the force: if all collapsed -> expand all, otherwise collapse all. */
+    toggleForceCollapsed(event: MouseEvent, force: Force) {
+        event.stopPropagation();
+        const groups = force.groups();
+        const allCollapsed = this.isForceCollapsed(force);
+        this.collapsedGroups.update(set => {
+            const next = new Set(set);
+            for (const g of groups) {
+                if (allCollapsed) next.delete(g.id); else next.add(g.id);
+            }
+            return next;
+        });
+    }
+
+    toggleGroupCollapsed(event: MouseEvent, groupId: string) {
+        event.stopPropagation();
+        this.collapsedGroups.update(set => {
+            const next = new Set(set);
+            if (next.has(groupId)) next.delete(groupId); else next.add(groupId);
+            return next;
+        });
+    }
+
     // --- Gesture State ---
     public readonly isUnitDragging = signal<boolean>(false); // Flag for unit drag/sorting
     public readonly isGroupDragging = signal<boolean>(false); // Flag for group drag/reorder
