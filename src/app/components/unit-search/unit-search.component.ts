@@ -71,7 +71,7 @@ import { generateUUID } from '../../services/ws.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
-import { formatMovement } from '../../models/as-common';
+import { formatMovement } from '../../utils/as-common.util';
 
 @Component({
     selector: 'unit-search',

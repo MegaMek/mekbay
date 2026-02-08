@@ -40,7 +40,7 @@ import { AsAbilityLookupService } from '../../../services/as-ability-lookup.serv
 import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility } from '../../../models/as-abilities.model';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
-import { formatMovement } from '../../../models/as-common';
+import { formatMovement } from '../../../utils/as-common.util';
 
 /*
  * Author: Drake

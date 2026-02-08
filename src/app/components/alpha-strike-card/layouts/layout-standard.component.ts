@@ -52,7 +52,7 @@ import {
     AsCriticalHitsEmplacementComponent,
 } from '../critical-hits';
 import { AsLayoutBaseComponent } from './layout-base.component';
-import { formatMovement, isAerospace } from '../../../models/as-common';
+import { formatMovement, isAerospace } from '../../../utils/as-common.util';
 
 /*
  * Author: Drake

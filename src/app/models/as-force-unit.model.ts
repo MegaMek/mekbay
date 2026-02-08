@@ -45,7 +45,7 @@ import { CrewMember } from './crew-member.model';
 import { ASCustomPilotAbility } from './as-abilities.model';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { SpecialAbilityState } from '../components/alpha-strike-card/layouts/layout-base.component';
-import { isAerospace } from './as-common';
+import { isAerospace } from '../utils/as-common.util';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
 export type AbilitySelection = string | ASCustomPilotAbility;

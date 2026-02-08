@@ -48,7 +48,7 @@ import { ASForceUnit } from '../../models/as-force-unit.model';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
 import { C3Component, C3NetworkType } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
-import { formatMovement } from '../../models/as-common';
+import { formatMovement } from '../../utils/as-common.util';
 
 /**
  * Author: Drake

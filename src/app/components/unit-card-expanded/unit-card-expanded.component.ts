@@ -55,7 +55,7 @@ import { ExpandedComponentsPipe } from '../../pipes/expanded-components.pipe';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { SearchTokensGroup, highlightMatches } from '../../utils/search.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
-import { formatMovement, isAerospace } from '../../models/as-common';
+import { formatMovement, isAerospace } from '../../utils/as-common.util';
 
 /**
  * Author: Drake

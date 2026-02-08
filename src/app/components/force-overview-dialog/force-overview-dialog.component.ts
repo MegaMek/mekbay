@@ -57,7 +57,7 @@ import { TaggingService } from '../../services/tagging.service';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { AdjustedPV } from '../../pipes/adjusted-pv.pipe';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
-import { formatMovement } from '../../models/as-common';
+import { formatMovement } from '../../utils/as-common.util';
 
 export interface ForceOverviewDialogData {
     force: Force;
