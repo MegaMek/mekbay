@@ -1302,7 +1302,7 @@ export class ForceBuilderService {
             // Support comma-separated instance IDs for multi-force URLs
             // Format: UUID1,enemy:UUID2,UUID3 — 'enemy:' prefix marks enemy alignment
             const entries = instanceParam.split(',').map(e => e.trim()).filter(e => e.length > 0);
-            let showedOwnerNotice = false;
+            const loadedForces: { force: Force; alignment: ForceAlignment }[] = [];
 
             for (const entry of entries) {
                 let alignment: ForceAlignment = 'friendly';
@@ -1313,10 +1313,6 @@ export class ForceBuilderService {
                 }
                 const force = await this.dataService.getForce(instanceId);
                 if (force) {
-                    if (!force.owned() && !showedOwnerNotice) {
-                        this.dialogsService.showNotice('Reports indicate another commander owns this force. Clone to adopt it for yourself.', 'Captured Intel');
-                        showedOwnerNotice = true;
-                    }
                     if (!loadedAnyInstance) {
                         // First instance: set as the primary force
                         this.setForce(force);
@@ -1330,10 +1326,16 @@ export class ForceBuilderService {
                         // Additional instances: add alongside existing forces
                         this.addLoadedForce(force, alignment);
                     }
+                    loadedForces.push({ force, alignment });
                     loadedAnyInstance = true;
                 } else {
                     this.logger.warn(`ForceBuilderService: Instance "${instanceId}" not found, skipping.`);
                 }
+            }
+
+            // Show notice only when ALL loaded forces are non-owned (no mix)
+            if (loadedForces.length > 0 && loadedForces.every(f => !f.force.owned())) {
+                this.dialogsService.showNotice('Reports indicate another commander owns this force. Clone to adopt it for yourself.', 'Captured Intel');
             }
             if (!loadedAnyInstance) {
                 // None of the instance IDs were found — clear them from URL
