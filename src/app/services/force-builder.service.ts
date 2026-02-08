@@ -983,7 +983,8 @@ export class ForceBuilderService {
         return ForceNamerUtil.generateFormationName({
             units: group.units(),
             allUnits: currentForce.units(),
-            forceName: currentForce.name
+            forceName: currentForce.name,
+            gameSystem: currentForce.gameSystem
         });
     }
 
@@ -1007,7 +1008,8 @@ export class ForceBuilderService {
         return ForceNamerUtil.getAvailableFormations(
             group.units(),
             currentForce.units(),
-            currentForce.name // Pass force name to help with Faction detection, hopefully...
+            currentForce.name,
+            currentForce.gameSystem
         );
     }
 

@@ -35,8 +35,9 @@ import { Unit } from '../models/units.model';
 import { ForceUnit } from '../models/force-unit.model';
 import { Faction, Factions } from '../models/factions.model';
 import { Era } from '../models/eras.model';
+import { GameSystem } from '../models/common.model';
 import { FACTION_EXTINCT } from '../services/unit-search-filters.service';
-import { LanceTypeDefinition, LanceTypeIdentifierUtil } from './lance-type-identifier.util';
+import { FormationTypeDefinition, LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 
 /*
  * Author: Drake
@@ -97,12 +98,12 @@ const COMSTAR_FORCE_TYPES: ForceTypeRange[] = [
     { type: 'Level V', min: 6*6*6*6, max: 6*6*6*6 },
 ];
 
-function identifyLanceTypes(units: ForceUnit[], techBase: string, factionName: string): LanceTypeDefinition[] {
-    return LanceTypeIdentifierUtil.identifyLanceTypes(units, techBase, factionName);
+function identifyLanceTypes(units: ForceUnit[], techBase: string, factionName: string, gameSystem: GameSystem): FormationTypeDefinition[] {
+    return LanceTypeIdentifierUtil.identifyLanceTypes(units, techBase, factionName, gameSystem);
 }
 
-function getBestLanceType(units: ForceUnit[], techBase: string, factionName: string): LanceTypeDefinition | null {
-    return LanceTypeIdentifierUtil.getBestMatch(units, techBase, factionName);
+function getBestLanceType(units: ForceUnit[], techBase: string, factionName: string, gameSystem: GameSystem): FormationTypeDefinition | null {
+    return LanceTypeIdentifierUtil.getBestMatch(units, techBase, factionName, gameSystem);
 }
 
 function getForceType(units: ForceUnit[], techBase: string, factionName: string): ForceType {
@@ -134,15 +135,16 @@ interface GroupNameOptions {
     units: ForceUnit[];
     allUnits: ForceUnit[];
     forceName: string;
+    gameSystem: GameSystem;
 }
 
 const MIN_UNITS_PERCENTAGE = 0.7;
 
 export class ForceNamerUtil {
 
-    public static getAvailableFormations(groupUnits: ForceUnit[], allUnits: ForceUnit[], factionName: string): string[] | null {
+    public static getAvailableFormations(groupUnits: ForceUnit[], allUnits: ForceUnit[], factionName: string, gameSystem: GameSystem): string[] | null {
         let majorityTechBase = this.getTechBase(allUnits);
-        const identified = identifyLanceTypes(groupUnits, majorityTechBase, factionName);
+        const identified = identifyLanceTypes(groupUnits, majorityTechBase, factionName, gameSystem);
         if (identified.length === 0) return null;
 
         const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
@@ -281,12 +283,12 @@ export class ForceNamerUtil {
         return `${factionName} ${forceType}`;
     }
 
-    static generateFormationName({ units, allUnits, forceName }: GroupNameOptions): string {
+    static generateFormationName({ units, allUnits, forceName, gameSystem }: GroupNameOptions): string {
         if (!units || units.length === 0) return 'Unnamed Formation';
         let forceType: string;
         if (forceName.includes('ComStar') || forceName.includes('Word of Blake')) {
             forceType = getForceType(units, '', forceName);
-            const bestLance = getBestLanceType(units, '', forceName);
+            const bestLance = getBestLanceType(units, '', forceName, gameSystem);
             if (bestLance) {
                 const formationType = bestLance.name as ForceType;
                 forceType = forceType + ' - ' + formationType;
@@ -295,7 +297,7 @@ export class ForceNamerUtil {
             // Find the majority tech base
             const majorityTechBase = this.getTechBase(allUnits);
             forceType = getForceType(units, majorityTechBase, forceName);
-            const bestLance = getBestLanceType(units, majorityTechBase, forceName);
+            const bestLance = getBestLanceType(units, majorityTechBase, forceName, gameSystem);
             if (bestLance) {
                 const formationType = bestLance.name as ForceType;
                 forceType = formationType + ' ' + forceType;
