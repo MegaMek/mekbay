@@ -130,7 +130,7 @@ export class LanceTypeIdentifierUtil {
                 
                 const hasEnoughArmor = units.every(u => u.getUnit().armor >= 135);
                 const highDamage = units.filter(u => LanceTypeIdentifierUtil.canDealDamage(u.getUnit(), 25, 7));
-                const has75PercentHighDamage = highDamage.length >= Math.floor(units.length * 0.75);
+                const has75PercentHighDamage = highDamage.length >= Math.ceil(units.length * 0.75);
 
                 // At least 1 Juggernaut roles and 2 Sniper roles
                 const hasJuggernaut = units.some(u => u.getUnit().role === 'Juggernaut');
@@ -155,7 +155,7 @@ export class LanceTypeIdentifierUtil {
                 const hasWeapons = units.filter(u => LanceTypeIdentifierUtil.hasAutocannon(u.getUnit()) || 
                     LanceTypeIdentifierUtil.hasLRM(u.getUnit()) || LanceTypeIdentifierUtil.hasSRM(u.getUnit()));
                 
-                return allMediumOrLarger && hasEnoughArmor && hasWeapons.length >= Math.floor(units.length * 0.5);
+                return allMediumOrLarger && hasEnoughArmor && hasWeapons.length >= Math.ceil(units.length * 0.5);
             }
         },
 
@@ -185,7 +185,7 @@ export class LanceTypeIdentifierUtil {
                 // At least 50% must be Ambusher or Juggernaut role
                 const ambusherOrJuggernaut = units.filter(u => u.getUnit().role === 'Ambusher' 
                                                             || u.getUnit().role === 'Juggernaut');
-                return ambusherOrJuggernaut.length >= Math.floor(units.length * 0.5);
+                return ambusherOrJuggernaut.length >= Math.ceil(units.length * 0.5);
             }
         },
 
@@ -208,7 +208,7 @@ export class LanceTypeIdentifierUtil {
                 // At least three units in this Formation must have any combination of the Brawler, Sniper and/or Skirmisher Unit Roles
                 const hasRequiredRoles = units.filter(u => ['Brawler', 'Sniper', 'Skirmisher'].includes(u.getUnit().role));
                 
-                return (heavyOrLarger.length >= Math.floor(units.length * 0.5)) && (hasRequiredRoles.length >= 3);
+                return (heavyOrLarger.length >= Math.ceil(units.length * 0.5)) && (hasRequiredRoles.length >= 3);
             }
         },
 
@@ -229,7 +229,7 @@ export class LanceTypeIdentifierUtil {
                 }
                 // At least one of the units in a Light Battle Lance must have the Scout Unit Role
                 const hasScout = units.some(u => u.getUnit().role === 'Scout');
-                return lightUnits.length >= Math.floor(units.length * 0.75) && !hasAssault && hasScout;
+                return lightUnits.length >= Math.ceil(units.length * 0.75) && !hasAssault && hasScout;
             }
         },
 
@@ -247,7 +247,7 @@ export class LanceTypeIdentifierUtil {
                     const matchedPairs = countMatchedPairs(mediumUnits);
                     if (matchedPairs < 2) return false;
                 }
-                return mediumUnits.length >= Math.floor(units.length * 0.5) && !hasAssault;
+                return mediumUnits.length >= Math.ceil(units.length * 0.5) && !hasAssault;
             }
         },
 
@@ -264,7 +264,7 @@ export class LanceTypeIdentifierUtil {
                     const matchedPairs = countMatchedPairs(heavyOrLarger);
                     if (matchedPairs < 2) return false;
                 }
-                return heavyOrLarger.length >= Math.floor(units.length * 0.5) && !hasLight;
+                return heavyOrLarger.length >= Math.ceil(units.length * 0.5) && !hasLight;
             }
         },
 
@@ -285,8 +285,8 @@ export class LanceTypeIdentifierUtil {
                 const withAutocannon = units.filter(u => LanceTypeIdentifierUtil.hasAutocannon(u.getUnit()));
                 const fastEnough = units.every(u => u.getUnit().walk >= 4);
                 
-                return mediumOrHeavy.length >= Math.floor(units.length * 0.75) &&
-                       withAutocannon.length >= Math.floor(units.length * 0.5) &&
+                return mediumOrHeavy.length >= Math.ceil(units.length * 0.75) &&
+                       withAutocannon.length >= Math.ceil(units.length * 0.5) &&
                        fastEnough;
             }
         },
@@ -308,7 +308,7 @@ export class LanceTypeIdentifierUtil {
                 // At least three units in this Formation must have any combination of the Brawler, Sniper and/or Skirmisher Unit Roles
                 const hasRequiredRoles = units.filter(u => ['Brawler', 'Sniper', 'Skirmisher'].includes(u.getUnit().role));
                 
-                return (heavyOrLarger.length >= Math.floor(units.length * 0.5)) && (hasRequiredRoles.length >= 3);
+                return (heavyOrLarger.length >= Math.ceil(units.length * 0.5)) && (hasRequiredRoles.length >= 3);
 
             }
         },
@@ -326,7 +326,7 @@ export class LanceTypeIdentifierUtil {
 
                 //  One additional unit in the lance must be a Brawler, Striker, or Scout.
                 const hasAdditionalRole = units.filter(u => ['Brawler', 'Striker', 'Scout'].includes(u.getUnit().role));
-                return hasRequiredRoles.length >= Math.floor(units.length * 0.5) && hasAdditionalRole.length >= 1;
+                return hasRequiredRoles.length >= Math.ceil(units.length * 0.5) && hasAdditionalRole.length >= 1;
             }
         },
 
@@ -381,7 +381,7 @@ export class LanceTypeIdentifierUtil {
             validator: (units: ForceUnit[]) => {
                 // At least 75 percent of the units in this Formation must have either the Missile Boat or Sniper Unit Roles.
                 const hasRequiredRoles = units.filter(u => ['Missile Boat', 'Sniper'].includes(u.getUnit().role));
-                return hasRequiredRoles.length >= Math.floor(units.length * 0.75);
+                return hasRequiredRoles.length >= Math.ceil(units.length * 0.75);
             }
         },
 
@@ -456,7 +456,7 @@ export class LanceTypeIdentifierUtil {
                 const noHeavy = units.every(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) < 3);
                 // At least 50 percent of the units in this Formation must have either the Missile Boat or Sniper Unit Roles. 
                 const hasRequiredRoles = units.filter(u => ['Missile Boat', 'Sniper'].includes(u.getUnit().role));
-                return noHeavy && hasRequiredRoles.length >= Math.floor(units.length * 0.5);
+                return noHeavy && hasRequiredRoles.length >= Math.ceil(units.length * 0.5);
             }
         },
 
@@ -496,7 +496,7 @@ export class LanceTypeIdentifierUtil {
                 // At least one unit in the Pursuit Lance must have a weapon that can deal 5 or more points of damage at a range of 15 hexes or more
                 const hasLongRange = units.some(u => LanceTypeIdentifierUtil.canDealDamage(u.getUnit(), 5, 15));
 
-                return lightOrMedium && fastUnits.length >= Math.floor(units.length * 0.75) && hasLongRange;
+                return lightOrMedium && fastUnits.length >= Math.ceil(units.length * 0.75) && hasLongRange;
             }
         },
 
@@ -513,7 +513,7 @@ export class LanceTypeIdentifierUtil {
                 const fastUnits = units.filter(u => u.getUnit().walk >= 6);
                 // All units must be able to deliver at least 10 points of damage at a range of 9 hexes or more
                 const hasDamage = units.every(u => LanceTypeIdentifierUtil.canDealDamage(u.getUnit(), 10, 9));
-                return noAssault && fastUnits.length >= Math.floor(units.length * 0.75) && hasDamage;
+                return noAssault && fastUnits.length >= Math.ceil(units.length * 0.75) && hasDamage;
             }
         },
 
@@ -622,7 +622,7 @@ export class LanceTypeIdentifierUtil {
                 const noAssault = units.every(u => LanceTypeIdentifierUtil.getWeightClass(u.getUnit()) < 4);
                 // At least 50 percent of the Striker/Cavalry Lance must have the Striker or Skirmisher Unit Roles.
                 const hasRequiredRoles = units.filter(u => u.getUnit().role === 'Striker' || u.getUnit().role === 'Skirmisher');
-                return noAssault && fastUnits && hasRequiredRoles.length >= Math.floor(units.length * 0.5);
+                return noAssault && fastUnits && hasRequiredRoles.length >= Math.ceil(units.length * 0.5);
             }
         },
 
@@ -740,8 +740,8 @@ export class LanceTypeIdentifierUtil {
                 // At least 50 percent of the units in this Formation must have a maximum Walk/Cruise speed of 4.
                 const slowUnits = units.filter(u => u.getUnit().walk <= 4);
                 
-                return jumpOrInfantry.length >= Math.floor(units.length * 0.5) &&
-                       slowUnits.length >= Math.floor(units.length * 0.5);
+                return jumpOrInfantry.length >= Math.ceil(units.length * 0.5) &&
+                       slowUnits.length >= Math.ceil(units.length * 0.5);
             }
         },
 
@@ -757,7 +757,7 @@ export class LanceTypeIdentifierUtil {
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
                 // More than 50 percent of the Formation’s units must have the Interceptor or Fast Dogfighter Unit Roles.
                 const interceptorOrDogfighter = units.filter(u => u.getUnit().role === 'Interceptor' || u.getUnit().role === 'Fast Dogfighter');
-                return interceptorOrDogfighter.length > Math.floor(units.length * 0.5);
+                return interceptorOrDogfighter.length > Math.ceil(units.length * 0.5);
             }
         },
 
@@ -784,7 +784,7 @@ export class LanceTypeIdentifierUtil {
                         'TAG', 'Light TAG', 'Watchdog'
                     ].includes(name));
                 });
-                return hasEWEquipment.length > Math.floor(units.length * 0.5);
+                return hasEWEquipment.length > Math.ceil(units.length * 0.5);
             }
         },
 
@@ -802,7 +802,7 @@ export class LanceTypeIdentifierUtil {
                 // Dogfighter Unit Role
                 const hasFireSupportRole = units.filter(u => u.getUnit().role === 'Fire Support');
                 const hasDogfighterRole = units.filter(u => u.getUnit().role && u.getUnit().role.includes('Dogfighter'));
-                return hasFireSupportRole.length > Math.floor(units.length * 0.5) && hasDogfighterRole.length > 0;
+                return hasFireSupportRole.length > Math.ceil(units.length * 0.5) && hasDogfighterRole.length > 0;
             }
         },
 
@@ -817,7 +817,7 @@ export class LanceTypeIdentifierUtil {
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
                 // More than 50 percent of the units in this Formation must have the Interceptor Unit Role
                 const hasInterceptorRole = units.filter(u => u.getUnit().role === 'Interceptor');
-                return hasInterceptorRole.length > Math.floor(units.length * 0.5);
+                return hasInterceptorRole.length > Math.ceil(units.length * 0.5);
             }
         },
 
@@ -833,7 +833,7 @@ export class LanceTypeIdentifierUtil {
                 // More than 50 percent of the units in this Formation must have the Attack or Dogfighter Unit Roles.
                 const hasAttackRole = units.filter(u => u.getUnit().role && u.getUnit().role.includes('Attack'));
                 const hasDogfighterRole = units.filter(u => u.getUnit().role && u.getUnit().role.includes('Dogfighter'));
-                return hasAttackRole.length > Math.floor(units.length * 0.5) && hasDogfighterRole.length > 0;
+                return hasAttackRole.length > Math.ceil(units.length * 0.5) && hasDogfighterRole.length > 0;
             }
         },
 
@@ -849,7 +849,7 @@ export class LanceTypeIdentifierUtil {
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
                 // More than 50 percent of the units in this Formation must have the Transport Unit Role.
                 const hasTransportRole = units.filter(u => u.getUnit().role && u.getUnit().role.includes('Transport'));
-                return hasTransportRole.length > Math.floor(units.length * 0.5);
+                return hasTransportRole.length > Math.ceil(units.length * 0.5);
             }
         },
     ];
