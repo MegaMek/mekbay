@@ -87,27 +87,28 @@ export class ASLanceTypeIdentifierUtil {
     private static readonly definitions: FormationTypeDefinition[] = [
 
         // ─── Air Lance ───────────────────────────────────────────────────
-        {
-            id: 'air-lance',
-            name: 'Air',
-            description: 'Lance of ground units plus two aerospace/conventional fighters',
-            effectDescription: 'No additional bonus ability is granted by this formation; the fighters do not benefit from the bonus abilities gained by the ground units\' lance formation, and are not counted towards any of the Air Lance\'s requirements.',
-            techBase: 'Special',
-            minUnits: 4,
-            validator: (units: ForceUnit[]) => {
-                const fighters = units.filter(u => {
-                    const tp = u.getUnit().as?.TP;
-                    return tp === 'AF' || tp === 'CF';
-                });
-                const groundUnits = units.filter(u => {
-                    const tp = u.getUnit().as?.TP;
-                    return tp !== 'AF' && tp !== 'CF' && !ASLanceTypeIdentifierUtil.isInfantry(u.getUnit());
-                });
+        // TODO: Implement when we will support group of groups.
+        // {
+        //     id: 'air-lance',
+        //     name: 'Air',
+        //     description: 'Lance of ground units plus two aerospace/conventional fighters',
+        //     effectDescription: 'No additional bonus ability is granted by this formation; the fighters do not benefit from the bonus abilities gained by the ground units\' lance formation, and are not counted towards any of the Air Lance\'s requirements.',
+        //     techBase: 'Special',
+        //     minUnits: 4,
+        //     validator: (units: ForceUnit[]) => {
+        //         const fighters = units.filter(u => {
+        //             const tp = u.getUnit().as?.TP;
+        //             return tp === 'AF' || tp === 'CF';
+        //         });
+        //         const groundUnits = units.filter(u => {
+        //             const tp = u.getUnit().as?.TP;
+        //             return tp !== 'AF' && tp !== 'CF' && !ASLanceTypeIdentifierUtil.isInfantry(u.getUnit());
+        //         });
 
-                if (fighters.length !== 2 || groundUnits.length < 1) return false;
-                return fighters[0].getUnit().name === fighters[1].getUnit().name;
-            }
-        },
+        //         if (fighters.length !== 2 || groundUnits.length < 1) return false;
+        //         return fighters[0].getUnit().name === fighters[1].getUnit().name;
+        //     }
+        // },
 
         // ─── Anti-'Mech Lance ────────────────────────────────────────────
         {

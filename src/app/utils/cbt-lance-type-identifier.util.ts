@@ -75,25 +75,26 @@ export class CBTLanceTypeIdentifierUtil {
     private static readonly definitions: FormationTypeDefinition[] = [
 
         // ─── Air Lance ───────────────────────────────────────────────────
-        {
-            id: 'air-lance',
-            name: 'Air',
-            description: 'Lance of ground units plus two aerospace/conventional fighters',
-            techBase: 'Special',
-            minUnits: 4,
-            validator: (units: ForceUnit[]) => {
-                const fighters = units.filter(u => u.getUnit().subtype === 'Aerospace Fighter' || u.getUnit().subtype === 'Conventional Fighter');
-                const groundUnits = units.filter(u => u.getUnit().type !== 'Aero' && u.getUnit().type !== 'Infantry');
+        // TODO: Implement when we will support group of groups.
+        // {
+        //     id: 'air-lance',
+        //     name: 'Air',
+        //     description: 'Lance of ground units plus two aerospace/conventional fighters',
+        //     techBase: 'Special',
+        //     minUnits: 4,
+        //     validator: (units: ForceUnit[]) => {
+        //         const fighters = units.filter(u => u.getUnit().subtype === 'Aerospace Fighter' || u.getUnit().subtype === 'Conventional Fighter');
+        //         const groundUnits = units.filter(u => u.getUnit().type !== 'Aero' && u.getUnit().type !== 'Infantry');
                 
-                if (fighters.length !== 2 || groundUnits.length < 1) return false;
+        //         if (fighters.length !== 2 || groundUnits.length < 1) return false;
                 
-                // Check if fighters are identical
-                if (fighters.length === 2) {
-                    return fighters[0].getUnit().name === fighters[1].getUnit().name;
-                }
-                return false;
-            }
-        },
+        //         // Check if fighters are identical
+        //         if (fighters.length === 2) {
+        //             return fighters[0].getUnit().name === fighters[1].getUnit().name;
+        //         }
+        //         return false;
+        //     }
+        // },
 
         // ─── Anti-'Mech Lance ────────────────────────────────────────────
         {
