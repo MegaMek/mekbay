@@ -144,6 +144,9 @@ export class AlphaStrikeViewerComponent {
     // Flag to prevent scroll effect when selection is made by clicking a card
     private internalSelectionInProgress = false;
     
+    // First scroll should be instant (when the viewer first appears with a selection)
+    private firstScroll = true;
+    
     // Signal to trigger closing pickers in all cards (increments to trigger)
     readonly updatePickerPositionTrigger = signal(0);
     
@@ -437,7 +440,9 @@ export class AlphaStrikeViewerComponent {
         const targetWrapper = this.cardWrappers().find(
             wrapper => wrapper.nativeElement.getAttribute('data-unit-id') === selectedUnit.id
         );
-        targetWrapper?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const behavior = this.firstScroll ? 'instant' as ScrollBehavior : 'smooth';
+        this.firstScroll = false;
+        targetWrapper?.nativeElement.scrollIntoView({ behavior, block: 'center' });
     }
     
     // ==================== Pinch Gesture ====================

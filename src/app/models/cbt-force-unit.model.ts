@@ -737,7 +737,7 @@ export class CBTForceUnit extends ForceUnit {
             const inventoryData = Sanitizer.sanitizeArray(state.inventory, INVENTORY_SCHEMA);
             this.state.deserializeInventory(inventoryData);
         }
-        const crewArr = state.crew.map((crewData: any) => CrewMember.deserialize(crewData, this));
+        const crewArr = (state.crew || []).map((crewData: any) => CrewMember.deserialize(crewData, this));
         this.state.crew.set(crewArr);
         if (state.c3Position) {
             this.state.c3Position.set(Sanitizer.sanitize(state.c3Position, C3_POSITION_SCHEMA));
