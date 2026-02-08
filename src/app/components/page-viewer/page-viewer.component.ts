@@ -1802,6 +1802,9 @@ export class PageViewerComponent implements AfterViewInit {
 
         if (!currentUnit) return;
 
+        // Guard: ensure the unit is a CBT unit with an svg signal (AS units don't have one)
+        if (typeof currentUnit.svg !== 'function') return;
+
         const svg = currentUnit.svg();
         if (!svg) {
             this.loadError.set('Loading record sheet...');
