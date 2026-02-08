@@ -85,7 +85,7 @@ export class LanceTypeIdentifierUtil {
         // Air Lance
         {
             id: 'air-lance',
-            name: 'Air Lance',
+            name: 'Air',
             description: 'Lance of ground units plus two aerospace/conventional fighters',
             techBase: 'Special',
             minUnits: 4,
@@ -106,7 +106,7 @@ export class LanceTypeIdentifierUtil {
         // Anti-'Mech Lance
         {
             id: 'anti-mech-lance',
-            name: 'Anti-\'Mech Lance',
+            name: 'Anti-\'Mech',
             description: 'All infantry units for urban and anti-mech warfare',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
@@ -117,7 +117,7 @@ export class LanceTypeIdentifierUtil {
         // Assault Lance variations
         {
             id: 'assault-lance',
-            name: 'Assault Lance',
+            name: 'Assault',
             description: 'Heavy firepower and armor powerhouse formation',
             idealRole: 'Juggernaut',
             minUnits: 4,
@@ -142,7 +142,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'anvil-lance',
-            name: 'Anvil Lance',
+            name: 'Anvil',
             description: 'Marik heavy formation for holding enemy advance',
             
             exclusiveFaction: 'Free Worlds League',
@@ -162,7 +162,7 @@ export class LanceTypeIdentifierUtil {
         {
             id: 'fast-assault-lance',
             parent: 'assault-lance',
-            name: 'Fast Assault Lance',
+            name: 'Fast Assault',
             description: 'Mobile assault formation with speed advantage',
             
             minUnits: 4,
@@ -176,7 +176,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'hunter-lance',
-            name: 'Hunter Lance',
+            name: 'Hunter',
             description: 'Ambush specialists for heavy terrain',
             
             idealRole: 'Ambusher',
@@ -192,7 +192,7 @@ export class LanceTypeIdentifierUtil {
         // Battle Lance variations
         {
             id: 'battle-lance',
-            name: 'Battle Lance',
+            name: 'Battle',
             description: 'Line troops with balanced firepower and armor',
             
             idealRole: 'Brawler',
@@ -214,7 +214,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'light-battle-lance',
-            name: 'Light Battle Lance',
+            name: 'Light Battle',
             description: 'Fast light formation for reconnaissance and skirmishing',
             
             minUnits: 4,
@@ -235,7 +235,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'medium-battle-lance',
-            name: 'Medium Battle Lance',
+            name: 'Medium Battle',
             description: 'Medium weight balanced formation',
             
             minUnits: 4,
@@ -253,7 +253,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'heavy-battle-lance',
-            name: 'Heavy Battle Lance',
+            name: 'Heavy Battle',
             description: 'Heavy weight powerhouse formation',
             
             minUnits: 4,
@@ -270,7 +270,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'rifle-lance',
-            name: 'Rifle Lance',
+            name: 'Rifle',
             description: 'Davion autocannon specialists',
             
             exclusiveFaction: 'Federated Suns',
@@ -293,7 +293,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'berserker-lance',
-            name: 'Berserker/Close Combat Lance',
+            name: 'Berserker/Close Combat',
             description: 'Close combat specialists for physical attacks',
             
             minUnits: 4,
@@ -316,7 +316,7 @@ export class LanceTypeIdentifierUtil {
         // Command Lance
         {
             id: 'command-lance',
-            name: 'Command Lance',
+            name: 'Command',
             description: 'Diverse formation built around force commander',
             
             minUnits: 4,
@@ -332,7 +332,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'order-lance',
-            name: 'Order Lance',
+            name: 'Order',
             description: 'Kurita synchronized formation of identical units',
             
             exclusiveFaction: 'Draconis Combine',
@@ -352,7 +352,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'vehicle-command-lance',
-            name: 'Vehicle Command Lance',
+            name: 'Vehicle Command',
             description: 'Formation of command vehicle units',
             
             exclusiveFaction: 'Draconis Combine',
@@ -373,14 +373,14 @@ export class LanceTypeIdentifierUtil {
         // Fire Lance variations
         {
             id: 'fire-lance',
-            name: 'Fire Lance',
+            name: 'Fire',
             description: 'Long-range firepower specialists',
             
             idealRole: 'Missile Boat',
             minUnits: 4,
             validator: (units: ForceUnit[]) => {
                 // At least 75 percent of the units in this Formation must have either the Missile Boat or Sniper Unit Roles.
-                const hasRequiredRoles = units.filter(u => ['Missile Boat', 'Sniper'].includes(u.getUnit().role));;
+                const hasRequiredRoles = units.filter(u => ['Missile Boat', 'Sniper'].includes(u.getUnit().role));
                 return hasRequiredRoles.length >= Math.floor(units.length * 0.75);
             }
         },
@@ -388,7 +388,7 @@ export class LanceTypeIdentifierUtil {
         {
             id: 'anti-air-lance',
             parent: 'fire-lance',
-            name: 'Anti-Air Lance',
+            name: 'Anti-Air',
             description: 'Air defense specialists',
             
             minUnits: 4,
@@ -404,7 +404,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'artillery-fire-lance',
-            name: 'Artillery Fire Lance',
+            name: 'Artillery Fire',
             description: 'Artillery support specialists',
             
             minUnits: 4,
@@ -416,7 +416,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'direct-fire-lance',
-            name: 'Direct Fire Lance',
+            name: 'Direct Fire',
             description: 'Direct fire heavy weapons',
             
             minUnits: 4,
@@ -433,7 +433,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'fire-support-lance',
-            name: 'Fire Support Lance',
+            name: 'Fire Support',
             description: 'Indirect fire specialists',
             
             minUnits: 4,
@@ -447,7 +447,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'light-fire-lance',
-            name: 'Light Fire Lance',
+            name: 'Light Fire',
             description: 'Light units with coordinated long-range fire',
             
             minUnits: 4,
@@ -483,7 +483,7 @@ export class LanceTypeIdentifierUtil {
         // Pursuit Lance variations
         {
             id: 'pursuit-lance',
-            name: 'Pursuit Lance',
+            name: 'Pursuit',
             description: 'Fast scout hunters with firepower',
             
             idealRole: 'Striker',
@@ -502,7 +502,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'probe-lance',
-            name: 'Probe Lance',
+            name: 'Probe',
             description: 'Mobile reconnaissance force',
             
             minUnits: 4,
@@ -519,7 +519,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'sweep-lance',
-            name: 'Sweep Lance',
+            name: 'Sweep',
             description: 'Fast medium-range sweeping force',
             
             minUnits: 4,
@@ -538,7 +538,7 @@ export class LanceTypeIdentifierUtil {
         // Recon Lance variations
         {
             id: 'recon-lance',
-            name: 'Recon Lance',
+            name: 'Recon',
             description: 'Fast reconnaissance specialists',
             
             idealRole: 'Scout',
@@ -554,7 +554,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'heavy-recon-lance',
-            name: 'Heavy Recon Lance',
+            name: 'Heavy Recon',
             description: 'Armored reconnaissance formation',
             
             minUnits: 4,
@@ -573,7 +573,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'light-recon-lance',
-            name: 'Light Recon Lance',
+            name: 'Light Recon',
             description: 'Ultra-fast light reconnaissance',
             
             minUnits: 4,
@@ -592,7 +592,7 @@ export class LanceTypeIdentifierUtil {
         // Security Lance
         {
             id: 'security-lance',
-            name: 'Security Lance',
+            name: 'Security',
             description: 'Installation defense specialists',
             
             minUnits: 4,
@@ -610,7 +610,7 @@ export class LanceTypeIdentifierUtil {
         // Striker/Cavalry Lance variations
         {
             id: 'striker-lance',
-            name: 'Striker/Cavalry Lance',
+            name: 'Striker/Cavalry',
             description: 'Fast mobile firepower',
             
             idealRole: 'Striker',
@@ -628,7 +628,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'hammer-lance',
-            name: 'Hammer Lance',
+            name: 'Hammer',
             description: 'Marik fast flanking force',
             
             exclusiveFaction: 'Free Worlds League',
@@ -643,7 +643,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'heavy-striker-lance',
-            name: 'Heavy Striker/Cavalry Lance',
+            name: 'Heavy Striker/Cavalry',
             description: 'Heavy fast-moving formation',
             
             minUnits: 4,
@@ -682,7 +682,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'light-striker-lance',
-            name: 'Light Striker/Cavalry Lance',
+            name: 'Light Striker/Cavalry',
             description: 'Fast light mobile force',
             
             minUnits: 4,
@@ -702,7 +702,7 @@ export class LanceTypeIdentifierUtil {
 
         {
             id: 'ranger-lance',
-            name: 'Ranger Lance',
+            name: 'Ranger',
             description: 'Terrain warfare specialists',
             
             idealRole: 'Skirmisher',
@@ -717,7 +717,7 @@ export class LanceTypeIdentifierUtil {
         // Support Lance
         {
             id: 'support-lance',
-            name: 'Support Lance',
+            name: 'Support',
             description: 'Multi-role formation backing other units',
             
             validator: (units: ForceUnit[]) => {
@@ -729,7 +729,7 @@ export class LanceTypeIdentifierUtil {
         // Urban Combat Lance
         {
             id: 'urban-lance',
-            name: 'Urban Combat Lance',
+            name: 'Urban Combat',
             description: 'City fighting specialists',
             
             idealRole: 'Ambusher',

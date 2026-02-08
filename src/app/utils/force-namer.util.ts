@@ -142,12 +142,22 @@ export class ForceNamerUtil {
 
     public static getAvailableFormations(groupUnits: ForceUnit[], allUnits: ForceUnit[], factionName: string): string[] | null {
         let majorityTechBase = this.getTechBase(allUnits);
-        const lanceTypes: Set<string> = new Set();
         const identified = identifyLanceTypes(groupUnits, majorityTechBase, factionName);
+        if (identified.length === 0) return null;
+
+        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
+        const techBase = isComStarOrWoB ? '' : majorityTechBase;
+        const forceType = getForceType(groupUnits, techBase, factionName);
+
+        const composedNames: Set<string> = new Set();
         for (const lt of identified) {
-            lanceTypes.add(lt.name);
+            if (isComStarOrWoB) {
+                composedNames.add(forceType + ' - ' + lt.name);
+            } else {
+                composedNames.add(lt.name + ' ' + forceType);
+            }
         }
-        return lanceTypes.size > 0 ? Array.from(lanceTypes) : null;
+        return Array.from(composedNames);
     }
 
     public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[]): Map<string, number> | null {
@@ -279,7 +289,7 @@ export class ForceNamerUtil {
             const bestLance = getBestLanceType(units, '', forceName);
             if (bestLance) {
                 const formationType = bestLance.name as ForceType;
-                forceType = forceType + ' - ' + formationType.replace(/\Lance/g, '').trim();
+                forceType = forceType + ' - ' + formationType;
             }
         } else {
             // Find the majority tech base
@@ -288,7 +298,7 @@ export class ForceNamerUtil {
             const bestLance = getBestLanceType(units, majorityTechBase, forceName);
             if (bestLance) {
                 const formationType = bestLance.name as ForceType;
-                forceType = formationType.replace(/Lance/g, forceType);
+                forceType = formationType + ' ' + forceType;
             }
         }
         return `${forceType}`;
