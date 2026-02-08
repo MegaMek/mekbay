@@ -34,7 +34,10 @@
                 (cdkDropListDropped)="dropGroup($event)">
                 @let groups = slotForce.groups();
                 @for (group of groups; let gi = $index; track group.id) {
-                <div class="group-container" cdkDrag [cdkDragDisabled]="isReadOnly || groups.length < 2">
+                <div class="group-container" cdkDrag [cdkDragDisabled]="isReadOnly || groups.length < 2"
+                    (cdkDragStarted)="onGroupDragStart()"
+                    (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onGroupDragEnd()"
+                    [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                     @if (!miniMode()) {
                         <div class="group-header">
                             <div class="group-name" (click)="promptChangeGroupName(group)">{{ group.name() }}</div>
@@ -64,7 +67,6 @@
                             tabindex="0" (keydown)="onUnitKeydown($event, i)" cdkDrag
                             [cdkDragDisabled]="isReadOnly" (cdkDragStarted)="onUnitDragStart()"
                             (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd()"
-                            cdkDragLockAxis="y" cdkDragBoundary=".scrollable-content"
                             [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                             <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode() || miniMode()"
                                 [class.miniMode]="miniMode()"
@@ -80,7 +82,7 @@
                     </div>
                 </div>
                 }
-                @if (!compactMode() && !miniMode() && isActive) {
+                @if (!compactMode() && !miniMode() && isActive && !isGroupDragging()) {
                     @if (!isReadOnly && !isUnitDragging() && !slotForce.hasMaxGroups()) {
                     <button class="bt-button btn-add-group" (click)="forceBuilderService.addGroup()">+ Add Group</button>
                     }

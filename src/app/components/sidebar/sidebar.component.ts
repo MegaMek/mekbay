@@ -270,7 +270,8 @@ export class SidebarComponent {
         if (this.unitSearchComponent()?.resultsVisible()) {
             return true;
         }
-        if (this.forceBuilderViewer()?.isUnitDragging()) {
+        if (this.forceBuilderViewer()?.isUnitDragging() 
+        || this.forceBuilderViewer()?.isGroupDragging()) {
             return true;
         }
         return false;

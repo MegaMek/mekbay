@@ -97,6 +97,7 @@ export class ForceBuilderViewerComponent {
 
     // --- Gesture State ---
     public readonly isUnitDragging = signal<boolean>(false); // Flag for unit drag/sorting
+    public readonly isGroupDragging = signal<boolean>(false); // Flag for group drag/reorder
     private headerResizeObserver?: ResizeObserver;
 
     //Units autoscroll
@@ -297,6 +298,21 @@ export class ForceBuilderViewerComponent {
         this.stopAutoScrollLoop();
         this.isUnitDragging.set(false);
         // Restore native scroll
+        const el = this.scrollableContent()?.nativeElement;
+        if (el) el.style.overflowY = 'auto';
+    }
+
+    onGroupDragStart() {
+        if (this.forceBuilderService.readOnlyForce()) return;
+        this.isGroupDragging.set(true);
+        const el = this.scrollableContent()?.nativeElement;
+        if (el) el.style.overflowY = 'hidden';
+    }
+
+    onGroupDragEnd() {
+        if (this.forceBuilderService.readOnlyForce()) return;
+        this.stopAutoScrollLoop();
+        this.isGroupDragging.set(false);
         const el = this.scrollableContent()?.nativeElement;
         if (el) el.style.overflowY = 'auto';
     }
