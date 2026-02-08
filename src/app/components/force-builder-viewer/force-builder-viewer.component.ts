@@ -105,7 +105,7 @@ export class ForceBuilderViewerComponent {
     private autoScrollRafId?: number;
     private lastAutoScrollTs?: number;
     private readonly AUTOSCROLL_EDGE = 80;   // px threshold from edge to start scrolling
-    private readonly AUTOSCROLL_MAX = 500;  // px/sec max scroll speed (deepest in edge zone)
+    private readonly AUTOSCROLL_MAX = 800;  // px/sec max scroll speed (deepest in edge zone)
     private readonly AUTOSCROLL_MIN = 10;   // px/sec at the outer boundary of the edge zone
 
     constructor() {
@@ -453,7 +453,7 @@ export class ForceBuilderViewerComponent {
         return null;
     }
 
-    connectedDropLists(): string[] {
+    connectedDropLists = computed(() => {
         const ids: string[] = [];
         for (const slot of this.forceBuilderService.loadedForces()) {
             if (slot.force.readOnly()) continue; // exclude read-only forces from drop targets
@@ -465,7 +465,7 @@ export class ForceBuilderViewerComponent {
             ids.push('new-group-dropzone');
         }
         return ids;
-    }
+    });
 
     dropForNewGroup(event: CdkDragDrop<any, any, any>) {
         const currentForce = this.forceBuilderService.currentForce();

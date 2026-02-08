@@ -25,19 +25,22 @@
                     }
                 </div>
             }
-            <div class="force-units-list" [class.single-group]="slotForce.groups().length === 1"
-                cdkDropList [cdkDropListData]="slotForce.groups()"
+            <div class="force-units-list" 
                 id="force-groups-{{ slotForce.instanceId() || slotForce.name }}"
+                [class.single-group]="slotForce.groups().length === 1"
+                cdkDropList 
+                [cdkDropListData]="slotForce.groups()"
                 cdkDropListOrientation="vertical"
                 [cdkDropListConnectedTo]="connectedGroupDropLists()"
                 [cdkDropListDisabled]="compactMode() || miniMode() || isReadOnly"
+                [cdkDropListAutoScrollDisabled]="true"
                 (cdkDropListDropped)="dropGroup($event)">
                 @let groups = slotForce.groups();
                 @for (group of groups; let gi = $index; track group.id) {
                 <div class="group-container" cdkDrag [cdkDragDisabled]="isReadOnly || groups.length < 2"
                     (cdkDragStarted)="onGroupDragStart()"
                     (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onGroupDragEnd()"
-                    cdkDragLockAxis="y" cdkDragBoundary=".scrollable-content"
+                    cdkDragLockAxis="y"
                     [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                     @if (!miniMode()) {
                         <div class="group-header">
@@ -52,8 +55,13 @@
                         }
                     }
                     @let units = group.units();
-                    <div class="group-units" cdkDropList [class.compact-mode]="compactMode()" [class.mini-mode]="miniMode()" id="group-{{ group.id }}"
-                        cdkDropListOrientation="vertical" [cdkDropListData]="units"
+                    <div class="group-units" 
+                        [class.compact-mode]="compactMode()" 
+                        [class.mini-mode]="miniMode()" 
+                        id="group-{{ group.id }}"
+                        cdkDropList 
+                        cdkDropListOrientation="vertical" 
+                        [cdkDropListData]="units"
                         [cdkDropListConnectedTo]="connectedDropLists()"
                         [cdkDropListDisabled]="compactMode() || isReadOnly"
                         [cdkDropListAutoScrollDisabled]="true"
@@ -88,8 +96,12 @@
                     @if (!isReadOnly && !isUnitDragging() && !slotForce.hasMaxGroups()) {
                     <button class="bt-button btn-add-group" (click)="forceBuilderService.addGroup()">+ Add Group</button>
                     }
-                    <div #newGroupDropzone class="group-container new-group-dropzone" cdkDropList id="new-group-dropzone"
-                    [cdkDropListConnectedTo]="connectedDropLists()" [cdkDropListData]="[]"
+                    <div #newGroupDropzone 
+                    id="new-group-dropzone"
+                    class="group-container new-group-dropzone" 
+                    cdkDropList 
+                    [cdkDropListConnectedTo]="connectedDropLists()" 
+                    [cdkDropListData]="[]"
                     [class.visible]="isUnitDragging() && !hasEmptyGroups() && !slotForce.hasMaxGroups()"
                     [cdkDropListDisabled]="isReadOnly"
                     [cdkDropListAutoScrollDisabled]="true"
