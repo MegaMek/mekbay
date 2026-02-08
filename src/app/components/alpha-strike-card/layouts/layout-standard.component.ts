@@ -81,10 +81,12 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     private readonly elRef = inject(ElementRef<HTMLElement>);
     private readonly destroyRef = inject(DestroyRef);
     private readonly statsContainerRef = viewChild('statsContainer', { read: ElementRef<HTMLElement> });
+    private readonly wrappableRowRef = viewChild('wrappableRow', { read: ElementRef<HTMLElement> });
 
     private readonly statsToHostHeightThreshold = 0.67;
     private resizeObserver: ResizeObserver | null = null;
     chassisSmall = signal(false);
+    rightColumnWrapped = signal(false);
 
     // Critical hits variant from layout config (override for standard units)
     override criticalHitsVariant = computed<CriticalHitsVariant>(() => {
@@ -189,13 +191,17 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
             this.resizeObserver?.disconnect();
             this.resizeObserver = new ResizeObserver(() => {
                 this.updateChassisSmallClass();
+                this.detectWrapping();
             });
 
             this.resizeObserver.observe(hostEl);
             this.resizeObserver.observe(statsEl);
 
             // Initial calculation after layout.
-            requestAnimationFrame(() => this.updateChassisSmallClass());
+            requestAnimationFrame(() => {
+                this.updateChassisSmallClass();
+                this.detectWrapping();
+            });
         });
 
         this.destroyRef.onDestroy(() => {
@@ -220,5 +226,26 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
 
         const ratio = statsEl.clientHeight / hostHeight;
         this.chassisSmall.set(ratio > this.statsToHostHeightThreshold);
+    }
+
+    /** Detect if .right-column has wrapped to its own line inside the wrappable row. */
+    private detectWrapping(): void {
+        const row = this.wrappableRowRef()?.nativeElement;
+        if (!row) {
+            this.rightColumnWrapped.set(false);
+            return;
+        }
+        const rightCol = row.querySelector('.right-column') as HTMLElement | null;
+        if (!rightCol) {
+            this.rightColumnWrapped.set(false);
+            return;
+        }
+        // If the right-column's top is below the first child's top, it has wrapped
+        const firstChild = row.firstElementChild as HTMLElement | null;
+        if (!firstChild || firstChild === rightCol) {
+            this.rightColumnWrapped.set(false);
+            return;
+        }
+        this.rightColumnWrapped.set(rightCol.offsetTop > firstChild.offsetTop);
     }
 }

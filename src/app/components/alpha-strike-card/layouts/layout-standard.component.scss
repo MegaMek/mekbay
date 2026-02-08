@@ -184,6 +184,15 @@
     justify-content: space-between;
     align-items: start;
     gap: 1.5em;
+
+    &.wrappable {
+        flex-wrap: wrap;
+        gap: 0.5em;
+
+        &.wrapped .right-column {
+            margin-left: auto;
+        }
+    }
 }
 
 .stat-item {

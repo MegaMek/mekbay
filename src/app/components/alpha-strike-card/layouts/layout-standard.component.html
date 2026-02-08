@@ -52,7 +52,7 @@
                 <div class="frame-background"></div>
 
                 <div class="frame-content">
-                    <div class="stats-row">
+                    <div class="stats-row wrappable" #wrappableRow [class.wrapped]="rightColumnWrapped()">
                         <span class="stat-item"><span class="as-caption">TP:</span>&nbsp;<span class="as-value">{{ asStats().TP }}</span></span>
                         <span class="stat-item"><span class="as-caption">SZ:</span>&nbsp;<span class="as-value">{{ asStats().SZ }}</span></span>
                         @if (!isAerospace()) {
