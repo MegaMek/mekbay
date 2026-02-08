@@ -142,6 +142,14 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     protected abstract createForceUnit(unit: Unit): TUnit;
 
     /**
+     * Creates a ForceUnit compatible with this force's game system,
+     * without adding it to any group. Useful for cross-system unit conversion.
+     */
+    public createCompatibleUnit(unit: Unit): TUnit {
+        return this.createForceUnit(unit);
+    }
+
+    /**
      * Factory method to deserialize the appropriate ForceUnit subclass.
      * Must be implemented by subclasses to deserialize CBTForceUnit, ASForceUnit, etc.
      */

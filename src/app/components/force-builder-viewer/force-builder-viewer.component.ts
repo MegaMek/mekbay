@@ -429,6 +429,19 @@ export class ForceBuilderViewerComponent {
             // Cross-force move: remove from source force, add to target force
             if (fromForce.readOnly()) return; // can't remove from read-only
 
+            // Cross-game-system check: confirm conversion before any mutation
+            const crossSystem = fromForce.gameSystem !== toForce.gameSystem;
+            if (crossSystem) {
+                const fromLabel = fromForce.gameSystem === 'as' ? 'Alpha Strike' : 'Classic BattleTech';
+                const toLabel = toForce.gameSystem === 'as' ? 'Alpha Strike' : 'Classic BattleTech';
+                const confirmed = await this.dialogsService.requestConfirmation(
+                    `The unit will be converted from ${fromLabel} to ${toLabel}. Damage state and game-specific data will not be carried over. Continue?`,
+                    'Game System Mismatch',
+                    'danger'
+                );
+                if (!confirmed) return;
+            }
+
             // Check if this move would empty the source force — confirm before mutating
             const wouldEmptyForce = fromForce.units().length === 1;
             if (wouldEmptyForce) {
@@ -447,9 +460,24 @@ export class ForceBuilderViewerComponent {
             const fromUnits = [...fromGroup.units()];
             const [moved] = fromUnits.splice(event.previousIndex, 1);
             if (!moved) return;
+
+            // Convert unit if different game systems
+            let unitToInsert: ForceUnit;
+            if (crossSystem) {
+                const converted = this.forceBuilderService.convertUnitForForce(moved, fromForce, toForce);
+                if (!converted) {
+                    this.toastService.showToast(`Could not convert unit — not found in the database.`, 'error');
+                    return;
+                }
+                moved.destroy();
+                unitToInsert = converted;
+            } else {
+                unitToInsert = moved;
+            }
+
             const toUnits = [...toGroup.units()];
             const insertIndex = Math.min(Math.max(0, event.currentIndex), toUnits.length);
-            toUnits.splice(insertIndex, 0, moved);
+            toUnits.splice(insertIndex, 0, unitToInsert);
             fromGroup.units.set(fromUnits);
             toGroup.units.set(toUnits);
             toForce.deduplicateIds();
@@ -633,6 +661,20 @@ export class ForceBuilderViewerComponent {
         } else {
             // Move group between forces
             if (fromForce.readOnly()) return;
+
+            // Cross-game-system check: confirm conversion before any mutation
+            const crossSystem = fromForce.gameSystem !== toForce.gameSystem;
+            if (crossSystem) {
+                const fromLabel = fromForce.gameSystem === 'as' ? 'Alpha Strike' : 'Classic BattleTech';
+                const toLabel = toForce.gameSystem === 'as' ? 'Alpha Strike' : 'Classic BattleTech';
+                const confirmed = await this.dialogsService.requestConfirmation(
+                    `All units in the group will be converted from ${fromLabel} to ${toLabel}. Damage state and game-specific data will not be carried over. Continue?`,
+                    'Game System Mismatch',
+                    'danger'
+                );
+                if (!confirmed) return;
+            }
+
             const fromGroups = [...fromForce.groups()];
             const toGroups = [...toForce.groups()];
 
@@ -658,6 +700,20 @@ export class ForceBuilderViewerComponent {
             const movedGroup = toGroups[event.currentIndex];
             if (movedGroup) {
                 (movedGroup as any).force = toForce; // update parent reference
+                if (crossSystem) {
+                    // Convert all units in the group to the target game system
+                    const convertedUnits: ForceUnit[] = [];
+                    for (const u of movedGroup.units()) {
+                        const converted = this.forceBuilderService.convertUnitForForce(u, fromForce, toForce);
+                        if (converted) {
+                            convertedUnits.push(converted);
+                        } else {
+                            this.toastService.showToast(`Could not convert "${u.getUnit()?.chassis}" — unit data not found.`, 'error');
+                        }
+                        u.destroy();
+                    }
+                    movedGroup.units.set(convertedUnits);
+                }
             }
             fromForce.groups.set(fromGroups);
             toForce.groups.set(toGroups);

@@ -924,35 +924,12 @@ export class ForceBuilderService {
                     // addUnit adds to the last group, which is newGroup since we just created it
                     const newForceUnit = newForce.addUnit(unit);
 
-                    // Copy pilot/crew skills based on source and target game systems
-                    if (isAlphaStrike) {
-                        // Source is AS, target is CBT
-                        // AS has single pilot with skill, CBT has crew members
-                        const asSourceUnit = sourceUnit as ASForceUnit;
-                        const sourceName = asSourceUnit.alias();
-                        const sourceSkill = asSourceUnit.getPilotSkill();
-                        
-                        const newCrewMembers = newForceUnit.getCrewMembers();
-                        if (newCrewMembers.length > 0) {
-                            if (sourceName) {
-                                newCrewMembers[0].setName(sourceName);
-                            }
-                            newCrewMembers[0].setSkill('gunnery', sourceSkill);
-                        }
-                    } else {
-                        // Source is CBT, target is AS
-                        // CBT has crew members, AS has single pilot with skill
-                        const asNewUnit = newForceUnit as ASForceUnit;
-                        const sourceCrewMembers = sourceUnit.getCrewMembers();
-                        if (sourceCrewMembers.length > 0) {
-                            const sourceName = sourceCrewMembers[0].getName();
-                            const sourceGunnery = sourceCrewMembers[0].getSkill('gunnery');
-                            
-                            if (sourceName) {
-                                asNewUnit.setPilotName(sourceName);
-                            }
-                            asNewUnit.setPilotSkill(sourceGunnery);
-                        }
+                    // Transfer pilot data cross-system
+                    newForceUnit.disabledSaving = true;
+                    try {
+                        this.transferPilotDataCrossSystem(sourceUnit, newForceUnit, currentForce.gameSystem, newForce.gameSystem);
+                    } finally {
+                        newForceUnit.disabledSaving = false;
                     }
                 }
             }
@@ -969,6 +946,60 @@ export class ForceBuilderService {
 
         this.toastService.showToast(`Force converted to ${targetSystemLabel} and saved.`, 'success');
         return true;
+    }
+
+    /**
+     * Transfers pilot/crew data between ForceUnits of different game systems.
+     * AS → CBT: copies pilot name + skill into the first crew member's gunnery.
+     * CBT → AS: copies first crew member's name + gunnery into AS pilot fields.
+     */
+    private transferPilotDataCrossSystem(
+        sourceUnit: ForceUnit, targetUnit: ForceUnit,
+        sourceSystem: GameSystem, targetSystem: GameSystem
+    ): void {
+        if (sourceSystem === targetSystem) return;
+        if (sourceSystem === GameSystem.ALPHA_STRIKE) {
+            // AS → CBT
+            const asSource = sourceUnit as ASForceUnit;
+            const sourceName = asSource.alias();
+            const sourceSkill = asSource.getPilotSkill();
+            const newCrew = targetUnit.getCrewMembers();
+            if (newCrew.length > 0) {
+                if (sourceName) newCrew[0].setName(sourceName);
+                newCrew[0].setSkill('gunnery', sourceSkill);
+            }
+        } else {
+            // CBT → AS
+            const asTarget = targetUnit as ASForceUnit;
+            const sourceCrew = sourceUnit.getCrewMembers();
+            if (sourceCrew.length > 0) {
+                const name = sourceCrew[0].getName();
+                const gunnery = sourceCrew[0].getSkill('gunnery');
+                if (name) asTarget.setPilotName(name);
+                asTarget.setPilotSkill(gunnery);
+            }
+        }
+    }
+
+    /**
+     * Converts a ForceUnit to be compatible with a target force of a different game system.
+     * Creates a new ForceUnit and transfers pilot/crew data cross-system.
+     * @returns The converted ForceUnit (not yet added to any group), or null if the unit data wasn't found.
+     */
+    convertUnitForForce(sourceUnit: ForceUnit, sourceForce: Force, targetForce: Force): ForceUnit | null {
+        const unitName = sourceUnit.getUnit()?.name;
+        if (!unitName) return null;
+        const allUnits = this.dataService.getUnits();
+        const unitData = allUnits.find(u => u.name === unitName);
+        if (!unitData) return null;
+        const newUnit = targetForce.createCompatibleUnit(unitData);
+        newUnit.disabledSaving = true;
+        try {
+            this.transferPilotDataCrossSystem(sourceUnit, newUnit, sourceForce.gameSystem, targetForce.gameSystem);
+        } finally {
+            newUnit.disabledSaving = false;
+        }
+        return newUnit;
     }
 
     private generateForceNameIfNeeded() {
