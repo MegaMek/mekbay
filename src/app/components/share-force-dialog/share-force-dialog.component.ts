@@ -40,6 +40,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ToastService } from '../../services/toast.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { Force } from '../../models/force.model';
+import { buildForceQueryParams } from '../../utils/force-url.util';
 import { firstValueFrom } from 'rxjs';
 import { DialogsService } from '../../services/dialogs.service';
 
@@ -63,6 +64,14 @@ export interface ShareForceDialogData {
     <div class="content">
         <h2 dialog-title>{{ force.name }}</h2>
         <div dialog-content class="content">
+            @let instanceIdString = instanceId();
+            @if (instanceIdString != null) {
+                <label class="description"><strong>Instance ID:</strong> unique identifier for this force.</label>
+                <div class="row">
+                    <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="instanceIdString"/>
+                    <button class="bt-button" (click)="shareText(instanceIdString)">SHARE</button>
+                </div>
+            }
             @let shareLiveUrlString = shareLiveUrl();
             @if (shareLiveUrlString != null) {
                 <label class="description"><strong>Live battle record:</strong> share the current deployment as a read-only field report — includes damage, pilots, and status conditions.</label>
@@ -184,6 +193,7 @@ export class ShareForceDialogComponent {
     private dialogsService = inject(DialogsService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
+    instanceId = signal<string | null>(null);
     shareLiveUrl = signal<string | null>(null);
     cleanUrl = signal<string | null>(null);
     force: Force;
@@ -255,13 +265,16 @@ export class ShareForceDialogComponent {
 
     private buildUrls() {
         const origin = window.location.origin || '';
-        // We get the query Parameters from the force builder
-        const queryParameters = this.forceBuilderService.queryParameters();
+        // Single-force clean URL (units-based, for sharing without instance IDs)
+        const singleForceParams = buildForceQueryParams(this.force);
+
+        // Instance ID of the current force
+        this.instanceId.set(this.force.instanceId() || null);
 
         const instanceTree = this.router.createUrlTree([], {
             relativeTo: this.route,
             queryParams: {
-                instance: queryParameters.instance || null
+                instance: this.force.instanceId() || null
             }
         });
         const shareLiveUrl = this.router.serializeUrl(instanceTree);
@@ -270,9 +283,9 @@ export class ShareForceDialogComponent {
         const cleanTree = this.router.createUrlTree([], {
             relativeTo: this.route,
             queryParams: {
-                gs: queryParameters.gs || null,
-                units: queryParameters.units,
-                name: queryParameters.name || null
+                gs: singleForceParams.gs || null,
+                units: singleForceParams.units,
+                name: singleForceParams.name || null
             }
         });
         const cleanUrl = this.router.serializeUrl(cleanTree);
@@ -292,6 +305,21 @@ export class ShareForceDialogComponent {
         } else {
             copyTextToClipboard(url);
             this.toastService.showToast('Link copied to clipboard.', 'success');
+        }
+    }
+
+    shareText(text: string) {
+        if (navigator.share) {
+            navigator.share({
+                title: this.force.name || 'MekBay Force',
+                text: text
+            }).catch(() => {
+                copyTextToClipboard(text);
+                this.toastService.showToast('Copied to clipboard.', 'success');
+            });
+        } else {
+            copyTextToClipboard(text);
+            this.toastService.showToast('Copied to clipboard.', 'success');
         }
     }
 
