@@ -379,7 +379,7 @@ export class ForceBuilderViewerComponent {
         }
     }
 
-    drop(event: CdkDragDrop<ForceUnit[]>) {
+    async drop(event: CdkDragDrop<ForceUnit[]>) {
         const groupIdFromContainer = (id?: string) => id && id.startsWith('group-') ? id.substring('group-'.length) : null;
 
         const fromGroupId = groupIdFromContainer(event.previousContainer?.id);
@@ -428,6 +428,22 @@ export class ForceBuilderViewerComponent {
         } else {
             // Cross-force move: remove from source force, add to target force
             if (fromForce.readOnly()) return; // can't remove from read-only
+
+            // Check if this move would empty the source force — confirm before mutating
+            const wouldEmptyForce = fromForce.units().length === 1;
+            if (wouldEmptyForce) {
+                const answer = await this.dialogsService.choose(
+                    'Remove Empty Force',
+                    `Moving this unit will leave "${fromForce.name}" empty. The empty force will be removed. Continue?`,
+                    [
+                        { label: 'CONFIRM', value: 'confirm' },
+                        { label: 'CANCEL', value: 'cancel' }
+                    ],
+                    'cancel'
+                );
+                if (answer === 'cancel') return;
+            }
+
             const fromUnits = [...fromGroup.units()];
             const [moved] = fromUnits.splice(event.previousIndex, 1);
             if (!moved) return;
@@ -439,6 +455,10 @@ export class ForceBuilderViewerComponent {
             fromForce.removeEmptyGroups();
             if (fromForce.instanceId()) fromForce.emitChanged();
             if (toForce.instanceId()) toForce.emitChanged();
+
+            if (wouldEmptyForce) {
+                this.forceBuilderService.removeLoadedForce(fromForce);
+            }
         }
     }
 
@@ -452,6 +472,12 @@ export class ForceBuilderViewerComponent {
         }
         return null;
     }
+
+    groupsDragDisabled = computed(() => {
+        const forces = this.forceBuilderService.filteredLoadedForces();
+        // Allow group dragging if there's more than one force, or if the single loaded force has multiple groups (otherwise there's no point in dragging)
+        return (forces.length === 1 && forces[0].force.groups().length < 2);
+    });
 
     connectedDropLists = computed(() => {
         const ids: string[] = [];
@@ -577,7 +603,7 @@ export class ForceBuilderViewerComponent {
     }
 
     /** Handle group drag-drop for reordering within a force or moving between forces */
-    dropGroup(event: CdkDragDrop<UnitGroup[]>) {
+    async dropGroup(event: CdkDragDrop<UnitGroup[]>) {
         const fromForceId = event.previousContainer.id;
         const toForceId = event.container.id;
 
@@ -606,6 +632,24 @@ export class ForceBuilderViewerComponent {
             if (fromForce.readOnly()) return;
             const fromGroups = [...fromForce.groups()];
             const toGroups = [...toForce.groups()];
+
+            // Check if moving this group would empty the source force — confirm before mutating
+            const groupToMove = fromGroups[event.previousIndex];
+            const groupUnitCount = groupToMove?.units().length ?? 0;
+            const wouldEmptyForce = groupUnitCount > 0 && fromForce.units().length === groupUnitCount;
+            if (wouldEmptyForce) {
+                const answer = await this.dialogsService.choose(
+                    'Remove Empty Force',
+                    `Moving this group will leave "${fromForce.name}" empty. The empty force will be removed. Continue?`,
+                    [
+                        { label: 'CONFIRM', value: 'confirm' },
+                        { label: 'CANCEL', value: 'cancel' }
+                    ],
+                    'cancel'
+                );
+                if (answer === 'cancel') return;
+            }
+
             transferArrayItem(fromGroups, toGroups, event.previousIndex, event.currentIndex);
             // Re-parent the moved group
             const movedGroup = toGroups[event.currentIndex];
@@ -614,12 +658,19 @@ export class ForceBuilderViewerComponent {
             }
             fromForce.groups.set(fromGroups);
             toForce.groups.set(toGroups);
-            // Ensure source force has at least one group
-            if (fromGroups.length === 0) {
-                fromForce.addGroup('Group');
+
+            if (wouldEmptyForce) {
+                if (fromForce.instanceId()) fromForce.emitChanged();
+                if (toForce.instanceId()) toForce.emitChanged();
+                this.forceBuilderService.removeLoadedForce(fromForce);
+            } else {
+                // Source force still has units — ensure it has at least one group
+                if (fromGroups.length === 0) {
+                    fromForce.addGroup('Group');
+                }
+                if (fromForce.instanceId()) fromForce.emitChanged();
+                if (toForce.instanceId()) toForce.emitChanged();
             }
-            if (fromForce.instanceId()) fromForce.emitChanged();
-            if (toForce.instanceId()) toForce.emitChanged();
         }
     }
 

@@ -37,9 +37,11 @@
                 (cdkDropListDropped)="dropGroup($event)">
                 @let groups = slotForce.groups();
                 @for (group of groups; let gi = $index; track group.id) {
-                <div class="group-container" cdkDrag [cdkDragDisabled]="isReadOnly || groups.length < 2"
+                <div class="group-container" cdkDrag 
+                    [cdkDragDisabled]="isReadOnly || groupsDragDisabled()"
                     (cdkDragStarted)="onGroupDragStart()"
-                    (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onGroupDragEnd()"
+                    (cdkDragMoved)="onUnitDragMoved($event)" 
+                    (cdkDragEnded)="onGroupDragEnd()"
                     cdkDragLockAxis="y"
                     [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                     @if (!miniMode()) {
