@@ -37,6 +37,7 @@
                 <div class="group-container" cdkDrag [cdkDragDisabled]="isReadOnly || groups.length < 2"
                     (cdkDragStarted)="onGroupDragStart()"
                     (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onGroupDragEnd()"
+                    cdkDragLockAxis="y" cdkDragBoundary=".scrollable-content"
                     [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                     @if (!miniMode()) {
                         <div class="group-header">
@@ -67,6 +68,7 @@
                             tabindex="0" (keydown)="onUnitKeydown($event, i)" cdkDrag
                             [cdkDragDisabled]="isReadOnly" (cdkDragStarted)="onUnitDragStart()"
                             (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd()"
+                            cdkDragLockAxis="y" cdkDragBoundary=".scrollable-content"
                             [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                             <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode() || miniMode()"
                                 [class.miniMode]="miniMode()"
