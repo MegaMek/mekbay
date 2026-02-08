@@ -37,10 +37,12 @@ import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
-import { SerializedForce, SerializedUnit, SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA } from './force-serialization';
+import { SerializedForce, SerializedUnit, SerializedGroup, SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
+import { Sanitizer } from '../utils/sanitizer.util';
+import { LoggerService } from '../services/logger.service';
 
 /*
  * Author: Drake
@@ -324,7 +326,34 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
     /** Serialize this Force instance to a plain object */
     public serialize(): SerializedForce {
-        throw new Error('Force.serialize must be implemented by subclass');
+        let instanceId = this.instanceId();
+        if (!instanceId) {
+            instanceId = generateUUID();
+            this.instanceId.set(instanceId);
+        }
+        const serializedGroups: SerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => ({
+            id: g.id,
+            name: g.name(),
+            nameLock: g.nameLock,
+            color: g.color,
+            units: g.units().map(u => u.serialize())
+        }));
+        const result: SerializedForce = {
+            version: 1,
+            timestamp: this.timestamp ?? new Date().toISOString(),
+            instanceId: instanceId,
+            type: this.gameSystem,
+            name: this.name,
+            nameLock: this.nameLock || false,
+            groups: serializedGroups,
+            c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
+        };
+        if (this.gameSystem === GameSystem.ALPHA_STRIKE) {
+            result.pv = this.totalBv();
+        } else {
+            result.bv = this.totalBv();
+        }
+        return result;
     }
 
     /** Deserialize a plain object to a Force instance - must be implemented by subclass */
@@ -355,7 +384,140 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
     }
 
-    public abstract update(data: SerializedForce): void;
+    /**
+     * Optional sanitization of incoming serialized data.
+     * Override in subclass to apply schema-level sanitization (e.g., ASForce).
+     */
+    protected sanitizeForceData(data: SerializedForce): SerializedForce {
+        return data;
+    }
+
+    /**
+     * Populates this force instance from serialized data.
+     * Called by subclass static deserialize() methods after creating the instance.
+     */
+    protected populateFromSerialized(data: SerializedForce): void {
+        if (!data.groups || !Array.isArray(data.groups)) {
+            throw new Error('Invalid serialized Force: missing or invalid groups array');
+        }
+        this.loading = true;
+        try {
+            this.instanceId.set(data.instanceId);
+            this.nameLock = data.nameLock || false;
+            this.owned.set(data.owned !== false);
+
+            const logger = this.injector.get(LoggerService);
+            const parsedGroups: UnitGroup<TUnit>[] = [];
+            for (const g of data.groups) {
+                const groupUnits: TUnit[] = [];
+                for (const unitData of g.units) {
+                    try {
+                        groupUnits.push(this.deserializeForceUnit(unitData));
+                    } catch (err) {
+                        logger.error(`Force.deserialize error on unit "${unitData.unit}": ${err}`);
+                        continue;
+                    }
+                }
+                const group = new UnitGroup<TUnit>(this, g.name || DEFAULT_GROUP_NAME);
+                if (g.id) {
+                    group.id = g.id;
+                }
+                group.nameLock = g.nameLock || false;
+                group.color = g.color || '';
+                group.units.set(groupUnits);
+                parsedGroups.push(group);
+            }
+            this.groups.set(parsedGroups);
+            this.timestamp = data.timestamp ?? null;
+            if (data.c3Networks) {
+                const sanitizedNetworks = Sanitizer.sanitizeArray(data.c3Networks, C3_NETWORK_GROUP_SCHEMA);
+                const unitMap = new Map<string, Unit>();
+                for (const group of parsedGroups) {
+                    for (const forceUnit of group.units()) {
+                        unitMap.set(forceUnit.id, forceUnit.getUnit());
+                    }
+                }
+                this.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitizedNetworks, unitMap));
+            }
+        } finally {
+            this.loading = false;
+        }
+    }
+
+    /** Updates the force in-place from serialized data. */
+    public update(data: SerializedForce): void {
+        const sanitizedData = this.sanitizeForceData(data);
+        this.loading = true;
+        try {
+            if (this.name !== sanitizedData.name) this.setName(sanitizedData.name, false);
+            this.nameLock = sanitizedData.nameLock || false;
+            this.timestamp = sanitizedData.timestamp ?? null;
+
+            const incomingGroupsData = sanitizedData.groups || [];
+            const currentGroups = this.groups();
+            const currentGroupMap = new Map(currentGroups.map(g => [g.id, g]));
+            const allCurrentUnitsMap = new Map(this.units().map(u => [u.id, u]));
+            const allIncomingUnitIds = new Set(incomingGroupsData.flatMap(g => g.units.map(u => u.id)));
+
+            // Destroy units that are no longer in the force at all
+            for (const [unitId, unit] of allCurrentUnitsMap.entries()) {
+                if (!allIncomingUnitIds.has(unitId)) {
+                    unit.destroy();
+                    allCurrentUnitsMap.delete(unitId);
+                }
+            }
+
+            // Update existing groups and add new ones, and update/move units
+            const updatedGroups: UnitGroup<TUnit>[] = incomingGroupsData.map(groupData => {
+                let group = currentGroupMap.get(groupData.id);
+                if (group) {
+                    // Update existing group
+                    if (group.name() !== groupData.name) group.setName(groupData.name, false);
+                    group.nameLock = groupData.nameLock;
+                    group.color = groupData.color;
+                } else {
+                    // Add new group
+                    group = new UnitGroup<TUnit>(this, groupData.name);
+                    group.id = groupData.id;
+                    group.nameLock = groupData.nameLock;
+                    group.color = groupData.color;
+                }
+
+                const groupUnits = groupData.units.map(unitData => {
+                    let unit = allCurrentUnitsMap.get(unitData.id);
+                    if (unit) {
+                        // Unit exists, update it
+                        unit.update(unitData);
+                    } else {
+                        // Unit is new to the force, create it
+                        unit = this.deserializeForceUnit(unitData);
+                    }
+                    return unit;
+                });
+                group.units.set(groupUnits);
+                return group;
+            });
+
+            this.groups.set(updatedGroups);
+            this.removeEmptyGroups();
+
+            // Update C3 networks with sanitization and validation
+            if (sanitizedData.c3Networks) {
+                const sanitizedNetworks = Sanitizer.sanitizeArray(sanitizedData.c3Networks, C3_NETWORK_GROUP_SCHEMA);
+                const unitMap = new Map<string, Unit>();
+                for (const group of this.groups()) {
+                    for (const forceUnit of group.units()) {
+                        unitMap.set(forceUnit.id, forceUnit.getUnit());
+                    }
+                }
+                this.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitizedNetworks, unitMap));
+            } else {
+                this.setNetwork([]);
+            }
+        } finally {
+            this.loading = false;
+        }
+    }
 
     /**
      * Subclass factory: deserialize a SerializedForce into a new Force instance
