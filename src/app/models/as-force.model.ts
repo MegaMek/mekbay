@@ -89,9 +89,8 @@ export class ASForce extends Force<ASForceUnit> {
         unitInitializer: UnitInitializerService,
         injector: Injector
     ): ASForce {
-        const sanitizedData = Sanitizer.sanitize(data, AS_SERIALIZED_FORCE_SCHEMA);
-        const force = new ASForce(sanitizedData.name, dataService, unitInitializer, injector);
-        force.populateFromSerialized(sanitizedData);
+        const force = new ASForce(data.name ?? 'Unnamed Force', dataService, unitInitializer, injector);
+        force.populateFromSerialized(data);
         return force;
     }
 

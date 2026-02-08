@@ -35,10 +35,11 @@ import { Injector } from '@angular/core';
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
-import { CBTSerializedUnit, CBTSerializedForce, SerializedForce } from './force-serialization';
+import { CBTSerializedUnit, CBTSerializedForce, CBT_SERIALIZED_FORCE_SCHEMA, SerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
 import { Force } from './force.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
+import { Sanitizer } from '../utils/sanitizer.util';
 
 /*
  * Author: Drake
@@ -83,6 +84,10 @@ export class CBTForce extends Force<CBTForceUnit> {
 
     protected override deserializeForceUnit(data: CBTSerializedUnit): CBTForceUnit {
         return CBTForceUnit.deserialize(data, this, this.dataService, this.unitInitializer, this.injector);
+    }
+
+    protected override sanitizeForceData(data: SerializedForce): SerializedForce {
+        return Sanitizer.sanitize(data, CBT_SERIALIZED_FORCE_SCHEMA);
     }
 
     public static override deserialize(

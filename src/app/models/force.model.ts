@@ -385,30 +385,29 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     }
 
     /**
-     * Optional sanitization of incoming serialized data.
-     * Override in subclass to apply schema-level sanitization (e.g., ASForce).
+     * Sanitize incoming serialized data using a schema.
+     * Must be implemented by subclasses to apply the appropriate schema.
      */
-    protected sanitizeForceData(data: SerializedForce): SerializedForce {
-        return data;
-    }
+    protected abstract sanitizeForceData(data: SerializedForce): SerializedForce;
 
     /**
      * Populates this force instance from serialized data.
      * Called by subclass static deserialize() methods after creating the instance.
      */
     protected populateFromSerialized(data: SerializedForce): void {
-        if (!data.groups || !Array.isArray(data.groups)) {
+        const sanitizedData = this.sanitizeForceData(data);
+        if (!sanitizedData.groups || !Array.isArray(sanitizedData.groups)) {
             throw new Error('Invalid serialized Force: missing or invalid groups array');
         }
         this.loading = true;
         try {
-            this.instanceId.set(data.instanceId);
-            this.nameLock = data.nameLock || false;
-            this.owned.set(data.owned !== false);
+            this.instanceId.set(sanitizedData.instanceId);
+            this.nameLock = sanitizedData.nameLock || false;
+            this.owned.set(sanitizedData.owned !== false);
 
             const logger = this.injector.get(LoggerService);
             const parsedGroups: UnitGroup<TUnit>[] = [];
-            for (const g of data.groups) {
+            for (const g of sanitizedData.groups) {
                 const groupUnits: TUnit[] = [];
                 for (const unitData of g.units) {
                     try {
@@ -428,9 +427,9 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 parsedGroups.push(group);
             }
             this.groups.set(parsedGroups);
-            this.timestamp = data.timestamp ?? null;
-            if (data.c3Networks) {
-                const sanitizedNetworks = Sanitizer.sanitizeArray(data.c3Networks, C3_NETWORK_GROUP_SCHEMA);
+            this.timestamp = sanitizedData.timestamp ?? null;
+            if (sanitizedData.c3Networks) {
+                const sanitizedNetworks = Sanitizer.sanitizeArray(sanitizedData.c3Networks, C3_NETWORK_GROUP_SCHEMA);
                 const unitMap = new Map<string, Unit>();
                 for (const group of parsedGroups) {
                     for (const forceUnit of group.units()) {
