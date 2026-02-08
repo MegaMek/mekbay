@@ -69,6 +69,8 @@ function isOnlyCombatVehicles(units: ForceUnit[]): boolean {
     return units.every(u => u.getUnit().type === 'Tank' || u.getUnit().type === 'VTOL');
 }
 
+// ── Main class ───────────────────────────────────────────────────────────────
+
 export class CBTLanceTypeIdentifierUtil {
     private static readonly definitions: FormationTypeDefinition[] = [
 
