@@ -1,10 +1,3 @@
-as you noticed, for some you fail to give the ability because you simply don't have it. The reason is that those abilities are Special Command Abilities (not SPAs). See for example `anti-air-lance`.
-```
-effectDescription: 'Each turn, up to half the units (rounded down) may receive the effects of the Anti-Aircraft Specialists Special Command Ability for that turn. Destroyed or withdrawn units do not count.',
-```
-
-We need a way to have them too, probably create also a structure in as-abilities for them. Here they are:
-```
 ADJUSTING fIRE
 The artillery in this Force are experts in coordinating fire against
 targets . If two artillery units in a Force with this SCA are firing at the
