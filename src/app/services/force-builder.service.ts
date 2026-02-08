@@ -96,6 +96,28 @@ export class ForceBuilderService {
     private urlStateInitialized = signal(false);
     private conflictDialogRef: any;
 
+    /** Current alignment filter: 'all' shows everything, 'friendly'/'enemy' filters by alignment. */
+    public alignmentFilter = signal<'all' | 'friendly' | 'enemy'>('all');
+
+    /** Remembers the last selected unit per filter mode so switching back restores it. */
+    private savedSelectionByFilter = new Map<'all' | 'friendly' | 'enemy', string | null>();
+
+    /** True when loaded forces have a mix of friendly and enemy alignments (>1 slot). */
+    hasMixedAlignments = computed<boolean>(() => {
+        const slots = this.loadedForces();
+        if (slots.length < 2) return false;
+        const alignments = new Set(slots.map(s => s.alignment));
+        return alignments.has('friendly') && alignments.has('enemy');
+    });
+
+    /** Loaded forces filtered by the current alignment filter. */
+    filteredLoadedForces = computed<ForceSlot[]>(() => {
+        const filter = this.alignmentFilter();
+        const slots = this.loadedForces();
+        if (filter === 'all') return slots;
+        return slots.filter(s => s.alignment === filter);
+    });
+
     constructor() {
         // Register as a URL state consumer - must call markConsumerReady when done reading URL
         this.urlStateService.registerConsumer('force-builder');
@@ -103,6 +125,13 @@ export class ForceBuilderService {
         this.loadUnitsFromUrlOnStartup();
         this.updateUrlOnForceChange();
         this.monitorWebSocketConnection();
+
+        // Auto-reset alignment filter when conditions no longer apply
+        effect(() => {
+            if (!this.hasMixedAlignments() && this.alignmentFilter() !== 'all') {
+                this.alignmentFilter.set('all');
+            }
+        });
 
         // When cloud rejects a save (not_owner), adopt the force with fresh IDs
         this.dataService.forceNeedsAdoption.subscribe(force => {
@@ -160,6 +189,59 @@ export class ForceBuilderService {
     readOnlyForce = computed<boolean>(() => {
         return this.currentForce()?.readOnly() ?? false;
     });
+
+    /** Cycles the alignment filter: all → friendly → enemy → all. Auto-resets if conditions no longer apply. */
+    cycleAlignmentFilter(): void {
+        const current = this.alignmentFilter();
+
+        // Save the current selection for this filter mode
+        this.savedSelectionByFilter.set(current, this.selectedUnit()?.id ?? null);
+
+        // Determine next filter
+        let next: 'all' | 'friendly' | 'enemy';
+        if (current === 'all') {
+            next = 'friendly';
+        } else if (current === 'friendly') {
+            next = 'enemy';
+        } else {
+            next = 'all';
+        }
+        this.alignmentFilter.set(next);
+
+        // Restore saved selection for the new filter, or pick first visible unit
+        this.restoreSelectionForCurrentFilter();
+    }
+
+    /**
+     * Restores the remembered unit selection for the current filter mode.
+     * If the remembered unit is no longer visible, selects the first visible unit instead.
+     */
+    private restoreSelectionForCurrentFilter(): void {
+        const filter = this.alignmentFilter();
+        const visibleSlots = this.filteredLoadedForces();
+        const visibleUnits = visibleSlots.flatMap(s => s.force.units());
+
+        // Check if the currently selected unit is already visible
+        const currentSelection = this.selectedUnit();
+        if (currentSelection && visibleUnits.some(u => u.id === currentSelection.id)) {
+            return; // Already visible, nothing to do
+        }
+
+        // Try to restore the saved selection for this filter
+        const savedId = this.savedSelectionByFilter.get(filter);
+        if (savedId) {
+            const saved = visibleUnits.find(u => u.id === savedId);
+            if (saved) {
+                this.selectUnit(saved);
+                return;
+            }
+        }
+
+        // Fall back to first visible unit
+        if (visibleUnits.length > 0) {
+            this.selectUnit(visibleUnits[0]);
+        }
+    }
 
     /* ----------------------------------------
      * Multi-Force Slot Management
@@ -295,6 +377,9 @@ export class ForceBuilderService {
      * @returns true if the force was loaded and added successfully.
      */
     async addForceById(instanceId: string, alignment: ForceAlignment = 'friendly'): Promise<boolean> {
+        // Extract instance ID from a URL if a full link was pasted
+        instanceId = this.extractInstanceId(instanceId);
+
         // Check if already loaded
         if (this.loadedForces().some(s => s.force.instanceId() === instanceId)) {
             this.toastService.showToast('This force is already loaded.', 'info');
@@ -308,6 +393,22 @@ export class ForceBuilderService {
         this.addLoadedForce(force, alignment);
         this.toastService.showToast(`Force "${force.name}" added.`, 'success');
         return true;
+    }
+
+    /**
+     * Extracts an instance ID from user input. If the input is a URL containing
+     * an `instance` query parameter, returns that value. Otherwise returns the
+     * input as-is (assumed to already be a plain instance ID).
+     */
+    private extractInstanceId(input: string): string {
+        try {
+            const url = new URL(input);
+            const instance = url.searchParams.get('instance');
+            if (instance) return instance;
+        } catch {
+            // Not a valid URL — treat as a plain instance ID
+        }
+        return input;
     }
 
     /* ----------------------------------------

@@ -27,3 +27,15 @@
         background-color: #3006;
     }
 }
+
+.alignment-filter-btn {
+    transition: color 0.2s, background-color 0.2s;
+
+    &.friendly {
+        color: rgb(var(--friendly-color));
+    }
+
+    &.enemy {
+        color: rgb(var(--enemy-color));
+    }
+}

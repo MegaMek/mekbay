@@ -58,12 +58,27 @@ export class SidebarFooterComponent {
         });
     });
 
+    /**
+     * Title text for the alignment filter button based on current state.
+     */
+    alignmentFilterTitle = computed(() => {
+        switch (this.forceBuilderService.alignmentFilter()) {
+            case 'friendly': return 'Showing Friendly Only (click to show Enemy)';
+            case 'enemy': return 'Showing Enemy Only (click to show All)';
+            default: return 'Showing All Forces (click to show Friendly)';
+        }
+    });
+
     constructor() {
         inject(DestroyRef).onDestroy(() => this.closeAllMenus());
     }
     
     toggleCompactMode() {
         this.compactModeService.toggle();
+    }
+
+    cycleAlignmentFilter() {
+        this.forceBuilderService.cycleAlignmentFilter();
     }
 
     showOptionsDialog(): void {

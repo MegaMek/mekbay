@@ -70,7 +70,7 @@ export class ForceBuilderViewerComponent {
 
     miniMode = input<boolean>(false);
 
-    loadedSlots = computed(() => this.forceBuilderService.loadedForces());
+    loadedSlots = computed(() => this.forceBuilderService.filteredLoadedForces());
 
     compactMode = computed(() => {
         return this.compactModeService.compactMode();
@@ -80,9 +80,10 @@ export class ForceBuilderViewerComponent {
      * Alignment styling (friendly/enemy) is shown on non-owned forces only when:
      * - at least one owned force is loaded, OR
      * - both friendly and enemy forces are loaded
+     * Uses unfiltered loadedForces so coloring persists even when filtering by alignment.
      */
     showAlignmentStyling = computed<boolean>(() => {
-        const slots = this.loadedSlots();
+        const slots = this.forceBuilderService.loadedForces();
         if (slots.length < 2) return false;
         const hasOwned = slots.some(s => !s.force.readOnly());
         if (hasOwned) return true;
@@ -90,7 +91,7 @@ export class ForceBuilderViewerComponent {
         return alignments.has('friendly') && alignments.has('enemy');
     });
 
-    hasOwnedForce = computed<boolean>(() => this.loadedSlots().some(s => !s.force.readOnly()));
+    hasOwnedForce = computed<boolean>(() => this.forceBuilderService.loadedForces().some(s => !s.force.readOnly()));
 
     hasEmptyGroups = this.forceBuilderService.hasEmptyGroups;
 
@@ -112,6 +113,8 @@ export class ForceBuilderViewerComponent {
         
         effect(() => {
             const selected = this.forceBuilderService.selectedUnit();
+            // Also track filter changes so we scroll even when the unit stays the same
+            const _filter = this.forceBuilderService.alignmentFilter();
             // Cancel any previous pending scroll callback
             pendingScrollRef?.destroy();
             pendingScrollRef = null;
@@ -491,8 +494,32 @@ export class ForceBuilderViewerComponent {
         const scrollContainer = this.scrollableContent()?.nativeElement;
         if (!scrollContainer) return;
         const unitElement = scrollContainer.querySelector(`#unit-${CSS.escape(id)}`) as HTMLElement;
-        if (unitElement) {
-            unitElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (!unitElement) return;
+
+        // Calculate the total height of sticky headers (force-slot-header + group-header)
+        // that overlap the scroll area, so we can offset the scroll position.
+        const forceSlot = unitElement.closest('.force-slot') as HTMLElement | null;
+        let stickyOffset = 0;
+        if (forceSlot) {
+            const slotHeader = forceSlot.querySelector('.force-slot-header') as HTMLElement | null;
+            if (slotHeader) stickyOffset += slotHeader.offsetHeight;
+        }
+        const groupContainer = unitElement.closest('.group-container') as HTMLElement | null;
+        if (groupContainer) {
+            const groupHeader = groupContainer.querySelector('.group-header') as HTMLElement | null;
+            if (groupHeader) stickyOffset += groupHeader.offsetHeight;
+        }
+
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const unitRect = unitElement.getBoundingClientRect();
+
+        // If unit is above the visible area (behind sticky headers), scroll up
+        const visibleTop = containerRect.top + stickyOffset;
+        if (unitRect.top < visibleTop) {
+            scrollContainer.scrollBy({ top: unitRect.top - visibleTop, behavior: 'smooth' });
+        } else if (unitRect.bottom > containerRect.bottom) {
+            // If unit is below the visible area, scroll down
+            scrollContainer.scrollBy({ top: unitRect.bottom - containerRect.bottom, behavior: 'smooth' });
         }
     }
 
