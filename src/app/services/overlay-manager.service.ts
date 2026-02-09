@@ -349,6 +349,13 @@ export class OverlayManagerService {
                 const mo = new MutationObserver(() => this.schedulePositionUpdate());
                 // watch for style/class changes that commonly indicate a positional transform
                 mo.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+                // Also observe the parent for childList changes so we are notified when
+                // the trigger element is removed from the DOM (e.g. Angular *ngIf / route
+                // change).  The next position-update cycle will detect isConnected === false
+                // and close the overlay gracefully.
+                if (el.parentElement) {
+                    mo.observe(el.parentElement, { childList: true });
+                }
                 entry.mutationObserver = mo;
             } catch { /* ignore */ }
         }
@@ -374,8 +381,19 @@ export class OverlayManagerService {
 
     /** Invoke updatePosition() on every managed overlayRef. */
     private updateAllPositions() {
-        for (const entry of this.managed.values()) {
+        // Collect keys whose trigger elements have been removed from the DOM
+        const keysToClose: string[] = [];
+
+        for (const [key, entry] of this.managed.entries()) {
             try {
+                // If the trigger element was destroyed / removed from the DOM, schedule
+                // the overlay for graceful closure instead of repositioning (which would
+                // cause it to jump to 0,0).
+                if (entry.triggerElement && !entry.triggerElement.isConnected) {
+                    keysToClose.push(key);
+                    continue;
+                }
+
                 // For fullHeight overlays, we need to update the position strategy
                 if (entry.fullHeight && entry.triggerElement) {
                     this.updateFullHeightPosition(entry);
@@ -386,6 +404,12 @@ export class OverlayManagerService {
                     this.updateOverlayWidth(entry);
                 }
             } catch { /* ignore */ }
+        }
+
+        // Close overlays whose anchor elements are gone (outside the iteration
+        // to avoid mutating the map while iterating).
+        for (const key of keysToClose) {
+            this.closeManagedOverlay(key);
         }
     }
 
