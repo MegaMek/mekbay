@@ -93,12 +93,24 @@ interface Point {
 })
 export class AlphaStrikeViewerComponent {
     private readonly optionsService = inject(OptionsService);
-    private readonly forceBuilderService = inject(ForceBuilderService);
+    private readonly forceBuilder = inject(ForceBuilderService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly dbService = inject(DbService);
-    
-    readonly unit = computed(() => this.forceBuilderService.selectedUnit() as ASForceUnit | null, { equal: () => false });
-    readonly force = computed(() => this.forceBuilderService.currentForce() as ASForce | null);
+
+    readonly unit = computed(() => {
+        const selectedUnit = this.forceBuilder.selectedUnit();
+        if (selectedUnit instanceof ASForceUnit) {
+            return selectedUnit;
+        }
+        return null;
+    }, { equal: () => false });
+    readonly force = computed(() => {
+        const currentForce = this.forceBuilder.currentForce();
+        if (currentForce instanceof ASForce) {
+            return currentForce;
+        }
+        return null;
+    });
     
     private readonly cardWrappers = viewChildren<ElementRef<HTMLElement>>('cardWrapper');
     private readonly viewerContainer = viewChild<ElementRef<HTMLElement>>('viewerContainer');
@@ -207,7 +219,7 @@ export class AlphaStrikeViewerComponent {
      * Handle print request from controls
      */
     onPrintRequested(): void {
-        this.forceBuilderService.printAll();
+        this.forceBuilder.printAll();
     }
 
     private setupEffects(): void {
@@ -311,7 +323,7 @@ export class AlphaStrikeViewerComponent {
     onCardCellClick(event: MouseEvent, unit: ASForceUnit): void {
         // Mark as internal selection to prevent the effect from scrolling
         this.internalSelectionInProgress = true;
-        this.forceBuilderService.selectUnit(unit);
+        this.forceBuilder.selectUnit(unit);
         
         // Scroll to the clicked card cell
         const cardCell = (event.currentTarget as HTMLElement);
@@ -319,7 +331,7 @@ export class AlphaStrikeViewerComponent {
     }
 
     onEditPilot(unit: ASForceUnit): void {
-        this.forceBuilderService.editPilotOfUnit(unit);
+        this.forceBuilder.editPilotOfUnit(unit);
     }
     
     toggleHexMode(): void {

@@ -163,10 +163,6 @@ export class ForceBuilderService {
     hasForces = computed<boolean>(() => this.loadedForces().length > 0);
     /** True when the current force has one or more units. */
     hasUnits = computed<boolean>(() => this.forceUnitsOrEmpty().length > 0);
-    /** Current force's name, or empty string. */
-    forceName = computed<string>(() => this.currentForce()?.name ?? '');
-    /** Current force's groups, or empty array. */
-    forceGroups = computed<UnitGroup[]>(() => this.currentForce()?.groups() ?? []);
     /** Current force's game system, or null. */
     forceGameSystem = computed<GameSystem | null>(() => this.currentForce()?.gameSystem ?? null);
     /** True when current force is Alpha Strike. */

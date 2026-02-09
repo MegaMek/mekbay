@@ -115,8 +115,20 @@ export class PageViewerComponent implements AfterViewInit {
     private layoutService = inject(LayoutService);
     canvasService = inject(PageViewerCanvasService);
 
-    readonly unit = computed(() => this.forceBuilder.selectedUnit() as CBTForceUnit | null, { equal: () => false });
-    readonly force = computed(() => this.forceBuilder.currentForce() as CBTForce | null);
+    readonly unit = computed(() => {
+        const selectedUnit = this.forceBuilder.selectedUnit();
+        if (selectedUnit instanceof CBTForceUnit) {
+            return selectedUnit;
+        }
+        return null;
+    }, { equal: () => false });
+    readonly force = computed(() => {
+        const currentForce = this.forceBuilder.currentForce();
+        if (currentForce instanceof CBTForce) {
+            return currentForce;
+        }
+        return null;
+    });
     spaceEvenly = input(false);
     maxVisiblePageCount = input(99); // Limits max pages displayed even if viewport fits more
     shadowPages = input(true); // When true, shows faded clones of neighbor pages that can be clicked to navigate
@@ -1503,7 +1515,7 @@ export class PageViewerComponent implements AfterViewInit {
 
         // Set inputs
         componentRef.setInput('unit', unit);
-        componentRef.setInput('force', this.forceBuilder.currentForce());
+        componentRef.setInput('force', this.force());
         componentRef.setInput('mode', mode);
 
         // Attach to Angular's change detection
