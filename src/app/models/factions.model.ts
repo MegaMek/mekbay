@@ -34,6 +34,10 @@
 /*
  * Author: Drake
  */
+
+export const FACTION_EXTINCT = 3;
+export const FACTION_MERCENARY = 34;
+
 export interface Faction {
     id: number; // MUL id (unique)
     name: string; // Faction name

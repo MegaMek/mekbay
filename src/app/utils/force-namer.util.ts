@@ -31,12 +31,10 @@
  * affiliated with Microsoft.
  */
 
-import { Unit } from '../models/units.model';
 import { ForceUnit } from '../models/force-unit.model';
-import { Faction, Factions } from '../models/factions.model';
+import { Faction, FACTION_EXTINCT, FACTION_MERCENARY } from '../models/factions.model';
 import { Era } from '../models/eras.model';
 import { GameSystem } from '../models/common.model';
-import { FACTION_EXTINCT } from '../services/unit-search-filters.service';
 import { FormationTypeDefinition, LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 
 /*
@@ -125,16 +123,21 @@ function getForceType(units: ForceUnit[], techBase: string, factionName: string)
     return 'Force';
 }
 
-interface ForceNameOptions {
-    units: ForceUnit[];
-    factions: Faction[];
-    eras: Era[];
+/** Display info for a faction in the faction selector. */
+export interface FactionDisplayInfo {
+    faction: Faction;
+    /** Match percentage (0–1) based on the force's unit composition, or 0 if not matching. */
+    matchPercentage: number;
+    /** True if the faction is among the composition-matching factions. */
+    isMatching: boolean;
+    /** Per-era availability data for this faction. */
+    eraAvailability: { era: Era; isAvailable: boolean }[];
 }
 
 interface GroupNameOptions {
     units: ForceUnit[];
     allUnits: ForceUnit[];
-    forceName: string;
+    faction: Faction | null;
     gameSystem: GameSystem;
 }
 
@@ -142,7 +145,8 @@ const MIN_UNITS_PERCENTAGE = 0.7;
 
 export class ForceNamerUtil {
 
-    public static getAvailableFormations(groupUnits: ForceUnit[], allUnits: ForceUnit[], factionName: string, gameSystem: GameSystem): string[] | null {
+    public static getAvailableFormations(groupUnits: ForceUnit[], allUnits: ForceUnit[], faction: Faction | null, gameSystem: GameSystem): string[] | null {
+        const factionName = faction?.name ?? 'Mercenary';
         let majorityTechBase = this.getTechBase(allUnits);
         const identified = identifyLanceTypes(groupUnits, majorityTechBase, factionName, gameSystem);
         if (identified.length === 0) return null;
@@ -162,6 +166,10 @@ export class ForceNamerUtil {
         return Array.from(composedNames);
     }
 
+    /**
+     * Returns matching factions for a set of units (factions where ≥70% of units belong).
+     * Map key is the faction name, value is the highest match percentage across eras.
+     */
     public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[]): Map<string, number> | null {
         if (!units?.length) return null;
         const referenceYear = units.reduce(
@@ -203,34 +211,72 @@ export class ForceNamerUtil {
         return results;
     }
 
-    private static pickFaction(units: ForceUnit[], factions: Faction[], eras: Era[]): string {
+    /**
+     * Returns a random faction from the matching factions, weighted by match percentage.
+     * Falls back to FACTION_MERCENARY when no composition matches exist.
+     * Returns null only if the factions array itself is empty.
+     */
+    public static pickRandomFaction(units: ForceUnit[], factions: Faction[], eras: Era[]): Faction | null {
+        const mercenary = factions.find(f => f.id === FACTION_MERCENARY) ?? null;
         const availableFactions = this.getAvailableFactions(units, factions, eras);
-        if (!availableFactions) return 'Unknown Force';
+        if (!availableFactions || availableFactions.size === 0) return mercenary;
 
         const entries = Array.from(availableFactions.entries());
-        if (entries.length === 0) return 'Mercenary';
 
-        
-        // If only one faction, return it
-        if (entries.length === 1) return entries[0][0];
-
-        // Calculate total weight for weighted random selection
-        const totalWeight = entries.reduce((sum, [, percentage]) => sum + percentage, 0);
-
-        // Generate a random number between 0 and totalWeight
-        const random = Math.random() * totalWeight;
-
-        // Select faction based on weighted probability
-        let cumulativeWeight = 0;
-        for (const [name, percentage] of entries) {
-            cumulativeWeight += percentage;
-            if (random <= cumulativeWeight) {
-                return name;
-            }
+        // If only one faction, return it directly
+        if (entries.length === 1) {
+            return factions.find(f => f.name === entries[0][0]) ?? null;
         }
 
-        // Fallback to the last faction (shouldn't reach here normally)
-        return entries[entries.length - 1][0];
+        // Weighted random selection
+        const totalWeight = entries.reduce((sum, [, pct]) => sum + pct, 0);
+        const random = Math.random() * totalWeight;
+        let cumulative = 0;
+        for (const [name, pct] of entries) {
+            cumulative += pct;
+            if (random <= cumulative) {
+                return factions.find(f => f.name === name) ?? null;
+            }
+        }
+        return factions.find(f => f.name === entries[entries.length - 1][0]) ?? null;
+    }
+
+    /**
+     * Build the sorted faction display list for the faction selector.
+     * Order: matching factions (sorted by percentage desc) → remaining factions (alpha).
+     * Excludes FACTION_EXTINCT.
+     */
+    public static buildFactionDisplayList(
+        units: ForceUnit[],
+        allFactions: Faction[],
+        eras: Era[]
+    ): FactionDisplayInfo[] {
+        const matchMap = this.getAvailableFactions(units, allFactions, eras);
+        const result: FactionDisplayInfo[] = [];
+
+        for (const faction of allFactions) {
+            if (faction.id === FACTION_EXTINCT) continue;
+            const matchPct = matchMap?.get(faction.name) ?? 0;
+            result.push({
+                faction,
+                matchPercentage: matchPct,
+                isMatching: matchPct > 0,
+                eraAvailability: eras.map(era => ({
+                    era,
+                    isAvailable: faction.eras[era.id] != null && (faction.eras[era.id] as Set<number>).size > 0
+                }))
+            });
+        }
+
+        // Sort: matching first (by percentage desc), then non-matching (alpha by name)
+        result.sort((a, b) => {
+            if (a.isMatching && !b.isMatching) return -1;
+            if (!a.isMatching && b.isMatching) return 1;
+            if (a.isMatching && b.isMatching) return b.matchPercentage - a.matchPercentage;
+            return a.faction.name.localeCompare(b.faction.name);
+        });
+
+        return result;
     }
 
     static getTechBase(units: ForceUnit[]): string {
@@ -257,22 +303,27 @@ export class ForceNamerUtil {
         return majorityTechBase;
     }
 
-    static generateForceName({ units, factions, eras }: ForceNameOptions): string {
+    /**
+     * Generate a force name from a faction.
+     * If faction is provided, uses it directly. Otherwise picks one randomly from composition matches.
+     */
+    static generateForceName(units: ForceUnit[], faction: Faction | null, factions: Faction[], eras: Era[]): string {
         if (!units || units.length === 0) return 'Unnamed Force';
-        const factionName = this.pickFaction(units, factions, eras);
-        let forceType: string;
-        if (factionName === 'ComStar' || factionName === 'Word of Blake') {
-            forceType = getForceType(units, '', factionName);
-        } else {
-            // Find the majority tech base
-            const majorityTechBase = this.getTechBase(units);
-            forceType = getForceType(units, majorityTechBase, factionName);
-        }
-        return `${factionName} ${forceType}`;
+        const resolvedFaction = faction ?? this.pickRandomFaction(units, factions, eras);
+        const factionName = resolvedFaction?.name ?? 'Mercenary';
+        return this.buildForceNameFromFaction(units, factionName);
     }
 
+    /**
+     * Generate a force name for a specific faction (by name).
+     */
     static generateForceNameForFaction(units: ForceUnit[], factionName: string): string {
         if (!units || units.length === 0) return 'Unnamed Force';
+        return this.buildForceNameFromFaction(units, factionName);
+    }
+
+    /** Helper: build "{faction} {forceType}" string. */
+    private static buildForceNameFromFaction(units: ForceUnit[], factionName: string): string {
         let forceType: string;
         if (factionName === 'ComStar' || factionName === 'Word of Blake') {
             forceType = getForceType(units, '', factionName);
@@ -283,12 +334,13 @@ export class ForceNamerUtil {
         return `${factionName} ${forceType}`;
     }
 
-    static generateFormationName({ units, allUnits, forceName, gameSystem }: GroupNameOptions): string {
+    static generateFormationName({ units, allUnits, faction, gameSystem }: GroupNameOptions): string {
         if (!units || units.length === 0) return 'Unnamed Formation';
+        const factionName = faction?.name ?? 'Mercenary';
         let forceType: string;
-        if (forceName.includes('ComStar') || forceName.includes('Word of Blake')) {
-            forceType = getForceType(units, '', forceName);
-            const bestLance = getBestLanceType(units, '', forceName, gameSystem);
+        if (factionName.includes('ComStar') || factionName.includes('Word of Blake')) {
+            forceType = getForceType(units, '', factionName);
+            const bestLance = getBestLanceType(units, '', factionName, gameSystem);
             if (bestLance) {
                 const formationType = bestLance.name as ForceType;
                 forceType = forceType + ' - ' + formationType;
@@ -296,8 +348,8 @@ export class ForceNamerUtil {
         } else {
             // Find the majority tech base
             const majorityTechBase = this.getTechBase(allUnits);
-            forceType = getForceType(units, majorityTechBase, forceName);
-            const bestLance = getBestLanceType(units, majorityTechBase, forceName, gameSystem);
+            forceType = getForceType(units, majorityTechBase, factionName);
+            const bestLance = getBestLanceType(units, majorityTechBase, factionName, gameSystem);
             if (bestLance) {
                 const formationType = bestLance.name as ForceType;
                 forceType = formationType + ' ' + forceType;

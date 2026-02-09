@@ -133,7 +133,6 @@ export type AdvFilterOptions = DropdownFilterOptions | RangeFilterOptions;
 // ================== Constants ==================
 
 const DEFAULT_FILTER_CURVE = 0;
-export const FACTION_EXTINCT = 3;
 
 /** 
  * Alpha Strike movement mode display names.

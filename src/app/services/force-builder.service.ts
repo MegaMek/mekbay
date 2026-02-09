@@ -40,7 +40,7 @@ import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { firstValueFrom, skip, Subscription } from 'rxjs';
-import { RenameForceDialogComponent, RenameForceDialogData } from '../components/rename-force-dialog/rename-force-dialog.component';
+import { RenameForceDialogComponent, RenameForceDialogData, RenameForceDialogResult } from '../components/rename-force-dialog/rename-force-dialog.component';
 import { RenameGroupDialogComponent, RenameGroupDialogData } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from './unit-initializer.service';
 import { DialogsService } from './dialogs.service';
@@ -1023,11 +1023,12 @@ export class ForceBuilderService {
         if (!currentForce) {
             return '';
         }
-        return ForceNamerUtil.generateForceName({
-            units: currentForce.units(),
-            factions: this.dataService.getFactions(),
-            eras: this.dataService.getEras()
-        });
+        return ForceNamerUtil.generateForceName(
+            currentForce.units(),
+            currentForce.faction(),
+            this.dataService.getFactions(),
+            this.dataService.getEras()
+        );
     }
 
     public generateGroupName(group: UnitGroup): string {
@@ -1038,7 +1039,7 @@ export class ForceBuilderService {
         return ForceNamerUtil.generateFormationName({
             units: group.units(),
             allUnits: currentForce.units(),
-            forceName: currentForce.name,
+            faction: currentForce.faction(),
             gameSystem: currentForce.gameSystem
         });
     }
@@ -1063,7 +1064,7 @@ export class ForceBuilderService {
         return ForceNamerUtil.getAvailableFormations(
             group.units(),
             currentForce.units(),
-            currentForce.name,
+            currentForce.faction(),
             currentForce.gameSystem
         );
     }
@@ -1460,19 +1461,20 @@ export class ForceBuilderService {
         if (!targetForce) {
             return;
         }
-        const dialogRef = this.dialogsService.createDialog<string | null>(RenameForceDialogComponent, {
+        const dialogRef = this.dialogsService.createDialog<RenameForceDialogResult | null>(RenameForceDialogComponent, {
             data: {
                 force: targetForce
             } as RenameForceDialogData
         });
-        const newName = await firstValueFrom(dialogRef.closed);
-        if (newName !== null && newName !== undefined) {
-            if (newName === '') {
-                targetForce.nameLock = false; // Unlock name if empty
+        const result = await firstValueFrom(dialogRef.closed);
+        if (result) {
+            targetForce.faction.set(result.faction);
+            if (result.name === '') {
+                targetForce.nameLock = false;
                 targetForce.setName(this.generateForceName());
             } else {
-                targetForce.nameLock = true; // Lock name after manual change
-                targetForce.setName(newName.trim());
+                targetForce.nameLock = true;
+                targetForce.setName(result.name.trim());
             }
         }
     }
@@ -1489,27 +1491,28 @@ export class ForceBuilderService {
         }
         
         // Show rename dialog to confirm/edit force name
-        const dialogRef = this.dialogsService.createDialog<string | null>(RenameForceDialogComponent, {
+        const dialogRef = this.dialogsService.createDialog<RenameForceDialogResult | null>(RenameForceDialogComponent, {
             data: {
                 force: currentForce,
                 hideUnset: true
             } as RenameForceDialogData
         });
         
-        const newName = await firstValueFrom(dialogRef.closed);
+        const result = await firstValueFrom(dialogRef.closed);
         
         // User cancelled the dialog
-        if (newName === null || newName === undefined) {
+        if (!result) {
             return false;
         }
         
-        // Update force name based on dialog result
-        if (newName === '') {
+        // Update faction and force name based on dialog result
+        currentForce.faction.set(result.faction);
+        if (result.name === '') {
             currentForce.nameLock = false;
             currentForce.setName(this.generateForceName());
         } else {
             currentForce.nameLock = true;
-            currentForce.setName(newName.trim());
+            currentForce.setName(result.name.trim());
         }
         
         // Save the force

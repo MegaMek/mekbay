@@ -30,7 +30,14 @@
                         </svg>
                     </button>
                     }
-                    <div class="force-name" (click)="promptChangeForceName(slotForce)">{{ slotForce.name }}</div>
+                    <div class="force-name" (click)="promptChangeForceName(slotForce)">
+                        @if (slotForce.faction(); as faction) {
+                            @if (faction.img) {
+                                <img [src]="faction.img" class="force-faction-icon" [alt]="faction.name" [title]="faction.name" />
+                            }
+                        }
+                        {{ slotForce.name }}
+                    </div>
                     @if (isReadOnly && !hasOwnedForce()) {
                         <button class="bt-button btn-clone primary" (click)="forceBuilderService.requestCloneForce()">CLONE FORCE TO EDIT</button>
                     }

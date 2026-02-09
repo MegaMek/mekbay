@@ -54,7 +54,8 @@ import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
 import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
-import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterConfig, AdvFilterOptions, AdvFilterType, FACTION_EXTINCT, FilterState, DROPDOWN_FILTERS, RANGE_FILTERS, DropdownFilterConfig, RangeFilterConfig, SemanticDisplayItem, SerializedSearchFilter, SORT_OPTIONS } from './unit-search-filters.model';
+import { FACTION_EXTINCT } from '../models/factions.model';
+import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterConfig, AdvFilterOptions, AdvFilterType, FilterState, DROPDOWN_FILTERS, RANGE_FILTERS, DropdownFilterConfig, RangeFilterConfig, SemanticDisplayItem, SerializedSearchFilter, SORT_OPTIONS } from './unit-search-filters.model';
 export * from './unit-search-filters.model';
 
 function sortAvailableDropdownOptions(options: string[], predefinedOrder?: string[]): string[] {
