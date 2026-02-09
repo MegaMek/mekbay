@@ -46,9 +46,17 @@ import { CrewMember } from './crew-member.model';
  */
 export abstract class ForceUnit {
     protected unit: Unit; // Original unit data
-    force: Force;
+    private _forceRef = signal<Force>(null!);
     id: string;
     initialized = false;
+
+    /**
+     * The force this unit belongs to.
+     * Backed by a signal so that computed properties (e.g. readOnly)
+     * automatically react when the unit is moved to a different force.
+     */
+    get force(): Force { return this._forceRef(); }
+    set force(value: Force) { this._forceRef.set(value); }
 
     // Dependencies for deferred loading
     protected dataService: DataService;

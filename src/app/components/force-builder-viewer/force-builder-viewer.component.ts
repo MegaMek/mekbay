@@ -236,8 +236,7 @@ export class ForceBuilderViewerComponent {
 
     showUnitInfo(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
-        const force = this.findForceOfUnit(unit);
-        if (!force) return;
+        const force = unit.force;
         const unitList = force.units();
         if (!unitList) return;
         const unitIndex = unitList.findIndex(u => u.id === unit.id);
@@ -252,21 +251,7 @@ export class ForceBuilderViewerComponent {
 
     async openC3Network(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
-        const force = this.findForceOfUnit(unit);
-        if (!force) return;
-        await this.forceBuilderService.openC3Network(force, unit.readOnly());
-    }
-
-    /**
-     * Finds which loaded force contains a given unit.
-     */
-    private findForceOfUnit(unit: ForceUnit): Force | undefined {
-        for (const slot of this.forceBuilderService.loadedForces()) {
-            if (slot.force.units().some(u => u.id === unit.id)) {
-                return slot.force;
-            }
-        }
-        return this.forceBuilderService.currentForce() ?? undefined;
+        await this.forceBuilderService.openC3Network(unit.force, unit.readOnly());
     }
 
     async editPilot(event: MouseEvent, unit: ForceUnit) {
@@ -527,6 +512,7 @@ export class ForceBuilderViewerComponent {
                 unitToInsert = converted;
             } else {
                 unitToInsert = moved;
+                unitToInsert.force = toForce; // update parent reference
             }
 
             const toUnits = [...toGroup.units()];
@@ -656,6 +642,7 @@ export class ForceBuilderViewerComponent {
             unitToInsert = converted;
         } else {
             unitToInsert = moved;
+            unitToInsert.force = targetForce; // update parent reference
         }
 
         const targetUnits = [...newGroup.units(), unitToInsert];
@@ -852,7 +839,13 @@ export class ForceBuilderViewerComponent {
             // Re-parent the moved group
             const movedGroup = toGroups[event.currentIndex];
             if (movedGroup) {
-                (movedGroup as any).force = toForce; // update parent reference
+                (movedGroup as any).force = toForce; // update group's parent reference
+                if (!crossSystem) {
+                    // Same game system: update each unit's force reference
+                    for (const u of movedGroup.units()) {
+                        u.force = toForce;
+                    }
+                }
                 if (crossSystem) {
                     // Convert all units in the group to the target game system
                     const convertedUnits: ForceUnit[] = [];

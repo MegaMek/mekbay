@@ -93,11 +93,9 @@ export class ForceBuilderService {
     public selectedUnit = signal<ForceUnit | null>(null, { equal: () => false });
     public loadedForces = signal<ForceSlot[]>([]);
 
-    /** Derived from selectedUnit */
+    /** Derived from selectedUnit — the force that owns the currently selected unit. */
     public currentForce = computed<Force | null>(() => {
-        const unit = this.selectedUnit();
-        if (!unit) return null;
-        return this.loadedForces().find(s => s.force.units().some(u => u.id === unit.id))?.force ?? null;
+        return this.selectedUnit()?.force ?? null;
     });
     private urlStateInitialized = signal(false);
     private conflictDialogRef: any;

@@ -54,7 +54,8 @@ import { Sanitizer } from '../utils/sanitizer.util';
  * Author: Drake
  */
 export class CBTForceUnit extends ForceUnit {
-    declare force: CBTForce;
+    override get force(): CBTForce { return super.force as CBTForce; }
+    override set force(value: CBTForce) { super.force = value; }
     private loadingPromise: Promise<void> | null = null;
     svg: WritableSignal<SVGSVGElement | null> = signal(null); // SVG representation of the unit
     private _svgService: UnitSvgService | null = null;

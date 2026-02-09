@@ -54,7 +54,8 @@ export type AbilitySelection = string | ASCustomPilotAbility;
  * Author: Drake
  */
 export class ASForceUnit extends ForceUnit {
-    declare force: ASForce;
+    override get force(): ASForce { return super.force as ASForce; }
+    override set force(value: ASForce) { super.force = value; }
     protected override state: ASForceUnitState;
     protected readonly abilityLookup: AsAbilityLookupService;
 
