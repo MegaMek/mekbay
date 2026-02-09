@@ -1010,6 +1010,12 @@ export class ForceBuilderService {
             return;
         }
         if (!currentForce.nameLock) {
+            const randomFaction = ForceNamerUtil.pickRandomFaction(
+                currentForce.units(),
+                this.dataService.getFactions(),
+                this.dataService.getEras()
+            );
+            currentForce.faction.set(randomFaction);
             currentForce.setName(this.generateForceName(), false);
         }
     }
@@ -1469,14 +1475,7 @@ export class ForceBuilderService {
         });
         const result = await firstValueFrom(dialogRef.closed);
         if (result) {
-            targetForce.faction.set(result.faction);
-            if (result.name === '') {
-                targetForce.nameLock = false;
-                targetForce.setName(this.generateForceName());
-            } else {
-                targetForce.nameLock = true;
-                targetForce.setName(result.name.trim());
-            }
+            this.applyRenameForceDialogResult(targetForce, result);
         }
     }
 
@@ -1506,15 +1505,7 @@ export class ForceBuilderService {
             return false;
         }
         
-        // Update faction and force name based on dialog result
-        currentForce.faction.set(result.faction);
-        if (result.name === '') {
-            currentForce.nameLock = false;
-            currentForce.setName(this.generateForceName());
-        } else {
-            currentForce.nameLock = true;
-            currentForce.setName(result.name.trim());
-        }
+        this.applyRenameForceDialogResult(currentForce, result);
         
         // Save the force
         try {
@@ -1525,6 +1516,32 @@ export class ForceBuilderService {
             this.logger.error('Error saving force: ' + error);
             this.toastService.showToast('Failed to save force.', 'error');
             return false;
+        }
+    }
+
+    /**
+     * Applies the result of a rename-force dialog to a force.
+     * When the user clears the name (empty string), picks a random faction
+     * and generates a random name. Faction is set without triggering a save;
+     * the caller decides whether to save.
+     */
+    private applyRenameForceDialogResult(force: Force, result: RenameForceDialogResult): void {
+        if (result.name === '') {
+            force.nameLock = false;
+            const randomFaction = ForceNamerUtil.pickRandomFaction(
+                force.units(),
+                this.dataService.getFactions(),
+                this.dataService.getEras()
+            );
+            force.faction.set(randomFaction);
+            force.setName(
+                ForceNamerUtil.generateForceNameForFaction(randomFaction),
+                false
+            );
+        } else {
+            force.nameLock = true;
+            force.faction.set(result.faction);
+            force.setName(result.name.trim(), false);
         }
     }
 
