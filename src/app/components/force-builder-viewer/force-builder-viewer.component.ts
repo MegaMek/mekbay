@@ -839,7 +839,7 @@ export class ForceBuilderViewerComponent {
             // Re-parent the moved group
             const movedGroup = toGroups[event.currentIndex];
             if (movedGroup) {
-                (movedGroup as any).force = toForce; // update group's parent reference
+                movedGroup.force = toForce; // update group's parent reference
                 if (!crossSystem) {
                     // Same game system: update each unit's force reference
                     for (const u of movedGroup.units()) {

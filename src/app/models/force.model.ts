@@ -55,7 +55,16 @@ const MAX_GROUPS = 50;
 const MAX_UNITS = 100;
 
 export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
-    force: Force;
+    private _forceRef = signal<Force>(null!);
+
+    /**
+     * The force this group belongs to.
+     * Backed by a signal so that computed properties automatically react
+     * when the group is moved to a different force.
+     */
+    get force(): Force { return this._forceRef(); }
+    set force(value: Force) { this._forceRef.set(value); }
+
     id: string = generateUUID();
     name = signal<string>('Group');
     nameLock?: boolean; // If true, the group name cannot be changed by the random generator
