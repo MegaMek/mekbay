@@ -39,7 +39,7 @@ import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
-import { firstValueFrom, Subscription } from 'rxjs';
+import { firstValueFrom, skip, Subscription } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData } from '../components/rename-force-dialog/rename-force-dialog.component';
 import { RenameGroupDialogComponent, RenameGroupDialogData } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from './unit-initializer.service';
@@ -317,6 +317,8 @@ export class ForceBuilderService {
      * Tears down a ForceSlot — unsubscribes WS, change subscription, and destroys units.
      */
     private teardownForceSlot(slot: ForceSlot): void {
+        // Flush any pending debounced save while the subscription is still alive
+        slot.force.flushPendingChanges();
         slot.changeSub?.unsubscribe();
         slot.changeSub = null;
         const instanceId = slot.force.instanceId();
@@ -351,11 +353,11 @@ export class ForceBuilderService {
     /**
      * Removes a specific force from the loaded forces list and cleans up its resources.
      */
-    async removeLoadedForce(force: Force): Promise<void> {
+    async removeLoadedForce(force: Force, options: { skipPrompt?: boolean } = {}): Promise<void> {
         const slot = this.loadedForces().find(s => s.force === force);
         if (!slot) return;
 
-        const shouldProceed = await this.promptSaveForceIfNeeded(force);
+        const shouldProceed = options.skipPrompt ? true : await this.promptSaveForceIfNeeded(force);
         if (!shouldProceed) {
             return;
         }
@@ -371,12 +373,24 @@ export class ForceBuilderService {
             this.selectedUnit.set(nextUnit);
         }
 
-        // Flush any pending debounced save while the subscription is still alive
-        force.flushPendingChanges();
-
         // Now safe to tear down and remove from the list
         this.teardownForceSlot(slot);
         this.loadedForces.update(slots => slots.filter(s => s !== slot));
+    }
+
+    async removeAllForces(): Promise<boolean> {
+        const shouldProceed = await this.checkAllForcesPromptSaveForceIfNeeded();
+        if (!shouldProceed) {
+            return false;
+        }
+        for (const slot of this.loadedForces()) {
+            this.teardownForceSlot(slot);
+        }
+        this.selectedUnit.set(null);
+        this.loadedForces.set([]);
+        this.clearForceUrlParams();
+        this.logger.info('ForceBuilderService: All forces removed.');
+        return true;
     }
 
     /**
@@ -404,7 +418,7 @@ export class ForceBuilderService {
             await this.dataService.deleteForce(forceInstanceId);
             this.logger.info(`ForceBuilderService: Force with instance ID ${forceInstanceId} deleted.`);
         }
-        await this.removeLoadedForce(force);
+        await this.removeLoadedForce(force, { skipPrompt: true });
         if (this.loadedForces().length === 0) {
             this.clearForceUrlParams();
         }
@@ -504,16 +518,19 @@ export class ForceBuilderService {
         }
     }
 
+    /**
+     * Loads a force by replacing all currently loaded forces with the new one.
+     */
     async loadForce(force: Force): Promise<boolean> {
         const shouldContinue = await this.checkAllForcesPromptSaveForceIfNeeded();
         if (!shouldContinue) {
             return false; // User cancelled, do not load new force
         }
-
+        
         this.urlStateInitialized.set(false);
         try {
-            this.setForce(force);
-            this.selectUnit(force.units()[0] || null);
+            await this.removeAllForces();
+            this.addLoadedForce(force, 'friendly', { activate: true });
         } finally {
             this.urlStateInitialized.set(true);
         }
@@ -531,17 +548,6 @@ export class ForceBuilderService {
         } finally {
             this.urlStateInitialized.set(true);
         }
-        return true;
-    }
-
-    /**
-     * Removes all loaded forces and resets to a clean state.
-     */
-    async removeAllForces() {
-        const shouldContinue = await this.checkAllForcesPromptSaveForceIfNeeded();
-        if (!shouldContinue) return false;
-        this.setForce(null);
-        this.logger.info('ForceBuilderService: All forces removed.');
         return true;
     }
 
@@ -844,29 +850,30 @@ export class ForceBuilderService {
         
         const result = await firstValueFrom(dialogRef.closed);
         if (result === 'clone') {
-            this.cloneForce();
+            this.cloneForce(currentForce);
         } else if (result === 'convert') {
-            this.convertForce();
+            this.convertForce(currentForce);
         }
     }
 
-    private async cloneForce(): Promise<boolean> {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+    private async cloneForce(force: Force): Promise<boolean> {
+        if (!force) {
             return false;
         }
 
-        const selectedIdx = currentForce.units().findIndex(u => u.id === this.selectedUnit()?.id);
-        const cloned = currentForce.clone();
+        const selectedIdx = force.units().findIndex(u => u.id === this.selectedUnit()?.id);
+        const cloned = force.clone();
         cloned.loading = true;
         try {
             await this.dataService.saveForce(cloned);
         } finally {
             cloned.loading = false;
         }
-
+        
         // Unload old, load clone
-        this.setForce(cloned);
+        this.removeLoadedForce(force, { skipPrompt: true });
+        // Load the new force (this handles URL state and other housekeeping)
+        this.addLoadedForce(cloned, 'friendly', { activate: true });
         const units = cloned.units();
         this.selectUnit(selectedIdx >= 0 && selectedIdx < units.length ? units[selectedIdx] : units[0] ?? null);
 
@@ -878,21 +885,20 @@ export class ForceBuilderService {
      * Converts the current force to the opposite game system (CBT <-> Alpha Strike).
      * Creates a new force with the same name and groups, but fresh units without state.
      */
-    private async convertForce(): Promise<boolean> {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+    private async convertForce(force: Force): Promise<boolean> {
+        if (!force) {
             return false;
         }
 
-        const isAlphaStrike = currentForce.gameSystem === GameSystem.ALPHA_STRIKE;
+        const isAlphaStrike = force.gameSystem === GameSystem.ALPHA_STRIKE;
         const targetSystemLabel = isAlphaStrike ? 'Classic BattleTech' : 'Alpha Strike';
 
         // Create new force with opposite game system
         const newForce = isAlphaStrike
-            ? new CBTForce(currentForce.name, this.dataService, this.unitInitializer, this.injector)
-            : new ASForce(currentForce.name, this.dataService, this.unitInitializer, this.injector);
+            ? new CBTForce(force.name, this.dataService, this.unitInitializer, this.injector)
+            : new ASForce(force.name, this.dataService, this.unitInitializer, this.injector);
 
-        newForce.nameLock = currentForce.nameLock;
+        newForce.nameLock = force.nameLock;
         newForce.loading = true;
 
         try {
@@ -903,7 +909,7 @@ export class ForceBuilderService {
             newForce.groups.set([]);
 
             // Recreate groups and units - process one group at a time
-            for (const sourceGroup of currentForce.groups()) {
+            for (const sourceGroup of force.groups()) {
                 const newGroup = newForce.addGroup(sourceGroup.name());
                 newGroup.nameLock = sourceGroup.nameLock;
 
@@ -921,7 +927,7 @@ export class ForceBuilderService {
                     // Transfer pilot data cross-system
                     newForceUnit.disabledSaving = true;
                     try {
-                        this.transferPilotDataCrossSystem(sourceUnit, newForceUnit, currentForce.gameSystem, newForce.gameSystem);
+                        this.transferPilotDataCrossSystem(sourceUnit, newForceUnit, force.gameSystem, newForce.gameSystem);
                     } finally {
                         newForceUnit.disabledSaving = false;
                     }
@@ -934,8 +940,9 @@ export class ForceBuilderService {
             newForce.loading = false;
         }
 
+        this.removeLoadedForce(force);
         // Load the new force (this handles URL state and other housekeeping)
-        await this.loadForce(newForce);
+        this.addLoadedForce(newForce, 'friendly', { activate: true });
         this.dataService.saveForce(newForce);
 
         this.toastService.showToast(`Force converted to ${targetSystemLabel} and saved.`, 'success');
@@ -1297,13 +1304,7 @@ export class ForceBuilderService {
                 if (force) {
                     if (!loadedAnyInstance) {
                         // First instance: set as the primary force
-                        this.setForce(force);
-                        // Update alignment if enemy (setForce defaults to friendly)
-                        if (alignment === 'enemy') {
-                            const slot = this.getForceSlot(force);
-                            if (slot) slot.alignment = alignment;
-                        }
-                        this.selectUnit(force.units()[0]);
+                        this.addLoadedForce(force, alignment, { activate: true });
                     } else {
                         // Additional instances: add alongside existing forces (don't switch selection)
                         this.addLoadedForce(force, alignment, { activate: false });
@@ -1355,11 +1356,10 @@ export class ForceBuilderService {
             if (newForce.units().length > 0) {
                 if (!loadedAnyInstance) {
                     // No saved forces loaded — unsaved force is the primary
-                    this.setForce(newForce);
+                    this.addLoadedForce(newForce, 'friendly', { activate: true });
                 } else {
                     // Saved forces already loaded — add unsaved alongside (don't switch selection)
                     this.addLoadedForce(newForce, 'friendly', { activate: false });
-                    this.selectUnit(newForce.units()[0]);
                 }
             }
         }
