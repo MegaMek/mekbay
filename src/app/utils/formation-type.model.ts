@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { Rulebook } from '../models/common.model';
 import { ForceUnit } from '../models/force-unit.model';
 
 /*
@@ -84,6 +85,14 @@ export interface FormationEffectGroup {
     maxPerUnit?: number;
 }
 
+/**
+ * A reference to a specific rulebook and page number.
+ */
+export interface RulesReference {
+    book: Rulebook;
+    page: number;
+}
+
 export interface FormationTypeDefinition {
     id: string;
     parent?: string;
@@ -92,9 +101,14 @@ export interface FormationTypeDefinition {
     effectDescription?: string;
     /** Structured SPA distribution rules for this formation's bonus ability. */
     effectGroups?: FormationEffectGroup[];
-    validator: (units: ForceUnit[]) => boolean;
+    /** Alpha Strike validator: checks units using AS stats (Size, Move", specials). */
+    validatorAS?: (units: ForceUnit[]) => boolean;
+    /** Classic BattleTech validator: checks units using CBT stats (tons, walk/jump, comp). */
+    validatorCBT?: (units: ForceUnit[]) => boolean;
     idealRole?: string;
     techBase?: 'Inner Sphere' | 'Clan' | 'Special';
     minUnits?: number;
     exclusiveFaction?: string;
+    /** Multiple rulebook references (e.g. CO p.62, AS:CE p.117). */
+    rulesRef?: RulesReference[];
 }

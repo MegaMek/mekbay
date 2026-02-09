@@ -726,11 +726,11 @@ export class ForceBuilderViewerComponent {
         if (crossSystem && currentFormation) {
             // Try to find the same formation ID in the new game system
             const mapped = LanceTypeIdentifierUtil.getDefinitionById(currentFormation.id, gameSystem);
-            if (mapped && mapped.validator(units)) {
+            if (mapped && LanceTypeIdentifierUtil.isValid(mapped, units, gameSystem)) {
                 group.formation.set(mapped);
                 return;
             }
-        } else if (currentFormation && currentFormation.validator(units)) {
+        } else if (currentFormation && LanceTypeIdentifierUtil.isValid(currentFormation, units, gameSystem)) {
             // Same system, existing formation is still valid
             return;
         }

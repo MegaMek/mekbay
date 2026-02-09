@@ -34,19 +34,91 @@
 import { ForceUnit } from '../models/force-unit.model';
 import { GameSystem } from '../models/common.model';
 import { FormationTypeDefinition } from './formation-type.model';
-import { CBTLanceTypeIdentifierUtil } from './cbt-lance-type-identifier.util';
-import { ASLanceTypeIdentifierUtil } from './as-lance-type-identifier.util';
+import { FORMATION_DEFINITIONS } from './formation-definitions';
 
 export type { FormationTypeDefinition } from './formation-type.model';
 
 /*
  * Author: Drake
  *
- * Facade that routes formation identification to the correct
- * game-system-specific implementation (CBT or Alpha Strike).
+ * Unified formation identifier.
+ * Uses a single definition list with per-system validators.
  */
 
 export class LanceTypeIdentifierUtil {
+
+    // ── Validation ───────────────────────────────────────────────────────
+
+    private static getValidator(
+        definition: FormationTypeDefinition,
+        gameSystem: GameSystem
+    ): ((units: ForceUnit[]) => boolean) | undefined {
+        return gameSystem === GameSystem.ALPHA_STRIKE
+            ? definition.validatorAS
+            : definition.validatorCBT;
+    }
+
+    private static validateDefinition(
+        definition: FormationTypeDefinition,
+        units: ForceUnit[],
+        gameSystem: GameSystem
+    ): boolean {
+        // Validate parent chain first
+        if (definition.parent) {
+            const parentDefinition = FORMATION_DEFINITIONS.find(d => d.id === definition.parent);
+            if (!parentDefinition) {
+                console.error(`Parent definition '${definition.parent}' not found for '${definition.id}'`);
+                return false;
+            }
+            if (!this.validateDefinition(parentDefinition, units, gameSystem)) {
+                return false;
+            }
+        }
+
+        try {
+            if (definition.minUnits && units.length < definition.minUnits) {
+                return false;
+            }
+            // If all units match the ideal role, skip the full validator
+            if (definition.idealRole) {
+                const allMatchIdeal = units.every(u => u.getUnit().role === definition.idealRole);
+                if (allMatchIdeal) return true;
+            }
+            const validator = this.getValidator(definition, gameSystem);
+            if (!validator) return false;
+            return validator(units);
+        } catch (error) {
+            console.error(`Error validating lance type ${definition.id}:`, error);
+            return false;
+        }
+    }
+
+    // ── Public API ───────────────────────────────────────────────────────
+
+    /**
+     * Checks whether a formation definition is valid for the given units and game system.
+     */
+    public static isValid(
+        definition: FormationTypeDefinition,
+        units: ForceUnit[],
+        gameSystem: GameSystem
+    ): boolean {
+        return this.validateDefinition(definition, units, gameSystem);
+    }
+
+    /**
+     * Looks up a formation definition by its ID.
+     */
+    public static getDefinitionById(id: string, gameSystem?: GameSystem): FormationTypeDefinition | null {
+        const def = FORMATION_DEFINITIONS.find(d => d.id === id);
+        if (!def) return null;
+        // If a game system is specified, only return if the definition has a validator for it
+        if (gameSystem !== undefined) {
+            const validator = this.getValidator(def, gameSystem);
+            if (!validator) return null;
+        }
+        return def;
+    }
 
     /**
      * Identifies all matching formation types for the given force units.
@@ -57,20 +129,35 @@ export class LanceTypeIdentifierUtil {
         factionName: string,
         gameSystem: GameSystem
     ): FormationTypeDefinition[] {
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
-            return ASLanceTypeIdentifierUtil.identifyLanceTypes(units, techBase, factionName);
-        }
-        return CBTLanceTypeIdentifierUtil.identifyLanceTypes(units, techBase, factionName);
-    }
+        const matches: FormationTypeDefinition[] = [];
 
-    /**
-     * Looks up a formation definition by its ID in the appropriate game system.
-     */
-    public static getDefinitionById(id: string, gameSystem: GameSystem): FormationTypeDefinition | null {
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
-            return ASLanceTypeIdentifierUtil.getDefinitionById(id);
+        for (const definition of FORMATION_DEFINITIONS) {
+            try {
+                // Skip if no validator for this game system
+                if (!this.getValidator(definition, gameSystem)) continue;
+
+                // Skip faction-exclusive definitions if faction doesn't match
+                if (definition.exclusiveFaction && !factionName.includes(definition.exclusiveFaction)) {
+                    continue;
+                }
+
+                // Skip if tech base doesn't match
+                if (techBase && definition.techBase
+                    && definition.techBase !== 'Special'
+                    && techBase !== 'Mixed'
+                    && definition.techBase !== techBase) {
+                    continue;
+                }
+
+                if (this.validateDefinition(definition, units, gameSystem)) {
+                    matches.push(definition);
+                }
+            } catch (error) {
+                console.error(`Error validating lance type ${definition.id}:`, error);
+            }
         }
-        return CBTLanceTypeIdentifierUtil.getDefinitionById(id);
+
+        return matches;
     }
 
     /**
@@ -82,9 +169,29 @@ export class LanceTypeIdentifierUtil {
         factionName: string,
         gameSystem: GameSystem
     ): FormationTypeDefinition | null {
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
-            return ASLanceTypeIdentifierUtil.getBestMatch(units, techBase, factionName);
+        const matches = this.identifyLanceTypes(units, techBase, factionName, gameSystem);
+        if (matches.length === 0) return null;
+
+        let totalWeight = 0;
+        const weights: number[] = [];
+        for (const match of matches) {
+            let weight = 1;
+            if (match.exclusiveFaction && factionName.includes(match.exclusiveFaction)) {
+                weight *= 5;
+            } else if (match.parent) {
+                weight *= 3;
+            } else if (match.id !== 'support-lance' && match.id !== 'command-lance' && match.id !== 'battle-lance') {
+                weight *= 2;
+            }
+            weights.push(weight);
+            totalWeight += weight;
         }
-        return CBTLanceTypeIdentifierUtil.getBestMatch(units, techBase, factionName);
+
+        let roll = Math.random() * totalWeight;
+        for (let i = 0; i < matches.length; i++) {
+            roll -= weights[i];
+            if (roll <= 0) return matches[i];
+        }
+        return matches[matches.length - 1];
     }
 }
