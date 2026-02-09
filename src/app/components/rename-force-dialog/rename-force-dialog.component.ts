@@ -90,18 +90,26 @@ export interface RenameForceDialogResult {
         </div>
 
         <p>Faction</p>
-        <button #factionTrigger class="faction-selector bt-select" (click)="toggleFactionDropdown()">
-          @if (selectedFaction()) {
-            <div class="faction-selector-content">
-              @if (selectedFaction()!.img) {
-                <img [src]="selectedFaction()!.img" class="faction-selector-icon" [alt]="selectedFaction()!.name" />
-              }
-              <span>{{ selectedFaction()!.name }}</span>
-            </div>
+        <div class="input-wrapper">
+          <button #factionTrigger class="faction-selector bt-select" (click)="toggleFactionDropdown()">
+            @if (selectedFaction()) {
+              <div class="faction-selector-content">
+                @if (selectedFaction()!.img) {
+                  <img [src]="selectedFaction()!.img" class="faction-selector-icon" [alt]="selectedFaction()!.name" />
+                }
+                <span>{{ selectedFaction()!.name }}</span>
+              </div>
           } @else {
             <span class="placeholder">No faction selected</span>
           }
-        </button>
+          </button>
+          <button
+            type="button"
+            class="random-button"
+            (click)="fillRandomFaction()"
+            aria-label="Pick random faction"
+          ></button>
+        </div>
       </div>
       <div dialog-actions>
         <button (click)="submit()" class="bt-button">CONFIRM</button>
@@ -161,7 +169,7 @@ export interface RenameForceDialogResult {
         }
 
         .random-button {
-            align-self: baseline;
+            flex-shrink: 0;
             height: 32px;
             width: 32px;
             border: none;
@@ -190,7 +198,7 @@ export interface RenameForceDialogResult {
         }
 
         .faction-selector {
-            width: calc(90vw - 32px);
+            width: calc(90vw - 64px);
             max-width: 500px;
             padding: 10px 12px;
             cursor: pointer;
@@ -199,7 +207,6 @@ export interface RenameForceDialogResult {
             align-items: center;
             text-align: left;
             font-size: 1em;
-            margin-bottom: 8px;
         }
 
         .faction-selector:hover {
@@ -265,22 +272,22 @@ export class RenameForceDialogComponent {
     }
 
     fillRandomName() {
+        const faction = this.selectedFaction();
+        const newName = ForceNamerUtil.generateForceNameForFaction(faction);
+        this.setInputText(newName);
+    }
+
+    fillRandomFaction() {
         const units = this.data.force.units();
-        // Pick a random faction from composition matches
         const randomFaction = ForceNamerUtil.pickRandomFaction(
             units,
             this.dataService.getFactions(),
             this.dataService.getEras()
         );
         this.selectedFaction.set(randomFaction);
-
-        const randomName = ForceNamerUtil.generateForceName(
-            units,
-            randomFaction,
-            this.dataService.getFactions(),
-            this.dataService.getEras()
-        );
-        this.setInputText(randomName);
+        // Also regenerate name for the new faction
+        const newName = ForceNamerUtil.generateForceNameForFaction(randomFaction);
+        this.setInputText(newName);
     }
 
     toggleFactionDropdown(): void {
