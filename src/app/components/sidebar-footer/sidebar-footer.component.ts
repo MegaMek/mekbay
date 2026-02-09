@@ -110,8 +110,8 @@ export class SidebarFooterComponent {
         await this.forceBuilderService.addForceById(instanceId.trim(), alignment);
     }
 
-    async requestRemoveForce(): Promise<void> {
-        if (await this.forceBuilderService.removeForce()) {
+    async requestRemoveAllForces(): Promise<void> {
+        if (await this.forceBuilderService.removeAllForces()) {
             this.layoutService.closeMenu();
         }
     }

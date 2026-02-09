@@ -351,9 +351,14 @@ export class ForceBuilderService {
     /**
      * Removes a specific force from the loaded forces list and cleans up its resources.
      */
-    removeLoadedForce(force: Force): void {
+    async removeLoadedForce(force: Force): Promise<void> {
         const slot = this.loadedForces().find(s => s.force === force);
         if (!slot) return;
+
+        const shouldProceed = await this.promptSaveForceIfNeeded(force);
+        if (!shouldProceed) {
+            return;
+        }
 
         // Determine switch targets BEFORE teardown (which destroys units)
         const selectedUnit = this.selectedUnit();
@@ -399,7 +404,7 @@ export class ForceBuilderService {
             await this.dataService.deleteForce(forceInstanceId);
             this.logger.info(`ForceBuilderService: Force with instance ID ${forceInstanceId} deleted.`);
         }
-        this.removeLoadedForce(force);
+        await this.removeLoadedForce(force);
         if (this.loadedForces().length === 0) {
             this.clearForceUrlParams();
         }
@@ -500,8 +505,7 @@ export class ForceBuilderService {
     }
 
     async loadForce(force: Force): Promise<boolean> {
-        // Prompt to save current force if needed
-        const shouldContinue = await this.promptSaveForceIfNeeded();
+        const shouldContinue = await this.checkAllForcesPromptSaveForceIfNeeded();
         if (!shouldContinue) {
             return false; // User cancelled, do not load new force
         }
@@ -530,30 +534,11 @@ export class ForceBuilderService {
         return true;
     }
 
-    async removeForce() {
-        // Prompt to save current force if needed
-        const shouldContinue = await this.promptSaveForceIfNeeded();
-        if (!shouldContinue) {
-            return false; // User cancelled
-        }
-        const forceToRemove = this.currentForce();
-        if (forceToRemove) {
-            this.removeLoadedForce(forceToRemove);
-        } else {
-            this.setForce(null);
-        }
-        if (this.loadedForces().length === 0) {
-            this.clearForceUrlParams();
-        }
-        this.logger.info('ForceBuilderService: Force removed.');
-        return true;
-    }
-
     /**
      * Removes all loaded forces and resets to a clean state.
      */
     async removeAllForces() {
-        const shouldContinue = await this.promptSaveForceIfNeeded();
+        const shouldContinue = await this.checkAllForcesPromptSaveForceIfNeeded();
         if (!shouldContinue) return false;
         this.setForce(null);
         this.logger.info('ForceBuilderService: All forces removed.');
@@ -1240,7 +1225,7 @@ export class ForceBuilderService {
             cloned.setName(localForce.name + ' (Cloned)', false);
 
             // Unload old, load clone
-            this.removeLoadedForce(localForce);
+            await this.removeLoadedForce(localForce);
             this.addLoadedForce(cloned, alignment, { activate: false });
             const units = cloned.units();
             if (selectedIdx >= 0 && selectedIdx < units.length) {
@@ -1558,12 +1543,23 @@ export class ForceBuilderService {
         }
     }
 
-    async promptSaveForceIfNeeded() {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+    async checkAllForcesPromptSaveForceIfNeeded(): Promise<boolean> {
+        // Check all forces loaded
+        for (const slot of this.loadedForces()) {
+            const force = slot.force;
+            const canContinue = await this.promptSaveForceIfNeeded(force);
+            if (!canContinue) {
+                return false; // User cancelled
+            }
+        }
+        return true;
+    }
+    
+    async promptSaveForceIfNeeded(force: Force): Promise<boolean> {
+        if (!force) {
             return true;
         }
-        if (currentForce.instanceId() || currentForce.units().length == 0) {
+        if (force.instanceId() || force.units().length == 0) {
             return true;
         }
         // We have a force without an instanceId, so we ask the user if they want to save it
@@ -1581,7 +1577,7 @@ export class ForceBuilderService {
         const result = await firstValueFrom(dialogRef.closed);
 
         if (result === 'yes') {
-            this.dataService.saveForce(currentForce).catch(err => {
+            this.dataService.saveForce(force).catch(err => {
                 this.logger.error('Error saving force: ' + err);
             });
         } else if (result === 'no') {
@@ -1590,7 +1586,6 @@ export class ForceBuilderService {
         }
         return true;
     }
-
 
     public async editPilotOfUnit(unit: ForceUnit, pilot?: CrewMember): Promise<void> {
         if (unit.readOnly()) return;
