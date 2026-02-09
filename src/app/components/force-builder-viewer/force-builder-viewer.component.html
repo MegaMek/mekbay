@@ -71,7 +71,7 @@
                                     <path d="M0 2l5 6 5-6z"/>
                                 </svg>
                             </button>
-                            <div class="group-name" (click)="promptChangeGroupName(group)">{{ group.name() }}</div>
+                            <div class="group-name" (click)="promptChangeGroupName(group, slotForce)">{{ group.name() }}</div>
                             <div class="group-footer">
                                 <span class="group-bv">{{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
                             </div>

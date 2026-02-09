@@ -714,11 +714,11 @@ export class ForceBuilderViewerComponent {
     promptChangeForceName(force?: Force) {
         if (force?.readOnly()) return;
         if (!force && this.forceBuilderService.readOnlyForce()) return;
-        this.forceBuilderService.promptChangeForceName();
+        this.forceBuilderService.promptChangeForceName(force);
     }
 
-    promptChangeGroupName(group: UnitGroup) {
-        if (this.forceBuilderService.readOnlyForce()) return;
+    promptChangeGroupName(group: UnitGroup, force: Force) {
+        if (force.readOnly()) return;
         this.forceBuilderService.promptChangeGroupName(group);
     }
 

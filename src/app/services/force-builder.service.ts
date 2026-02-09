@@ -1476,8 +1476,8 @@ export class ForceBuilderService {
         }
     }
 
-    async promptChangeForceName() {
-        const targetForce = this.currentForce();
+    async promptChangeForceName(force?: Force) {
+        const targetForce = force ?? this.currentForce();
         if (!targetForce) {
             return;
         }
