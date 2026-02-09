@@ -267,8 +267,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
-    padding: 4px 0;
+    gap: 4px;
     cursor: pointer;
     opacity: 0.5;
     transition: opacity 0.15s;
@@ -278,6 +277,8 @@
     }
 
     svg {
+        width: 14px;
+        height: 14px;
         transition: transform 0.2s;
 
         &.collapsed {
@@ -286,7 +287,7 @@
     }
 
     .mini-collapsed-count {
-        font-size: 0.6em;
+        font-size: 0.9em;
         color: var(--text-color-secondary);
         line-height: 1;
     }
