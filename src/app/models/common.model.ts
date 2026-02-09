@@ -31,9 +31,18 @@
  * affiliated with Microsoft.
  */
 
+export const REMOTE_HOST = 'https://db.mekbay.com';
+
 export enum GameSystem {
     CLASSIC = 'cbt',
     ALPHA_STRIKE = 'as'
+}
+
+export enum Rulebook {
+    ASCE = "Alpha Strike: Commander's Edition",
+    ASC = "Alpha Strike: Companion",
+    ASC_ERR16 = "Alpha Strike Companion Errata v1.6 (2022)",
+    CO = "BattleTech: Campaign Operations"
 }
 
 export type TechBase = 'Inner Sphere' | 'Clan' | 'Mixed';
@@ -47,44 +56,6 @@ export enum ECMMode {
     ECCM_GHOST = 'eccm-ghost',
     OFF = 'off'
 }
-
-/*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- *
- * MekBay is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License (GPL),
- * version 3 or (at your option) any later version,
- * as published by the Free Software Foundation.
- *
- * MekBay is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * A copy of the GPL should have been included with this project;
- * if not, see <https://www.gnu.org/licenses/>.
- *
- * NOTICE: The MegaMek organization is a non-profit group of volunteers
- * creating free software for the BattleTech community.
- *
- * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
- * of The Topps Company, Inc. All Rights Reserved.
- *
- * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
- * InMediaRes Productions, LLC.
- *
- * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
- * Microsoft's "Game Content Usage Rules"
- * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
- * affiliated with Microsoft.
- */
-
-/*
- * Author: Drake
- */            
-export const REMOTE_HOST = 'https://db.mekbay.com';
 
 // BT heatscale colors configuration
 export const heatLevels = [
@@ -119,18 +90,18 @@ export const heatLevels = [
     { min: 28, max: 28, class: 'heat28', color: '#FF2200', nightColor: '#F01300' },
     { min: 29, max: 29, class: 'heat29', color: '#FF1100', nightColor: '#F80A00' },
     { min: 30, max: Infinity, class: 'heat30', color: '#FF0000', nightColor: '#FF0000' }
-  ];
+];
 
 export const uidTranslations: { [key: string]: string } = {
-        'Engine': 'engine_hit_',
-        'Gyro': 'gyro_hit_',
-        'Sensors': 'sensor_hit_',
-        'Life Support': 'life_support_hit_',
-        'Avionics': 'avionics_hit_',
-        'Landing Gear': 'landing_gear_hit_',
-        'Cockpit': 'cockpit_hit_',
-    };
-    
+    'Engine': 'engine_hit_',
+    'Gyro': 'gyro_hit_',
+    'Sensors': 'sensor_hit_',
+    'Life Support': 'life_support_hit_',
+    'Avionics': 'avionics_hit_',
+    'Landing Gear': 'landing_gear_hit_',
+    'Cockpit': 'cockpit_hit_',
+};
+
 
 export const linkedLocs: { [key: string]: string[] } = {
     'RT': ['RA'],
