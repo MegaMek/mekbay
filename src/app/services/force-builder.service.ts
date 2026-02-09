@@ -1440,18 +1440,24 @@ export class ForceBuilderService {
                         newForce = new CBTForce('New Force', this.dataService, this.unitInitializer, this.injector);
                     }
                     await this.addForce(newForce);
-                    const group = this.addGroup();
+                    const group = newForce.addGroup();
                     for (const unit of pack.units) {
                         if (!unit?.unit) continue;
-                        this.addUnit(unit.unit, undefined, undefined, group);
+                        newForce.addUnit(unit.unit, group);
                     }
+                    this.selectedUnit.set(newForce.units()[0] ?? null);
                 } else {
-                    await this.createNewForce();
-                    const group = this.addGroup();
+                    const newForce = await this.createNewForce();
+                    if (!newForce) {
+                        this.toastService.showToast('Failed to create new force.', 'error');
+                        return;
+                    }
+                    const group = newForce.addGroup();
                     for (const unit of pack.units) {
                         if (!unit?.unit) continue;
-                        this.addUnit(unit.unit, undefined, undefined, group);
+                        newForce.addUnit(unit.unit, group);
                     }
+                    this.selectedUnit.set(newForce.units()[0] ?? null);
                 }
             }
         }
