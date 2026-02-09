@@ -53,9 +53,10 @@ export class LanceTypeIdentifierUtil {
         definition: FormationTypeDefinition,
         gameSystem: GameSystem
     ): ((units: ForceUnit[]) => boolean) | undefined {
-        return gameSystem === GameSystem.ALPHA_STRIKE
+        const specific = gameSystem === GameSystem.ALPHA_STRIKE
             ? definition.validatorAS
             : definition.validatorCBT;
+        return specific ?? definition.validator;
     }
 
     private static validateDefinition(
@@ -114,8 +115,7 @@ export class LanceTypeIdentifierUtil {
         if (!def) return null;
         // If a game system is specified, only return if the definition has a validator for it
         if (gameSystem !== undefined) {
-            const validator = this.getValidator(def, gameSystem);
-            if (!validator) return null;
+            if (!this.getValidator(def, gameSystem)) return null;
         }
         return def;
     }
