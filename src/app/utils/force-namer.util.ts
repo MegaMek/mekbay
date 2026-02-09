@@ -93,6 +93,27 @@ function pickUnique(arr: readonly string[], existing: string): string {
     return pick(arr);
 }
 
+/**
+ * Clean a faction name for use in generated force names.
+ *  - If name contains parentheses and either "Free Worlds" or "Clan" inside
+ *    the parens, keep only the text inside the parentheses.
+ *  - Otherwise remove parenthesized text entirely.
+ *  - Strip trailing " General".
+ */
+function cleanFactionNameForGeneration(raw: string): string {
+    let name = raw;
+    const parenMatch = name.match(/\(([^)]+)\)/);
+    if (parenMatch) {
+        const inside = parenMatch[1];
+        if (name.includes('Free Worlds') || inside.includes('Clan')) {
+            name = inside;
+        } else {
+            name = name.replace(/\s*\([^)]*\)/, '').trim();
+        }
+    }
+    return name.replace(/ General$/i, '').trim();
+}
+
 /** Generate a random ordinal string (1st-30th). */
 function randomOrdinal(): string {
     const n = Math.floor(Math.random() * 30) + 1;
@@ -349,9 +370,10 @@ export class ForceNamerUtil {
         if (!faction || faction.id === FACTION_MERCENARY) {
             return generateMercenaryName();
         }
+        const name = cleanFactionNameForGeneration(faction.name);
         if (CORPORATE_FACTIONS.has(faction.name)) {
-            return generateCorporateName(faction.name);
+            return generateCorporateName(name);
         }
-        return generateFactionMilitaryName(faction.name);
+        return generateFactionMilitaryName(name);
     }
 }
