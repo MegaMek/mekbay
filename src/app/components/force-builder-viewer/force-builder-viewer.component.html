@@ -14,7 +14,6 @@
         @let showAlignment = showAlignmentStyling() && (isReadOnly || slot.alignment === 'enemy');
         <div class="force-slot" [class.friendly]="showAlignment && slot.alignment === 'friendly'"
             [class.enemy]="showAlignment && slot.alignment === 'enemy'" [class.active-force]="isActive" [class.mini-mode]="miniMode()" [class.read-only]="isReadOnly"
-            (click)="setActiveForce(slotForce)"
             cdkDrag [cdkDragDisabled]="forceDragDisabled()"
             (cdkDragStarted)="onForceDragStart()"
             (cdkDragMoved)="onUnitDragMoved($event)"
@@ -126,14 +125,15 @@
                     @if (!isReadOnly && !isUnitDragging() && !slotForce.hasMaxGroups() && !hasEmptyGroups()) {
                     <button class="bt-button btn-add-group" (click)="forceBuilderService.addGroup()">+ Add Group</button>
                     }
-                    <div #newGroupDropzone 
-                    id="new-group-dropzone"
+                }
+                @if (!compactMode() && !miniMode() && !isReadOnly && !isGroupDragging()) {
+                    <div
+                    id="new-group-dropzone-{{ slotForce.instanceId() || slotForce.name }}"
                     class="group-container new-group-dropzone" 
                     cdkDropList 
                     [cdkDropListConnectedTo]="connectedDropLists()" 
                     [cdkDropListData]="[]"
                     [class.visible]="isUnitDragging() && !hasEmptyGroups() && !slotForce.hasMaxGroups()"
-                    [cdkDropListDisabled]="isReadOnly"
                     [cdkDropListAutoScrollDisabled]="true"
                     (cdkDropListDropped)="dropForNewGroup($event)">
                     <div class="group-name">New Group</div>

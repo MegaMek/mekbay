@@ -114,10 +114,10 @@ export class GameService {
             if (!canUpdate) {
                 return; // Don't update URL until initial state is read by all consumers
             }
-            // Skip URL update if a force is loaded - ForceBuilderService handles all URL params
-            // including `gs` when a force exists, avoiding race conditions between the two services
-            const hasForce = this.forceBuilderService.hasForce();
-            if (hasForce) {
+            // Skip URL update if forces are loaded - ForceBuilderService handles all URL params
+            // including `gs` when forces exist, avoiding race conditions between the two services
+            const hasForces = this.forceBuilderService.hasForces();
+            if (hasForces) {
                 return;
             }
             // Use centralized URL state service

@@ -161,7 +161,7 @@ export class App {
         });
         effect(() => {
             const unitSearchContainer = this.unitSearchContainer();
-            const hasUnits = this.hasUnits();
+            const hasForces = this.hasForces();
             const expandedView = this.unitSearchFiltersService.expandedView();
             
             if (unitSearchContainer) {
@@ -175,7 +175,7 @@ export class App {
                 let targetOutlet: OutletName;
                 if (expandedView) {
                     targetOutlet = 'extended';
-                } else if (hasUnits) {
+                } else if (hasForces) {
                     targetOutlet = 'forceBuilder';
                 } else {
                     targetOutlet = 'main';
@@ -236,7 +236,7 @@ export class App {
                     }
                 } else {
                     afterNextRender(() => {
-                        // Don't focus if loading a force
+                        // Don't focus if loading forces
                         if (this.urlStateService.hasInitialParam('instance') || this.urlStateService.hasInitialParam('units')) return;
                         this.unitSearchComponentRef()?.focusInput();
                     }, { injector: this.injector });
@@ -256,7 +256,7 @@ export class App {
         });
     }
 
-    hasUnits = this.forceBuilderService.hasUnits;
+    hasForces = this.forceBuilderService.hasForces;
 
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
 

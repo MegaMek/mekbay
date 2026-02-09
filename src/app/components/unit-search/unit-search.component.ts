@@ -1211,8 +1211,8 @@ export class UnitSearchComponent {
         this.favoritesCompRef = componentRef;
 
         // Get favorites - filter by game system only if a force is loaded
-        const hasForce = this.forceBuilderService.hasForce();
-        const favorites = hasForce
+        const hasForces = this.forceBuilderService.hasForces();
+        const favorites = hasForces
             ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
             : this.savedSearchesService.getAllSearches();
         componentRef.setInput('favorites', favorites);
@@ -1348,8 +1348,8 @@ export class UnitSearchComponent {
         // Update favorites data in-place without closing overlay
         if (this.favoritesCompRef && this.overlayManager.has('favorites')) {
             // Get favorites - filter by game system only if a force is loaded
-            const hasForce = this.forceBuilderService.hasForce();
-            const favorites = hasForce
+            const hasForces = this.forceBuilderService.hasForces();
+            const favorites = hasForces
                 ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
                 : this.savedSearchesService.getAllSearches();
             this.favoritesCompRef.setInput('favorites', favorites);

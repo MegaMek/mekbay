@@ -90,9 +90,15 @@ export class ForceBuilderService {
     private injector = inject(Injector);
     private urlStateService = inject(UrlStateService);
 
-    public currentForce = signal<Force | null>(null);
     public selectedUnit = signal<ForceUnit | null>(null, { equal: () => false });
     public loadedForces = signal<ForceSlot[]>([]);
+
+    /** Derived from selectedUnit */
+    public currentForce = computed<Force | null>(() => {
+        const unit = this.selectedUnit();
+        if (!unit) return null;
+        return this.loadedForces().find(s => s.force.units().some(u => u.id === unit.id))?.force ?? null;
+    });
     private urlStateInitialized = signal(false);
     private conflictDialogRef: any;
 
@@ -156,7 +162,7 @@ export class ForceBuilderService {
     /** Current force's units as a non-nullable array (empty when no force). */
     forceUnitsOrEmpty = computed<ForceUnit[]>(() => this.currentForce()?.units() ?? []);
     /** True when a force is loaded (non-null). */
-    hasForce = computed<boolean>(() => this.currentForce() !== null);
+    hasForces = computed<boolean>(() => this.loadedForces().length > 0);
     /** True when the current force has one or more units. */
     hasUnits = computed<boolean>(() => this.forceUnitsOrEmpty().length > 0);
     /** Current force's name, or empty string. */
@@ -301,10 +307,11 @@ export class ForceBuilderService {
         this.loadedForces.update(slots => slots.map(s => s === slot ? newSlot : s));
 
         if (wasActive) {
-            this.currentForce.set(cloned);
             const units = cloned.units();
             if (selectedIdx >= 0 && selectedIdx < units.length) {
                 this.selectUnit(units[selectedIdx]);
+            } else {
+                this.selectUnit(units[0] ?? null);
             }
         }
 
@@ -327,13 +334,23 @@ export class ForceBuilderService {
 
     /**
      * Adds a force to the loaded forces list with the given alignment.
-     * If no active force is set, this force becomes the active one.
+     * By default, selects the first unit of the added force and switches
+     * the alignment filter if necessary so the new force is visible.
+     * Pass `activate: false` to just add the slot without switching selection/filter.
      */
-    addLoadedForce(force: Force, alignment: ForceAlignment = 'friendly'): void {
+    addLoadedForce(force: Force, alignment: ForceAlignment = 'friendly', { activate = true }: { activate?: boolean } = {}): void {
         const slot = this.setupForceSlot(force, alignment);
         this.loadedForces.update(slots => [...slots, slot]);
-        if (!this.currentForce()) {
-            this.currentForce.set(force);
+
+        if (activate) {
+            // Ensure the new force is visible under the current filter
+            const filter = this.alignmentFilter();
+            if (filter !== 'all' && filter !== alignment) {
+                this.alignmentFilter.set(alignment);
+            }
+
+            // Activate the new force by selecting its first unit
+            this.selectUnit(force.units()[0] ?? null);
         }
     }
 
@@ -347,17 +364,12 @@ export class ForceBuilderService {
         // Determine switch targets BEFORE teardown (which destroys units)
         const selectedUnit = this.selectedUnit();
         const selectionWasInForce = selectedUnit && force.units().some(u => u.id === selectedUnit.id);
-        const wasActiveForce = this.currentForce() === force;
         const remaining = this.loadedForces().filter(s => s !== slot);
-        const nextForce = remaining.length > 0 ? remaining[0].force : null;
-        const nextUnit = nextForce ? nextForce.units()[0] ?? null : null;
+        const nextUnit = remaining.length > 0 ? remaining[0].force.units()[0] ?? null : null;
 
-        // Switch active force and selection before teardown
-        if (wasActiveForce) {
-            this.currentForce.set(nextForce);
-        }
+        // Switch selection before teardown
         if (selectionWasInForce) {
-            this.selectedUnit.set(wasActiveForce ? nextUnit : null);
+            this.selectedUnit.set(nextUnit);
         }
 
         // Flush any pending debounced save while the subscription is still alive
@@ -397,13 +409,6 @@ export class ForceBuilderService {
         if (this.loadedForces().length === 0) {
             this.clearForceUrlParams();
         }
-    }
-
-    /**
-     * Sets which loaded force is the "active" one (for adding units, editing, etc.).
-     */
-    setActiveForce(force: Force | null): void {
-        this.currentForce.set(force);
     }
 
     /**
@@ -468,10 +473,8 @@ export class ForceBuilderService {
             this.teardownForceSlot(slot);
         }
         this.loadedForces.set([]);
-        this.currentForce.set(null);
         if (newForce) {
-            this.addLoadedForce(newForce);
-            this.currentForce.set(newForce);
+            this.addLoadedForce(newForce, 'friendly', { activate: false });
         } else {
             this.clearForceUrlParams();
         }
@@ -527,8 +530,6 @@ export class ForceBuilderService {
         this.urlStateInitialized.set(false);
         try {
             this.addLoadedForce(force, alignment);
-            this.setActiveForce(force);
-            this.selectUnit(force.units()[0] || null);
         } finally {
             this.urlStateInitialized.set(true);
         }
@@ -658,9 +659,10 @@ export class ForceBuilderService {
 
     /**
      * Sets the provided unit as the currently selected one.
-     * @param unit The unit to select.
+     * currentForce is derived automatically from the selected unit.
+     * @param unit The unit to select, or null to deselect.
      */
-    selectUnit(unit: ForceUnit) {
+    selectUnit(unit: ForceUnit | null) {
         this.selectedUnit.set(unit);
     }
 
@@ -1245,11 +1247,12 @@ export class ForceBuilderService {
 
             // Unload old, load clone
             this.removeLoadedForce(localForce);
-            this.addLoadedForce(cloned, alignment);
-            this.setActiveForce(cloned);
+            this.addLoadedForce(cloned, alignment, { activate: false });
             const units = cloned.units();
             if (selectedIdx >= 0 && selectedIdx < units.length) {
                 this.selectUnit(units[selectedIdx]);
+            } else {
+                this.selectUnit(units[0] ?? null);
             }
             await this.dataService.saveForce(cloned, true);
             this.toastService.showToast('Local version has been cloned', 'success');
@@ -1323,8 +1326,8 @@ export class ForceBuilderService {
                         }
                         this.selectUnit(force.units()[0]);
                     } else {
-                        // Additional instances: add alongside existing forces
-                        this.addLoadedForce(force, alignment);
+                        // Additional instances: add alongside existing forces (don't switch selection)
+                        this.addLoadedForce(force, alignment, { activate: false });
                     }
                     loadedForces.push({ force, alignment });
                     loadedAnyInstance = true;
@@ -1375,10 +1378,10 @@ export class ForceBuilderService {
                     // No saved forces loaded — unsaved force is the primary
                     this.setForce(newForce);
                 } else {
-                    // Saved forces already loaded — add unsaved alongside
-                    this.addLoadedForce(newForce);
+                    // Saved forces already loaded — add unsaved alongside (don't switch selection)
+                    this.addLoadedForce(newForce, 'friendly', { activate: false });
+                    this.selectUnit(newForce.units()[0]);
                 }
-                this.selectUnit(newForce.units()[0]);
             }
         }
 

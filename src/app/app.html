@@ -1,5 +1,5 @@
 <main class="app-container" [class.menu-open]="this.layoutService.isMenuOpen()">
-    @if (this.hasUnits()) {
+    @if (this.hasForces()) {
     <sidebar #sidebar [unitSearchPortal]="unitSearchPortalForceBuilder()"
         [unitSearchComponent]="unitSearchComponentRef()"></sidebar>
     }
@@ -8,7 +8,7 @@
     </div>
     <div class="main-content">
 
-        @if (this.hasUnits()) {
+        @if (this.hasForces()) {
         <div class="content-area">
             @if (gameService.isAlphaStrike()) {
             <alpha-strike-viewer></alpha-strike-viewer>

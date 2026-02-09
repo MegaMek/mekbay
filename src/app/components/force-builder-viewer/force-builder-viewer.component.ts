@@ -65,7 +65,7 @@ export class ForceBuilderViewerComponent {
     private dialogsService = inject(DialogsService);
     private injector = inject(Injector);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
-    private newGroupDropzone = viewChild<ElementRef<HTMLElement>>('newGroupDropzone');
+
     forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
     private forceSlotHeaders = viewChildren<ElementRef<HTMLElement>>('forceSlotHeader');
 
@@ -446,10 +446,12 @@ export class ForceBuilderViewerComponent {
 
         if (fromForce === toForce) {
             // Same force: reorder within or between groups
+            let movedUnit: ForceUnit | undefined;
             if (fromGroup === toGroup) {
                 const units = [...fromGroup.units()];
                 moveItemInArray(units, event.previousIndex, event.currentIndex);
                 fromGroup.units.set(units);
+                movedUnit = units[event.currentIndex];
             } else {
                 const fromUnits = [...fromGroup.units()];
                 const toUnits = [...toGroup.units()];
@@ -461,11 +463,14 @@ export class ForceBuilderViewerComponent {
                 toGroup.units.set(toUnits);
                 this.forceBuilderService.generateGroupNameIfNeeded(fromGroup);
                 this.forceBuilderService.generateGroupNameIfNeeded(toGroup);
+                movedUnit = moved;
             }
             fromForce.removeEmptyGroups();
             if (fromForce.instanceId()) {
                 fromForce.emitChanged();
             }
+            // Re-trigger selection so downstream views (e.g. alpha-strike-viewer) refocus
+            if (movedUnit) this.forceBuilderService.selectUnit(movedUnit);
         } else {
             // Cross-force move: remove from source force, add to target force
             if (fromForce.readOnly()) return; // can't remove from read-only
@@ -523,9 +528,12 @@ export class ForceBuilderViewerComponent {
             toGroup.units.set(toUnits);
             toForce.deduplicateIds();
             fromForce.removeEmptyGroups();
+
+            // Select the inserted unit so currentForce tracks the target force
+            this.forceBuilderService.selectUnit(unitToInsert);
+
             if (wouldEmptyForce) {
                 if (toForce.instanceId()) toForce.emitChanged();
-                this.forceBuilderService.setActiveForce(toForce);
                 this.forceBuilderService.deleteAndRemoveForce(fromForce);
             } else {
                 if (fromForce.instanceId()) fromForce.emitChanged();
@@ -553,55 +561,113 @@ export class ForceBuilderViewerComponent {
 
     connectedDropLists = computed(() => {
         const ids: string[] = [];
+        const collapsed = this.collapsedGroups();
+        const showDropzones = !this.compactMode() && !this.miniMode() && !this.isGroupDragging();
         for (const slot of this.forceBuilderService.loadedForces()) {
             if (slot.force.readOnly()) continue; // exclude read-only forces from drop targets
             for (const g of slot.force.groups()) {
+                if (collapsed.has(g.id)) continue; // collapsed groups have no cdkDropList in DOM
                 ids.push(`group-${g.id}`);
             }
-        }
-        if (this.newGroupDropzone()?.nativeElement) {
-            ids.push('new-group-dropzone');
+            if (showDropzones) {
+                ids.push(`new-group-dropzone-${slot.force.instanceId() || slot.force.name}`);
+            }
         }
         return ids;
     });
 
-    dropForNewGroup(event: CdkDragDrop<any, any, any>) {
-        const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce || currentForce.readOnly()) return;
+    async dropForNewGroup(event: CdkDragDrop<any, any, any>) {
+        // Determine target force from the per-force dropzone container ID
+        const containerId = event.container.id;
+        const prefix = 'new-group-dropzone-';
+        if (!containerId.startsWith(prefix)) return;
+        const forceKey = containerId.substring(prefix.length);
+        const targetSlot = this.forceBuilderService.loadedForces().find(s =>
+            (s.force.instanceId() || s.force.name) === forceKey
+        );
+        if (!targetSlot || targetSlot.force.readOnly()) return;
+        const targetForce = targetSlot.force;
 
-        // Create the group first (force.addGroup already updates force.groups())
-        const newGroup = currentForce.addGroup('New Group');
-        if (!newGroup) return;
-
+        // Find source group across all loaded forces
         const prevId = event.previousContainer?.id;
-        if (!prevId || !prevId.startsWith('group-')) {
-            // previous container isn't a group (nothing to move)
-            return;
+        if (!prevId || !prevId.startsWith('group-')) return;
+        const sourceGroupId = prevId.substring('group-'.length);
+        const sourceResult = this.findGroupAndForce(sourceGroupId);
+        if (!sourceResult) return;
+        const { force: sourceForce, group: sourceGroup } = sourceResult;
+
+        const crossForce = sourceForce !== targetForce;
+        const crossSystem = crossForce && sourceForce.gameSystem !== targetForce.gameSystem;
+
+        // Cross-game-system confirmation
+        if (crossSystem) {
+            const fromLabel = sourceForce.gameSystem === 'as' ? 'Alpha Strike' : 'Classic BattleTech';
+            const toLabel = targetForce.gameSystem === 'as' ? 'Alpha Strike' : 'Classic BattleTech';
+            const confirmed = await this.dialogsService.requestConfirmation(
+                `The unit will be converted from ${fromLabel} to ${toLabel}. Damage state and game-specific data will not be carried over. Continue?`,
+                'Game System Mismatch',
+                'danger'
+            );
+            if (!confirmed) return;
         }
 
-        const sourceGroupId = prevId.substring('group-'.length);
-        const sourceGroup = currentForce.groups().find(g => g.id === sourceGroupId);
-        if (!sourceGroup) return;
+        // Check if this move would empty the source force
+        const wouldEmptyForce = crossForce && sourceForce.units().length === 1;
+        if (wouldEmptyForce) {
+            const answer = await this.dialogsService.choose(
+                'Remove Empty Force',
+                `Moving this unit will leave "${sourceForce.name}" empty. The empty force will be removed. Continue?`,
+                [
+                    { label: 'CONFIRM', value: 'confirm' },
+                    { label: 'CANCEL', value: 'cancel' }
+                ],
+                'cancel'
+            );
+            if (answer === 'cancel') return;
+        }
 
-        // Move the item from source to the new group
+        // Create a new group on the target force
+        const newGroup = targetForce.addGroup('New Group');
+        if (!newGroup) return;
+
+        // Move the unit from source
         const sourceUnits = [...sourceGroup.units()];
         const [moved] = sourceUnits.splice(event.previousIndex, 1);
         if (!moved) return;
 
-        const targetUnits = [...newGroup.units(), moved]; // append to end
+        // Convert unit if different game systems
+        let unitToInsert: ForceUnit;
+        if (crossSystem) {
+            const converted = this.forceBuilderService.convertUnitForForce(moved, sourceForce, targetForce);
+            if (!converted) {
+                this.toastService.showToast(`Could not convert unit — not found in the database.`, 'error');
+                targetForce.removeEmptyGroups();
+                return;
+            }
+            moved.destroy();
+            unitToInsert = converted;
+        } else {
+            unitToInsert = moved;
+        }
+
+        const targetUnits = [...newGroup.units(), unitToInsert];
         sourceGroup.units.set(sourceUnits);
         newGroup.units.set(targetUnits);
         this.forceBuilderService.generateGroupNameIfNeeded(sourceGroup);
         this.forceBuilderService.generateGroupNameIfNeeded(newGroup);
-        currentForce.removeEmptyGroups();
+        sourceForce.removeEmptyGroups();
+        if (crossForce) targetForce.deduplicateIds();
 
-        // Only emit change (trigger save) if force already has an instanceId
-        if (currentForce.instanceId()) {
-            currentForce.emitChanged();
+        // Select the moved unit so currentForce tracks the target force
+        this.forceBuilderService.selectUnit(unitToInsert);
+
+        if (wouldEmptyForce) {
+            if (targetForce.instanceId()) targetForce.emitChanged();
+            this.forceBuilderService.deleteAndRemoveForce(sourceForce);
+        } else {
+            if (sourceForce.instanceId()) sourceForce.emitChanged();
+            if (crossForce && targetForce.instanceId()) targetForce.emitChanged();
         }
-
-        // Select the moved unit
-        this.forceBuilderService.selectUnit(moved);
     }
 
     private scrollToUnit(id: string) {
@@ -646,10 +712,6 @@ export class ForceBuilderViewerComponent {
     promptChangeGroupName(group: UnitGroup) {
         if (this.forceBuilderService.readOnlyForce()) return;
         this.forceBuilderService.promptChangeGroupName(group);
-    }
-
-    setActiveForce(force: Force) {
-        this.forceBuilderService.setActiveForce(force);
     }
 
     shareForce() {
@@ -699,6 +761,9 @@ export class ForceBuilderViewerComponent {
             moveItemInArray(groups, event.previousIndex, event.currentIndex);
             fromForce.groups.set(groups);
             if (fromForce.instanceId()) fromForce.emitChanged();
+            // Re-trigger selection so downstream views refocus
+            const selected = this.forceBuilderService.selectedUnit();
+            if (selected) this.forceBuilderService.selectUnit(selected);
         } else {
             // Move group between forces
             if (fromForce.readOnly()) return;
@@ -760,9 +825,14 @@ export class ForceBuilderViewerComponent {
             toForce.groups.set(toGroups);
             toForce.deduplicateIds();
 
+            // Select a unit in the moved group so currentForce tracks the target force
+            if (movedGroup) {
+                const firstUnit = movedGroup.units()[0];
+                if (firstUnit) this.forceBuilderService.selectUnit(firstUnit);
+            }
+
             if (wouldEmptyForce) {
                 if (toForce.instanceId()) toForce.emitChanged();
-                this.forceBuilderService.setActiveForce(toForce);
                 this.forceBuilderService.deleteAndRemoveForce(fromForce);
             } else {
                 if (fromForce.instanceId()) fromForce.emitChanged();
