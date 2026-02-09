@@ -146,7 +146,7 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
         }
 
         .dropdown-option {
-            padding: 10px 12px;
+            padding: 8px 12px;
             cursor: pointer;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
@@ -219,12 +219,12 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
             display: flex;
             flex-direction: row;
             align-items: center;
-            gap: 0.5em;
+            gap: 2px;
         }
 
         .era-icon {
-            width: 2em;
-            height: 2em;
+            width: 1.2em;
+            height: 1.2em;
             object-fit: contain;
             transition: opacity 0.2s ease;
         }
