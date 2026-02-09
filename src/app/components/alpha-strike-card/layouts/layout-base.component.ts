@@ -359,15 +359,20 @@ export abstract class AsLayoutBaseComponent {
 
     movementDisplay = computed<string>(() => {
         const fu = this.forceUnit();
+        const isBM = this.asStats().TP === 'BM';
         if (!fu) {
             return Object.entries(this.asStats().MVm)
+                .filter(([mode]) => !isBM || (mode !== 'a' && mode !== 'g'))
                 .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
                 .map(([mode, inches]) => formatMovement(inches, mode, this.useHex()))
                 .join('/');
         }
 
         const effectiveMv = fu.effectiveMovement();
-        const entries = this.getMovementEntries(effectiveMv);
+        let entries = this.getMovementEntries(effectiveMv);
+        if (isBM) {
+            entries = entries.filter(([mode]) => mode !== 'a' && mode !== 'g');
+        }
         if (entries.length === 0) {
             return '';
         };

@@ -508,9 +508,11 @@ export class ASForceUnit extends ForceUnit {
         const entries = Object.entries(mvm);
         if (entries.length === 0) return {};
 
-        // Single movement: if only "j", create a ground entry as well "" with same value
-        if (entries.length === 1 && entries[0][0] === 'j') {
-            entries.unshift(['', entries[0][1]]);
+        // Normalize: ensure ground movement ('') exists when only jump is present
+        if (!mvm[''] && mvm['j'] !== undefined) {
+            if (this.unit.as.TP === 'BM' || (entries.length === 1 && entries[0][0] === 'j')) {
+                entries.unshift(['', mvm['j']]);
+            }
         }
 
         // TSM (Triple Strength Myomer): At heat 1+, gain 2" ground Move.
@@ -669,11 +671,10 @@ export class ASForceUnit extends ForceUnit {
         const entries = Object.entries(mvm);
         if (entries.length === 0) return {};
 
-        if (entries.length === 1) {
-            // Single movement, if is "j", we create a ground entry as well "" with same value
-            const [mode, inches] = entries[0];
-            if (mode === 'j') {
-                entries.unshift(['', inches]);
+        // Normalize: ensure ground movement ('') exists when only jump is present
+        if (!mvm[''] && mvm['j'] !== undefined) {
+            if (this.unit.as.TP === 'BM' || (entries.length === 1 && entries[0][0] === 'j')) {
+                entries.unshift(['', mvm['j']]);
             }
         }
 

@@ -130,7 +130,9 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     });
 
     private formatTmm(tmm: { [mode: string]: number }): string {
-        const entries = Object.entries(tmm);
+        const isBM = this.asStats().TP === 'BM';
+        const entries = Object.entries(tmm)
+            .filter(([mode]) => !isBM || (mode !== 'a' && mode !== 'g'));
         if (entries.length === 0) return '';
         return entries
             .map(([mode, value]) => `${value}${mode}`)
