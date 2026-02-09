@@ -537,13 +537,10 @@ export class ASForceUnit extends ForceUnit {
             } else {
                 reducedInches = this.applyMpHitsReduction(inches, mpHits);
             }
-
-            // Apply heat reduction only to ground movement (not 'j')
-            if (mode !== 'j') {
-                reducedInches = Math.max(0, reducedInches - heatReduction + tsmBonus);
-            }
-
+            
             if (mode === '') {
+                // Apply heat reduction only to ground movement
+                reducedInches = Math.max(0, reducedInches - heatReduction + tsmBonus);
                 groundValue = reducedInches;
             } else {
                 result[mode] = reducedInches;
@@ -697,8 +694,8 @@ export class ASForceUnit extends ForceUnit {
 
             const baseTmm = this.calculateBaseTMMFromInches(inches);
 
-            // Heat penalty applies to ground movement only (not 'j')
-            const heatPenalty = mode === 'j' ? 0 : heatTmmPenalty;
+            // Heat penalty applies to ground movement only
+            const heatPenalty = mode === '' ? heatTmmPenalty : 0;
 
             const effectiveTmm = Math.max(0, baseTmm - tmmPenalty - heatPenalty);
             tmmByMode[mode] = effectiveTmm;
@@ -1167,6 +1164,19 @@ export class ASForceUnit extends ForceUnit {
                 // For non-vehicles, just apply weapon hits
                 const hits = this.weaponHits();
                 effective = hits > 0 ? this.applyWeaponHitsToSpecial(special, hits) : special;
+            }
+
+            // Handle LAM special: populate g and a movement values from effectiveMovement
+            if (effective.startsWith('LAM')) {
+                const effectiveMv = this.effectiveMovement();
+                const gVal = effectiveMv['g'];
+                const aVal = effectiveMv['a'];
+                if (gVal !== undefined || aVal !== undefined) {
+                    const parts: string[] = [];
+                    if (gVal !== undefined) parts.push(`${gVal}″g`);
+                    if (aVal !== undefined) parts.push(`${aVal}a`);
+                    effective = `LAM (${parts.join('/')})`;
+                }
             }
             
             const state: SpecialAbilityState = { original: special, effective };
