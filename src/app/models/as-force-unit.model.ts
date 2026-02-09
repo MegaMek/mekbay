@@ -682,10 +682,7 @@ export class ASForceUnit extends ForceUnit {
         } else {
             tmmPenalty = mpHits;
         }
-
-        // Apply heat TMM penalty: -1 at heat level 2+ (only for ground movement)
-        const heatTmmPenalty = heat >= 2 ? 1 : 0;
-
+        
         // Calculate TMM for each movement mode
         const tmmByMode: { [mode: string]: number } = {};
 
@@ -694,8 +691,8 @@ export class ASForceUnit extends ForceUnit {
 
             const baseTmm = this.calculateBaseTMMFromInches(inches);
 
-            // Heat penalty applies to ground movement only
-            const heatPenalty = mode === '' ? heatTmmPenalty : 0;
+            // Apply heat TMM penalty: -1 at heat level 2+ (only for ground movement)
+            const heatPenalty = mode === '' ? (heat >= 2 ? 1 : 0) : 0;
 
             const effectiveTmm = Math.max(0, baseTmm - tmmPenalty - heatPenalty);
             tmmByMode[mode] = effectiveTmm;
