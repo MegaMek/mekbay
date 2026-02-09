@@ -38,7 +38,7 @@ import { LayoutService } from '../../services/layout.service';
 import { Force, UnitGroup } from '../../models/force.model';
 import { ForceSlot } from '../../models/force-slot.model';
 import { ForceUnit } from '../../models/force-unit.model';
-import { DragDropModule, CdkDragDrop, moveItemInArray, CdkDragMove, transferArrayItem } from '@angular/cdk/drag-drop'
+import { DragDropModule, CdkDragDrop, CdkDragMove } from '@angular/cdk/drag-drop'
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
@@ -441,22 +441,13 @@ export class ForceBuilderViewerComponent {
             // Same force: reorder within or between groups
             let movedUnit: ForceUnit | undefined;
             if (fromGroup === toGroup) {
-                const units = [...fromGroup.units()];
-                moveItemInArray(units, event.previousIndex, event.currentIndex);
-                fromGroup.units.set(units);
-                movedUnit = units[event.currentIndex];
+                fromGroup.reorderUnit(event.previousIndex, event.currentIndex);
+                movedUnit = fromGroup.units()[event.currentIndex];
             } else {
-                const fromUnits = [...fromGroup.units()];
-                const toUnits = [...toGroup.units()];
-                const [moved] = fromUnits.splice(event.previousIndex, 1);
-                if (!moved) return;
-                const insertIndex = Math.min(Math.max(0, event.currentIndex), toUnits.length);
-                toUnits.splice(insertIndex, 0, moved);
-                fromGroup.units.set(fromUnits);
-                toGroup.units.set(toUnits);
+                movedUnit = fromGroup.moveUnitTo(event.previousIndex, toGroup, event.currentIndex) ?? undefined;
+                if (!movedUnit) return;
                 this.forceBuilderService.generateGroupNameIfNeeded(fromGroup);
                 this.forceBuilderService.generateGroupNameIfNeeded(toGroup);
-                movedUnit = moved;
             }
             fromForce.removeEmptyGroups();
             if (fromForce.instanceId()) {
@@ -496,8 +487,7 @@ export class ForceBuilderViewerComponent {
                 if (answer === 'cancel') return;
             }
 
-            const fromUnits = [...fromGroup.units()];
-            const [moved] = fromUnits.splice(event.previousIndex, 1);
+            const moved = fromGroup.removeUnitAt(event.previousIndex);
             if (!moved) return;
 
             // Convert unit if different game systems
@@ -512,14 +502,9 @@ export class ForceBuilderViewerComponent {
                 unitToInsert = converted;
             } else {
                 unitToInsert = moved;
-                unitToInsert.force = toForce; // update parent reference
             }
 
-            const toUnits = [...toGroup.units()];
-            const insertIndex = Math.min(Math.max(0, event.currentIndex), toUnits.length);
-            toUnits.splice(insertIndex, 0, unitToInsert);
-            fromGroup.units.set(fromUnits);
-            toGroup.units.set(toUnits);
+            toGroup.insertUnit(unitToInsert, event.currentIndex);
             toForce.deduplicateIds();
             fromForce.removeEmptyGroups();
 
@@ -625,8 +610,7 @@ export class ForceBuilderViewerComponent {
         if (!newGroup) return;
 
         // Move the unit from source
-        const sourceUnits = [...sourceGroup.units()];
-        const [moved] = sourceUnits.splice(event.previousIndex, 1);
+        const moved = sourceGroup.removeUnitAt(event.previousIndex);
         if (!moved) return;
 
         // Convert unit if different game systems
@@ -642,12 +626,9 @@ export class ForceBuilderViewerComponent {
             unitToInsert = converted;
         } else {
             unitToInsert = moved;
-            unitToInsert.force = targetForce; // update parent reference
         }
 
-        const targetUnits = [...newGroup.units(), unitToInsert];
-        sourceGroup.units.set(sourceUnits);
-        newGroup.units.set(targetUnits);
+        newGroup.insertUnit(unitToInsert);
         this.forceBuilderService.generateGroupNameIfNeeded(sourceGroup);
         this.forceBuilderService.generateGroupNameIfNeeded(newGroup);
         sourceForce.removeEmptyGroups();
@@ -790,11 +771,7 @@ export class ForceBuilderViewerComponent {
 
         if (fromForce === toForce) {
             // Reorder groups within the same force
-            if (event.previousIndex === event.currentIndex) return;
-            const groups = [...fromForce.groups()];
-            moveItemInArray(groups, event.previousIndex, event.currentIndex);
-            fromForce.groups.set(groups);
-            if (fromForce.instanceId()) fromForce.emitChanged();
+            fromForce.reorderGroup(event.previousIndex, event.currentIndex);
             // Re-trigger selection so downstream views refocus
             const selected = this.forceBuilderService.selectedUnit();
             if (selected) this.forceBuilderService.selectUnit(selected);
@@ -815,11 +792,8 @@ export class ForceBuilderViewerComponent {
                 if (!confirmed) return;
             }
 
-            const fromGroups = [...fromForce.groups()];
-            const toGroups = [...toForce.groups()];
-
             // Check if moving this group would empty the source force — confirm before mutating
-            const groupToMove = fromGroups[event.previousIndex];
+            const groupToMove = fromForce.groups()[event.previousIndex];
             const groupUnitCount = groupToMove?.units().length ?? 0;
             const wouldEmptyForce = groupUnitCount > 0 && fromForce.units().length === groupUnitCount;
             if (wouldEmptyForce) {
@@ -835,46 +809,32 @@ export class ForceBuilderViewerComponent {
                 if (answer === 'cancel') return;
             }
 
-            transferArrayItem(fromGroups, toGroups, event.previousIndex, event.currentIndex);
-            // Re-parent the moved group
-            const movedGroup = toGroups[event.currentIndex];
-            if (movedGroup) {
-                movedGroup.force = toForce; // update group's parent reference
-                if (!crossSystem) {
-                    // Same game system: update each unit's force reference
-                    for (const u of movedGroup.units()) {
-                        u.force = toForce;
+            const movedGroup = fromForce.detachGroupAt(event.previousIndex);
+            if (!movedGroup) return;
+
+            if (crossSystem) {
+                // Convert all units in the group to the target game system
+                const convertedUnits: ForceUnit[] = [];
+                for (const u of movedGroup.units()) {
+                    const converted = this.forceBuilderService.convertUnitForForce(u, fromForce, toForce);
+                    if (converted) {
+                        convertedUnits.push(converted);
+                    } else {
+                        this.toastService.showToast(`Could not convert "${u.getUnit()?.chassis}" — unit data not found.`, 'error');
                     }
+                    u.destroy();
                 }
-                if (crossSystem) {
-                    // Convert all units in the group to the target game system
-                    const convertedUnits: ForceUnit[] = [];
-                    for (const u of movedGroup.units()) {
-                        const converted = this.forceBuilderService.convertUnitForForce(u, fromForce, toForce);
-                        if (converted) {
-                            convertedUnits.push(converted);
-                        } else {
-                            this.toastService.showToast(`Could not convert "${u.getUnit()?.chassis}" — unit data not found.`, 'error');
-                        }
-                        u.destroy();
-                    }
-                    movedGroup.units.set(convertedUnits);
-                }
+                movedGroup.units.set(convertedUnits);
             }
-            fromForce.groups.set(fromGroups);
-            toForce.groups.set(toGroups);
-            toForce.deduplicateIds();
+
+            toForce.adoptGroup(movedGroup, event.currentIndex);
 
             // Re-evaluate the formation for the moved group
-            if (movedGroup) {
-                this.reEvaluateGroupFormation(movedGroup, toForce, crossSystem);
-            }
+            this.reEvaluateGroupFormation(movedGroup, toForce, crossSystem);
 
             // Select a unit in the moved group so currentForce tracks the target force
-            if (movedGroup) {
-                const firstUnit = movedGroup.units()[0];
-                if (firstUnit) this.forceBuilderService.selectUnit(firstUnit);
-            }
+            const firstUnit = movedGroup.units()[0];
+            if (firstUnit) this.forceBuilderService.selectUnit(firstUnit);
 
             if (wouldEmptyForce) {
                 if (toForce.instanceId()) toForce.emitChanged();

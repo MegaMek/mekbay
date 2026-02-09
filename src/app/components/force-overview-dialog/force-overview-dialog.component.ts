@@ -34,7 +34,7 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { DragDropModule, CdkDragDrop, CdkDragMove, moveItemInArray } from '@angular/cdk/drag-drop';
+import { DragDropModule, CdkDragDrop, CdkDragMove } from '@angular/cdk/drag-drop';
 import { Force, UnitGroup } from '../../models/force.model';
 import { ForceUnit } from '../../models/force-unit.model';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
@@ -547,21 +547,10 @@ export class ForceOverviewDialogComponent {
         }
 
         if (fromGroup === toGroup) {
-            const units = [...fromGroup.units()];
-            moveItemInArray(units, event.previousIndex, event.currentIndex);
-            fromGroup.units.set(units);
+            fromGroup.reorderUnit(event.previousIndex, event.currentIndex);
         } else {
-            const fromUnits = [...fromGroup.units()];
-            const toUnits = [...toGroup.units()];
-
-            const [moved] = fromUnits.splice(event.previousIndex, 1);
+            const moved = fromGroup.moveUnitTo(event.previousIndex, toGroup, event.currentIndex);
             if (!moved) return;
-
-            const insertIndex = Math.min(Math.max(0, event.currentIndex), toUnits.length);
-            toUnits.splice(insertIndex, 0, moved);
-
-            fromGroup.units.set(fromUnits);
-            toGroup.units.set(toUnits);
             this.forceBuilderService.generateGroupNameIfNeeded(fromGroup);
             this.forceBuilderService.generateGroupNameIfNeeded(toGroup);
         }
@@ -585,13 +574,9 @@ export class ForceOverviewDialogComponent {
         const sourceGroup = force.groups().find(g => g.id === sourceGroupId);
         if (!sourceGroup) return;
 
-        const sourceUnits = [...sourceGroup.units()];
-        const [moved] = sourceUnits.splice(event.previousIndex, 1);
+        const moved = sourceGroup.moveUnitTo(event.previousIndex, newGroup);
         if (!moved) return;
 
-        const targetUnits = [...newGroup.units(), moved];
-        sourceGroup.units.set(sourceUnits);
-        newGroup.units.set(targetUnits);
         this.forceBuilderService.generateGroupNameIfNeeded(sourceGroup);
         this.forceBuilderService.generateGroupNameIfNeeded(newGroup);
         force.removeEmptyGroups();
@@ -601,11 +586,7 @@ export class ForceOverviewDialogComponent {
     /** Handle group drag-drop for reordering within the force */
     dropGroup(event: CdkDragDrop<UnitGroup[]>): void {
         if (this.isReadOnly()) return;
-        if (event.previousIndex === event.currentIndex) return;
-        const groups = [...this.data.force.groups()];
-        moveItemInArray(groups, event.previousIndex, event.currentIndex);
-        this.data.force.groups.set(groups);
-        this.data.force.emitChanged();
+        this.data.force.reorderGroup(event.previousIndex, event.currentIndex);
     }
 
     /** Handle click on empty group to remove it */

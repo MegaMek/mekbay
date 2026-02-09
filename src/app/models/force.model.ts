@@ -91,6 +91,51 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
             this.force?.emitChanged();
         }
     }
+
+    /** Reorder a unit within this group (no-op if indices are equal or out of range). */
+    reorderUnit(fromIndex: number, toIndex: number): void {
+        if (fromIndex === toIndex) return;
+        const units = [...this.units()];
+        if (fromIndex < 0 || fromIndex >= units.length || toIndex < 0 || toIndex >= units.length) return;
+        const [moved] = units.splice(fromIndex, 1);
+        units.splice(toIndex, 0, moved);
+        this.units.set(units);
+    }
+
+    /** Remove and return the unit at the given index, or null if out of range. */
+    removeUnitAt(index: number): TUnit | null {
+        const units = [...this.units()];
+        if (index < 0 || index >= units.length) return null;
+        const [removed] = units.splice(index, 1);
+        this.units.set(units);
+        return removed;
+    }
+
+    /** Insert a pre-existing ForceUnit at the given index (appends if omitted). Updates the unit's force reference. */
+    insertUnit(unit: ForceUnit, index?: number): void {
+        unit.force = this.force;
+        const units = [...this.units()];
+        const insertAt = index !== undefined ? Math.min(Math.max(0, index), units.length) : units.length;
+        units.splice(insertAt, 0, unit as TUnit);
+        this.units.set(units);
+    }
+
+    /**
+     * Move a unit from this group to another group (may be in a different force).
+     * Returns the moved unit, or null if the index is out of range.
+     * Automatically updates the unit's force reference to match the target group's force.
+     */
+    moveUnitTo(fromIndex: number, targetGroup: UnitGroup, toIndex?: number): TUnit | null {
+        const removed = this.removeUnitAt(fromIndex);
+        if (!removed) return null;
+        targetGroup.insertUnit(removed, toIndex);
+        return removed;
+    }
+
+    /** Create and add a new unit via the owning Force's factory. */
+    addUnit(unit: Unit): ForceUnit {
+        return this.force.addUnit(unit, this as UnitGroup);
+    }
 }
 
 export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
@@ -202,6 +247,45 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         this.groups.update(groups => [...groups, newGroup]);
         if (this.instanceId()) this.emitChanged();
         return newGroup;
+    }
+
+    /** Reorder groups within this force. */
+    public reorderGroup(fromIndex: number, toIndex: number): void {
+        if (fromIndex === toIndex) return;
+        const groups = [...this.groups()];
+        if (fromIndex < 0 || fromIndex >= groups.length || toIndex < 0 || toIndex >= groups.length) return;
+        const [moved] = groups.splice(fromIndex, 1);
+        groups.splice(toIndex, 0, moved);
+        this.groups.set(groups);
+        if (this.instanceId()) this.emitChanged();
+    }
+
+    /**
+     * Detach and return the group at the given index without merging its units elsewhere.
+     * Does not emit changes: the caller is responsible for coordinating emits
+     */
+    public detachGroupAt(index: number): UnitGroup<TUnit> | null {
+        const groups = [...this.groups()];
+        if (index < 0 || index >= groups.length) return null;
+        const [removed] = groups.splice(index, 1);
+        this.groups.set(groups);
+        return removed;
+    }
+
+    /**
+     * Adopt an existing group into this force at the given index (appends if omitted).
+     * Re-parents the group and all its units to this force. Deduplicates IDs.
+     */
+    public adoptGroup(group: UnitGroup, atIndex?: number): void {
+        group.force = this;
+        for (const unit of group.units()) {
+            unit.force = this;
+        }
+        const groups = [...this.groups()];
+        const insertAt = atIndex !== undefined ? Math.min(Math.max(0, atIndex), groups.length) : groups.length;
+        groups.splice(insertAt, 0, group as UnitGroup<TUnit>);
+        this.groups.set(groups);
+        this.deduplicateIds();
     }
 
     public removeGroup(group: UnitGroup<TUnit>) {
