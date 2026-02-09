@@ -286,6 +286,12 @@ export class ForceBuilderViewerComponent {
         // Disable native scroll so it doesn't fight CDK drag
         const el = this.scrollableContent()?.nativeElement;
         if (el) el.style.overflowY = 'hidden';
+        // Force CDK to recalculate drop list positions after the new-group-dropzone
+        // becomes visible (it transitions from max-height:0 to full size).
+        // Without this, CDK uses stale rects and won't accept drops on the dropzone.
+        requestAnimationFrame(() => {
+            el?.dispatchEvent(new Event('scroll'));
+        });
     }
 
     onUnitDragMoved(event: CdkDragMove<any>) {

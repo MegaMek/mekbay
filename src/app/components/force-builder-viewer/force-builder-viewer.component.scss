@@ -60,19 +60,18 @@
     flex-direction: column;
     gap: 1em;
 
-    // Gradient divider between force slots, matching hr.divider style
-    // (we can't use hr.divider directly because it would interfere with drag-and-drop)
+    // Hard divider between force slots (stronger visual break)
     .force-slot + .force-slot {
         position: relative;
 
         &::before {
             content: '';
             position: absolute;
-            top: -0.5em;
+            top: -10px;
             left: 6px;
             right: 6px;
             height: 1px;
-            background: linear-gradient(90deg, transparent, #888, transparent);
+            background-color: var(--text-color-tertiary);
             pointer-events: none;
         }
     }
@@ -256,10 +255,40 @@
     hr {
         border: none;
         height: 1px;
-        background-color: var(--text-color-tertiary);
+        background: linear-gradient(90deg, transparent, var(--text-color-tertiary), transparent);
         margin: 6px 0;
         width: 100%;
         box-sizing: border-box;
+    }
+}
+
+.mini-collapsed-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 0;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+
+    &:hover {
+        opacity: 1;
+    }
+
+    svg {
+        transition: transform 0.2s;
+
+        &.collapsed {
+            transform: rotate(-90deg);
+        }
+    }
+
+    .mini-collapsed-count {
+        font-size: 0.6em;
+        color: var(--text-color-secondary);
+        line-height: 1;
     }
 }
 
@@ -314,7 +343,7 @@
     min-height: 75px;
 }
 
-.new-group-dropzone {
+.new-group-dropzone:not(.visible) {
     min-width: 0;
     max-height: 0;
     opacity: 0;

@@ -81,6 +81,14 @@
                             <hr />
                         }
                     }
+                    @if (groupCollapsed && miniMode()) {
+                        <div class="mini-collapsed-indicator" (click)="toggleGroupCollapsed($event, group.id)" title="{{ group.name() }} ({{ group.units().length }} units) — click to expand">
+                            <svg width="10px" height="10px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" class="collapsed">
+                                <path d="M0 2l5 6 5-6z"/>
+                            </svg>
+                            <span class="mini-collapsed-count">{{ group.units().length }}</span>
+                        </div>
+                    }
                     @if (!groupCollapsed) {
                     @let units = group.units();
                     <div class="group-units" 
