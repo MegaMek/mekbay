@@ -334,13 +334,13 @@ export class App {
             event.preventDefault();
             return 'Cloud sync is still pending. Are you sure you want to leave?';
         }
-        const currentForce = this.forceBuilderService.currentForce();
-        if (currentForce && currentForce.units().length > 0 && !currentForce.instanceId()) {
-            // We have units but we don't have an instanceId? This is not yet saved.
+        const loadedForces = this.forceBuilderService.loadedForces();
+        const hasUnsavedForce = loadedForces.some(forceSlot => forceSlot.force.units().length > 0 && !forceSlot.force.instanceId());
+        if (hasUnsavedForce) {
+            // We have forces with units and without an instanceId? This is not yet saved. Warn the user before leaving.
             event.preventDefault();
             return 'You have unsaved changes in your force. Are you sure you want to leave?';
         }
-        // No units, allow navigation without warning
         return undefined;
     };
 
