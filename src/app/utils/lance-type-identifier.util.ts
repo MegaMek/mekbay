@@ -64,6 +64,16 @@ export class LanceTypeIdentifierUtil {
     }
 
     /**
+     * Looks up a formation definition by its ID in the appropriate game system.
+     */
+    public static getDefinitionById(id: string, gameSystem: GameSystem): FormationTypeDefinition | null {
+        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+            return ASLanceTypeIdentifierUtil.getDefinitionById(id);
+        }
+        return CBTLanceTypeIdentifierUtil.getDefinitionById(id);
+    }
+
+    /**
      * Gets the best matching formation type (most specific, weighted random).
      */
     public static getBestMatch(

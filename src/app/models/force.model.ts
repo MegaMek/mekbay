@@ -43,6 +43,9 @@ import { GameSystem } from './common.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { LoggerService } from '../services/logger.service';
+import { Faction } from './factions.model';
+import { FormationTypeDefinition } from '../utils/formation-type.model';
+import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 
 /*
  * Author: Drake
@@ -57,6 +60,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     name = signal<string>('Group');
     nameLock?: boolean; // If true, the group name cannot be changed by the random generator
     color?: string;
+    formation = signal<FormationTypeDefinition | null>(null);
     units: WritableSignal<TUnit[]> = signal([]);
 
     totalBV = computed(() => {
@@ -91,6 +95,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     loading: boolean = false;
     cloud?: boolean = false; // Indicates if this force is stored in the cloud
     owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
+    faction = signal<Faction | null>(null);
     c3Networks = this._c3Networks.asReadonly(); 
     /** Emits after each debounced mutation — subscribe to react to force changes. */
     public readonly changed = new Subject<void>();
@@ -365,6 +370,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             name: g.name(),
             nameLock: g.nameLock,
             color: g.color,
+            formationId: g.formation()?.id,
             units: g.units().map(u => u.serialize())
         }));
         const result: SerializedForce = {
@@ -374,6 +380,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             type: this.gameSystem,
             name: this.name,
             nameLock: this.nameLock || false,
+            factionId: this.faction()?.id,
             groups: serializedGroups,
             c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
         };
@@ -448,6 +455,12 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             this.nameLock = sanitizedData.nameLock || false;
             this.owned.set(sanitizedData.owned !== false);
 
+            // Resolve faction from factionId
+            if (sanitizedData.factionId != null) {
+                const faction = this.dataService.getFactions()?.find(f => f.id === sanitizedData.factionId) ?? null;
+                this.faction.set(faction);
+            }
+
             const logger = this.injector.get(LoggerService);
             const parsedGroups: UnitGroup<TUnit>[] = [];
             for (const g of sanitizedData.groups) {
@@ -466,6 +479,9 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 }
                 group.nameLock = g.nameLock || false;
                 group.color = g.color || '';
+                if (g.formationId) {
+                    group.formation.set(LanceTypeIdentifierUtil.getDefinitionById(g.formationId, this.gameSystem));
+                }
                 group.units.set(groupUnits);
                 parsedGroups.push(group);
             }
@@ -495,6 +511,14 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             this.nameLock = sanitizedData.nameLock || false;
             this.timestamp = sanitizedData.timestamp ?? null;
 
+            // Resolve faction from factionId
+            if (sanitizedData.factionId != null) {
+                const faction = this.dataService.getFactions()?.find(f => f.id === sanitizedData.factionId) ?? null;
+                this.faction.set(faction);
+            } else {
+                this.faction.set(null);
+            }
+
             const incomingGroupsData = sanitizedData.groups || [];
             const currentGroups = this.groups();
             const currentGroupMap = new Map(currentGroups.map(g => [g.id, g]));
@@ -517,12 +541,18 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                     if (group.name() !== groupData.name) group.setName(groupData.name, false);
                     group.nameLock = groupData.nameLock;
                     group.color = groupData.color;
+                    group.formation.set(groupData.formationId
+                        ? LanceTypeIdentifierUtil.getDefinitionById(groupData.formationId, this.gameSystem)
+                        : null);
                 } else {
                     // Add new group
                     group = new UnitGroup<TUnit>(this, groupData.name);
                     group.id = groupData.id;
                     group.nameLock = groupData.nameLock;
                     group.color = groupData.color;
+                    if (groupData.formationId) {
+                        group.formation.set(LanceTypeIdentifierUtil.getDefinitionById(groupData.formationId, this.gameSystem));
+                    }
                 }
 
                 const groupUnits = groupData.units.map(unitData => {

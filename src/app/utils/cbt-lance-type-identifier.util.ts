@@ -883,6 +883,13 @@ export class CBTLanceTypeIdentifierUtil {
     }
 
     /**
+     * Looks up a formation definition by its ID.
+     */
+    public static getDefinitionById(id: string): FormationTypeDefinition | null {
+        return this.definitions.find(d => d.id === id) ?? null;
+    }
+
+    /**
      * Identifies all matching lance types for the given force units
      */
     public static identifyLanceTypes(units: ForceUnit[], techBase: string, factionName: string): FormationTypeDefinition[] {

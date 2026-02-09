@@ -44,6 +44,8 @@ import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-detai
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
+import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import { ForceNamerUtil } from '../../utils/force-namer.util';
 
 
 /*
@@ -732,6 +734,45 @@ export class ForceBuilderViewerComponent {
         }
     }
 
+    /**
+     * Re-evaluates the formation assignment for a group after it has been moved.
+     * If the group had no formation, does nothing.
+     * If same game system: validates the existing formation; if invalid, switches to best match.
+     * If cross-system: looks up the same formation ID in the new game system,
+     * validates it, and falls back to best match if invalid or not found.
+     */
+    private reEvaluateGroupFormation(group: UnitGroup, targetForce: Force, crossSystem: boolean) {
+        const currentFormation = group.formation();
+        if (!currentFormation && !crossSystem) return; // no formation to re-evaluate
+
+        const units = group.units();
+        if (units.length === 0) {
+            group.formation.set(null);
+            return;
+        }
+
+        const gameSystem = targetForce.gameSystem;
+        const techBase = ForceNamerUtil.getTechBase(units);
+        const factionName = targetForce.faction()?.name ?? '';
+
+        if (crossSystem && currentFormation) {
+            // Try to find the same formation ID in the new game system
+            const mapped = LanceTypeIdentifierUtil.getDefinitionById(currentFormation.id, gameSystem);
+            if (mapped && mapped.validator(units)) {
+                group.formation.set(mapped);
+                return;
+            }
+        } else if (currentFormation && currentFormation.validator(units)) {
+            // Same system, existing formation is still valid
+            return;
+        }
+
+        // Fall back to best match (may be null if nothing matches)
+        group.formation.set(
+            LanceTypeIdentifierUtil.getBestMatch(units, techBase, factionName, gameSystem)
+        );
+    }
+
     /** Connected group drop list IDs for group drag-drop (only non-readonly forces) */
     connectedGroupDropLists(): string[] {
         const ids: string[] = [];
@@ -830,6 +871,11 @@ export class ForceBuilderViewerComponent {
             fromForce.groups.set(fromGroups);
             toForce.groups.set(toGroups);
             toForce.deduplicateIds();
+
+            // Re-evaluate the formation for the moved group
+            if (movedGroup) {
+                this.reEvaluateGroupFormation(movedGroup, toForce, crossSystem);
+            }
 
             // Select a unit in the moved group so currentForce tracks the target force
             if (movedGroup) {

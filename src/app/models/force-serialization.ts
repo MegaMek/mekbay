@@ -59,6 +59,7 @@ export interface SerializedForce {
     type: GameSystem;
     name: string;
     nameLock?: boolean;
+    factionId?: number;
     bv?: number;
     pv?: number;
     owned?: boolean;
@@ -79,6 +80,7 @@ export interface SerializedGroup {
     name: string;
     nameLock?: boolean;
     color?: string;
+    formationId?: string;
     units: SerializedUnit[];
 }
 
@@ -394,6 +396,7 @@ export const CBT_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<CBTSerializedForce>(
     .string('type')
     .string('name', { default: 'Unnamed Force' })
     .boolean('nameLock', { default: false })
+    .number('factionId')
     .number('bv')
     .boolean('owned', { default: true })
     .custom('groups', (value: unknown) => {
@@ -532,6 +535,7 @@ export const AS_SERIALIZED_GROUP_SCHEMA = Sanitizer.schema<ASSerializedGroup>()
     .string('name', { default: 'Main' })
     .boolean('nameLock', { default: false })
     .string('color')
+    .string('formationId')
     .custom('units', (value: unknown) => {
         if (!Array.isArray(value)) return [];
         return Sanitizer.sanitizeArray(value, AS_SERIALIZED_UNIT_SCHEMA);
@@ -548,6 +552,7 @@ export const AS_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<ASSerializedForce>()
     .string('type')
     .string('name', { default: 'Unnamed Force' })
     .boolean('nameLock', { default: false })
+    .number('factionId')
     .number('pv')
     .boolean('owned', { default: true })
     .custom('groups', (value: unknown) => {
