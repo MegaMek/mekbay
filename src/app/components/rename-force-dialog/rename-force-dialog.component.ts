@@ -314,8 +314,7 @@ export class RenameForceDialogComponent {
 
                 // Auto-update force name when faction is changed
                 if (faction) {
-                    const units = this.data.force.units();
-                    const newName = ForceNamerUtil.generateForceNameForFaction(units, faction.name);
+                    const newName = ForceNamerUtil.generateForceNameForFaction(faction);
                     this.setInputText(newName);
                 }
             });

@@ -38,6 +38,7 @@ import { ForceUnit } from '../models/force-unit.model';
 import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
+import { FormationNamerUtil } from '../utils/formation-namer.util';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { firstValueFrom, skip, Subscription } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData, RenameForceDialogResult } from '../components/rename-force-dialog/rename-force-dialog.component';
@@ -1036,7 +1037,7 @@ export class ForceBuilderService {
         if (!currentForce) {
             return '';
         }
-        return ForceNamerUtil.generateFormationName({
+        return FormationNamerUtil.generateFormationName({
             units: group.units(),
             allUnits: currentForce.units(),
             faction: currentForce.faction(),
@@ -1061,7 +1062,7 @@ export class ForceBuilderService {
         if (!currentForce) {
             return null;
         }
-        return ForceNamerUtil.getAvailableFormations(
+        return FormationNamerUtil.getAvailableFormations(
             group.units(),
             currentForce.units(),
             currentForce.faction(),
