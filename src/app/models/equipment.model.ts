@@ -470,6 +470,8 @@ export class Equipment {
     get availability(): String { return [this.tech.availability.sl??'X', this.tech.availability.sw??'X', this.tech.availability.clan??'X', this.tech.availability.da??'X'].join('-'); }
 
     hasFlag(flag: string): boolean { return this.flags.has(flag); }
+    hasAnyFlag(flags: string[]): boolean { return flags.some(f => this.flags.has(f)); }
+    hasAllFlags(flags: string[]): boolean { return flags.every(f => this.flags.has(f)); }
     hasMode(mode: string): boolean { return this.modes.includes(mode); }
 }
 

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Rulebook } from '../models/common.model';
+import { GameSystem, Rulebook } from '../models/common.model';
 import { ForceUnit } from '../models/force-unit.model';
 
 /*
@@ -101,15 +101,7 @@ export interface FormationTypeDefinition {
     effectDescription?: string;
     /** Structured SPA distribution rules for this formation's bonus ability. */
     effectGroups?: FormationEffectGroup[];
-    /**
-     * Unified validator used when the formation check is identical for both
-     * Alpha Strike and Classic BattleTech
-     */
-    validator?: (units: ForceUnit[]) => boolean;
-    /** Alpha Strike validator: checks units using AS stats (Size, Move", specials). */
-    validatorAS?: (units: ForceUnit[]) => boolean;
-    /** Classic BattleTech validator: checks units using CBT stats (tons, walk/jump, comp). */
-    validatorCBT?: (units: ForceUnit[]) => boolean;
+    validator?: (units: ForceUnit[], gameSystem: GameSystem) => boolean;
     idealRole?: string;
     techBase?: 'Inner Sphere' | 'Clan' | 'Special';
     minUnits?: number;

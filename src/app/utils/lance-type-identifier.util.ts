@@ -49,16 +49,6 @@ export class LanceTypeIdentifierUtil {
 
     // ── Validation ───────────────────────────────────────────────────────
 
-    private static getValidator(
-        definition: FormationTypeDefinition,
-        gameSystem: GameSystem
-    ): ((units: ForceUnit[]) => boolean) | undefined {
-        const specific = gameSystem === GameSystem.ALPHA_STRIKE
-            ? definition.validatorAS
-            : definition.validatorCBT;
-        return specific ?? definition.validator;
-    }
-
     private static validateDefinition(
         definition: FormationTypeDefinition,
         units: ForceUnit[],
@@ -85,9 +75,8 @@ export class LanceTypeIdentifierUtil {
                 const allMatchIdeal = units.every(u => u.getUnit().role === definition.idealRole);
                 if (allMatchIdeal) return true;
             }
-            const validator = this.getValidator(definition, gameSystem);
-            if (!validator) return false;
-            return validator(units);
+            if (!definition.validator) return false;
+            return definition.validator(units, gameSystem);
         } catch (error) {
             console.error(`Error validating lance type ${definition.id}:`, error);
             return false;
@@ -115,7 +104,7 @@ export class LanceTypeIdentifierUtil {
         if (!def) return null;
         // If a game system is specified, only return if the definition has a validator for it
         if (gameSystem !== undefined) {
-            if (!this.getValidator(def, gameSystem)) return null;
+            if (!def.validator) return null;
         }
         return def;
     }
@@ -134,7 +123,7 @@ export class LanceTypeIdentifierUtil {
         for (const definition of FORMATION_DEFINITIONS) {
             try {
                 // Skip if no validator for this game system
-                if (!this.getValidator(definition, gameSystem)) continue;
+                if (!definition.validator) continue;
 
                 // Skip faction-exclusive definitions if faction doesn't match
                 if (definition.exclusiveFaction && !factionName.includes(definition.exclusiveFaction)) {
