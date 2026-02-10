@@ -96,7 +96,7 @@ export type ForceLoadDialogResult = ForceLoadDialogEnvelope | null;
 export class ForceLoadDialogComponent {
     private dialogRef = inject(DialogRef<ForceLoadDialogResult>);
     private dataService = inject(DataService);
-    private forceBuilderService = inject(ForceBuilderService);
+    forceBuilderService = inject(ForceBuilderService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
