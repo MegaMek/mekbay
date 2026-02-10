@@ -40,6 +40,7 @@ import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.componen
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RulesReference, GameSystem } from '../../models/common.model';
+import { ASUnitTypeCode } from '../../models/units.model';
 
 /*
  * Author: Drake
@@ -52,6 +53,8 @@ export interface EditASPilotDialogData {
     name: string;
     skill: number;
     abilities: AbilitySelection[]; // Array of ability IDs or custom abilities
+    /** The unit's AS type code (e.g. 'BM', 'CV') for filtering abilities by unitTypeFilter. */
+    unitTypeCode?: ASUnitTypeCode;
 }
 
 export interface EditASPilotResult {
@@ -137,7 +140,7 @@ export class EditASPilotDialogComponent {
     }
 
     /** Get display info for any ability selection */
-    getAbilityDisplayInfo(ability: AbilitySelection | null): { name: string; cost: number; summary: string; isCustom: boolean; rulesRef?: RulesReference[] } | null {
+    getAbilityDisplayInfo(ability: AbilitySelection | null): { name: string; cost: number; summary: string; isCustom: boolean; rulesRef?: RulesReference[]; unitTypeInvalid: boolean } | null {
         if (!ability) return null;
         
         if (this.isCustomAbility(ability)) {
@@ -145,19 +148,24 @@ export class EditASPilotDialogComponent {
                 name: ability.name,
                 cost: ability.cost,
                 summary: ability.summary,
-                isCustom: true
+                isCustom: true,
+                unitTypeInvalid: false
             };
         }
         
         const standardAbility = this.getAbilityById(ability);
         if (!standardAbility) return null;
         
+        const details = getAbilityDetails(standardAbility, GameSystem.ALPHA_STRIKE);
+        const unitTypeCode = this.data.unitTypeCode;
+        const unitTypeInvalid = !!(unitTypeCode && details.unitTypeFilter?.length && !details.unitTypeFilter.includes(unitTypeCode));
         return {
             name: standardAbility.name,
             cost: standardAbility.cost,
-            summary: getAbilityDetails(standardAbility, GameSystem.ALPHA_STRIKE).summary[0],
+            summary: details.summary[0],
             isCustom: false,
-            rulesRef: standardAbility.rulesRef
+            rulesRef: details.rulesRef,
+            unitTypeInvalid
         };
     }
 
@@ -292,6 +300,9 @@ export class EditASPilotDialogComponent {
         componentRef.setInput('abilities', this.availableAbilities());
         componentRef.setInput('disabledIds', disabledIds);
         componentRef.setInput('remainingCost', this.remainingCost());
+        if (this.data.unitTypeCode) {
+            componentRef.setInput('unitTypeCode', this.data.unitTypeCode);
+        }
 
         // Handle standard ability selection - cleanup when dialog closes
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((abilityId: string) => {

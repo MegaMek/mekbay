@@ -51,6 +51,7 @@ export interface ResolvedAbility {
     name: string;
     summary: string[];
     rulesRef: RulesReference[];
+    unitType?: string;
     cost?: number;
 }
 
@@ -129,6 +130,9 @@ export interface ResolvedEffectGroup {
                                     </div>
                                     @if (isAbilityExpanded(groupIdx, ability.name)) {
                                     <div class="ability-card-body">
+                                        @if (ability.unitType) {
+                                            <div class="ability-card-unit-type">{{ ability.unitType }}</div>
+                                        }
                                         @for (line of ability.summary; track line) {
                                             <div class="ability-card-summary">{{ line }}</div>
                                         }
@@ -294,6 +298,13 @@ export interface ResolvedEffectGroup {
             padding: 0 10px 8px;
         }
 
+        .ability-card-unit-type {
+            font-size: 0.78em;
+            color: var(--text-color-tertiary);
+            font-style: italic;
+            margin-bottom: 2px;
+        }
+
         .ability-card-name {
             font-weight: 600;
             font-size: 0.92em;
@@ -375,11 +386,13 @@ export class FormationInfoComponent {
                 for (const id of group.abilityIds) {
                     const pilot = PILOT_ABILITIES.find(a => a.id === id);
                     if (pilot) {
+                        const details = getAbilityDetails(pilot, this.gameSystem());
                         abilities.push({
                             pilotAbility: pilot,
                             name: pilot.name,
-                            summary: getAbilityDetails(pilot, this.gameSystem()).summary,
-                            rulesRef: pilot.rulesRef,
+                            summary: details.summary,
+                            rulesRef: details.rulesRef ?? [],
+                            unitType: details.unitType,
                         });
                     }
                 }

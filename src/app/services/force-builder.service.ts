@@ -1712,6 +1712,7 @@ export class ForceBuilderService {
                     name: unit.alias() || '',
                     skill: unit.pilotSkill(),
                     abilities: unit.pilotAbilities(),
+                    unitTypeCode: unit.getUnit().as?.TP,
                 }
             }
         );

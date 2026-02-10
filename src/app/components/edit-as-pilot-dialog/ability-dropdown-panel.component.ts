@@ -32,8 +32,18 @@
  */
 
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { PilotAbility, getAbilityDetails } from '../../models/pilot-abilities.model';
-import { GameSystem } from '../../models/common.model';
+import { PilotAbility, getAbilityDetails, PilotAbilityRuleDetails } from '../../models/pilot-abilities.model';
+import { GameSystem, RulesReference } from '../../models/common.model';
+import { ASUnitTypeCode } from '../../models/units.model';
+
+interface ResolvedDropdownAbility {
+    ability: PilotAbility;
+    details: PilotAbilityRuleDetails;
+    summary: string;
+    rulesRef: RulesReference[];
+    unitTypeRestricted: boolean;
+    unitTypeLabel: string | undefined;
+}
 
 @Component({
     selector: 'ability-dropdown-panel',
@@ -49,21 +59,31 @@ import { GameSystem } from '../../models/common.model';
                 <div class="ability-summary">Create a custom ability with your own name, cost, and description</div>
             </div>
             <hr class="divider"/>
-            @for (ability of abilities(); track ability.id) {
-                @let isDisabled = isAbilityDisabled(ability);
+            @for (resolved of resolvedAbilities(); track resolved.ability.id) {
+                @let isDisabled = disabledIds().includes(resolved.ability.id) || resolved.ability.cost > remainingCost();
                 <div 
                     class="dropdown-option"
                     [class.disabled]="isDisabled"
-                    [class.over-budget]="!disabledIds().includes(ability.id) && ability.cost > remainingCost()"
-                    (click)="onSelect(ability.id)">
+                    [class.over-budget]="!disabledIds().includes(resolved.ability.id) && resolved.ability.cost > remainingCost()"
+                    [class.unit-type-restricted]="resolved.unitTypeRestricted"
+                    (click)="onSelect(resolved.ability.id)">
                     <div class="ability-header">
-                        <span class="ability-name">{{ ability.name }}</span>
-                        <span class="ability-cost" [class.exceeds-budget]="ability.cost > remainingCost()">Cost: {{ ability.cost }}</span>
+                        <span class="ability-name">{{ resolved.ability.name }}</span>
+                        <span class="ability-cost" [class.exceeds-budget]="resolved.ability.cost > remainingCost()">Cost: {{ resolved.ability.cost }}</span>
                     </div>
-                    <div class="ability-summary">{{ getAbilitySummary(ability) }}</div>
+                    @if (resolved.unitTypeLabel) {
+                    <div class="unit-type-info" [class.unit-type-warning]="resolved.unitTypeRestricted">
+                        @if (resolved.unitTypeRestricted) {
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/></svg>
+                        }
+                        {{ resolved.unitTypeLabel }}
+                    </div>
+                    }
+                    <div class="ability-summary">{{ resolved.summary }}</div>
+                    @if (resolved.rulesRef.length) {
                     <div class="ability-meta">
                         <span class="ability-rules">
-                        @for (rule of ability.rulesRef; let last = $last; track $index) {
+                        @for (rule of resolved.rulesRef; let last = $last; track $index) {
                             {{ rule.book }}, p.{{ rule.page }}
                             @if (!last) {
                                 <span class="separator"> · </span>
@@ -71,6 +91,7 @@ import { GameSystem } from '../../models/common.model';
                         }
                         </span>
                     </div>
+                    }
                 </div>
             }
         </div>
@@ -109,6 +130,10 @@ import { GameSystem } from '../../models/common.model';
             opacity: 0.6;
         }
 
+        .dropdown-option.unit-type-restricted {
+            opacity: 0.45;
+        }
+
         .ability-cost.exceeds-budget {
             color: red;
             background: rgba(255, 107, 107, 0.15);
@@ -134,7 +159,7 @@ import { GameSystem } from '../../models/common.model';
         }
 
         .ability-meta {
-            margin-bottom: 4px;
+            margin-top: 4px;
         }
 
         .ability-rules {
@@ -146,6 +171,20 @@ import { GameSystem } from '../../models/common.model';
             font-size: 0.85em;
             color: var(--text-color-secondary);
             line-height: 1.3;
+        }
+
+        .unit-type-info {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 4px;
+            font-size: 0.78em;
+            color: var(--text-color-tertiary);
+            font-style: italic;
+        }
+
+        .unit-type-warning {
+            color: orange;
         }
 
         .custom-ability-option {
@@ -164,25 +203,34 @@ import { GameSystem } from '../../models/common.model';
 export class AbilityDropdownPanelComponent {
     abilities = input.required<PilotAbility[]>();
     disabledIds = input<string[]>([]);
-    remainingCost = input<number>(999); // Default high value if not set
+    remainingCost = input<number>(999);
+    /** The unit's AS type code for filtering abilities by unitTypeFilter. */
+    unitTypeCode = input<ASUnitTypeCode | undefined>(undefined);
     
     selected = output<string>();
     addCustom = output<void>();
 
-    getAbilitySummary(ability: PilotAbility): string {
-        return getAbilityDetails(ability, GameSystem.ALPHA_STRIKE).summary[0] ?? '';
-    }
-
-    /** Check if an ability should be disabled (already selected or exceeds budget) */
-    isAbilityDisabled(ability: PilotAbility): boolean {
-        return this.disabledIds().includes(ability.id) || ability.cost > this.remainingCost();
-    }
+    /** Pre-resolve all display data for each ability once via computed. */
+    resolvedAbilities = computed<ResolvedDropdownAbility[]>(() => {
+        const unitType = this.unitTypeCode();
+        return this.abilities().map(ability => {
+            const details = getAbilityDetails(ability, GameSystem.ALPHA_STRIKE);
+            const unitTypeRestricted = !!(unitType && details.unitTypeFilter?.length && !details.unitTypeFilter.includes(unitType));
+            return {
+                ability,
+                details,
+                summary: details.summary[0] ?? '',
+                rulesRef: details.rulesRef ?? [],
+                unitTypeRestricted,
+                unitTypeLabel: details.unitType,
+            };
+        });
+    });
 
     onSelect(abilityId: string) {
-        const ability = this.abilities().find(a => a.id === abilityId);
-        if (!ability || this.isAbilityDisabled(ability)) {
-            return;
-        }
+        const resolved = this.resolvedAbilities().find(r => r.ability.id === abilityId);
+        if (!resolved) return;
+        if (this.disabledIds().includes(abilityId) || resolved.ability.cost > this.remainingCost()) return;
         this.selected.emit(abilityId);
     }
 

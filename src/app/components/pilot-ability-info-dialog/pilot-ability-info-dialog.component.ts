@@ -77,8 +77,9 @@ export class PilotAbilityInfoDialogComponent {
     readonly rulesReference = computed<RulesReference[] | null>(() => {
         if (this.isCustom()) return null;
         const ability = this.ability() as PilotAbility;
-        if (!ability.rulesRef?.length) return null;
-        return ability.rulesRef;
+        const details = getAbilityDetails(ability, this.data.gameSystem);
+        if (!details.rulesRef?.length) return null;
+        return details.rulesRef;
     });
 
     close(): void {

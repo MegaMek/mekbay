@@ -37,6 +37,8 @@ import { ASUnitTypeCode } from './units.model';
 
 /** Game-system-specific details for a pilot ability */
 export interface PilotAbilityRuleDetails {
+    /** Rulebook references specific to this game system. */
+    rulesRef?: RulesReference[];
     /** Eligible unit types for this ability under this rule system. If omitted, any unit may use it. */
     unitType?: string;
     /** AS unit type codes used for filtering. If omitted, applies to any unit type. */
@@ -51,8 +53,6 @@ export interface PilotAbility {
     id: string;
     name: string;
     cost: number;
-    /** Multiple rulebook references (e.g. CO p.72, AS:CE p.92). */
-    rulesRef: RulesReference[];
     /** Classic BattleTech rules version */
     cbt?: PilotAbilityRuleDetails;
     /** Alpha Strike rules version */
@@ -107,8 +107,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "animal_mimicry",
         name: "Animal Mimicry",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 72 }, { book: Rulebook.ASCE, page: 92 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 72 }],
             unitType: "Quad BattleMechs, ProtoMechs, and 'Mech/ProtoMech designs with an animal appearance",
             summary: ["Quad/'Mech with animal look gains \u20131 Piloting modifier, \u20131 MP cost in woods/jungle, and demoralizes opponents (+1 Morale Check modifier or \u20131 to Demoralizer roll)."],
             description: [
@@ -119,6 +119,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 92 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
             summary: ["Reduces Move cost for ultra-heavy woods, ultra-heavy jungle, and buildings by 2\" per inch. During Combat Phase, may intimidate one enemy within medium range and LOS (2D6 roll, TN 8 + Skill \u2013 SZ); success subtracts 2\" MV, 1 TMM (min 2\"/0 TMM) and applies +1 TN for attacks against this unit. Lasts through End Phase of next turn."],
@@ -134,8 +135,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "antagonizer",
         name: "Antagonizer",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 73 }, { book: Rulebook.ASCE, page: 92 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 73 }],
             summary: ["Unit taunts a target within 10 hexes (Piloting +4); on success the target is enraged for a number of turns equal to the margin of success, forced to pursue and attack only the Antagonizer. Rage breaks if another unit hits the target or Antagonizer moves beyond 10 hexes."],
             description: [
                 "The Antagonizer is a MechWarrior, pilot, or vehicle commander who has the uncanny ability to get under an enemy's skin so much that the enemy forgets all other considerations and concentrates solely on defeating the Antagonizer.",
@@ -146,6 +147,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 92 }],
             summary: ["During Combat Phase, in place of attack, may enrage one enemy within short range (2D6 roll, TN 5 + Skill). Enraged unit must move toward Antagonizer by most direct route, ignoring terrain costs, and can only attack the Antagonizer. Effect lasts through End Phase of next turn. Breaks if enraged unit begins any phase more than 24\" away or without LOS. No effect vs. aerospace units."],
             description: [
                 "As combat talents go, the ability to enrage the enemy may seem ill-conceived at first, but few can overstate how effective it is when it draws fire from a wounded friend\u2014or exposes the berserking target's weaker back armor at the worst possible moment.",
@@ -161,8 +163,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "blood_stalker",
         name: "Blood Stalker",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 73 }, { book: Rulebook.ASCE, page: 93 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 73 }],
             summary: ["Designate one enemy per scenario: \u20131 To-Hit vs. that target, but +2 To-Hit vs. all others. Modifiers last until the designated target retreats or is destroyed."],
             description: [
                 "A questionable, but strangely effective ability in many situations, the Blood Stalker SPA reflects a character's ability to single-mindedly focus on one\u2014and only one\u2014enemy target, whether for reasons of personal honor, rage or simply an intense focus on a single tactical objective.",
@@ -172,6 +174,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 93 }],
             summary: ["Designate a 'chosen enemy' at game start: all attacks vs. that enemy receive \u20131 TN, but all attacks vs. other enemies suffer +2 TN until the chosen enemy is destroyed. May choose a new enemy if the current one is out of LOS or destroyed at the start of Movement."],
             description: [
                 "A pilot with this SPA could be said to have a one-tracked mind, and focuses all of their energies on the destruction of only one enemy at a time.",
@@ -184,8 +187,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "cluster_hitter",
         name: "Cluster Hitter",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 73 }, { book: Rulebook.ASCE, page: 93 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 73 }],
             summary: ["May make an Aimed Attack with one cluster weapon (missiles, RACs, LB-X, etc.) using Marksman rules; all clusters hit the targeted location. Otherwise gains +1 on Cluster Hits Table. Cannot combine with Oblique Attacker or Sandblaster."],
             description: [
                 "The warrior who has the Cluster Hitter Ability has spent hours mastering the focus of clustering weapons such as missile and rocket launchers, ultra and rotary autocannons, and LB-X style weapons.",
@@ -195,6 +198,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 93 }],
             summary: ["If the unit does not move during its Movement Phase, add 1 point of damage to any successful weapon attack that has the FLK, LRM, or SRM special abilities."],
             description: [
                 "The Cluster Hitter is a pilot who has become a marksman with some of the least precise weapons available\u2014such as missiles and flak weaponry. This allows them to focus fire in tighter groupings, for more telling damage potential.",
@@ -206,8 +210,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "combat_intuition",
         name: "Combat Intuition",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 73 }, { book: Rulebook.ASCE, page: 93 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 73 }],
             summary: ["Declare focus in End Phase (inflicts 1 pilot damage; vehicle crews are stunned). Next turn the unit may act after all others, or pre-empt any single unit\u2019s actions. Damage from pre-emptive attacks applies immediately."],
             description: [
                 "A MechWarrior, pilot, or vehicle crew commander with the Combat Intuition SPA can accurately predict an opponent's actions by focusing intently on them.",
@@ -217,6 +221,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 93 }],
             summary: ["If this unit's side wins Initiative, the unit may move and resolve all attacks during the Movement Phase, applying damage immediately\u2014before targets can act. Usable once every 3 turns."],
             description: [
                 "The pilot or crew commander with this SPA has a knack for accurately predicting an enemy's actions if they focus hard enough on them. Though this intuition is not quite powerful enough to pass along to an entire force before the enemy has time to react, the warrior can make use of their insight to cut off a single opponent once in a while.",
@@ -228,8 +233,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "cross_country",
         name: "Cross-Country",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 73 }, { book: Rulebook.ASCE, page: 93 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 73 }],
             unitType: "Combat Vehicles (ground movement types only)",
             summary: ["Ground vehicle treats water as 1 depth shallower and may enter normally restricted terrain (woods, rubble, rough) at twice the BattleMech MP cost."],
             description: [
@@ -239,6 +244,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 93 }],
             unitType: "Ground Vehicles",
             unitTypeFilter: ['CV', 'SV'],
             summary: ["Ground vehicle may enter woods, rough, rubble, or water terrain up to 1\" deep even if normally prohibited. Move costs for these terrains are double the cost for a 'Mech unit."],
@@ -252,8 +258,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "demoralizer",
         name: "Demoralizer",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 74 }, { book: Rulebook.ASCE, page: 93 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 74 }],
             summary: ["Unit intimidates a target within 10 hexes (Piloting +4); on success the target is demoralized for 1 turn\u2014limited to Walk/Cruise/Safe Thrust, cannot approach the Demoralizer, and suffers +1 To-Hit vs. the Demoralizer's unit."],
             description: [
                 "A MechWarrior, pilot or vehicle crew commander with the Demoralizer Ability can make his unit a holy terror on the battlefield, projecting an intimidating presence that seems to manifest in the way he operates his machine and taunts his enemy (with or without the use of communications equipment).",
@@ -264,6 +270,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 93 }],
             summary: ["During Combat Phase, may intimidate one enemy within LOS and medium range (2D6 roll, TN 8 + Skill \u2013 SZ). Success subtracts 2\" MV, 1 TMM (min 2\"/0 TMM) and applies +1 TN for attacks against the Demoralizer. Lasts through End Phase of next turn. Breaks if target begins any phase more than 24\" away or without LOS. No effect vs. aerospace units."],
             description: [
                 "A warrior with the Demoralizer SPA can make their unit a holy terror on the battlefield, projecting an intimidating presence that manifests in the way they maneuver and taunt their enemies\u2014with or without the use of communications.",
@@ -278,8 +285,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "dodge",
         name: "Dodge",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 74 }, { book: Rulebook.ASCE, page: 95 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 74 }],
             unitType: "'Mechs, ProtoMechs",
             summary: ["When targeted by a physical attack, the pilot makes a Piloting Skill Roll; if the dodge margin of success exceeds the attacker's, the physical attack misses. One roll applies against all physical attacks that turn."],
             description: [
@@ -289,6 +296,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 95 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
             summary: ["Any opposing unit that attempts a physical attack against this unit suffers a +2 Target Number modifier."],
@@ -302,8 +310,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "dust_off",
         name: "Dust-Off",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 74 }, { book: Rulebook.ASCE, page: 95 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 74 }],
             unitType: "VTOLs (combat and support), Fighters (aerospace and conventional), Small Craft, DropShips",
             summary: ["VSTOL-capable aircraft may take off, land, or hover 1 Level above ground in woods/jungle terrain (Piloting roll: +1 Light, +2 Heavy, +3 Ultra-Heavy). Failure causes a crash\u20141 Level per 3 points of failure."],
             description: [
@@ -314,6 +322,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 95 }],
             unitType: "VTOLs, Fighters, Small Craft, DropShips",
             unitTypeFilter: ['CV', 'SV', 'AF', 'CF', 'SC', 'DA', 'DS'],
             summary: ["When making landing or liftoff rolls, reduces the Control Roll target modifier for Inappropriate Landing Area from +2 to +1."],
@@ -327,8 +336,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "eagles_eyes",
         name: "Eagle's Eyes",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 74 }, { book: Rulebook.ASCE, page: 95 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 74 }],
             summary: ["Unit gains Beagle Active Probe effect at 1 hex range (stacks with existing probes as +1 hex). Also adds +2 to target numbers for minefield/trap attacks and \u20132 to clear them."],
             description: [
                 "The Eagle's Eyes ability reflects the capability of a particularly alert and sensor-savvy warrior who can practically detect threats even before his battle computers identify them.",
@@ -338,6 +347,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 95 }],
             summary: ["Adds 2\" detection range to any probe specials (BH, PRB, LPRB). Confers RCN special even if not normally possessed. Hidden units within 2\" are automatically detected, ignoring ECM specials (AECM, ECM, LECM). Adds +2 TN to avoid minefield attacks."],
             description: [
                 "For some warriors, even thirty-first century sensors are superfluous. The warrior with this SPA is so alert and sensor-savvy that they can practically identify threats before their tactical computers can identify them, a vital edge in spotting hidden surprises before it's too late.",
@@ -350,8 +360,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "environmental_specialist",
         name: "Environmental Specialist",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 74 }, { book: Rulebook.ASCE, page: 95 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 74 }],
             summary: ["Halves (round down) all movement and Piloting Skill penalties from a chosen weather/atmospheric condition (wind, rain, snow, ice, etc.) and gains \u20131 To-Hit for all attacks under those conditions."],
             description: [
                 "The Environmental Specialist not only has learned to survive in a harsh environment, but can actually thrive in it. Unlike the Terrain Master ability, the Environmental Specialist ability only applies to those weather and atmospheric conditions that would incur modifiers to movement and targeting, such as constantly strong winds, heavy rains, snow and ice conditions, and the like.",
@@ -360,6 +370,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 95 }],
             summary: ["Specify one Environmental Condition before the scenario. Reduces additional Move costs from that condition by 2\" (min +0\") and reduces Target Number modifiers from that condition by \u20131 (min +0)."],
             description: [
                 "The pilot with the Environmental Specialist SPA has not only learned how to survive in a harsh environment, but can actually thrive in it. This ability specifically focuses on atmospheric and weather aspects of a given environment (as opposed to terrain mastery), and the nature of this specialization must be identified when assigned.",
@@ -371,8 +382,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "fist_fire",
         name: "Fist Fire",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 75 }, { book: Rulebook.ASCE, page: 96 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 75 }],
             unitType: "'Mechs, ProtoMechs",
             summary: ["After a successful punch or physical weapon attack with a fully-actuated arm, fire one arm-mounted direct-fire energy or ballistic weapon at \u20131 To-Hit; weapon damage hits the same location. One attack per turn."],
             description: [
@@ -383,6 +394,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
             summary: ["Adds half the unit's Short range damage value (round up) to damage delivered by a successful standard or MEL physical attack. Cannot combine with Street Fighter, nor increase damage for charging or Death from Above."],
@@ -396,8 +408,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "float_like_a_butterfly",
         name: "Float Like a Butterfly",
         cost: 1,
-        rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "For every point spent on purchasing this special pilot ability, this unit may force an opponent to reroll an attack with this unit as the target. This unit may force a reroll of the attack roll, or the critical hit effects roll. The second roll result stands, even if it fails or is worse than the first.",
@@ -409,8 +421,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "float_like_a_butterfly2",
         name: "Float Like a Butterfly",
         cost: 2,
-        rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "For every point spent on purchasing this special pilot ability, this unit may force an opponent to reroll an attack with this unit as the target. This unit may force a reroll of the attack roll, or the critical hit effects roll. The second roll result stands, even if it fails or is worse than the first.",
@@ -422,8 +434,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "float_like_a_butterfly3",
         name: "Float Like a Butterfly",
         cost: 3,
-        rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "For every point spent on purchasing this special pilot ability, this unit may force an opponent to reroll an attack with this unit as the target. This unit may force a reroll of the attack roll, or the critical hit effects roll. The second roll result stands, even if it fails or is worse than the first.",
@@ -435,8 +447,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "float_like_a_butterfly4",
         name: "Float Like a Butterfly",
         cost: 4,
-        rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "For every point spent on purchasing this special pilot ability, this unit may force an opponent to reroll an attack with this unit as the target. This unit may force a reroll of the attack roll, or the critical hit effects roll. The second roll result stands, even if it fails or is worse than the first.",
@@ -448,8 +460,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "forward_observer",
         name: "Forward Observer",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 75 }, { book: Rulebook.ASCE, page: 96 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 75 }],
             summary: ["When spotting for artillery, grants \u20131 to the artillery attack roll and an additional \u20132 for fire adjustment until the target area is struck. Spotting does not impose a To-Hit modifier on the spotter."],
             description: [
                 "The Forward Observer is a warrior whose finely-honed direction sense, keen eyesight, and intelligence have made him an invaluable asset for artillery direction.",
@@ -458,6 +470,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
             summary: ["May serve as spotter for multiple artillery attacks against one target. If the Forward Observer makes its own attack, any indirect attacks it spots for (IF or indirect Artillery) do not take the TN modifier for the spotter attacking."],
             description: [
                 "The Forward Observer is a warrior whose finely honed direction sense, keen eyesight, and intelligence have combined into a talent for hyper-accurate artillery direction.",
@@ -469,8 +482,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "golden_goose",
         name: "Golden Goose",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 75 }, { book: Rulebook.ASCE, page: 96 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 75 }],
             unitType: "VTOLs (combat and support), Fighters (aerospace and conventional), Small Craft",
             summary: ["\u20131 To-Hit for air-to-ground Strike attacks, \u20132 To-Hit for Bombing. On a Bombing miss, scatter distance is reduced by 2 hexes (minimum 0)."],
             description: [
@@ -480,6 +493,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
             unitType: "VTOLs, Fighters, Small Craft",
             unitTypeFilter: ['CV', 'SV', 'AF', 'CF', 'SC'],
             summary: ["Applies \u20131 TN for air-to-ground strafing or striking attacks, and \u20132 TN for bombing attacks."],
@@ -493,8 +507,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "ground_hugger",
         name: "Ground-Hugger",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 75 }, { book: Rulebook.ASCE, page: 96 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 75 }],
             unitType: "VTOLs (combat and support), Fighters (aerospace and conventional), Small Craft",
             summary: ["\u20131 To-Hit for Strafing and Striking (not Bombing). May make two 1\u20133 hex Strafing runs per pass, or deliver two Strike attacks per turn (non-energy weapons must differ; energy weapons may fire twice but generate heat as a single Strafe)."],
             description: [
@@ -504,6 +518,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
             unitType: "VTOLs, Fighters, Small Craft",
             unitTypeFilter: ['CV', 'SV', 'AF', 'CF', 'SC'],
             summary: ["Can execute a 'double strafe' (two strafing areas, each at least 2\" long, total 10\") or a 'double strike' (two strike attacks in a single pass). All attacks must be along the unit's flight path."],
@@ -518,8 +533,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "headhunter",
         name: "Headhunter",
         cost: 2,
-        rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
             summary: ["Automatically identifies enemy command units (overall and sub-unit commanders). Gains +1 Initiative bonus (cumulative, max +3) for each opposing command unit killed/disabled. If no designated commanders, highest PV unit (after Skill mod) in a Formation is the commander."],
             description: [
                 "Can automatically identify enemy command units. This includes overall (e.g., company) and subunit (lance) commanders in a given battle.",
@@ -532,8 +547,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "heavy_lifter",
         name: "Heavy Lifter",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 76 }, { book: Rulebook.ASCE, page: 97 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 76 }],
             unitType: "'Mechs",
             summary: ["'Mech can lift, carry, drag, and throw objects (including hostile units) weighing up to 50% more than normal limits, affecting both lifting capacity and throwing distances."],
             description: [
@@ -543,6 +558,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             unitType: "'Mechs",
             unitTypeFilter: ['BM', 'IM'],
             summary: ["Adds 1 level to the max Size of cargo/units the 'Mech can lift, drag, or throw (External Cargo Carriers rules). If this exceeds Size 5, can lift LG cargo; if LG already included, can lift VLG. If cargo is more than 3 Sizes smaller than the 'Mech, movement is only reduced by 2\" instead of by half."],
@@ -557,8 +573,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "hopper",
         name: "Hopper",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 76 }, { book: Rulebook.ASCE, page: 97 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 76 }],
             unitType: "'Mechs",
             summary: ["When a leg is severed, may attempt Piloting Skill Rolls (including +5 for missing leg) to remain standing; if the fall occurs, gains \u20132 to the pilot damage avoidance roll. A one-legged 'Mech can 'hop' 2 MP per turn (treated as Running, no reverse or Sprint)."],
             description: [
@@ -568,6 +584,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             unitType: "'Mechs",
             unitTypeFilter: ['BM', 'IM'],
             summary: ["Can ignore the effects of the first MP Hit received (the hit still counts for tracking critical hits; only the effects are ignored). Does not grant movement if immobilized for other reasons (shutdown, bog down, etc.)."],
@@ -582,8 +599,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "hot_dog",
         name: "Hot Dog",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 76 }, { book: Rulebook.ASCE, page: 97 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 76 }],
             unitType: "'Mechs, Aerospace Fighters",
             summary: ["Applies \u20131 to all rolls to avoid overheating effects, including Shutdown, Ammo Explosion, Pilot Damage, and Random Movement checks from excess heat."],
             description: [
@@ -593,6 +610,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             unitType: "'Mechs, Aerospace Fighters",
             unitTypeFilter: ['BM', 'IM', 'AF'],
             summary: ["Unit acts as if one level lower on the Heat scale. Can sustain 4 points of Heat before auto-shutdown instead of 3. At 4 Heat: loses 6\" ground MV, \u20131 TMM (min 0), and +3 TN modifier instead of shutting down."],
@@ -606,8 +624,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "human_tro",
         name: "Human TRO",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 76 }, { book: Rulebook.ASCE, page: 97 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 76 }],
             summary: ["Instantly identifies a specific unit variant and its stats on sight (one unit type declared per scenario). Receives +1 on the Determining Critical Hits Table."],
             description: [
                 "The Human TRO has studied the makes, models, and capabilities of so many units of a given type ('Mech, combat vehicle, aerospace fighter, battle armor, and so forth) that they can immediately recognize the specific variant and rattle off the stats for that design on sight.",
@@ -616,6 +634,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             summary: ["If Concealing Unit Data rules are in play, automatically identifies any non-hidden unit within 12\", revealing its data card as if the unit has LPRB (does not reveal hidden units). Once per game, may declare before rolling to hit: if the attack hits, make an additional Critical Hit check against the target."],
             description: [
                 "Everyone has a hobby; this one's happens to be memorizing the specs for thousands of 'Mechs\u2014and they won't let you forget it!",
@@ -628,8 +647,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "iron_will",
         name: "Iron Will",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 76 }, { book: Rulebook.ASCE, page: 97 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 76 }],
             summary: ["Opponents using Animal Mimicry, Antagonizer, or Demoralizer against this unit suffer +2 to their Piloting Skill Roll. Under Morale rules, this unit gains \u20132 to avoid being routed or when recovering nerve."],
             description: [
                 "This warrior knows no fear. A unit with this ability is resistant to 'psychological attacks' by opposing units, and can even overcome the natural impulse to flee when all hope seems lost.",
@@ -638,6 +657,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             summary: ["Resistant to psychological attacks: when forced to roll against Animal Mimicry, Antagonizer, or Demoralizer effects, applies +2 modifier to the roll result to resist. Under Morale rules, adds \u20132 TN modifier to avoid being routed or when recovering nerve."],
             description: [
                 "This warrior knows no fear. A unit with this ability is resistant to 'psychological attacks' by opposing units, and can even overcome their natural impulse to flee when all hope seems lost.",
@@ -650,8 +670,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "jumping_jack",
         name: "Jumping Jack",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 76 }, { book: Rulebook.ASCE, page: 97 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 76 }],
             unitType: "'Mechs, ProtoMechs",
             summary: ["Reduces the +3 attacker movement modifier for jumping (including spotting) to +1."],
             description: [
@@ -660,6 +680,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
             summary: ["Unit uses a +1 attacker movement modifier for jumping instead of +2."],
@@ -673,8 +694,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "lucky",
         name: "Lucky",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 77 }, { book: Rulebook.ASCE, page: 97 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 77 }],
             summary: ["May reroll 1 failed Attack Roll or Piloting Skill Roll per scenario. The second result stands even if worse. Cannot be used for critical hits, hull breaches, Initiative, or Morale rolls."],
             description: [
                 "It's not really skill that's placing this pilot's shots, but nobody cares as long as they get the job done.",
@@ -683,6 +704,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             summary: ["May reroll 1 failed attack roll or 1 failed Control Roll per scenario. The second result stands even if worse. Cannot affect critical hit checks, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "It's not really skill that's placing this pilot's shots, but nobody cares as long as they get the job done.",
@@ -695,8 +717,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "lucky2",
         name: "Lucky",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 77 }, { book: Rulebook.ASCE, page: 97 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 77 }],
             summary: ["May reroll 2 failed Attack Rolls or Piloting Skill Rolls per scenario. The second result stands even if worse. Cannot be used for critical hits, hull breaches, Initiative, or Morale rolls."],
             description: [
                 "It's not really skill that's placing this pilot's shots, but nobody cares as long as they get the job done.",
@@ -705,6 +727,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             summary: ["May reroll 2 failed attack rolls or failed Control Rolls per scenario. The second result stands even if worse. Cannot affect critical hit checks, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "It's not really skill that's placing this pilot's shots, but nobody cares as long as they get the job done.",
@@ -717,8 +740,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "lucky3",
         name: "Lucky",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 77 }, { book: Rulebook.ASCE, page: 97 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 77 }],
             summary: ["May reroll 3 failed Attack Rolls or Piloting Skill Rolls per scenario. The second result stands even if worse. Cannot be used for critical hits, hull breaches, Initiative, or Morale rolls."],
             description: [
                 "It's not really skill that's placing this pilot's shots, but nobody cares as long as they get the job done.",
@@ -727,6 +750,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             summary: ["May reroll 3 failed attack rolls or failed Control Rolls per scenario. The second result stands even if worse. Cannot affect critical hit checks, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "It's not really skill that's placing this pilot's shots, but nobody cares as long as they get the job done.",
@@ -739,8 +763,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "lucky4",
         name: "Lucky",
         cost: 4,
-        rulesRef: [{ book: Rulebook.CO, page: 77 }, { book: Rulebook.ASCE, page: 97 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 77 }],
             summary: ["May reroll 4 failed Attack Rolls or Piloting Skill Rolls per scenario. The second result stands even if worse. Cannot be used for critical hits, hull breaches, Initiative, or Morale rolls."],
             description: [
                 "It's not really skill that's placing this pilot's shots, but nobody cares as long as they get the job done.",
@@ -749,6 +773,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             summary: ["May reroll 4 failed attack rolls or failed Control Rolls per scenario. The second result stands even if worse. Cannot affect critical hit checks, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "It's not really skill that's placing this pilot's shots, but nobody cares as long as they get the job done.",
@@ -761,8 +786,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "maneuvering_ace",
         name: "Maneuvering Ace",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 77 }, { book: Rulebook.ASCE, page: 97 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 77 }],
             unitType: "Any non-infantry",
             summary: ["Bipedal 'Mechs and VTOLs at Cruise gain lateral shift; quad 'Mechs lateral shift for 1 less MP; vehicles get \u20131 to failed-turn-mode Piloting rolls; aerospace reduces special maneuver Thrust costs by 1. All units gain \u20131 to Piloting rolls vs. skidding, sideslipping, or out-of-control."],
             description: [
@@ -772,6 +797,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             summary: ["Reduces Move cost through all woods and jungle terrain types by 1\" per inch of movement. For aerospace units, reduces the Control Roll target modifier for atmospheric combat from +2 to +1."],
             description: [
                 "This pilot knows how to get their ride into and out of tight spots in a hurry.",
@@ -783,8 +809,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "marksman",
         name: "Marksman",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 77 }, { book: Rulebook.ASCE, page: 97 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 77 }],
             summary: ["While stationary and making no physical attacks, may fire one weapon as an Aimed Shot (as if using a targeting computer). If combined with an actual targeting computer or enhanced imaging, the Aimed Shot gains \u20132 To-Hit."],
             description: [
                 "The Marksman Ability enables a MechWarrior, ProtoMech pilot, fighter pilot, or vehicular crew gunner to potentially hit any desired location on a target.",
@@ -793,6 +819,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             summary: ["While stationary, any successful weapon attack within range delivers half damage (round down, min 1) but if the attack scores a Margin of Success of 3+, the Marksman also makes an additional Critical Hit check against the target (even if armor remains)."],
             description: [
                 "They may not be a sharpshooter yet, but the gunner with this SPA is skilled at placing their shots for maximum effect.",
@@ -804,8 +831,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "melee_master",
         name: "Melee Master",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 77 }, { book: Rulebook.ASCE, page: 98 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 77 }],
             unitType: "'Mechs, ProtoMechs",
             summary: ["May deliver one extra physical attack per Physical Attack Phase (punch, kick, club, or hatchet), combinable with Charge or Death from Above. For ProtoMechs, doubles Frenzy attack damage."],
             description: [
@@ -815,6 +842,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 98 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
             summary: ["Adds additional damage equal to half the unit's Size value (rounded up) to any successful physical attack, including standard, melee, charging, and Death from Above attacks."],
@@ -828,8 +856,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "melee_specialist",
         name: "Melee Specialist",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 77 }, { book: Rulebook.ASCE, page: 98 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 77 }],
             unitType: "'Mechs, ProtoMechs",
             summary: ["\u20131 To-Hit for all physical attacks and +1 damage on every successful physical attack."],
             description: [
@@ -839,6 +867,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 98 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
             summary: ["Applies an additional \u20131 Target Number modifier when making any physical attacks."],
@@ -852,8 +881,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "multi_tasker",
         name: "Multi-Tasker",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 78 }, { book: Rulebook.ASCE, page: 98 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 78 }],
             summary: ["Reduces secondary-target penalties by 1 (+0 forward arc, +1 rear/side arcs). Crewed vehicles may reduce required gunners by 1 per 2 Gunnery Skill ratings (minimum 1 gunner)."],
             description: [
                 "While well-trained pilots and crews can perform multiple tasks simultaneously, accurately targeting multiple foes isn't something many gunners can do with ease, resulting in the application of a modifier for any secondary targets within the unit's firing arcs.",
@@ -862,6 +891,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 98 }],
             summary: ["May select two targets in the same Combat Phase, resolving fire against each separately. May await results of the first attack before declaring the second target (same unit may be targeted twice). No additional TN modifiers for divided attack. Each successful attack deals half damage (round down, min 1) at the appropriate range bracket."],
             description: [
                 "This battle-focused warrior can engage multiple targets far more accurately than most of their comrades.",
@@ -874,8 +904,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "natural_grace",
         name: "Natural Grace",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 78 }, { book: Rulebook.ASCE, page: 98 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 78 }],
             unitType: "'Mechs, ProtoMechs",
             summary: ["\u20131 to fall-avoidance, building-damage, pilot-damage, and minefield rolls. Gains +1 hexside torso twist range. Can arm-flip with one arm or with lower arm/hand actuators. Reduces ultra-heavy woods/jungle/building MP cost by 1. Synergizes with Dodge/Melee Specialist (\u20131 hostile physical damage) and Maneuvering Ace/Speed Demon (backward Running MP)."],
             description: [
@@ -886,6 +916,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 98 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
             summary: ["Unit may attack as if it has a 360-degree firing arc (still suffers 1 extra damage if attacked through rear facing). Reduces Move cost for ultra-heavy woods, ultra-heavy jungle, and buildings by 1\" per inch of movement."],
@@ -899,8 +930,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "oblique_artilleryman",
         name: "Oblique Artilleryman",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 78 }, { book: Rulebook.ASCE, page: 98 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 78 }],
             summary: ["Increases artillery weapon range by 10% (rounded up). On a miss, reduces scatter distance by 2 hexes (minimum 0)."],
             description: [
                 "The Oblique Artilleryman Ability grants the operator of any artillery piece the ability to direct strikes against targets farther away than the weapon is normally rated to reach.",
@@ -909,6 +940,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 98 }],
             summary: ["Receives \u20131 TN for indirect and off-board attacks using ART special. On counter-battery fire vs. off-board position: full damage if MoF is 1, half damage (round up) if MoF is 2\u20133, miss entirely if MoF is 4+."],
             description: [
                 "The Oblique Artilleryman SPA represents a gunner whose accuracy with indirect artillery weapons is downright uncanny.",
@@ -921,8 +953,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "oblique_attacker",
         name: "Oblique Attacker",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 78 }, { book: Rulebook.ASCE, page: 98 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 78 }],
             summary: ["\u20131 To-Hit for indirect-fire attacks (LRMs and artillery). Can fire indirectly without a spotter."],
             description: [
                 "A MechWarrior or gunner with the Oblique Attacker Ability is well versed at executing indirect-fire attacks using LRMs and artillery.",
@@ -930,6 +962,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 98 }],
             summary: ["Receives \u20131 TN for indirect attacks using the IF special. May make indirect fire attacks without a friendly spotter, but trades the \u20131 TN for a +2 modifier (replacing all spotter-related modifiers)."],
             description: [
                 "Darting behind cover can't save an enemy from this warrior's missile fire.",
@@ -941,8 +974,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "range_master",
         name: "Range Master",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 78 }, { book: Rulebook.ASCE, page: 98 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 78 }],
             summary: ["Choose one range band (Medium, Long, or Extreme): swap its To-Hit modifier with Short range. Attacks at the chosen range use the Short modifier, while Short range uses the chosen band's modifier."],
             description: [
                 "The Range Master Ability grants the warrior mastery over any range band except Short (Medium, Long and so forth). Any weapon attacks made in the selected range band swaps range modifiers between that range band and the Short range band.",
@@ -950,6 +983,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 98 }],
             summary: ["Choose one range bracket other than Short or Horizon: apply \u20132 TN for attacks in the specialized bracket, but +2 TN for attacks at Short range."],
             description: [
                 "This warrior's ability to strike at their enemies has a certain comfort zone.",
@@ -961,8 +995,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "ride_the_wash",
         name: "Ride the Wash",
         cost: 4,
-        rulesRef: [{ book: Rulebook.CO, page: 79 }, { book: Rulebook.ASCE, page: 98 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 79 }],
             unitType: "Any airborne unit except airships",
             summary: ["At Altitude 20 or below using Flank/Max Thrust: VTOLs/WiGEs get a free 1-hexside facing change and +1 elevation per turn. Aerospace/aircraft reduce special maneuver Thrust costs by 1, and can force airborne units along their path (0\u201310 elevations below) to make a Piloting +3 roll or lose altitude. Using the turbulence attack prevents weapon fire and requires a self Piloting roll."],
             description: [
@@ -973,6 +1007,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 98 }],
             unitType: "Any airborne unit",
             unitTypeFilter: ['AF', 'CF', 'SC', 'DA', 'DS'],
             summary: ["Reduces Control Roll target modifiers for atmospheric combat from +2 to +0. If an AF or CF is tailing another aerospace unit at Short range in air-to-air combat, may forego weapon attack to force target to make a second Control Roll at +3 TN; failure causes it to fall two altitudes (crash if from Low/Medium altitude)."],
@@ -987,8 +1022,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "sandblaster",
         name: "Sandblaster",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 79 }, { book: Rulebook.ASCE, page: 99 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 79 }],
             unitType: "Any non-aero",
             summary: ["Choose one cluster weapon type per scenario: gains +2 on Cluster Hits Table at Long/Extreme range, +3 at Medium, +4 at Short."],
             description: [
@@ -997,6 +1032,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 99 }],
             summary: ["When this unit makes a standard weapon attack and has one or more of the AC, FLK, IATM, LRM, SRM, or TOR specials, it delivers an additional 1 point of damage (increased to 2 points if the attack is at Short range)."],
             description: [
                 "Much like the Cluster Hitter, the gunner with the Sandblaster SPA has honed their accuracy with weapons that normally disperse damage, rather than focus it, but where the Cluster Hitter goes for concentrated fire, the Sandblaster is a specialist who works best with just their cluster weapons.",
@@ -1008,8 +1044,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "shaky_stick",
         name: "Shaky Stick",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 79 }, { book: Rulebook.ASCE, page: 99 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 79 }],
             unitType: "Any airborne unit",
             summary: ["+1 To-Hit modifier on all ground-to-air attacks targeting this craft. Does not affect attacks from other airborne units. May combine with Golden Goose or Ground Hugger."],
             description: [
@@ -1019,6 +1055,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 99 }],
             unitType: "Any airborne unit",
             unitTypeFilter: ['AF', 'CF', 'SC', 'DA', 'DS'],
             summary: ["Adds +1 TN to all attacks against this unit from ground-based attackers. Does not affect attacks from other airborne units."],
@@ -1032,8 +1069,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "sharpshooter",
         name: "Sharpshooter",
         cost: 4,
-        rulesRef: [{ book: Rulebook.CO, page: 79 }, { book: Rulebook.ASCE, page: 99 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 79 }],
             summary: ["While stationary with no physical attacks, may fire one weapon as an Aimed Shot (targeting-computer rules). With actual targeting computer or enhanced imaging, gains \u20132 To-Hit. On any successful Aimed Shot, gains an additional Critical Hit check even if armor remains on the struck location."],
             description: [
                 "The Sharpshooter is a master marksman who can strike the weakest spot on a 'Mech or vehicle by aiming for known weak points or exploiting pre-existing damage.",
@@ -1043,6 +1080,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 99 }],
             summary: ["If this unit stands still during Movement Phase and delivers an attack that succeeds by a Margin of Success of 3+, the attack receives an additional Critical Hit check even if the target still has armor. Unlike Marksman, delivers full damage at the target's range."],
             description: [
                 "The Sharpshooter is an improved version of the Marksman SPA, representing a more accomplished gunner who can strike at his enemy's weakest points with deadly accuracy while still delivering a powerful barrage.",
@@ -1054,8 +1092,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "slugger",
         name: "Slugger",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 80 }, { book: Rulebook.ASCE, page: 99 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 80 }],
             unitType: "'Mechs",
             summary: ["Can wield improvised clubs one-handed (requires only one working hand actuator), freeing the other arm and all torso weapons for normal use. Cannot combine with Zweihander."],
             description: [
@@ -1065,6 +1103,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 99 }],
             unitType: "'Mechs",
             unitTypeFilter: ['BM', 'IM'],
             summary: ["Unit can obtain an improvised melee weapon by spending 2\" extra movement in woods, jungle, rubble, or building terrain (no roll required, declared during Movement). After obtaining the weapon, may execute physical attacks as if it has the MEL special. No effect if the unit already has MEL."],
@@ -1079,14 +1118,15 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "sniper",
         name: "Sniper",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 80 }, { book: Rulebook.ASCE, page: 99 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 80 }],
             summary: ["Halves Medium and Long range To-Hit modifiers: +1 at Medium (instead of +2), +2 at Long (instead of +4)."],
             description: [
                 "The Sniper Special Pilot Ability reduces the Medium and Long Range Attack modifiers by half, so an attack applies a +1 To-Hit modifier at Medium Range (rather than +2), and a +2 To-Hit modifier at Long Range (rather than +4).",
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 99 }],
             summary: ["Reduces range modifiers to +1 (Medium), +2 (Long), and +3 (Extreme). Does not affect Short or Horizon range modifiers, nor indirect fire (IF) or artillery (ART) attacks."],
             description: [
                 "The sniper prefers to fight from a distance.",
@@ -1098,8 +1138,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "speed_demon",
         name: "Speed Demon",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 80 }, { book: Rulebook.ASCE, page: 99 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 80 }],
             summary: ["If the unit makes no weapon or physical attacks, adds +1 MP to Running/Flanking/Maximum Thrust and +2 MP to Sprinting."],
             description: [
                 "A pilot with the Speed Demon SPA can really pour it on!",
@@ -1107,6 +1147,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 99 }],
             summary: ["Ground units receive +2\" Move per turn and +4\" Sprinting movement (does not change TMM). Aerospace units receive an effective Thrust value 1 point higher than listed on their stat card."],
             description: [
                 "A pilot with the Speed Demon SPA can really pour it on!",
@@ -1119,8 +1160,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "stand_aside",
         name: "Stand-Aside",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 80 }, { book: Rulebook.ASCE, page: 99 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 80 }],
             summary: ["May attempt a Piloting Skill Roll (+2, adjusted by weight class difference) to pass through an enemy-occupied hex at +1 MP cost. On failure, loses half remaining MP and must go around. No damage to either unit."],
             description: [
                 "A character with the Stand-Aside Ability uses skill and determination to force their way through occupied terrain. Instead of finding a hex impassable due to the presence of an opposing unit, the Stand-Aside pilot may make a Piloting Skill Roll with a +2 target modifier.",
@@ -1130,6 +1171,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 99 }],
             summary: ["Unit can move through hostile units during Movement Phase at +1\" Move cost, causing no damage to either unit. Also immune to the maneuver-limiting effects of any opposing unit's Zone of Control command ability."],
             description: [
                 "This unit can move through hostile units during its Movement Phase, at an additional cost of 1 inch of Move. This action causes no damage to either unit; it simply negates the normal 'stacking restriction' that prevents units from moving directly through enemy-occupied positions on the map.",
@@ -1141,8 +1183,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "street_fighter",
         name: "Street Fighter",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 80 }, { book: Rulebook.ASCE, page: 99 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 80 }],
             unitType: "'Mechs, ProtoMechs",
             summary: ["May execute physical attacks during the Weapon Attack Phase (with normal restrictions on limb weapons). If used, no physical attacks may be made in the subsequent Physical Attack Phase that turn."],
             description: [
@@ -1152,6 +1194,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 99 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
             summary: ["If an opponent in base contact attempts an attack before this unit, the Street Fighter may attempt a preemptive strike (+1 TN). If successful, deals Short range damage plus normal physical attack damage (including MEL/TSM bonuses) in a single attack. Damage resolved before the opponent's attack. If both units are Street Fighters, the ability cancels out."],
@@ -1168,8 +1211,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "sure_footed",
         name: "Sure-Footed",
         cost: 2,
-        rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
             summary: ["Receives +2\" Move on paved or ice terrain (plus normal pavement bonus). Sprinting adds +4\" instead. If Skidding rules are in play, applies \u20132 TN to the unit's Control Roll."],
@@ -1183,8 +1226,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "swordsman",
         name: "Swordsman",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 80 }, { book: Rulebook.ASCE, page: 100 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 80 }],
             unitType: "'Mechs, ProtoMechs (must have mounted melee weapons)",
             summary: ["With a mounted melee weapon, may deliver either an Aimed Shot (using targeting-computer rules) or a Piercing Strike (+2 To-Hit; on hit, bonus Critical Hit check with \u20131 if armor remains). The two modes cannot be combined in the same action."],
             description: [
@@ -1195,6 +1238,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
             summary: ["On a successful MEL physical attack, may choose: deliver +1 extra damage, or roll one additional Critical Hit against the target (even if armor remains). No effect if the unit lacks the MEL special."],
@@ -1208,8 +1252,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "tactical_genius",
         name: "Tactical Genius",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 80 }, { book: Rulebook.ASCE, page: 100 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 80 }],
             summary: ["Force commander may reroll Initiative once every 2 turns; the second result stands even if worse. Has no effect if the character is not the field commander."],
             description: [
                 "A Force commander with the Tactical Genius SPA has a superior grasp of the battlefield situation over and above his own innate combat sense, and can tap into this ability to maintain control in even the most chaotic firefights. This ability has no effect, however, if the character is not the field commander for his Force.",
@@ -1217,6 +1261,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             summary: ["If this unit is the command unit, its player may reroll Initiative once every 2 turns if the first roll was beaten; second result stands even if worse. If Battlefield Intelligence rules are in play, treated as having MHQ4."],
             description: [
                 "An officer with this special pilot ability has a superior grasp of the battlefield situation, and can tap into this combat sense to maintain control even under the most chaotic firefights.",
@@ -1229,8 +1274,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "terrain_master_drag_racer",
         name: "Terrain Master (Drag Racer)",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 81 }, { book: Rulebook.ASCE, page: 100 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 81 }],
             unitType: "Combat Vehicle (tracked or wheeled motive types only)",
             summary: ["Tracked/wheeled vehicle gains extra speed on paved, ice, or black ice surfaces; receives a skid-avoidance bonus and can execute a forward-only Lateral Shift at Flank speed or faster."],
             description: [
@@ -1241,6 +1286,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             unitType: "Combat Vehicles (tracked or wheeled)",
             unitTypeFilter: ['CV'],
             summary: ["Receives +4\" Move on paved or ice terrain (plus normal pavement bonus). Sprinting adds +6\" instead. If Skidding rules are in play, applies \u20132 TN to the unit's Control Roll."],
@@ -1255,8 +1301,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "terrain_master_forest_ranger",
         name: "Terrain Master (Forest Ranger)",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 81 }, { book: Rulebook.ASCE, page: 100 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 81 }],
             unitType: "Any non-airborne unit",
             summary: ["Unit moves more easily through woods/jungle (\u20131 MP cost), gains a Piloting bonus in jungle, and at Walk/Cruise speed gains +1 To-Hit cover modifier in wooded or jungle terrain."],
             description: [
@@ -1266,6 +1312,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             unitType: "Any non-airborne unit",
             unitTypeFilter: ['BM', 'IM', 'PM', 'CV', 'SV', 'BA', 'CI'],
             summary: ["Reduces additional Move costs through woods/jungle terrain (including heavy and ultra-heavy) by 1\" per inch of movement (min +0\"). Attacks against this unit suffer +1 Terrain Modifier if it ends movement in wooded or jungle terrain."],
@@ -1280,8 +1327,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "terrain_master_frogman",
         name: "Terrain Master (Frogman)",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 81 }, { book: Rulebook.ASCE, page: 100 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 81 }],
             unitType: "'Mechs, ProtoMechs",
             summary: ["'Mech/ProtoMech moves more easily in water deeper than Depth 1 (\u20131 MP cost), gains a Piloting bonus when submerged, and applies +2 to Crush Depth Checks under Extreme Depth rules."],
             description: [
@@ -1291,6 +1338,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
             summary: ["Reduces movement costs for underwater movement by 1\" per inch of travel (min +0\"). Only applies when fully submerged."],
@@ -1304,8 +1352,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "terrain_master_mountaineer",
         name: "Terrain Master (Mountaineer)",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 81 }, { book: Rulebook.ASCE, page: 100 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 81 }],
             unitType: "Any non-airborne unit",
             summary: ["Unit moves more easily through rough/rubble terrain and level changes (\u20131 MP cost, including sheer cliffs), with a \u20131 Piloting bonus in such terrain."],
             description: [
@@ -1315,6 +1363,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             unitType: "Any non-airborne unit",
             unitTypeFilter: ['BM', 'IM', 'PM', 'CV', 'SV', 'BA', 'CI'],
             summary: ["Reduces additional Move costs for changing levels, Climbing, or passing through rough/rubble terrain (including ultra-rough/ultra-rubble) by 1\" per inch of travel (min +0\")."],
@@ -1328,8 +1377,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "terrain_master_nightwalker",
         name: "Terrain Master (Nightwalker)",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 81 }, { book: Rulebook.ASCE, page: 100 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 81 }],
             unitType: "Any non-airborne unit",
             summary: ["Unit ignores darkness-based MP modifiers at Walk/Cruise speed; at faster speeds reduces them by 1 MP. Does not affect Gunnery Skill."],
             description: [
@@ -1339,6 +1388,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             unitType: "Any non-airborne unit",
             unitTypeFilter: ['BM', 'IM', 'PM', 'CV', 'SV', 'BA', 'CI'],
             summary: ["Ignores all modifiers for darkness without having to activate any searchlight (SRCH) special it may have."],
@@ -1352,8 +1402,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "terrain_master_sea_monster",
         name: "Terrain Master (Sea Monster)",
         cost: 3,
-        rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "Any non-airborne unit",
             unitTypeFilter: ['BM', 'IM', 'PM', 'CV', 'SV', 'BA', 'CI'],
             summary: ["Reduces additional Move costs for water terrain by 1\" per inch of travel (min +0\"). Attacks against this unit suffer +1 Terrain Modifier while in water terrain of depth 1\"\u20132\". Ignores the +1 underwater terrain modifier when attacking."],
@@ -1367,8 +1417,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "terrain_master_swamp_beast",
         name: "Terrain Master (Swamp Beast)",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 81 }, { book: Rulebook.ASCE, page: 101 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 81 }],
             unitType: "Any non-airborne unit",
             summary: ["Unit moves more easily through mud/swamp (\u20131 MP cost), gains a \u20131 Piloting bonus (including bog-down checks), and at Running/Flank speed can spend 1 extra MP per hex to impose +1 To-Hit against attacks while in muddy or swampy terrain."],
             description: [
@@ -1378,6 +1428,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "Any non-airborne unit",
             unitTypeFilter: ['BM', 'IM', 'PM', 'CV', 'SV', 'BA', 'CI'],
             summary: ["Reduces additional Move costs for swamp terrain by 1\" per inch of travel (min +0\"). Ignores Bogging Down rules in mud/swamp terrain. Attacks against this unit suffer +1 Terrain Modifier while in mud or swamp terrain."],
@@ -1392,8 +1443,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "weapon_specialist",
         name: "Weapon Specialist",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 82 }, { book: Rulebook.ASCE, page: 101 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 82 }],
             unitType: "Any",
             summary: ["When attacking with a designated weapon type, the Weapon Specialist applies a \u20132 To-Hit modifier."],
             description: [
@@ -1402,6 +1453,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             summary: ["If the unit makes a standard weapons attack and misses by 1, the attack deals half damage (round down, min 1 point)."],
             description: [
                 "The weapon specialist is a superlative expert with certain types of weapons, and can deliver much more accurate fire when he sticks to those guns alone.",
@@ -1413,8 +1465,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "wind_walker",
         name: "Wind Walker",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 82 }, { book: Rulebook.ASCE, page: 101 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 82 }],
             unitType: "Any airborne unit",
             summary: ["Receives an additional \u20131 target modifier for all Piloting Skill Rolls required to pass through the Space/Atmosphere Interface (aerospace fighters only), or execute landings of any kind\u2014including crash landings."],
             description: [
@@ -1423,6 +1475,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "Any airborne unit",
             unitTypeFilter: ['AF', 'CF', 'SC', 'DA', 'DS'],
             summary: ["Ignores the +2 Control Roll target modifier for atmospheric conditions. Receives \u20131 Control Roll TN for all landings and liftoffs."],
@@ -1436,8 +1489,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "zweihander",
         name: "Zweihander",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 82 }, { book: Rulebook.ASCE, page: 101 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 82 }],
             unitType: "'Mechs",
             summary: ["May punch or use any one-handed physical attack weapon with both arms (requires hand actuators in both). Attack must target front arc, applies To-Hit modifiers for both arms' actuator damage. On hit, deals +1 damage per 10 full tons of attacker weight (+2 with active TSM), then attacker must make a Critical Hit check on the attacking arm(s). On miss, attacker must make a Piloting Skill Roll to avoid falling."],
             description: [
@@ -1450,6 +1503,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "'Mechs",
             unitTypeFilter: ['BM', 'IM'],
             summary: ["Adds +1 damage to any successful standard- or melee-type physical attack (does not apply to charging or Death from Above). This modifier is in addition to any others from MEL or TSM."],
@@ -1463,8 +1517,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "light_horseman",
         name: "Light Horseman",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 76 }, { book: Rulebook.ASCE, page: 101 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 76 }],
             unitType: "Infantry (conventional, beast-mounted only)",
             summary: ["Beast-mounted infantry squad gains +1 MP and reduces movement penalties for woods and rough terrain by 1 MP."],
             description: [
@@ -1474,6 +1528,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "CI (beast-mounted only)",
             unitTypeFilter: ['CI'],
             summary: ["Beast-mounted infantry receives +2\" Move per turn and reduces additional movement costs for wooded or rough terrain by 1\" per inch of travel (min +0\")."],
@@ -1487,8 +1542,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "heavy_horse",
         name: "Heavy Horse",
         cost: 2,
-        rulesRef: [{ book: Rulebook.CO, page: 75 }, { book: Rulebook.ASCE, page: 101 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 75 }],
             unitType: "Infantry (conventional, beast-mounted only)",
             summary: ["Beast-mounted infantry squad deals 50% more damage (rounded down) from additional support weaponry, but loses 1 MP."],
             description: [
@@ -1497,6 +1552,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "CI (beast-mounted only)",
             unitTypeFilter: ['CI'],
             summary: ["Beast-mounted infantry delivers 1 additional point of damage on any successful attack against a unit in base contact."],
@@ -1510,8 +1566,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "foot_cavalry",
         name: "Foot Cavalry",
         cost: 1,
-        rulesRef: [{ book: Rulebook.CO, page: 75 }, { book: Rulebook.ASCE, page: 101 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 75 }],
             unitType: "Infantry (conventional, foot motive type only)",
             summary: ["Foot infantry squad gains +1 MP, reduces terrain penalties (rough, woods, jungle, buildings) by 1 MP, and may move and fire even under a Move-or-Fire rule."],
             description: [
@@ -1521,6 +1577,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "CI (foot motive type only)",
             unitTypeFilter: ['CI'],
             summary: ["Foot infantry receives +2\" Move per turn, reduces additional movement costs for woods, jungle, rough, rubble, and building terrain by 1\" per inch of travel, and halves elevation change costs (min +0\")."],
@@ -1534,8 +1591,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "urban_guerrilla",
         name: "Urban Guerrilla",
         cost: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 82 }, { book: Rulebook.ASCE, page: 101 }],
         cbt: {
+            rulesRef: [{ book: Rulebook.CO, page: 82 }],
             unitType: "Infantry (conventional, battle armor)",
             summary: ["Infantry squad gains \u20131 to all incoming weapon attacks and negates double-damage for infantry in the open. Once per scenario in urban terrain, may spawn a Green Rifle (Ballistic) Foot Platoon within 3 hexes that attacks a chosen target until reduced to half strength."],
             description: [
@@ -1546,6 +1603,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
+            rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "CI, BA",
             unitTypeFilter: ['CI', 'BA'],
             summary: ["Attacks against this infantry unit suffer +1 TN and \u20131 damage if in building, rough, rubble, or paved terrain. Once per urban scenario, may spawn a friendly CI unit (2\" Move, 1 armor, 1 structure, 1 damage at Short range, Skill +2) within 6\"."],

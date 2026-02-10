@@ -280,6 +280,16 @@ p {
     background-color: rgba(255, 255, 255, 0.08);
 }
 
+.unit-type-warning {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+    font-size: 0.78em;
+    color: orange;
+    font-style: italic;
+}
+
 @container (max-width: 400px) {
     .stats {
         flex-direction: column;
