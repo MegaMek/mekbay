@@ -312,10 +312,10 @@ export class FormationInfoComponent {
     /** Optional unit count in the group — used to compute concrete numbers for distribution labels. */
     unitCount = input<number | undefined>(undefined);
 
-    /** Whether the master chevron is in "expanded" state. Starts collapsed. */
-    allAbilitiesExpanded = signal(false);
     /** Set of expanded individual abilities, keyed by "groupIndex:abilityName". */
     private expandedAbilities = signal(new Set<string>());
+    /** Whether any ability is currently expanded — drives the master chevron. */
+    allAbilitiesExpanded = computed(() => this.expandedAbilities().size > 0);
 
     /** Collect all ability keys from the resolved groups. */
     private allAbilityKeys = computed<string[]>(() =>
@@ -326,12 +326,10 @@ export class FormationInfoComponent {
 
     /** Master toggle: expand all or collapse all individual abilities. */
     toggleAllAbilities(): void {
-        const expanding = !this.allAbilitiesExpanded();
-        this.allAbilitiesExpanded.set(expanding);
-        if (expanding) {
-            this.expandedAbilities.set(new Set(this.allAbilityKeys()));
-        } else {
+        if (this.allAbilitiesExpanded()) {
             this.expandedAbilities.set(new Set());
+        } else {
+            this.expandedAbilities.set(new Set(this.allAbilityKeys()));
         }
     }
 

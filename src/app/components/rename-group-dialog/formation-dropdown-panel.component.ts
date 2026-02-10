@@ -66,7 +66,7 @@ export interface FormationDisplayItem {
                                 (click)="toggleExpand($event, item.definition.id)"
                                 [class.expanded]="expandedId() === item.definition.id"
                                 title="Show details">
-                            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                            <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
                                 <path d="M3 1l5 4-5 4z"/>
                             </svg>
                         </button>
@@ -143,7 +143,7 @@ export interface FormationDisplayItem {
         }
 
         .formation-option {
-            padding: 10px 12px;
+            padding-left: 10px;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -167,11 +167,10 @@ export interface FormationDisplayItem {
             border: none;
             color: var(--text-color-tertiary);
             cursor: pointer;
-            padding: 4px;
+            padding: 10px 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 2px;
             transition: color 0.15s;
         }
 

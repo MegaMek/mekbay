@@ -102,7 +102,7 @@ export interface RenameGroupDialogResult {
           <details class="selected-formation-accordion">
             <summary class="selected-formation-summary">
               <span>Formation details</span>
-              <svg class="expand-icon" width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
+              <svg class="expand-icon" width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
             </summary>
             <div class="selected-formation-details">
               <formation-info [formation]="formation" [unitCount]="data.group.units().length"></formation-info>
