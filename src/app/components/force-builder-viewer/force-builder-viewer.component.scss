@@ -50,10 +50,6 @@
     }
 }
 
-.force-separator {
-    margin: 0.5em 0;
-}
-
 // Force-level drop list container
 .forces-drop-list {
     display: flex;
@@ -77,12 +73,16 @@
     }
 }
 
-// Force-level drag-drop styles
-.forces-drop-list.cdk-drop-list-dragging .force-slot:not(.cdk-drag-placeholder) {
+// Drag-drop transitions
+.forces-drop-list.cdk-drop-list-dragging .force-slot:not(.cdk-drag-placeholder),
+.force-units-list.cdk-drop-list-dragging .force-unit-item:not(.cdk-drag-placeholder),
+.force-units-list.cdk-drop-list-dragging .group-container:not(.cdk-drag-placeholder) {
     transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
 }
 
-.force-slot.cdk-drag-placeholder {
+// Drag placeholders
+.force-slot.cdk-drag-placeholder,
+.group-container.cdk-drag-placeholder {
     opacity: 0.3;
     border: 2px dashed var(--text-color-tertiary);
 }
@@ -138,15 +138,6 @@
         top: 2px;
         left: 0;
     }
-}
-
-.force-slot-footer {
-    display: flex;
-    flex: 0 0 auto;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    gap: 2px;
 }
 
 .force-name {
@@ -249,8 +240,8 @@
     }
 }
 
-.group-formation:hover,
-.group-name:hover,
+.group-name-area:hover .group-name,
+.group-name-area:hover .group-formation,
 .force-name:hover {
     color: var(--bt-yellow);
 }
@@ -274,12 +265,16 @@
     }
 }
 
-.read-only .group-name,
-.read-only .group-formation,
-.read-only .force-name {
-    cursor: default;
+.read-only {
+    .group-name,
+    .group-formation,
+    .force-name {
+        cursor: default;
+    }
 
-    &:hover {
+    .group-name-area:hover .group-name,
+    .group-name-area:hover .group-formation,
+    .force-name:hover {
         color: inherit;
     }
 }
@@ -471,18 +466,4 @@
 
 .cdk-drag-animating {
     transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
-}
-
-.force-units-list.cdk-drop-list-dragging .force-unit-item:not(.cdk-drag-placeholder) {
-    transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
-}
-
-// Group drag-drop styles
-.force-units-list.cdk-drop-list-dragging .group-container:not(.cdk-drag-placeholder) {
-    transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
-}
-
-.group-container.cdk-drag-placeholder {
-    opacity: 0.3;
-    border: 2px dashed var(--text-color-tertiary);
 }

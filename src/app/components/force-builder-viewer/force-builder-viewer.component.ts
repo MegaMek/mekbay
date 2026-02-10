@@ -707,10 +707,12 @@ export class ForceBuilderViewerComponent {
         return name;
     }
 
-    /** Check whether the group's custom name already contains the formation name (case-insensitive) */
+    /** Check whether the group's display label already shows the formation name. */
     groupNameContainsFormation(group: UnitGroup, force: Force): boolean {
         const formation = group.formation();
         if (!formation) return false;
+        // When nameLock is false the display label IS the formation name — no need to repeat it.
+        if (!group.nameLock) return true;
         const displayName = this.forceBuilderService.getFormationDisplayName(formation, group, force);
         return group.name().toLowerCase().includes(displayName.toLowerCase());
     }
