@@ -33,7 +33,7 @@
 
 import { Rulebook } from './common.model';
 
-export interface ASPilotAbility {
+export interface PilotAbility {
     id: string;
     name: string;
     cost: number;
@@ -53,13 +53,13 @@ export interface ASCustomPilotAbility {
 }
 
 /** Skill-based limits for pilot abilities */
-export interface ASPilotAbilityLimits {
+export interface PilotAbilityLimits {
     maxAbilities: number;
     maxCost: number;
 }
 
 /** Get ability limits based on pilot skill level */
-export function getAbilityLimitsForSkill(skill: number): ASPilotAbilityLimits {
+export function getAbilityLimitsForSkill(skill: number): PilotAbilityLimits {
     // Green or lower (5+): 0 abilities, 0 cost
     if (skill >= 5) {
         return { maxAbilities: 0, maxCost: 0 };
@@ -84,7 +84,7 @@ export function getAbilityLimitsForSkill(skill: number): ASPilotAbilityLimits {
     return { maxAbilities: 3, maxCost: 6 };
 }
 
-export const AS_PILOT_ABILITIES: ASPilotAbility[] = [
+export const PILOT_ABILITIES: PilotAbility[] = [
     {
         id: "animal_mimicry",
         name: "Animal Mimicry",

@@ -34,7 +34,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, ASPilotAbilityLimits } from '../../models/pilot-abilities.model';
+import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, PilotAbilityLimits } from '../../models/pilot-abilities.model';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
@@ -82,12 +82,12 @@ export class EditASPilotDialogComponent {
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
 
-    availableAbilities = signal<ASPilotAbility[]>(AS_PILOT_ABILITIES);
+    availableAbilities = signal<PilotAbility[]>(PILOT_ABILITIES);
     selectedAbilities = signal<(AbilitySelection | null)[]>([null, null, null]);
     openDropdown = signal<number | null>(null);
     currentSkill = signal<number>(4);
 
-    abilityLimits = computed<ASPilotAbilityLimits>(() => {
+    abilityLimits = computed<PilotAbilityLimits>(() => {
         return getAbilityLimitsForSkill(this.currentSkill());
     });
 
@@ -178,9 +178,9 @@ export class EditASPilotDialogComponent {
         this.overlayManager.closeManagedOverlay('custom-ability-dialog');
     }
 
-    getAbilityById(id: string | null): ASPilotAbility | undefined {
+    getAbilityById(id: string | null): PilotAbility | undefined {
         if (!id) return undefined;
-        return AS_PILOT_ABILITIES.find(a => a.id === id);
+        return PILOT_ABILITIES.find(a => a.id === id);
     }
 
     isAbilitySelected(id: string): boolean {

@@ -44,9 +44,9 @@ import { ForceUnit } from '../models/force-unit.model';
  * abilities and the rules governing who receives them.
  */
 export interface FormationEffectGroup {
-    /** SPA ids from AS_PILOT_ABILITIES that may be granted by this effect. */
+    /** SPA ids from PILOT_ABILITIES that may be granted by this effect. */
     abilityIds?: string[];
-    /** SCA ids from AS_COMMAND_ABILITIES whose effects are applied by this group. */
+    /** SCA ids from COMMAND_ABILITIES whose effects are applied by this group. */
     commandAbilityIds?: string[];
     /**
      * How abilities are selected from the list:

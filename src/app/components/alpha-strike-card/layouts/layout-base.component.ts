@@ -37,7 +37,7 @@ import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
 import { Era } from '../../../models/eras.model';
 import { DataService } from '../../../services/data.service';
 import { AsAbilityLookupService } from '../../../services/as-ability-lookup.service';
-import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
+import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
 import { formatMovement } from '../../../utils/as-common.util';
@@ -91,8 +91,8 @@ export abstract class AsLayoutBaseComponent {
     protected readonly dataService = inject(DataService);
     protected readonly abilityLookup = inject(AsAbilityLookupService);
 
-    protected readonly pilotAbilityById = new Map<string, ASPilotAbility>(
-        AS_PILOT_ABILITIES.map((ability) => [ability.id, ability])
+    protected readonly pilotAbilityById = new Map<string, PilotAbility>(
+        PILOT_ABILITIES.map((ability) => [ability.id, ability])
     );
 
     // Common inputs

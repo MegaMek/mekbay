@@ -34,7 +34,7 @@
 import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, ComponentRef, Injector } from '@angular/core';
 import { ASUnitTypeCode, Unit } from '../../models/units.model';
 import { ASForceUnit, AbilitySelection } from '../../models/as-force-unit.model';
-import { AS_PILOT_ABILITIES, ASCustomPilotAbility } from '../../models/pilot-abilities.model';
+import { PILOT_ABILITIES, ASCustomPilotAbility } from '../../models/pilot-abilities.model';
 import { AsAbilityLookupService, ParsedAbility } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
@@ -373,7 +373,7 @@ export class AlphaStrikeCardComponent {
         let ability: PilotAbilityInfoDialogData['ability'];
         
         if (typeof selection === 'string') {
-            const found = AS_PILOT_ABILITIES.find(a => a.id === selection);
+            const found = PILOT_ABILITIES.find(a => a.id === selection);
             ability = found ?? { name: selection, cost: 0, summary: '' } as ASCustomPilotAbility;
         } else {
             ability = selection;

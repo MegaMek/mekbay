@@ -32,7 +32,7 @@
  */
 
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { ASPilotAbility } from '../../models/pilot-abilities.model';
+import { PilotAbility } from '../../models/pilot-abilities.model';
 
 @Component({
     selector: 'ability-dropdown-panel',
@@ -154,7 +154,7 @@ import { ASPilotAbility } from '../../models/pilot-abilities.model';
     `]
 })
 export class AbilityDropdownPanelComponent {
-    abilities = input.required<ASPilotAbility[]>();
+    abilities = input.required<PilotAbility[]>();
     disabledIds = input<string[]>([]);
     remainingCost = input<number>(999); // Default high value if not set
     
@@ -162,7 +162,7 @@ export class AbilityDropdownPanelComponent {
     addCustom = output<void>();
 
     /** Check if an ability should be disabled (already selected or exceeds budget) */
-    isAbilityDisabled(ability: ASPilotAbility): boolean {
+    isAbilityDisabled(ability: PilotAbility): boolean {
         return this.disabledIds().includes(ability.id) || ability.cost > this.remainingCost();
     }
 

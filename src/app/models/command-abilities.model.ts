@@ -38,7 +38,7 @@
  * that applies to an entire force or formation, as opposed to pilot-level SPAs.
  * Sourced primarily from Alpha Strike: Commander's Edition, pp. 102-109.
  */
-export interface ASCommandAbility {
+export interface CommandAbility {
     id: string;
     name: string;
     summary: string[];
@@ -48,7 +48,7 @@ export interface ASCommandAbility {
 
 const ASCE = "Alpha Strike: Commander's Edition";
 
-export const AS_COMMAND_ABILITIES: ASCommandAbility[] = [
+export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "adjusting_fire",
         name: "Adjusting Fire",

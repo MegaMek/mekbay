@@ -33,8 +33,8 @@
 
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { FormationTypeDefinition, FormationEffectGroup, RulesReference } from '../../utils/formation-type.model';
-import { ASPilotAbility, AS_PILOT_ABILITIES } from '../../models/pilot-abilities.model';
-import { ASCommandAbility, AS_COMMAND_ABILITIES } from '../../models/as-command-abilities.model';
+import { PilotAbility, PILOT_ABILITIES } from '../../models/pilot-abilities.model';
+import { CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { Rulebook } from '../../models/common.model';
 
 /*
@@ -46,8 +46,8 @@ import { Rulebook } from '../../models/common.model';
  */
 
 export interface ResolvedAbility {
-    pilotAbility?: ASPilotAbility;
-    commandAbility?: ASCommandAbility;
+    pilotAbility?: PilotAbility;
+    commandAbility?: CommandAbility;
     name: string;
     summary: string[];
     rulesBook: string;
@@ -362,7 +362,7 @@ export class FormationInfoComponent {
             // Resolve pilot abilities
             if (group.abilityIds) {
                 for (const id of group.abilityIds) {
-                    const pilot = AS_PILOT_ABILITIES.find(a => a.id === id);
+                    const pilot = PILOT_ABILITIES.find(a => a.id === id);
                     if (pilot) {
                         abilities.push({
                             pilotAbility: pilot,
@@ -378,7 +378,7 @@ export class FormationInfoComponent {
             // Resolve command abilities
             if (group.commandAbilityIds) {
                 for (const id of group.commandAbilityIds) {
-                    const cmd = AS_COMMAND_ABILITIES.find(a => a.id === id);
+                    const cmd = COMMAND_ABILITIES.find(a => a.id === id);
                     if (cmd) {
                         abilities.push({
                             commandAbility: cmd,
