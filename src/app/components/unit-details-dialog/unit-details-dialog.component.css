@@ -273,3 +273,61 @@
         }
     }
 }
+
+/* Compact header for low viewport height */
+@media (max-height: 550px) {
+    .header {
+        min-height: unset;
+        padding: 0px 8px 0px 8px;
+        gap: 6px;
+        font-size: 1.1em;
+    }
+
+    .header-icon-container {
+        transform: scale(0.5);
+        transform-origin: center;
+        margin: -10px;
+    }
+
+    .header-content {
+        /* Collapse the two rows into a single inline flow */
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0 8px;
+    }
+
+    .header-content .header-row {
+        display: contents;
+    }
+
+    .header-model {
+        font-size: 0.75em;
+        margin-right: 0;
+        order: 1;
+    }
+
+    .header-chassis {
+        font-size: 1em;
+        letter-spacing: 0.03em;
+        margin-right: 0;
+        order: 0;
+    }
+
+    .header-details {
+        font-size: 0.85em;
+        margin-left: auto;
+        margin-right: 24px;
+        gap: 0.4em;
+        order: 2;
+    }
+
+    .header-details .icon {
+        width: 13px;
+        height: 13px;
+    }
+
+    .header-row-tags {
+        display: none;
+    }
+}
