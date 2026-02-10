@@ -16,6 +16,11 @@
     page-break-inside: avoid;
     break-inside: avoid;
 
+    @media screen {
+        width: min(100%, 100vw, calc(100vh * 1120 / 800));
+        max-height: 100vh;
+    }
+
     @media print {
         width: 88mm;
         font-size: 0.88mm; // 88mm / 100 = 0.88mm per unit
