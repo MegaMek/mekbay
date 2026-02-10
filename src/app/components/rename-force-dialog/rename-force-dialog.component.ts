@@ -90,7 +90,7 @@ export interface RenameForceDialogResult {
         </div>
 
         <p>Faction</p>
-        <div class="input-wrapper">
+        <div #factionTriggerWrapper class="input-wrapper">
           <button #factionTrigger class="faction-selector bt-select" (click)="toggleFactionDropdown()">
             @if (selectedFaction()) {
               <div class="faction-selector-content">
@@ -234,6 +234,7 @@ export interface RenameForceDialogResult {
 export class RenameForceDialogComponent {
     inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
     factionTrigger = viewChild.required<ElementRef<HTMLButtonElement>>('factionTrigger');
+    factionTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('factionTriggerWrapper');
 
     public dialogRef: DialogRef<RenameForceDialogResult | null, RenameForceDialogComponent> = inject(DialogRef);
     readonly data: RenameForceDialogData = inject(DIALOG_DATA);
@@ -293,14 +294,14 @@ export class RenameForceDialogComponent {
     toggleFactionDropdown(): void {
         this.overlayManager.closeManagedOverlay('faction-dropdown');
 
-        const trigger = this.factionTrigger();
-        if (!trigger) return;
+        const factionTriggerWrapper = this.factionTriggerWrapper();
+        if (!factionTriggerWrapper) return;
 
         const portal = new ComponentPortal(FactionDropdownPanelComponent, null, this.injector);
 
         const { componentRef } = this.overlayManager.createManagedOverlay(
             'faction-dropdown',
-            trigger,
+            factionTriggerWrapper,
             portal,
             {
                 closeOnOutsideClick: true,
