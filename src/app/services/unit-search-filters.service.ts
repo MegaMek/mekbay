@@ -1506,6 +1506,18 @@ export class UnitSearchFiltersService {
         const _tagsVersion = this.tagsVersion();
 
         let baseUnits = this.units;
+
+        // Pre-filter by text search so dropdown/range options cascade from it.
+        // Only for non-complex queries (complex queries hide the UI dropdowns anyway).
+        const textSearch = this.effectiveTextSearch();
+        if (textSearch) {
+            const textTokens = parseSearchQuery(textSearch);
+            baseUnits = baseUnits.filter(u => {
+                const searchableText = u._searchKey || `${u.chassis ?? ''} ${u.model ?? ''}`.toLowerCase();
+                return matchesSearch(searchableText, textTokens, true);
+            });
+        }
+
         const activeFilters: Record<string, any> = {};
         for (const [key, s] of Object.entries(state)) {
             if (s.interactedWith) activeFilters[key] = s.value;

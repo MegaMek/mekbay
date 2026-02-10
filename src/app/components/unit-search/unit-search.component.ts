@@ -102,6 +102,7 @@ export class UnitSearchComponent {
     private savedSearchesService = inject(SavedSearchesService);
 
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
+    readonly cardStyle = computed(() => this.optionsService.options().ASCardStyle);
     /** Whether the layout is filters-list-panel (filters on left) */
     readonly filtersOnLeft = computed(() => this.optionsService.options().unitSearchExpandedViewLayout === 'filters-list-panel');
 
@@ -144,6 +145,9 @@ export class UnitSearchComponent {
     activeIndex = signal<number | null>(null);
     selectedUnits = signal<Set<string>>(new Set());
     private unitDetailsDialogOpen = signal(false);
+
+    /** Whether card view mode is active (shows alpha-strike cards in a grid) */
+    cardView = signal(false);
 
     /** Unit currently selected for inline details panel in expanded view */
     inlinePanelUnit = signal<Unit | null>(null);
@@ -1175,6 +1179,10 @@ export class UnitSearchComponent {
         this.immediateSearchText.set('');
         this.filtersService.searchText.set('');
         this.activeIndex.set(null);
+    }
+
+    toggleCardView() {
+        this.cardView.update(v => !v);
     }
 
     openShareSearch(event: MouseEvent) {

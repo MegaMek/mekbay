@@ -3,6 +3,23 @@
     width: 100%;
 }
 
+/* Card View Wrapper */
+.card-view-wrapper {
+    width: 100%;
+    cursor: pointer;
+
+    &.selected {
+        outline: 2px solid var(--bt-yellow);
+        outline-offset: -2px;
+    }
+
+    alpha-strike-card {
+        display: block;
+        width: 100%;
+        pointer-events: none;
+    }
+}
+
 .unit-card-expanded {
     display: flex;
     flex-direction: column;

@@ -1,5 +1,10 @@
 @if (resolvedUnit(); as u) {
-@if (expandedView()) {
+@if (cardView() && isAlphaStrike()) {
+<!-- Alpha Strike Card View -->
+<div class="card-view-wrapper" [class.selected]="isSelected()" (click)="onCardClick()">
+    <alpha-strike-card [unit]="u" [useHex]="useHex()" [cardStyle]="cardStyle()" />
+</div>
+} @else if (expandedView()) {
 <div class="unit-card-expanded" 
      [class.selected]="isSelected()"
      (click)="onCardClick()">

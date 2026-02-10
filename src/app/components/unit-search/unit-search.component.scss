@@ -303,6 +303,38 @@
   user-select: none;
 }
 
+/* Card View Grid */
+.card-view-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 4px;
+    padding: 4px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    scrollbar-width: thin;
+    align-content: start;
+}
+
+.card-view-cell {
+    cursor: pointer;
+
+    &.selected {
+        outline: 2px solid var(--bt-yellow);
+        outline-offset: -2px;
+    }
+}
+
+.card-view-placeholder {
+    width: 100%;
+    aspect-ratio: 1120 / 800;
+    background-color: #1a1a1a;
+}
+
+.card-view-btn.active {
+    color: var(--bt-yellow);
+}
+
 .adv-panel-header {
     display: grid;
     grid-template-columns: 1fr;

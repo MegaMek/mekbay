@@ -56,6 +56,7 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
 import { SearchTokensGroup, highlightMatches } from '../../utils/search.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import { formatMovement, isAerospace } from '../../utils/as-common.util';
+import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 
 /**
  * Author: Drake
@@ -70,6 +71,7 @@ import { formatMovement, isAerospace } from '../../utils/as-common.util';
         UnitIconComponent,
         UnitTagsComponent,
         UnitComponentItemComponent,
+        AlphaStrikeCardComponent,
         AdjustedBV,
         AdjustedPV,
         FormatNumberPipe,
@@ -212,6 +214,12 @@ export class UnitCardExpandedComponent {
 
     /** Whether to show expanded view (true) or compact view (false) */
     expandedView = input(true);
+
+    /** Whether to show alpha-strike card view (renders the actual AS card) */
+    cardView = input(false);
+
+    /** Card style for alpha-strike card view */
+    cardStyle = input<'colored' | 'monochrome'>('monochrome');
 
     /** Emitted when the card is clicked */
     cardClick = output<void>();
