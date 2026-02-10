@@ -136,7 +136,9 @@
     </div>
     <div dialog-footer class="footer">
         <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="!selectedForce() && !selectedPack()">LOAD</button>
-        <button class="modal-btn bt-button" (click)="onAdd();" [disabled]="(!selectedForce() && !selectedPack()) || isSelectedForceLoaded()">ADD</button>
+        @if (forceBuilderService.loadedForces().length > 0) {
+            <button class="modal-btn bt-button" (click)="onAdd();" [disabled]="(!selectedForce() && !selectedPack()) || isSelectedForceLoaded()">ADD</button>
+        }
         <button class="modal-btn bt-button danger" (click)="onDelete();" [disabled]="!selectedForce()">DELETE</button>
         <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
     </div>
