@@ -38,7 +38,7 @@ import { ASPilotAbility } from '../../models/as-abilities.model';
     selector: 'ability-dropdown-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="dropdown-panel glass has-shadow framed-borders">
+        <div class="dropdown-panel glass has-shadow framed-borders" data-scroll-container>
             <div 
                 class="dropdown-option custom-ability-option"
                 (click)="onAddCustom()">
@@ -70,14 +70,11 @@ import { ASPilotAbility } from '../../models/as-abilities.model';
     styles: [`
         :host {
             display: block;
-            height: 100%;
+            width: 100%;
         }
 
         .dropdown-panel {
-            height: calc( 100vh - 16px );
             box-sizing: border-box;
-            margin-top: 8px;
-            margin-bottom: 8px;
             overflow-y: auto;
         }
 

@@ -54,7 +54,11 @@ export interface ASPilotAbility {
     id: string;
     name: string;
     cost: number;
+    /** Eligible unit types for this ability. If omitted, any unit may use it. */
+    unitType?: string;
     summary: string[];
+    /** Extended rules description paragraphs (more comprehensive than summary). */
+    description?: string[];
     rulesBook: string;
     rulesPage: number;
 }
@@ -2235,41 +2239,72 @@ export const AS_PILOT_ABILITIES: ASPilotAbility[] = [
         id: "terrain_master_drag_racer",
         name: "Terrain Master (Drag Racer)",
         cost: 1,
+        unitType: "Combat Vehicle (tracked or wheeled motive types only)",
         rulesBook: Rulebook.ASCE,
         rulesPage: 100,
-        summary: ["Ground vehicle unit gains extra speed on ice or pavement; avoids skidding better"],
+        summary: ["Tracked/wheeled vehicle gains extra speed on paved, ice, or black ice surfaces; receives a skid-avoidance bonus and can execute a forward-only Lateral Shift at Flank speed or faster."],
+        description: [
+            "Can only be used by Tracked and Wheeled Vehicles. Drag Racer Terrain Masters are the terror of urban environments.",
+            "This ability provides an extra +1 MP to the Drag Racer's Cruise MP, +2 to the unit's Flank MP, and +3 to its Sprint MP as long as the road surface is Paved, Ice, or even Black Ice. These modifiers are cumulative with the effects of the Speed Demon SPA.",
+            "In addition, the Drag Racer receives a \u20132 target modifier to all Driving Skill Rolls made while on such smooth surfaces, including rolls made to avoid skidding.",
+            "As a special maneuver, Drag Racers moving at Flank speed or faster can also execute a forward-only Lateral Shift maneuver, similar to four-legged 'Mechs.",
+        ],
     },
     {
         id: "terrain_master_forest_ranger",
         name: "Terrain Master (Forest Ranger)",
         cost: 3,
+        unitType: "Any non-airborne unit",
         rulesBook: Rulebook.ASCE,
         rulesPage: 100,
-        summary: ["Unit moves more easily through (and gains extra cover from) woods and jungle"],
+        summary: ["Unit moves more easily through woods/jungle (\u20131 MP cost), gains a Piloting bonus in jungle, and at Walk/Cruise speed gains +1 To-Hit cover modifier in wooded or jungle terrain."],
+        description: [
+            "Forest Ranger Terrain Masters are skilled at making good choices when moving their vehicles through light or heavy foliage.",
+            "This ability subtracts 1 MP from all movement costs the Forest Ranger's unit incurs when crossing through all woods and jungle terrain, and applies a \u20131 target modifier to any Piloting Skill Rolls required when crossing through jungle terrain.",
+            "Furthermore, if the Forest Ranger uses Walking or Cruising movement rates, they can use the trees, brush, and uneven ground for better cover than most, imposing an additional +1 To-Hit modifier against any attacks directed against the unit while it is within wooded or jungle terrain.",
+        ],
     },
     {
         id: "terrain_master_frogman",
         name: "Terrain Master (Frogman)",
         cost: 3,
+        unitType: "'Mechs, ProtoMechs",
         rulesBook: Rulebook.ASCE,
         rulesPage: 100,
-        summary: ["Unit moves more easily than others while fully submerged"],
+        summary: ["'Mech/ProtoMech moves more easily in water deeper than Depth 1 (\u20131 MP cost), gains a Piloting bonus when submerged, and applies +2 to Crush Depth Checks under Extreme Depth rules."],
+        description: [
+            "Can only be used by 'Mechs and ProtoMechs. Frogman Terrain Masters are skilled at moving through water.",
+            "This ability subtracts 1 MP from all movement costs the 'Mech or ProtoMech incurs when maneuvering through water terrain deeper than Depth 1, and applies a \u20131 target modifier to any Piloting Skill Rolls required when submerged, including those used for physical attacks.",
+            "Furthermore, if using the Extreme Depth rules (see TO:AR), the Frogman applies a +2 target modifier for any Crush Depth Checks.",
+        ],
     },
     {
         id: "terrain_master_mountaineer",
         name: "Terrain Master (Mountaineer)",
         cost: 3,
+        unitType: "Any non-airborne unit",
         rulesBook: Rulebook.ASCE,
         rulesPage: 100,
-        summary: ["Unit moves more easily through level changes and rough terrain types"],
+        summary: ["Unit moves more easily through rough/rubble terrain and level changes (\u20131 MP cost, including sheer cliffs), with a \u20131 Piloting bonus in such terrain."],
+        description: [
+            "The Mountaineer Terrain Master has extensive experience navigating the rocky features and steep slopes common to mountainous regions.",
+            "The Mountaineer subtracts 1 MP from all movement costs their unit incurs when crossing through gravel piles, rough/ultra-rough, or rubble/ultra-rubble terrain, and for any level changes, including those that involve sheer cliffs.",
+            "In addition, the Mountaineer Terrain Master applies a \u20131 target modifier to any Piloting Skill Rolls required when crossing through such terrain.",
+        ],
     },
     {
         id: "terrain_master_nightwalker",
         name: "Terrain Master (Nightwalker)",
         cost: 3,
+        unitType: "Any non-airborne unit",
         rulesBook: Rulebook.ASCE,
         rulesPage: 100,
-        summary: ["Unit ignores combat modifiers for darkness"],
+        summary: ["Unit ignores darkness-based MP modifiers at Walk/Cruise speed; at faster speeds reduces them by 1 MP. Does not affect Gunnery Skill."],
+        description: [
+            "The Nightwalker Terrain Master can ignore all night- or darkness-based MP modifiers imposed by unusual light conditions, including Dawn, Dusk, Glare, Full Moon, Night, Moonless Night, Pitch Black, or Solar Flare, as long as the unit maintains a Walk or Cruise movement rate.",
+            "If the unit spends Flank, Jumping, Running, or Sprinting MPs, the Nightwalker may only reduce the MP costs imposed by these conditions by 1 MP (to a minimum of 0).",
+            "This ability does not affect the Nightwalker's Gunnery Skill.",
+        ],
     },
     {
         id: "terrain_master_sea_monster",
@@ -2277,15 +2312,22 @@ export const AS_PILOT_ABILITIES: ASPilotAbility[] = [
         cost: 3,
         rulesBook: Rulebook.ASCE,
         rulesPage: 101,
+        unitType: "Any non-airborne unit",
         summary: ["Unit moves more easily and ignores attack penalties in water terrain"],
     },
     {
         id: "terrain_master_swamp_beast",
         name: "Terrain Master (Swamp Beast)",
         cost: 3,
+        unitType: "Any non-airborne unit",
         rulesBook: Rulebook.ASCE,
         rulesPage: 101,
-        summary: ["Unit moves more easily through mud and swamp terrain; ignores bog down in same"],
+        summary: ["Unit moves more easily through mud/swamp (\u20131 MP cost), gains a \u20131 Piloting bonus (including bog-down checks), and at Running/Flank speed can spend 1 extra MP per hex to impose +1 To-Hit against attacks while in muddy or swampy terrain."],
+        description: [
+            "Swamp Beast Terrain Masters are used to the hindering effects of muddy or swampy terrain.",
+            "This ability subtracts 1 MP from all movement costs the Swamp Beast's unit incurs when crossing through mud or swamp land, and applies a \u20131 target modifier to any Piloting Skill Rolls required when crossing such surfaces\u2014including checks needed to avoid bogging down.",
+            "In addition to this, if the Swamp Beast uses Running or Flank movement rates, they can spend one extra MP per hex to throw up a cloud of mud, muck, and loose brush around their unit, the result of which imposes an additional +1 target modifier against any attacks directed against the unit while it remains within muddy or swampy terrain.",
+        ],
     },
     {
         id: "weapon_specialist",

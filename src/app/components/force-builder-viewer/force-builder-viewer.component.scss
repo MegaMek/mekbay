@@ -214,6 +214,16 @@
     }
 }
 
+.group-name-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    padding: 0 18px;
+}
+
 .group-name {
     font-size: 0.8em;
     font-weight: bold;
@@ -221,18 +231,51 @@
     color: var(--text-color);
     cursor: pointer;
     transition: color 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 18px;
 }
 
+.group-formation {
+    font-size: 0.75em;
+    font-weight: 400;
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    transition: color 0.2s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &::before {
+        content: '·';
+        margin-right: 4px;
+    }
+}
+
+.group-formation:hover,
 .group-name:hover,
 .force-name:hover {
     color: var(--bt-yellow);
 }
 
+.btn-formation-info {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-color-tertiary);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 50%;
+    transition: color 0.15s, background-color 0.15s;
+
+    &:hover {
+        color: var(--bt-yellow);
+        background-color: rgba(255, 255, 255, 0.06);
+    }
+}
+
 .read-only .group-name,
+.read-only .group-formation,
 .read-only .force-name {
     cursor: default;
 

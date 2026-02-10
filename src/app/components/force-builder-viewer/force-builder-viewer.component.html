@@ -78,7 +78,17 @@
                                     <path d="M0 2l5 6 5-6z"/>
                                 </svg>
                             </button>
-                            <div class="group-name" (click)="promptChangeGroupName(group, slotForce)">{{ group.name() }}</div>
+                            <div class="group-name-area">
+                                <span class="group-name" (click)="promptChangeGroupName(group, slotForce)">{{ getGroupDisplayLabel(group, slotForce) }}</span>
+                                @if (group.formation(); as formation) {
+                                    @if (!groupNameContainsFormation(group, slotForce)) {
+                                        <span class="group-formation" (click)="promptChangeGroupName(group, slotForce)">{{ forceBuilderService.getFormationDisplayName(formation, group, slotForce) }}</span>
+                                    }
+                                    <button class="btn-formation-info" (click)="showFormationInfo($event, group, slotForce)" title="Formation info">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                    </button>
+                                }
+                            </div>
                             <div class="group-footer">
                                 <span class="group-bv">{{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
                             </div>

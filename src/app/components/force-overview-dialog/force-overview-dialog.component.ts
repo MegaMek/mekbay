@@ -315,7 +315,7 @@ export class ForceOverviewDialogComponent {
     /** Handle group name click - open rename dialog */
     async onGroupNameClick(group: UnitGroup): Promise<void> {
         if (this.isReadOnly()) return;
-        await this.forceBuilderService.promptChangeGroupName(group);
+        await this.forceBuilderService.promptChangeGroupName(group, this.data.force);
     }
 
     /** Handle C3 network click - open C3 network dialog */

@@ -364,17 +364,12 @@ export class RenameForceDialogComponent {
                 closeOnOutsideClick: true,
                 panelClass: 'faction-dropdown-overlay',
                 matchTriggerWidth: true,
-                fullHeight: true
+                anchorActiveSelector: '.dropdown-option.active, .none-option.active'
             }
         );
 
         componentRef.setInput('factions', this.factionDisplayList());
         componentRef.setInput('selectedFactionId', this.selectedFaction()?.id ?? null);
-
-        // Pass the trigger's vertical center so the panel scrolls the active item to align with it
-        const triggerEl = factionTriggerWrapper.nativeElement ?? factionTriggerWrapper;
-        const triggerRect = (triggerEl as HTMLElement).getBoundingClientRect();
-        componentRef.setInput('triggerY', triggerRect.top + triggerRect.height / 2);
 
         outputToObservable(componentRef.instance.selected)
             .pipe(takeUntilDestroyed(this.destroyRef))

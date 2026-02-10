@@ -39,10 +39,11 @@ import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
+import { FormationTypeDefinition } from '../utils/formation-type.model';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { firstValueFrom, skip, Subscription } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData, RenameForceDialogResult } from '../components/rename-force-dialog/rename-force-dialog.component';
-import { RenameGroupDialogComponent, RenameGroupDialogData } from '../components/rename-group-dialog/rename-group-dialog.component';
+import { RenameGroupDialogComponent, RenameGroupDialogData, RenameGroupDialogResult } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from './unit-initializer.service';
 import { DialogsService } from './dialogs.service';
 import { generateUUID, WsService } from './ws.service';
@@ -59,6 +60,7 @@ import { EditASPilotDialogComponent, EditASPilotDialogData, EditASPilotResult } 
 import { C3NetworkDialogComponent, C3NetworkDialogData, C3NetworkDialogResult } from '../components/c3-network-dialog/c3-network-dialog.component';
 import { ShareForceDialogComponent } from '../components/share-force-dialog/share-force-dialog.component';
 import { ForceOverviewDialogComponent } from '../components/force-overview-dialog/force-overview-dialog.component';
+import { FormationInfoDialogComponent, FormationInfoDialogData } from '../components/formation-info-dialog/formation-info-dialog.component';
 import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
@@ -1064,6 +1066,43 @@ export class ForceBuilderService {
         );
     }
 
+    public getFormationDefinitions(group: UnitGroup, force?: Force): FormationTypeDefinition[] {
+        const targetForce = force ?? this.currentForce();
+        if (!targetForce) return [];
+        return FormationNamerUtil.getAvailableFormationDefinitions(
+            group.units(),
+            targetForce.units(),
+            targetForce.faction(),
+            targetForce.gameSystem
+        );
+    }
+
+    public getFormationDisplayName(definition: FormationTypeDefinition, group: UnitGroup, force?: Force): string {
+        const targetForce = force ?? this.currentForce();
+        if (!targetForce) return definition.name;
+        return FormationNamerUtil.composeFormationDisplayName(
+            definition,
+            group.units(),
+            targetForce.units(),
+            targetForce.faction()
+        );
+    }
+
+    public showFormationInfo(group: UnitGroup, force?: Force): void {
+        const targetForce = force ?? this.currentForce();
+        if (!targetForce) return;
+        const formation = group.formation();
+        if (!formation) return;
+        const displayName = this.getFormationDisplayName(formation, group, targetForce);
+        this.dialogsService.createDialog(FormationInfoDialogComponent, {
+            data: {
+                formation,
+                formationDisplayName: displayName,
+                unitCount: group.units().length,
+            } as FormationInfoDialogData
+        });
+    }
+
     public async repairAllUnits() {
         const currentForce = this.currentForce();
         if (!currentForce) {
@@ -1533,21 +1572,29 @@ export class ForceBuilderService {
         }
     }
 
-    async promptChangeGroupName(group: UnitGroup) {
-        const dialogRef = this.dialogsService.createDialog<string | null>(RenameGroupDialogComponent, {
+    async promptChangeGroupName(group: UnitGroup, force?: Force) {
+        const targetForce = force ?? this.currentForce();
+        if (!targetForce) return;
+
+        const dialogRef = this.dialogsService.createDialog<RenameGroupDialogResult | null>(RenameGroupDialogComponent, {
             data: {
-                group: group
+                group: group,
+                force: targetForce
             } as RenameGroupDialogData
         });
-        const newName = await firstValueFrom(dialogRef.closed);
+        const result = await firstValueFrom(dialogRef.closed);
 
-        if (newName !== null && newName !== undefined) {
-            if (newName === '') {
-                group.nameLock = false; // Unlock name if empty
+        if (result !== null && result !== undefined) {
+            // Apply formation change
+            group.formation.set(result.formation);
+
+            // Apply name change
+            if (result.name === '' || result.name === null) {
+                group.nameLock = false;
                 group.setName(this.generateGroupName(group));
             } else {
-                group.nameLock = true; // Lock name after manual change
-                group.setName(newName.trim());
+                group.nameLock = true;
+                group.setName(result.name.trim());
             }
         }
     }

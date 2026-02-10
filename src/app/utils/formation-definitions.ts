@@ -1065,7 +1065,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         description: 'Installation defense specialists',
         effectDescription: 'If acting as the Defender in a scenario, at the beginning of play 75% of the units are assigned Environmental Specialist or Terrain Master SPA of their choice; the same variation must be chosen for each unit. If not acting as the Defender, 75% are assigned the Speed Demon SPA at the beginning of play.',
         effectGroups: [{
-            abilityIds: ['environmental_specialist', 'terrain_master', 'speed_demon'],
+            abilityIds: ['speed_demon', 'environmental_specialist', 'terrain_master_drag_racer', 'terrain_master_forest_ranger', 'terrain_master_frogman', 'terrain_master_mountaineer', 'terrain_master_nightwalker', 'terrain_master_sea_monster', 'terrain_master_swamp_beast'],
             selection: 'choose-one',
             distribution: 'percent-75',
         }],
@@ -1239,7 +1239,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         description: 'Terrain warfare specialists',
         effectDescription: 'At the beginning of play, 75% of the units in this formation receive one Terrain Master SPA. The same Terrain Master variation must be assigned to these units.',
         effectGroups: [{
-            abilityIds: ['terrain_master'],
+            abilityIds: ['terrain_master_drag_racer', 'terrain_master_forest_ranger', 'terrain_master_frogman', 'terrain_master_mountaineer', 'terrain_master_nightwalker', 'terrain_master_sea_monster', 'terrain_master_swamp_beast'],
             selection: 'choose-one',
             distribution: 'percent-75',
         }],

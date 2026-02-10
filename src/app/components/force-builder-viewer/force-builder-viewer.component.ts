@@ -687,7 +687,32 @@ export class ForceBuilderViewerComponent {
 
     promptChangeGroupName(group: UnitGroup, force: Force) {
         if (force.readOnly()) return;
-        this.forceBuilderService.promptChangeGroupName(group);
+        this.forceBuilderService.promptChangeGroupName(group, force);
+    }
+
+    showFormationInfo(event: MouseEvent, group: UnitGroup, force: Force) {
+        event.stopPropagation();
+        this.forceBuilderService.showFormationInfo(group, force);
+    }
+
+    /** Returns the text to display as the group label */
+    getGroupDisplayLabel(group: UnitGroup, force: Force): string {
+        const name = group.name();
+        const formation = group.formation();
+        if (!formation) return name;
+        if (!group.nameLock) {
+            // No custom name set — use the formation display name
+            return this.forceBuilderService.getFormationDisplayName(formation, group, force);
+        }
+        return name;
+    }
+
+    /** Check whether the group's custom name already contains the formation name (case-insensitive) */
+    groupNameContainsFormation(group: UnitGroup, force: Force): boolean {
+        const formation = group.formation();
+        if (!formation) return false;
+        const displayName = this.forceBuilderService.getFormationDisplayName(formation, group, force);
+        return group.name().toLowerCase().includes(displayName.toLowerCase());
     }
 
     shareForce() {
@@ -723,14 +748,8 @@ export class ForceBuilderViewerComponent {
         const techBase = ForceNamerUtil.getTechBase(units);
         const factionName = targetForce.faction()?.name ?? '';
 
-        if (crossSystem && currentFormation) {
-            // Try to find the same formation ID in the new game system
-            const mapped = LanceTypeIdentifierUtil.getDefinitionById(currentFormation.id, gameSystem);
-            if (mapped && LanceTypeIdentifierUtil.isValid(mapped, units, gameSystem)) {
-                group.formation.set(mapped);
-                return;
-            }
-        } else if (currentFormation && LanceTypeIdentifierUtil.isValid(currentFormation, units, gameSystem)) {
+        // We changed game system so we need to revalidate the existing formation
+        if (currentFormation && LanceTypeIdentifierUtil.isValid(currentFormation, units, gameSystem)) {
             // Same system, existing formation is still valid
             return;
         }

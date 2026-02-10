@@ -284,7 +284,7 @@ export class EditASPilotDialogComponent {
                 closeOnOutsideClick: true,
                 panelClass: 'ability-dropdown-overlay',
                 matchTriggerWidth: true,
-                fullHeight: true
+                anchorActiveSelector: '.dropdown-option:first-child'
             }
         );
 

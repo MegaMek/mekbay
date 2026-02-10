@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { afterNextRender, ChangeDetectionStrategy, Component, ElementRef, input, output, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { Faction } from '../../models/factions.model';
 import { FactionDisplayInfo } from '../../utils/force-namer.util';
@@ -43,7 +43,7 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
     selector: 'faction-dropdown-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div #panel class="dropdown-panel glass has-shadow framed-borders">
+        <div class="dropdown-panel glass has-shadow framed-borders" data-scroll-container>
             <!-- None option -->
             <div class="dropdown-option none-option"
                  [class.active]="!selectedFactionId()"
@@ -125,15 +125,11 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
     styles: [`
         :host {
             display: block;
-            height: 100%;
             width: 100%;
         }
 
         .dropdown-panel {
-            height: calc(100vh - 16px);
             box-sizing: border-box;
-            margin-top: 8px;
-            margin-bottom: 8px;
             overflow-y: auto;
         }
 
@@ -251,31 +247,8 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
 export class FactionDropdownPanelComponent {
     factions = input.required<FactionDisplayInfo[]>();
     selectedFactionId = input<number | null>(null);
-    /** Viewport Y of the trigger element's vertical center, used to align the active item. */
-    triggerY = input<number>(0);
 
     selected = output<Faction | null>();
-
-    private panelRef = viewChild<ElementRef<HTMLElement>>('panel');
-
-    constructor() {
-        afterNextRender(() => {
-            const panel = this.panelRef()?.nativeElement;
-            if (!panel) return;
-            const active = panel.querySelector('.dropdown-option.active') as HTMLElement | null;
-            if (!active) return;
-
-            const panelRect = panel.getBoundingClientRect();
-            const targetY = this.triggerY();
-            // Offset from panel top where we want the active item to appear
-            const desiredOffset = targetY > 0
-                ? targetY - panelRect.top
-                : panelRect.height / 2;
-            // Scroll so the active item's center lands at the desired offset
-            const activeMiddle = active.offsetTop + active.offsetHeight / 2;
-            panel.scrollTop = Math.max(0, activeMiddle - desiredOffset);
-        });
-    }
 
     hasMatchingFactions(): boolean {
         return this.factions().some(f => f.isMatching);

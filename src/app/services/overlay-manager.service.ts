@@ -32,7 +32,7 @@
  */
 
 import { Injectable, ElementRef, Injector, effect, ComponentRef } from '@angular/core';
-import { Overlay, OverlayRef } from '@angular/cdk/overlay';
+import { GlobalPositionStrategy, Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { DOCUMENT } from '@angular/common';
 import { inject } from '@angular/core';
@@ -59,13 +59,18 @@ type ManagedEntry = {
     triggerElement?: HTMLElement;
     resizeObserver?: ResizeObserver;
     mutationObserver?: MutationObserver;
+    contentResizeObserver?: ResizeObserver;
     pointerDownListener?: (ev: PointerEvent) => void;
     pointerUpListener?: (ev: PointerEvent) => void;
     pointerStart?: { id: number | null; x: number; y: number } | null;
     closeAreaElement?: HTMLElement | null;
     closeBlockUntil?: number;
     matchTriggerWidth?: boolean;
-    fullHeight?: boolean;
+    anchorActiveSelector?: string;
+    /** Reusable position strategy for anchored-active overlays (avoids allocating a new one per frame). */
+    anchorPositionStrategy?: GlobalPositionStrategy;
+    /** True after the first anchored-position call has set scrollTop. */
+    anchorScrollInitDone?: boolean;
 };
 // Movement threshold (px) to consider a pointer interaction a "click"
 const CLICK_MOVE_THRESHOLD = 10;
@@ -77,11 +82,23 @@ export class OverlayManagerService {
     private injector = inject(Injector);
     private document = inject(DOCUMENT) as Document;
     private managed = new Map<string, ManagedEntry>();
+    /** Whether global scroll listeners are currently attached. */
+    private globalListenersActive = false;
 
     // RAF id used to throttle position updates
     private rafId: number | null = null;
     // bound listener so it can be removed
-    private onGlobalChange = () => this.schedulePositionUpdate();
+    private onGlobalChange = (ev: Event) => {
+        // Ignore scroll events originating inside a managed overlay pane
+        // (e.g. user scrolling the dropdown list).  Without this guard the
+        // reposition logic would fight the user's scroll.
+        if (ev.type === 'scroll' && ev.target instanceof HTMLElement) {
+            for (const entry of this.managed.values()) {
+                if (entry.overlayRef.overlayElement?.contains(ev.target)) return;
+            }
+        }
+        this.schedulePositionUpdate();
+    };
 
     private isCloseBlocked(entry?: ManagedEntry): boolean {
         if (!entry || entry.closeBlockUntil == null) return false;
@@ -122,7 +139,7 @@ export class OverlayManagerService {
             sensitiveAreaReferenceElement?: HTMLElement,
             disableCloseForMs?: number,
             matchTriggerWidth?: boolean,
-            fullHeight?: boolean,
+            anchorActiveSelector?: string,
         }
     ): ManagedOverlayRef<T> {
         // close existing with same key first
@@ -130,13 +147,12 @@ export class OverlayManagerService {
         const el = target ? ((target as ElementRef<HTMLElement>)?.nativeElement ?? (target as HTMLElement)) : null;
     
         let positionStrategy;
+        let anchorStrategy: GlobalPositionStrategy | undefined;
         
-        if (opts?.fullHeight && el) {
-            // Full height mode: use global positioning but align horizontally to trigger
-            const rect = el.getBoundingClientRect();
-            positionStrategy = this.overlay.position()
-                .global()
-                .left(`${rect.left}px`);
+        if (opts?.anchorActiveSelector && el) {
+            // Anchored-active mode: global positioning, managed by updateAnchoredPosition
+            anchorStrategy = this.overlay.position().global();
+            positionStrategy = anchorStrategy;
         } else if (el) {
             positionStrategy = this.overlay.position()
                 .flexibleConnectedTo(el)
@@ -167,6 +183,7 @@ export class OverlayManagerService {
 
         const closed = new Subject<void>();
         const entry: ManagedEntry = { overlayRef, closed };
+        if (anchorStrategy) entry.anchorPositionStrategy = anchorStrategy;
 
         // Subscribe to detachments to clean up managed entry when overlay is closed externally
         // (e.g., by scroll strategy close)
@@ -191,16 +208,25 @@ export class OverlayManagerService {
         entry.closeAreaElement = resolveEl(opts?.sensitiveAreaReferenceElement);
         entry.triggerElement = el ?? undefined;
         entry.matchTriggerWidth = opts?.matchTriggerWidth ?? false;
-        entry.fullHeight = opts?.fullHeight ?? false;
+        entry.anchorActiveSelector = opts?.anchorActiveSelector;
         
         // Apply initial width if matchTriggerWidth is enabled
         if (entry.matchTriggerWidth && el) {
             this.updateOverlayWidth(entry);
         }
         
-        // Apply full height styling if enabled
-        if (entry.fullHeight) {
-            this.applyFullHeightStyles(entry);
+        // Anchored-active mode: initial position + content observer
+        if (entry.anchorActiveSelector && el) {
+            // Run initial position after a microtask so the component has rendered
+            Promise.resolve().then(() => {
+                this.updateAnchoredPosition(entry);
+                // Observe content size changes (e.g. expanding a details chevron)
+                try {
+                    const cro = new ResizeObserver(() => this.schedulePositionUpdate());
+                    cro.observe(overlayRef.overlayElement);
+                    entry.contentResizeObserver = cro;
+                } catch { /* ignore */ }
+            });
         }
         
         const blockMs = opts?.disableCloseForMs ?? 100;
@@ -220,15 +246,15 @@ export class OverlayManagerService {
                     if (this.isCloseBlocked(entry)) return;
                     const overlayEl = overlayRef.overlayElement;
                     const targetNode = ev.target as Node;
-                    if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
+                    if (entry.closeAreaElement && !this.isInsideArea(ev, entry.closeAreaElement)) {
                         return;
                     }
                     // Ignore pointerdown that started inside the overlay or trigger element
                     if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
                         return;
                     }
-                    // record start position and pointer id
-                    entry.pointerStart = { id: ev.pointerId, x: ev.clientX, y: ev.clientY };
+                    // Close immediately on outside pointer-down
+                    this.closeManagedOverlay(key);
                 } catch { /* ignore */ }
             };
             // attach listeners capturing phase to detect outside interactions
@@ -246,7 +272,7 @@ export class OverlayManagerService {
                 if (this.isCloseBlocked(entry)) return;
                 const overlayEl = overlayRef.overlayElement;
                 const clicked = ev.target as Node;
-                if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
+                if (entry.closeAreaElement && !this.isInsideArea(ev, entry.closeAreaElement)) {
                     return;
                 }
                 if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked))) {
@@ -268,7 +294,7 @@ export class OverlayManagerService {
                     }
                     const overlayEl = overlayRef.overlayElement;
                     const targetNode = ev.target as Node;
-                    if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
+                    if (entry.closeAreaElement && !this.isInsideArea(ev, entry.closeAreaElement)) {
                         return;
                     }
                     // Ignore pointerdown that started inside the overlay or trigger element
@@ -285,7 +311,7 @@ export class OverlayManagerService {
                     if (this.isCloseBlocked(entry)) { entry.pointerStart = null; return; }
                     // ensure matching pointer id (or allow - for some devices pointerId may differ; be lenient)
                     // compute movement distance
-                    if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
+                    if (entry.closeAreaElement && !this.isInsideArea(ev, entry.closeAreaElement)) {
                         return;
                     }
                     const dx = ev.clientX - entry.pointerStart.x;
@@ -321,7 +347,7 @@ export class OverlayManagerService {
                 if (this.isCloseBlocked(entry)) return;
                 const overlayEl = overlayRef.overlayElement;
                 if (!overlayEl) return;
-                if (entry.closeAreaElement && !this.areaOverlapping(ev, entry.closeAreaElement)) {
+                if (entry.closeAreaElement && !this.isInsideArea(ev, entry.closeAreaElement)) {
                     return;
                 }
                 const clicked = ev.target as Node;
@@ -394,9 +420,9 @@ export class OverlayManagerService {
                     continue;
                 }
 
-                // For fullHeight overlays, we need to update the position strategy
-                if (entry.fullHeight && entry.triggerElement) {
-                    this.updateFullHeightPosition(entry);
+                // For anchored-active overlays, recompute position from scratch
+                if (entry.anchorActiveSelector && entry.triggerElement) {
+                    this.updateAnchoredPosition(entry);
                 } else {
                     entry.overlayRef.updatePosition();
                 }
@@ -420,40 +446,105 @@ export class OverlayManagerService {
         entry.overlayRef.updateSize({ width: `${width}px` });
     }
 
-    /** Update full-height overlay position to stay aligned with trigger horizontally */
-    private updateFullHeightPosition(entry: ManagedEntry) {
-        if (!entry.triggerElement) return;
-        const rect = entry.triggerElement.getBoundingClientRect();
-        
-        // Update the position strategy
-        const positionStrategy = this.overlay.position()
-            .global()
-            .left(`${rect.left}px`);
-        
-        entry.overlayRef.updatePositionStrategy(positionStrategy);
-        this.applyFullHeightStyles(entry);
-    }
-    
-    /** Apply full height styles to overlay pane element */
-    private applyFullHeightStyles(entry: ManagedEntry) {
-        const paneElement = entry.overlayRef.overlayElement;
-        if (paneElement) {
-            paneElement.style.maxHeight = `100vh`;
+    /**
+     * Position an anchored-active overlay so that the element matching
+     * `anchorActiveSelector` aligns vertically with the trigger element's
+     * center.  The panel is content-sized with a max-height clamped to the
+     * viewport, and scrolled internally when the content overflows.
+     */
+    private updateAnchoredPosition(entry: ManagedEntry): void {
+        const trigger = entry.triggerElement;
+        const pane = entry.overlayRef.overlayElement;
+        const selector = entry.anchorActiveSelector;
+        if (!trigger || !pane || !selector) return;
+
+        const MARGIN = 8;
+        const viewportH = window.innerHeight;
+        const triggerRect = trigger.getBoundingClientRect();
+        const triggerCenterY = triggerRect.top + triggerRect.height / 2;
+
+        // The scrollable content container is the first child of the pane
+        // (the component's root element or the panel div).
+        const content = pane.firstElementChild as HTMLElement | null;
+        const scrollContainer = content
+            ? (content.querySelector('[data-scroll-container]') as HTMLElement ?? content)
+            : pane;
+
+        const maxPanelH = viewportH - 2 * MARGIN;
+        const naturalH = scrollContainer.scrollHeight;
+        const effectiveH = Math.min(naturalH, maxPanelH);
+        const overflows = naturalH > maxPanelH;
+
+        // Find the active element inside the overlay
+        const active = pane.querySelector(selector) as HTMLElement | null;
+
+        // Active item's position relative to the scroll container's content.
+        // Use getBoundingClientRect for accuracy regardless of offsetParent chain.
+        let activeCenterInContent = 0;
+        if (active) {
+            const activeRect = active.getBoundingClientRect();
+            const containerRect = scrollContainer.getBoundingClientRect();
+            activeCenterInContent = activeRect.top - containerRect.top
+                + scrollContainer.scrollTop + activeRect.height / 2;
+        }
+
+        let top: number;
+
+        if (!overflows) {
+            // Content fits — position so the active item aligns with the trigger
+            top = triggerCenterY - activeCenterInContent;
+        } else {
+            // Content overflows — panel will be viewport-sized.
+            // Place it so the trigger center is vertically centred in the panel,
+            // then use scrollTop to bring the active item to that position.
+            top = triggerCenterY - effectiveH / 2;
+        }
+
+        // Clamp to viewport
+        if (top < MARGIN) top = MARGIN;
+        if (top + effectiveH > viewportH - MARGIN) {
+            top = viewportH - MARGIN - effectiveH;
+        }
+        if (top < MARGIN) top = MARGIN;
+
+        // Update the cached global position strategy (avoids allocating a new one per frame)
+        const strategy = entry.anchorPositionStrategy;
+        if (!strategy) return;
+        strategy.left(`${triggerRect.left}px`).top(`${top}px`);
+        entry.overlayRef.updatePosition();
+
+        // Constrain panel height
+        scrollContainer.style.maxHeight = `${maxPanelH}px`;
+        scrollContainer.style.overflowY = 'auto';
+
+        // Scroll to centre the active item inside the panel —
+        // only on the FIRST successful positioning so subsequent user scrolling
+        // is preserved.  Guard: only mark done when we actually have scrollable
+        // content and an active element, otherwise a premature call (before
+        // Angular renders) would lock us out of the real scroll.
+        if (!entry.anchorScrollInitDone && active && overflows) {
+            entry.anchorScrollInitDone = true;
+            // Force reflow so maxHeight constraint is applied before setting scrollTop
+            scrollContainer.offsetHeight;
+            // Scroll so the active item sits at the vertical position
+            // within the panel that lines up with the trigger's centre.
+            const targetOffsetInPanel = triggerCenterY - top;
+            const desiredScrollTop = activeCenterInContent - targetOffsetInPanel;
+            scrollContainer.scrollTop = Math.max(0, desiredScrollTop);
         }
     }
     /** Add global listeners while overlays exist */
     private addGlobalListeners() {
-        // Attach once when the first overlay is added
-        if (this.managed.size === 1) {
-            window.addEventListener('scroll', this.onGlobalChange, true);
-        }
+        if (this.globalListenersActive) return;
+        this.globalListenersActive = true;
+        window.addEventListener('scroll', this.onGlobalChange, true);
     }
 
     /** Remove global listeners when no overlays remain */
     private removeGlobalListeners() {
-        if (this.managed.size === 0) {
-            window.removeEventListener('scroll', this.onGlobalChange, true);
-        }
+        if (!this.globalListenersActive) return;
+        this.globalListenersActive = false;
+        window.removeEventListener('scroll', this.onGlobalChange, true);
     }
 
     closeManagedOverlay(key: string) {
@@ -486,6 +577,7 @@ export class OverlayManagerService {
         }
         // disconnect observers
         try { entry.resizeObserver?.disconnect(); } catch { /* ignore */ }
+        try { entry.contentResizeObserver?.disconnect(); } catch { /* ignore */ }
         try { entry.mutationObserver?.disconnect(); } catch { /* ignore */ }
         entry.triggerElement = undefined;
         this.managed.delete(key);
@@ -546,7 +638,8 @@ export class OverlayManagerService {
         this.removeGlobalListeners();
     }
     
-    private areaOverlapping(ev: MouseEvent, area: HTMLElement): boolean {
+    /** Check whether the pointer event landed inside the given element's bounding box. */
+    private isInsideArea(ev: MouseEvent, area: HTMLElement): boolean {
         const rect = area.getBoundingClientRect();
         return ev.clientX >= rect.left && ev.clientX <= rect.right &&
                ev.clientY >= rect.top && ev.clientY <= rect.bottom;

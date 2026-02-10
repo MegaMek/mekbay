@@ -84,6 +84,39 @@ export class FormationNamerUtil {
     }
 
     /**
+     * Returns the list of valid formation definitions for a group of units.
+     */
+    public static getAvailableFormationDefinitions(
+        groupUnits: ForceUnit[],
+        allUnits: ForceUnit[],
+        faction: Faction | null,
+        gameSystem: GameSystem
+    ): FormationTypeDefinition[] {
+        const factionName = faction?.name ?? 'Mercenary';
+        const majorityTechBase = ForceNamerUtil.getTechBase(allUnits);
+        return this.identifyLanceTypes(groupUnits, majorityTechBase, factionName, gameSystem);
+    }
+
+    /**
+     * Composes the display name for a formation definition given the group context.
+     */
+    public static composeFormationDisplayName(
+        definition: FormationTypeDefinition,
+        groupUnits: ForceUnit[],
+        allUnits: ForceUnit[],
+        faction: Faction | null,
+    ): string {
+        const factionName = faction?.name ?? 'Mercenary';
+        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
+        const techBase = isComStarOrWoB ? '' : ForceNamerUtil.getTechBase(allUnits);
+        const forceType = getForceType(groupUnits, techBase, factionName);
+        if (isComStarOrWoB) {
+            return forceType + ' - ' + definition.name;
+        }
+        return definition.name + ' ' + forceType;
+    }
+
+    /**
      * Generate a formation name for a group of units within a force.
      */
     public static generateFormationName({ units, allUnits, faction, gameSystem }: FormationNameOptions): string {
