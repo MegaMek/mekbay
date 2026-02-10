@@ -59,10 +59,17 @@ import { PilotAbility } from '../../models/pilot-abilities.model';
                         <span class="ability-name">{{ ability.name }}</span>
                         <span class="ability-cost" [class.exceeds-budget]="ability.cost > remainingCost()">Cost: {{ ability.cost }}</span>
                     </div>
-                    <div class="ability-meta">
-                        <span class="ability-rules">{{ ability.rulesBook }}, p.{{ ability.rulesPage }}</span>
-                    </div>
                     <div class="ability-summary">{{ ability.summary[0] }}</div>
+                    <div class="ability-meta">
+                        <span class="ability-rules">
+                        @for (rule of ability.rulesRef; let last = $last; track $index) {
+                            {{ rule.book }}, p.{{ rule.page }}
+                            @if (!last) {
+                                <span class="separator"> · </span>
+                            }
+                        }
+                        </span>
+                    </div>
                 </div>
             }
         </div>

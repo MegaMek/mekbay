@@ -60,10 +60,17 @@
                                 </svg>
                             </button>
                         </div>
-                        @if (displayInfo.rulesInfo) {
-                            <div class="ability-detail-rules">{{ displayInfo.rulesInfo }}</div>
-                        }
                         <div class="ability-detail-summary">{{ displayInfo.summary }}</div>
+                        @if (displayInfo.rulesRef) {
+                            <div class="ability-detail-rules">
+                                @for (rule of displayInfo.rulesRef; let last = $last; track $index) {
+                                    {{ rule.book }}, p.{{ rule.page }}
+                                    @if (!last) {
+                                        <span class="separator"> · </span>
+                                    }
+                                }
+                            </div>
+                        }
                     </div>
                     }
                     } @else {

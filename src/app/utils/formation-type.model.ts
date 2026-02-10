@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { GameSystem, Rulebook } from '../models/common.model';
+import { GameSystem, Rulebook, RulesReference } from '../models/common.model';
 import { ForceUnit } from '../models/force-unit.model';
 
 /*
@@ -85,13 +85,6 @@ export interface FormationEffectGroup {
     maxPerUnit?: number;
 }
 
-/**
- * A reference to a specific rulebook and page number.
- */
-export interface RulesReference {
-    book: Rulebook;
-    page: number;
-}
 
 export interface FormationTypeDefinition {
     id: string;

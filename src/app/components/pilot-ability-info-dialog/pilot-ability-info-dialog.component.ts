@@ -34,6 +34,7 @@
 import { ChangeDetectionStrategy, Component, inject, computed } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { PilotAbility, ASCustomPilotAbility } from '../../models/pilot-abilities.model';
+import { RulesReference } from '../../models/common.model';
 
 export interface PilotAbilityInfoDialogData {
     /** The pilot ability (either standard or custom) */
@@ -71,11 +72,11 @@ export class PilotAbilityInfoDialogComponent {
         return (ability as PilotAbility).summary;
     });
     
-    readonly rulesReference = computed<string | null>(() => {
+    readonly rulesReference = computed<RulesReference[] | null>(() => {
         if (this.isCustom()) return null;
         const ability = this.ability() as PilotAbility;
-        if (!ability.rulesPage) return null;
-        return `${ability.rulesBook}, page ${ability.rulesPage}`;
+        if (!ability.rulesRef?.length) return null;
+        return ability.rulesRef;
     });
 
     close(): void {

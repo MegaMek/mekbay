@@ -39,6 +39,7 @@ import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RulesReference } from '../../models/common.model';
 
 /*
  * Author: Drake
@@ -136,7 +137,7 @@ export class EditASPilotDialogComponent {
     }
 
     /** Get display info for any ability selection */
-    getAbilityDisplayInfo(ability: AbilitySelection | null): { name: string; cost: number; summary: string; isCustom: boolean; rulesInfo?: string } | null {
+    getAbilityDisplayInfo(ability: AbilitySelection | null): { name: string; cost: number; summary: string; isCustom: boolean; rulesRef?: RulesReference[] } | null {
         if (!ability) return null;
         
         if (this.isCustomAbility(ability)) {
@@ -156,7 +157,7 @@ export class EditASPilotDialogComponent {
             cost: standardAbility.cost,
             summary: standardAbility.summary[0],
             isCustom: false,
-            rulesInfo: `${standardAbility.rulesBook}, p.${standardAbility.rulesPage}`
+            rulesRef: standardAbility.rulesRef
         };
     }
 

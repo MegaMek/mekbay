@@ -32,10 +32,10 @@
  */
 
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
-import { FormationTypeDefinition, FormationEffectGroup, RulesReference } from '../../utils/formation-type.model';
+import { FormationTypeDefinition, FormationEffectGroup } from '../../utils/formation-type.model';
 import { PilotAbility, PILOT_ABILITIES } from '../../models/pilot-abilities.model';
 import { CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
-import { Rulebook } from '../../models/common.model';
+import { RulesReference } from '../../models/common.model';
 
 /*
  * Author: Drake
@@ -50,8 +50,7 @@ export interface ResolvedAbility {
     commandAbility?: CommandAbility;
     name: string;
     summary: string[];
-    rulesBook: string;
-    rulesPage: number;
+    rulesRef: RulesReference[];
     cost?: number;
 }
 
@@ -87,10 +86,13 @@ export interface ResolvedEffectGroup {
                     <div class="effect-label">Formation Bonus</div>
                     <div class="effect-description">{{ def.effectDescription }}</div>
 
-                    @if (rulesRefText().length > 0) {
+                    @if (def.rulesRef) {
                         <div class="rules-references">
-                            @for (ref of rulesRefText(); track $index) {
-                                <span class="rules-ref">{{ ref }}</span>
+                            @for (ref of def.rulesRef; let last = $last; track $index) {
+                                {{ ref.book }}, p.{{ ref.page }}
+                                @if (!last) {
+                                    <span class="separator"> · </span>
+                                }
                             }
                         </div>
                     }
@@ -130,7 +132,14 @@ export interface ResolvedEffectGroup {
                                         @for (line of ability.summary; track line) {
                                             <div class="ability-card-summary">{{ line }}</div>
                                         }
-                                        <div class="ability-card-rules">{{ ability.rulesBook }}, p.{{ ability.rulesPage }}</div>
+                                        <div class="ability-card-rules">
+                                            @for (ref of ability.rulesRef; let last = $last; track $index) {
+                                                {{ ref.book }}, p.{{ ref.page }}
+                                                @if (!last) {
+                                                    <span class="separator"> · </span>
+                                                }
+                                            }
+                                        </div>
                                     </div>
                                     }
                                 </div>
@@ -368,8 +377,7 @@ export class FormationInfoComponent {
                             pilotAbility: pilot,
                             name: pilot.name,
                             summary: pilot.summary,
-                            rulesBook: pilot.rulesBook,
-                            rulesPage: pilot.rulesPage,
+                            rulesRef: pilot.rulesRef,
                         });
                     }
                 }
@@ -384,8 +392,7 @@ export class FormationInfoComponent {
                             commandAbility: cmd,
                             name: cmd.name,
                             summary: cmd.summary,
-                            rulesBook: cmd.rulesBook,
-                            rulesPage: cmd.rulesPage,
+                            rulesRef: cmd.rulesRef,
                         });
                     }
                 }
@@ -398,12 +405,6 @@ export class FormationInfoComponent {
                 distributionLabel: this.getDistributionLabel(group),
             };
         });
-    });
-
-    rulesRefText = computed<string[]>(() => {
-        const def = this.formation();
-        if (!def?.rulesRef) return [];
-        return def.rulesRef.map(ref => `${ref.book}, p.${ref.page}`);
     });
 
     private getSelectionLabel(selection: FormationEffectGroup['selection']): string {

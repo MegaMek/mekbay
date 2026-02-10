@@ -45,6 +45,14 @@ export enum Rulebook {
     CO = "BattleTech: Campaign Operations"
 }
 
+/**
+ * A reference to a specific rulebook and page number.
+ */
+export interface RulesReference {
+    book: Rulebook;
+    page: number;
+}
+
 export type TechBase = 'Inner Sphere' | 'Clan' | 'Mixed';
 
 export enum ECMMode {
