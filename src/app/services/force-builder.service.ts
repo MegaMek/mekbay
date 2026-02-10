@@ -1051,18 +1051,6 @@ export class ForceBuilderService {
         });
     }
 
-    public getAllFactionsAvailable(): Map<string, number> | null {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
-            return null;
-        }
-        return ForceNamerUtil.getAvailableFactions(
-            currentForce.units(),
-            this.dataService.getFactions(),
-            this.dataService.getEras()
-        );
-    }
-
     public getAllFormationsAvailable(group: UnitGroup): string[] | null {
         const currentForce = this.currentForce();
         if (!currentForce) {

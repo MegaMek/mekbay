@@ -85,7 +85,6 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     }
 
     setName(name: string, emitChange: boolean = true) {
-        if (name === this.name()) return; // No change
         this.name.set(name);
         if (emitChange) {
             this.force?.emitChanged();
@@ -187,7 +186,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     }
 
     public setName(name: string, emitChange: boolean = true) {
-        if (name === this._name()) return; // No change
         this._name.set(name);
         if (this.instanceId() || emitChange) {
             this.emitChanged();
