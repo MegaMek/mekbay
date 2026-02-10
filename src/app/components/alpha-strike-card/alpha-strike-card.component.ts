@@ -34,7 +34,7 @@
 import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, ComponentRef, Injector } from '@angular/core';
 import { ASUnitTypeCode, Unit } from '../../models/units.model';
 import { ASForceUnit, AbilitySelection } from '../../models/as-force-unit.model';
-import { AS_PILOT_ABILITIES, ASCustomPilotAbility } from '../../models/as-abilities.model';
+import { AS_PILOT_ABILITIES, ASCustomPilotAbility } from '../../models/pilot-abilities.model';
 import { AsAbilityLookupService, ParsedAbility } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';

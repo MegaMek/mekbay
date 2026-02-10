@@ -34,7 +34,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, ASPilotAbilityLimits } from '../../models/as-abilities.model';
+import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, ASPilotAbilityLimits } from '../../models/pilot-abilities.model';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';

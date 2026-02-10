@@ -33,7 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { FormationTypeDefinition, FormationEffectGroup, RulesReference } from '../../utils/formation-type.model';
-import { ASPilotAbility, AS_PILOT_ABILITIES } from '../../models/as-abilities.model';
+import { ASPilotAbility, AS_PILOT_ABILITIES } from '../../models/pilot-abilities.model';
 import { ASCommandAbility, AS_COMMAND_ABILITIES } from '../../models/as-command-abilities.model';
 import { Rulebook } from '../../models/common.model';
 

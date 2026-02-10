@@ -33,7 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, inject, computed } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { ASPilotAbility, ASCustomPilotAbility } from '../../models/as-abilities.model';
+import { ASPilotAbility, ASCustomPilotAbility } from '../../models/pilot-abilities.model';
 
 export interface PilotAbilityInfoDialogData {
     /** The pilot ability (either standard or custom) */

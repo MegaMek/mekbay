@@ -36,7 +36,7 @@ import { Sanitizer } from '../utils/sanitizer.util';
 import { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
-import { ASCustomPilotAbility } from './as-abilities.model';
+import { ASCustomPilotAbility } from './pilot-abilities.model';
 import { C3NetworkType } from './c3-network.model';
 import { DEFAULT_GUNNERY_SKILL } from './crew-member.model';
 

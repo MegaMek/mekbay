@@ -42,7 +42,7 @@ import { ForceUnit } from './force-unit.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnitState } from './as-force-unit-state.model';
 import { CrewMember } from './crew-member.model';
-import { ASCustomPilotAbility } from './as-abilities.model';
+import { ASCustomPilotAbility } from './pilot-abilities.model';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { SpecialAbilityState } from '../components/alpha-strike-card/layouts/layout-base.component';
 import { isAerospace } from '../utils/as-common.util';

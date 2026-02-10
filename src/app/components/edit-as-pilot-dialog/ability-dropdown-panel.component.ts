@@ -32,7 +32,7 @@
  */
 
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { ASPilotAbility } from '../../models/as-abilities.model';
+import { ASPilotAbility } from '../../models/pilot-abilities.model';
 
 @Component({
     selector: 'ability-dropdown-panel',
