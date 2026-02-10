@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, ElementRef, input, output, viewChild } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { Faction } from '../../models/factions.model';
 import { FactionDisplayInfo } from '../../utils/force-namer.util';
@@ -43,7 +43,7 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
     selector: 'faction-dropdown-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="dropdown-panel glass has-shadow framed-borders">
+        <div #panel class="dropdown-panel glass has-shadow framed-borders">
             <!-- None option -->
             <div class="dropdown-option none-option"
                  [class.active]="!selectedFactionId()"
@@ -64,25 +64,25 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
                 <div class="dropdown-option matching"
                      [class.active]="selectedFactionId() === item.faction.id"
                      (click)="onSelect(item.faction)">
-                    <div class="faction-header">
-                        <div class="faction-identity">
-                            @if (item.faction.img) {
-                                <img [src]="item.faction.img" class="faction-icon" [alt]="item.faction.name" />
-                            }
+                    @if (item.faction.img) {
+                        <img [src]="item.faction.img" class="faction-icon" [alt]="item.faction.name" />
+                    }
+                    <div class="faction-details">
+                        <div class="faction-header">
                             <span class="faction-name">{{ item.faction.name }}</span>
+                            <span class="match-badge">{{ (item.matchPercentage * 100) | number:'1.0-0' }}% match</span>
                         </div>
-                        <span class="match-badge">{{ (item.matchPercentage * 100) | number:'1.0-0' }}% match</span>
-                    </div>
-                    <div class="era-icons">
-                        @for (eraItem of item.eraAvailability; track eraItem.era.id) {
-                            @if (eraItem.era.icon) {
-                                <img class="era-icon"
-                                     [src]="eraItem.era.icon"
-                                     [alt]="eraItem.era.name"
-                                     [title]="eraItem.era.name + ' (' + (eraItem.era.years.from ?? '?') + '–' + (eraItem.era.years.to ?? 'present') + ')'"
-                                     [class.unavailable]="!eraItem.isAvailable" />
+                        <div class="era-icons">
+                            @for (eraItem of item.eraAvailability; track eraItem.era.id) {
+                                @if (eraItem.era.icon) {
+                                    <img class="era-icon"
+                                         [src]="eraItem.era.icon"
+                                         [alt]="eraItem.era.name"
+                                         [title]="eraItem.era.name + ' (' + (eraItem.era.years.from ?? '?') + '–' + (eraItem.era.years.to ?? 'present') + ')'"
+                                         [class.unavailable]="!eraItem.isAvailable" />
+                                }
                             }
-                        }
+                        </div>
                     </div>
                 </div>
                 }
@@ -98,24 +98,24 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
                 <div class="dropdown-option"
                      [class.active]="selectedFactionId() === item.faction.id"
                      (click)="onSelect(item.faction)">
-                    <div class="faction-header">
-                        <div class="faction-identity">
-                            @if (item.faction.img) {
-                                <img [src]="item.faction.img" class="faction-icon" [alt]="item.faction.name" />
-                            }
+                    @if (item.faction.img) {
+                        <img [src]="item.faction.img" class="faction-icon" [alt]="item.faction.name" />
+                    }
+                    <div class="faction-details">
+                        <div class="faction-header">
                             <span class="faction-name">{{ item.faction.name }}</span>
                         </div>
-                    </div>
-                    <div class="era-icons">
-                        @for (eraItem of item.eraAvailability; track eraItem.era.id) {
-                            @if (eraItem.era.icon) {
-                                <img class="era-icon"
-                                     [src]="eraItem.era.icon"
-                                     [alt]="eraItem.era.name"
-                                     [title]="eraItem.era.name + ' (' + (eraItem.era.years.from ?? '?') + '–' + (eraItem.era.years.to ?? 'present') + ')'"
-                                     [class.unavailable]="!eraItem.isAvailable" />
+                        <div class="era-icons">
+                            @for (eraItem of item.eraAvailability; track eraItem.era.id) {
+                                @if (eraItem.era.icon) {
+                                    <img class="era-icon"
+                                         [src]="eraItem.era.icon"
+                                         [alt]="eraItem.era.name"
+                                         [title]="eraItem.era.name + ' (' + (eraItem.era.years.from ?? '?') + '–' + (eraItem.era.years.to ?? 'present') + ')'"
+                                         [class.unavailable]="!eraItem.isAvailable" />
+                                }
                             }
-                        }
+                        </div>
                     </div>
                 </div>
                 }
@@ -126,6 +126,7 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
         :host {
             display: block;
             height: 100%;
+            width: 100%;
         }
 
         .dropdown-panel {
@@ -149,6 +150,9 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
             padding: 8px 12px;
             cursor: pointer;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         .dropdown-option:last-child {
@@ -180,19 +184,21 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 6px;
         }
 
-        .faction-identity {
+        .faction-details {
             display: flex;
-            align-items: center;
-            gap: 8px;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+            flex: 1;
         }
 
         .faction-icon {
-            width: 1.6em;
-            height: 1.6em;
+            width: 2.4em;
+            height: 2.4em;
             object-fit: contain;
+            flex-shrink: 0;
         }
 
         .faction-name {
@@ -215,7 +221,6 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
         }
 
         .era-icons {
-            align-self: center;
             display: flex;
             flex-direction: row;
             align-items: center;
@@ -246,8 +251,31 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
 export class FactionDropdownPanelComponent {
     factions = input.required<FactionDisplayInfo[]>();
     selectedFactionId = input<number | null>(null);
+    /** Viewport Y of the trigger element's vertical center, used to align the active item. */
+    triggerY = input<number>(0);
 
     selected = output<Faction | null>();
+
+    private panelRef = viewChild<ElementRef<HTMLElement>>('panel');
+
+    constructor() {
+        afterNextRender(() => {
+            const panel = this.panelRef()?.nativeElement;
+            if (!panel) return;
+            const active = panel.querySelector('.dropdown-option.active') as HTMLElement | null;
+            if (!active) return;
+
+            const panelRect = panel.getBoundingClientRect();
+            const targetY = this.triggerY();
+            // Offset from panel top where we want the active item to appear
+            const desiredOffset = targetY > 0
+                ? targetY - panelRect.top
+                : panelRect.height / 2;
+            // Scroll so the active item's center lands at the desired offset
+            const activeMiddle = active.offsetTop + active.offsetHeight / 2;
+            panel.scrollTop = Math.max(0, activeMiddle - desiredOffset);
+        });
+    }
 
     hasMatchingFactions(): boolean {
         return this.factions().some(f => f.isMatching);

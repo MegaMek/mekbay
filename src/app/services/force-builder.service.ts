@@ -1541,7 +1541,7 @@ export class ForceBuilderService {
         } else {
             force.nameLock = true;
             force.faction.set(result.faction);
-            force.setName(result.name.trim(), false);
+            force.setName(result.name.trim());
         }
     }
 

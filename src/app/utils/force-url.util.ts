@@ -235,9 +235,6 @@ export function parseForceFromUrl(
 
             // Create or get group
             const group = force.addGroup(groupName || 'Group');
-            if (groupName) {
-                group.nameLock = true;
-            }
 
             // Parse units for this group
             const groupUnits = parseUnitUrlParams(force, unitsStr, unitMap, group, logger);

@@ -37,6 +37,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { outputToObservable } from '@angular/core/rxjs-interop';
+import { DecimalPipe } from '@angular/common';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { DataService } from '../../services/data.service';
 import { Force } from '../../models/force.model';
@@ -92,12 +93,26 @@ export interface RenameForceDialogResult {
         <p>Faction</p>
         <div #factionTriggerWrapper class="input-wrapper">
           <button #factionTrigger class="faction-selector bt-select" (click)="toggleFactionDropdown()">
-            @if (selectedFaction()) {
+            @if (selectedFactionDisplay(); as display) {
               <div class="faction-selector-content">
-                @if (selectedFaction()!.img) {
-                  <img [src]="selectedFaction()!.img" class="faction-selector-icon" [alt]="selectedFaction()!.name" />
+                @if (display.faction.img) {
+                  <img [src]="display.faction.img" class="faction-selector-icon" [alt]="display.faction.name" />
                 }
-                <span>{{ selectedFaction()!.name }}</span>
+                <div class="faction-selector-details">
+                  <div class="faction-selector-header">
+                    <span class="faction-selector-name">{{ display.faction.name }}</span>
+                  </div>
+                  <div class="faction-selector-eras">
+                    @for (eraItem of display.eraAvailability; track eraItem.era.id) {
+                      @if (eraItem.era.icon) {
+                        <img class="faction-selector-era-icon"
+                             [src]="eraItem.era.icon"
+                             [alt]="eraItem.era.name"
+                             [class.unavailable]="!eraItem.isAvailable" />
+                      }
+                    }
+                  </div>
+                </div>
               </div>
           } @else {
             <span class="placeholder">No faction selected</span>
@@ -203,7 +218,6 @@ export interface RenameForceDialogResult {
             padding: 10px 12px;
             cursor: pointer;
             display: flex;
-            justify-content: center;
             align-items: center;
             text-align: left;
             font-size: 1em;
@@ -216,13 +230,50 @@ export interface RenameForceDialogResult {
         .faction-selector-content {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
+            width: 100%;
         }
 
         .faction-selector-icon {
-            width: 1.4em;
-            height: 1.4em;
+            width: 2.4em;
+            height: 2.4em;
             object-fit: contain;
+            flex-shrink: 0;
+        }
+
+        .faction-selector-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .faction-selector-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .faction-selector-name {
+            font-weight: 600;
+        }
+
+        .faction-selector-eras {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .faction-selector-era-icon {
+            width: 1.2em;
+            height: 1.2em;
+            object-fit: contain;
+        }
+
+        .faction-selector-era-icon.unavailable {
+            opacity: 0.15;
         }
 
         .placeholder {
@@ -245,6 +296,12 @@ export class RenameForceDialogComponent {
     private destroyRef = inject(DestroyRef);
 
     selectedFaction = signal<Faction | null>(this.data.force.faction());
+
+    selectedFactionDisplay = computed<FactionDisplayInfo | null>(() => {
+        const faction = this.selectedFaction();
+        if (!faction) return null;
+        return this.factionDisplayList().find(f => f.faction.id === faction.id) ?? null;
+    });
 
     factionDisplayList = computed<FactionDisplayInfo[]>(() => {
         const units = this.data.force.units();
@@ -314,14 +371,19 @@ export class RenameForceDialogComponent {
         componentRef.setInput('factions', this.factionDisplayList());
         componentRef.setInput('selectedFactionId', this.selectedFaction()?.id ?? null);
 
+        // Pass the trigger's vertical center so the panel scrolls the active item to align with it
+        const triggerEl = factionTriggerWrapper.nativeElement ?? factionTriggerWrapper;
+        const triggerRect = (triggerEl as HTMLElement).getBoundingClientRect();
+        componentRef.setInput('triggerY', triggerRect.top + triggerRect.height / 2);
+
         outputToObservable(componentRef.instance.selected)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((faction: Faction | null) => {
                 this.selectedFaction.set(faction);
                 this.overlayManager.closeManagedOverlay('faction-dropdown');
 
-                // Auto-update force name when faction is changed
-                if (faction) {
+                // Auto-update force name when faction is changed (unless name is locked)
+                if (faction && !this.data.force.nameLock) {
                     const newName = ForceNamerUtil.generateForceNameForFaction(faction);
                     this.setInputText(newName);
                 }
