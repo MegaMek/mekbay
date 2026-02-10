@@ -34,12 +34,12 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, PilotAbilityLimits } from '../../models/pilot-abilities.model';
+import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, PilotAbilityLimits, getAbilityDetails } from '../../models/pilot-abilities.model';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RulesReference } from '../../models/common.model';
+import { RulesReference, GameSystem } from '../../models/common.model';
 
 /*
  * Author: Drake
@@ -155,7 +155,7 @@ export class EditASPilotDialogComponent {
         return {
             name: standardAbility.name,
             cost: standardAbility.cost,
-            summary: standardAbility.summary[0],
+            summary: getAbilityDetails(standardAbility, GameSystem.ALPHA_STRIKE).summary[0],
             isCustom: false,
             rulesRef: standardAbility.rulesRef
         };

@@ -35,6 +35,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { FormationTypeDefinition } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
+import { GameSystem } from '../../models/common.model';
 
 /*
  * Author: Drake
@@ -45,6 +46,8 @@ import { FormationInfoComponent } from '../formation-info/formation-info.compone
 
 export interface FormationInfoDialogData {
     formation: FormationTypeDefinition;
+    /** Game system of the owning force. */
+    gameSystem: GameSystem;
     /** Optional composed formation name for display (e.g. "Fire Support Lance") */
     formationDisplayName?: string;
     /** Optional unit count for concrete distribution labels */
@@ -63,7 +66,7 @@ export interface FormationInfoDialogData {
         <div class="content">
             <h2 dialog-title>{{ data.formationDisplayName || data.formation.name }}</h2>
             <div dialog-content>
-                <formation-info [formation]="data.formation" [unitCount]="data.unitCount"></formation-info>
+                <formation-info [formation]="data.formation" [gameSystem]="data.gameSystem" [unitCount]="data.unitCount"></formation-info>
             </div>
             <div dialog-actions>
                 <button (click)="close()" class="bt-button">DISMISS</button>

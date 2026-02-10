@@ -45,7 +45,7 @@ import { SpecialAbilityState, SpecialAbilityClickEvent } from './layouts/layout-
 import { CriticalHitRollDialogComponent, CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
 import { MotiveDamageRollDialogComponent, MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
 import { AsLayoutStandardComponent, AsLayoutLargeVessel1Component, AsLayoutLargeVessel2Component } from './layouts';
-import { REMOTE_HOST } from '../../models/common.model';
+import { GameSystem, REMOTE_HOST } from '../../models/common.model';
 import { ChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { firstValueFrom } from 'rxjs';
@@ -380,7 +380,7 @@ export class AlphaStrikeCardComponent {
         }
         
         this.dialogs.createDialog<void>(PilotAbilityInfoDialogComponent, {
-            data: { ability, isCustom } as PilotAbilityInfoDialogData
+            data: { gameSystem: GameSystem.ALPHA_STRIKE, ability, isCustom } as PilotAbilityInfoDialogData
         });
     }
 

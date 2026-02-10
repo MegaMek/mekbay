@@ -34,6 +34,7 @@
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
 import { FormationTypeDefinition } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
+import { GameSystem } from '../../models/common.model';
 
 /*
  * Author: Drake
@@ -73,7 +74,7 @@ export interface FormationDisplayItem {
                     </div>
                     @if (expandedId() === item.definition.id) {
                         <div class="formation-option-details">
-                            <formation-info [formation]="item.definition"></formation-info>
+                            <formation-info [formation]="item.definition" [gameSystem]="gameSystem()"></formation-info>
                         </div>
                     }
                 </div>
@@ -196,6 +197,7 @@ export interface FormationDisplayItem {
 export class FormationDropdownPanelComponent {
     formations = input.required<FormationDisplayItem[]>();
     selectedFormationId = input<string | null>(null);
+    gameSystem = input<GameSystem>(GameSystem.ALPHA_STRIKE);
 
     selected = output<FormationTypeDefinition | null>();
 

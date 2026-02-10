@@ -1097,6 +1097,7 @@ export class ForceBuilderService {
         this.dialogsService.createDialog(FormationInfoDialogComponent, {
             data: {
                 formation,
+                gameSystem: targetForce.gameSystem,
                 formationDisplayName: displayName,
                 unitCount: group.units().length,
             } as FormationInfoDialogData

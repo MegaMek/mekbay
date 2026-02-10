@@ -33,9 +33,9 @@
 
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { FormationTypeDefinition, FormationEffectGroup } from '../../utils/formation-type.model';
-import { PilotAbility, PILOT_ABILITIES } from '../../models/pilot-abilities.model';
+import { PilotAbility, PILOT_ABILITIES, getAbilityDetails } from '../../models/pilot-abilities.model';
 import { CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
-import { RulesReference } from '../../models/common.model';
+import { GameSystem, RulesReference } from '../../models/common.model';
 
 /*
  * Author: Drake
@@ -318,6 +318,8 @@ export interface ResolvedEffectGroup {
 })
 export class FormationInfoComponent {
     formation = input<FormationTypeDefinition | null>(null);
+    /** Game system of the owning force — determines which ability summaries to display. */
+    gameSystem = input<GameSystem>(GameSystem.ALPHA_STRIKE);
     /** Optional unit count in the group — used to compute concrete numbers for distribution labels. */
     unitCount = input<number | undefined>(undefined);
 
@@ -376,7 +378,7 @@ export class FormationInfoComponent {
                         abilities.push({
                             pilotAbility: pilot,
                             name: pilot.name,
-                            summary: pilot.summary,
+                            summary: getAbilityDetails(pilot, this.gameSystem()).summary,
                             rulesRef: pilot.rulesRef,
                         });
                     }

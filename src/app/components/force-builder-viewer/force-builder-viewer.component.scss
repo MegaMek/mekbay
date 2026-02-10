@@ -209,7 +209,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    flex-wrap: wrap;
+    gap: 0px 4px;
     flex: 1;
     min-width: 0;
     padding: 0 18px;
@@ -224,15 +225,19 @@
     transition: color 0.2s;
 }
 
+.group-formation-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
 .group-formation {
     font-size: 0.75em;
     font-weight: 400;
     color: var(--text-color-secondary);
     cursor: pointer;
     transition: color 0.2s;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 
     &::before {
         content: '·';

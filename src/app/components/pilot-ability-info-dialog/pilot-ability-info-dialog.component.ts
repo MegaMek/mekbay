@@ -33,10 +33,12 @@
 
 import { ChangeDetectionStrategy, Component, inject, computed } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { PilotAbility, ASCustomPilotAbility } from '../../models/pilot-abilities.model';
-import { RulesReference } from '../../models/common.model';
+import { PilotAbility, ASCustomPilotAbility, getAbilityDetails } from '../../models/pilot-abilities.model';
+import { GameSystem, RulesReference } from '../../models/common.model';
+import { GameService } from '../../services/game.service';
 
 export interface PilotAbilityInfoDialogData {
+    gameSystem: GameSystem;
     /** The pilot ability (either standard or custom) */
     ability: PilotAbility | ASCustomPilotAbility;
     /** Whether this is a custom ability */
@@ -69,7 +71,7 @@ export class PilotAbilityInfoDialogComponent {
             // Custom abilities have a single summary string
             return [(ability as ASCustomPilotAbility).summary];
         }
-        return (ability as PilotAbility).summary;
+        return getAbilityDetails(ability as PilotAbility, this.data.gameSystem).summary;
     });
     
     readonly rulesReference = computed<RulesReference[] | null>(() => {

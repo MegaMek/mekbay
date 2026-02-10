@@ -32,7 +32,8 @@
  */
 
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { PilotAbility } from '../../models/pilot-abilities.model';
+import { PilotAbility, getAbilityDetails } from '../../models/pilot-abilities.model';
+import { GameSystem } from '../../models/common.model';
 
 @Component({
     selector: 'ability-dropdown-panel',
@@ -59,7 +60,7 @@ import { PilotAbility } from '../../models/pilot-abilities.model';
                         <span class="ability-name">{{ ability.name }}</span>
                         <span class="ability-cost" [class.exceeds-budget]="ability.cost > remainingCost()">Cost: {{ ability.cost }}</span>
                     </div>
-                    <div class="ability-summary">{{ ability.summary[0] }}</div>
+                    <div class="ability-summary">{{ getAbilitySummary(ability) }}</div>
                     <div class="ability-meta">
                         <span class="ability-rules">
                         @for (rule of ability.rulesRef; let last = $last; track $index) {
@@ -167,6 +168,10 @@ export class AbilityDropdownPanelComponent {
     
     selected = output<string>();
     addCustom = output<void>();
+
+    getAbilitySummary(ability: PilotAbility): string {
+        return getAbilityDetails(ability, GameSystem.ALPHA_STRIKE).summary[0] ?? '';
+    }
 
     /** Check if an ability should be disabled (already selected or exceeds budget) */
     isAbilityDisabled(ability: PilotAbility): boolean {
