@@ -2,6 +2,10 @@
     display: block;
     container-type: inline-size;
 
+    @media screen {
+        max-width: min(100%, 100vw, calc(100vh * 1120 / 800));
+    }
+
     @media print {
         container-type: normal; // Disable container queries for print
     }
@@ -15,11 +19,6 @@
     font-size: 1cqw;
     page-break-inside: avoid;
     break-inside: avoid;
-
-    @media screen {
-        width: min(100%, 100vw, calc(100vh * 1120 / 800));
-        max-height: 100vh;
-    }
 
     @media print {
         width: 88mm;

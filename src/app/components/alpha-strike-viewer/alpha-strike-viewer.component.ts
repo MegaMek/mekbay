@@ -58,6 +58,7 @@ const BASE_CELL_WIDTH = 350;
 const MIN_CELL_WIDTH = 280;
 const CELL_GAP = 4;
 const CONTAINER_PADDING = 8 * 2; // left + right padding
+const CARD_ASPECT_RATIO = 1120 / 800; // width / height
 
 // Pinch zoom threshold: computed from container/viewport diagonal.
 // Using a ratio keeps gesture sensitivity consistent across device sizes.
@@ -124,16 +125,27 @@ export class AlphaStrikeViewerComponent {
     // Cell width is derived from column count and container width
     private containerWidth = signal(0);
     
+    // Viewport height tracking for card constraint calculations
+    private viewportHeight = signal(typeof window !== 'undefined' ? window.innerHeight : Infinity);
+    
+    // Max card width imposed by viewport height (card aspect ratio constrains width when height is limited)
+    private maxCardWidthFromViewport = computed(() => this.viewportHeight() * CARD_ASPECT_RATIO);
+    
+    // Effective cell widths accounting for viewport height constraint
+    private effectiveBaseCellWidth = computed(() => Math.min(BASE_CELL_WIDTH, this.maxCardWidthFromViewport()));
+    private effectiveMinCellWidth = computed(() => Math.min(MIN_CELL_WIDTH, this.maxCardWidthFromViewport()));
+    
     readonly cellWidth = computed(() => {
         const width = this.containerWidth();
         const cols = this.columnCount();
-        if (width <= 0) return BASE_CELL_WIDTH;
+        if (width <= 0) return this.effectiveBaseCellWidth();
         
         // Calculate cell width that fits exactly `cols` columns
         // Formula: cols * cellWidth + (cols - 1) * gap + padding = containerWidth
         const availableWidth = width - CONTAINER_PADDING;
         const cellWidth = (availableWidth - (cols - 1) * CELL_GAP) / cols;
-        return Math.floor(Math.max(MIN_CELL_WIDTH, cellWidth));
+        // Cap at the max card width the viewport allows
+        return Math.floor(Math.min(Math.max(this.effectiveMinCellWidth(), cellWidth), this.maxCardWidthFromViewport()));
     });
     
     // Pinch gesture state
@@ -284,6 +296,15 @@ export class AlphaStrikeViewerComponent {
             });
         });
         
+        // Track viewport height for card constraint calculations
+        effect((onCleanup) => {
+            if (typeof window === 'undefined') return;
+            
+            const onResize = () => this.viewportHeight.set(window.innerHeight);
+            window.addEventListener('resize', onResize, { passive: true });
+            onCleanup(() => window.removeEventListener('resize', onResize));
+        });
+        
         // Calculate optimal column count on initial render
         let initialColumnsCalculated = false;
         effect(() => {
@@ -300,6 +321,18 @@ export class AlphaStrikeViewerComponent {
             this.updatePickerPositionTrigger.update(v => v + 1);
             if (width > 0) {
                 this.clampColumnsToFit();
+            }
+        });
+        
+        // Recalculate optimal columns when viewport height changes
+        // (card max width may shrink/grow, allowing more/fewer columns)
+        let prevViewportMaxWidth = this.maxCardWidthFromViewport();
+        effect(() => {
+            const currentMax = this.maxCardWidthFromViewport();
+            const width = this.containerWidth();
+            if (width > 0 && currentMax !== prevViewportMaxWidth) {
+                prevViewportMaxWidth = currentMax;
+                this.calculateOptimalColumns();
             }
         });
         
@@ -354,8 +387,9 @@ export class AlphaStrikeViewerComponent {
         if (width <= 0) return;
         
         const availableWidth = width - CONTAINER_PADDING;
-        // How many BASE_CELL_WIDTH cells fit?
-        const cols = Math.max(1, Math.floor((availableWidth + CELL_GAP) / (BASE_CELL_WIDTH + CELL_GAP)));
+        // How many cells fit at the effective base width (accounts for viewport height constraint)?
+        const baseCellWidth = this.effectiveBaseCellWidth();
+        const cols = Math.max(1, Math.floor((availableWidth + CELL_GAP) / (baseCellWidth + CELL_GAP)));
         if (cols != this.columnCount()) {
             this.updatePickerPositionTrigger.update(v => v + 1);
         }
@@ -384,7 +418,8 @@ export class AlphaStrikeViewerComponent {
         if (width <= 0) return 1;
         
         const availableWidth = width - CONTAINER_PADDING;
-        return Math.max(1, Math.floor((availableWidth + CELL_GAP) / (MIN_CELL_WIDTH + CELL_GAP)));
+        const minCellWidth = this.effectiveMinCellWidth();
+        return Math.max(1, Math.floor((availableWidth + CELL_GAP) / (minCellWidth + CELL_GAP)));
     }
     
     // Ctrl+Wheel to change column count
