@@ -341,22 +341,27 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     /**
      * Ensures no duplicate group or unit IDs exist within this force.
      * If duplicates are found, regenerates them with fresh UUIDs.
+     * @returns true if any duplicate IDs were found and fixed.
      */
-    public deduplicateIds(): void {
+    public deduplicateIds(): boolean {
+        let fixed = false;
         const seenGroupIds = new Set<string>();
         const seenUnitIds = new Set<string>();
         for (const group of this.groups()) {
             if (seenGroupIds.has(group.id)) {
                 group.id = generateUUID();
+                fixed = true;
             }
             seenGroupIds.add(group.id);
             for (const unit of group.units()) {
                 if (seenUnitIds.has(unit.id)) {
                     unit.id = generateUUID();
+                    fixed = true;
                 }
                 seenUnitIds.add(unit.id);
             }
         }
+        return fixed;
     }
 
     public setUnits(newUnits: TUnit[]) {

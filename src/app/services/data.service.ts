@@ -924,6 +924,7 @@ export class DataService {
         }
         let local: Force | null = null;
         let cloud: Force | null = null;
+        let result: Force | null = null;
         if (localRaw) {
             try {
                 if (localRaw.type === GameSystem.ALPHA_STRIKE) {
@@ -948,10 +949,20 @@ export class DataService {
         }
 
         if (local && cloud) {
-            return this.isCloudNewer(localRaw, cloudRaw) ? cloud : local;
+            result = this.isCloudNewer(localRaw, cloudRaw) ? cloud : local;
+        } else if (!triedCloud && local) {
+            result = local;
+        } else {
+            result = cloud || local || null;
         }
-        if (!triedCloud && local) return local;
-        return cloud || local || null;
+
+        // Fix any duplicate group/unit IDs that may have been persisted.
+        if (result && result.deduplicateIds()) {
+            this.logger.warn(`Force "${result.name}" had duplicate IDs — fixed and re-saving.`);
+            this.saveForce(result);
+        }
+
+        return result;
     }
 
     public async saveForce(force: Force, localOnly: boolean = false): Promise<void> {
