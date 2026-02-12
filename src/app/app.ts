@@ -309,10 +309,10 @@ export class App {
         this.lastUpdateCheck = now;
 
         try {
-            const updateFound = await this.pwaService.checkForUpdate();
-            if (updateFound) {
-                this.updateAvailable.set(true);
-            }
+            // Fire the check — if an update is found, the pwaService.updateAvailable
+            // signal will be set via the SW's updatefound/statechange listeners,
+            // and the effect in the constructor propagates it to this.updateAvailable.
+            await this.pwaService.checkForUpdate();
         } catch (err) {
             this.logger.error('Error checking for updates:' + err);
         }

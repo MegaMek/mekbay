@@ -90,6 +90,18 @@ export class PwaService {
 
     private async register(): Promise<void> {
         try {
+            // ── Migration: clean up old Angular @angular/service-worker ──
+            // If the current controller is ngsw-worker.js (or any non-sw.js script),
+            // the new registration of /sw.js will naturally replace it. However we
+            // also force an update check on the old registration so the browser
+            // picks up the script URL change immediately.
+            const existingReg = await navigator.serviceWorker.getRegistration('/');
+            if (existingReg?.active && !existingReg.active.scriptURL.endsWith('/sw.js')) {
+                this.logger.info('[PWA] Detected old service worker (' + existingReg.active.scriptURL + ') — replacing with /sw.js');
+                // Force the browser to fetch the new script URL
+                await existingReg.unregister();
+            }
+
             const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
             this.registration = reg;
             this.isEnabled.set(true);
@@ -106,8 +118,11 @@ export class PwaService {
                 if (!installing) return;
 
                 installing.addEventListener('statechange', () => {
+                    // A new SW has been installed. If we already have a controller,
+                    // this is an update. If we don't have a controller yet (first
+                    // install replacing NGSW), the sw.ts install handler calls
+                    // skipWaiting() automatically which triggers controllerchange → reload.
                     if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-                        // New version installed and a previous version was controlling -> update ready
                         this.zone.run(() => this.updateAvailable.set(true));
                         this.logger.info('[PWA] New service worker version is waiting to activate.');
                     }
@@ -119,7 +134,8 @@ export class PwaService {
                 this.handleSwMessage(event.data);
             });
 
-            // If the controller changes (another tab called skipWaiting), reload.
+            // If the controller changes (another tab called skipWaiting, or
+            // first-time migration from NGSW), reload to guarantee fresh assets.
             let refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 if (refreshing) return;
@@ -134,18 +150,15 @@ export class PwaService {
     // ─── Update API ──────────────────────────────────────────
 
     /**
-     * Manually check for a service worker update.
-     * @returns `true` if an update was found.
+     * Manually trigger a service worker update check.
+     * If an update is found, the `updatefound` listener will set `updateAvailable`.
      */
-    async checkForUpdate(): Promise<boolean> {
-        if (!this.registration) return false;
+    async checkForUpdate(): Promise<void> {
+        if (!this.registration) return;
         try {
             await this.registration.update();
-            // After update(), if a new SW is waiting, updatefound listener will set the signal.
-            return this.updateAvailable();
         } catch (err) {
             this.logger.error('[PWA] Update check failed: ' + err);
-            return false;
         }
     }
 

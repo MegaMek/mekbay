@@ -46,16 +46,45 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { clientsClaim } from 'workbox-core';
 
 // ─── Lifecycle ──────────────────────────────────────────────
-// Skip waiting on install so updates activate immediately when the user triggers reload.
-// The app controls when to prompt via the PwaService & UpdateButtonComponent.
+
+// Listen for SKIP_WAITING from the app (user-triggered update).
 self.addEventListener('message', (event) => {
     if (event.data?.type === 'SKIP_WAITING') {
         self.skipWaiting();
     }
 });
 
+// On first install, auto-skipWaiting when we're replacing a foreign SW
+// (e.g. Angular's ngsw-worker.js). Without this the new SW would sit in
+// "waiting" forever because the old app code doesn't know to send SKIP_WAITING.
+self.addEventListener('install', () => {
+    // If there's no existing controller, or the existing controller's script URL
+    // differs from ours, this is a migration — activate immediately.
+    const existingController = (self as any).serviceWorker?.controller;
+    if (!existingController || !existingController.scriptURL?.endsWith('/sw.js')) {
+        self.skipWaiting();
+    }
+});
+
 // Claim clients immediately after activation so existing tabs use the new SW.
 clientsClaim();
+
+// On activation, clean up caches left behind by Angular's @angular/service-worker.
+// NGSW uses cache names prefixed with "ngsw:".
+self.addEventListener('activate', (event) => {
+    event.waitUntil(
+        caches.keys().then((keys) => {
+            return Promise.all(
+                keys
+                    .filter((key) => key.startsWith('ngsw:'))
+                    .map((key) => {
+                        console.log('[SW] Cleaning up old NGSW cache:', key);
+                        return caches.delete(key);
+                    })
+            );
+        })
+    );
+});
 
 // ─── Precaching ─────────────────────────────────────────────
 // workbox-build injects the manifest here during the build step.
