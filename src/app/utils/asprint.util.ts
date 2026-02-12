@@ -38,6 +38,7 @@ import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import { OptionsService } from '../services/options.service';
 import { isIOS } from './platform.util';
+import { FormationNamerUtil } from './formation-namer.util';
 
 /**
  * Represents a single card to render (handles multi-card units)
@@ -105,8 +106,8 @@ export class ASPrintUtil {
         // Create print container - use different layouts for iOS vs other platforms
         const useFixedLayout = isIOS();
         const { overlay, cardComponentRefs } = useFixedLayout
-            ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups)
-            : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups);
+            ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups)
+            : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups);
 
         // Wait for fonts and images to load
         if ((document as any).fonts?.ready) {
@@ -185,7 +186,8 @@ export class ASPrintUtil {
         injector: Injector,
         optionsService: OptionsService,
         cardItems: CardRenderItem[],
-        pageBreakOnGroups: boolean
+        pageBreakOnGroups: boolean,
+        groups: UnitGroup<ASForceUnit>[]
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
@@ -218,6 +220,14 @@ export class ASPrintUtil {
                     const isLastPageOfGroup = pageIndex === totalPagesInGroup - 1;
                     if (isLastGroup && isLastPageOfGroup) {
                         pageDiv.classList.add('last-page');
+                    }
+
+                    // Add group header on first page of each group
+                    if (pageIndex === 0 && groups.length > 1) {
+                        const group = groups[groupCards[0].groupIndex];
+                        if (group) {
+                            pageDiv.appendChild(this.createGroupHeaderElement(group));
+                        }
                     }
                     
                     const startIndex = pageIndex * CARDS_PER_PAGE;
@@ -273,7 +283,8 @@ export class ASPrintUtil {
         injector: Injector,
         optionsService: OptionsService,
         cardItems: CardRenderItem[],
-        pageBreakOnGroups: boolean
+        pageBreakOnGroups: boolean,
+        groups: UnitGroup<ASForceUnit>[]
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
@@ -301,6 +312,14 @@ export class ASPrintUtil {
                 if (!isLastGroup) {
                     flexContainer.classList.add('as-group-break');
                 }
+
+                // Add group header
+                if (groups.length > 1) {
+                    const group = groups[groupCards[0].groupIndex];
+                    if (group) {
+                        flexContainer.appendChild(this.createGroupHeaderElement(group));
+                    }
+                }
                 
                 for (const item of groupCards) {
                     this.appendCardToContainer(flexContainer, item, appRef, injector, useHex, cardStyle, componentRefs);
@@ -312,9 +331,24 @@ export class ASPrintUtil {
             // Simple pagination
             const flexContainer = document.createElement('div');
             flexContainer.className = 'as-flex-container';
-            
-            for (const item of cardItems) {
-                this.appendCardToContainer(flexContainer, item, appRef, injector, useHex, cardStyle, componentRefs);
+
+            // Add group headers inline when multiple groups
+            if (groups.length > 1) {
+                let lastGroupIndex = -1;
+                for (const item of cardItems) {
+                    if (item.groupIndex !== lastGroupIndex) {
+                        const group = groups[item.groupIndex];
+                        if (group) {
+                            flexContainer.appendChild(this.createGroupHeaderElement(group));
+                        }
+                        lastGroupIndex = item.groupIndex;
+                    }
+                    this.appendCardToContainer(flexContainer, item, appRef, injector, useHex, cardStyle, componentRefs);
+                }
+            } else {
+                for (const item of cardItems) {
+                    this.appendCardToContainer(flexContainer, item, appRef, injector, useHex, cardStyle, componentRefs);
+                }
             }
             
             overlay.appendChild(flexContainer);
@@ -349,6 +383,71 @@ export class ASPrintUtil {
             .map(([, items]) => items);
     }
     
+    /**
+     * Computes the display label for a group (name + formation), matching
+     * the logic used in the force builder viewer.
+     */
+    private static getGroupDisplayLabel(group: UnitGroup<ASForceUnit>): string {
+        const name = group.name();
+        const formation = group.formation();
+        if (!formation) return name;
+        if (!group.nameLock) {
+            // No custom name — use formation display name
+            const force = group.force;
+            return FormationNamerUtil.composeFormationDisplayName(
+                formation,
+                group.units(),
+                force?.units() ?? group.units(),
+                force?.faction() ?? null
+            );
+        }
+        return name;
+    }
+
+    /**
+     * Returns the formation name to display alongside the group name,
+     * or null if it would be redundant (already shown in the display label).
+     */
+    private static getFormationSubtitle(group: UnitGroup<ASForceUnit>): string | null {
+        const formation = group.formation();
+        if (!formation) return null;
+        // When nameLock is false the display label IS the formation name
+        if (!group.nameLock) return null;
+        const force = group.force;
+        const displayName = FormationNamerUtil.composeFormationDisplayName(
+            formation,
+            group.units(),
+            force?.units() ?? group.units(),
+            force?.faction() ?? null
+        );
+        // Don't repeat if the group name already contains the formation name
+        if (group.name().toLowerCase().includes(displayName.toLowerCase())) return null;
+        return displayName;
+    }
+
+    /**
+     * Creates a DOM element for a group header (name + optional formation).
+     */
+    private static createGroupHeaderElement(group: UnitGroup<ASForceUnit>): HTMLElement {
+        const header = document.createElement('div');
+        header.className = 'as-group-header';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'as-group-name';
+        nameSpan.textContent = this.getGroupDisplayLabel(group);
+        header.appendChild(nameSpan);
+
+        const subtitle = this.getFormationSubtitle(group);
+        if (subtitle) {
+            const formSpan = document.createElement('span');
+            formSpan.className = 'as-group-formation';
+            formSpan.textContent = subtitle;
+            header.appendChild(formSpan);
+        }
+
+        return header;
+    }
+
     /**
      * Helper to create and append a card component to a container.
      */
@@ -441,6 +540,30 @@ export class ASPrintUtil {
                 height: 63mm;
             }
 
+            .as-group-header {
+                width: 100%;
+                flex-basis: 100%;
+                display: flex;
+                align-items: baseline;
+                gap: 0.15in;
+                padding: 0.06in 0.04in;
+                font-family: sans-serif;
+                color: #333;
+                border-bottom: 1px solid #bbb;
+                margin-bottom: 0.04in;
+            }
+
+            .as-group-name {
+                font-size: 11pt;
+                font-weight: 700;
+            }
+
+            .as-group-formation {
+                font-size: 9pt;
+                font-weight: 400;
+                color: #666;
+            }
+
             @media print {
                 body, html {
                     margin: 0 !important;
@@ -495,6 +618,30 @@ export class ASPrintUtil {
                 gap: 0.01in;
                 background: white;
                 padding: 0;
+            }
+
+            .as-group-header {
+                width: 100%;
+                flex-basis: 100%;
+                display: flex;
+                align-items: baseline;
+                gap: 0.15in;
+                padding: 0.06in 0.04in;
+                font-family: sans-serif;
+                color: #333;
+                border-bottom: 1px solid #bbb;
+                margin-bottom: 0.04in;
+            }
+
+            .as-group-name {
+                font-size: 11pt;
+                font-weight: 700;
+            }
+
+            .as-group-formation {
+                font-size: 9pt;
+                font-weight: 400;
+                color: #666;
             }
 
             @media print {
