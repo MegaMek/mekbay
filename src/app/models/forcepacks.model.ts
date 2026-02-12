@@ -1069,7 +1069,7 @@ const FORCE_PACKS: ForcePack[] = [
           { "name": "BMLocust_LCT7S" },
           { "name": "BMShadowHawk_SHD7M" },
           { "name": "BMThunderbolt_TDR7S" },
-          { "name": "BMWolverine_WVR6R" }
+          { "name": "BMWolverine_WVR9R" }
         ]
       }
     ]
