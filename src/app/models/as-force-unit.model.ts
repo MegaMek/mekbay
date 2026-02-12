@@ -710,6 +710,7 @@ export class ASForceUnit extends ForceUnit {
         }
         for (const [mode, tmm] of Object.entries(tmmByMode)) {
             // Skip '' (already added) and modes with same TMM as ground
+            if (mode === 'a') continue; // Skip, aerospace movement has no TMM and is confusing for LAM
             if (mode === '' || tmm === groundTmm) continue;
             result[mode] = tmm;
         }
@@ -1171,11 +1172,11 @@ export class ASForceUnit extends ForceUnit {
                 if (gVal !== undefined || aVal !== undefined) {
                     const parts: string[] = [];
                     if (gVal !== undefined) parts.push(`${gVal}″g`);
-                    if (aVal !== undefined) parts.push(`${aVal}a`);
+                    if (aVal !== undefined) parts.push(`${aVal}″a`);
                     effective = `LAM (${parts.join('/')})`;
                 }
             }
-            
+
             const state: SpecialAbilityState = { original: special, effective };
             
             // Add exhausted/consumed state if we have a force unit

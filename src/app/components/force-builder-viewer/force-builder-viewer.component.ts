@@ -85,18 +85,31 @@ export class ForceBuilderViewerComponent {
      * - both friendly and enemy forces are loaded
      * Uses unfiltered loadedForces so coloring persists even when filtering by alignment.
      */
-    showAlignmentStyling = computed<boolean>(() => {
-        const slots = this.forceBuilderService.loadedForces();
-        if (slots.length < 2) return false;
-        const hasOwned = slots.some(s => !s.force.readOnly());
-        if (hasOwned) return true;
-        const alignments = new Set(slots.map(s => s.alignment));
-        return alignments.has('friendly') && alignments.has('enemy');
-    });
+    // showAlignmentStyling = computed<boolean>(() => {
+    //     const slots = this.forceBuilderService.loadedForces();
+    //     if (slots.length < 2) return false;
+    //     const hasOwned = slots.some(s => !s.force.readOnly());
+    //     if (hasOwned) return true;
+    //     const alignments = new Set(slots.map(s => s.alignment));
+    //     return alignments.has('friendly') && alignments.has('enemy');
+    // });
 
     hasOwnedForce = computed<boolean>(() => this.forceBuilderService.loadedForces().some(s => !s.force.readOnly()));
 
-    hasEmptyGroups = this.forceBuilderService.hasEmptyGroups;
+    /** Combined BV/PV totals across all visible loaded forces. */
+    combinedTotals = computed(() => {
+        const slots = this.loadedSlots();
+        let totalBV = 0;
+        let totalPV = 0;
+        for (const slot of slots) {
+            if (slot.force.gameSystem === 'as') {
+                totalPV += slot.force.totalBv();
+            } else {
+                totalBV += slot.force.totalBv();
+            }
+        }
+        return { totalBV, totalPV, hasBV: totalBV > 0, hasPV: totalPV > 0 };
+    });
 
     // --- Collapsed/Expanded State ---
     /** Set of group IDs that are currently collapsed. */
@@ -184,23 +197,31 @@ export class ForceBuilderViewerComponent {
         });
     }
 
-    onUnitKeydown(event: KeyboardEvent, index: number) {
-        const units = this.forceBuilderService.forceUnitsOrEmpty();
-        if (units.length === 0) return;
+    onUnitKeydown(event: KeyboardEvent, _index: number) {
+        // Build a flat list of all visible units across all filtered forces
+        const slots = this.loadedSlots();
+        const allUnits: ForceUnit[] = [];
+        for (const slot of slots) {
+            allUnits.push(...slot.force.units());
+        }
+        if (allUnits.length === 0) return;
+
+        const selected = this.forceBuilderService.selectedUnit();
+        const currentIdx = selected ? allUnits.findIndex(u => u.id === selected.id) : -1;
+        const items = this.forceUnitItems();
+
         if (event.key === 'ArrowDown') {
-            if (index < units.length - 1) {
-                event.preventDefault();
-                const next = this.forceUnitItems()?.[index + 1];
-                next?.nativeElement.focus();
-                this.selectUnit(units[index + 1]);
-            }
+            event.preventDefault();
+            // Wrap to first unit when at the end
+            const nextIdx = currentIdx < allUnits.length - 1 ? currentIdx + 1 : 0;
+            items?.[nextIdx]?.nativeElement.focus();
+            this.selectUnit(allUnits[nextIdx]);
         } else if (event.key === 'ArrowUp') {
-            if (index > 0) {
-                event.preventDefault();
-                const prev = this.forceUnitItems()?.[index - 1];
-                prev?.nativeElement.focus();
-                this.selectUnit(units[index - 1]);
-            }
+            event.preventDefault();
+            // Wrap to last unit when at the start
+            const prevIdx = currentIdx > 0 ? currentIdx - 1 : allUnits.length - 1;
+            items?.[prevIdx]?.nativeElement.focus();
+            this.selectUnit(allUnits[prevIdx]);
         }
     }
 
@@ -215,7 +236,7 @@ export class ForceBuilderViewerComponent {
         event.stopPropagation();
         await this.forceBuilderService.removeUnit(unit);
         // If this was the last unit, close the menu (offcanvas OFF mode)
-        if (!this.forceBuilderService.hasUnits()) {
+        if (!this.forceBuilderService.hasForces()) {
             this.layoutService.closeMenu();
         }
     }
@@ -267,8 +288,8 @@ export class ForceBuilderViewerComponent {
         this.layoutService.toggleMenu();
     }
 
-    onUnitDragStart() {
-        if (this.forceBuilderService.readOnlyForce()) return;
+    onUnitDragStart(force: Force) {
+        if (force.readOnly()) return;
         this.isUnitDragging.set(true);
         // Disable native scroll so it doesn't fight CDK drag
         const el = this.scrollableContent()?.nativeElement;
@@ -282,8 +303,6 @@ export class ForceBuilderViewerComponent {
     }
 
     onUnitDragMoved(event: CdkDragMove<any>) {
-        if (this.forceBuilderService.readOnlyForce()) return;
-
         const scrollRef = this.scrollableContent?.();
         if (!scrollRef) {
             this.stopAutoScrollLoop();
@@ -327,8 +346,8 @@ export class ForceBuilderViewerComponent {
         }
     }
 
-    onUnitDragEnd() {
-        if (this.forceBuilderService.readOnlyForce()) return;
+    onUnitDragEnd(force: Force) {
+        if (force.readOnly()) return;
         this.stopAutoScrollLoop();
         this.isUnitDragging.set(false);
         // Restore native scroll
@@ -336,15 +355,15 @@ export class ForceBuilderViewerComponent {
         if (el) el.style.overflowY = 'auto';
     }
 
-    onGroupDragStart() {
-        if (this.forceBuilderService.readOnlyForce()) return;
+    onGroupDragStart(force: Force) {
+        if (force.readOnly()) return;
         this.isGroupDragging.set(true);
         const el = this.scrollableContent()?.nativeElement;
         if (el) el.style.overflowY = 'hidden';
     }
 
-    onGroupDragEnd() {
-        if (this.forceBuilderService.readOnlyForce()) return;
+    onGroupDragEnd(force: Force) {
+        if (force.readOnly()) return;
         this.stopAutoScrollLoop();
         this.isGroupDragging.set(false);
         const el = this.scrollableContent()?.nativeElement;
@@ -446,8 +465,8 @@ export class ForceBuilderViewerComponent {
             } else {
                 movedUnit = fromGroup.moveUnitTo(event.previousIndex, toGroup, event.currentIndex) ?? undefined;
                 if (!movedUnit) return;
-                this.forceBuilderService.generateGroupNameIfNeeded(fromGroup);
-                this.forceBuilderService.generateGroupNameIfNeeded(toGroup);
+                this.forceBuilderService.generateGroupNameAndFormationIfNeeded(fromGroup);
+                this.forceBuilderService.generateGroupNameAndFormationIfNeeded(toGroup);
             }
             fromForce.removeEmptyGroups();
             if (fromForce.instanceId()) {
@@ -505,10 +524,14 @@ export class ForceBuilderViewerComponent {
             }
 
             toGroup.insertUnit(unitToInsert, event.currentIndex);
+            this.forceBuilderService.generateFactionAndForceNameIfNeeded(fromForce);
+            this.forceBuilderService.generateFactionAndForceNameIfNeeded(toForce);
+            this.forceBuilderService.generateGroupNameAndFormationIfNeeded(fromGroup);
+            this.forceBuilderService.generateGroupNameAndFormationIfNeeded(toGroup);
             toForce.deduplicateIds();
             fromForce.removeEmptyGroups();
 
-            // Select the inserted unit so currentForce tracks the target force
+            // Select the inserted unit
             this.forceBuilderService.selectUnit(unitToInsert);
 
             if (wouldEmptyForce) {
@@ -629,12 +652,16 @@ export class ForceBuilderViewerComponent {
         }
 
         newGroup.insertUnit(unitToInsert);
-        this.forceBuilderService.generateGroupNameIfNeeded(sourceGroup);
-        this.forceBuilderService.generateGroupNameIfNeeded(newGroup);
+        if (crossForce) {
+            this.forceBuilderService.generateFactionAndForceNameIfNeeded(targetForce);
+            this.forceBuilderService.generateFactionAndForceNameIfNeeded(sourceForce);
+        }
+        this.forceBuilderService.generateGroupNameAndFormationIfNeeded(sourceGroup);
+        this.forceBuilderService.generateGroupNameAndFormationIfNeeded(newGroup);
         sourceForce.removeEmptyGroups();
         if (crossForce) targetForce.deduplicateIds();
 
-        // Select the moved unit so currentForce tracks the target force
+        // Select the moved unit
         this.forceBuilderService.selectUnit(unitToInsert);
 
         if (wouldEmptyForce) {
@@ -679,41 +706,40 @@ export class ForceBuilderViewerComponent {
         }
     }
 
-    promptChangeForceName(force?: Force) {
-        if (force?.readOnly()) return;
-        if (!force && this.forceBuilderService.readOnlyForce()) return;
+    promptChangeForceName(force: Force) {
+        if (force.readOnly()) return;
         this.forceBuilderService.promptChangeForceName(force);
     }
 
-    promptChangeGroupName(group: UnitGroup, force: Force) {
-        if (force.readOnly()) return;
-        this.forceBuilderService.promptChangeGroupName(group, force);
+    promptChangeGroupName(group: UnitGroup) {
+        if (group.force.readOnly()) return;
+        this.forceBuilderService.promptChangeGroupName(group);
     }
 
-    showFormationInfo(event: MouseEvent, group: UnitGroup, force: Force) {
+    showFormationInfo(event: MouseEvent, group: UnitGroup) {
         event.stopPropagation();
-        this.forceBuilderService.showFormationInfo(group, force);
+        this.forceBuilderService.showFormationInfo(group);
     }
 
     /** Returns the text to display as the group label */
-    getGroupDisplayLabel(group: UnitGroup, force: Force): string {
+    getGroupDisplayLabel(group: UnitGroup): string {
         const name = group.name();
         const formation = group.formation();
         if (!formation) return name;
         if (!group.nameLock) {
             // No custom name set — use the formation display name
-            return this.forceBuilderService.getFormationDisplayName(formation, group, force);
+            return this.forceBuilderService.getFormationDisplayName(formation, group);
         }
         return name;
     }
 
     /** Check whether the group's display label already shows the formation name. */
-    groupNameContainsFormation(group: UnitGroup, force: Force): boolean {
+    groupNameContainsFormation(group: UnitGroup): boolean {
         const formation = group.formation();
         if (!formation) return false;
         // When nameLock is false the display label IS the formation name — no need to repeat it.
         if (!group.nameLock) return true;
-        const displayName = this.forceBuilderService.getFormationDisplayName(formation, group, force);
+        const displayName = this.forceBuilderService.getFormationDisplayName(formation, group);
         return group.name().toLowerCase().includes(displayName.toLowerCase());
     }
 
@@ -852,8 +878,10 @@ export class ForceBuilderViewerComponent {
 
             // Re-evaluate the formation for the moved group
             this.reEvaluateGroupFormation(movedGroup, toForce, crossSystem);
+            this.forceBuilderService.generateFactionAndForceNameIfNeeded(fromForce);
+            this.forceBuilderService.generateFactionAndForceNameIfNeeded(toForce);
 
-            // Select a unit in the moved group so currentForce tracks the target force
+            // Select a unit in the moved group
             const firstUnit = movedGroup.units()[0];
             if (firstUnit) this.forceBuilderService.selectUnit(firstUnit);
 

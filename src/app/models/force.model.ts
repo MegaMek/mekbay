@@ -237,6 +237,10 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return this.groups().length >= MAX_GROUPS;
     });
 
+    public hasEmptyGroups = computed<boolean>(() => {
+        return this.groups().some(g => g.units().length === 0);
+    });
+
     public addGroup(name: string = 'Group'): UnitGroup<TUnit> {
         if (this.hasMaxGroups()) {
             throw new Error(`Cannot add more than ${MAX_GROUPS} groups`);

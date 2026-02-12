@@ -47,6 +47,8 @@ import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
 import { CustomizeForcePackDialogComponent, CustomizeForcePackDialogData, CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
+import { ForceAlignment } from '../../models/force-slot.model';
+import { AlignmentPickerDialogComponent } from '../alignment-picker-dialog/alignment-picker-dialog.component';
 
 /*
  * Author: Drake
@@ -81,6 +83,7 @@ export type ForceLoadMode = 'load' | 'add';
 export interface ForceLoadDialogEnvelope {
     result: LoadForceEntry | ResolvedPack;
     mode: ForceLoadMode;
+    alignment: ForceAlignment;
 }
 
 export type ForceLoadDialogResult = ForceLoadDialogEnvelope | null;
@@ -226,19 +229,22 @@ export class ForceLoadDialogComponent {
     }
 
     async onLoad() {
-        await this.closeWithMode('load');
+        await this.closeWithMode('load', 'friendly');
     }
 
     async onAdd() {
-        await this.closeWithMode('add');
+        const ref = this.dialogsService.createDialog<ForceAlignment | null>(AlignmentPickerDialogComponent);
+        const alignment = await firstValueFrom(ref.closed);
+        if (!alignment) return;
+        await this.closeWithMode('add', alignment);
     }
 
-    private async closeWithMode(mode: ForceLoadMode) {
+    private async closeWithMode(mode: ForceLoadMode, alignment: ForceAlignment) {
         const force = this.selectedForce();
         const pack = this.selectedPack();
         
         if (force) {
-            this.dialogRef.close({ result: force, mode });
+            this.dialogRef.close({ result: force, mode, alignment });
             return;
         }
         
@@ -257,7 +263,7 @@ export class ForceLoadDialogComponent {
                     ...pack,
                     units: result.units
                 };
-                this.dialogRef.close({ result: customizedPack, mode });
+                this.dialogRef.close({ result: customizedPack, mode, alignment });
             }
             // If dismissed (null), stay on this dialog
         }

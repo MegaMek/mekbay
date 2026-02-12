@@ -837,7 +837,7 @@ export class UnitSearchComponent {
         });
 
         const addSub = ref.componentInstance?.add.subscribe(() => {
-            if (this.forceBuilderService.hasSingleUnit()) {
+            if (this.forceBuilderService.smartCurrentForce()?.units().length == 1) {
                 this.expandedView.set(false);
                 queueMicrotask(() => {
                     this.closeAllPanels();
@@ -1061,7 +1061,7 @@ export class UnitSearchComponent {
 
     /** Handle unit added from inline panel */
     onInlinePanelAdd(): void {
-        if (this.forceBuilderService.hasSingleUnit()) {
+        if (this.forceBuilderService.smartCurrentForce()?.units().length == 1) {
             // If this is the first unit being added, close the search panel
             this.closeAllPanels();
             this.expandedView.set(false);
@@ -1163,7 +1163,7 @@ export class UnitSearchComponent {
         const isExpanded = this.expandedView();
 
         if (isExpanded) {
-            if (this.forceBuilderService.hasUnits()) {
+            if (this.forceBuilderService.hasForces()) {
                 this.closeAllPanels();
                 this.blurInput();
             } else {

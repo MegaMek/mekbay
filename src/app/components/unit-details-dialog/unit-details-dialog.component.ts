@@ -114,7 +114,7 @@ export class UnitDetailsDialogComponent {
 
     isChangeDisabled = computed(() => {
         return !this.data.originalForceUnit 
-            || this.forceBuilderService.readOnlyForce()
+            || this.data.originalForceUnit.readOnly()
             || this.data.originalForceUnit.getUnit().name === this.unit.name;
     });
 

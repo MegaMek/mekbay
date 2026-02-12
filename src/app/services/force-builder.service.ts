@@ -100,14 +100,20 @@ export class ForceBuilderService {
     public currentForce = computed<Force | null>(() => {
         return this.selectedUnit()?.force ?? null;
     });
+    /** Return the currently targettable owned force, if any. */
+    public smartCurrentForce = computed<Force | null>(() => {
+        const ownedSlots = this.loadedForces().filter(s => s.force.owned());
+        if (ownedSlots.length === 1) return ownedSlots[0].force;
+        return this.currentForce();
+    });
     private urlStateInitialized = signal(false);
     private conflictDialogRef: any;
 
     /** Current alignment filter: 'all' shows everything, 'friendly'/'enemy' filters by alignment. */
-    public alignmentFilter = signal<'all' | 'friendly' | 'enemy'>('all');
+    public alignmentFilter = signal<'friendly' | 'enemy' | 'all'>('friendly');
 
     /** Remembers the last selected unit per filter mode so switching back restores it. */
-    private savedSelectionByFilter = new Map<'all' | 'friendly' | 'enemy', string | null>();
+    private savedSelectionByFilter = new Map<'friendly' | 'enemy' | 'all', string | null>();
 
     /** True when loaded forces have a mix of friendly and enemy alignments (>1 slot). */
     hasMixedAlignments = computed<boolean>(() => {
@@ -133,10 +139,12 @@ export class ForceBuilderService {
         this.updateUrlOnForceChange();
         this.monitorWebSocketConnection();
 
-        // Auto-reset alignment filter when conditions no longer apply
+        // Auto-reset alignment filter when mixed alignments no longer apply
         effect(() => {
-            if (!this.hasMixedAlignments() && this.alignmentFilter() !== 'all') {
-                this.alignmentFilter.set('all');
+            if (!this.hasMixedAlignments()) {
+                const slots = this.loadedForces();
+                const onlyAlignment = slots.length > 0 ? slots[0].alignment : 'friendly';
+                this.alignmentFilter.set(onlyAlignment);
             }
         });
 
@@ -160,38 +168,15 @@ export class ForceBuilderService {
         });
     }
 
-    /** Current force's units as a non-nullable array (empty when no force). */
-    forceUnitsOrEmpty = computed<ForceUnit[]>(() => this.currentForce()?.units() ?? []);
-    /** True when a force is loaded (non-null). */
-    hasForces = computed<boolean>(() => this.loadedForces().length > 0);
-    /** True when the current force has one or more units. */
-    hasUnits = computed<boolean>(() => this.forceUnitsOrEmpty().length > 0);
-    /** Current force's game system, or null. */
-    forceGameSystem = computed<GameSystem | null>(() => this.currentForce()?.gameSystem ?? null);
-    /** True when current force is Alpha Strike. */
-    isAlphaStrike = computed<boolean>(() => this.currentForce()?.gameSystem === GameSystem.ALPHA_STRIKE);
-    /** True when the current force has exactly one group. */
-    hasSingleGroup = computed<boolean>(() => (this.currentForce()?.groups().length ?? 0) === 1);
-    /** True when any group in the current force has zero units. */
-    hasEmptyGroups = computed<boolean>(() => this.currentForce()?.groups().some(g => g.units().length === 0) ?? false);
-    /** Number of units in the current force. */
-    unitCount = computed<number>(() => this.currentForce()?.units().length ?? 0);
-    /** True when a single unit exists in the current force. */
-    hasSingleUnit = computed<boolean>(() => (this.currentForce()?.units().length ?? 0) === 1);
-    /** True when current force can be saved (has units, no instanceId, not readOnly). */
-    canSaveForce = computed<boolean>(() => {
-        const f = this.currentForce();
-        return !!f && f.units().length > 0 && !f.instanceId() && !f.readOnly();
-    });
 
     /** All units across all loaded forces (flat list). */
     allLoadedUnits = computed<ForceUnit[]>(() => {
         return this.loadedForces().flatMap(s => s.force.units());
     });
-
-    readOnlyForce = computed<boolean>(() => {
-        return this.currentForce()?.readOnly() ?? false;
-    });
+    /** True when a force is loaded (non-null). */
+    hasForces = computed<boolean>(() => this.loadedForces().length > 0);
+    /** Current force's game system, or null. */
+    forceGameSystem = computed<GameSystem | null>(() => this.smartCurrentForce()?.gameSystem ?? null);
 
     /** Cycles the alignment filter: all → friendly → enemy → all. Auto-resets if conditions no longer apply. */
     cycleAlignmentFilter(): void {
@@ -201,13 +186,11 @@ export class ForceBuilderService {
         this.savedSelectionByFilter.set(current, this.selectedUnit()?.id ?? null);
 
         // Determine next filter
-        let next: 'all' | 'friendly' | 'enemy';
-        if (current === 'all') {
+        let next: 'friendly' | 'enemy';
+        if (current === 'enemy') {
             next = 'friendly';
-        } else if (current === 'friendly') {
-            next = 'enemy';
         } else {
-            next = 'all';
+            next = 'enemy';
         }
         this.alignmentFilter.set(next);
 
@@ -474,6 +457,26 @@ export class ForceBuilderService {
         return input;
     }
 
+    /**
+     * Load force(s) from URL parameters (instance= and/or units=).
+     * Used for in-app URL handling when the PWA receives a captured link.
+     *
+     * @param params The URLSearchParams containing instance/units/name/gs params
+     * @param mode How to handle existing forces: 'replace' removes all first, 'add' keeps them
+     * @param alignment Alignment for added forces (only used when mode is 'add')
+     * @returns true if any force was loaded
+     */
+    async loadForceFromUrlParams(
+        params: URLSearchParams,
+        mode: 'replace' | 'add' = 'replace',
+        alignment: ForceAlignment = 'friendly'
+    ): Promise<boolean> {
+        if (mode === 'replace') {
+            await this.removeAllForces();
+        }
+        return this.loadForceParamsCore(params, alignment);
+    }
+
     /* ----------------------------------------
      * Force Setting / Loading (backward-compatible)
      */
@@ -587,16 +590,16 @@ export class ForceBuilderService {
      * @param pilotingSkill Optional piloting skill to set for the crew
      */
     async addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number, group?: UnitGroup): Promise<ForceUnit | null> {
-        let currentForce = this.currentForce();
-        if (!currentForce) {
-            currentForce = await this.createNewForce();
-            if (!currentForce) {
+        let targetForce = this.smartCurrentForce();
+        if (!targetForce) {
+            targetForce = await this.createNewForce();
+            if (!targetForce) {
                 return null;
             }
         }
         let newForceUnit;
         try {
-            newForceUnit = currentForce.addUnit(unit, group);
+            newForceUnit = targetForce.addUnit(unit, group);
         } catch (error) {
             this.toastService.showToast(error instanceof Error ? error.message : (error as string), 'error');
             return null;
@@ -632,52 +635,49 @@ export class ForceBuilderService {
         }
 
         this.selectUnit(newForceUnit);
-        if (currentForce.units().length === 1) {
+        if (targetForce.units().length === 1) {
             this.layoutService.openMenu();
         }
-        const unitGroup = group ?? currentForce.groups().find(group => {
+        const unitGroup = group ?? targetForce.groups().find(group => {
             return group.units().some(u => u.id === newForceUnit.id);
         });
-        this.generateForceNameIfNeeded();
+        this.generateFactionAndForceNameIfNeeded(targetForce);
         if (unitGroup) {
-            this.generateGroupNameIfNeeded(unitGroup);
+            this.generateGroupNameAndFormationIfNeeded(unitGroup);
         }
         return newForceUnit;
     }
 
     /**
      * Sets the provided unit as the currently selected one.
-     * currentForce is derived automatically from the selected unit.
      * @param unit The unit to select, or null to deselect.
      */
     selectUnit(unit: ForceUnit | null) {
         this.selectedUnit.set(unit);
     }
 
-    getNextUnit(current: ForceUnit | null): ForceUnit | null {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+    getNextUnit(forceUnit: ForceUnit | null): ForceUnit | null {
+        if (!forceUnit?.force) {
             return null;
         }
-        const units = currentForce.units();
-        if (!current || units.length < 2) return null;
+        const units = forceUnit.force.units();
+        if (!forceUnit || units.length < 2) return null;
 
-        const idx = units.findIndex(u => u.id === current.id);
+        const idx = units.findIndex(u => u.id === forceUnit.id);
         if (idx === -1) return null;
 
         const nextIndex = (idx + 1) % units.length;
         return units[nextIndex] ?? null;
     }
 
-    getPreviousUnit(current: ForceUnit | null): ForceUnit | null {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+    getPreviousUnit(forceUnit: ForceUnit | null): ForceUnit | null {
+        if (!forceUnit?.force) {
             return null;
         }
-        const units = currentForce.units();
-        if (!current || units.length < 2) return null;
+        const units = forceUnit.force.units();
+        if (!forceUnit || units.length < 2) return null;
 
-        const idx = units.findIndex(u => u.id === current.id);
+        const idx = units.findIndex(u => u.id === forceUnit.id);
         if (idx === -1) return null;
 
         const prevIndex = (idx - 1 + units.length) % units.length;
@@ -710,8 +710,8 @@ export class ForceBuilderService {
      * @param unitToRemove The unit to remove.
      */
     async removeUnit(unitToRemove: ForceUnit) {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+        const targetForce = unitToRemove.force;
+        if (!targetForce) {
             return;
         }
         if (unitToRemove.modified) {
@@ -734,24 +734,24 @@ export class ForceBuilderService {
             }
         }
 
-        const currentUnits = currentForce.units();
+        const currentUnits = targetForce.units();
         const isLastUnit = currentUnits.length === 1;
         const idx = currentUnits.findIndex(u => u.id === unitToRemove.id);
-        const unitGroup = currentForce.groups().find(group => {
+        const unitGroup = targetForce.groups().find(group => {
             return group.units().some(u => u.id === unitToRemove.id);
         });
 
         // If this is the last unit, switch force/selection BEFORE removal
         if (isLastUnit) {
-            await this.deleteAndRemoveForce(currentForce);
+            await this.deleteAndRemoveForce(targetForce);
             return;
         }
 
-        currentForce.removeUnit(unitToRemove);
+        targetForce.removeUnit(unitToRemove);
         this.dataService.deleteCanvasDataOfUnit(unitToRemove);
 
         if (this.selectedUnit()?.id === unitToRemove.id) {
-            const updatedUnits = currentForce.units();
+            const updatedUnits = targetForce.units();
             let newSelected: ForceUnit | null = null;
             if (updatedUnits.length > 0) {
                 newSelected = updatedUnits[Math.max(0, idx - 1)] ?? updatedUnits[0];
@@ -759,9 +759,9 @@ export class ForceBuilderService {
             this.selectedUnit.set(newSelected);
         }
 
-        this.generateForceNameIfNeeded();
+        this.generateFactionAndForceNameIfNeeded(targetForce);
         if (unitGroup) {
-            this.generateGroupNameIfNeeded(unitGroup);
+            this.generateGroupNameAndFormationIfNeeded(unitGroup);
         }
     }
 
@@ -773,13 +773,13 @@ export class ForceBuilderService {
      * @returns The new ForceUnit if successful, null if cancelled
      */
     async replaceUnit(originalUnit: ForceUnit, newUnitData: Unit): Promise<ForceUnit | null> {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+        const targetForce = originalUnit.force;
+        if (!targetForce) {
             return null;
         }
 
         // Check if the original unit belongs to this force
-        const allUnits = currentForce.units();
+        const allUnits = targetForce.units();
         if (!allUnits.some(u => u.id === originalUnit.id)) {
             this.toastService.showToast('Unit not found in current force.', 'error');
             return null;
@@ -810,7 +810,7 @@ export class ForceBuilderService {
         this.dataService.deleteCanvasDataOfUnit(originalUnit);
 
         // Use the Force model's replaceUnit method for core logic
-        const replaceResult = currentForce.replaceUnit(originalUnit, newUnitData);
+        const replaceResult = targetForce.replaceUnit(originalUnit, newUnitData);
 
         if (!replaceResult) {
             this.toastService.showToast('Failed to replace unit.', 'error');
@@ -824,19 +824,18 @@ export class ForceBuilderService {
             this.selectUnit(newForceUnit);
         }
 
-        this.generateForceNameIfNeeded();
+        this.generateFactionAndForceNameIfNeeded(targetForce);
         if (originalGroup) {
-            this.generateGroupNameIfNeeded(originalGroup);
+            this.generateGroupNameAndFormationIfNeeded(originalGroup);
         }
 
         return newForceUnit;
     }
 
-    public async requestCloneForce() {
-        const currentForce = this.currentForce();
-        if (!currentForce) return;
+    public async requestCloneForce(force: Force): Promise<void> {
+        if (!force) return;
         
-        const isAlphaStrike = currentForce.gameSystem === GameSystem.ALPHA_STRIKE;
+        const isAlphaStrike = force.gameSystem === GameSystem.ALPHA_STRIKE;
         const targetSystemLabel = isAlphaStrike ? 'CBT' : 'AS';
         
         const dialogRef = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
@@ -853,9 +852,9 @@ export class ForceBuilderService {
         
         const result = await firstValueFrom(dialogRef.closed);
         if (result === 'clone') {
-            this.cloneForce(currentForce);
+            this.cloneForce(force);
         } else if (result === 'convert') {
-            this.convertForce(currentForce);
+            this.convertForce(force);
         }
     }
 
@@ -1006,68 +1005,56 @@ export class ForceBuilderService {
         return newUnit;
     }
 
-    private generateForceNameIfNeeded() {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+    generateFactionAndForceNameIfNeeded(force: Force): void {
+        if (!force || force.nameLock) {
             return;
         }
-        if (!currentForce.nameLock) {
-            const randomFaction = ForceNamerUtil.pickRandomFaction(
-                currentForce.units(),
-                this.dataService.getFactions(),
-                this.dataService.getEras()
-            );
-            currentForce.faction.set(randomFaction);
-            currentForce.setName(this.generateForceName(), false);
-        }
+        const randomFaction = ForceNamerUtil.pickRandomFaction(
+            force.units(),
+            this.dataService.getFactions(),
+            this.dataService.getEras()
+        );
+        force.faction.set(randomFaction);
+        force.setName(
+            ForceNamerUtil.generateForceNameForFaction(randomFaction),
+            false
+        );
     }
 
-    public generateGroupNameIfNeeded(group: UnitGroup) {
+    public generateGroupNameAndFormationIfNeeded(group: UnitGroup) {
         if (!group.nameLock && group.units().length > 0) {
             group.setName(this.generateGroupName(group), false);
         }
     }
-    public generateForceName(): string {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
-            return '';
-        }
-        return ForceNamerUtil.generateForceName(
-            currentForce.units(),
-            currentForce.faction(),
-            this.dataService.getFactions(),
-            this.dataService.getEras()
-        );
-    }
-
+    
     public generateGroupName(group: UnitGroup): string {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+        const targetForce = group.force;
+        if (!targetForce) {
             return '';
         }
         return FormationNamerUtil.generateFormationName({
             units: group.units(),
-            allUnits: currentForce.units(),
-            faction: currentForce.faction(),
-            gameSystem: currentForce.gameSystem
+            allUnits: targetForce.units(),
+            faction: targetForce.faction(),
+            gameSystem: targetForce.gameSystem
         });
     }
 
     public getAllFormationsAvailable(group: UnitGroup): string[] | null {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+        const targetForce = group.force;
+        if (!targetForce) {
             return null;
         }
         return FormationNamerUtil.getAvailableFormations(
             group.units(),
-            currentForce.units(),
-            currentForce.faction(),
-            currentForce.gameSystem
+            targetForce.units(),
+            targetForce.faction(),
+            targetForce.gameSystem
         );
     }
 
-    public getFormationDefinitions(group: UnitGroup, force?: Force): FormationTypeDefinition[] {
-        const targetForce = force ?? this.currentForce();
+    public getFormationDefinitions(group: UnitGroup): FormationTypeDefinition[] {
+        const targetForce = group.force;
         if (!targetForce) return [];
         return FormationNamerUtil.getAvailableFormationDefinitions(
             group.units(),
@@ -1077,8 +1064,8 @@ export class ForceBuilderService {
         );
     }
 
-    public getFormationDisplayName(definition: FormationTypeDefinition, group: UnitGroup, force?: Force): string {
-        const targetForce = force ?? this.currentForce();
+    public getFormationDisplayName(definition: FormationTypeDefinition, group: UnitGroup): string {
+        const targetForce = group.force;
         if (!targetForce) return definition.name;
         return FormationNamerUtil.composeFormationDisplayName(
             definition,
@@ -1088,12 +1075,12 @@ export class ForceBuilderService {
         );
     }
 
-    public showFormationInfo(group: UnitGroup, force?: Force): void {
-        const targetForce = force ?? this.currentForce();
+    public showFormationInfo(group: UnitGroup): void {
+        const targetForce = group.force;
         if (!targetForce) return;
         const formation = group.formation();
         if (!formation) return;
-        const displayName = this.getFormationDisplayName(formation, group, targetForce);
+        const displayName = this.getFormationDisplayName(formation, group);
         this.dialogsService.createDialog(FormationInfoDialogComponent, {
             data: {
                 formation,
@@ -1104,9 +1091,8 @@ export class ForceBuilderService {
         });
     }
 
-    public async repairAllUnits() {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+    public async repairAllUnits(force: Force): Promise<boolean> {
+        if (!force) {
             return false;
         }
         const confirmed = await this.dialogsService.requestConfirmation(
@@ -1114,7 +1100,7 @@ export class ForceBuilderService {
             'Repair All Units',
             'info');
         if (confirmed) {
-            currentForce.units().forEach(fu => {
+            force.units().forEach(fu => {
                 fu.repairAll();
             });
             return true;
@@ -1122,20 +1108,12 @@ export class ForceBuilderService {
         return false;
     }
 
-    public addGroup(): UnitGroup {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
-            throw new Error('No current force to add a group to.');
-        }
-        return currentForce.addGroup();
-    }
-
     public removeGroup(group: UnitGroup) {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+        const force = group.force;
+        if (!force) {
             return;
         }
-        currentForce.removeGroup(group);
+        force.removeGroup(group);
     }
 
     public shareForce(): void {
@@ -1146,18 +1124,16 @@ export class ForceBuilderService {
         });
     }
 
-    public showForceOverview(): void {
-        const currentForce = this.currentForce();
-        if (!currentForce) return;
+    public showForceOverview(force: Force): void {
+        if (!force) return;
         this.dialogsService.createDialog(ForceOverviewDialogComponent, {
-            data: { force: currentForce }
+            data: { force }
         });
     }
 
-    public showC3NetworkForCurrentForce(): void {
-        const currentForce = this.currentForce();
-        if (!currentForce) return;
-        this.openC3Network(currentForce, this.readOnlyForce());
+    public showC3Network(force: Force): void {
+        if (!force) return;
+        this.openC3Network(force, force.readOnly());
     }
 
     public printAll(): void {
@@ -1319,54 +1295,77 @@ export class ForceBuilderService {
     }
 
     private async initializeFromUrl(): Promise<void> {
-        // Use UrlStateService to get initial URL params (captured before any routing effects)
-        const instanceParam = this.urlStateService.getInitialParam('instance');
-        let loadedAnyInstance = false;
+        const params = this.urlStateService.initialState.params;
+        const loadedAny = await this.loadForceParamsCore(params);
 
+        // Show notice when ALL loaded forces are non-owned
+        if (loadedAny) {
+            const allNonOwned = this.loadedForces().every(s => !s.force.owned());
+            if (allNonOwned) {
+                this.dialogsService.showNotice(
+                    'Reports indicate another commander owns this force. Clone to adopt it for yourself.',
+                    'Captured Intel'
+                );
+            }
+        } else if (params.has('instance')) {
+            // None of the instance IDs were found — clear them from URL
+            this.urlStateService.setParams({ instance: null });
+        }
+
+        // Mark as initialized so the update effect can start running.
+        this.urlStateInitialized.set(true);
+        this.urlStateService.markConsumerReady('force-builder');
+    }
+
+    /**
+     * Core logic for loading forces from URLSearchParams.
+     * Shared between startup initialization and in-app captured URL handling.
+     *
+     * Handles:
+     * - instance= (comma-separated cloud force IDs, with optional 'enemy:' prefix)
+     * - units= (inline unsaved force with name/gs params)
+     *
+     * @param params The URLSearchParams to read from
+     * @param defaultAlignment Alignment for forces without an explicit prefix
+     * @returns true if any force was loaded
+     */
+    private async loadForceParamsCore(
+        params: URLSearchParams,
+        defaultAlignment: ForceAlignment = 'friendly'
+    ): Promise<boolean> {
+        let loadedAny = false;
+        const isFirst = !this.hasForces();
+
+        // Handle instance= param (cloud-saved forces)
+        const instanceParam = params.get('instance');
         if (instanceParam) {
-            // Support comma-separated instance IDs for multi-force URLs
-            // Format: UUID1,enemy:UUID2,UUID3 — 'enemy:' prefix marks enemy alignment
             const entries = instanceParam.split(',').map(e => e.trim()).filter(e => e.length > 0);
-            const loadedForces: { force: Force; alignment: ForceAlignment }[] = [];
-
             for (const entry of entries) {
-                let alignment: ForceAlignment = 'friendly';
+                let entryAlignment = defaultAlignment;
                 let instanceId = entry;
                 if (entry.startsWith('enemy:')) {
-                    alignment = 'enemy';
+                    entryAlignment = 'enemy';
                     instanceId = entry.substring('enemy:'.length);
+                }
+                // Skip if already loaded
+                if (this.loadedForces().some(s => s.force.instanceId() === instanceId)) {
+                    continue;
                 }
                 const force = await this.dataService.getForce(instanceId);
                 if (force) {
-                    if (!loadedAnyInstance) {
-                        // First instance: set as the primary force
-                        this.addLoadedForce(force, alignment, { activate: true });
-                    } else {
-                        // Additional instances: add alongside existing forces (don't switch selection)
-                        this.addLoadedForce(force, alignment, { activate: false });
-                    }
-                    loadedForces.push({ force, alignment });
-                    loadedAnyInstance = true;
+                    this.addLoadedForce(force, entryAlignment, { activate: !loadedAny && isFirst });
+                    loadedAny = true;
                 } else {
                     this.logger.warn(`ForceBuilderService: Instance "${instanceId}" not found, skipping.`);
                 }
             }
-
-            // Show notice only when ALL loaded forces are non-owned (no mix)
-            if (loadedForces.length > 0 && loadedForces.every(f => !f.force.owned())) {
-                this.dialogsService.showNotice('Reports indicate another commander owns this force. Clone to adopt it for yourself.', 'Captured Intel');
-            }
-            if (!loadedAnyInstance) {
-                // None of the instance IDs were found — clear them from URL
-                this.urlStateService.setParams({ instance: null });
-            }
         }
 
-        // Also check for an unsaved force (units param) — can coexist with saved forces
-        const unitsParam = this.urlStateService.getInitialParam('units');
+        // Handle units= param (unsaved inline force)
+        const unitsParam = params.get('units');
         if (unitsParam) {
-            const forceNameParam = this.urlStateService.getInitialParam('name');
-            const gameSystemParam = this.urlStateService.getInitialParam('gs') ?? GameSystem.CLASSIC;
+            const forceNameParam = params.get('name');
+            const gameSystemParam = params.get('gs') ?? GameSystem.CLASSIC;
             let newForce: Force;
             if (gameSystemParam === GameSystem.ALPHA_STRIKE) {
                 newForce = new ASForce('New Force', this.dataService, this.unitInitializer, this.injector);
@@ -1380,7 +1379,7 @@ export class ForceBuilderService {
                 }
                 const forceUnits = this.parseUnitsFromUrl(newForce, unitsParam);
                 if (forceUnits.length > 0) {
-                    this.logger.info(`ForceBuilderService: Loaded ${forceUnits.length} units from URL on startup.`);
+                    this.logger.info(`ForceBuilderService: Loaded ${forceUnits.length} units from URL.`);
                     newForce.removeEmptyGroups();
                     if (this.layoutService.isMobile()) {
                         this.layoutService.openMenu();
@@ -1390,20 +1389,12 @@ export class ForceBuilderService {
                 newForce.loading = false;
             }
             if (newForce.units().length > 0) {
-                if (!loadedAnyInstance) {
-                    // No saved forces loaded — unsaved force is the primary
-                    this.addLoadedForce(newForce, 'friendly', { activate: true });
-                } else {
-                    // Saved forces already loaded — add unsaved alongside (don't switch selection)
-                    this.addLoadedForce(newForce, 'friendly', { activate: false });
-                }
+                this.addLoadedForce(newForce, defaultAlignment, { activate: !loadedAny && isFirst });
+                loadedAny = true;
             }
         }
 
-        // Mark as initialized so the update effect can start running.
-        this.urlStateInitialized.set(true);
-        // Signal that we're done reading URL state
-        this.urlStateService.markConsumerReady('force-builder');
+        return loadedAny;
     }
 
     /**
@@ -1425,8 +1416,9 @@ export class ForceBuilderService {
         const envelope = await firstValueFrom(ref.closed);
         
         if (!envelope) return;
-        const { result, mode } = envelope;
+        const { result, mode, alignment } = envelope;
         const isAdd = mode === 'add';
+        const addAlignment: ForceAlignment = alignment ?? 'friendly';
 
         if (result instanceof LoadForceEntry) {
             const requestedForce = await this.dataService.getForce(result.instanceId, true);
@@ -1435,7 +1427,7 @@ export class ForceBuilderService {
                 return;
             }
             if (isAdd) {
-                await this.addForce(requestedForce);
+                await this.addForce(requestedForce, addAlignment);
             } else {
                 await this.loadForce(requestedForce);
             }
@@ -1454,7 +1446,7 @@ export class ForceBuilderService {
                     } else {
                         newForce = new CBTForce('New Force', this.dataService, this.unitInitializer, this.injector);
                     }
-                    await this.addForce(newForce);
+                    await this.addForce(newForce, addAlignment);
                     const group = newForce.addGroup();
                     for (const unit of pack.units) {
                         if (!unit?.unit) continue;
@@ -1479,11 +1471,19 @@ export class ForceBuilderService {
     }
 
     async showForcePackDialog(): Promise<void> {
+        const targetForce = this.smartCurrentForce();
+        if (!targetForce) {
+            this.toastService.showToast('No active force to add units to.', 'error');
+            return;
+        }
         const ref = this.dialogsService.createDialog<ForcePackDialogResult>(ForcePackDialogComponent);
         const units = await firstValueFrom(ref.closed);
 
         if (units && units.length > 0) {
-            const group = this.addGroup();
+            const group = targetForce.addGroup();
+            if (!group) {
+                throw new Error('No current force to add a group to.');
+            }
             for (const entry of units) {
                 if (!entry?.unit) continue;
                 this.addUnit(entry.unit, undefined, undefined, group);
@@ -1491,19 +1491,18 @@ export class ForceBuilderService {
         }
     }
 
-    async promptChangeForceName(force?: Force) {
-        const targetForce = force ?? this.currentForce();
-        if (!targetForce) {
+    async promptChangeForceName(force: Force) {
+        if (!force) {
             return;
         }
         const dialogRef = this.dialogsService.createDialog<RenameForceDialogResult | null>(RenameForceDialogComponent, {
             data: {
-                force: targetForce
+                force: force
             } as RenameForceDialogData
         });
         const result = await firstValueFrom(dialogRef.closed);
         if (result) {
-            this.applyRenameForceDialogResult(targetForce, result);
+            this.applyRenameForceDialogResult(force, result);
         }
     }
 
@@ -1512,16 +1511,15 @@ export class ForceBuilderService {
      * Shows a rename dialog first, then saves the force if the user confirms.
      * @returns true if the force was saved successfully, false otherwise
      */
-    async saveForceWithNameConfirmation(): Promise<boolean> {
-        const currentForce = this.currentForce();
-        if (!currentForce) {
+    async saveForceWithNameConfirmation(force: Force): Promise<boolean> {
+        if (!force) {
             return false;
         }
         
         // Show rename dialog to confirm/edit force name
         const dialogRef = this.dialogsService.createDialog<RenameForceDialogResult | null>(RenameForceDialogComponent, {
             data: {
-                force: currentForce,
+                force: force,
                 hideUnset: true
             } as RenameForceDialogData
         });
@@ -1533,11 +1531,11 @@ export class ForceBuilderService {
             return false;
         }
         
-        this.applyRenameForceDialogResult(currentForce, result);
+        this.applyRenameForceDialogResult(force, result);
         
         // Save the force
         try {
-            await this.dataService.saveForce(currentForce);
+            await this.dataService.saveForce(force);
             this.toastService.showToast('Force saved successfully.', 'success');
             return true;
         } catch (error) {
@@ -1556,16 +1554,7 @@ export class ForceBuilderService {
     private applyRenameForceDialogResult(force: Force, result: RenameForceDialogResult): void {
         if (result.name === '') {
             force.nameLock = false;
-            const randomFaction = ForceNamerUtil.pickRandomFaction(
-                force.units(),
-                this.dataService.getFactions(),
-                this.dataService.getEras()
-            );
-            force.faction.set(randomFaction);
-            force.setName(
-                ForceNamerUtil.generateForceNameForFaction(randomFaction),
-                false
-            );
+            this.generateFactionAndForceNameIfNeeded(force);
         } else {
             force.nameLock = true;
             force.faction.set(result.faction);
@@ -1573,14 +1562,10 @@ export class ForceBuilderService {
         }
     }
 
-    async promptChangeGroupName(group: UnitGroup, force?: Force) {
-        const targetForce = force ?? this.currentForce();
-        if (!targetForce) return;
-
+    async promptChangeGroupName(group: UnitGroup) {
         const dialogRef = this.dialogsService.createDialog<RenameGroupDialogResult | null>(RenameGroupDialogComponent, {
             data: {
                 group: group,
-                force: targetForce
             } as RenameGroupDialogData
         });
         const result = await firstValueFrom(dialogRef.closed);

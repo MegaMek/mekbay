@@ -9,7 +9,7 @@
 
     <div dialog-body>
         <div class="pack-info">
-            @if (forceBuilderService.isAlphaStrike()) {
+            @if (forceBuilderService.forceGameSystem() === ALPHA_STRIKE) {
                 <span class="pack-value">PV: {{ totalPV() | number }}</span>
             } @else {
                 <span class="pack-value">BV: {{ totalBV() | number }}</span>

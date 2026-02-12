@@ -2104,138 +2104,147 @@ export class UnitSearchFiltersService {
         effect(() => {
             const isDataReady = this.dataService.isDataReady();
             if (isDataReady && !this.urlStateInitialized()) {
-                // Use UrlStateService to get initial URL params (captured before any routing effects)
-                let hasFilters = false;
-                
-                // Load search query (may contain semantic filters)
-                const searchParam = this.urlStateService.getInitialParam('q');
-                if (searchParam) {
-                    this.searchText.set(searchParam);
-                    hasFilters = true;
-                }
-
-                // Load sort settings
-                const sortParam = this.urlStateService.getInitialParam('sort');
-                if (sortParam && SORT_OPTIONS.some(opt => opt.key === sortParam)) {
-                    this.selectedSort.set(sortParam);
-                }
-
-                const sortDirParam = this.urlStateService.getInitialParam('sortDir');
-                if (sortDirParam === 'desc' || sortDirParam === 'asc') {
-                    this.selectedSortDirection.set(sortDirParam);
-                }
-
-                // Load UI filters from filters param (these are separate from semantic filters in q)
-                const filtersParam = this.urlStateService.getInitialParam('filters');
-                let parsedFilterState: FilterState = {};
-                if (filtersParam) {
-                    hasFilters = true;
-                    try {
-                        const parsedFilters = this.parseCompactFiltersFromUrl(filtersParam);
-                        const validFilters: FilterState = {};
-
-                        for (const [key, state] of Object.entries(parsedFilters)) {
-                            const conf = ADVANCED_FILTERS.find(f => f.key === key);
-                            if (!conf) continue; // Skip unknown filter keys
-
-                            if (conf.type === AdvFilterType.DROPDOWN) {
-                                // Skip validation for _tags - tags are user-specific and may not
-                                // be loaded into units yet when parsing URL. Trust the URL values.
-                                if (key === '_tags') {
-                                    validFilters[key] = state;
-                                    continue;
-                                }
-                                
-                                // Get case-insensitive lookup map (lowercase -> proper case)
-                                const availableValuesMap = this.getAvailableDropdownValuesMap(conf);
-
-                                if (conf.multistate) {
-                                    const selection = state.value as MultiStateSelection;
-                                    const validSelection: MultiStateSelection = {};
-
-                                    for (const [name, selectionValue] of Object.entries(selection)) {
-                                        const lowerName = name.toLowerCase();
-                                        const properCase = availableValuesMap.get(lowerName);
-                                        if (properCase) {
-                                            // Use proper case for the key, but preserve selection value
-                                            validSelection[properCase] = { ...selectionValue, name: properCase };
-                                        }
-                                    }
-
-                                    if (Object.keys(validSelection).length > 0) {
-                                        validFilters[key] = { value: validSelection, interactedWith: true };
-                                    }
-                                } else {
-                                    const values = state.value as string[];
-                                    // Map to proper case, filtering out unavailable values
-                                    const validValues = values
-                                        .map(v => availableValuesMap.get(v.toLowerCase()))
-                                        .filter((v): v is string => v !== undefined);
-
-                                    if (validValues.length > 0) {
-                                        validFilters[key] = { value: validValues, interactedWith: true };
-                                    }
-                                }
-                            } else {
-                                // For range filters, just keep them as-is
-                                // They'll be clamped automatically by advOptions
-                                validFilters[key] = state;
-                            }
-                        }
-                        parsedFilterState = validFilters;
-                        this.filterState.set(validFilters);
-                    } catch (error) {
-                        this.logger.warn('Failed to parse filters from URL: ' + error);
-                    }
-                }
-
-                // Parse public tags mapping from URL (for both semantic query and dropdown tags)
-                // Format: pt=publicId1:tag1,publicId2:tag2
-                const ptParam = this.urlStateService.getInitialParam('pt');
-                const foreignTags = this.parsePublicTagsParam(ptParam, searchParam, parsedFilterState);
-                if (foreignTags.length > 0) {
-                    // Merge with any existing pending foreign tags
-                    const existing = this.pendingForeignTags();
-                    const merged = [...existing];
-                    for (const ft of foreignTags) {
-                        const key = `${ft.publicId}:${ft.tagName}`.toLowerCase();
-                        if (!existing.some(e => `${e.publicId}:${e.tagName}`.toLowerCase() === key)) {
-                            merged.push(ft);
-                        }
-                    }
-                    this.pendingForeignTags.set(merged);
-                }
-
-                const expandedParam = this.urlStateService.getInitialParam('expanded');
-                const suggestExpanded = !this.urlStateService.hasInitialParam('instance') && !this.urlStateService.hasInitialParam('units') && hasFilters;
-                if (expandedParam === 'true' || suggestExpanded) {
-                    this.expandedView.set(true);
-                }
-
-                if (this.urlStateService.hasInitialParam('gunnery')) {
-                    const gunneryParam = this.urlStateService.getInitialParam('gunnery');
-                    if (gunneryParam) {
-                        const gunnery = parseInt(gunneryParam);
-                        if (!isNaN(gunnery) && gunnery >= 0 && gunnery <= 8) {
-                            this.pilotGunnerySkill.set(gunnery);
-                        }
-                    }
-                }
-
-                if (this.urlStateService.hasInitialParam('piloting')) {
-                    const pilotingParam = this.urlStateService.getInitialParam('piloting');
-                    if (pilotingParam) {
-                        const piloting = parseInt(pilotingParam);
-                        if (!isNaN(piloting) && piloting >= 0 && piloting <= 8) {
-                            this.pilotPilotingSkill.set(piloting);
-                        }
-                    }
-                }
+                this.applyParamsCore(this.urlStateService.initialState.params);
                 this.urlStateInitialized.set(true);
-                // Signal that we're done reading URL state
                 this.urlStateService.markConsumerReady('unit-search-filters');
             }
         });
+    }
+
+    /**
+     * Apply search/filter parameters from a URLSearchParams object.
+     * Used for in-app URL handling when the PWA receives a captured link
+     * while already open. Resets current filters before applying new ones.
+     *
+     * @param params The URLSearchParams to read from
+     * @param opts Options controlling behavior
+     */
+    public applySearchParamsFromUrl(params: URLSearchParams, opts: { expandView?: boolean } = {}): void {
+        this.clearFilters();
+        this.applyParamsCore(params, opts);
+        this.processPendingForeignTags();
+    }
+
+    /**
+     * Core logic for applying search/filter params from a URLSearchParams.
+     * Shared between startup initialization and in-app URL handling.
+     */
+    private applyParamsCore(params: URLSearchParams, opts: { expandView?: boolean } = {}): void {
+        let hasFilters = false;
+
+        // Search query (may contain semantic filters)
+        const searchParam = params.get('q');
+        if (searchParam) {
+            this.searchText.set(searchParam);
+            hasFilters = true;
+        }
+
+        // Sort settings
+        const sortParam = params.get('sort');
+        if (sortParam && SORT_OPTIONS.some(opt => opt.key === sortParam)) {
+            this.selectedSort.set(sortParam);
+        }
+
+        const sortDirParam = params.get('sortDir');
+        if (sortDirParam === 'desc' || sortDirParam === 'asc') {
+            this.selectedSortDirection.set(sortDirParam);
+        }
+
+        // UI filters (separate from semantic filters in q)
+        const filtersParam = params.get('filters');
+        let parsedFilterState: FilterState = {};
+        if (filtersParam) {
+            hasFilters = true;
+            try {
+                const parsedFilters = this.parseCompactFiltersFromUrl(filtersParam);
+                const validFilters: FilterState = {};
+
+                for (const [key, state] of Object.entries(parsedFilters)) {
+                    const conf = ADVANCED_FILTERS.find(f => f.key === key);
+                    if (!conf) continue;
+
+                    if (conf.type === AdvFilterType.DROPDOWN) {
+                        // Skip validation for _tags — tags are user-specific and may not
+                        // be loaded into units yet when parsing URL. Trust the URL values.
+                        if (key === '_tags') {
+                            validFilters[key] = state;
+                            continue;
+                        }
+
+                        const availableValuesMap = this.getAvailableDropdownValuesMap(conf);
+
+                        if (conf.multistate) {
+                            const selection = state.value as MultiStateSelection;
+                            const validSelection: MultiStateSelection = {};
+                            for (const [name, selectionValue] of Object.entries(selection)) {
+                                const lowerName = name.toLowerCase();
+                                const properCase = availableValuesMap.get(lowerName);
+                                if (properCase) {
+                                    validSelection[properCase] = { ...selectionValue, name: properCase };
+                                }
+                            }
+                            if (Object.keys(validSelection).length > 0) {
+                                validFilters[key] = { value: validSelection, interactedWith: true };
+                            }
+                        } else {
+                            const values = state.value as string[];
+                            const validValues = values
+                                .map(v => availableValuesMap.get(v.toLowerCase()))
+                                .filter((v): v is string => v !== undefined);
+                            if (validValues.length > 0) {
+                                validFilters[key] = { value: validValues, interactedWith: true };
+                            }
+                        }
+                    } else {
+                        // Range filters — kept as-is, clamped automatically by advOptions
+                        validFilters[key] = state;
+                    }
+                }
+                parsedFilterState = validFilters;
+                this.filterState.set(validFilters);
+            } catch (error) {
+                this.logger.warn('Failed to parse filters from URL: ' + error);
+            }
+        }
+
+        // Public tags mapping (format: publicId1:tag1,publicId2:tag2)
+        const ptParam = params.get('pt');
+        const foreignTags = this.parsePublicTagsParam(ptParam, searchParam, parsedFilterState);
+        if (foreignTags.length > 0) {
+            const existing = this.pendingForeignTags();
+            const merged = [...existing];
+            for (const ft of foreignTags) {
+                const key = `${ft.publicId}:${ft.tagName}`.toLowerCase();
+                if (!existing.some(e => `${e.publicId}:${e.tagName}`.toLowerCase() === key)) {
+                    merged.push(ft);
+                }
+            }
+            this.pendingForeignTags.set(merged);
+        }
+
+        // Expanded view
+        const expandedParam = params.get('expanded');
+        const shouldExpand = opts.expandView ?? (!params.has('instance') && !params.has('units') && hasFilters);
+        if (expandedParam === 'true' || shouldExpand) {
+            this.expandedView.set(true);
+        }
+
+        // Gunnery / piloting
+        const gunneryParam = params.get('gunnery');
+        if (gunneryParam) {
+            const gunnery = parseInt(gunneryParam);
+            if (!isNaN(gunnery) && gunnery >= 0 && gunnery <= 8) {
+                this.pilotGunnerySkill.set(gunnery);
+            }
+        }
+
+        const pilotingParam = params.get('piloting');
+        if (pilotingParam) {
+            const piloting = parseInt(pilotingParam);
+            if (!isNaN(piloting) && piloting >= 0 && piloting <= 8) {
+                this.pilotPilotingSkill.set(piloting);
+            }
+        }
     }
 
     private getAvailableDropdownValues(conf: AdvFilterConfig): Set<string> {

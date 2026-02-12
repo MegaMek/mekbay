@@ -39,20 +39,16 @@ export class SidebarFooterComponent {
     /**
      * Returns true if the force can be saved (has units, no instanceId, and is not readOnly)
      */
-    canSaveForce = this.forceBuilderService.canSaveForce;
-
-    /**
-     * Returns true if the force has any units (for showing Overview menu item)
-     */
-    hasUnits = this.forceBuilderService.hasUnits;
+    smartCurrentForceCanSave = computed<boolean>(() => {
+        const f = this.forceBuilderService.smartCurrentForce();
+        return !!f && f.units().length > 0 && !f.instanceId() && !f.readOnly();
+    });
 
     /**
      * Returns true if the force has any units with C3 network capability
      */
     hasC3Units = computed(() => {
-        const units = this.forceBuilderService.forceUnitsOrEmpty();
-        if (units.length === 0) return false;
-        return units.some(forceUnit => {
+        return this.forceBuilderService.currentForce()?.units()?.some(forceUnit => {
             const unit = forceUnit.getUnit();
             return C3NetworkUtil.getC3Components(unit).length > 0;
         });
@@ -63,9 +59,8 @@ export class SidebarFooterComponent {
      */
     alignmentFilterTitle = computed(() => {
         switch (this.forceBuilderService.alignmentFilter()) {
-            case 'friendly': return 'Showing Friendly Only (click to show Enemy)';
-            case 'enemy': return 'Showing Enemy Only (click to show All)';
-            default: return 'Showing All Forces (click to show Friendly)';
+            case 'friendly': return 'Click to show Enemy';
+            default: return 'Click to show Friendly';
         }
     });
 
@@ -86,11 +81,15 @@ export class SidebarFooterComponent {
     }
 
     showForceOverview(): void {
-        this.forceBuilderService.showForceOverview();
+        const force = this.forceBuilderService.currentForce();
+        if (!force) { return; }
+        this.forceBuilderService.showForceOverview(force);
     }
 
     showC3NetworkDialog(): void {
-        this.forceBuilderService.showC3NetworkForCurrentForce();
+        const force = this.forceBuilderService.currentForce();
+        if (!force) { return; }
+        this.forceBuilderService.showC3Network(force);
     }
 
     showLoadForceDialog(): void {
@@ -103,8 +102,10 @@ export class SidebarFooterComponent {
 
     async addExternalForce(alignment: ForceAlignment): Promise<void> {
         const instanceId = await this.dialogsService.prompt(
-            'Enter the Force Instance ID to load:',
-            alignment === 'friendly' ? 'Add Friendly Force' : 'Add Opposing Force'
+            'Enter the Force Instance ID or a MekBay URL:',
+            alignment === 'friendly' ? 'Add Friendly Force' : 'Add Opposing Force',
+            '',
+            'You can paste an Instance ID or a full MekBay URL containing one.'
         );
         if (!instanceId) return;
         await this.forceBuilderService.addForceById(instanceId.trim(), alignment);
@@ -117,17 +118,23 @@ export class SidebarFooterComponent {
     }
 
     async saveForce(): Promise<void> {
-        await this.forceBuilderService.saveForceWithNameConfirmation();
+        const force = this.forceBuilderService.smartCurrentForce();
+        if (!force || force.readOnly()) {return; }
+        await this.forceBuilderService.saveForceWithNameConfirmation(force);
     }
 
     async requestRepairAll(): Promise<void> {
-        if (await this.forceBuilderService.repairAllUnits()) {
+        const force = this.forceBuilderService.smartCurrentForce();
+        if (!force || force.readOnly()) {return; }
+        if (await this.forceBuilderService.repairAllUnits(force)) {
             this.toastService.showToast(`Repaired all units.`, 'success');
         }
     }
 
     async requestCloneForce(): Promise<void> {
-        this.forceBuilderService.requestCloneForce();
+        const force = this.forceBuilderService.currentForce();
+        if (!force) { return; }
+        this.forceBuilderService.requestCloneForce(force);
     }
 
     shareForce() {

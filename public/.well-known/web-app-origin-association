@@ -9,6 +9,16 @@
                 ],
                 "exclude_paths": []
             }
+        },
+        {
+            "web_app_identity": "https://next.mekbay.com",
+            "manifest": "https://next.mekbay.com/manifest.webmanifest",
+            "details": {
+                "paths": [
+                    "/*"
+                ],
+                "exclude_paths": []
+            }
         }
     ]
 }

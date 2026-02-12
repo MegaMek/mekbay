@@ -106,9 +106,9 @@ export class AlphaStrikeViewerComponent {
         return null;
     }, { equal: () => false });
     readonly force = computed(() => {
-        const currentForce = this.forceBuilder.currentForce();
-        if (currentForce instanceof ASForce) {
-            return currentForce;
+        const force = this.unit()?.force;
+        if (force instanceof ASForce) {
+            return force;
         }
         return null;
     });
@@ -237,13 +237,13 @@ export class AlphaStrikeViewerComponent {
     private setupEffects(): void {
         // Clean up stale cardRenderItemsCache entries when force changes
         effect(() => {
-            const currentForce = this.force();
-            if (!currentForce) {
+            const force = this.force();
+            if (!force) {
                 this.cardRenderItemsCache.clear();
                 return;
             }
 
-            const currentUnitIds = new Set(currentForce.units().map(u => u.id));
+            const currentUnitIds = new Set(force.units().map(u => u.id));
             // Remove stale cache entries
             this.cardRenderItemsCache.forEach((_, id) => {
                 if (!currentUnitIds.has(id)) this.cardRenderItemsCache.delete(id);

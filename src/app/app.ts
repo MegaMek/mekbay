@@ -33,7 +33,7 @@
 
 import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
 
-import { SwUpdate } from '@angular/service-worker';
+import { PwaService } from './services/pwa.service';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { PageViewerComponent } from './components/page-viewer/page-viewer.component';
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
@@ -91,7 +91,7 @@ import { UrlStateService } from './services/url-state.service';
 })
 export class App {
     logger = inject(LoggerService);
-    private swUpdate = inject(SwUpdate);
+    private pwaService = inject(PwaService);
     protected dataService = inject(DataService);
     forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
@@ -148,10 +148,25 @@ export class App {
         window.addEventListener('appinstalled', this.appInstalledHandler);
         document.addEventListener('contextmenu', this.contextMenuHandler);
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
-        if (this.swUpdate.isEnabled) {
-            setInterval(() => this.checkForUpdate(), this.updateCheckInterval);
-            this.checkForUpdate();
-        }
+        // Periodic update checks (the PwaService handles SW registration)
+        setInterval(() => this.checkForUpdate(), this.updateCheckInterval);
+        this.checkForUpdate();
+
+        // React to update availability from the service worker
+        effect(() => {
+            if (this.pwaService.updateAvailable()) {
+                this.updateAvailable.set(true);
+            }
+        });
+
+        // React to in-app navigation requests from captured links
+        effect(() => {
+            const url = this.pwaService.navigateRequest();
+            if (url) {
+                this.pwaService.navigateRequest.set(null);
+                this.handleCapturedUrl(url);
+            }
+        });
         this.wsService.setGlobalErrorHandler((msg: string) => {
             this.toastService.showToast(msg, 'error');
         });
@@ -293,16 +308,144 @@ export class App {
         this.logger.info('Checking for updates...');
         this.lastUpdateCheck = now;
 
-        if (this.swUpdate.isEnabled) {
-            try {
-                const updateFound = await this.swUpdate.checkForUpdate();
-                if (updateFound) {
-                    this.updateAvailable.set(true);
-                }
-            } catch (err) {
-                this.logger.error('Error checking for updates:' + err);
+        try {
+            const updateFound = await this.pwaService.checkForUpdate();
+            if (updateFound) {
+                this.updateAvailable.set(true);
             }
+        } catch (err) {
+            this.logger.error('Error checking for updates:' + err);
         }
+    }
+
+    /**
+     * Handle a URL captured by the service worker (e.g. from a link click
+     * when the PWA is installed). Parses the URL and updates the app state
+     * without a full navigation, applying smart context-aware logic:
+     *
+     * - shareUnit: Opens the unit details dialog directly.
+     * - Search params (q, filters, sort, etc.):
+     *   A) No loaded forces → apply search params and switch game system.
+     *   B) Forces loaded + matching gs → apply search params.
+     *   B) Forces loaded + different gs → warn, offer to unload forces.
+     * - Force params (instance=, units=):
+     *   A) No loaded forces → load the force directly.
+     *   B) Forces loaded → offer to LOAD (replace), ADD (friendly/enemy), or DISMISS.
+     */
+    private async handleCapturedUrl(url: string): Promise<void> {
+        let parsed: URL;
+        try {
+            parsed = new URL(url, window.location.origin);
+        } catch {
+            this.logger.error('[PWA] Failed to parse captured URL: ' + url);
+            return;
+        }
+
+        const params = parsed.searchParams;
+
+        // Update browser URL bar (no reload)
+        window.history.replaceState(null, '', parsed.pathname + parsed.search);
+
+        // ── shareUnit: just show the dialog ──────────────────────────────
+        const sharedUnitName = params.get('shareUnit');
+        if (sharedUnitName) {
+            const tab = params.get('tab') ?? undefined;
+            const unit = this.dataService.getUnitByName(sharedUnitName);
+            if (unit) {
+                this.showSingleUnitDetails(unit, tab);
+            } else {
+                this.toastService.showToast(`Unit "${sharedUnitName}" not found.`, 'error');
+            }
+            return;
+        }
+
+        const hasForceParams = params.has('instance') || params.has('units');
+        const hasSearchParams = params.has('q') || params.has('filters') || params.has('sort');
+        const requestedGs = (params.get('gs') as GameSystem) ?? null;
+        const hasForces = this.forceBuilderService.hasForces();
+
+        // ── Force params (instance= / units=) ───────────────────────────
+        if (hasForceParams) {
+            if (!hasForces) {
+                // A) No loaded forces → load directly
+                await this.forceBuilderService.loadForceFromUrlParams(params, 'replace');
+            } else {
+                // B) Forces loaded → ask the user
+                const choice = await this.dialogService.choose<'load' | 'add-friendly' | 'add-enemy' | 'dismiss'>(
+                    'Incoming Force',
+                    'A link with a force was opened. You already have forces loaded. What would you like to do?',
+                    [
+                        { label: 'LOAD (REPLACE)', value: 'load', class: 'danger' },
+                        { label: 'ADD AS FRIENDLY', value: 'add-friendly' },
+                        { label: 'ADD AS ENEMY', value: 'add-enemy' },
+                        { label: 'DISMISS', value: 'dismiss' },
+                    ],
+                    'dismiss'
+                );
+
+                switch (choice) {
+                    case 'load':
+                        await this.forceBuilderService.loadForceFromUrlParams(params, 'replace');
+                        break;
+                    case 'add-friendly':
+                        await this.forceBuilderService.loadForceFromUrlParams(params, 'add', 'friendly');
+                        break;
+                    case 'add-enemy':
+                        await this.forceBuilderService.loadForceFromUrlParams(params, 'add', 'enemy');
+                        break;
+                    case 'dismiss':
+                        break;
+                }
+            }
+
+            // Also apply any search params that came along with the force URL
+            if (hasSearchParams) {
+                this.unitSearchFiltersService.applySearchParamsFromUrl(params, { expandView: false });
+            }
+            // Switch game system if specified
+            if (requestedGs) {
+                this.gameService.setOverride(requestedGs);
+            }
+            return;
+        }
+
+        // ── Search params only (no force) ────────────────────────────────
+        if (hasSearchParams) {
+            if (!hasForces) {
+                // A) No loaded forces → apply directly
+                this.unitSearchFiltersService.applySearchParamsFromUrl(params);
+                if (requestedGs) {
+                    this.gameService.setOverride(requestedGs);
+                }
+            } else {
+                // B) Forces loaded — check if gs matches
+                const currentGs = this.gameService.currentGameSystem();
+                const gsConflict = requestedGs && requestedGs !== currentGs;
+
+                if (!gsConflict) {
+                    // Same game system or no gs specified → apply search params
+                    this.unitSearchFiltersService.applySearchParamsFromUrl(params);
+                } else {
+                    // Different game system → warn
+                    const accepted = await this.dialogService.requestConfirmation(
+                        `This link uses ${requestedGs === GameSystem.ALPHA_STRIKE ? 'Alpha Strike' : 'Classic BattleTech'}, ` +
+                        `but you currently have forces loaded in ${currentGs === GameSystem.ALPHA_STRIKE ? 'Alpha Strike' : 'Classic BattleTech'}. ` +
+                        `To switch, all loaded forces will be removed.\n\nContinue?`,
+                        'Game System Conflict',
+                        'danger'
+                    );
+                    if (accepted) {
+                        await this.forceBuilderService.removeAllForces();
+                        this.unitSearchFiltersService.applySearchParamsFromUrl(params);
+                        this.gameService.setOverride(requestedGs);
+                    }
+                    // If declined, do nothing — keep current state
+                }
+            }
+            return;
+        }
+
+        // ── No recognized params — just update the URL bar (already done) ──
     }
 
     async installPwa() {

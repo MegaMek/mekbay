@@ -82,7 +82,7 @@ import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-detai
 })
 export class UnitDetailsPanelComponent {
     private gameService = inject(GameService);
-    private forceBuilderService = inject(ForceBuilderService);
+    forceBuilderService = inject(ForceBuilderService);
     private toastService = inject(ToastService);
     private taggingService = inject(TaggingService);
     private dialogsService = inject(DialogsService);
@@ -103,9 +103,6 @@ export class UnitDetailsPanelComponent {
 
     /** View mode for variants tab (persisted while panel is open) */
     readonly variantsTabState = signal<VariantsTabState>({ ...DEFAULT_VARIANTS_TAB_STATE });
-
-    /** Whether the force is read-only */
-    readonly readOnlyForce = computed(() => this.forceBuilderService.readOnlyForce());
 
     /** Check if unit has fluff background image */
     readonly hasFluff = computed(() => {

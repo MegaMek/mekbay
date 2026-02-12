@@ -99,7 +99,7 @@
                 &#10094;
             </button>
             <button 
-                [disabled]="readOnlyForce()" 
+                [disabled]="forceBuilderService.currentForce()?.readOnly()" 
                 class="bt-button add-btn" 
                 (click)="onAdd()">
                 ADD TO FORCE

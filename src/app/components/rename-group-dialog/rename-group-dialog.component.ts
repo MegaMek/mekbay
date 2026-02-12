@@ -47,7 +47,6 @@ import { FormationDropdownPanelComponent, FormationDisplayItem } from './formati
  */
 export interface RenameGroupDialogData {
     group: UnitGroup;
-    force: Force;
 }
 
 export interface RenameGroupDialogResult {
@@ -105,7 +104,7 @@ export interface RenameGroupDialogResult {
               <svg class="expand-icon" width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
             </summary>
             <div class="selected-formation-details">
-              <formation-info [formation]="formation" [gameSystem]="data.force.gameSystem" [unitCount]="data.group.units().length"></formation-info>
+              <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length"></formation-info>
             </div>
           </details>
         }
@@ -291,17 +290,17 @@ export class RenameGroupDialogComponent {
 
     /** Pre-computed formation display list for the dropdown panel */
     formationDisplayList: FormationDisplayItem[] = this.forceBuilder
-        .getFormationDefinitions(this.data.group, this.data.force)
+        .getFormationDefinitions(this.data.group)
         .map(def => ({
             definition: def,
-            displayName: this.forceBuilder.getFormationDisplayName(def, this.data.group, this.data.force)
+            displayName: this.forceBuilder.getFormationDisplayName(def, this.data.group)
         }));
 
     constructor() {}
 
     /** Compose a display name for a formation definition */
     getDisplayName(definition: FormationTypeDefinition): string {
-        return this.forceBuilder.getFormationDisplayName(definition, this.data.group, this.data.force);
+        return this.forceBuilder.getFormationDisplayName(definition, this.data.group);
     }
 
     submit(): void {
@@ -346,7 +345,7 @@ export class RenameGroupDialogComponent {
 
         componentRef.setInput('formations', this.formationDisplayList);
         componentRef.setInput('selectedFormationId', this.selectedFormation()?.id ?? null);
-        componentRef.setInput('gameSystem', this.data.force.gameSystem);
+        componentRef.setInput('gameSystem', this.data.group.force.gameSystem);
 
         outputToObservable(componentRef.instance.selected)
             .pipe(takeUntilDestroyed(this.destroyRef))

@@ -40,7 +40,6 @@ import {
     ElementRef,
     inject,
     signal,
-    Signal,
     untracked,
     viewChild,
     AfterViewInit
@@ -59,7 +58,6 @@ import { OptionsService } from '../../services/options.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
-import { C } from '@angular/cdk/keycodes';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 
 const MIN_ZOOM = 0.1;

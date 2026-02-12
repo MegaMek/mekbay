@@ -55,6 +55,7 @@
     display: flex;
     flex-direction: column;
     gap: 1em;
+    padding-bottom: 4px;
 
     // Hard divider between force slots (stronger visual break)
     .force-slot + .force-slot {

@@ -51,6 +51,7 @@ import { Unit } from '../../models/units.model';
 import { PackUnitEntry, ResolvedPack } from '../../utils/force-pack.util';
 import { compareUnitsByName } from '../../utils/sort.util';
 import { TagClickEvent } from '../unit-tags/unit-tags.component';
+import { GameSystem } from '../../models/common.model';
 
 /*
  * Author: Drake
@@ -87,6 +88,7 @@ export class CustomizeForcePackDialogComponent {
     private taggingService = inject(TaggingService);
     layoutService = inject(LayoutService);
     forceBuilderService = inject(ForceBuilderService);
+    ALPHA_STRIKE = GameSystem.ALPHA_STRIKE;
 
     // The pack we're customizing
     pack = this.data.pack;

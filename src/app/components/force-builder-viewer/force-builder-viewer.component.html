@@ -9,11 +9,10 @@
             (cdkDropListDropped)="dropForce($event)">
         @for (slot of loadedSlots(); track slot.force; let first = $first) {
         @let slotForce = slot.force;
-        @let isActive = slotForce === forceBuilderService.currentForce();
         @let isReadOnly = slotForce.readOnly();
-        @let showAlignment = showAlignmentStyling() && (isReadOnly || slot.alignment === 'enemy');
+        @let showAlignment = (isReadOnly || slot.alignment === 'enemy');
         <div class="force-slot" [class.friendly]="showAlignment && slot.alignment === 'friendly'"
-            [class.enemy]="showAlignment && slot.alignment === 'enemy'" [class.active-force]="isActive" [class.mini-mode]="miniMode()" [class.read-only]="isReadOnly"
+            [class.enemy]="showAlignment && slot.alignment === 'enemy'" [class.mini-mode]="miniMode()" [class.read-only]="isReadOnly"
             cdkDrag [cdkDragDisabled]="forceDragDisabled()"
             (cdkDragStarted)="onForceDragStart()"
             (cdkDragMoved)="onUnitDragMoved($event)"
@@ -39,16 +38,14 @@
                         {{ slotForce.name }}
                     </div>
                     @if (isReadOnly && !hasOwnedForce()) {
-                        <button class="bt-button btn-clone primary" (click)="forceBuilderService.requestCloneForce()">CLONE FORCE TO EDIT</button>
+                        <button class="bt-button btn-clone primary" (click)="forceBuilderService.requestCloneForce(slotForce)">CLONE FORCE TO EDIT</button>
                     }
-                    @if (loadedSlots().length > 1) {
-                        <div class="force-total">Total {{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ slotForce.totalBv() | number }}</div>
-                        <button class="btn-remove-force" (click)="removeForceFromSlot($event, slotForce)" title="Remove force">
-                            <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
-                            </svg>
-                        </button>
-                    }
+                    <div class="force-total">Total {{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ slotForce.totalBv() | number }}</div>
+                    <button class="btn-remove-force" (click)="removeForceFromSlot($event, slotForce)" title="Remove force">
+                        <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                        </svg>
+                    </button>
                 </div>
             }
             <div class="force-units-list" 
@@ -66,9 +63,9 @@
                 @let groupCollapsed = isGroupCollapsed(group.id);
                 <div class="group-container" cdkDrag 
                     [cdkDragDisabled]="isReadOnly || groupsDragDisabled()"
-                    (cdkDragStarted)="onGroupDragStart()"
+                    (cdkDragStarted)="onGroupDragStart(slotForce)"
                     (cdkDragMoved)="onUnitDragMoved($event)" 
-                    (cdkDragEnded)="onGroupDragEnd()"
+                    (cdkDragEnded)="onGroupDragEnd(slotForce)"
                     cdkDragLockAxis="y"
                     [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                     @if (!miniMode()) {
@@ -79,13 +76,13 @@
                                 </svg>
                             </button>
                             <div class="group-name-area">
-                                <span class="group-name" (click)="promptChangeGroupName(group, slotForce)">{{ getGroupDisplayLabel(group, slotForce) }}</span>
+                                <span class="group-name" (click)="promptChangeGroupName(group)">{{ getGroupDisplayLabel(group) }}</span>
                                 @if (group.formation(); as formation) {
                                     <span class="group-formation-wrapper">
-                                        @if (!groupNameContainsFormation(group, slotForce)) {
-                                            <span class="group-formation" (click)="promptChangeGroupName(group, slotForce)">{{ forceBuilderService.getFormationDisplayName(formation, group, slotForce) }}</span>
+                                        @if (!groupNameContainsFormation(group)) {
+                                            <span class="group-formation" (click)="promptChangeGroupName(group)">{{ forceBuilderService.getFormationDisplayName(formation, group) }}</span>
                                         }
-                                        <button class="btn-formation-info" (click)="showFormationInfo($event, group, slotForce)" title="Formation info">
+                                        <button class="btn-formation-info" (click)="showFormationInfo($event, group)" title="Formation info">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                                         </button>
                                     </span>
@@ -129,8 +126,8 @@
                         @for (unit of units; let i = $index; track unit.id) {
                         <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item" (click)="selectUnit(unit)"
                             tabindex="0" (keydown)="onUnitKeydown($event, i)" cdkDrag
-                            [cdkDragDisabled]="isReadOnly" (cdkDragStarted)="onUnitDragStart()"
-                            (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd()"
+                            [cdkDragDisabled]="isReadOnly" (cdkDragStarted)="onUnitDragStart(slotForce)"
+                            (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd(slotForce)"
                             cdkDragLockAxis="y" cdkDragBoundary=".scrollable-content"
                             [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                             <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode() || miniMode()"
@@ -148,9 +145,9 @@
                     }
                 </div>
                 }
-                @if (!compactMode() && !miniMode() && isActive && !isGroupDragging()) {
-                    @if (!isReadOnly && !isUnitDragging() && !slotForce.hasMaxGroups() && !hasEmptyGroups()) {
-                    <button class="bt-button btn-add-group" (click)="forceBuilderService.addGroup()">+ Add Group</button>
+                @if (!compactMode() && !miniMode() && !isGroupDragging()) {
+                    @if (!isReadOnly && !isUnitDragging() && !slotForce.hasMaxGroups() && !slotForce.hasEmptyGroups()) {
+                    <button class="bt-button btn-add-group" (click)="slotForce.addGroup()">+ Add Group</button>
                     }
                 }
                 @if (!compactMode() && !miniMode() && !isReadOnly && !isGroupDragging()) {
@@ -160,7 +157,7 @@
                     cdkDropList 
                     [cdkDropListConnectedTo]="connectedDropLists()" 
                     [cdkDropListData]="[]"
-                    [class.visible]="isUnitDragging() && !hasEmptyGroups() && !slotForce.hasMaxGroups()"
+                    [class.visible]="isUnitDragging() && !slotForce.hasEmptyGroups() && !slotForce.hasMaxGroups()"
                     [cdkDropListAutoScrollDisabled]="true"
                     (cdkDropListDropped)="dropForNewGroup($event)">
                     <div class="group-name">New Group</div>
@@ -172,12 +169,20 @@
         }
         </div>
     </div>
-    @if (!miniMode() && loadedSlots().length === 1) {
-        @let singleForce = loadedSlots()[0].force;
-        @if (singleForce.groups().length > 1) {
-            <div class="force-slot-footer">
-                <div class="row total-bv">Total {{ singleForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ singleForce.totalBv() | number }}</div>
+    @if (!miniMode() && loadedSlots().length > 1) {
+        @let totals = combinedTotals();
+        <div class="force-slot-footer">
+            <div class="row total-bv">
+                @if (totals.hasBV) {
+                    <span>Total BV: {{ totals.totalBV | number }}</span>
+                }
+                @if (totals.hasBV && totals.hasPV) {
+                    <span class="separator"> · </span>
+                }
+                @if (totals.hasPV) {
+                    <span>Total PV: {{ totals.totalPV | number }}</span>
+                }
             </div>
-        }
+        </div>
     }
 </div>

@@ -112,7 +112,6 @@ export class PageViewerComponent implements AfterViewInit {
     private forceBuilder = inject(ForceBuilderService);
     private optionsService = inject(OptionsService);
     private dbService = inject(DbService);
-    private layoutService = inject(LayoutService);
     canvasService = inject(PageViewerCanvasService);
 
     readonly unit = computed(() => {
@@ -123,12 +122,14 @@ export class PageViewerComponent implements AfterViewInit {
         return null;
     }, { equal: () => false });
     readonly force = computed(() => {
-        const currentForce = this.forceBuilder.currentForce();
-        if (currentForce instanceof CBTForce) {
-            return currentForce;
+        const force = this.unit()?.force;
+        if (force instanceof CBTForce) {
+            return force;
         }
         return null;
     });
+    readonly forceUnits = computed(() => this.force()?.units() ?? []);
+
     spaceEvenly = input(false);
     maxVisiblePageCount = input(99); // Limits max pages displayed even if viewport fits more
     shadowPages = input(true); // When true, shows faded clones of neighbor pages that can be clicked to navigate
@@ -342,7 +343,7 @@ export class PageViewerComponent implements AfterViewInit {
                     // Update viewStartIndex to show the selected unit and redisplay
                     untracked(() => {
                         if (currentUnit) {
-                            const allUnits = this.forceBuilder.forceUnitsOrEmpty();
+                            const allUnits = this.forceUnits();
                             const newIndex = allUnits.indexOf(currentUnit);
                             if (newIndex >= 0) {
                                 this.viewStartIndex.set(newIndex);
@@ -518,7 +519,7 @@ export class PageViewerComponent implements AfterViewInit {
             
             // Apply the pending page move that the animation was heading toward
             if (this.pendingPagesToMove !== 0) {
-                const totalUnits = this.forceBuilder.unitCount();
+                const totalUnits = this.forceUnits().length;
                 if (totalUnits > 0) {
                     const newStartIndex = ((this.baseDisplayStartIndex + this.pendingPagesToMove) % totalUnits + totalUnits) % totalUnits;
                     this.viewStartIndex.set(newStartIndex);
@@ -543,7 +544,7 @@ export class PageViewerComponent implements AfterViewInit {
         this.isSwiping = true;
         this.baseDisplayStartIndex = this.viewStartIndex();
         
-        const allUnits = this.forceBuilder.forceUnitsOrEmpty();
+        const allUnits = this.forceUnits();
         const totalUnits = allUnits.length;
         const effectiveVisible = this.effectiveVisiblePageCount();
         const viewportCapacity = this.visiblePageCount();
@@ -640,7 +641,7 @@ export class PageViewerComponent implements AfterViewInit {
         }
         
         // Clamp pagesToMove
-        const totalUnits = this.forceBuilder.unitCount();
+        const totalUnits = this.forceUnits().length;
         if (totalUnits > 0) {
             pagesToMove = Math.max(-totalUnits + 1, Math.min(totalUnits - 1, pagesToMove));
         }
@@ -1025,7 +1026,7 @@ export class PageViewerComponent implements AfterViewInit {
         const visibleLeft = -totalTranslateX;
         const visibleRight = visibleLeft + containerWidth;
         
-        const allUnits = this.forceBuilder.forceUnitsOrEmpty();
+        const allUnits = this.forceUnits();
         const visiblePages = this.effectiveVisiblePageCount();
         const centerSlotStart = visiblePages; // Index of first center slot
         const centerSlotEnd = visiblePages * 2 - 1; // Index of last center slot
@@ -1660,7 +1661,7 @@ export class PageViewerComponent implements AfterViewInit {
         const currentUnit = this.unit();
         if (!currentUnit) return;
         
-        const allUnits = this.forceBuilder.forceUnitsOrEmpty();
+        const allUnits = this.forceUnits();
         const totalUnits = allUnits.length;
         if (totalUnits === 0) return;
         
@@ -1702,7 +1703,7 @@ export class PageViewerComponent implements AfterViewInit {
     navigateByDirection(direction: 'left' | 'right'): void {
         if (this.isSwiping) return;
         
-        const allUnits = this.forceBuilder.forceUnitsOrEmpty();
+        const allUnits = this.forceUnits();
         const totalUnits = allUnits.length;
         if (totalUnits === 0) return;
         
@@ -1825,7 +1826,7 @@ export class PageViewerComponent implements AfterViewInit {
 
         // Determine how many pages to display
         const visiblePages = this.effectiveVisiblePageCount();
-        const allUnits = this.forceBuilder.forceUnitsOrEmpty();
+        const allUnits = this.forceUnits();
         const totalUnits = allUnits.length;
         
         // Use viewStartIndex for display positioning (independent of selected unit)
@@ -1889,7 +1890,7 @@ export class PageViewerComponent implements AfterViewInit {
             return;
         }
 
-        const allUnits = this.forceBuilder.forceUnitsOrEmpty();
+        const allUnits = this.forceUnits();
         const totalUnits = allUnits.length;
         const visiblePages = this.effectiveVisiblePageCount();
         let startIndex = this.viewStartIndex();
@@ -2141,7 +2142,7 @@ export class PageViewerComponent implements AfterViewInit {
             return;
         }
         
-        const allUnits = this.forceBuilder.forceUnitsOrEmpty();
+        const allUnits = this.forceUnits();
         const totalUnits = allUnits.length;
         
         // Can't have shadow pages if there are no extra units to show
@@ -2288,7 +2289,7 @@ export class PageViewerComponent implements AfterViewInit {
      *                      incorrect lookups when the same unit appears on multiple sides)
      */
     private navigateToShadowPage(unit: CBTForceUnit, targetIndex: number, clickedShadow: HTMLDivElement): void {
-        const allUnits = this.forceBuilder.forceUnitsOrEmpty();
+        const allUnits = this.forceUnits();
         const totalUnits = allUnits.length;
         const currentStartIndex = this.viewStartIndex();
         const effectiveVisible = this.effectiveVisiblePageCount();
@@ -2632,7 +2633,7 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     private getTotalPageCount(): number {
-        return Math.max(1, this.forceBuilder.unitCount());
+        return Math.max(1, this.forceUnits().length);
     }
 
     // ========== View State Management ==========
@@ -2801,7 +2802,7 @@ export class PageViewerComponent implements AfterViewInit {
      * @param previousUnitCount The number of units before this change (used to detect count changes)
      */
     private handleForceUnitsChanged(previousUnitCount: number): void {
-        const allUnits = this.forceBuilder.forceUnitsOrEmpty();
+        const allUnits = this.forceUnits();
         
         if (allUnits.length === 0) {
             // Force is empty, clear display

@@ -140,14 +140,15 @@ export class DialogsService {
         await firstValueFrom(ref.closed);
     }
 
-    async prompt(message: string, title: string, defaultValue = ''): Promise<string | null> {
+    async prompt(message: string, title: string, defaultValue = '', hint = ''): Promise<string | null> {
         const ref = this.createDialog<string | null>(InputDialogComponent, {
             disableClose: true,
             data: <InputDialogData>{
                 title,
                 message,
                 inputType: 'text',
-                defaultValue
+                defaultValue,
+                hint: hint || undefined
             }
         });
         const result = await firstValueFrom(ref.closed);

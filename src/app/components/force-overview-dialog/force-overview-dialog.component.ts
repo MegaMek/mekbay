@@ -309,13 +309,13 @@ export class ForceOverviewDialogComponent {
     /** Handle force name click - open rename dialog */
     async onForceNameClick(): Promise<void> {
         if (this.isReadOnly()) return;
-        await this.forceBuilderService.promptChangeForceName();
+        await this.forceBuilderService.promptChangeForceName(this.data.force);
     }
 
     /** Handle group name click - open rename dialog */
     async onGroupNameClick(group: UnitGroup): Promise<void> {
         if (this.isReadOnly()) return;
-        await this.forceBuilderService.promptChangeGroupName(group, this.data.force);
+        await this.forceBuilderService.promptChangeGroupName(group);
     }
 
     /** Handle C3 network click - open C3 network dialog */
@@ -551,8 +551,8 @@ export class ForceOverviewDialogComponent {
         } else {
             const moved = fromGroup.moveUnitTo(event.previousIndex, toGroup, event.currentIndex);
             if (!moved) return;
-            this.forceBuilderService.generateGroupNameIfNeeded(fromGroup);
-            this.forceBuilderService.generateGroupNameIfNeeded(toGroup);
+            this.forceBuilderService.generateGroupNameAndFormationIfNeeded(fromGroup);
+            this.forceBuilderService.generateGroupNameAndFormationIfNeeded(toGroup);
         }
 
         force.removeEmptyGroups();
@@ -577,8 +577,8 @@ export class ForceOverviewDialogComponent {
         const moved = sourceGroup.moveUnitTo(event.previousIndex, newGroup);
         if (!moved) return;
 
-        this.forceBuilderService.generateGroupNameIfNeeded(sourceGroup);
-        this.forceBuilderService.generateGroupNameIfNeeded(newGroup);
+        this.forceBuilderService.generateGroupNameAndFormationIfNeeded(sourceGroup);
+        this.forceBuilderService.generateGroupNameAndFormationIfNeeded(newGroup);
         force.removeEmptyGroups();
         force.emitChanged();
     }

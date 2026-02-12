@@ -25,9 +25,12 @@
   "url_handlers": [
     {
       "origin": "https://mekbay.com"
+    },
+    {
+      "origin": "https://next.mekbay.com"
     }
   ],
   "launch_handler": {
-    "client_mode": "auto"
+    "client_mode": "focus-existing"
   }
 }

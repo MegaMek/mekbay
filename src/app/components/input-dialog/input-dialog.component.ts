@@ -46,6 +46,7 @@ export interface InputDialogData {
     maximumValue?: number; // for number input
     placeholder?: string;
     defaultValue?: string | number;
+    hint?: string;
     buttons?: { label: string; value: 'ok' | 'cancel'; class?: string }[];
 }
 
@@ -73,6 +74,9 @@ export interface InputDialogData {
                 (input)="onInputChange($event)"
                 required
             />
+            @if (data.hint) {
+                <p class="hint">{{ data.hint }}</p>
+            }
         </div>
         <div dialog-actions>
             @for (btn of buttons; track btn.label) {
@@ -114,6 +118,13 @@ export interface InputDialogData {
         [dialog-content] input:focus {
             border-bottom: 1px solid #fff;
             outline: none;
+        }
+
+        .hint {
+            font-size: 0.85em;
+            color: #888;
+            margin-top: -8px;
+            margin-bottom: 12px;
         }
 
         [dialog-content] input[type="number"] {
