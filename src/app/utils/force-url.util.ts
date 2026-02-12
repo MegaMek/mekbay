@@ -138,8 +138,12 @@ export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams
 export function generateGroupUrlParams(groups: UnitGroup[]): string[] {
     return groups.filter(g => g.units().length > 0).map(group => {
         const unitParams = generateUnitUrlParams(group.units());
-        const groupName = group.name();
-        return `${groupName}~${unitParams.join(',')}`;
+        let groupName = group.name();
+        if (groupName) {
+            return `${groupName}~${unitParams.join(',')}`;
+        } else {
+            return unitParams.join(','); // No group name, just return unit;
+        }
     });
 }
 
@@ -234,7 +238,10 @@ export function parseForceFromUrl(
             }
 
             // Create or get group
-            const group = force.addGroup(groupName || 'Group');
+            const group = force.addGroup();
+            if (groupName) {
+                group.name.set(groupName);
+            }
 
             // Parse units for this group
             const groupUnits = parseUnitUrlParams(force, unitsStr, unitMap, group, logger);

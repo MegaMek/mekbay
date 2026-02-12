@@ -42,6 +42,7 @@ import { FormationTypeDefinition } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FormationDropdownPanelComponent, FormationDisplayItem } from './formation-dropdown-panel.component';
+import { FormationNamerUtil } from '../../utils/formation-namer.util';
 /*
  * Author: Drake
  */
@@ -75,7 +76,7 @@ export interface RenameGroupDialogResult {
             class="input"
             contentEditable="true"
             #inputRef
-            [textContent]="data.group.nameLock ? data.group.name() : ''"
+            [textContent]="data.group.name()"
             (keydown.enter)="submit()"
           ></div>
         </div>
@@ -293,14 +294,25 @@ export class RenameGroupDialogComponent {
         .getFormationDefinitions(this.data.group)
         .map(def => ({
             definition: def,
-            displayName: this.forceBuilder.getFormationDisplayName(def, this.data.group)
+            displayName: this.getFormationDisplayName(def, this.data.group)
         }));
 
     constructor() {}
 
     /** Compose a display name for a formation definition */
     getDisplayName(definition: FormationTypeDefinition): string {
-        return this.forceBuilder.getFormationDisplayName(definition, this.data.group);
+        return this.getFormationDisplayName(definition, this.data.group);
+    }   
+    
+    public getFormationDisplayName(definition: FormationTypeDefinition, group: UnitGroup): string {
+        const targetForce = group.force;
+        if (!targetForce) return definition.name;
+        return FormationNamerUtil.composeFormationDisplayName(
+            definition,
+            group.units(),
+            targetForce.units(),
+            targetForce.faction()
+        );
     }
 
     submit(): void {

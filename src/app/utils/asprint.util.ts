@@ -389,19 +389,10 @@ export class ASPrintUtil {
      */
     private static getGroupDisplayLabel(group: UnitGroup<ASForceUnit>): string {
         const name = group.name();
+        if (name) return name;
         const formation = group.formation();
-        if (!formation) return name;
-        if (!group.nameLock) {
-            // No custom name — use formation display name
-            const force = group.force;
-            return FormationNamerUtil.composeFormationDisplayName(
-                formation,
-                group.units(),
-                force?.units() ?? group.units(),
-                force?.faction() ?? null
-            );
-        }
-        return name;
+        if (formation) return formation.name;
+        return '';
     }
 
     /**
@@ -411,18 +402,9 @@ export class ASPrintUtil {
     private static getFormationSubtitle(group: UnitGroup<ASForceUnit>): string | null {
         const formation = group.formation();
         if (!formation) return null;
-        // When nameLock is false the display label IS the formation name
-        if (!group.nameLock) return null;
-        const force = group.force;
-        const displayName = FormationNamerUtil.composeFormationDisplayName(
-            formation,
-            group.units(),
-            force?.units() ?? group.units(),
-            force?.faction() ?? null
-        );
         // Don't repeat if the group name already contains the formation name
-        if (group.name().toLowerCase().includes(displayName.toLowerCase())) return null;
-        return displayName;
+        if (group.name()?.toLowerCase().includes(formation.name.toLowerCase())) return null;
+        return formation.name;
     }
 
     /**

@@ -982,7 +982,7 @@ export class DbService {
                             if (raw.groups && Array.isArray(raw.groups)) {
                                 for (const group of raw.groups as SerializedGroup[]) {
                                     const loadGroup: LoadForceGroup = {
-                                        name: group.name,
+                                        name: group.name ?? 'Group',
                                         units: []
                                     };
                                     for (const unit of group.units as SerializedUnit[]) {

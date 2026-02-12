@@ -75,6 +75,7 @@ import { buildMultiForceQueryParams, parseForceFromUrl, ForceQueryParams } from 
 import { CBTPrintUtil } from '../utils/cbtprint.util';
 import { ASPrintUtil } from '../utils/asprint.util';
 import { ForceSlot, ForceAlignment } from '../models/force-slot.model';
+import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 
 /*
  * Author: Drake
@@ -643,7 +644,7 @@ export class ForceBuilderService {
         });
         this.generateFactionAndForceNameIfNeeded(targetForce);
         if (unitGroup) {
-            this.generateGroupNameAndFormationIfNeeded(unitGroup);
+            this.assignFormationIfNeeded(unitGroup);
         }
         return newForceUnit;
     }
@@ -761,7 +762,7 @@ export class ForceBuilderService {
 
         this.generateFactionAndForceNameIfNeeded(targetForce);
         if (unitGroup) {
-            this.generateGroupNameAndFormationIfNeeded(unitGroup);
+            this.assignFormationIfNeeded(unitGroup);
         }
     }
 
@@ -826,7 +827,7 @@ export class ForceBuilderService {
 
         this.generateFactionAndForceNameIfNeeded(targetForce);
         if (originalGroup) {
-            this.generateGroupNameAndFormationIfNeeded(originalGroup);
+            this.assignFormationIfNeeded(originalGroup);
         }
 
         return newForceUnit;
@@ -912,7 +913,9 @@ export class ForceBuilderService {
 
             // Recreate groups and units - process one group at a time
             for (const sourceGroup of force.groups()) {
-                const newGroup = newForce.addGroup(sourceGroup.name());
+                const newGroup = newForce.addGroup();
+                newGroup.name.set(sourceGroup.name());
+                newGroup.formation.set(sourceGroup.formation());
                 newGroup.nameLock = sourceGroup.nameLock;
 
                 for (const sourceUnit of sourceGroup.units()) {
@@ -1021,23 +1024,31 @@ export class ForceBuilderService {
         );
     }
 
-    public generateGroupNameAndFormationIfNeeded(group: UnitGroup) {
-        if (!group.nameLock && group.units().length > 0) {
-            group.setName(this.generateGroupName(group), false);
+    public assignFormationIfNeeded(group: UnitGroup) {
+        if (group.units().length === 0) {
+            group.formation.set(null);
+            return;
         }
-    }
-    
-    public generateGroupName(group: UnitGroup): string {
-        const targetForce = group.force;
-        if (!targetForce) {
-            return '';
+        const currentFormation = group.formation();
+        if (currentFormation) {
+            // Validate existing formation — keep it if still valid
+            const definitions = this.getFormationDefinitions(group);
+            if (definitions.some(d => d.id === currentFormation.id)) {
+                return; // Still valid, nothing to do
+            }
+            // Current formation is no longer valid — fall through to pick a new one
+            group.formation.set(null);
+            group.nameLock = false; // Unlock name so it can update with new formation name
         }
-        return FormationNamerUtil.generateFormationName({
-            units: group.units(),
-            allUnits: targetForce.units(),
-            faction: targetForce.faction(),
-            gameSystem: targetForce.gameSystem
-        });
+        if (!group.formation() && !group.nameLock) {
+            const definitions = this.getFormationDefinitions(group);
+            if (definitions.length > 0) {
+                const randomIndex = Math.floor(Math.random() * definitions.length);
+                group.formation.set(definitions[randomIndex]);
+            } else {
+                group.formation.set(null);
+            }
+        }
     }
 
     public getAllFormationsAvailable(group: UnitGroup): string[] | null {
@@ -1064,28 +1075,16 @@ export class ForceBuilderService {
         );
     }
 
-    public getFormationDisplayName(definition: FormationTypeDefinition, group: UnitGroup): string {
-        const targetForce = group.force;
-        if (!targetForce) return definition.name;
-        return FormationNamerUtil.composeFormationDisplayName(
-            definition,
-            group.units(),
-            targetForce.units(),
-            targetForce.faction()
-        );
-    }
-
     public showFormationInfo(group: UnitGroup): void {
         const targetForce = group.force;
         if (!targetForce) return;
         const formation = group.formation();
         if (!formation) return;
-        const displayName = this.getFormationDisplayName(formation, group);
         this.dialogsService.createDialog(FormationInfoDialogComponent, {
             data: {
                 formation,
                 gameSystem: targetForce.gameSystem,
-                formationDisplayName: displayName,
+                formationDisplayName: group.formationDisplayName(),
                 unitCount: group.units().length,
             } as FormationInfoDialogData
         });
@@ -1577,7 +1576,7 @@ export class ForceBuilderService {
             // Apply name change
             if (result.name === '' || result.name === null) {
                 group.nameLock = false;
-                group.setName(this.generateGroupName(group));
+                this.assignFormationIfNeeded(group);
             } else {
                 group.nameLock = true;
                 group.setName(result.name.trim());

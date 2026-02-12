@@ -77,7 +77,7 @@ export interface ASSerializedForce extends SerializedForce {
 
 export interface SerializedGroup {
     id: string;
-    name: string;
+    name?: string;
     nameLock?: boolean;
     color?: string;
     formationId?: string;
@@ -377,9 +377,10 @@ export const CBT_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<CBTSerializedUnit>()
  */
 export const CBT_SERIALIZED_GROUP_SCHEMA = Sanitizer.schema<CBTSerializedGroup>()
     .string('id')
-    .string('name', { default: 'Main' })
+    .string('name')
     .boolean('nameLock', { default: false })
     .string('color')
+    .string('formationId')
     .custom('units', (value: unknown) => {
         if (!Array.isArray(value)) return [];
         return Sanitizer.sanitizeArray(value, CBT_SERIALIZED_UNIT_SCHEMA);
@@ -532,7 +533,7 @@ export const AS_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<ASSerializedUnit>()
  */
 export const AS_SERIALIZED_GROUP_SCHEMA = Sanitizer.schema<ASSerializedGroup>()
     .string('id')
-    .string('name', { default: 'Main' })
+    .string('name')
     .boolean('nameLock', { default: false })
     .string('color')
     .string('formationId')

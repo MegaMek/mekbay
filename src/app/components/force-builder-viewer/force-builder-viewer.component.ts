@@ -465,8 +465,8 @@ export class ForceBuilderViewerComponent {
             } else {
                 movedUnit = fromGroup.moveUnitTo(event.previousIndex, toGroup, event.currentIndex) ?? undefined;
                 if (!movedUnit) return;
-                this.forceBuilderService.generateGroupNameAndFormationIfNeeded(fromGroup);
-                this.forceBuilderService.generateGroupNameAndFormationIfNeeded(toGroup);
+                this.forceBuilderService.assignFormationIfNeeded(fromGroup);
+                this.forceBuilderService.assignFormationIfNeeded(toGroup);
             }
             fromForce.removeEmptyGroups();
             if (fromForce.instanceId()) {
@@ -526,8 +526,8 @@ export class ForceBuilderViewerComponent {
             toGroup.insertUnit(unitToInsert, event.currentIndex);
             this.forceBuilderService.generateFactionAndForceNameIfNeeded(fromForce);
             this.forceBuilderService.generateFactionAndForceNameIfNeeded(toForce);
-            this.forceBuilderService.generateGroupNameAndFormationIfNeeded(fromGroup);
-            this.forceBuilderService.generateGroupNameAndFormationIfNeeded(toGroup);
+            this.forceBuilderService.assignFormationIfNeeded(fromGroup);
+            this.forceBuilderService.assignFormationIfNeeded(toGroup);
             toForce.deduplicateIds();
             fromForce.removeEmptyGroups();
 
@@ -629,7 +629,7 @@ export class ForceBuilderViewerComponent {
         }
 
         // Create a new group on the target force
-        const newGroup = targetForce.addGroup('New Group');
+        const newGroup = targetForce.addGroup();
         if (!newGroup) return;
 
         // Move the unit from source
@@ -656,8 +656,8 @@ export class ForceBuilderViewerComponent {
             this.forceBuilderService.generateFactionAndForceNameIfNeeded(targetForce);
             this.forceBuilderService.generateFactionAndForceNameIfNeeded(sourceForce);
         }
-        this.forceBuilderService.generateGroupNameAndFormationIfNeeded(sourceGroup);
-        this.forceBuilderService.generateGroupNameAndFormationIfNeeded(newGroup);
+        this.forceBuilderService.assignFormationIfNeeded(sourceGroup);
+        this.forceBuilderService.assignFormationIfNeeded(newGroup);
         sourceForce.removeEmptyGroups();
         if (crossForce) targetForce.deduplicateIds();
 
@@ -724,23 +724,19 @@ export class ForceBuilderViewerComponent {
     /** Returns the text to display as the group label */
     getGroupDisplayLabel(group: UnitGroup): string {
         const name = group.name();
-        const formation = group.formation();
-        if (!formation) return name;
-        if (!group.nameLock) {
-            // No custom name set — use the formation display name
-            return this.forceBuilderService.getFormationDisplayName(formation, group);
-        }
-        return name;
+        if (name) return name;
+        const displayName = group.formationDisplayName();
+        if (displayName) return displayName;
+        return 'Group';
     }
 
     /** Check whether the group's display label already shows the formation name. */
     groupNameContainsFormation(group: UnitGroup): boolean {
         const formation = group.formation();
         if (!formation) return false;
-        // When nameLock is false the display label IS the formation name — no need to repeat it.
-        if (!group.nameLock) return true;
-        const displayName = this.forceBuilderService.getFormationDisplayName(formation, group);
-        return group.name().toLowerCase().includes(displayName.toLowerCase());
+        const formationDisplayName = group.formationDisplayName()?.toLowerCase();
+        if (!formationDisplayName) return false;
+        return group.name()?.toLowerCase().includes(formationDisplayName) || false;
     }
 
     shareForce() {
@@ -753,39 +749,6 @@ export class ForceBuilderViewerComponent {
         if (group.units().length === 0) {
             this.forceBuilderService.removeGroup(group);
         }
-    }
-
-    /**
-     * Re-evaluates the formation assignment for a group after it has been moved.
-     * If the group had no formation, does nothing.
-     * If same game system: validates the existing formation; if invalid, switches to best match.
-     * If cross-system: looks up the same formation ID in the new game system,
-     * validates it, and falls back to best match if invalid or not found.
-     */
-    private reEvaluateGroupFormation(group: UnitGroup, targetForce: Force, crossSystem: boolean) {
-        const currentFormation = group.formation();
-        if (!currentFormation && !crossSystem) return; // no formation to re-evaluate
-
-        const units = group.units();
-        if (units.length === 0) {
-            group.formation.set(null);
-            return;
-        }
-
-        const gameSystem = targetForce.gameSystem;
-        const techBase = ForceNamerUtil.getTechBase(units);
-        const factionName = targetForce.faction()?.name ?? '';
-
-        // We changed game system so we need to revalidate the existing formation
-        if (currentFormation && LanceTypeIdentifierUtil.isValid(currentFormation, units, gameSystem)) {
-            // Same system, existing formation is still valid
-            return;
-        }
-
-        // Fall back to best match (may be null if nothing matches)
-        group.formation.set(
-            LanceTypeIdentifierUtil.getBestMatch(units, techBase, factionName, gameSystem)
-        );
     }
 
     /** Connected group drop list IDs for group drag-drop (only non-readonly forces) */
@@ -877,9 +840,9 @@ export class ForceBuilderViewerComponent {
             toForce.adoptGroup(movedGroup, event.currentIndex);
 
             // Re-evaluate the formation for the moved group
-            this.reEvaluateGroupFormation(movedGroup, toForce, crossSystem);
             this.forceBuilderService.generateFactionAndForceNameIfNeeded(fromForce);
             this.forceBuilderService.generateFactionAndForceNameIfNeeded(toForce);
+            this.forceBuilderService.assignFormationIfNeeded(movedGroup);
 
             // Select a unit in the moved group
             const firstUnit = movedGroup.units()[0];

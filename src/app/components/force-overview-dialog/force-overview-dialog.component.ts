@@ -551,8 +551,8 @@ export class ForceOverviewDialogComponent {
         } else {
             const moved = fromGroup.moveUnitTo(event.previousIndex, toGroup, event.currentIndex);
             if (!moved) return;
-            this.forceBuilderService.generateGroupNameAndFormationIfNeeded(fromGroup);
-            this.forceBuilderService.generateGroupNameAndFormationIfNeeded(toGroup);
+            this.forceBuilderService.assignFormationIfNeeded(fromGroup);
+            this.forceBuilderService.assignFormationIfNeeded(toGroup);
         }
 
         force.removeEmptyGroups();
@@ -564,7 +564,7 @@ export class ForceOverviewDialogComponent {
         if (this.isReadOnly()) return;
 
         const force = this.data.force;
-        const newGroup = force.addGroup('New Group');
+        const newGroup = force.addGroup();
         if (!newGroup) return;
 
         const prevId = event.previousContainer?.id;
@@ -577,8 +577,8 @@ export class ForceOverviewDialogComponent {
         const moved = sourceGroup.moveUnitTo(event.previousIndex, newGroup);
         if (!moved) return;
 
-        this.forceBuilderService.generateGroupNameAndFormationIfNeeded(sourceGroup);
-        this.forceBuilderService.generateGroupNameAndFormationIfNeeded(newGroup);
+        this.forceBuilderService.assignFormationIfNeeded(sourceGroup);
+        this.forceBuilderService.assignFormationIfNeeded(newGroup);
         force.removeEmptyGroups();
         force.emitChanged();
     }

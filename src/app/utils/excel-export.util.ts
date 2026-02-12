@@ -276,7 +276,7 @@ function forceGroupsToRows(
 ): Record<string, unknown>[] {
     const rowConverter = gameSystem === GameSystem.ALPHA_STRIKE ? forceUnitToASRow : forceUnitToCBTRow;
     return groups.flatMap(group =>
-        group.units().map(unit => rowConverter(unit, group.name()))
+        group.units().map(unit => rowConverter(unit, (group.name() ?? '') + ' ' + (group.formation()?.name ?? '')))
     );
 }
 

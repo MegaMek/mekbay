@@ -46,11 +46,11 @@ import { LoggerService } from '../services/logger.service';
 import { Faction } from './factions.model';
 import { FormationTypeDefinition } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { FormationNamerUtil } from '../utils/formation-namer.util';
 
 /*
  * Author: Drake
  */
-const DEFAULT_GROUP_NAME = 'Main';
 const MAX_GROUPS = 50;
 const MAX_UNITS = 100;
 
@@ -66,7 +66,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     set force(value: Force) { this._forceRef.set(value); }
 
     id: string = generateUUID();
-    name = signal<string>('Group');
+    name = signal<string | undefined>(undefined);
     nameLock?: boolean; // If true, the group name cannot be changed by the random generator
     color?: string;
     formation = signal<FormationTypeDefinition | null>(null);
@@ -76,15 +76,12 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         return this.units().reduce((sum, unit) => sum + (unit.getBv()), 0);
     });
 
-    constructor(force: Force, name?: string) {
+    constructor(force: Force) {
         this.force = force;
         this.id = generateUUID();
-        if (name !== undefined) {
-            this.name.set(name);
-        }
     }
 
-    setName(name: string, emitChange: boolean = true) {
+    setName(name: string | undefined, emitChange: boolean = true) {
         this.name.set(name);
         if (emitChange) {
             this.force?.emitChanged();
@@ -135,6 +132,17 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     addUnit(unit: Unit): ForceUnit {
         return this.force.addUnit(unit, this as UnitGroup);
     }
+    
+    formationDisplayName = computed(() => {
+        const formation = this.formation();
+        if (!formation) return null;
+        return FormationNamerUtil.composeFormationDisplayName(
+            formation,
+            this.units(),
+            this.force.units(),
+            this.force.faction()
+        );
+    });
 }
 
 export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
@@ -149,7 +157,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     cloud?: boolean = false; // Indicates if this force is stored in the cloud
     owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
     faction = signal<Faction | null>(null);
-    c3Networks = this._c3Networks.asReadonly(); 
+    c3Networks = this._c3Networks.asReadonly();
     /** Emits after each debounced mutation — subscribe to react to force changes. */
     public readonly changed = new Subject<void>();
     private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -218,7 +226,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
         const forceUnit = this.createForceUnit(unit);
         if (this.groups().length === 0) {
-            this.addGroup(DEFAULT_GROUP_NAME);
+            this.addGroup();
         }
 
         // Use provided target group or pick the last group
@@ -241,11 +249,14 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return this.groups().some(g => g.units().length === 0);
     });
 
-    public addGroup(name: string = 'Group'): UnitGroup<TUnit> {
+    public addGroup(name?: string): UnitGroup<TUnit> {
         if (this.hasMaxGroups()) {
             throw new Error(`Cannot add more than ${MAX_GROUPS} groups`);
         }
-        const newGroup = new UnitGroup<TUnit>(this, name);
+        const newGroup = new UnitGroup<TUnit>(this);
+        if (name) {
+            newGroup.setName(name);
+        }
         this.groups.update(groups => [...groups, newGroup]);
         if (this.instanceId()) this.emitChanged();
         return newGroup;
@@ -297,7 +308,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         const removed = groups.splice(idx, 1)[0];
         // Move removed units into previous group or create default
         if (groups.length === 0) {
-            const defaultGroup = this.addGroup(DEFAULT_GROUP_NAME);
+            const defaultGroup = this.addGroup();
             defaultGroup.units.set(removed.units());
         } else {
             const targetIdx = Math.max(0, idx - 1);
@@ -370,7 +381,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
     public setUnits(newUnits: TUnit[]) {
         this.groups.set([]);
-        const defaultGroup = this.addGroup(DEFAULT_GROUP_NAME);
+        const defaultGroup = this.addGroup();
         defaultGroup.units.set(newUnits);
         if (this.instanceId()) {
             this.emitChanged();
@@ -467,7 +478,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
         const serializedGroups: SerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => ({
             id: g.id,
-            name: g.name(),
+            name: g.name() || g.formation()?.name || undefined,
             nameLock: g.nameLock,
             color: g.color,
             formationId: g.formation()?.id,
@@ -573,9 +584,12 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                         continue;
                     }
                 }
-                const group = new UnitGroup<TUnit>(this, g.name || DEFAULT_GROUP_NAME);
+                const group = new UnitGroup<TUnit>(this);
                 if (g.id) {
                     group.id = g.id;
+                }
+                if (g.name) {
+                    group.setName(g.name, false);
                 }
                 group.nameLock = g.nameLock || false;
                 group.color = g.color || '';
@@ -638,7 +652,13 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 let group = currentGroupMap.get(groupData.id);
                 if (group) {
                     // Update existing group
-                    if (group.name() !== groupData.name) group.setName(groupData.name, false);
+                    if (group.name() !== groupData.name) {
+                        if (groupData.name) {
+                            group.setName(groupData.name, false);
+                        } else {
+                            group.setName(undefined, false);
+                        }
+                    }
                     group.nameLock = groupData.nameLock;
                     group.color = groupData.color;
                     group.formation.set(groupData.formationId
@@ -646,7 +666,10 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                         : null);
                 } else {
                     // Add new group
-                    group = new UnitGroup<TUnit>(this, groupData.name);
+                    group = new UnitGroup<TUnit>(this);
+                    if (groupData.name) {
+                        group.setName(groupData.name, false);
+                    }
                     group.id = groupData.id;
                     group.nameLock = groupData.nameLock;
                     group.color = groupData.color;
