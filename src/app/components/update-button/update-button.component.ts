@@ -32,7 +32,7 @@
  */
 import { ChangeDetectionStrategy, Component, signal, input, computed, effect, inject, afterNextRender, Injector } from '@angular/core';
 
-import { App } from '../../app';
+import { PwaService } from '../../services/pwa.service';
 
 /*
  * Author: Drake
@@ -52,7 +52,7 @@ export class UpdateButtonComponent {
     countdown = signal(this.START_COUNTDOWN);
     isVisible = signal(false);
     pulse = signal(false);
-    private app = inject(App);
+    private pwaService = inject(PwaService);
     private injector = inject(Injector);
     private countdownInterval?: ReturnType<typeof setInterval>;
 
@@ -81,7 +81,6 @@ export class UpdateButtonComponent {
                     this.triggerPulse();
                 }
             } else {
-                this.app.removeBeforeUnloadHandler();
                 this.cancelReload();
                 this.reloadForUpdate();
             }
@@ -89,7 +88,9 @@ export class UpdateButtonComponent {
     }
 
     reloadForUpdate() {
-        window.location.reload();
+        // Tell the waiting SW to skipWaiting(). The controllerchange listener
+        // in PwaService will automatically reload the page once it activates.
+        this.pwaService.activateUpdate();
     }
 
     cancelReload() {

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, isDevMode, signal, inject, NgZone } from '@angular/core';
+import { Injectable, isDevMode, signal, inject } from '@angular/core';
 import { LoggerService } from './logger.service';
 
 /**
@@ -48,7 +48,6 @@ import { LoggerService } from './logger.service';
 @Injectable({ providedIn: 'root' })
 export class PwaService {
     private readonly logger = inject(LoggerService);
-    private readonly zone = inject(NgZone);
 
     /** Whether a new service worker version is waiting to activate. */
     readonly updateAvailable = signal(false);
@@ -97,7 +96,7 @@ export class PwaService {
 
             // If there's already a waiting worker (e.g. update happened while tab was closed)
             if (reg.waiting) {
-                this.zone.run(() => this.updateAvailable.set(true));
+                this.updateAvailable.set(true);
             }
 
             // Detect future updates
@@ -109,7 +108,7 @@ export class PwaService {
                     // A new SW has been installed and there's already a controller,
                     // so this is an update (not first install).
                     if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-                        this.zone.run(() => this.updateAvailable.set(true));
+                        this.updateAvailable.set(true);
                         this.logger.info('[PWA] New service worker version is waiting to activate.');
                     }
                 });
@@ -172,7 +171,7 @@ export class PwaService {
                 const url = msg['url'] as string | undefined;
                 if (url) {
                     this.logger.info('[PWA] Received NAVIGATE message: ' + url);
-                    this.zone.run(() => this.navigateRequest.set(url));
+                    this.navigateRequest.set(url);
                 }
                 break;
             }
