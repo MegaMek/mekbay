@@ -46,7 +46,7 @@ const fs = require('fs');
 
 const DIST_DIR = path.resolve(__dirname, '../dist/browser');
 const SW_SRC = path.resolve(__dirname, '../src/sw.ts');
-const SW_DEST = path.join(DIST_DIR, 'sw.js');
+const SW_DEST = path.join(DIST_DIR, 'ngsw-worker.js');
 
 async function buildSW() {
     // 1. Bundle the TypeScript service worker source with esbuild
@@ -62,7 +62,7 @@ async function buildSW() {
         // The workbox runtime modules are bundled in; no external CDN needed.
     });
 
-    // 2. Inject the precache manifest into the bundled sw.js
+    // 2. Inject the precache manifest into the bundled ngsw-worker.js
     console.log('[sw] Injecting precache manifest...');
     const { count, size, warnings } = await injectManifest({
         swSrc: SW_DEST,   // the already-bundled file
@@ -74,7 +74,7 @@ async function buildSW() {
             'sprites/**/*.json',
         ],
         globIgnores: [
-            'sw.js',              // don't precache the SW itself
+            'ngsw-worker.js',     // don't precache the SW itself
             'assets/zip/**',      // large zip bundles — cache on demand
             'images/units/**',    // unit images — too many, lazy-cache
         ],

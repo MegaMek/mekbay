@@ -54,16 +54,22 @@ self.addEventListener('message', (event) => {
     }
 });
 
-// On first install, auto-skipWaiting when we're replacing a foreign SW
-// (e.g. Angular's ngsw-worker.js). Without this the new SW would sit in
-// "waiting" forever because the old app code doesn't know to send SKIP_WAITING.
-self.addEventListener('install', () => {
-    // If there's no existing controller, or the existing controller's script URL
-    // differs from ours, this is a migration — activate immediately.
-    const existingController = (self as any).serviceWorker?.controller;
-    if (!existingController || !existingController.scriptURL?.endsWith('/sw.js')) {
-        self.skipWaiting();
-    }
+// On first install (or migration from old NGSW), auto-skipWaiting so the
+// new SW takes over immediately.  On normal Workbox-to-Workbox updates we
+// wait for the user to confirm via the SKIP_WAITING message so their work
+// isn't interrupted by a surprise reload.
+self.addEventListener('install', (event) => {
+    event.waitUntil(
+        caches.keys().then((keys) => {
+            const hasWorkboxCache = keys.some((k) => k.includes('workbox-precache'));
+            if (!hasWorkboxCache) {
+                // No Workbox precache → first install or migrating from NGSW.
+                return self.skipWaiting();
+            }
+            // Normal Workbox update — wait for SKIP_WAITING message.
+            return;
+        }),
+    );
 });
 
 // Claim clients immediately after activation so existing tabs use the new SW.
