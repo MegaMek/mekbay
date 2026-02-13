@@ -64,6 +64,36 @@
               ],
               "outputHashing": "all"
             },
+            "next": {
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public",
+                  "output": ".",
+                  "ignore": [
+                    "images/units/**"
+                  ]
+                },
+                {
+                  "glob": "icon-192x192.png",
+                  "input": "public/icons/dev",
+                  "output": "icons"
+                }
+              ],
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "2MB",
+                  "maximumError": "5MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "10kB",
+                  "maximumError": "20kB"
+                }
+              ],
+              "outputHashing": "all"
+            },
             "development": {
               "assets": [
                 {

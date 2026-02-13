@@ -33,7 +33,7 @@ jobs:
           MM_DATA_PATH: mm-data
         run: |  
           npm ci
-          npm run build
+          npm run build -- --configuration=next
 
       - name: Get LFTP
         run: sudo apt-get install -y --no-install-recommends lftp
