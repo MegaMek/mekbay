@@ -109,7 +109,6 @@ export class App {
     protected buildInfo = APP_VERSION_STRING;
     private lastUpdateCheck: number = 0;
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
-    protected title = 'mekbay';
     protected updateAvailable = signal(false);
     protected showInstallButton = signal(false);
     private deferredPrompt: any;
