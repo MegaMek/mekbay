@@ -144,10 +144,6 @@ export class UnitDetailsGeneralTabComponent {
         return BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
     });
 
-    trackByBay = (bay: UnitComponent) => `${bay.n}|${bay.t}|${bay.l}`;
-    trackByComp = (comp: UnitComponent) => `${comp.n}|${comp.t}|${comp.l}`;
-
-
     formatThousands(value: number): string {
         if (value === undefined || value === null) return '';
         return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
