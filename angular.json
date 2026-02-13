@@ -76,7 +76,7 @@
                 },
                 {
                   "glob": "icon-192x192.png",
-                  "input": "public/icons/dev",
+                  "input": "public/icons/next",
                   "output": "icons"
                 }
               ],
