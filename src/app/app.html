@@ -51,6 +51,7 @@
                 <div class="main-search">
                     <div class="empty-state-logo">
                         <img src="/images/logo.png" alt="MekBay Logo">
+                        @if (isNextBuild) { <span class="next-badge" (click)="showNextDialog()">NEXT</span> }
                     </div>
                     <div class="gameSystemSelector" [class.loading]="!this.dataService.isDataReady()">
                         <div class="battletech-logo" [class.inactive]="gameService.isAlphaStrike()"

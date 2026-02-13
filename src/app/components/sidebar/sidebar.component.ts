@@ -8,6 +8,8 @@ import { SidebarFooterComponent } from '../sidebar-footer/sidebar-footer.compone
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { ForceBuilderViewerComponent } from '../force-builder-viewer/force-builder-viewer.component';
 import { SwipeDirective, SwipeEndEvent, SwipeStartEvent } from '../../directives/swipe.directive';
+import { BUILD_BRANCH } from '../../build-meta';
+import { DialogsService } from '../../services/dialogs.service';
 
 /*
  * Main Sidebar component
@@ -28,6 +30,8 @@ export class SidebarComponent {
     layout = inject(LayoutService);
     options = inject(OptionsService);
     renderer = inject(Renderer2);
+    protected isNextBuild = BUILD_BRANCH !== 'main';
+    private dialogsService = inject(DialogsService);
     unitSearchPortal = input<Portal<any>>();
     unitSearchComponent = input<UnitSearchComponent>();
 
@@ -167,6 +171,10 @@ export class SidebarComponent {
     public toggleMenuOpenClose() {
         this.footer()?.closeAllMenus();
         this.layout.isMenuOpen.update(v => !v);
+    }
+
+    showNextDialog(): void {
+        this.dialogsService.showNextDialog();
     }
 
     public onEdgePointerDown(ev: PointerEvent) {

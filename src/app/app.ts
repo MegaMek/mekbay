@@ -57,7 +57,7 @@ import { UpdateButtonComponent } from './components/update-button/update-button.
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
-import { APP_VERSION_STRING } from './build-meta';
+import { APP_VERSION_STRING, BUILD_BRANCH } from './build-meta';
 import { LoggerService } from './services/logger.service';
 import { isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
@@ -107,6 +107,7 @@ export class App {
 
     protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
+    protected isNextBuild = true; //BUILD_BRANCH !== 'main';
     private lastUpdateCheck: number = 0;
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
     protected updateAvailable = signal(false);
@@ -501,6 +502,10 @@ export class App {
 
     showBetaDialog(): void {
         this.dialogService.createDialog(BetaDialogComponent);
+    }
+
+    showNextDialog(): void {
+        this.dialogService.showNextDialog();
     }
 
     showLoadForceDialog(): void {

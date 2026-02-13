@@ -155,6 +155,15 @@ export class DialogsService {
         return result ?? null;
     }
 
+    showNextDialog(): void {
+        this.showNoticeHtml(
+            'You are using the <strong>pre-release</strong> version of MekBay. ' +
+            'This build may contain experimental features and bugs.<br><br>' +
+            'The stable version is available at <a href="https://mekbay.com" target="_blank" rel="noopener">mekbay.com</a>.',
+            'Pre-Release Version'
+        );
+    }
+
     /**
      * Show a dialog with arbitrary buttons and return the chosen value.
      * @param title Dialog title

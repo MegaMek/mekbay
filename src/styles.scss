@@ -214,7 +214,6 @@ hr {
     }
 }
 
-
 .cdk-overlay-pane {
     // padding-bottom: calc(8px + var(--safe-area-inset-bottom)) !important;
     box-sizing: border-box;
@@ -222,6 +221,20 @@ hr {
 
 .has-shadow {
     box-shadow: rgba(0, 0, 0, 0.4) 0px 2px 4px, rgba(0, 0, 0, 0.3) 0px 7px 13px -3px;
+}
+
+.next-badge {
+    position: absolute;
+    bottom: 0px;
+    right: 18px;
+    background: #FFA800;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    padding: 1px 4px;
+    line-height: 1.2;
+    cursor: pointer;
 }
 
 .framed-borders {
