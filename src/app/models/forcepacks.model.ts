@@ -42,11 +42,12 @@ interface ForcePackUnit {
 export interface ForcePack {
     name: string;
     units: ForcePackUnit[];
-    bv?: number;
+    bv?: number
     variants?: Array<{
       name: string;
       units: Array<ForcePackUnit>;
-    }>;
+    }>;;
+    references?: Array<{ name: string; url: string }>;
 }
 
 export const getForcePacks = (): ForcePack[] => sortedForcePacks;
