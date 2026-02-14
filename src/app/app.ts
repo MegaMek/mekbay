@@ -110,6 +110,7 @@ export class App {
     protected isNextBuild = true; //BUILD_BRANCH !== 'main';
     private lastUpdateCheck: number = 0;
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
+    private updateCheckTimeoutId: number | null = null;
     protected updateAvailable = signal(false);
     protected showInstallButton = signal(false);
     private deferredPrompt: any;
@@ -149,8 +150,8 @@ export class App {
         document.addEventListener('contextmenu', this.contextMenuHandler);
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
         // Periodic update checks (the PwaService handles SW registration)
-        setInterval(() => this.checkForUpdate(), this.updateCheckInterval);
-        this.checkForUpdate();
+        this.startPeriodicUpdateChecks();
+        void this.checkForUpdate(true);
 
         // React to update availability from the service worker
         effect(() => {
@@ -264,6 +265,7 @@ export class App {
             }
         });
         inject(DestroyRef).onDestroy(() => {
+            this.stopPeriodicUpdateChecks();
             this.removeBeforeUnloadHandler();
             window.removeEventListener('beforeinstallprompt', this.beforeInstallPromptHandler);
             window.removeEventListener('appinstalled', this.appInstalledHandler);
@@ -276,11 +278,29 @@ export class App {
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
 
     onOnline() {
-        this.checkForUpdate();
+        void this.checkForUpdate();
     }
 
     onFocus() {
-        this.checkForUpdate();
+        void this.checkForUpdate();
+    }
+
+    private startPeriodicUpdateChecks() {
+        this.stopPeriodicUpdateChecks();
+        const scheduleNext = () => {
+            this.updateCheckTimeoutId = window.setTimeout(async () => {
+                await this.checkForUpdate(true);
+                scheduleNext();
+            }, this.updateCheckInterval);
+        };
+        scheduleNext();
+    }
+
+    private stopPeriodicUpdateChecks() {
+        if (this.updateCheckTimeoutId !== null) {
+            window.clearTimeout(this.updateCheckTimeoutId);
+            this.updateCheckTimeoutId = null;
+        }
     }
 
     private beforeInstallPromptHandler = (e: any) => {
@@ -299,10 +319,10 @@ export class App {
         event.preventDefault();
     };
 
-    private async checkForUpdate() {
+    private async checkForUpdate(force = false) {
         const now = Date.now();
         // Prevent too frequent checks
-        if (now - this.lastUpdateCheck < (this.updateCheckInterval / 4)) {
+        if (!force && now - this.lastUpdateCheck < (this.updateCheckInterval / 4)) {
             return;
         }
         this.logger.info('Checking for updates...');
