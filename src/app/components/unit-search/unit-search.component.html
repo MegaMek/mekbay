@@ -162,14 +162,11 @@
                          (shortPress)="onUnitCardClick(unit, $event)"
                          (longPress)="multiSelectUnit(unit)">
                         @defer (on viewport) {
-                        <unit-card-expanded
+                        <alpha-strike-card
                             [unit]="unit"
-                            [cardView]="true"
                             [useHex]="useHex()"
                             [cardStyle]="cardStyle()"
-                            [isSelected]="isUnitSelected(unit)"
-                            [gunnery]="gunnery"
-                            (tagClick)="onAddTag($event)" />
+                            [isSelected]="isUnitSelected(unit)" />
                         } @placeholder {
                         <div class="card-view-placeholder"></div>
                         }

@@ -240,6 +240,7 @@ export class AlphaStrikeCardComponent {
     // Handle special ability click from layout components
     onSpecialClick(clickEvent: SpecialAbilityClickEvent): void {
         const { state, event } = clickEvent;
+        event.stopPropagation();
         const parsedAbility = this.abilityLookup.parseAbility(state.original);
         const ability = parsedAbility.ability;
         const fu = this.forceUnit();
