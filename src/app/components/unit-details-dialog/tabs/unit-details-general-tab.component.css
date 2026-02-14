@@ -360,6 +360,7 @@
 .bottom-info .label {
     flex-shrink: 0;
     white-space: nowrap;
+    margin-top: 4px;
 }
 
 .bottom-info a,
