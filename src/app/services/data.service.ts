@@ -58,6 +58,7 @@ import { ASForce } from '../models/as-force.model';
 import { Sourcebook, Sourcebooks } from '../models/sourcebook.model';
 import { MULUnitSources, MULUnitSourcesData } from '../models/mul-unit-sources.model';
 import { removeAccents } from '../utils/string.util';
+import { getForcePacks } from '../models/forcepacks.model';
 
 /*
  * Author: Drake
@@ -143,6 +144,11 @@ export class DataService {
     private quirksMap = new Map<string, Quirk>();
     private sourcebooksMap = new Map<string, Sourcebook>();
     private mulUnitSourcesMap = new Map<number, string[]>();
+
+    /** packName -> Set<chassis|type> for force pack membership checks */
+    private forcePackToChassisType: Map<string, Set<string>> | null = null;
+    /** chassis|type -> sorted pack names[] for reverse lookups */
+    private chassisTypeToForcePacks: Map<string, string[]> | null = null;
 
     public tagsVersion = signal(0);
 
@@ -1243,6 +1249,76 @@ export class DataService {
 
     public deleteCanvasDataOfUnit(unit: ForceUnit): void {
         this.dbService.deleteCanvasData(unit.id);
+    }
+
+    /* ----------------------------------------------------------
+     * Force Pack Lookups (lazily built, cached globally)
+     */
+
+    /**
+     * Build both force pack lookup maps on first use.
+     * - forcePackToChassisType: packName -> Set<chassis|type>
+     * - chassisTypeToForcePacks: chassis|type -> sorted packName[]
+     */
+    private buildForcePackCaches(): void {
+        this.forcePackToChassisType = new Map();
+        const reverseMap = new Map<string, Set<string>>();
+
+        for (const pack of getForcePacks()) {
+            const chassisTypeSet = new Set<string>();
+
+            const processUnits = (unitList: Array<{ name: string }>) => {
+                for (const pu of unitList) {
+                    const unit = this.unitNameMap.get(pu.name);
+                    if (unit) {
+                        const key = `${unit.chassis}|${unit.type}`;
+                        chassisTypeSet.add(key);
+                        if (!reverseMap.has(key)) reverseMap.set(key, new Set());
+                        reverseMap.get(key)!.add(pack.name);
+                    }
+                }
+            };
+
+            processUnits(pack.units);
+            if (pack.variants) {
+                for (const variant of pack.variants) {
+                    processUnits(variant.units);
+                }
+            }
+
+            this.forcePackToChassisType.set(pack.name, chassisTypeSet);
+        }
+
+        this.chassisTypeToForcePacks = new Map();
+        for (const [key, names] of reverseMap) {
+            this.chassisTypeToForcePacks.set(key, Array.from(names).sort());
+        }
+    }
+
+    /**
+     * Check if a unit belongs to a force pack (by chassis|type).
+     */
+    public unitBelongsToForcePack(unit: Unit, packName: string): boolean {
+        if (!this.forcePackToChassisType) this.buildForcePackCaches();
+        const chassisSet = this.forcePackToChassisType!.get(packName);
+        if (!chassisSet) return false;
+        return chassisSet.has(`${unit.chassis}|${unit.type}`);
+    }
+
+    /**
+     * Get the chassis|type set for a force pack (for bulk filtering).
+     */
+    public getForcePackChassisTypeSet(packName: string): Set<string> | undefined {
+        if (!this.forcePackToChassisType) this.buildForcePackCaches();
+        return this.forcePackToChassisType!.get(packName);
+    }
+
+    /**
+     * Get the sorted list of force pack names that contain a unit's chassis|type.
+     */
+    public getForcePacksForUnit(unit: Unit): string[] {
+        if (!this.chassisTypeToForcePacks) this.buildForcePackCaches();
+        return this.chassisTypeToForcePacks!.get(`${unit.chassis}|${unit.type}`) ?? [];
     }
 
 }

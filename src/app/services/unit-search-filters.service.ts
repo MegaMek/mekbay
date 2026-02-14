@@ -443,7 +443,6 @@ export class UnitSearchFiltersService {
     expandedView = signal(false);
     advOpen = signal(false);
     private totalRangesCache: Record<string, [number, number]> = {};
-    private forcePackChassisCache: Map<string, Set<string>> | null = null;
     private availableNamesCache = new Map<string, string[]>();
     private availableNamesCacheOrder: string[] = [];
     private readonly availableNamesCacheMaxEntries = 50; // Limit cache size for multistate filter options
@@ -885,42 +884,7 @@ export class UnitSearchFiltersService {
      * Matches by chassis+type combination.
      */
     public unitBelongsToForcePack(unit: Unit, packName: string): boolean {
-        // Build cache on first use
-        if (!this.forcePackChassisCache) {
-            this.buildForcePackChassisCache();
-        }
-        
-        const chassisSet = this.forcePackChassisCache!.get(packName);
-        if (!chassisSet) return false;
-        
-        const unitKey = `${unit.chassis}|${unit.type}`;
-        return chassisSet.has(unitKey);
-    }
-
-    /**
-     * Build cache of chassis|type sets for all force packs.
-     * Called once lazily on first use.
-     */
-    private buildForcePackChassisCache(): void {
-        this.forcePackChassisCache = new Map();
-        
-        // Build a lookup map from unit name to chassis|type key
-        const nameToChassisType = new Map<string, string>();
-        for (const unit of this.units) {
-            nameToChassisType.set(unit.name, `${unit.chassis}|${unit.type}`);
-        }
-        
-        // Build chassis sets for each force pack
-        for (const pack of getForcePacks()) {
-            const chassisSet = new Set<string>();
-            for (const packUnit of pack.units) {
-                const key = nameToChassisType.get(packUnit.name);
-                if (key) {
-                    chassisSet.add(key);
-                }
-            }
-            this.forcePackChassisCache.set(pack.name, chassisSet);
-        }
+        return this.dataService.unitBelongsToForcePack(unit, packName);
     }
 
     private getUnitIdsForSelectedEras(selectedEraNames: string[]): Set<number> | null {
@@ -1070,17 +1034,9 @@ export class UnitSearchFiltersService {
         if (selectedForcePackNames.length > 0) {
             const chassisTypeSet = new Set<string>();
             for (const packName of selectedForcePackNames) {
-                const pack = getForcePacks().find(p => p.name === packName);
-                if (pack) {
-                    for (const packUnit of pack.units) {
-                        // Find the full Unit object by name to get its type
-                        const fullUnit = this.units.find(u => u.name === packUnit.name);
-                        if (fullUnit) {
-                            // Create a composite key of chassis + type
-                            const key = `${fullUnit.chassis}|${fullUnit.type}`;
-                            chassisTypeSet.add(key);
-                        }
-                    }
+                const packSet = this.dataService.getForcePackChassisTypeSet(packName);
+                if (packSet) {
+                    for (const key of packSet) chassisTypeSet.add(key);
                 }
             }
             results = results.filter(u => {

@@ -199,6 +199,12 @@ unit().moveType }}</strong></div>
 }
 }
 }
+@if (forcePacks().length > 0) {
+<span class="label muted">Force Packs: </span>
+@for (pack of forcePacks(); let i = $index; track i) {
+    <span>{{ pack }}</span>
+}
+}
 </div>
 <div class="bottom-right">
 @if (unit().id && unit().id > 0) {
