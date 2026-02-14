@@ -1,8 +1,8 @@
 @if (resolvedUnit(); as u) {
 @if (cardView() && isAlphaStrike()) {
 <!-- Alpha Strike Card View -->
-<div class="card-view-wrapper" [class.selected]="isSelected()" (click)="onCardClick()">
-    <alpha-strike-card [unit]="u" [useHex]="useHex()" [cardStyle]="cardStyle()" />
+<div class="card-view-wrapper" (click)="onCardClick()">
+    <alpha-strike-card [unit]="u" [useHex]="useHex()" [cardStyle]="cardStyle()" [isSelected]="isSelected()" />
 </div>
 } @else if (expandedView()) {
 <div class="unit-card-expanded" 

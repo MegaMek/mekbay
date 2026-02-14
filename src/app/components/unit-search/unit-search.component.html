@@ -157,8 +157,8 @@
             <div class="card-view-grid">
                 @for (unit of this.filtersService.filteredUnits(); track unit.name) {
                     <div class="card-view-cell"
-                         [class.selected]="isUnitSelected(unit)"
                          longPress
+                         [class.selected]="isUnitSelected(unit)"
                          (shortPress)="onUnitCardClick(unit, $event)"
                          (longPress)="multiSelectUnit(unit)">
                         @defer (on viewport) {
@@ -167,6 +167,7 @@
                             [cardView]="true"
                             [useHex]="useHex()"
                             [cardStyle]="cardStyle()"
+                            [isSelected]="isUnitSelected(unit)"
                             [gunnery]="gunnery"
                             (tagClick)="onAddTag($event)" />
                         } @placeholder {
@@ -180,8 +181,8 @@
                 [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1600" tabindex="0">
                 <div class="results-dropdown-item"
                     *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
-                    [class.active]="activeIndex() === i"
                     [class.selected]="isUnitSelected(unit)"
+                    [class.active]="activeIndex() === i"
                     [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
                     (pointerenter)="activeIndex.set(i)"
                     longPress
@@ -197,6 +198,7 @@
                             [gunnery]="gunnery"
                             [useHex]="useHex()"
                             [sortKey]="currentSortKey()"
+                            [isSelected]="isUnitSelected(unit)"
                             [sortSlotLabel]="currentSortSlotLabel()"
                             [searchTokens]="this.filtersService.searchTokens()"
                             (tagClick)="onAddTag($event)">
@@ -236,6 +238,7 @@
                             [unit]="unit"
                             [gunnery]="gunnery"
                             [piloting]="piloting"
+                            [isSelected]="isUnitSelected(unit)"
                             [sortKey]="currentSortKey()"
                             [sortSlotLabel]="currentSortSlotLabel()"
                             [searchTokens]="this.filtersService.searchTokens()"
@@ -249,6 +252,7 @@
                             [gunnery]="gunnery"
                             [piloting]="piloting"
                             [expandedView]="false"
+                            [isSelected]="isUnitSelected(unit)"
                             [sortKey]="currentSortKey()"
                             [sortSlotLabel]="currentSortSlotLabel()"
                             [searchTokens]="this.filtersService.searchTokens()"

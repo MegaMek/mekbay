@@ -8,11 +8,6 @@
     width: 100%;
     cursor: pointer;
 
-    &.selected {
-        outline: 2px solid var(--bt-yellow);
-        outline-offset: -2px;
-    }
-
     alpha-strike-card {
         display: block;
         width: 100%;
@@ -31,7 +26,7 @@
 }
 
 .unit-card-expanded.selected {
-    background-color: var(--accent-color-background);
+    background-color: var(--bt-yellow-background-transparent);
 }
 
 .no-unit {
@@ -336,7 +331,7 @@
     }
 
     &.selected {
-        background-color: var(--accent-color-background);
+        background-color: var(--bt-yellow-background-transparent);
     }
 }
 
