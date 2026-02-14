@@ -34,6 +34,7 @@
             } @else {
                 <div class="force-list">
                     @for (force of filteredForces(); let i = $index; track force.instanceId) {
+                    @defer (on viewport) {
                     <div class="force-entry" [class.selected]="selectedForce() === force" (click)="selectForce(force)"
                         tabindex="0">
                         <div class="force-header">
@@ -89,9 +90,12 @@
                             }
                         </div>
                     </div>
+                    } @placeholder {
+                    <div class="force-entry-placeholder"></div>
+                    }
                     }
                 </div>
-            }   
+            }
         }
         @if (activeTab() === 'Force Packs') {
             @if (filteredPacks().length === 0) {
@@ -99,6 +103,7 @@
             } @else {
             <div class="force-list"> 
                     @for (pack of filteredPacks(); let i = $index; track i) {
+                    @defer (on viewport) {
                     <div class="force-entry" [class.selected]="selectedPack() === pack" (click)="selectPack(pack)" tabindex="0">
                         <div class="force-header">
                             <span class="force-name">
@@ -129,6 +134,9 @@
                             </div>
                         </div>
                     </div>
+                    } @placeholder {
+                    <div class="force-entry-placeholder"></div>
+                    }
                     }
                 </div>
             }

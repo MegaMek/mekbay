@@ -262,3 +262,11 @@
     }
     
 }
+
+.force-entry-placeholder {
+    min-height: 142px;
+    background: #0003;
+    border: 1px solid transparent;
+    padding: 8px;
+    box-sizing: border-box;
+}
