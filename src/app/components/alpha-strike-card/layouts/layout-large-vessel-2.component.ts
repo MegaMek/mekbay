@@ -93,6 +93,7 @@ interface EffectiveArcDamage extends ArcDamage {
         UpperCasePipe,
     ],
     host: {
+        '[class.interactive]': 'interactive()',
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     }
 })

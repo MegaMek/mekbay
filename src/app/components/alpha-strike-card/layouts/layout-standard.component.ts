@@ -74,6 +74,7 @@ import { formatMovement, isAerospace } from '../../../utils/as-common.util';
     templateUrl: './layout-standard.component.html',
     styleUrls: ['./layout-standard.component.scss'],
     host: {
+        '[class.interactive]': 'interactive()',
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     }
 })
