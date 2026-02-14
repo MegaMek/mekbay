@@ -52,6 +52,7 @@ import { PackUnitEntry, ResolvedPack } from '../../utils/force-pack.util';
 import { compareUnitsByName } from '../../utils/sort.util';
 import { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { GameSystem } from '../../models/common.model';
+import { GameService } from '../../services/game.service';
 
 /*
  * Author: Drake
@@ -81,6 +82,7 @@ export class CustomizeForcePackDialogComponent {
     private dialogRef = inject(DialogRef<CustomizeForcePackDialogResult | null>);
     private data = inject<CustomizeForcePackDialogData>(DIALOG_DATA);
     private dataService = inject(DataService);
+    private gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
@@ -134,6 +136,10 @@ export class CustomizeForcePackDialogComponent {
     totalPV = computed(() => 
         this.customizableUnits().reduce((sum, u) => sum + (u.unit?.as?.PV ?? 0), 0)
     );
+
+    gameSystem = computed(() => {
+        return this.gameService.currentGameSystem();
+    });
 
     // Check if any unit has been modified
     hasChanges = computed(() => {
