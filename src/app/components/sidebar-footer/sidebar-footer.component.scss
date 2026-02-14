@@ -9,7 +9,7 @@
     min-width: 0;
 }
 
-.row {
+.footer {
     display: flex;
     flex-direction: row;
     justify-content: center;
@@ -17,6 +17,11 @@
     gap: 4px;
     box-sizing: border-box;
     width: 100%;
+
+    &.vertical {
+        flex-direction: column;
+        gap: 8px;
+    }
 }
 
 .opfor-btn {
