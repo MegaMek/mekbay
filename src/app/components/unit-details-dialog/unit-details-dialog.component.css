@@ -227,27 +227,29 @@
     background-color: #202b46;
 }
 
-.fluff-bg-image {
-    position: absolute;
-    top: calc(10% - 100px);
-    right: calc(40% - 400px);
-    width: 800px;
-    height: auto;
-    object-fit: cover;
-    object-position: right center;
-    filter: saturate(0) invert(1) blur(0.5px) opacity(0.08);
-    mix-blend-mode: lighten;
-    pointer-events: none;
-    z-index: 0;
-}
-
-:host ::ng-deep .modal.fluff-background {
+:host.fluff-background ::ng-deep .modal {
     position: relative;
     overflow: hidden;
 }
 
-:host ::ng-deep .modal.fluff-background>*:not(.fluff-bg-image) {
+:host.fluff-background ::ng-deep .modal::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--fluff-bg);
+    background-repeat: no-repeat;
+    background-size: 800px auto;
+    background-position: right calc(40% - 80px) top calc(5%);
+    filter: saturate(0) invert(1) blur(0.5px) opacity(0.08);
+    mix-blend-mode: lighten;
+    pointer-events: none;
+    z-index: 0;
+    isolation: isolate;
+}
+
+:host.fluff-background ::ng-deep .modal>* {
     position: relative;
+    z-index: 1;
 }
 
 @container (max-width: 600px) {
