@@ -597,7 +597,7 @@ export class ForceBuilderViewerComponent {
         const ids: string[] = [];
         const collapsed = this.collapsedGroups();
         const showDropzones = !this.compactMode() && !this.miniMode() && !this.isGroupDragging();
-        for (const slot of this.forceBuilderService.loadedForces()) {
+        for (const slot of this.forceBuilderService.filteredLoadedForces()) {
             if (slot.force.readOnly()) continue; // exclude read-only forces from drop targets
             for (const g of slot.force.groups()) {
                 if (collapsed.has(g.id)) continue; // collapsed groups have no cdkDropList in DOM
@@ -786,7 +786,7 @@ export class ForceBuilderViewerComponent {
     /** Connected group drop list IDs for group drag-drop (only non-readonly forces) */
     connectedGroupDropLists(): string[] {
         const ids: string[] = [];
-        for (const slot of this.forceBuilderService.loadedForces()) {
+        for (const slot of this.forceBuilderService.filteredLoadedForces()) {
             if (slot.force.readOnly()) continue;
             ids.push(`force-groups-${slot.force.instanceId() || slot.force.name}`);
         }
