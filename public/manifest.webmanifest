@@ -26,6 +26,6 @@
     }
   ],
   "launch_handler": {
-    "client_mode": "focus-existing"
+    "client_mode": "auto"
   }
 }

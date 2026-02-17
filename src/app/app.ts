@@ -33,7 +33,7 @@
 
 import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
 
-import { PwaService } from './services/pwa.service';
+import { SwUpdate } from '@angular/service-worker';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { PageViewerComponent } from './components/page-viewer/page-viewer.component';
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
@@ -91,7 +91,7 @@ import { UrlStateService } from './services/url-state.service';
 })
 export class App {
     logger = inject(LoggerService);
-    private pwaService = inject(PwaService);
+    private swUpdate = inject(SwUpdate);
     protected dataService = inject(DataService);
     forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
@@ -150,24 +150,11 @@ export class App {
         document.addEventListener('contextmenu', this.contextMenuHandler);
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
         // Periodic update checks (the PwaService handles SW registration)
-        this.startPeriodicUpdateChecks();
-        void this.checkForUpdate(true);
-
-        // React to update availability from the service worker
-        effect(() => {
-            if (this.pwaService.updateAvailable()) {
-                this.updateAvailable.set(true);
-            }
-        });
-
-        // React to in-app navigation requests from captured links
-        effect(() => {
-            const url = this.pwaService.navigateRequest();
-            if (url) {
-                this.pwaService.navigateRequest.set(null);
-                this.handleCapturedUrl(url);
-            }
-        });
+        
+        if (this.swUpdate.isEnabled) {
+            this.startPeriodicUpdateChecks();
+            this.checkForUpdate();
+        }
         this.wsService.setGlobalErrorHandler((msg: string) => {
             this.toastService.showToast(msg, 'error');
         });
@@ -332,7 +319,7 @@ export class App {
             // Fire the check: if an update is found, the pwaService.updateAvailable
             // signal will be set via the SW's updatefound/statechange listeners,
             // and the effect in the constructor propagates it to this.updateAvailable.
-            await this.pwaService.checkForUpdate();
+            await this.swUpdate.checkForUpdate();
         } catch (err) {
             this.logger.error('Error checking for updates:' + err);
         }
