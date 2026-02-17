@@ -141,13 +141,54 @@
                 </div>
             }
         }
+        @if (activeTab() === 'Operations') {
+            @if (operationsLoading()) {
+                <div class="loading-spinner">Loading operations...</div>
+            } @else if (filteredOperations().length === 0) {
+                <div class="empty-state">No saved operations found.</div>
+            } @else {
+                <div class="force-list">
+                    @for (op of filteredOperations(); let i = $index; track op.operationId) {
+                    <div class="force-entry operation-entry" [class.selected]="selectedOperation() === op" (click)="selectOperation(op)" tabindex="0">
+                        <div class="operation-header">
+                            <div class="operation-title">
+                                <span class="operation-name">{{ op.name || 'Unnamed Operation' }}
+                                    <button class="op-edit-btn" (click)="onEditOperation(op, $event)" title="Edit name &amp; note">
+                                        <svg viewBox="0 -0.5 21 21" fill="currentColor"><path d="M61.9,258.010643 L45.1,258.010643 L45.1,242.095788 L53.5,242.095788 L53.5,240.106431 L43,240.106431 L43,260 L64,260 L64,250.053215 L61.9,250.053215 L61.9,258.010643 Z M49.3,249.949769 L59.63095,240 L64,244.114985 L53.3341,254.031929 L49.3,254.031929 L49.3,249.949769 Z" transform="translate(-43, -240)"/></svg>
+                                    </button>
+                                </span>
+                                @if (op.note) {
+                                    <span class="operation-note">{{ op.note }}</span>
+                                }
+                            </div>
+                            <div class="operation-meta">
+                                @for (gt of op.gameTypes; track gt) {
+                                    <span class="game-type-badge" [class.as]="gt === 'as'">{{ gt === 'as' ? 'AS' : 'CBT' }}</span>
+                                }
+                                <span class="operation-timestamp">
+                                    @if (op.local) {
+                                        <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
+                                    }
+                                    <img [src]="op.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status" [title]="op.cloud ? 'Stored online' : 'Not stored online'" />
+                                    {{ op.timestamp | formatTimestamp }}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="operation-sides">
+                            <op-preview [forces]="op.forces"></op-preview>
+                        </div>
+                    </div>
+                    }
+                </div>
+            }
+        }
     </div>
     <div dialog-footer class="footer">
-        <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="!selectedForce() && !selectedPack()">LOAD</button>
-        @if (forceBuilderService.loadedForces().length > 0) {
+        <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : (!selectedForce() && !selectedPack())">LOAD</button>
+        @if (forceBuilderService.loadedForces().length > 0 && activeTab() !== 'Operations') {
             <button class="modal-btn bt-button" (click)="onAdd();" [disabled]="(!selectedForce() && !selectedPack()) || isSelectedForceLoaded()">ADD</button>
         }
-        <button class="modal-btn bt-button danger" (click)="onDelete();" [disabled]="!selectedForce()">DELETE</button>
+        <button class="modal-btn bt-button danger" (click)="onDelete();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : !selectedForce()">DELETE</button>
         <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
     </div>
 </base-dialog>

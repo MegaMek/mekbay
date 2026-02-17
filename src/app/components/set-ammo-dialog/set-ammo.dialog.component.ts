@@ -58,45 +58,56 @@ export interface SetAmmoDialogData {
         class: 'fullscreen-dialog-host glass'
     },
     template: `
-    <div class="content">
-        <div dialog-content>
-            <select
-                #inputNameRef
-                id="inputName"
-                (change)="onAmmoTypeChange($event)"
-                required
-            >
-                @for (ammo of data.ammoOptions; let i = $index; track i) {
-                    <option
-                        [value]="ammo.internalName"
-                        [selected]="ammo.internalName === data.currentAmmo.internalName"
+    <div class="wide-dialog">
+        <div class="wide-dialog-body">
+            <div class="form-row">
+                <div class="form-fields">
+                    <label class="field-label">Ammo Type</label>
+                    <select
+                        class="field-input"
+                        #inputNameRef
+                        id="inputName"
+                        (change)="onAmmoTypeChange($event)"
+                        required
                     >
-                    @if (mixedTechBase() && ammo.techBase !== 'All') {
-                        [{{ ammo.techBase === 'IS' ? 'IS' : ammo.techBase === 'Clan' ? 'CL' : '*' }}]&nbsp;
-                    }
-                    {{ ammo.name }}
-                    @if (data.ammoOptions.length > 1 
-                    && ammo.internalName === data.originalAmmo.internalName 
-                    && data.originalAmmo.internalName != data.currentAmmo.internalName){&nbsp;★}
-                    </option>
-                }
-            </select>
-            <div class="quantity-group">
-                <input
-                    #inputQuantityRef
-                    type="number"
-                    id="inputQuantity"
-                    [placeholder]="data.quantity"
-                    [value]="data.quantity"
-                    [attr.min]="0"
-                    [attr.max]="currentMaxQuantity()"
-                    (keydown.enter)="submit()"
-                    required
-                />
-                <span class="max-quantity">/{{ currentMaxQuantity() }}</span>
+                        @for (ammo of data.ammoOptions; let i = $index; track i) {
+                            <option
+                                [value]="ammo.internalName"
+                                [selected]="ammo.internalName === data.currentAmmo.internalName"
+                            >
+                            @if (mixedTechBase() && ammo.techBase !== 'All') {
+                                [{{ ammo.techBase === 'IS' ? 'IS' : ammo.techBase === 'Clan' ? 'CL' : '*' }}]&nbsp;
+                            }
+                            {{ ammo.name }}
+                            @if (data.ammoOptions.length > 1
+                            && ammo.internalName === data.originalAmmo.internalName
+                            && data.originalAmmo.internalName != data.currentAmmo.internalName){&nbsp;\u2605}
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="form-fields ammo-quantity">
+                    <label class="field-label">Quantity</label>
+                    <div class="quantity-group">
+                    <input
+                        class="field-input"
+                        #inputQuantityRef
+                        type="number"
+                        id="inputQuantity"
+                        autocomplete="off"
+                        [placeholder]="data.quantity"
+                        [value]="data.quantity"
+                        [attr.min]="0"
+                        [attr.max]="currentMaxQuantity()"
+                        (keydown.enter)="submit()"
+                        required
+                    />
+                    <span class="max-quantity">/{{ currentMaxQuantity() }}</span>
+                    </div>
+                </div>
             </div>
         </div>
-        <div dialog-actions>
+        <div class="wide-dialog-actions">
             <button (click)="submit()" class="bt-button">CONFIRM</button>
             <button (click)="dump()" class="bt-button danger">DUMP</button>
             <button (click)="close()" class="bt-button cancel">DISMISS</button>
@@ -104,51 +115,13 @@ export interface SetAmmoDialogData {
     </div>
     `,
     styles: [`
-        .content {
-            display: block;
-            max-width: 1000px;
-            text-align: center;
+        @container (max-width: 400px) {
+            .ammo-quantity {
+                align-self: center;
+            }
         }
-
-        h2 {
-            margin-top: 8px;
-            margin-bottom: 8px;
-        }
-
-        [dialog-content] {
-            display: flex;
-            flex-direction: row;
-            align-items: center;    
-            justify-content: center;
-            max-width: 500px;
-            width: 90vw;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        [dialog-content] input,
-        [dialog-content] select {
-            margin-bottom: 16px;
-            font-size: 1.5em;
-            background: var(--background-input);
-            color: white;
-            border: 0;
-            border-bottom: 1px solid #666;
-            outline: none;
-            transition: all 0.2s ease-in-out;    
-        }
-
-        [dialog-content] input:focus,
-        [dialog-content] select:focus {
-            border-bottom: 1px solid #fff;
-            outline: none;
-        }
-
-        #inputName {
-            text-align: left;
-            flex: 1 1 auto;
-            min-width: 200px;
-            max-width: 500px;
+        .ammo-quantity {
+            flex: 0 0 auto;
         }
 
         .quantity-group {
@@ -156,7 +129,7 @@ export interface SetAmmoDialogData {
             align-items: baseline;
             gap: 2px;
         }
-                    
+
         .max-quantity {
             font-size: 1.2em;
             color: var(--text-color-secondary);
@@ -176,33 +149,10 @@ export interface SetAmmoDialogData {
             appearance: textfield;
         }
 
-        [dialog-content] input[type="number"]::-webkit-outer-spin-button,
-        [dialog-content] input[type="number"]::-webkit-inner-spin-button {
+        #inputQuantity::-webkit-outer-spin-button,
+        #inputQuantity::-webkit-inner-spin-button {
             -webkit-appearance: none;
             margin: 0;
-        }
-
-        [dialog-actions] {
-            padding-top: 8px;
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        [dialog-actions] button {
-            padding: 8px;
-            min-width: 100px;
-        }
-            
-        @media (max-width: 500px) {
-            [dialog-content] {
-                flex-direction: column;
-            }            
-            #inputName {
-                text-align: center;
-                width: 100%;
-            }
         }
     `]
 })

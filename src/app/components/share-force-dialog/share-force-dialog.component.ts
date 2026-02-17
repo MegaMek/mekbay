@@ -66,9 +66,9 @@ export interface ShareForceDialogData {
     },
     template: `
     @let unitDisplayName = optionsService.options().unitDisplayName;
-    <div class="dialog-wrapper">
-        <h2 dialog-title>SHARE FORCE</h2>
-        <div class="dialog-body">
+    <div class="wide-dialog">
+        <h2 class="wide-dialog-title">SHARE FORCE</h2>
+        <div class="wide-dialog-body">
 
         <div class="force-preview">
             <div class="force-preview-header">
@@ -110,21 +110,27 @@ export interface ShareForceDialogData {
             </div>
         </div>
 
-        <div dialog-content class="share-content">
+        <div class="share-content">
             @let shareLiveUrlString = shareLiveUrl();
             @if (shareLiveUrlString != null) {
-                <label class="description"><strong>Live battle record:</strong> share the current deployment as a read-only field report — includes damage, pilots, and status conditions. <strong>Share this link for multiplayer games.</strong></label>
-                <div class="row">
-                    <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="shareLiveUrlString"/>
-                    <button class="bt-button" (click)="share(shareLiveUrlString)">SHARE</button>
+                <div class="form-fields">
+                    <label class="field-label">Live battle record</label>
+                    <div class="row">
+                        <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="shareLiveUrlString"/>
+                        <button class="bt-button" (click)="share(shareLiveUrlString)">SHARE</button>
+                    </div>
+                    <div class="field-note">Share the current deployment as a read-only field report — includes damage, pilots, and status conditions. <strong>Share this link for multiplayer games.</strong></div>
                 </div>
             }
             @let cleanUrlString = cleanUrl();
             @if (cleanUrlString != null) {
-                <label class="description"><strong>Clean roster:</strong> share a pristine copy of the force — no damage, pilots, or status conditions.</label>
-                <div class="row">
-                    <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="cleanUrlString"/>
-                    <button class="bt-button" (click)="share(cleanUrlString)">SHARE</button>
+                <div class="form-fields">
+                    <label class="field-label">Clean roster</label>
+                    <div class="row">
+                        <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="cleanUrlString"/>
+                        <button class="bt-button" (click)="share(cleanUrlString)">SHARE</button>
+                    </div>
+                    <div class="field-note">Share a pristine copy of the force — no damage, pilots, or status conditions.</div>
                 </div>
             }
             
@@ -150,33 +156,12 @@ export interface ShareForceDialogData {
         </div>
 
         </div>
-        <div dialog-actions>
+        <div class="wide-dialog-actions">
             <button class="bt-button" (click)="close(null)">DISMISS</button>
         </div>
     </div>
     `,
     styles: [`
-        .dialog-wrapper {
-            display: flex;
-            flex-direction: column;
-            width: 100%;
-            max-width: 1000px;
-            max-height: calc(100svh - 32px);
-            align-items: center;
-        }
-
-        .dialog-body {
-            flex: 1 1 auto;
-            overflow-y: auto;
-            scrollbar-width: thin;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            width: 100%;
-            align-items: center;
-            min-height: 0;
-        }
-
         .share-content {
             display: flex;
             flex-direction: column;
@@ -186,14 +171,13 @@ export interface ShareForceDialogData {
             align-items: center;
         }
 
+        .form-fields {
+            width: 100%;
+        }
+
         .description {
             font-size: 0.9em;
             color: var(--text-color-secondary);
-        }
-
-        h2 {
-            margin-top: 8px;
-            margin-bottom: 8px;
         }
 
         .row {
@@ -372,19 +356,6 @@ export interface ShareForceDialogData {
         .unit-square.compact-mode .unit-alias.thin {
             font-size: 0.6em;
             font-weight: normal;
-        }
-
-        [dialog-actions] {
-            padding-top: 8px;
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        [dialog-actions] button {
-            padding: 8px;
-            min-width: 100px;
         }
     `]
 })

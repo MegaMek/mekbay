@@ -248,7 +248,7 @@ export function parseForceFromUrl(
             allForceUnits.push(...groupUnits);
         }
     } else {
-        // Legacy format without groups — all units in default group
+        // Legacy format without groups: all units in default group
         const groupUnits = parseUnitUrlParams(force, unitsParam, unitMap, undefined, logger);
         allForceUnits.push(...groupUnits);
     }

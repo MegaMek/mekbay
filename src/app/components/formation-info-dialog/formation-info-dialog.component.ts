@@ -76,7 +76,7 @@ export interface FormationInfoDialogData {
     styles: [`
         .content {
             display: block;
-            max-width: 600px;
+            max-width: 800px;
             text-align: center;
         }
 
@@ -87,7 +87,7 @@ export interface FormationInfoDialogData {
 
         [dialog-content] {
             width: 90vw;
-            max-width: 600px;
+            max-width: 800px;
             max-height: 70vh;
             overflow-y: auto;
             text-align: left;

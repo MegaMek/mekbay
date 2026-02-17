@@ -329,7 +329,7 @@ export class App {
         this.lastUpdateCheck = now;
 
         try {
-            // Fire the check — if an update is found, the pwaService.updateAvailable
+            // Fire the check: if an update is found, the pwaService.updateAvailable
             // signal will be set via the SW's updatefound/statechange listeners,
             // and the effect in the constructor propagates it to this.updateAvailable.
             await this.pwaService.checkForUpdate();
@@ -397,7 +397,7 @@ export class App {
                     [
                         { label: 'LOAD (REPLACE)', value: 'load', class: 'danger' },
                         { label: 'ADD AS FRIENDLY', value: 'add-friendly' },
-                        { label: 'ADD AS ENEMY', value: 'add-enemy' },
+                        { label: 'ADD AS OPPOSING', value: 'add-enemy' },
                         { label: 'DISMISS', value: 'dismiss' },
                     ],
                     'dismiss'
@@ -438,7 +438,7 @@ export class App {
                     this.gameService.setOverride(requestedGs);
                 }
             } else {
-                // B) Forces loaded — check if gs matches
+                // B) Forces loaded: check if gs matches
                 const currentGs = this.gameService.currentGameSystem();
                 const gsConflict = requestedGs && requestedGs !== currentGs;
 
@@ -459,13 +459,13 @@ export class App {
                         this.unitSearchFiltersService.applySearchParamsFromUrl(params);
                         this.gameService.setOverride(requestedGs);
                     }
-                    // If declined, do nothing — keep current state
+                    // If declined, do nothing: keep current state
                 }
             }
             return;
         }
 
-        // ── No recognized params — just update the URL bar (already done) ──
+        // ── No recognized params: just update the URL bar (already done) ──
     }
 
     async installPwa() {

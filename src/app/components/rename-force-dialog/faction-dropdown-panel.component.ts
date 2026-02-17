@@ -104,6 +104,7 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
                     <div class="faction-details">
                         <div class="faction-header">
                             <span class="faction-name">{{ item.faction.name }}</span>
+                            <span class="match-badge">{{ (item.matchPercentage * 100) | number:'1.0-0' }}% match</span>
                         </div>
                         <div class="era-icons">
                             @for (eraItem of item.eraAvailability; track eraItem.era.id) {

@@ -33,6 +33,7 @@
 
 import { Component, computed, Injector, ElementRef, effect, inject, ChangeDetectionStrategy, viewChild, viewChildren, input, signal, afterNextRender, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Subscription } from 'rxjs';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { Force, UnitGroup } from '../../models/force.model';
@@ -44,8 +45,7 @@ import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-detai
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
-import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
-import { ForceNamerUtil } from '../../utils/force-namer.util';
+import { isNoFormation } from '../../utils/formation-type.model';
 
 
 /*
@@ -67,6 +67,9 @@ export class ForceBuilderViewerComponent {
     private dialogsService = inject(DialogsService);
     private injector = inject(Injector);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
+
+    /** Expose isNoFormation to the template */
+    isNoFormation = isNoFormation;
 
     forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
     private forceSlotHeaders = viewChildren<ElementRef<HTMLElement>>('forceSlotHeader');
@@ -95,6 +98,11 @@ export class ForceBuilderViewerComponent {
     // });
 
     hasOwnedForce = computed<boolean>(() => this.forceBuilderService.loadedForces().some(s => !s.force.readOnly()));
+
+    /** Set of Force instances whose headers are currently blinking (remote update on visible force). */
+    blinkingForces = signal<Set<Force>>(new Set());
+    private blinkTimeouts = new Map<Force, ReturnType<typeof setTimeout>>();
+    private remoteUpdateSub: Subscription | null = null;
 
     /** Combined BV/PV totals across all visible loaded forces. */
     combinedTotals = computed(() => {
@@ -190,10 +198,34 @@ export class ForceBuilderViewerComponent {
             this.setupHeaderObserver(headers);
         });
 
+        // Subscribe to remote force updates for header blink
+        this.remoteUpdateSub = this.forceBuilderService.remoteForceUpdated$.subscribe(({ force, alignment }) => {
+            if (!this.forceBuilderService.hasMixedAlignments()) return;
+            const filter = this.forceBuilderService.alignmentFilter();
+            // Blink header when the updated force IS visible (filter matches or filter is 'all')
+            const isVisible = filter === 'all' || filter === alignment;
+            if (isVisible) {
+                // Clear any existing timeout for this force
+                const existing = this.blinkTimeouts.get(force);
+                if (existing) clearTimeout(existing);
+                // Add to blinking set
+                this.blinkingForces.update(set => { const next = new Set(set); next.add(force); return next; });
+                // Remove after 2 seconds
+                const timeout = setTimeout(() => {
+                    this.blinkingForces.update(set => { const next = new Set(set); next.delete(force); return next; });
+                    this.blinkTimeouts.delete(force);
+                }, 2000);
+                this.blinkTimeouts.set(force, timeout);
+            }
+        });
+
         inject(DestroyRef).onDestroy(() => {
             pendingScrollRef?.destroy();
             this.stopAutoScrollLoop();
             this.headerResizeObserver?.disconnect();
+            this.remoteUpdateSub?.unsubscribe();
+            for (const timeout of this.blinkTimeouts.values()) clearTimeout(timeout);
+            this.blinkTimeouts.clear();
         });
     }
 
@@ -491,7 +523,7 @@ export class ForceBuilderViewerComponent {
                 if (!confirmed) return;
             }
 
-            // Check if this move would empty the source force — confirm before mutating
+            // Check if this move would empty the source force: confirm before mutating
             const wouldEmptyForce = fromForce.units().length === 1;
             if (wouldEmptyForce) {
                 const answer = await this.dialogsService.choose(
@@ -514,7 +546,7 @@ export class ForceBuilderViewerComponent {
             if (crossSystem) {
                 const converted = this.forceBuilderService.convertUnitForForce(moved, fromForce, toForce);
                 if (!converted) {
-                    this.toastService.showToast(`Could not convert unit — not found in the database.`, 'error');
+                    this.toastService.showToast(`Could not convert unit: not found in the database.`, 'error');
                     return;
                 }
                 moved.destroy();
@@ -641,7 +673,7 @@ export class ForceBuilderViewerComponent {
         if (crossSystem) {
             const converted = this.forceBuilderService.convertUnitForForce(moved, sourceForce, targetForce);
             if (!converted) {
-                this.toastService.showToast(`Could not convert unit — not found in the database.`, 'error');
+                this.toastService.showToast(`Could not convert unit: not found in the database.`, 'error');
                 targetForce.removeEmptyGroups();
                 return;
             }
@@ -802,7 +834,7 @@ export class ForceBuilderViewerComponent {
                 if (!confirmed) return;
             }
 
-            // Check if moving this group would empty the source force — confirm before mutating
+            // Check if moving this group would empty the source force: confirm before mutating
             const groupToMove = fromForce.groups()[event.previousIndex];
             const groupUnitCount = groupToMove?.units().length ?? 0;
             const wouldEmptyForce = groupUnitCount > 0 && fromForce.units().length === groupUnitCount;
@@ -830,7 +862,7 @@ export class ForceBuilderViewerComponent {
                     if (converted) {
                         convertedUnits.push(converted);
                     } else {
-                        this.toastService.showToast(`Could not convert "${u.getUnit()?.chassis}" — unit data not found.`, 'error');
+                        this.toastService.showToast(`Could not convert "${u.getUnit()?.chassis}": unit data not found.`, 'error');
                     }
                     u.destroy();
                 }

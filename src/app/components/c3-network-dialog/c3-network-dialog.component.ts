@@ -1532,7 +1532,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         for (const [networkType, allPeersOfType] of peersByType) {
             const limit = C3_NETWORK_LIMITS[networkType];
 
-            // Skip peers that are already in a network — don't re-wire them
+            // Skip peers that are already in a network: don't re-wire them
             const unconnectedPeers = allPeersOfType.filter(
                 n => !C3NetworkUtil.isUnitConnected(n.unit.id, networks)
             );
@@ -2135,7 +2135,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const crossGroupChanged = JSON.stringify(networks) !== JSON.stringify(preCrossGroupNetworks);
 
         if (crossGroupChanged) {
-            // Cross-group made real changes — ask the user
+            // Cross-group made real changes: ask the user
             const postCrossGroupNetworks = networks;
             const doCrossGroup = await this.dialogsService.requestConfirmation(
                 'Cross-group connections are available. Apply cross-group linking?',

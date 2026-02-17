@@ -44,9 +44,10 @@ import { C3NetworkUtil } from '../utils/c3-network.util';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { LoggerService } from '../services/logger.service';
 import { Faction } from './factions.model';
-import { FormationTypeDefinition } from '../utils/formation-type.model';
+import { FormationTypeDefinition, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
+import { getForceSizeName } from '../utils/force-type.util';
 
 /*
  * Author: Drake
@@ -67,9 +68,9 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
 
     id: string = generateUUID();
     name = signal<string | undefined>(undefined);
-    nameLock?: boolean; // If true, the group name cannot be changed by the random generator
     color?: string;
     formation = signal<FormationTypeDefinition | null>(null);
+    formationLock?: boolean; // If true, the formation name will not be upgraded by the random generator (this is unset when we have automatic formation)
     units: WritableSignal<TUnit[]> = signal([]);
 
     totalBV = computed(() => {
@@ -132,15 +133,17 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     addUnit(unit: Unit): ForceUnit {
         return this.force.addUnit(unit, this as UnitGroup);
     }
+
+    formationSizeName = computed(() => {
+        return FormationNamerUtil.getFormationSizeName(this);
+    });
     
     formationDisplayName = computed(() => {
         const formation = this.formation();
-        if (!formation) return null;
+        if (!formation || isNoFormation(formation)) return null;
         return FormationNamerUtil.composeFormationDisplayName(
             formation,
-            this.units(),
-            this.force.units(),
-            this.force.faction()
+            this
         );
     });
 }
@@ -158,7 +161,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
     faction = signal<Faction | null>(null);
     c3Networks = this._c3Networks.asReadonly();
-    /** Emits after each debounced mutation — subscribe to react to force changes. */
+    /** Emits after each debounced mutation: subscribe to react to force changes. */
     public readonly changed = new Subject<void>();
     private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -199,6 +202,31 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             this.emitChanged();
         }
     }
+
+    techBase = computed((): string => {
+        const counts: Record<string, number> = {};
+        for (const unit of this.units()) {
+            const tb = unit.getUnit().techBase;
+            if (tb === 'Mixed') {
+                counts['Clan'] = (counts['Clan'] || 0) + 1;
+                counts['Inner Sphere'] = (counts['Inner Sphere'] || 0) + 1;
+            } else {
+                counts[tb] = (counts[tb] || 0) + 1;
+            }
+        }
+        let majority = 'Inner Sphere';
+        let max = 0;
+        for (const [tb, count] of Object.entries(counts)) {
+            if (count > max) { majority = tb; max = count; }
+        }
+        return majority;
+    });
+
+    prefixFormationSizeName = computed(() => {
+        const factionName = this.faction()?.name ?? '';
+        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
+        return isComStarOrWoB;
+    });
 
     /**
      * Factory method to create the appropriate ForceUnit subclass.
@@ -476,21 +504,25 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             instanceId = generateUUID();
             this.instanceId.set(instanceId);
         }
-        const serializedGroups: SerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => ({
-            id: g.id,
-            name: g.name() || g.formation()?.name || undefined,
-            nameLock: g.nameLock,
-            color: g.color,
-            formationId: g.formation()?.id,
-            units: g.units().map(u => u.serialize())
-        }));
+        const serializedGroups: SerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => {
+            const formation = g.formation();
+            const formationName = (formation && !isNoFormation(formation)) ? formation.name : undefined;
+            return {
+                id: g.id,
+                name: g.name() || formationName || undefined,
+                color: g.color,
+                formationId: formation?.id,
+                formationLock: g.formationLock || undefined,
+                units: g.units().map(u => u.serialize())
+            };
+        });
         const result: SerializedForce = {
             version: 1,
             timestamp: this.timestamp ?? new Date().toISOString(),
             instanceId: instanceId,
             type: this.gameSystem,
             name: this.name,
-            nameLock: this.nameLock || false,
+            nameLock: this.nameLock || undefined,
             factionId: this.faction()?.id,
             groups: serializedGroups,
             c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
@@ -510,6 +542,11 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
     emitChanged() {
         if (this.loading) return;
+        if (this.readOnly()) {
+            const logger = this.injector.get(LoggerService);
+            logger.warn(`Force.emitChanged() blocked: force "${this.name}" is read-only. Changes will not be persisted.`);
+            return;
+        }
         if (this._debounceTimer) {
             clearTimeout(this._debounceTimer);
         }
@@ -590,11 +627,16 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 }
                 if (g.name) {
                     group.setName(g.name, false);
+                } else {
+                    group.setName(undefined, false);
                 }
-                group.nameLock = g.nameLock || false;
                 group.color = g.color || '';
                 if (g.formationId) {
                     group.formation.set(LanceTypeIdentifierUtil.getDefinitionById(g.formationId, this.gameSystem));
+                    group.formationLock = g.formationLock || undefined;
+                } else {
+                    group.formation.set(null);
+                    group.formationLock = undefined;
                 }
                 group.units.set(groupUnits);
                 parsedGroups.push(group);
@@ -659,11 +701,11 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                             group.setName(undefined, false);
                         }
                     }
-                    group.nameLock = groupData.nameLock;
                     group.color = groupData.color;
                     group.formation.set(groupData.formationId
                         ? LanceTypeIdentifierUtil.getDefinitionById(groupData.formationId, this.gameSystem)
                         : null);
+                    group.formationLock = groupData.formationLock || undefined;
                 } else {
                     // Add new group
                     group = new UnitGroup<TUnit>(this);
@@ -671,10 +713,13 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                         group.setName(groupData.name, false);
                     }
                     group.id = groupData.id;
-                    group.nameLock = groupData.nameLock;
                     group.color = groupData.color;
                     if (groupData.formationId) {
                         group.formation.set(LanceTypeIdentifierUtil.getDefinitionById(groupData.formationId, this.gameSystem));
+                        group.formationLock = groupData.formationLock || undefined;
+                    } else {
+                        group.formation.set(null);
+                        group.formationLock = undefined;
                     }
                 }
 
@@ -772,5 +817,4 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
         return this.deserializeFrom(serialized);
     }
-
 }

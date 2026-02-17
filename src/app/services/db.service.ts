@@ -48,13 +48,14 @@ import { DialogsService } from './dialogs.service';
 import { SerializedSearchFilter } from './unit-search-filters.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
+import { SerializedOperation } from '../models/operation.model';
 
 
 /*
  * Author: Drake
  */
 const DB_NAME = 'mekbay';
-const DB_VERSION = 10;
+const DB_VERSION = 11;
 const DB_STORE = 'store';
 const UNITS_KEY = 'units';
 const EQUIPMENT_KEY = 'equipment';
@@ -63,6 +64,7 @@ const ERAS_KEY = 'eras';
 const SOURCEBOOKS_KEY = 'sourcebooks';
 const SHEETS_STORE = 'sheetsStore';
 const CANVAS_STORE = 'canvasStore';
+const OPERATIONS_STORE = 'operationsStore';
 const FORCE_STORE = 'forceStore';
 const TAGS_STORE = 'tagsStore';
 const SAVED_SEARCHES_STORE = 'savedSearchesStore';
@@ -350,6 +352,7 @@ export class DbService {
                 this.createStoreIfMissing(db, transaction, SAVED_SEARCHES_STORE);
                 this.createStoreIfMissing(db, transaction, CANVAS_STORE);
                 this.createStoreIfMissing(db, transaction, PUBLIC_TAGS_STORE);
+                this.createStoreIfMissing(db, transaction, OPERATIONS_STORE);
             };
 
             request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
@@ -1052,6 +1055,44 @@ export class DbService {
     public async deleteForce(instanceId: string): Promise<void> {
         await this.deleteForceCanvasData(instanceId);
         await this.deleteDataFromStore(instanceId, FORCE_STORE);
+    }
+
+    /* ----------------------------------------------------------
+     * Operations (multi-force compositions)
+     */
+
+    public async saveOperation(op: SerializedOperation): Promise<void> {
+        return await this.saveDataToStore(op, op.operationId, OPERATIONS_STORE);
+    }
+
+    public async getOperation(operationId: string): Promise<SerializedOperation | null> {
+        return await this.getDataFromStore<SerializedOperation>(operationId, OPERATIONS_STORE);
+    }
+
+    public async deleteOperation(operationId: string): Promise<void> {
+        return await this.deleteDataFromStore(operationId, OPERATIONS_STORE);
+    }
+
+    public async listOperations(): Promise<SerializedOperation[]> {
+        const db = await this.dbPromise;
+        if (!db) return []; // Degraded mode
+        return new Promise<SerializedOperation[]>((resolve, reject) => {
+            const transaction = db.transaction(OPERATIONS_STORE, 'readonly');
+            const store = transaction.objectStore(OPERATIONS_STORE);
+            const request = store.openCursor();
+            const ops: SerializedOperation[] = [];
+            request.onsuccess = () => {
+                const cursor = request.result;
+                if (cursor) {
+                    ops.push(cursor.value);
+                    cursor.continue();
+                } else {
+                    ops.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+                    resolve(ops);
+                }
+            };
+            request.onerror = () => reject(request.error);
+        });
     }
 
     public async getCanvasData(unitId: string): Promise<Blob | null> {

@@ -36,7 +36,8 @@ import { Faction } from '../models/factions.model';
 import { GameSystem } from '../models/common.model';
 import { FormationTypeDefinition, LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 import { ForceNamerUtil } from './force-namer.util';
-import { ForceType, getForceType } from './force-type.util';
+import { ForceType, getForceSizeName } from './force-type.util';
+import { UnitGroup } from '../models/force.model';
 
 /*
  * Author: Drake
@@ -51,33 +52,28 @@ export interface FormationNameOptions {
     faction: Faction | null;
     gameSystem: GameSystem;
 }
-
 export class FormationNamerUtil {
 
     /**
      * Returns the list of available formation names for a group of units.
      */
-    public static getAvailableFormations(
-        groupUnits: ForceUnit[],
-        allUnits: ForceUnit[],
-        faction: Faction | null,
-        gameSystem: GameSystem
-    ): string[] | null {
-        const factionName = faction?.name ?? 'Mercenary';
-        const majorityTechBase = ForceNamerUtil.getTechBase(allUnits);
-        const identified = this.identifyLanceTypes(groupUnits, majorityTechBase, factionName, gameSystem);
+    public static getAvailableFormations(group: UnitGroup): string[] | null {
+        const force = group.force;
+        if (!force) return null;
+        const factionName = force.faction()?.name ?? 'Mercenary';
+        const majorityTechBase = force.techBase();
+        const identified = LanceTypeIdentifierUtil.identifyLanceTypes(group.units(), majorityTechBase, factionName, force.gameSystem);
         if (identified.length === 0) return null;
 
         const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
-        const techBase = isComStarOrWoB ? '' : majorityTechBase;
-        const forceType = getForceType(groupUnits, techBase, factionName);
+        const formationSizeName = group.formationSizeName();
 
         const composedNames: Set<string> = new Set();
         for (const lt of identified) {
             if (isComStarOrWoB) {
-                composedNames.add(forceType + ' - ' + lt.name);
+                composedNames.add(formationSizeName + ' - ' + lt.name);
             } else {
-                composedNames.add(lt.name + ' ' + forceType);
+                composedNames.add(lt.name + ' ' + formationSizeName);
             }
         }
         return Array.from(composedNames);
@@ -86,15 +82,19 @@ export class FormationNamerUtil {
     /**
      * Returns the list of valid formation definitions for a group of units.
      */
-    public static getAvailableFormationDefinitions(
-        groupUnits: ForceUnit[],
-        allUnits: ForceUnit[],
-        faction: Faction | null,
-        gameSystem: GameSystem
-    ): FormationTypeDefinition[] {
-        const factionName = faction?.name ?? 'Mercenary';
-        const majorityTechBase = ForceNamerUtil.getTechBase(allUnits);
-        return this.identifyLanceTypes(groupUnits, majorityTechBase, factionName, gameSystem);
+    public static getAvailableFormationDefinitions(group: UnitGroup): FormationTypeDefinition[] {
+         const targetForce = group.force;
+         if (!targetForce) return [];
+        const factionName = targetForce.faction()?.name ?? 'Mercenary';
+        return LanceTypeIdentifierUtil.identifyLanceTypes(group.units(), targetForce.techBase(), factionName, targetForce.gameSystem);
+    }
+
+    public static getFormationSizeName(group: UnitGroup): ForceType | null {
+        const force = group.force;
+        const factionName = force.faction()?.name ?? 'Mercenary';
+        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
+        const techBase = isComStarOrWoB ? '' : force.techBase();
+        return getForceSizeName(group.units(), techBase, factionName);
     }
 
     /**
@@ -102,55 +102,11 @@ export class FormationNamerUtil {
      */
     public static composeFormationDisplayName(
         definition: FormationTypeDefinition,
-        groupUnits: ForceUnit[],
-        allUnits: ForceUnit[],
-        faction: Faction | null,
+        group: UnitGroup,
     ): string {
-        const factionName = faction?.name ?? 'Mercenary';
-        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
-        const techBase = isComStarOrWoB ? '' : ForceNamerUtil.getTechBase(allUnits);
-        const forceType = getForceType(groupUnits, techBase, factionName);
-        if (isComStarOrWoB) {
-            return forceType + ' - ' + definition.name;
+        if (group.force.prefixFormationSizeName()) {
+            return group.formationSizeName() + ' - ' + definition.name;
         }
-        return definition.name + ' ' + forceType;
-    }
-
-    /**
-     * Generate a formation name for a group of units within a force.
-     */
-    public static generateFormationName({ units, allUnits, faction, gameSystem }: FormationNameOptions): string {
-        if (!units || units.length === 0) return 'Unnamed Formation';
-        const factionName = faction?.name ?? 'Mercenary';
-        let forceType: string;
-        if (factionName.includes('ComStar') || factionName.includes('Word of Blake')) {
-            forceType = getForceType(units, '', factionName);
-            const bestLance = this.getBestLanceType(units, '', factionName, gameSystem);
-            if (bestLance) {
-                const formationType = bestLance.name as ForceType;
-                forceType = forceType + ' - ' + formationType;
-            }
-        } else {
-            const majorityTechBase = ForceNamerUtil.getTechBase(allUnits);
-            forceType = getForceType(units, majorityTechBase, factionName);
-            const bestLance = this.getBestLanceType(units, majorityTechBase, factionName, gameSystem);
-            if (bestLance) {
-                const formationType = bestLance.name as ForceType;
-                forceType = formationType + ' ' + forceType;
-            }
-        }
-        return `${forceType}`;
-    }
-
-    private static identifyLanceTypes(
-        units: ForceUnit[], techBase: string, factionName: string, gameSystem: GameSystem
-    ): FormationTypeDefinition[] {
-        return LanceTypeIdentifierUtil.identifyLanceTypes(units, techBase, factionName, gameSystem);
-    }
-
-    private static getBestLanceType(
-        units: ForceUnit[], techBase: string, factionName: string, gameSystem: GameSystem
-    ): FormationTypeDefinition | null {
-        return LanceTypeIdentifierUtil.getBestMatch(units, techBase, factionName, gameSystem);
+        return definition.name + ' ' + group.formationSizeName();
     }
 }

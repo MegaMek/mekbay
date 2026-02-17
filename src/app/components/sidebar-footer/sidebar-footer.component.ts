@@ -1,5 +1,6 @@
 
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, ElementRef, viewChildren } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, signal, ElementRef, viewChildren } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
 import { OptionsDialogComponent } from '../options-dialog/options-dialog.component';
 import { ToastService } from '../../services/toast.service';
@@ -64,8 +65,31 @@ export class SidebarFooterComponent {
         }
     });
 
+    /** True when the alignment filter button should blink (remote update on hidden alignment). */
+    alignmentFilterBlink = signal(false);
+    private blinkTimeout: ReturnType<typeof setTimeout> | null = null;
+    private remoteUpdateSub: Subscription | null = null;
+
     constructor() {
-        inject(DestroyRef).onDestroy(() => this.closeAllMenus());
+        const destroyRef = inject(DestroyRef);
+
+        this.remoteUpdateSub = this.forceBuilderService.remoteForceUpdated$.subscribe(({ alignment }) => {
+            if (!this.forceBuilderService.hasMixedAlignments()) return;
+            const filter = this.forceBuilderService.alignmentFilter();
+            // Blink when the updated force is NOT visible (filter doesn't match)
+            const isHidden = filter !== 'all' && filter !== alignment;
+            if (isHidden) {
+                if (this.blinkTimeout) clearTimeout(this.blinkTimeout);
+                this.alignmentFilterBlink.set(true);
+                this.blinkTimeout = setTimeout(() => this.alignmentFilterBlink.set(false), 2000);
+            }
+        });
+
+        destroyRef.onDestroy(() => {
+            this.closeAllMenus();
+            this.remoteUpdateSub?.unsubscribe();
+            if (this.blinkTimeout) clearTimeout(this.blinkTimeout);
+        });
     }
     
     toggleCompactMode() {
@@ -121,6 +145,10 @@ export class SidebarFooterComponent {
         const force = this.forceBuilderService.smartCurrentForce();
         if (!force || force.readOnly()) {return; }
         await this.forceBuilderService.saveForceWithNameConfirmation(force);
+    }
+
+    async saveOperation(): Promise<void> {
+        await this.forceBuilderService.saveOperation();
     }
 
     async requestRepairAll(): Promise<void> {

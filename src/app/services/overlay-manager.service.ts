@@ -491,10 +491,10 @@ export class OverlayManagerService {
         let top: number;
 
         if (!overflows) {
-            // Content fits — position so the active item aligns with the trigger
+            // Content fits: position so the active item aligns with the trigger
             top = triggerCenterY - activeCenterInContent;
         } else {
-            // Content overflows — panel will be viewport-sized.
+            // Content overflows: panel will be viewport-sized.
             // Place it so the trigger center is vertically centred in the panel,
             // then use scrollTop to bring the active item to that position.
             top = triggerCenterY - effectiveH / 2;
@@ -517,7 +517,7 @@ export class OverlayManagerService {
         scrollContainer.style.maxHeight = `${maxPanelH}px`;
         scrollContainer.style.overflowY = 'auto';
 
-        // Scroll to centre the active item inside the panel —
+        // Scroll to centre the active item inside the panel
         // only on the FIRST successful positioning so subsequent user scrolling
         // is preserved.  Guard: only mark done when we actually have scrollable
         // content and an active element, otherwise a premature call (before

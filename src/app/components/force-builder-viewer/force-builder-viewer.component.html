@@ -21,7 +21,7 @@
             [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
             @if (!miniMode()) {
                 @let forceCollapsed = isForceCollapsed(slotForce);
-                <div class="force-slot-header" #forceSlotHeader cdkDragHandle>
+                <div class="force-slot-header" #forceSlotHeader cdkDragHandle [class.blink]="blinkingForces().has(slotForce)">
                     @if (slotForce.groups().length > 1) {
                     <button class="btn-toggle-collapse" (click)="toggleForceCollapsed($event, slotForce)" [title]="forceCollapsed ? 'Expand force' : 'Collapse force'">
                         <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="forceCollapsed">
@@ -37,7 +37,7 @@
                         }
                         {{ slotForce.name }}
                     </div>
-                    @if (isReadOnly && !hasOwnedForce()) {
+                    @if (isReadOnly && forceBuilderService.loadedForces().length === 1) {
                         <button class="bt-button btn-clone primary" (click)="forceBuilderService.requestCloneForce(slotForce)">CLONE FORCE TO EDIT</button>
                     }
                     <div class="force-total">Total {{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ slotForce.totalBv() | number }}</div>
@@ -78,6 +78,7 @@
                             <div class="group-name-area">
                                 <span class="group-name" (click)="promptChangeGroupName(group)">{{ getGroupDisplayLabel(group) }}</span>
                                 @if (group.formation(); as formation) {
+                                    @if (!isNoFormation(formation)) {
                                     <span class="group-formation-wrapper">
                                         @if (!groupNameContainsFormation(group)) {
                                             <span class="group-formation" (click)="promptChangeGroupName(group)">{{ group.formationDisplayName() }}</span>
@@ -86,6 +87,7 @@
                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                                         </button>
                                     </span>
+                                    }
                                 }
                             </div>
                             <div class="group-footer">

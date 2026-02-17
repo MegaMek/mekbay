@@ -41,7 +41,7 @@ import { DecimalPipe } from '@angular/common';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { DataService } from '../../services/data.service';
 import { Force } from '../../models/force.model';
-import { Faction } from '../../models/factions.model';
+import { Faction, FACTION_MERCENARY } from '../../models/factions.model';
 import { ForceNamerUtil, FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
@@ -64,69 +64,77 @@ export interface RenameForceDialogResult {
     selector: 'rename-force-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
+    imports: [DecimalPipe],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
     template: `
-    <div class="content">
-      <h2 dialog-title></h2>
-      <div dialog-content>
-        <p>Force Name</p>
-        <div class="input-wrapper">
-          <div
-            class="input"
-            contentEditable="true"
-            #inputRef
-            [textContent]="data.force.name"
-            (keydown.enter)="submit()"
-            required
-          ></div>
-          <button
-            type="button"
-            class="random-button"
-            (click)="fillRandomName()"
-            aria-label="Generate random force name"
-          ></button>
+    <div class="wide-dialog">
+      <div class="wide-dialog-body">
+        <div class="form-fields">
+            <label class="field-label" for="name">Force Name</label>
+            <div class="input-wrapper">
+                <div
+                    class="field-input"
+                    id="name"
+                    contentEditable="true"
+                    #inputRef
+                    autocomplete="off"
+                    [textContent]="data.force.name"
+                    (keydown.enter)="submit()"
+                    required
+                ></div>
+                <button
+                    type="button"
+                    class="random-button"
+                    (click)="fillRandomName()"
+                    aria-label="Generate random force name"
+                ></button>
+            </div>
         </div>
 
-        <p>Faction</p>
-        <div #factionTriggerWrapper class="input-wrapper">
-          <button #factionTrigger class="faction-selector bt-select" (click)="toggleFactionDropdown()">
-            @if (selectedFactionDisplay(); as display) {
-              <div class="faction-selector-content">
-                @if (display.faction.img) {
-                  <img [src]="display.faction.img" class="faction-selector-icon" [alt]="display.faction.name" />
-                }
-                <div class="faction-selector-details">
-                  <div class="faction-selector-header">
-                    <span class="faction-selector-name">{{ display.faction.name }}</span>
-                  </div>
-                  <div class="faction-selector-eras">
-                    @for (eraItem of display.eraAvailability; track eraItem.era.id) {
-                      @if (eraItem.era.icon) {
-                        <img class="faction-selector-era-icon"
-                             [src]="eraItem.era.icon"
-                             [alt]="eraItem.era.name"
-                             [class.unavailable]="!eraItem.isAvailable" />
-                      }
+        <div class="form-fields">
+            <label class="field-label" for="faction">Faction @if (!data.force.nameLock) { <span class="unlock-icon" title="Name is unlocked (auto-naming enabled)">&#x1F513;</span> }</label>
+            <div #factionTriggerWrapper class="input-wrapper">
+              <button id="faction" #factionTrigger class="faction-selector bt-select" (click)="toggleFactionDropdown()">
+                @if (selectedFactionDisplay(); as display) {
+                  <div class="faction-selector-content">
+                    @if (display.faction.img) {
+                      <img [src]="display.faction.img" class="faction-selector-icon" [alt]="display.faction.name" />
                     }
+                    <div class="faction-selector-details">
+                      <div class="faction-selector-header">
+                        <span class="faction-selector-name">{{ display.faction.name }}</span>
+                        @if (display.faction.id !== FACTION_MERCENARY) {
+                          <span class="match-badge">{{ (display.matchPercentage * 100) | number:'1.0-0' }}% match</span>
+                        }
+                      </div>
+                      <div class="faction-selector-eras">
+                        @for (eraItem of display.eraAvailability; track eraItem.era.id) {
+                          @if (eraItem.era.icon) {
+                            <img class="faction-selector-era-icon"
+                                 [src]="eraItem.era.icon"
+                                 [alt]="eraItem.era.name"
+                                 [class.unavailable]="!eraItem.isAvailable" />
+                          }
+                        }
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-          } @else {
-            <span class="placeholder">No faction selected</span>
-          }
-          </button>
-          <button
-            type="button"
-            class="random-button"
-            (click)="fillRandomFaction()"
-            aria-label="Pick random faction"
-          ></button>
+              } @else {
+                <span class="placeholder">No faction selected</span>
+              }
+              </button>
+              <button
+                type="button"
+                class="random-button"
+                (click)="fillRandomFaction()"
+                aria-label="Pick random faction"
+              ></button>
+            </div>
         </div>
       </div>
-      <div dialog-actions>
+      <div class="wide-dialog-actions">
         <button (click)="submit()" class="bt-button">CONFIRM</button>
         @if (!data.hideUnset) {
           <button (click)="submitEmpty()" class="bt-button">UNSET</button>
@@ -136,51 +144,10 @@ export interface RenameForceDialogResult {
     </div>
     `,
     styles: [`
-        .content {
-            display: block;
-            max-width: 1000px;
-            text-align: center;
-        }
-
-        h2 {
-            margin-top: 8px;
-            margin-bottom: 8px;
-        }
-
-        [dialog-content] {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-        }
-
-        [dialog-content] .input {
-            width: calc(90vw - 32px);
-            max-width: 500px;
-            font-size: 1.5em;
-            background: var(--background-input);
-            color: white;
-            border: 0;
-            border-bottom: 1px solid #666;
-            text-align: center;
-            outline: none;
-            transition: all 0.2s ease-in-out;
-            padding-left: 32px;
-            white-space: normal;
-            overflow-wrap: break-word;
-            word-break: break-word;
-        }
-
-        [dialog-content] .input:focus {
-            border-bottom: 1px solid #fff;
-            outline: none;
-        }
-
-        .input-wrapper {
-            position: relative;
-            display: inline-flex;
-            align-items: center;
-            box-sizing: border-box;
+        .unlock-icon {
+            font-size: 0.8em;
+            opacity: 0.6;
+            vertical-align: middle;
         }
 
         .random-button {
@@ -199,22 +166,10 @@ export interface RenameForceDialogResult {
             opacity: 1;
         }
 
-        [dialog-actions] {
-            padding-top: 8px;
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        [dialog-actions] button {
-            padding: 8px;
-            min-width: 100px;
-        }
-
         .faction-selector {
-            width: calc(90vw - 64px);
-            max-width: 500px;
+            box-sizing: border-box;
+            flex: 1 1 auto;
+            min-width: 0;
             padding: 10px 12px;
             cursor: pointer;
             display: flex;
@@ -252,11 +207,21 @@ export interface RenameForceDialogResult {
         .faction-selector-header {
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 6px;
+            padding-right: 16px;
         }
 
         .faction-selector-name {
             font-weight: 600;
+        }
+
+        .match-badge {
+            font-size: 0.8em;
+            color: var(--bt-yellow);
+            padding: 2px 6px;
+            background: rgba(240, 192, 64, 0.15);
+            white-space: nowrap;
         }
 
         .faction-selector-eras {
@@ -283,6 +248,8 @@ export interface RenameForceDialogResult {
 })
 
 export class RenameForceDialogComponent {
+    readonly FACTION_MERCENARY = FACTION_MERCENARY;
+
     inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
     factionTrigger = viewChild.required<ElementRef<HTMLButtonElement>>('factionTrigger');
     factionTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('factionTriggerWrapper');
@@ -312,7 +279,7 @@ export class RenameForceDialogComponent {
         );
     });
 
-    constructor() {}
+    constructor() { }
 
     submit() {
         const value = this.inputRef().nativeElement.textContent?.trim() || '';
@@ -374,11 +341,12 @@ export class RenameForceDialogComponent {
         outputToObservable(componentRef.instance.selected)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((faction: Faction | null) => {
-                this.selectedFaction.set(faction);
                 this.overlayManager.closeManagedOverlay('faction-dropdown');
+                if (faction?.id === this.selectedFaction()?.id) return; // no change
+                this.selectedFaction.set(faction);
 
-                // Auto-update force name when faction is changed (unless name is locked)
-                if (faction && !this.data.force.nameLock) {
+                // Auto-update force name when faction is changed
+                if (faction) {
                     const newName = ForceNamerUtil.generateForceNameForFaction(faction);
                     this.setInputText(newName);
                 }

@@ -38,7 +38,7 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-interop';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Force, UnitGroup } from '../../models/force.model';
-import { FormationTypeDefinition } from '../../utils/formation-type.model';
+import { FormationTypeDefinition, isNoFormation } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FormationDropdownPanelComponent, FormationDisplayItem } from './formation-dropdown-panel.component';
@@ -66,39 +66,49 @@ export interface RenameGroupDialogResult {
         class: 'fullscreen-dialog-host glass'
     },
     template: `
-    <div class="content">
-      <h2 dialog-title></h2>
-      <div dialog-content>
+    <div class="wide-dialog">
+      <div class="wide-dialog-body">
 
-        <p class="section-label">Group Name <span class="optional">(optional)</span></p>
-        <div class="input-wrapper">
-          <div
-            class="input"
-            contentEditable="true"
-            #inputRef
-            [textContent]="data.group.name()"
-            (keydown.enter)="submit()"
-          ></div>
+        <div class="form-fields">
+          <label class="field-label">Group Name <span class="optional">(optional)</span></label>
+          <div class="input-wrapper">
+            <div
+              class="field-input"
+              contentEditable="true"
+              #inputRef
+              autocomplete="off"
+              [textContent]="data.group.name()"
+              (keydown.enter)="submit()"
+            ></div>
+          </div>
+          <p class="hint">If left empty, the formation name will be used</p>
         </div>
 
-        <p class="section-label">Formation</p>
-        <div #formationTriggerWrapper class="input-wrapper">
-          <button class="formation-selector bt-select" (click)="toggleFormationDropdown()">
-            @if (selectedFormation(); as formation) {
-              <span class="formation-selector-name">{{ getDisplayName(formation) }}</span>
-            } @else {
-              <span class="placeholder">No formation selected</span>
-            }
-          </button>
-          <button
-            type="button"
-            class="random-button"
-            (click)="fillRandomFormation()"
-            aria-label="Pick random formation"
-          ></button>
+        <div class="form-fields">
+          <label class="field-label">Formation</label>
+          <div #formationTriggerWrapper class="input-wrapper">
+            <button class="formation-selector bt-select" (click)="toggleFormationDropdown()">
+              @if (selectedFormation(); as formation) {
+                @if (isNoFormation(formation)) {
+                  <span class="placeholder">No Formation</span>
+                } @else {
+                  <span class="formation-selector-name">{{ getDisplayName(formation) }}</span>
+                }
+              } @else {
+                <span class="placeholder">Automatic</span>
+              }
+            </button>
+            <button
+              type="button"
+              class="random-button"
+              (click)="fillRandomFormation()"
+              aria-label="Pick random formation"
+            ></button>
+          </div>
         </div>
 
         @if (selectedFormation(); as formation) {
+          @if (!isNoFormation(formation)) {
           <details class="selected-formation-accordion">
             <summary class="selected-formation-summary">
               <span>Formation details</span>
@@ -108,78 +118,26 @@ export interface RenameGroupDialogResult {
               <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length"></formation-info>
             </div>
           </details>
+          }
         }
       </div>
-      <div dialog-actions>
+      <div class="wide-dialog-actions">
         <button (click)="submit()" class="bt-button">CONFIRM</button>
-        <button (click)="submitEmpty()" class="bt-button">UNSET</button>
         <button (click)="close()" class="bt-button">DISMISS</button>
       </div>
     </div>
     `,
     styles: [`
-        .content {
-            display: block;
-            max-width: 1000px;
-            text-align: center;
-        }
-
-        h2 {
-            margin-top: 8px;
-            margin-bottom: 8px;
-        }
-
-        [dialog-content] {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            width: 90vw;
-            max-width: 600px;
-        }
-
-        .section-label {
-            margin: 8px 0 4px;
-            font-weight: 600;
-        }
-
-        .optional {
-            font-weight: 400;
+        .hint {
             font-size: 0.85em;
             color: var(--text-color-tertiary);
-        }
-
-        [dialog-content] .input {
-            width: calc(90vw - 32px);
-            max-width: 500px;
-            font-size: 1.5em;
-            background: var(--background-input);
-            color: white;
-            border: 0;
-            border-bottom: 1px solid #666;
-            text-align: center;
-            outline: none;
-            transition: all 0.2s ease-in-out;
-            white-space: normal;
-            overflow-wrap: break-word;
-            word-break: break-word;
-        }
-
-        [dialog-content] .input:focus {
-            border-bottom: 1px solid #fff;
-            outline: none;
-        }
-
-        .input-wrapper {
-            position: relative;
-            display: inline-flex;
-            align-items: center;
-            box-sizing: border-box;
+            margin-top: 2px;
+            margin-bottom: 0;
         }
 
         .formation-selector {
-            width: calc(90vw - 64px);
-            max-width: 468px;
+            flex: 1 1 auto;
+            min-width: 0;
             padding: 10px 12px;
             cursor: pointer;
             display: flex;
@@ -218,8 +176,7 @@ export interface RenameGroupDialogResult {
 
         /* Selected formation accordion */
         .selected-formation-accordion {
-            width: calc(90vw - 32px);
-            max-width: 500px;
+            width: 100%;
             text-align: left;
             background: rgba(255, 255, 255, 0.04);
             margin-top: 4px;
@@ -258,20 +215,6 @@ export interface RenameGroupDialogResult {
             max-height: 40vh;
             overflow-y: auto;
         }
-
-        [dialog-actions] {
-            padding-top: 8px;
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            flex-wrap: wrap;
-            flex-shrink: 0;
-        }
-
-        [dialog-actions] button {
-            padding: 8px;
-            min-width: 100px;
-        }
     `]
 })
 
@@ -290,38 +233,23 @@ export class RenameGroupDialogComponent {
     selectedFormation = signal<FormationTypeDefinition | null>(this.data.group.formation());
 
     /** Pre-computed formation display list for the dropdown panel */
-    formationDisplayList: FormationDisplayItem[] = this.forceBuilder
-        .getFormationDefinitions(this.data.group)
-        .map(def => ({
+    formationDisplayList: FormationDisplayItem[] = FormationNamerUtil.getAvailableFormationDefinitions(this.data.group).map(def => ({
             definition: def,
-            displayName: this.getFormationDisplayName(def, this.data.group)
+            displayName: FormationNamerUtil.composeFormationDisplayName(def, this.data.group)
         }));
-
     constructor() {}
+
+    /** Expose isNoFormation to the template */
+    isNoFormation = isNoFormation;
 
     /** Compose a display name for a formation definition */
     getDisplayName(definition: FormationTypeDefinition): string {
-        return this.getFormationDisplayName(definition, this.data.group);
-    }   
-    
-    public getFormationDisplayName(definition: FormationTypeDefinition, group: UnitGroup): string {
-        const targetForce = group.force;
-        if (!targetForce) return definition.name;
-        return FormationNamerUtil.composeFormationDisplayName(
-            definition,
-            group.units(),
-            targetForce.units(),
-            targetForce.faction()
-        );
+        return FormationNamerUtil.composeFormationDisplayName(definition, this.data.group);
     }
 
     submit(): void {
         const name = this.inputRef().nativeElement.textContent?.trim() || '';
         this.dialogRef.close({ name, formation: this.selectedFormation() });
-    }
-
-    submitEmpty(): void {
-        this.dialogRef.close({ name: '', formation: null });
     }
 
     fillRandomFormation(): void {

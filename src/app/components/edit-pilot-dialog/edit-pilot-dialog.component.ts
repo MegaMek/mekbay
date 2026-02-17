@@ -63,131 +63,35 @@ export interface EditPilotResult {
         class: 'fullscreen-dialog-host glass'
     },
     template: `
-    <div class="content">
-        <h2 dialog-title>Warrior Data</h2>
-        <div dialog-content>
-            <p>Name</p>
-            <div class="input-wrapper">
-                <input #nameInput type="text" class="input" [value]="data.name || ''" maxlength="32" (keydown.enter)="submit()" />
+    <div class="wide-dialog">
+        <h2 class="wide-dialog-title">Warrior Data</h2>
+        <div class="wide-dialog-body">
+            <div class="form-fields">
+                <label class="field-label">Name</label>
+                <input #nameInput type="text" class="field-input" autocomplete="off" [value]="data.name || ''" maxlength="32" (keydown.enter)="submit()" />
             </div>
-            <div class="stats">
-                <div class="stat">
-                    <p>{{ data.labelGunnery || 'Gunnery Skill' }}</p>
-                    <div class="input-wrapper">
-                        <input #gunneryInput type="number" class="input" [value]="data.gunnery" [placeholder]="data.gunnery" min="0" max="8" (keydown.enter)="submit()" />
-                    </div>
+            <div class="form-row no-stack">
+                <div class="form-fields">
+                    <label class="field-label">{{ data.labelGunnery || 'Gunnery Skill' }}</label>
+                    <input #gunneryInput type="number" class="field-input" autocomplete="off" [value]="data.gunnery" [placeholder]="data.gunnery" min="0" max="8" (keydown.enter)="submit()" />
                 </div>
-                <div class="stat">
-                    @if (!data.disablePiloting) {
-                        <p>{{ data.labelPiloting || 'Piloting Skill' }}</p>
-                        <div class="input-wrapper">
-                            <input #pilotingInput type="number" class="input" [value]="data.piloting" [placeholder]="data.piloting" min="0" max="8" (keydown.enter)="submit()" />
-                        </div>
-                    }
-                    </div>
+                <div class="form-fields" [class.disabled]="!!data.disablePiloting">
+                    <label class="field-label">{{ data.labelPiloting || 'Piloting Skill' }}</label>
+                    <input #pilotingInput type="number" class="field-input" autocomplete="off" [value]="data.piloting" [placeholder]="data.piloting" min="0" max="8" (keydown.enter)="submit()" [disabled]="!!data.disablePiloting" />
+                </div>
             </div>
         </div>
-        <div dialog-actions>
+        <div class="wide-dialog-actions">
             <button (click)="submit()" class="bt-button">CONFIRM</button>
             <button (click)="close()" class="bt-button">DISMISS</button>
         </div>
     </div>
     `,
-    styles: [`
-        .content {
-            width: 100%;
-            max-width: 500px;
-            text-align: center;
-            container-type: inline-size;
-        }
-
-        h2 {
-            margin-top: 8px;
-            margin-bottom: 0;
-        }
-
-        p {
-            margin: 8px;
-        }
-
-        [dialog-content] {
-            width: 90vw;
-            max-width: 500px;
-            margin-bottom: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .input {
-            width: 100%;
-            max-width: 500px;
-            font-size: 1.5em;
-            background: var(--background-input);
-            color: white;
-            border: 0;
-            border-bottom: 1px solid #666;
-            text-align: center;
-            outline: none;
-            transition: all 0.2s ease-in-out;
-            white-space: normal;
-            overflow-wrap: break-word;
-            word-break: break-word;
-            flex: 1;
-        }
-
-        .input:focus {
-            border-bottom: 1px solid #fff;
-            outline: none;
-        }
-
-        .input-wrapper {
-            position: relative;
-            display: inline-flex;
-            align-items: center;
-            box-sizing: border-box;
-            flex: 1;
-            width: 100%;
-        }
-
-        [dialog-actions] {
-            padding-top: 8px;
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        [dialog-actions] button {
-            padding: 8px;
-            min-width: 100px;
-        }
-
-        .stats {
-            display: flex;
-            justify-content: center;
-            gap: 16px;
-        }
-
-        @container (max-width: 400px) {
-            .stats {
-                flex-direction: column;
-                gap: 8px;
-            }
-        }
-
-        .stat {
-            display: flex;
-            flex-direction: row;
-            gap: 16px;
-            flex: 1;
-        }
-    `]
 })
 export class EditPilotDialogComponent {
     nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');
     gunneryInput = viewChild.required<ElementRef<HTMLInputElement>>('gunneryInput');
-    pilotingInput = viewChild<ElementRef<HTMLInputElement>>('pilotingInput');
+    pilotingInput = viewChild.required<ElementRef<HTMLInputElement>>('pilotingInput');
 
     public dialogRef = inject(DialogRef<EditPilotResult | null, EditPilotDialogComponent>);
     readonly data: EditPilotDialogData = inject(DIALOG_DATA) as EditPilotDialogData;
@@ -200,7 +104,7 @@ export class EditPilotDialogComponent {
         const gunnery = Number(gunneryValue === "" ? this.data.gunnery : gunneryValue);
         let piloting = this.data.piloting;
         if (!this.data.disablePiloting) {
-            const pv = this.pilotingInput()?.nativeElement.value ?? '';
+            const pv = this.pilotingInput().nativeElement.value;
             piloting = Number(pv === '' ? this.data.piloting : pv);
         }
         this.dialogRef.close({ name, gunnery, piloting });

@@ -38,7 +38,7 @@ import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import { OptionsService } from '../services/options.service';
 import { isIOS } from './platform.util';
-import { FormationNamerUtil } from './formation-namer.util';
+import { isNoFormation } from './formation-type.model';
 
 /**
  * Represents a single card to render (handles multi-card units)
@@ -391,7 +391,7 @@ export class ASPrintUtil {
         const name = group.name();
         if (name) return name;
         const formation = group.formation();
-        if (formation) return formation.name;
+        if (formation && !isNoFormation(formation)) return formation.name;
         return '';
     }
 
@@ -401,7 +401,7 @@ export class ASPrintUtil {
      */
     private static getFormationSubtitle(group: UnitGroup<ASForceUnit>): string | null {
         const formation = group.formation();
-        if (!formation) return null;
+        if (!formation || isNoFormation(formation)) return null;
         // Don't repeat if the group name already contains the formation name
         if (group.name()?.toLowerCase().includes(formation.name.toLowerCase())) return null;
         return formation.name;

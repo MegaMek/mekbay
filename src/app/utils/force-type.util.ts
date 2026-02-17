@@ -36,7 +36,7 @@ import { ForceUnit } from '../models/force-unit.model';
 /*
  * Author: Drake
  *
- * Force type identification — shared between force naming and formation naming.
+ * Force type identification: shared between force naming and formation naming.
  */
 
 export type ForceType =
@@ -99,14 +99,13 @@ const COMSTAR_FORCE_TYPES: ForceTypeRange[] = [
  * Determine the force organizational type (Lance, Company, Star, etc.)
  * based on the number of units, tech base, and faction.
  */
-export function getForceType(units: ForceUnit[], techBase: string, factionName: string): ForceType {
+export function getForceSizeName(units: ForceUnit[], techBase: string, factionName: string): ForceType {
     let configs: ForceTypeRange[] = [];
     if (factionName === 'ComStar' || factionName === 'Word of Blake') {
         configs = COMSTAR_FORCE_TYPES;
     } else if (techBase === 'Clan') {
         configs = CLAN_FORCE_TYPES;
-    }
-    if (techBase === 'Inner Sphere' && configs.length === 0) {
+    } else if (techBase === 'Inner Sphere') {
         configs = INNER_SPHERE_FORCE_TYPES;
     }
     for (const cfg of configs) {

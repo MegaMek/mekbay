@@ -43,4 +43,34 @@
     &.enemy {
         color: rgb(var(--enemy-color));
     }
+
+    &.blink.friendly {
+        animation: alignment-btn-blink-friendly 0.5s ease-in-out 2;
+    }
+
+    &.blink.enemy {
+        animation: alignment-btn-blink-enemy 0.5s ease-in-out 2;
+    }
+}
+
+@keyframes alignment-btn-blink-friendly {
+    0%, 100% {
+        color: rgb(var(--friendly-color));
+        background-color: transparent;
+    }
+    50% {
+        color: color-mix(in srgb, rgb(var(--friendly-color)), white 40%);
+        background-color: rgba(var(--friendly-color), 0.5);
+    }
+}
+
+@keyframes alignment-btn-blink-enemy {
+    0%, 100% {
+        color: rgb(var(--enemy-color));
+        background-color: transparent;
+    }
+    50% {
+        color: color-mix(in srgb, rgb(var(--enemy-color)), white 40%);
+        background-color: rgba(var(--enemy-color), 0.5);
+    }
 }

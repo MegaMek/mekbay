@@ -46,6 +46,7 @@ export interface LoadForceUnit {
 
 export interface LoadForceGroup {
     name: string;
+    formationId?: string;
     units: LoadForceUnit[];
 }
 
@@ -56,6 +57,7 @@ export class LoadForceEntry {
     cloud: boolean;
     local: boolean;
     name: string;
+    factionId?: number;
     bv?: number;
     pv?: number;
     groups: LoadForceGroup[];

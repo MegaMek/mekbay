@@ -32,7 +32,7 @@
  */
 
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
-import { FormationTypeDefinition } from '../../utils/formation-type.model';
+import { FormationTypeDefinition, NO_FORMATION, NO_FORMATION_ID, isNoFormation } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { GameSystem } from '../../models/common.model';
 
@@ -50,12 +50,19 @@ export interface FormationDisplayItem {
     imports: [FormationInfoComponent],
     template: `
         <div class="dropdown-panel glass has-shadow framed-borders" data-scroll-container>
-            <!-- None option -->
+            <!-- Automatic option (null = system picks best formation) -->
             <div class="none-option"
                  [class.active]="!selectedFormationId()"
-                 (click)="onSelectNone()">
-                <span class="formation-name">None</span>
-                <span class="formation-summary-text">No formation assigned</span>
+                 (click)="onSelectAutomatic()">
+                <span class="formation-name">Automatic</span>
+                <span class="formation-summary-text">System picks the best matching formation</span>
+            </div>
+            <!-- No Formation option (explicit opt-out) -->
+            <div class="none-option"
+                 [class.active]="selectedFormationId() === noFormationId"
+                 (click)="onSelectNoFormation()">
+                <span class="formation-name">No Formation</span>
+                <span class="formation-summary-text">Explicitly opt out of any formation</span>
             </div>
             <hr class="divider"/>
 
@@ -202,6 +209,7 @@ export class FormationDropdownPanelComponent {
     selected = output<FormationTypeDefinition | null>();
 
     expandedId = signal<string | null>(null);
+    readonly noFormationId = NO_FORMATION_ID;
 
     toggleExpand(event: MouseEvent, id: string): void {
         event.stopPropagation();
@@ -212,7 +220,13 @@ export class FormationDropdownPanelComponent {
         this.selected.emit(definition);
     }
 
-    onSelectNone(): void {
+    /** Automatic: emits null so the system picks the best formation. */
+    onSelectAutomatic(): void {
         this.selected.emit(null);
+    }
+
+    /** No Formation: emits the NO_FORMATION sentinel so auto-assign is skipped. */
+    onSelectNoFormation(): void {
+        this.selected.emit(NO_FORMATION);
     }
 }

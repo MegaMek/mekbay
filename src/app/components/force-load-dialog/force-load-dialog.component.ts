@@ -40,6 +40,10 @@ import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { Pipe, PipeTransform } from "@angular/core";
 import { LoadForceEntry } from '../../models/load-force-entry.model';
+import { LoadOperationEntry } from '../../models/operation.model';
+import { SerializedOperation } from '../../models/operation.model';
+import { SaveOperationDialogComponent, OperationDialogData, OperationDialogResult } from '../save-operation-dialog/save-operation-dialog.component';
+import { OpPreviewComponent } from '../op-preview/op-preview.component';
 import { OptionsService } from '../../services/options.service';
 import { GameService } from '../../services/game.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -70,7 +74,7 @@ export class CleanModelStringPipe implements PipeTransform {
     pure: true // Pure pipes are only called when the input changes
 })
 export class FormatTimestamp implements PipeTransform {
-    transform(timestamp: string | undefined): string {
+    transform(timestamp: string | number | undefined): string {
         if (!timestamp) return '';
         const date = new Date(timestamp);
         const pad = (n: number) => n.toString().padStart(2, '0');
@@ -78,10 +82,10 @@ export class FormatTimestamp implements PipeTransform {
     }
 }
 
-export type ForceLoadMode = 'load' | 'add';
+export type ForceLoadMode = 'load' | 'add' | 'operation';
 
 export interface ForceLoadDialogEnvelope {
-    result: LoadForceEntry | ResolvedPack;
+    result: LoadForceEntry | ResolvedPack | LoadOperationEntry;
     mode: ForceLoadMode;
     alignment: ForceAlignment;
 }
@@ -92,7 +96,7 @@ export type ForceLoadDialogResult = ForceLoadDialogEnvelope | null;
     selector: 'force-load-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, UnitIconComponent],
+    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, UnitIconComponent, OpPreviewComponent],
     templateUrl: './force-load-dialog.component.html',
     styleUrls: ['./force-load-dialog.component.css']
 })
@@ -105,11 +109,13 @@ export class ForceLoadDialogComponent {
     private dialogsService = inject(DialogsService);
     searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
+    readonly GameSystem = GameSystem;
+
     forces = signal<LoadForceEntry[]>([]);
     selectedForce = signal<LoadForceEntry | null>(null);
     loading = signal<boolean>(true);
 
-    tabs = ['Hangar', 'Force Packs'];
+    tabs = ['Hangar', 'Force Packs', 'Operations'];
     activeTab = signal(this.tabs[0]);
 
     searchText = signal<string>('');
@@ -151,6 +157,23 @@ export class ForceLoadDialogComponent {
         });
     });
 
+    // Operations
+    operations = signal<LoadOperationEntry[]>([]);
+    selectedOperation = signal<LoadOperationEntry | null>(null);
+    operationsLoading = signal<boolean>(false);
+    filteredOperations = computed<LoadOperationEntry[]>(() => {
+        const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
+        if (tokens.length === 0) return this.operations();
+        return this.operations().filter(op => {
+            const hay = [
+                op.name || '',
+                op.note || '',
+                ...op.forces.map(f => f.name || ''),
+            ].join(' ').toLowerCase();
+            return tokens.every(t => hay.indexOf(t) !== -1);
+        });
+    });
+
     constructor() {
         // Load forces on init
         this.loadForces();
@@ -158,6 +181,13 @@ export class ForceLoadDialogComponent {
         // Resolve force packs
         effect(() => {
             this.packs.set(resolveForcePacks(this.dataService));
+        });
+
+        // Load operations when tab changes to Operations
+        effect(() => {
+            if (this.activeTab() === 'Operations' && this.operations().length === 0 && !this.operationsLoading()) {
+                this.loadOperations();
+            }
         });
     }
 
@@ -191,14 +221,32 @@ export class ForceLoadDialogComponent {
         return s.trim().toLowerCase();
     }
 
+    private async loadOperations(): Promise<void> {
+        this.operationsLoading.set(true);
+        try {
+            const result = await this.dataService.listOperations();
+            this.operations.set(result || []);
+        } finally {
+            this.operationsLoading.set(false);
+        }
+    }
+
     selectForce(force: LoadForceEntry) {
         this.selectedPack.set(null);
+        this.selectedOperation.set(null);
         this.selectedForce.set(force);
     }
 
     selectPack(p: ResolvedPack) {
         this.selectedForce.set(null);
+        this.selectedOperation.set(null);
         this.selectedPack.set(p);
+    }
+
+    selectOperation(op: LoadOperationEntry) {
+        this.selectedForce.set(null);
+        this.selectedPack.set(null);
+        this.selectedOperation.set(op);
     }
 
     onSearch(text: string) {
@@ -222,6 +270,11 @@ export class ForceLoadDialogComponent {
         if (selPack && !this.filteredPacks().includes(selPack)) {
             this.selectedPack.set(null);
         }
+        // if selected operation is filtered out, clear selection
+        const selOp = this.selectedOperation();
+        if (selOp && !this.filteredOperations().includes(selOp)) {
+            this.selectedOperation.set(null);
+        }
     }
 
     getGameTypeLabel(type: GameSystem | undefined): string {
@@ -229,6 +282,10 @@ export class ForceLoadDialogComponent {
     }
 
     async onLoad() {
+        if (this.activeTab() === 'Operations') {
+            await this.onLoadOperation();
+            return;
+        }
         await this.closeWithMode('load', 'friendly');
     }
 
@@ -237,6 +294,65 @@ export class ForceLoadDialogComponent {
         const alignment = await firstValueFrom(ref.closed);
         if (!alignment) return;
         await this.closeWithMode('add', alignment);
+    }
+
+    async onLoadOperation() {
+        const op = this.selectedOperation();
+        if (!op) return;
+        this.dialogRef.close({ result: op, mode: 'operation', alignment: 'friendly' });
+    }
+
+    async onDeleteOperation() {
+        const op = this.selectedOperation();
+        if (!op) return;
+        const confirmed = await this.dialogsService.requestConfirmation(
+            'Are you sure you want to delete this operation? This action cannot be undone.',
+            'Delete Operation',
+            'danger'
+        );
+        if (confirmed) {
+            await this.dataService.deleteOperation(op.operationId);
+            this.operations.set(this.operations().filter(o => o !== op));
+            this.selectedOperation.set(null);
+        }
+    }
+
+    async onEditOperation(op: LoadOperationEntry, event: Event) {
+        event.stopPropagation();
+
+        const dialogData: OperationDialogData = {
+            title: 'Edit Operation',
+            name: op.name || '',
+            note: op.note || '',
+            forces: op.forces,
+        };
+
+        const ref = this.dialogsService.createDialog<OperationDialogResult | null>(
+            SaveOperationDialogComponent,
+            { data: dialogData }
+        );
+        const result = await firstValueFrom(ref.closed);
+        if (!result) return;
+
+        // Reconstruct SerializedOperation with updated name/note
+        const updatedOp: SerializedOperation = {
+            operationId: op.operationId,
+            name: result.name,
+            note: result.note,
+            timestamp: op.timestamp,
+            forces: op.forces.map(f => ({
+                instanceId: f.instanceId,
+                alignment: f.alignment,
+                timestamp: f.timestamp,
+            })),
+        };
+
+        await this.dataService.saveOperation(updatedOp);
+
+        // Update the local list reactively
+        op.name = result.name;
+        op.note = result.note;
+        this.operations.set([...this.operations()]);
     }
 
     private async closeWithMode(mode: ForceLoadMode, alignment: ForceAlignment) {
@@ -270,6 +386,10 @@ export class ForceLoadDialogComponent {
     }
 
     async onDelete() {
+        if (this.activeTab() === 'Operations') {
+            await this.onDeleteOperation();
+            return;
+        }
         const force = this.selectedForce();
         if (!force) return;
         if (!force.instanceId) return;

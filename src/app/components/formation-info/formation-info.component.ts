@@ -112,9 +112,9 @@ export interface ResolvedEffectGroup {
                         @let groupIdx = $index;
                         <div class="effect-group">
                             <div class="effect-group-meta">
-                                <span class="meta-item">{{ eg.selectionLabel }}</span>
+                                <span class="meta-item selection">{{ eg.selectionLabel }}</span>
                                 <span class="meta-separator">·</span>
-                                <span class="meta-item">{{ eg.distributionLabel }}</span>
+                                <span class="meta-item distribution">{{ eg.distributionLabel }}</span>
                                 @if (eg.group.perTurn) {
                                     <span class="meta-separator">·</span>
                                     <span class="meta-item per-turn">Per turn</span>
@@ -216,6 +216,7 @@ export interface ResolvedEffectGroup {
             cursor: pointer;
             user-select: none;
             margin-bottom: 6px;
+            padding-right: 6px;
         }
 
         .abilities-header:hover {
@@ -261,8 +262,15 @@ export interface ResolvedEffectGroup {
             color: var(--text-color-tertiary);
         }
 
-        .per-turn {
-            color: var(--bt-yellow);
+        .meta-item {
+            color: var(--text-color-secondary);
+            &.distribution {
+                color: var(--text-color);
+            }
+            &.per-turn {
+                color: var(--bt-yellow);
+            }
+
         }
 
         .chevron {
@@ -285,7 +293,7 @@ export interface ResolvedEffectGroup {
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            padding: 8px 10px;
+            padding: 8px;
             cursor: pointer;
             user-select: none;
         }
@@ -295,7 +303,7 @@ export interface ResolvedEffectGroup {
         }
 
         .ability-card-body {
-            padding: 0 10px 8px;
+            padding: 0 8px 8px;
         }
 
         .ability-card-unit-type {
@@ -329,14 +337,14 @@ export interface ResolvedEffectGroup {
 })
 export class FormationInfoComponent {
     formation = input<FormationTypeDefinition | null>(null);
-    /** Game system of the owning force — determines which ability summaries to display. */
+    /** Game system of the owning force: determines which ability summaries to display. */
     gameSystem = input<GameSystem>(GameSystem.ALPHA_STRIKE);
-    /** Optional unit count in the group — used to compute concrete numbers for distribution labels. */
+    /** Optional unit count in the group: used to compute concrete numbers for distribution labels. */
     unitCount = input<number | undefined>(undefined);
 
     /** Set of expanded individual abilities, keyed by "groupIndex:abilityName". */
     private expandedAbilities = signal(new Set<string>());
-    /** Whether any ability is currently expanded — drives the master chevron. */
+    /** Whether any ability is currently expanded: drives the master chevron. */
     allAbilitiesExpanded = computed(() => this.expandedAbilities().size > 0);
 
     /** Collect all ability keys from the resolved groups. */
@@ -437,19 +445,19 @@ export class FormationInfoComponent {
             case 'all': return 'All units';
             case 'half-round-down': {
                 const count = n != null ? Math.floor(n / 2) : undefined;
-                return count != null ? `Up to half — ${count} units` : 'Up to half (round down)';
+                return count != null ? `Up to half (${count} units)` : 'Up to half (round down)';
             }
             case 'half-round-up': {
                 const count = n != null ? Math.ceil(n / 2) : undefined;
-                return count != null ? `Up to half — ${count} units` : 'Up to half (round up)';
+                return count != null ? `Up to half (${count} units)` : 'Up to half (round up)';
             }
             case 'percent-75': {
                 const count = n != null ? Math.round(n * 0.75) : undefined;
-                return count != null ? `75% of units — ${count} units` : '75% of units';
+                return count != null ? `75% of units (${count} units)` : '75% of units';
             }
             case 'up-to-50-percent': {
                 const count = n != null ? Math.floor(n * 0.5) : undefined;
-                return count != null ? `Up to 50% — ${count} units` : 'Up to 50% of units';
+                return count != null ? `Up to 50% (${count} units)` : 'Up to 50% of units';
             }
             case 'fixed': return `Up to ${group.count ?? '?'} units`;
             case 'fixed-pairs': return `${group.count ?? '?'} identical pairs`;

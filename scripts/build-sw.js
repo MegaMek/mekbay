@@ -75,8 +75,8 @@ async function buildSW() {
         ],
         globIgnores: [
             'ngsw-worker.js',     // don't precache the SW itself
-            'assets/zip/**',      // large zip bundles — cache on demand
-            'images/units/**',    // unit images — too many, lazy-cache
+            'assets/zip/**',      // large zip bundles - cache on demand
+            'images/units/**',    // unit images - too many, lazy-cache
         ],
         // Maximum file size to precache (5 MB)
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,

@@ -33,8 +33,9 @@
 
 import { ForceUnit } from '../models/force-unit.model';
 import { GameSystem } from '../models/common.model';
-import { FormationTypeDefinition } from './formation-type.model';
+import { FormationTypeDefinition, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
 import { FORMATION_DEFINITIONS } from './formation-definitions';
+import { UnitGroup } from '../models/force.model';
 
 export type { FormationTypeDefinition } from './formation-type.model';
 
@@ -100,6 +101,8 @@ export class LanceTypeIdentifierUtil {
      * Looks up a formation definition by its ID.
      */
     public static getDefinitionById(id: string, gameSystem?: GameSystem): FormationTypeDefinition | null {
+        // Handle the "No Formation" sentinel
+        if (id === NO_FORMATION_ID) return NO_FORMATION;
         const def = FORMATION_DEFINITIONS.find(d => d.id === id);
         if (!def) return null;
         // If a game system is specified, only return if the definition has a validator for it
@@ -182,5 +185,16 @@ export class LanceTypeIdentifierUtil {
             if (roll <= 0) return matches[i];
         }
         return matches[matches.length - 1];
+    }
+
+    public static getBestMatchForGroup(group: UnitGroup<ForceUnit>): FormationTypeDefinition | null {
+        const targetForce = group.force;
+        if (!targetForce) return null;
+        const factionName = targetForce.faction()?.name ?? 'Mercenary';
+        const techBase = targetForce.techBase();
+        const best = LanceTypeIdentifierUtil.getBestMatch(
+            group.units(), techBase, factionName, targetForce.gameSystem
+        );
+        return best;
     }
 }

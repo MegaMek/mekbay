@@ -124,6 +124,7 @@ a {
         transform: scaleY(0.01) scaleX(0.1);
         filter: brightness(3);
     }
+
     40% {
         opacity: 1;
         transform: scaleY(0.01) scaleX(1);
@@ -306,7 +307,6 @@ hr {
             linear-gradient(var(--semantic-color), var(--semantic-color));
     }
 }
-
 
 .bt-input {
     padding: 8px;
@@ -676,6 +676,157 @@ hr {
     }
 }
 
+.form-fields {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    text-align: left;
+
+    .field-label {
+        font-size: 0.85em;
+        color: var(--text-color-secondary);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+
+        &.centered {
+            text-align: center;
+        }
+        
+        .optional {
+            font-weight: normal;
+            text-transform: none;
+            font-style: italic;
+        }
+    }
+
+    &.disabled .field-label {
+        color: var(--text-color-tertiary);
+    }
+
+    .field-note {
+        font-size: 0.85em;
+        color: var(--text-color-secondary);
+        white-space: normal;
+        word-break: break-word;
+        line-height: 1.3;
+    }
+    
+    .input-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+        box-sizing: border-box;
+        width: 100%;
+    }
+
+    .field-input {
+        width: 100%;
+        flex: 1 1 auto;
+        min-width: 0;
+        font-family: inherit;
+        font-size: 1.5em;
+        padding: 4px 4px 6px 4px;
+        box-sizing: border-box;
+        background: var(--background-input);
+        color: white;
+        border: 0;
+        border-bottom: 1px solid #666;
+        outline: none;
+        transition: all 0.2s ease-in-out;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: break-word;
+
+        &:focus {
+            border-bottom: 1px solid #fff;
+            outline: none;
+        }
+
+        &:disabled {
+            color: var(--text-color-tertiary);
+            cursor: not-allowed;
+        }
+    }
+
+    select.field-input {
+        cursor: pointer;
+        text-overflow: ellipsis;
+    }
+}
+
+/* ── Wide Dialog ──
+ * CSS convention for fullscreen-dialog-host glass dialogs.
+ * Structure:
+ *   <div class="wide-dialog">
+ *     <h2 class="wide-dialog-title">Title</h2>
+ *     <div class="wide-dialog-body"> ... </div>
+ *     <div class="wide-dialog-actions"> <button class="bt-button">OK</button> </div>
+ *   </div>
+ */
+.wide-dialog {
+    display: flex;
+    flex-direction: column;
+    width: 90vw;
+    max-width: 700px;
+    max-height: calc(100dvh - 32px);
+    text-align: center;
+    box-sizing: border-box;
+    container-type: inline-size;
+}
+
+.wide-dialog-title {
+    margin: 8px 0;
+    flex-shrink: 0;
+}
+
+.wide-dialog-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+    scrollbar-width: thin;
+}
+
+/* Row of .form-fields placed side-by-side; stacks below 400cqi */
+.form-row {
+    display: flex;
+    gap: 16px;
+
+    > .form-fields {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+}
+
+@container (max-width: 400px) {
+    .form-row:not(.no-stack) {
+        flex-direction: column;
+    }
+}
+
+.wide-dialog-actions {
+    padding-top: 16px;
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+
+    button {
+        padding: 8px;
+        min-width: 100px;
+    }
+
+    button[disabled] {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+}
+
 .alphastrike-text {
     font-family: 'Roboto Condensed', sans-serif;
     text-transform: uppercase;
@@ -684,7 +835,7 @@ hr {
     position: relative;
     font-weight: 900;
     color: #000;
-    
+
     &.stroked {
         // color: #d22027;
         // -webkit-text-stroke: 0.08em #ECD24B;
@@ -830,15 +981,15 @@ hr.divider {
         gap: 4px;
         min-width: 40px;
         justify-content: start;
-        
+
         &.centered {
             justify-content: center;
         }
-        
+
         &.numeric {
             justify-content: end;
         }
-        
+
         &.slim {
             min-width: auto;
         }
@@ -1001,7 +1152,7 @@ hr.divider {
 
 /* MekBay SVG Sheet Styles */
 @media screen {
-    .multiple-visible .page-wrapper.selected > svg.mekbay-sheet {
+    .multiple-visible .page-wrapper.selected>svg.mekbay-sheet {
         outline: 4px solid var(--bt-yellow);
         outline-offset: -4px;
     }
@@ -1833,7 +1984,7 @@ hr.divider {
 
 @media screen {
     .mekbay-sheet {
-        
+
         .applyHeatButtonFrame {
             transition: stroke 0.2s, fill 0.2s;
         }
@@ -1874,9 +2025,11 @@ hr.divider {
 
         .dirtyHeat #applyHeatButton.interactive {
             display: block;
+
             path {
                 transition: filter 0.2s;
             }
+
             &:hover {
                 path {
                     filter: brightness(1.2);
@@ -1925,11 +2078,13 @@ hr.divider {
 }
 
 @media print {
+
     .header,
     .backdrop,
     .screen-only {
         display: none !important;
     }
+
     .print-show {
         visibility: visible !important;
     }

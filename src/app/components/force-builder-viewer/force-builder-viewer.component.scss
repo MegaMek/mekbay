@@ -106,6 +106,15 @@
     .enemy & {
         background-color: color-mix(in srgb, var(--background-color-menu) 85%, rgb(var(--enemy-color)));
     }
+
+    &.blink {
+        animation: header-blink 0.5s ease-in-out 2;
+    }
+}
+
+@keyframes header-blink {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.2); }
 }
 
 // Collapse/expand toggle button (shared between force + group)

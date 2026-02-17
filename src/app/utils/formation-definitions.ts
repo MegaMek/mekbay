@@ -201,13 +201,13 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     // ─── Anti-'Mech Lance ────────────────────────────────────────────────
     //
     // Requirements: All units must be infantry.
-    // Bonus Ability: Distracting Swarm — units swarming an enemy cause +1 TN modifier.
+    // Bonus Ability: Distracting Swarm: units swarming an enemy cause +1 TN modifier.
     //
     {
         id: 'anti-mech-lance',
         name: 'Anti-\'Mech',
         description: 'All infantry units for urban and anti-mech warfare',
-        effectDescription: 'Distracting Swarm — units in this formation swarming an enemy unit cause a +1 To-Hit modifier to any weapon attacks made by the enemy unit.',
+        effectDescription: 'Distracting Swarm: units in this formation swarming an enemy unit cause a +1 To-Hit modifier to any weapon attacks made by the enemy unit.',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 61 }],
         validator: (units, gameSystem) => {
@@ -398,7 +398,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'light-battle-lance',
         name: 'Light Battle',
         description: 'Fast light formation for reconnaissance and skirmishing',
-        effectDescription: 'As per the standard Battle Lance.',
+        effectDescription: 'The formation receives a Lucky SPA as a level equal to the number of units in the formation at setup plus 2. Useable by any unit in the formation. May stack with individual Lucky SPA (max 4 rerolls per unit per scenario).',
         effectGroups: [{
             abilityIds: ['lucky'],
             selection: 'all',
@@ -429,7 +429,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'medium-battle-lance',
         name: 'Medium Battle',
         description: 'Medium weight balanced formation',
-        effectDescription: 'As per the standard Battle Lance.',
+        effectDescription: 'The formation receives a Lucky SPA as a level equal to the number of units in the formation at setup plus 2. Useable by any unit in the formation. May stack with individual Lucky SPA (max 4 rerolls per unit per scenario).',
         effectGroups: [{
             abilityIds: ['lucky'],
             selection: 'all',
@@ -459,7 +459,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'heavy-battle-lance',
         name: 'Heavy Battle',
         description: 'Heavy weight powerhouse formation',
-        effectDescription: 'As per the standard Battle Lance.',
+        effectDescription: 'The formation receives a Lucky SPA as a level equal to the number of units in the formation at setup plus 2. Useable by any unit in the formation. May stack with individual Lucky SPA (max 4 rerolls per unit per scenario).',
         effectGroups: [{
             abilityIds: ['lucky'],
             selection: 'all',
@@ -633,7 +633,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'vehicle-command-lance',
         name: 'Vehicle Command',
         description: 'Formation of command vehicle units',
-        effectDescription: 'As per the standard Command Lance.',
+        effectDescription: 'Prior to the beginning of play, two of the non-commander units in this formation receive one of the following Special Pilot Abilities for free (each unit may receive a different SPA): Antagonizer, Combat Intuition, Blood Stalker, Eagle\'s Eyes, Marksman, or Multi-Tasker. In addition, the commander\'s unit receives the Tactical Genius SPA. If the commander already has the Tactical Genius SPA, instead add a +1 modifier to the force\'s Initiative roll results, including any rerolls made as a result of the Tactical Genius SPA.',
         effectGroups: [
             {
                 abilityIds: ['antagonizer', 'blood_stalker', 'combat_intuition', 'eagles_eyes', 'marksman', 'multi_tasker'],
@@ -805,13 +805,13 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
 
     //
     // LIGHT FIRE LANCE
-    // Bonus: Coordinated Fire Support — if a unit hits, others get -1 TN (cumulative, max -3).
+    // Bonus: Coordinated Fire Support: if a unit hits, others get -1 TN (cumulative, max -3).
     //
     {
         id: 'light-fire-lance',
         name: 'Light Fire',
         description: 'Light units with coordinated long-range fire',
-        effectDescription: 'Coordinated Fire Support — If a unit in this formation hits a target with at least one of its weapons, other units in this formation making weapon attacks against the same target receive a -1 modifier to their attack rolls. This bonus is cumulative per attacking unit, up to a -3 To-Hit modifier.',
+        effectDescription: 'Coordinated Fire Support: If a unit in this formation hits a target with at least one of its weapons, other units in this formation making weapon attacks against the same target receive a -1 modifier to their attack rolls. This bonus is cumulative per attacking unit, up to a -3 To-Hit modifier.',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 119 }],
         validator: (units, gameSystem) => {
@@ -894,7 +894,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'probe-lance',
         name: 'Probe',
         description: 'Mobile reconnaissance force',
-        effectDescription: 'As per the standard Pursuit Lance.',
+        effectDescription: '75% of the units receive the Blood Stalker SPA. The Pursuit Lance may choose an enemy Formation rather than a single unit as the Blood Stalker target. All members must choose the same enemy Formation.',
         effectGroups: [{
             abilityIds: ['blood_stalker'],
             selection: 'all',
@@ -923,7 +923,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'sweep-lance',
         name: 'Sweep',
         description: 'Fast medium-range sweeping force',
-        effectDescription: 'As per the standard Pursuit Lance.',
+        effectDescription: '75% of the units receive the Blood Stalker SPA. The Pursuit Lance may choose an enemy Formation rather than a single unit as the Blood Stalker target. All members must choose the same enemy Formation.',
         effectGroups: [{
             abilityIds: ['blood_stalker'],
             selection: 'all',
@@ -989,7 +989,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'heavy-recon-lance',
         name: 'Heavy Recon',
         description: 'Armored reconnaissance formation',
-        effectDescription: 'As per the standard Recon Lance, except that only two units in this formation may receive the chosen SPA. All units in this formation still receive the Forward Observer SPA.',
+        effectDescription: 'At the beginning of play, choose either Eagle\'s Eyes or Maneuvering Ace SPA and apply it to up to two units in this formation. The chosen ability cannot be switched between units or changed during the scenario. In addition, all units in this formation receive the Forward Observer SPA.',
         effectGroups: [
             {
                 abilityIds: ['eagles_eyes', 'maneuvering_ace'],
@@ -1026,8 +1026,8 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'light-recon-lance',
         name: 'Light Recon',
-        description: 'Ultra-fast light reconnaissance',
-        effectDescription: 'As per the standard Recon Lance, except all units in this formation receive the chosen SPA, in addition to the Forward Observer SPA.',
+        description: 'Ultra-fast light scouts optimized for deep reconnaissance',
+        effectDescription: 'At the beginning of play, choose either Eagle\'s Eyes or Maneuvering Ace SPA and apply it to all units in this formation. This choice is permanent for the scenario. Additionally, all units receive the Forward Observer SPA.',
         effectGroups: [
             {
                 abilityIds: ['eagles_eyes', 'maneuvering_ace'],
@@ -1149,7 +1149,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'light-striker-lance',
         name: 'Light Striker/Cavalry',
         description: 'Fast light mobile force',
-        effectDescription: 'As per the standard Striker/Cavalry Lance.',
+        effectDescription: '75% of the units (round normally) receive the Speed Demon SPA.',
         effectGroups: [{
             abilityIds: ['speed_demon'],
             selection: 'all',
@@ -1180,7 +1180,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'heavy-striker-lance',
         name: 'Heavy Striker/Cavalry',
         description: 'Heavy fast-moving formation',
-        effectDescription: 'As per the standard Striker/Cavalry Lance.',
+        effectDescription: '75% of the units (round normally) receive the Speed Demon SPA.',
         effectGroups: [{
             abilityIds: ['speed_demon'],
             selection: 'all',
@@ -1208,13 +1208,13 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
 
     //
     // HORDE
-    // Bonus: Swarm — when targeted, may switch target to another unit in formation.
+    // Bonus: Swarm: when targeted, may switch target to another unit in formation.
     //
     {
         id: 'horde',
         name: 'Horde',
         description: 'Mass light unit swarm tactics',
-        effectDescription: 'Swarm — When any unit in this formation is targeted by an enemy attack, that unit\'s player may switch the target to any other unit in this formation that is still a legal target (within line of sight) and at the same range or less from the attacker. This ability can only be used by units which spent Running, Jumping, or Flank movement points that turn.',
+        effectDescription: 'Swarm: When any unit in this formation is targeted by an enemy attack, that unit\'s player may switch the target to any other unit in this formation that is still a legal target (within line of sight) and at the same range or less from the attacker. This ability can only be used by units which spent Running, Jumping, or Flank movement points that turn.',
         minUnits: 5,
         rulesRef: [{ book: Rulebook.CO, page: 67 }],
         validator: (units, gameSystem) => {

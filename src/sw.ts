@@ -66,7 +66,7 @@ self.addEventListener('install', (event) => {
                 // No Workbox precache → first install or migrating from NGSW.
                 return self.skipWaiting();
             }
-            // Normal Workbox update — wait for SKIP_WAITING message.
+            // Normal Workbox update - wait for SKIP_WAITING message.
             return;
         }),
     );

@@ -2120,7 +2120,7 @@ export class UnitSearchFiltersService {
                     if (!conf) continue;
 
                     if (conf.type === AdvFilterType.DROPDOWN) {
-                        // Skip validation for _tags — tags are user-specific and may not
+                        // Skip validation for _tags: tags are user-specific and may not
                         // be loaded into units yet when parsing URL. Trust the URL values.
                         if (key === '_tags') {
                             validFilters[key] = state;
@@ -2152,7 +2152,7 @@ export class UnitSearchFiltersService {
                             }
                         }
                     } else {
-                        // Range filters — kept as-is, clamped automatically by advOptions
+                        // Range filters: kept as-is, clamped automatically by advOptions
                         validFilters[key] = state;
                     }
                 }

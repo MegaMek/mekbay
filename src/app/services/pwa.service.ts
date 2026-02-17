@@ -66,7 +66,7 @@ export class PwaService {
 
     constructor() {
         if (!('serviceWorker' in navigator) || isDevMode()) {
-            this.logger.info('[PWA] Service worker not available or dev mode — skipping registration.');
+            this.logger.info('[PWA] Service worker not available or dev mode: skipping registration.');
             return;
         }
 

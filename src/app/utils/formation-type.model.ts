@@ -102,3 +102,29 @@ export interface FormationTypeDefinition {
     /** Multiple rulebook references (e.g. CO p.62, AS:CE p.117). */
     rulesRef?: RulesReference[];
 }
+
+/**
+ * Well-known ID for the "No Formation" sentinel.
+ * When a group's formation is set to this value the user has explicitly
+ * opted out of any formation; `assignFormationIfNeeded` will leave it
+ * untouched.
+ *
+ * A `null` formation now means "Automatic": the system will pick the
+ * best matching formation automatically.
+ */
+export const NO_FORMATION_ID = '-';
+
+/**
+ * Sentinel `FormationTypeDefinition` representing an explicit
+ * "No Formation" choice.  Use {@link isNoFormation} to test for it.
+ */
+export const NO_FORMATION: FormationTypeDefinition = {
+    id: NO_FORMATION_ID,
+    name: 'No Formation',
+    description: 'Explicitly opt out of any formation assignment.',
+};
+
+/** Returns `true` when the given definition is the "No Formation" sentinel. */
+export function isNoFormation(def: FormationTypeDefinition | null | undefined): boolean {
+    return def?.id === NO_FORMATION_ID;
+}

@@ -50,6 +50,7 @@ import { UnitInitializerService } from './unit-initializer.service';
 import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
+import { SerializedOperation, LoadOperationEntry, OperationForceInfo } from '../models/operation.model';
 import { DialogsService } from './dialogs.service';
 import { firstValueFrom, Subject } from 'rxjs';
 import { GameSystem, REMOTE_HOST } from '../models/common.model';
@@ -972,6 +973,10 @@ export class DataService {
     }
 
     public async saveForce(force: Force, localOnly: boolean = false): Promise<void> {
+        if (force.readOnly()) {
+            this.logger.warn(`DataService.saveForce() blocked: force "${force.name}" is read-only.`);
+            return;
+        }
         if (!force.instanceId()) {
             force.instanceId.set(generateUUID());
         }
@@ -1062,6 +1067,165 @@ export class DataService {
         await this.dbService.deleteForce(instanceId);
     }
 
+    /* ----------------------------------------------------------
+     * Operations (multi-force compositions)
+     */
+
+    /**
+     * Save an operation locally and to the cloud.
+     */
+    public async saveOperation(op: SerializedOperation): Promise<void> {
+        await this.dbService.saveOperation(op);
+        this.saveOperationCloud(op);
+    }
+
+    /**
+     * Delete an operation locally and from the cloud.
+     */
+    public async deleteOperation(operationId: string): Promise<void> {
+        await this.dbService.deleteOperation(operationId);
+        const ws = await this.canUseCloud();
+        if (ws) {
+            this.wsService.send({
+                action: 'delOperation',
+                operationId,
+            });
+        }
+    }
+
+    /**
+     * List operations, merging local and cloud.
+     * Cloud entries include joined force metadata; local entries are enriched
+     * with locally available force data.
+     */
+    public async listOperations(): Promise<LoadOperationEntry[]> {
+        const [localOps, cloudOps] = await Promise.all([
+            this.listOperationsLocal(),
+            this.listOperationsCloud(),
+        ]);
+
+        // Merge: cloud wins for same operationId, but keep local-only entries
+        const opMap = new Map<string, LoadOperationEntry>();
+
+        for (const op of localOps) {
+            op.local = true;
+            opMap.set(op.operationId, op);
+        }
+
+        for (const cloudOp of cloudOps) {
+            const existing = opMap.get(cloudOp.operationId);
+            cloudOp.cloud = true;
+            if (existing) {
+                cloudOp.local = true;
+                // Merge: use cloud's enriched force data but update with any
+                // locally-fresher force info
+                this.mergeOperationForceInfo(cloudOp, existing);
+            }
+            opMap.set(cloudOp.operationId, cloudOp);
+        }
+
+        return Array.from(opMap.values()).sort((a, b) => b.timestamp - a.timestamp);
+    }
+
+    /**
+     * Merge local force metadata into a cloud-enriched operation entry.
+     * If local has newer timestamps for any force, update the entry.
+     */
+    private mergeOperationForceInfo(target: LoadOperationEntry, localEntry: LoadOperationEntry): void {
+        for (const localForce of localEntry.forces) {
+            const cloudForce = target.forces.find(f => f.instanceId === localForce.instanceId);
+            if (!cloudForce) {
+                // Force exists locally but not in cloud response — add it
+                target.forces.push(localForce);
+            } else {
+                // If local force info is more recent, prefer it
+                const localTs = localForce.forceTimestamp ? new Date(localForce.forceTimestamp).getTime() : 0;
+                const cloudTs = cloudForce.forceTimestamp ? new Date(cloudForce.forceTimestamp).getTime() : 0;
+                if (localTs > cloudTs) {
+                    cloudForce.name = localForce.name ?? cloudForce.name;
+                    cloudForce.type = localForce.type ?? cloudForce.type;
+                    cloudForce.bv = localForce.bv ?? cloudForce.bv;
+                    cloudForce.pv = localForce.pv ?? cloudForce.pv;
+                    cloudForce.forceTimestamp = localForce.forceTimestamp;
+                }
+                // Mark force as existing if either source has it
+                if (localForce.exists) cloudForce.exists = true;
+            }
+        }
+    }
+
+    private async listOperationsLocal(): Promise<LoadOperationEntry[]> {
+        const serialized = await this.dbService.listOperations();
+        const entries: LoadOperationEntry[] = [];
+
+        for (const op of serialized) {
+            const forces: OperationForceInfo[] = [];
+            for (const ref of op.forces) {
+                // Try to enrich with local force metadata
+                const localForce = await this.dbService.getForce(ref.instanceId);
+                forces.push({
+                    instanceId: ref.instanceId,
+                    alignment: ref.alignment,
+                    timestamp: ref.timestamp,
+                    name: localForce?.name,
+                    type: localForce?.type as GameSystem | undefined,
+                    bv: localForce?.bv,
+                    pv: localForce?.pv,
+                    forceTimestamp: localForce?.timestamp,
+                    exists: !!localForce,
+                });
+            }
+            entries.push(new LoadOperationEntry({
+                operationId: op.operationId,
+                name: op.name || '',
+                note: op.note || '',
+                timestamp: op.timestamp,
+                forces,
+                local: true,
+            }));
+        }
+        return entries;
+    }
+
+    private async listOperationsCloud(): Promise<LoadOperationEntry[]> {
+        const ws = await this.canUseCloud();
+        if (!ws) return [];
+
+        const response = await this.wsService.sendAndWaitForResponse({
+            action: 'listOperations',
+        });
+        if (!response?.data || !Array.isArray(response.data)) return [];
+
+        return response.data.map((raw: any) => new LoadOperationEntry({
+            operationId: raw.operationId,
+            name: raw.name || '',
+            note: raw.note || '',
+            timestamp: raw.timestamp,
+            forces: (raw.forces || []).map((f: any) => ({
+                instanceId: f.instanceId,
+                alignment: f.alignment,
+                timestamp: f.timestamp,
+                name: f.name,
+                type: f.type,
+                bv: f.bv,
+                pv: f.pv,
+                forceTimestamp: f.forceTimestamp,
+                exists: f.exists ?? false,
+            } as OperationForceInfo)),
+            cloud: true,
+        }));
+    }
+
+    private async saveOperationCloud(op: SerializedOperation): Promise<void> {
+        const ws = await this.canUseCloud();
+        if (!ws) return;
+        this.wsService.send({
+            action: 'saveOperation',
+            data: op,
+        });
+    }
+
+
     private async listForcesCloud(): Promise<LoadForceEntry[]> {
         const ws = await this.canUseCloud();
         if (!ws) return [];
@@ -1125,6 +1289,10 @@ export class DataService {
     }
 
     private async saveForceCloud(force: Force): Promise<void> {
+        if (force.readOnly()) {
+            this.logger.warn(`DataService.saveForceCloud() blocked: force "${force.name}" is read-only.`);
+            return;
+        }
         const instanceId = force.instanceId();
         if (!instanceId) return; // Should not happen, nothing to save without an instanceId
 
@@ -1165,6 +1333,12 @@ export class DataService {
 
         const { force, resolvers } = entry;
 
+        if (force.readOnly()) {
+            this.logger.warn(`DataService.flushSaveForceCloud() blocked: force "${force.name}" is read-only.`);
+            for (const r of resolvers) r.resolve();
+            return;
+        }
+
         try {
             const ws = await this.canUseCloud();
             if (!ws) {
@@ -1202,6 +1376,14 @@ export class DataService {
                 // stop scheduled debounce
                 clearTimeout(entry.timeout);
                 this.saveForceCloudDebounce.delete(instanceId);
+
+                // Skip read-only forces, they must never be saved
+                if (entry.force.readOnly()) {
+                    for (const r of entry.resolvers) {
+                        try { r.resolve(); } catch { /* best-effort */ }
+                    }
+                    continue;
+                }
 
                 // try to send final payload over websocket if available (synchronous queueing)
                 if (canSendOverWs) {

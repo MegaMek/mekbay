@@ -39,9 +39,9 @@ import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
-import { FormationTypeDefinition } from '../utils/formation-type.model';
+import { FormationTypeDefinition, isNoFormation } from '../utils/formation-type.model';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
-import { firstValueFrom, skip, Subscription } from 'rxjs';
+import { firstValueFrom, Subject } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData, RenameForceDialogResult } from '../components/rename-force-dialog/rename-force-dialog.component';
 import { RenameGroupDialogComponent, RenameGroupDialogData, RenameGroupDialogResult } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from './unit-initializer.service';
@@ -76,6 +76,9 @@ import { CBTPrintUtil } from '../utils/cbtprint.util';
 import { ASPrintUtil } from '../utils/asprint.util';
 import { ForceSlot, ForceAlignment } from '../models/force-slot.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { SerializedOperation, LoadOperationEntry, OperationForceRef } from '../models/operation.model';
+import { SaveOperationDialogComponent, OperationDialogData, OperationDialogResult } from '../components/save-operation-dialog/save-operation-dialog.component';
+import { OpPreviewForce } from '../components/op-preview/op-preview.component';
 
 /*
  * Author: Drake
@@ -97,7 +100,7 @@ export class ForceBuilderService {
     public selectedUnit = signal<ForceUnit | null>(null, { equal: () => false });
     public loadedForces = signal<ForceSlot[]>([]);
 
-    /** Derived from selectedUnit — the force that owns the currently selected unit. */
+    /** Derived from selectedUnit: the force that owns the currently selected unit. */
     public currentForce = computed<Force | null>(() => {
         return this.selectedUnit()?.force ?? null;
     });
@@ -123,6 +126,9 @@ export class ForceBuilderService {
         const alignments = new Set(slots.map(s => s.alignment));
         return alignments.has('friendly') && alignments.has('enemy');
     });
+
+    /** Emits when a force is updated remotely via WS, with the force and its alignment. */
+    public remoteForceUpdated$ = new Subject<{ force: Force; alignment: ForceAlignment }>();
 
     /** Loaded forces filtered by the current alignment filter. */
     filteredLoadedForces = computed<ForceSlot[]>(() => {
@@ -301,7 +307,7 @@ export class ForceBuilderService {
     }
 
     /**
-     * Tears down a ForceSlot — unsubscribes WS, change subscription, and destroys units.
+     * Tears down a ForceSlot: unsubscribes WS, change subscription, and destroys units.
      */
     private teardownForceSlot(slot: ForceSlot): void {
         // Flush any pending debounced save while the subscription is still alive
@@ -453,7 +459,7 @@ export class ForceBuilderService {
             const instance = url.searchParams.get('instance');
             if (instance) return instance;
         } catch {
-            // Not a valid URL — treat as a plain instance ID
+            // Not a valid URL: treat as a plain instance ID
         }
         return input;
     }
@@ -519,6 +525,11 @@ export class ForceBuilderService {
             if (wasInThisForce) {
                 const newSelectedUnit = targetForce.units().find(u => u.id === selectedUnitId);
                 this.selectUnit(newSelectedUnit || targetForce.units()[selectedIndex] || targetForce.units()[0] || null);
+            }
+            // Notify subscribers of the remote update
+            const slot = this.getForceSlot(targetForce);
+            if (slot) {
+                this.remoteForceUpdated$.next({ force: targetForce, alignment: slot.alignment });
             }
         } finally {
             this.urlStateInitialized.set(true);
@@ -916,7 +927,7 @@ export class ForceBuilderService {
                 const newGroup = newForce.addGroup();
                 newGroup.name.set(sourceGroup.name());
                 newGroup.formation.set(sourceGroup.formation());
-                newGroup.nameLock = sourceGroup.nameLock;
+                newGroup.formationLock = sourceGroup.formationLock;
 
                 for (const sourceUnit of sourceGroup.units()) {
                     const unitName = sourceUnit.getUnit().name;
@@ -937,6 +948,8 @@ export class ForceBuilderService {
                         newForceUnit.disabledSaving = false;
                     }
                 }
+
+                this.assignFormationIfNeeded(newGroup); // we re-evaluate all formations after conversion since unit changes may affect validity
             }
 
             // Set a new instance ID and save
@@ -1027,59 +1040,39 @@ export class ForceBuilderService {
     public assignFormationIfNeeded(group: UnitGroup) {
         if (group.units().length === 0) {
             group.formation.set(null);
+            group.formationLock = false; // Unlock name so it can update with new formation name
             return;
         }
         const currentFormation = group.formation();
-        if (currentFormation) {
-            // Validate existing formation — keep it if still valid
-            const definitions = this.getFormationDefinitions(group);
+        // If the user explicitly chose "No Formation", respect that choice
+        if (isNoFormation(currentFormation)) {
+            return;
+        }
+        if (currentFormation && group.formationLock) {
+            // Validate existing locked formation: keep it if still valid
+            const definitions = FormationNamerUtil.getAvailableFormationDefinitions(group);
             if (definitions.some(d => d.id === currentFormation.id)) {
-                return; // Still valid, nothing to do
+                return; // Still valid and locked, nothing to do
             }
-            // Current formation is no longer valid — fall through to pick a new one
+            // Current formation is no longer valid: fall through to pick a new one
             group.formation.set(null);
-            group.nameLock = false; // Unlock name so it can update with new formation name
+            group.formationLock = false;
         }
-        if (!group.formation() && !group.nameLock) {
-            const definitions = this.getFormationDefinitions(group);
-            if (definitions.length > 0) {
-                const randomIndex = Math.floor(Math.random() * definitions.length);
-                group.formation.set(definitions[randomIndex]);
-            } else {
-                group.formation.set(null);
-            }
+        if (!group.formationLock) {
+            // Pick the best formation (weighted towards more specific types),
+            // upgrading when a better match becomes available.
+            const targetForce = group.force;
+            if (!targetForce) return;
+            const best = LanceTypeIdentifierUtil.getBestMatchForGroup(group);
+            group.formation.set(best);
         }
-    }
-
-    public getAllFormationsAvailable(group: UnitGroup): string[] | null {
-        const targetForce = group.force;
-        if (!targetForce) {
-            return null;
-        }
-        return FormationNamerUtil.getAvailableFormations(
-            group.units(),
-            targetForce.units(),
-            targetForce.faction(),
-            targetForce.gameSystem
-        );
-    }
-
-    public getFormationDefinitions(group: UnitGroup): FormationTypeDefinition[] {
-        const targetForce = group.force;
-        if (!targetForce) return [];
-        return FormationNamerUtil.getAvailableFormationDefinitions(
-            group.units(),
-            targetForce.units(),
-            targetForce.faction(),
-            targetForce.gameSystem
-        );
     }
 
     public showFormationInfo(group: UnitGroup): void {
         const targetForce = group.force;
         if (!targetForce) return;
         const formation = group.formation();
-        if (!formation) return;
+        if (!formation || isNoFormation(formation)) return;
         this.dialogsService.createDialog(FormationInfoDialogComponent, {
             data: {
                 formation,
@@ -1307,7 +1300,7 @@ export class ForceBuilderService {
                 );
             }
         } else if (params.has('instance')) {
-            // None of the instance IDs were found — clear them from URL
+            // None of the instance IDs were found: clear them from URL
             this.urlStateService.setParams({ instance: null });
         }
 
@@ -1416,6 +1409,13 @@ export class ForceBuilderService {
         
         if (!envelope) return;
         const { result, mode, alignment } = envelope;
+
+        // Handle operation loading (multi-force composition)
+        if (mode === 'operation' && result instanceof LoadOperationEntry) {
+            await this.loadOperation(result);
+            return;
+        }
+
         const isAdd = mode === 'add';
         const addAlignment: ForceAlignment = alignment ?? 'friendly';
 
@@ -1489,6 +1489,137 @@ export class ForceBuilderService {
             }
         }
     }
+
+    /* ----------------------------------------
+     * Operations (multi-force compositions)
+     */
+
+    /**
+     * Whether we can save an operation (need at least 2 loaded forces).
+     */
+    canSaveOperation = computed<boolean>(() => this.loadedForces().length >= 2);
+
+    /**
+     * Saves the current loaded force composition as an Operation.
+     * Each force must already be saved (have an instanceId).
+     * Opens a dialog for name, note, and a preview of the operation.
+     */
+    async saveOperation(): Promise<boolean> {
+        const slots = this.loadedForces();
+        if (slots.length < 2) {
+            this.toastService.showToast('Need at least 2 forces to save an operation.', 'error');
+            return false;
+        }
+
+        // Build force preview data for the dialog
+        const dialogForces: OpPreviewForce[] = slots.map(slot => ({
+            name: slot.force.name,
+            instanceId: slot.force.instanceId() || '',
+            alignment: slot.alignment,
+            type: slot.force.gameSystem,
+            bv: slot.force.gameSystem !== 'as' ? slot.force.totalBv() : undefined,
+            pv: slot.force.gameSystem === 'as' ? slot.force.totalBv() : undefined,
+        }));
+
+        // Open the save-operation dialog
+        const dialogData: OperationDialogData = {
+            title: 'Save Operation',
+            name: 'Operation',
+            note: '',
+            forces: dialogForces,
+        };
+        const ref = this.dialogsService.createDialog<OperationDialogResult | null>(
+            SaveOperationDialogComponent,
+            { data: dialogData }
+        );
+        const result = await firstValueFrom(ref.closed);
+        if (!result) return false; // User cancelled
+
+        // Ensure all forces are saved first
+        for (const slot of slots) {
+            if (!slot.force.instanceId()) {
+                const saved = await this.saveForceWithNameConfirmation(slot.force);
+                if (!saved) {
+                    this.toastService.showToast('All forces must be saved before saving an operation.', 'info');
+                    return false;
+                }
+            }
+        }
+
+        const forces: OperationForceRef[] = slots.map(slot => ({
+            instanceId: slot.force.instanceId()!,
+            alignment: slot.alignment,
+            timestamp: slot.force.timestamp || new Date().toISOString(),
+        }));
+
+        const op: SerializedOperation = {
+            operationId: generateUUID(),
+            name: result.name,
+            note: result.note,
+            timestamp: Date.now(),
+            forces,
+        };
+
+        try {
+            await this.dataService.saveOperation(op);
+            this.toastService.showToast('Operation saved.', 'success');
+            return true;
+        } catch (error) {
+            this.logger.error('Failed to save operation: ' + error);
+            this.toastService.showToast('Failed to save operation.', 'error');
+            return false;
+        }
+    }
+
+    /**
+     * Loads an operation: clears all current forces and loads each force
+     * from the operation with its saved alignment.
+     * Falls back to local storage if cloud doesn't have a force.
+     */
+    async loadOperation(entry: LoadOperationEntry): Promise<boolean> {
+        const shouldContinue = await this.checkAllForcesPromptSaveForceIfNeeded();
+        if (!shouldContinue) return false;
+
+        this.urlStateInitialized.set(false);
+        try {
+            // Clear everything
+            for (const slot of this.loadedForces()) {
+                this.teardownForceSlot(slot);
+            }
+            this.selectedUnit.set(null);
+            this.loadedForces.set([]);
+
+            let loadedAny = false;
+            const failedForces: string[] = [];
+
+            for (const forceInfo of entry.forces) {
+                const force = await this.dataService.getForce(forceInfo.instanceId);
+                if (force) {
+                    this.addLoadedForce(force, forceInfo.alignment, { activate: !loadedAny });
+                    loadedAny = true;
+                } else {
+                    failedForces.push(forceInfo.name || forceInfo.instanceId);
+                }
+            }
+
+            if (failedForces.length > 0) {
+                this.toastService.showToast(
+                    `Could not find force(s): ${failedForces.join(', ')}`,
+                    'error'
+                );
+            }
+
+            if (!loadedAny) {
+                this.toastService.showToast('No forces from this operation could be loaded.', 'error');
+                return false;
+            }
+
+            return true;
+        } finally {
+            this.urlStateInitialized.set(true);
+        }
+    }
+
 
     async promptChangeForceName(force: Force) {
         if (!force) {
@@ -1572,13 +1703,12 @@ export class ForceBuilderService {
         if (result !== null && result !== undefined) {
             // Apply formation change
             group.formation.set(result.formation);
+            this.assignFormationIfNeeded(group);
 
             // Apply name change
             if (result.name === '' || result.name === null) {
-                group.nameLock = false;
-                this.assignFormationIfNeeded(group);
+                group.setName(undefined);
             } else {
-                group.nameLock = true;
                 group.setName(result.name.trim());
             }
         }

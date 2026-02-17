@@ -217,10 +217,12 @@ export class ForceNamerUtil {
     // ── Faction Analysis ────────────────────────────────────────────────────
 
     /**
-     * Returns matching factions for a set of units (factions where ≥70% of units belong).
+     * Returns matching factions for a set of units.
      * Map key is the faction name, value is the highest match percentage across eras.
+     * @param minPercentage Minimum match threshold (default: MIN_UNITS_PERCENTAGE = 0.7).
+     *                      Pass 0 to include all factions with any match.
      */
-    public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[]): Map<string, number> | null {
+    public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[], minPercentage = MIN_UNITS_PERCENTAGE): Map<string, number> | null {
         if (!units?.length) return null;
         const referenceYear = units.reduce(
             (max, u) => Math.max(max, u.getUnit().year),
@@ -247,7 +249,7 @@ export class ForceNamerUtil {
                     highestPercentage = Math.max(highestPercentage, count / totalUnits);
                 }
             }
-            if (highestPercentage >= MIN_UNITS_PERCENTAGE) {
+            if (highestPercentage > 0 && highestPercentage >= minPercentage) {
                 results.set(faction.name, highestPercentage);
             }
         }
@@ -292,16 +294,16 @@ export class ForceNamerUtil {
         allFactions: Faction[],
         eras: Era[]
     ): FactionDisplayInfo[] {
-        const matchMap = this.getAvailableFactions(units, allFactions, eras);
+        const rawPctMap = this.getAvailableFactions(units, allFactions, eras, 0);
         const result: FactionDisplayInfo[] = [];
 
         for (const faction of allFactions) {
             if (faction.id === FACTION_EXTINCT) continue;
-            const matchPct = matchMap?.get(faction.name) ?? 0;
+            const rawPct = rawPctMap?.get(faction.name) ?? 0;
             result.push({
                 faction,
-                matchPercentage: matchPct,
-                isMatching: matchPct > 0,
+                matchPercentage: rawPct,
+                isMatching: rawPct >= MIN_UNITS_PERCENTAGE,
                 eraAvailability: eras.map(era => ({
                     era,
                     isAvailable: faction.eras[era.id] != null && (faction.eras[era.id] as Set<number>).size > 0
@@ -309,36 +311,12 @@ export class ForceNamerUtil {
             });
         }
 
-        result.sort((a, b) => {
-            if (a.isMatching && !b.isMatching) return -1;
-            if (!a.isMatching && b.isMatching) return 1;
-            if (a.isMatching && b.isMatching) return b.matchPercentage - a.matchPercentage;
-            return a.faction.name.localeCompare(b.faction.name);
-        });
+        result.sort((a, b) =>
+            b.matchPercentage - a.matchPercentage
+            || a.faction.name.localeCompare(b.faction.name)
+        );
 
         return result;
-    }
-
-    // ── Tech Base ───────────────────────────────────────────────────────────
-
-    /** Determine the majority tech base of a set of units. */
-    static getTechBase(units: ForceUnit[]): string {
-        const counts: Record<string, number> = {};
-        for (const unit of units) {
-            const tb = unit.getUnit().techBase;
-            if (tb === 'Mixed') {
-                counts['Clan'] = (counts['Clan'] || 0) + 1;
-                counts['Inner Sphere'] = (counts['Inner Sphere'] || 0) + 1;
-            } else {
-                counts[tb] = (counts[tb] || 0) + 1;
-            }
-        }
-        let majority = 'Inner Sphere';
-        let max = 0;
-        for (const [tb, count] of Object.entries(counts)) {
-            if (count > max) { majority = tb; max = count; }
-        }
-        return majority;
     }
 
     // ── Force Name Generation ───────────────────────────────────────────────
