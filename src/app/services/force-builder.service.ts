@@ -627,10 +627,11 @@ export class ForceBuilderService {
             } else
             if (unit.type === 'Infantry') {
                 if (!canAntiMech(unit)) {
-                    if (unit.subtype === 'Conventional Infantry') {
-                        pilotingSkill = NO_ANTIMEK_SKILL;
-                    } else {
+                    if (unit.subtype.includes('Mechanized')) {
                         pilotingSkill = DEFAULT_PILOTING_SKILL;
+                    } else
+                    if (unit.subtype.includes('Conventional Infantry')) {
+                        pilotingSkill = NO_ANTIMEK_SKILL;
                     }
                 }
             }

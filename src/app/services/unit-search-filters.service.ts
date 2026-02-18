@@ -3082,10 +3082,11 @@ export class UnitSearchFiltersService {
         } else
         if (unit.type === 'Infantry') {
             if (!canAntiMech(unit)) {
-                if (unit.subtype === 'Conventional Infantry') {
-                    piloting = NO_ANTIMEK_SKILL;
-                } else {
+                if (unit.subtype.includes('Mechanized')) {
                     piloting = DEFAULT_PILOTING_SKILL;
+                } else
+                if (unit.subtype.includes('Conventional Infantry')) {
+                    piloting = NO_ANTIMEK_SKILL;
                 }
             }
         }

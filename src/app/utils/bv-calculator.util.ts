@@ -79,10 +79,11 @@ export class BVCalculatorUtil {
         if (unit.type === 'Infantry') {
             // Evaluate anti-mech capability for infantry units
             if (!canAntiMech(unit)) {
-                if (unit.subtype === 'Conventional Infantry') {
-                    pilotingSkill = NO_ANTIMEK_SKILL;
-                } else {
+                if (unit.subtype.includes('Mechanized')) {
                     pilotingSkill = DEFAULT_PILOTING_SKILL;
+                } else
+                if (unit.subtype.includes('Conventional Infantry')) {
+                    pilotingSkill = NO_ANTIMEK_SKILL;
                 }
             }
         }

@@ -171,10 +171,11 @@ export class CrewMember {
             let finalPilotingSkill = data.pilotingSkill;
             if (baseUnit.type === 'Infantry') {
                 if (!canAntiMech(baseUnit)) {
-                    if (baseUnit.subtype === 'Conventional Infantry') {
-                        finalPilotingSkill = NO_ANTIMEK_SKILL;
-                    } else {
+                    if (baseUnit.subtype.includes('Mechanized')) {
                         finalPilotingSkill = DEFAULT_PILOTING_SKILL;
+                    } else
+                    if (baseUnit.subtype.includes('Conventional Infantry')) {
+                        finalPilotingSkill = NO_ANTIMEK_SKILL;
                     }
                 }
             }
