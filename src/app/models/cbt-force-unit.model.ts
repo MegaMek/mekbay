@@ -571,7 +571,7 @@ export class CBTForceUnit extends ForceUnit {
         const hasAESinLegs = critSlots.some(slot => slot.name && slot.loc && !slot.destroyed && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
         const hasAESinLegsDestroyed = critSlots.some(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
         if (hasAESinLegs && !hasAESinLegsDestroyed) {
-            preExisting -= 2; // AES in legs intact gives -1 modifier
+            preExisting -= 2; // AES in legs intact gives -2 modifier
             modifiers.push({
                 pilotCheck: -2,
                 reason: "'Mech mounts AES in its legs"
