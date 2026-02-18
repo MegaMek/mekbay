@@ -355,6 +355,27 @@ export class App {
         return false;
     }
 
+    private normalizeProtocolLinkPayload(value: string): string {
+        const decoded = (() => {
+            try {
+                return decodeURIComponent(value);
+            } catch {
+                return value;
+            }
+        })();
+
+        // URLSearchParams decodes '+' as space. Recover our custom scheme if needed.
+        if (decoded.startsWith('web mekbay://')) {
+            return 'web+mekbay://' + decoded.slice('web mekbay://'.length);
+        }
+
+        if (decoded.startsWith('web mekbay:')) {
+            return 'web+mekbay:' + decoded.slice('web mekbay:'.length);
+        }
+
+        return decoded;
+    }
+
     private startPeriodicUpdateChecks() {
         this.stopPeriodicUpdateChecks();
         const scheduleNext = () => {
@@ -446,13 +467,7 @@ export class App {
 
         const encodedProtocolLink = params.get('protocolLink');
         if (encodedProtocolLink) {
-            const decodedProtocolLink = (() => {
-                try {
-                    return decodeURIComponent(encodedProtocolLink);
-                } catch {
-                    return encodedProtocolLink;
-                }
-            })();
+            const decodedProtocolLink = this.normalizeProtocolLinkPayload(encodedProtocolLink);
 
             let protocolUrl: URL;
             try {
