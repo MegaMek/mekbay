@@ -246,7 +246,7 @@ export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
     { key: 'internal', semanticKey: 'structure', label: 'Structure', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
     { key: '_mdSumNoPhysical', semanticKey: 'firepower', label: 'Firepower', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
     { key: 'dpt', semanticKey: 'dpt', label: 'Damage/Turn', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'heat', semanticKey: 'heat', label: 'Total Weapons Heat', curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
+    { key: 'heat', semanticKey: 'heat', label: 'Heat', curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
     { key: 'dissipation', semanticKey: 'dissipation', label: 'Dissipation', curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
     { key: '_dissipationEfficiency', semanticKey: 'efficiency', label: 'Heat Efficiency', curve: 1, game: GameSystem.CLASSIC },
     { key: '_maxRange', semanticKey: 'range', label: 'Range', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },

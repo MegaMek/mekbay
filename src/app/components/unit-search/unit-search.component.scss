@@ -415,6 +415,8 @@
 .chassis-view-td-chassis {
     font-weight: bold;
     min-width: 0;
+    white-space: normal;
+    word-break: break-word;
 }
 
 .chassis-view-td-value {
