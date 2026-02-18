@@ -34,6 +34,7 @@
 import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
 
 import { SwUpdate } from '@angular/service-worker';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { PageViewerComponent } from './components/page-viewer/page-viewer.component';
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
@@ -104,6 +105,7 @@ export class App {
     public gameService = inject(GameService);
     private urlStateService = inject(UrlStateService);
     private savedSearchesService = inject(SavedSearchesService);
+    private destroyRef = inject(DestroyRef);
 
     protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
@@ -149,9 +151,27 @@ export class App {
         window.addEventListener('appinstalled', this.appInstalledHandler);
         document.addEventListener('contextmenu', this.contextMenuHandler);
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
-        // Periodic update checks (the PwaService handles SW registration)
         
         if (this.swUpdate.isEnabled) {
+            this.swUpdate.versionUpdates
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((event) => {
+                    switch (event.type) {
+                        case 'VERSION_DETECTED':
+                            this.logger.info('Service worker update detected, downloading...');
+                            break;
+                        case 'VERSION_READY':
+                            this.logger.info('Service worker update is ready');
+                            this.updateAvailable.set(true);
+                            break;
+                        case 'VERSION_INSTALLATION_FAILED':
+                            this.logger.error('Service worker update installation failed: ' + event.error);
+                            break;
+                        case 'NO_NEW_VERSION_DETECTED':
+                            // this.logger.info('No new service worker version detected');
+                            break;
+                    }
+                });
             this.startPeriodicUpdateChecks();
             this.checkForUpdate(true);
         }
@@ -251,7 +271,7 @@ export class App {
                 this.unitSearchFiltersService.processPendingForeignTags();
             }
         });
-        inject(DestroyRef).onDestroy(() => {
+        this.destroyRef.onDestroy(() => {
             this.stopPeriodicUpdateChecks();
             this.removeBeforeUnloadHandler();
             window.removeEventListener('beforeinstallprompt', this.beforeInstallPromptHandler);
@@ -317,10 +337,10 @@ export class App {
         this.lastUpdateCheck = now;
 
         try {
-            // Fire the check: if an update is found, the pwaService.updateAvailable
-            // signal will be set via the SW's updatefound/statechange listeners,
-            // and the effect in the constructor propagates it to this.updateAvailable.
-            await this.swUpdate.checkForUpdate();
+            if (await this.swUpdate.checkForUpdate()) {
+                this.logger.info('Update available');
+                this.updateAvailable.set(true);
+            }
         } catch (err) {
             this.logger.error('Error checking for updates:' + err);
         }
