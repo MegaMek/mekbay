@@ -1403,8 +1403,10 @@ export class ForceBuilderService {
      * Force Load and Pack Dialogs
      */
 
-    async showLoadForceDialog(): Promise<void> {
-        const ref = this.dialogsService.createDialog<ForceLoadDialogResult>(ForceLoadDialogComponent);
+    async showLoadForceDialog(options?: { initialTab?: string }): Promise<void> {
+        const ref = this.dialogsService.createDialog<ForceLoadDialogResult>(ForceLoadDialogComponent, {
+            data: options ?? undefined,
+        });
         const envelope = await firstValueFrom(ref.closed);
         
         if (!envelope) return;

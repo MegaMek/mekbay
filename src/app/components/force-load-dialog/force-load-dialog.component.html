@@ -1,7 +1,7 @@
 @let unitDisplayName = optionsService.options().unitDisplayName;
 <base-dialog modalClass="wide" [tabs]="tabs" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)" >
     <div dialog-header>
-        <div class="title">Load Force</div>
+        <div class="title">Load</div>
     </div>
     <div dialog-body>
         @if (!loading()) {

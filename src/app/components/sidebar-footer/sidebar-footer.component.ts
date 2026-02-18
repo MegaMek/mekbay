@@ -151,6 +151,10 @@ export class SidebarFooterComponent {
         await this.forceBuilderService.saveOperation();
     }
 
+    loadOperation(): void {
+        this.forceBuilderService.showLoadForceDialog({ initialTab: 'Operations' });
+    }
+
     async requestRepairAll(): Promise<void> {
         const force = this.forceBuilderService.smartCurrentForce();
         if (!force || force.readOnly()) {return; }

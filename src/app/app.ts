@@ -153,7 +153,7 @@ export class App {
         
         if (this.swUpdate.isEnabled) {
             this.startPeriodicUpdateChecks();
-            this.checkForUpdate();
+            this.checkForUpdate(true);
         }
         this.wsService.setGlobalErrorHandler((msg: string) => {
             this.toastService.showToast(msg, 'error');
@@ -307,6 +307,7 @@ export class App {
     };
 
     private async checkForUpdate(force = false) {
+        if (!this.swUpdate.isEnabled) return;
         const now = Date.now();
         // Prevent too frequent checks
         if (!force && now - this.lastUpdateCheck < (this.updateCheckInterval / 4)) {

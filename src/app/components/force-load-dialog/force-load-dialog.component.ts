@@ -33,7 +33,7 @@
 
 import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DialogRef } from '@angular/cdk/dialog';
+import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
@@ -92,6 +92,10 @@ export interface ForceLoadDialogEnvelope {
 
 export type ForceLoadDialogResult = ForceLoadDialogEnvelope | null;
 
+export interface ForceLoadDialogData {
+    initialTab?: string;
+}
+
 @Component({
     selector: 'force-load-dialog',
     standalone: true,
@@ -102,6 +106,7 @@ export type ForceLoadDialogResult = ForceLoadDialogEnvelope | null;
 })
 export class ForceLoadDialogComponent {
     private dialogRef = inject(DialogRef<ForceLoadDialogResult>);
+    private dialogData: ForceLoadDialogData | null = inject(DIALOG_DATA, { optional: true });
     private dataService = inject(DataService);
     forceBuilderService = inject(ForceBuilderService);
     optionsService = inject(OptionsService);
@@ -116,7 +121,7 @@ export class ForceLoadDialogComponent {
     loading = signal<boolean>(true);
 
     tabs = ['Hangar', 'Force Packs', 'Operations'];
-    activeTab = signal(this.tabs[0]);
+    activeTab = signal(this.dialogData?.initialTab ?? this.tabs[0]);
 
     searchText = signal<string>('');
 
