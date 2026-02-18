@@ -338,22 +338,27 @@
 
 /* Compact Chassis-Grouped View */
 .chassis-view-grid {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0 8px;
     overflow-y: auto;
     flex: 1;
     min-height: 0;
     scrollbar-width: thin;
     container-type: inline-size;
-    container-name: compact-grid;
+    container-name: chassis-grid;
+
+    &.has-sort-slot {
+        grid-template-columns: auto 1fr auto auto;
+    }
 }
 
 .chassis-view-header {
     display: grid;
-    grid-template-columns: auto 36px 1fr auto;
-    gap: 8px;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
     align-items: center;
-    padding: 6px 12px;
+    padding: 6px;
     background-color: #333;
     border-bottom: 2px solid #555;
     font-weight: bold;
@@ -371,17 +376,16 @@
 }
 
 .chassis-view-th-count { text-align: center; min-width: 32px; }
-.chassis-view-th-icon { text-align: center; }
 .chassis-view-th-chassis { text-align: left; }
-.chassis-view-th-value { text-align: right; }
+.chassis-view-th-value { text-align: center; }
 
 .chassis-view-row {
     display: grid;
-    /* Small layout: count icon chassis value */
-    grid-template-columns: auto 36px 1fr auto;
-    gap: 8px;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
     align-items: center;
-    padding: 6px 12px;
+    padding: 6px;
+    gap: 12px;
     cursor: pointer;
     border-bottom: 1px solid #444;
     transition: background-color 0.15s;
@@ -402,13 +406,6 @@
     white-space: nowrap;
 }
 
-.chassis-view-td-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
 .chassis-view-td-chassis {
     font-weight: bold;
     min-width: 0;
@@ -417,7 +414,7 @@
 .chassis-view-td-value {
     color: var(--text-color-secondary);
     font-size: 0.9em;
-    text-align: right;
+    text-align: center;
 }
 
 .chassis-view-td-count {
@@ -432,6 +429,17 @@
         margin-right: 2px;
         font-weight: normal;
     }
+}
+
+.chassis-view-th-sort-slot {
+    text-align: center;
+}
+
+.chassis-view-td-sort-slot {
+    color: var(--text-color-secondary);
+    font-size: 0.9em;
+    text-align: center;
+    white-space: nowrap;
 }
 
 .adv-panel-header {

@@ -80,9 +80,6 @@ export interface ChassisGroup {
     chassis: string;
     type: UnitType;
     displayType: string;
-    icon: string;
-    /** A representative unit (first encountered) for icon display */
-    representativeUnit: Unit;
     variantCount: number;
     minBV: number;
     maxBV: number;
@@ -204,9 +201,6 @@ export class UnitSearchComponent {
                     chassis: unit.chassis,
                     type: unit.type,
                     displayType: unit._displayType,
-                    icon: unit.icon,
-                    /** Store a representative unit for the icon component */
-                    representativeUnit: unit,
                     variantCount: 0,
                     minBV: Infinity,
                     maxBV: -Infinity,
@@ -241,6 +235,30 @@ export class UnitSearchComponent {
     inlinePanelHasNext = computed(() => {
         const index = this.inlinePanelIndex();
         return index >= 0 && index < this.filtersService.filteredUnits().length - 1;
+    });
+
+    /** Keys already visible in the chassis view (PV for AS, BV for CBT) */
+    private static readonly CHASSIS_VIEW_VISIBLE_KEYS = ['as.PV', 'bv'];
+
+    /**
+     * For chassis view: returns the sort slot header label if the current sort
+     * is numerical and not already visible (PV/BV), otherwise null.
+     */
+    readonly chassisSortSlotHeader = computed((): string | null => {
+        const key = this.filtersService.selectedSort();
+        if (!key) return null;
+
+        // PV and BV are already visible in the value column
+        if (UnitSearchComponent.CHASSIS_VIEW_VISIBLE_KEYS.includes(key)) return null;
+
+        // Check if the sort key produces numerical values
+        const units = this.filtersService.filteredUnits();
+        if (units.length === 0) return null;
+        const sample = this.getNestedProperty(units[0], key);
+        if (typeof sample !== 'number') return null;
+
+        const opt: SortOption | undefined = this.SORT_OPTIONS.find(o => o.key === key);
+        return opt?.slotLabel || opt?.label || key;
     });
 
     /**
@@ -1000,6 +1018,34 @@ export class UnitSearchComponent {
 
         const numeric = typeof raw === 'number';
         return numeric ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
+    }
+
+    /**
+     * Get the sort slot display for a chassis group.
+     * Returns a formatted min–max range (or single value) for the current sort key, or null.
+     */
+    getChassisGroupSortSlot(group: ChassisGroup): string | null {
+        const key = this.filtersService.selectedSort();
+        if (!key || UnitSearchComponent.CHASSIS_VIEW_VISIBLE_KEYS.includes(key)) return null;
+
+        let min = Infinity;
+        let max = -Infinity;
+        let isNumeric = false;
+
+        for (const unit of group.units) {
+            const raw = this.getNestedProperty(unit, key);
+            if (typeof raw === 'number') {
+                isNumeric = true;
+                if (raw < min) min = raw;
+                if (raw > max) max = raw;
+            }
+        }
+
+        if (!isNumeric) return null;
+
+        const fmtMin = FormatNumberPipe.formatValue(min, true, false);
+        const fmtMax = FormatNumberPipe.formatValue(max, true, false);
+        return min === max ? fmtMin : `${fmtMin}–${fmtMax}`;
     }
 
     /** Get a nested property value using dot notation (e.g., 'as.PV') */

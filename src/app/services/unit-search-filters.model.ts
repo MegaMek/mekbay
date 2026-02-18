@@ -243,7 +243,7 @@ export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
     { key: 'tons', semanticKey: 'tons', label: 'Tons', curve: DEFAULT_FILTER_CURVE, stepSize: 5, game: GameSystem.CLASSIC },
     { key: 'armor', semanticKey: 'armor', label: 'Armor', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
     { key: 'armorPer', semanticKey: 'armorpct', label: 'Armor %', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
-    { key: 'internal', semanticKey: 'structure', label: 'Structure / Squad Size', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
+    { key: 'internal', semanticKey: 'structure', label: 'Structure', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
     { key: '_mdSumNoPhysical', semanticKey: 'firepower', label: 'Firepower', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
     { key: 'dpt', semanticKey: 'dpt', label: 'Damage/Turn', curve: DEFAULT_FILTER_CURVE, game: GameSystem.CLASSIC },
     { key: 'heat', semanticKey: 'heat', label: 'Total Weapons Heat', curve: DEFAULT_FILTER_CURVE, ignoreValues: [-1], game: GameSystem.CLASSIC },
