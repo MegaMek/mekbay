@@ -231,19 +231,21 @@ export class ForceLoadDialogComponent {
         this.operationsLoading.set(true);
         try {
             const result = await this.dataService.listOperations();
-            // Enrich any operation forces that are missing metadata
-            // using the already-loaded forces list (covers cloud-only forces
-            // that aren't in local IndexedDB).
+
+            // Build a local force lookup from the already-loaded forces list
             const forceMap = new Map<string, LoadForceEntry>();
             for (const f of this.forces()) {
                 if (f.instanceId) forceMap.set(f.instanceId, f);
             }
+
+            // First pass: enrich all operations with local force data
             for (const op of (result || [])) {
                 for (const fi of op.forces) {
                     if (!fi.name && forceMap.has(fi.instanceId)) {
                         const entry = forceMap.get(fi.instanceId)!;
                         fi.name = entry.name;
                         fi.type = entry.type;
+                        fi.factionId = entry.factionId;
                         fi.bv = entry.bv;
                         fi.pv = entry.pv;
                         fi.forceTimestamp = entry.timestamp;
@@ -251,6 +253,40 @@ export class ForceLoadDialogComponent {
                     }
                 }
             }
+
+            // Second pass: for local-only operations, collect force instanceIds
+            // that are still missing metadata and request them from the cloud.
+            const missingInstanceIds = new Set<string>();
+            const localOnlyOps = (result || []).filter(op => op.local && !op.cloud);
+            for (const op of localOnlyOps) {
+                for (const fi of op.forces) {
+                    if (!fi.name) {
+                        missingInstanceIds.add(fi.instanceId);
+                    }
+                }
+            }
+
+            if (missingInstanceIds.size > 0) {
+                const cloudInfo = await this.dataService.getForceInfoBulk(Array.from(missingInstanceIds));
+                if (cloudInfo.size > 0) {
+                    // Apply cloud enrichment to the still-missing forces
+                    for (const op of localOnlyOps) {
+                        for (const fi of op.forces) {
+                            if (!fi.name && cloudInfo.has(fi.instanceId)) {
+                                const info = cloudInfo.get(fi.instanceId)!;
+                                fi.name = info.name;
+                                fi.type = info.type;
+                                fi.factionId = info.factionId;
+                                fi.bv = info.bv;
+                                fi.pv = info.pv;
+                                fi.forceTimestamp = info.forceTimestamp;
+                                fi.exists = true;
+                            }
+                        }
+                    }
+                }
+            }
+
             this.operations.set(result || []);
         } finally {
             this.operationsLoading.set(false);

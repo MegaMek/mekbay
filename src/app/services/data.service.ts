@@ -1281,6 +1281,7 @@ export class DataService {
                 if (localTs > cloudTs) {
                     cloudForce.name = localForce.name ?? cloudForce.name;
                     cloudForce.type = localForce.type ?? cloudForce.type;
+                    cloudForce.factionId = localForce.factionId ?? cloudForce.factionId;
                     cloudForce.bv = localForce.bv ?? cloudForce.bv;
                     cloudForce.pv = localForce.pv ?? cloudForce.pv;
                     cloudForce.forceTimestamp = localForce.forceTimestamp;
@@ -1306,6 +1307,7 @@ export class DataService {
                     timestamp: ref.timestamp,
                     name: localForce?.name,
                     type: localForce?.type as GameSystem | undefined,
+                    factionId: localForce?.factionId,
                     bv: localForce?.bv,
                     pv: localForce?.pv,
                     forceTimestamp: localForce?.timestamp,
@@ -1344,6 +1346,7 @@ export class DataService {
                 timestamp: f.timestamp,
                 name: f.name,
                 type: f.type,
+                factionId: f.factionId,
                 bv: f.bv,
                 pv: f.pv,
                 forceTimestamp: f.forceTimestamp,
@@ -1360,6 +1363,49 @@ export class DataService {
             action: 'saveOperation',
             data: op,
         });
+    }
+
+    /**
+     * Bulk-fetch basic force metadata from the cloud for a list of instanceIds.
+     * Returns enrichment data (name, type, bv, pv, timestamp) for each found force.
+     * Sends requests in chunks of 100 to stay within the server limit.
+     */
+    private static readonly FORCE_INFO_CHUNK_SIZE = 100;
+
+    public async getForceInfoBulk(instanceIds: string[]): Promise<Map<string, OperationForceInfo>> {
+        const result = new Map<string, OperationForceInfo>();
+        const ws = await this.canUseCloud();
+        if (!ws || instanceIds.length === 0) return result;
+
+        try {
+            for (let i = 0; i < instanceIds.length; i += DataService.FORCE_INFO_CHUNK_SIZE) {
+                const chunk = instanceIds.slice(i, i + DataService.FORCE_INFO_CHUNK_SIZE);
+                const response = await this.wsService.sendAndWaitForResponse({
+                    action: 'getForceInfoBulk',
+                    instanceIds: chunk,
+                });
+                if (!response?.data || !Array.isArray(response.data)) continue;
+
+                for (const entry of response.data) {
+                    result.set(entry.instanceId, {
+                        instanceId: entry.instanceId,
+                        alignment: 'friendly', // placeholder, caller should override
+                        timestamp: '',          // placeholder, caller should override
+                        name: entry.name,
+                        type: entry.type,
+                        factionId: entry.factionId,
+                        bv: entry.bv,
+                        pv: entry.pv,
+                        forceTimestamp: entry.timestamp,
+                        exists: true,
+                    });
+                }
+            }
+        } catch (err) {
+            this.logger.error(`Failed to fetch force info bulk: ${err}`);
+        }
+
+        return result;
     }
 
 
