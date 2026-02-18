@@ -334,6 +334,106 @@
     background-color: #1a1a1a;
 }
 
+/* View mode button - no extra styling needed, icon changes indicate state */
+
+/* Compact Chassis-Grouped View */
+.chassis-view-grid {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    scrollbar-width: thin;
+    container-type: inline-size;
+    container-name: compact-grid;
+}
+
+.chassis-view-header {
+    display: grid;
+    grid-template-columns: auto 36px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 12px;
+    background-color: #333;
+    border-bottom: 2px solid #555;
+    font-weight: bold;
+    font-size: 0.85em;
+    color: var(--text-color-secondary);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.chassis-view-th {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chassis-view-th-count { text-align: center; min-width: 32px; }
+.chassis-view-th-icon { text-align: center; }
+.chassis-view-th-chassis { text-align: left; }
+.chassis-view-th-value { text-align: right; }
+
+.chassis-view-row {
+    display: grid;
+    /* Small layout: count icon chassis value */
+    grid-template-columns: auto 36px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #444;
+    transition: background-color 0.15s;
+    min-height: 40px;
+
+    &:hover {
+        background-color: var(--background-highlight);
+    }
+
+    &:last-child {
+        border-bottom: none;
+    }
+}
+
+.chassis-view-td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chassis-view-td-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.chassis-view-td-chassis {
+    font-weight: bold;
+    min-width: 0;
+}
+
+.chassis-view-td-value {
+    color: var(--text-color-secondary);
+    font-size: 0.9em;
+    text-align: right;
+}
+
+.chassis-view-td-count {
+    color: var(--bt-yellow);
+    font-weight: bold;
+    font-size: 0.9em;
+    text-align: center;
+    min-width: 32px;
+
+    &::after {
+        content: '\00d7'; /* multiplication sign */
+        margin-right: 2px;
+        font-weight: normal;
+    }
+}
+
 .adv-panel-header {
     display: grid;
     grid-template-columns: 1fr;

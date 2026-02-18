@@ -73,6 +73,23 @@ import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-pa
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { formatMovement } from '../../utils/as-common.util';
+import { UnitType } from '../../models/units.model';
+
+/** Grouped chassis entry for compact view */
+export interface ChassisGroup {
+    chassis: string;
+    type: UnitType;
+    displayType: string;
+    icon: string;
+    /** A representative unit (first encountered) for icon display */
+    representativeUnit: Unit;
+    variantCount: number;
+    minBV: number;
+    maxBV: number;
+    minPV: number;
+    maxPV: number;
+    units: Unit[];
+}
 
 @Component({
     selector: 'unit-search',
@@ -147,8 +164,15 @@ export class UnitSearchComponent {
     selectedUnits = signal<Set<string>>(new Set());
     private unitDetailsDialogOpen = signal(false);
 
-    /** Whether card view mode is active (shows alpha-strike cards in a grid) */
-    cardView = signal(false);
+    /**
+     * Current results view mode.
+     * - 'list'    : default list / table view
+     * - 'card'    : AS card grid (Alpha Strike only)
+     * - 'chassis' : compact chassis-grouped view
+     */
+    viewMode = signal<'list' | 'card' | 'chassis'>('list');
+
+
 
     /** Unit currently selected for inline details panel in expanded view */
     inlinePanelUnit = signal<Unit | null>(null);
@@ -159,6 +183,48 @@ export class UnitSearchComponent {
     /** Whether to show the inline details panel (expanded view + sufficient screen width) */
     showInlinePanel = computed(() => {
         return this.expandedView() && this.layoutService.windowWidth() >= this.INLINE_PANEL_MIN_WIDTH;
+    });
+
+    /**
+     * Units grouped by chassis+type for compact view.
+     * Each group contains summary info (BV range, tonnage, year range, variant count).
+     */
+    readonly groupedUnits = computed((): ChassisGroup[] => {
+        const units = this.filtersService.filteredUnits();
+        if (units.length === 0) return [];
+
+        const isAS = this.gameService.isAlphaStrike();
+        const map = new Map<string, ChassisGroup>();
+
+        for (const unit of units) {
+            const key = `${unit.type}|||${unit.chassis}`;
+            let group = map.get(key);
+            if (!group) {
+                group = {
+                    chassis: unit.chassis,
+                    type: unit.type,
+                    displayType: unit._displayType,
+                    icon: unit.icon,
+                    /** Store a representative unit for the icon component */
+                    representativeUnit: unit,
+                    variantCount: 0,
+                    minBV: Infinity,
+                    maxBV: -Infinity,
+                    minPV: Infinity,
+                    maxPV: -Infinity,
+                    units: [],
+                };
+                map.set(key, group);
+            }
+            group.variantCount++;
+            group.units.push(unit);
+            if (unit.bv < group.minBV) group.minBV = unit.bv;
+            if (unit.bv > group.maxBV) group.maxBV = unit.bv;
+            if (unit.pv < group.minPV) group.minPV = unit.pv;
+            if (unit.pv > group.maxPV) group.maxPV = unit.pv;
+        }
+
+        return Array.from(map.values());
     });
 
     /** Index of the currently selected unit in the filtered list */
@@ -318,6 +384,15 @@ export class UnitSearchComponent {
         effect(() => {
             this.savedSearchesService.version(); // Subscribe to changes
             untracked(() => this.refreshFavoritesOverlay());
+        });
+        // When switching game system from AS to CBT, reset card view to list
+        effect(() => {
+            const isAS = this.gameService.isAlphaStrike();
+            untracked(() => {
+                if (!isAS && this.viewMode() === 'card') {
+                    this.viewMode.set('list');
+                }
+            });
         });
         effect(() => {
             if (this.advOpen()) {
@@ -1182,8 +1257,38 @@ export class UnitSearchComponent {
         this.activeIndex.set(null);
     }
 
-    toggleCardView() {
-        this.cardView.update(v => !v);
+    /**
+     * Cycle through view modes.
+     * AS:  list → card → chassis → list
+     * CBT: list → chassis → list
+     */
+    cycleViewMode() {
+        const current = this.viewMode();
+        const isAS = this.gameService.isAlphaStrike();
+        if (isAS) {
+            // list → card → chassis → list
+            this.viewMode.set(current === 'list' ? 'card' : current === 'card' ? 'chassis' : 'list');
+        } else {
+            // list → chassis → list
+            this.viewMode.set(current === 'list' ? 'chassis' : 'list');
+        }
+    }
+
+    /**
+     * Handle click on a compact chassis group.
+     * Appends a chassis filter to the current search to drill down into variants.
+     */
+    onCompactGroupClick(group: ChassisGroup) {
+        // Build a chassis= filter and set it as the search text
+        const chassisFilter = `chassis="${group.chassis}"`;
+        const typeFilter = group.type ? ` type="${group.type}"` : '';
+        const fullFilter = chassisFilter + typeFilter;
+        const current = this.filtersService.searchText().trim();
+        const newSearch = current ? `${current} ${fullFilter}` : fullFilter;
+        this.immediateSearchText.set(newSearch);
+        this.filtersService.searchText.set(newSearch);
+        // Switch back to list view to show variants
+        this.viewMode.set('list');
     }
 
     openShareSearch(event: MouseEvent) {
