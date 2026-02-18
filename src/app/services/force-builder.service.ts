@@ -111,6 +111,8 @@ export class ForceBuilderService {
         return this.currentForce();
     });
     private urlStateInitialized = signal(false);
+    /** Guards initializeFromUrl so it only runs once (at startup). */
+    private urlInitRan = false;
     private conflictDialogRef: any;
 
     /** Current alignment filter: 'all' shows everything, 'friendly'/'enemy' filters by alignment. */
@@ -328,6 +330,12 @@ export class ForceBuilderService {
      * Pass `activate: false` to just add the slot without switching selection/filter.
      */
     addLoadedForce(force: Force, alignment: ForceAlignment = 'friendly', { activate = true }: { activate?: boolean } = {}): void {
+        // Guard against duplicate instanceIds (can occur from concurrent async loads)
+        const instanceId = force.instanceId();
+        if (instanceId && this.loadedForces().some(s => s.force.instanceId() === instanceId)) {
+            this.logger.warn(`ForceBuilderService: Skipping duplicate force "${force.name}" (instance: ${instanceId})`);
+            return;
+        }
         const slot = this.setupForceSlot(force, alignment);
         this.loadedForces.update(slots => [...slots, slot]);
 
@@ -1278,7 +1286,8 @@ export class ForceBuilderService {
         effect(() => {
             const isDataReady = this.dataService.isDataReady();
             // This effect runs when data is ready, but we only execute the logic once.
-            if (isDataReady && !this.urlStateInitialized()) {
+            if (!this.urlInitRan && isDataReady && !this.urlStateInitialized()) {
+                this.urlInitRan = true;
                 // Fire the async work without awaiting
                 untracked(() => {
                     this.initializeFromUrl();
