@@ -338,6 +338,7 @@
 .chassis-view-grid {
     display: grid;
     grid-template-columns: auto 1fr auto;
+    align-content: start;
     gap: 0 8px;
     overflow-y: auto;
     flex: 1;
