@@ -885,6 +885,12 @@ span {
             background-color: var(--background-highlight);
         }
 
+        &:focus-visible,
+        &.cdk-keyboard-focused,
+        &.cdk-program-focused {
+            background-color: var(--background-highlight);
+        }
+
         &:disabled {
             color: var(--text-color-tertiary);
             cursor: not-allowed;
@@ -902,6 +908,14 @@ span {
                 width: 100%;
                 height: 100%;
             }
+        }
+
+        &[aria-haspopup='menu']::after {
+            content: '›';
+            margin-left: auto;
+            opacity: 0.75;
+            font-size: 1.2em;
+            line-height: 1;
         }
 
     }
