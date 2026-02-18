@@ -1097,6 +1097,12 @@ export class DataService {
      * List operations, merging local and cloud.
      * Cloud entries include joined force metadata; local entries are enriched
      * with locally available force data.
+     *
+     * After merging:
+     * - Cloud operations are saved locally for offline access.
+     * - Local-only operations are verified against the cloud to detect
+     *   ownership conflicts (e.g. user changed accounts). If a conflict is
+     *   found, the local operation gets a new operationId and is saved to cloud.
      */
     public async listOperations(): Promise<LoadOperationEntry[]> {
         const [localOps, cloudOps] = await Promise.all([
@@ -1112,6 +1118,7 @@ export class DataService {
             opMap.set(op.operationId, op);
         }
 
+        const cloudOnlyOps: LoadOperationEntry[] = [];
         for (const cloudOp of cloudOps) {
             const existing = opMap.get(cloudOp.operationId);
             cloudOp.cloud = true;
@@ -1120,11 +1127,141 @@ export class DataService {
                 // Merge: use cloud's enriched force data but update with any
                 // locally-fresher force info
                 this.mergeOperationForceInfo(cloudOp, existing);
+            } else {
+                cloudOnlyOps.push(cloudOp);
             }
             opMap.set(cloudOp.operationId, cloudOp);
         }
 
+        // Save cloud operations locally for offline access and to sync name/note changes.
+        // Fire-and-forget to avoid blocking the UI.
+        this.saveCloudOperationsLocally(cloudOps);
+
+        // Identify local-only operations (not found on cloud) and verify them
+        const localOnlyOps = Array.from(opMap.values()).filter(op => op.local && !op.cloud);
+        if (localOnlyOps.length > 0) {
+            // Fire-and-forget: verify ownership in the background
+            this.verifyLocalOnlyOperations(localOnlyOps, opMap);
+        }
+
         return Array.from(opMap.values()).sort((a, b) => b.timestamp - a.timestamp);
+    }
+
+    /**
+     * Save cloud operations to local IndexedDB for offline access.
+     * Uses the cloud data (which may have updated name/note) and writes them locally.
+     */
+    private async saveCloudOperationsLocally(cloudOps: LoadOperationEntry[]): Promise<void> {
+        for (const op of cloudOps) {
+            try {
+                const serialized: SerializedOperation = {
+                    operationId: op.operationId,
+                    name: op.name,
+                    note: op.note,
+                    timestamp: op.timestamp,
+                    forces: op.forces.map(f => ({
+                        instanceId: f.instanceId,
+                        alignment: f.alignment,
+                        timestamp: f.timestamp,
+                    })),
+                };
+                await this.dbService.saveOperation(serialized);
+            } catch (err) {
+                this.logger.error(`Failed to save cloud operation locally: ${err}`);
+            }
+        }
+    }
+
+    /**
+     * Verify local-only operations against the cloud to detect ownership conflicts.
+     * If a local operation exists on the cloud but isn't owned by us, we re-ID it
+     * locally and save the new copy to the cloud immediately.
+     * If it doesn't exist on the cloud, we leave it alone (user may have deleted it
+     * from another device).
+     *
+     * Sends requests in chunks of VERIFY_OPS_CHUNK_SIZE to stay within the server limit.
+     */
+    private static readonly VERIFY_OPS_CHUNK_SIZE = 100;
+
+    private async verifyLocalOnlyOperations(
+        localOnlyOps: LoadOperationEntry[],
+        opMap: Map<string, LoadOperationEntry>,
+    ): Promise<void> {
+        const ws = await this.canUseCloud();
+        if (!ws) return;
+
+        const allIds = localOnlyOps.map(op => op.operationId);
+
+        try {
+            // Process in chunks to respect server-side cap
+            for (let i = 0; i < allIds.length; i += DataService.VERIFY_OPS_CHUNK_SIZE) {
+                const chunk = allIds.slice(i, i + DataService.VERIFY_OPS_CHUNK_SIZE);
+                const response = await this.wsService.sendAndWaitForResponse({
+                    action: 'verifyOperations',
+                    operationIds: chunk,
+                });
+                if (!response?.data || !Array.isArray(response.data)) continue;
+
+                await this.processVerifyResults(response.data, localOnlyOps, opMap);
+            }
+        } catch (err) {
+            this.logger.error(`Failed to verify local-only operations: ${err}`);
+        }
+    }
+
+    /**
+     * Process verify results for a single chunk and handle conflicts.
+     */
+    private async processVerifyResults(
+        results: Array<{ operationId: string; exists: boolean; owned: boolean }>,
+        localOnlyOps: LoadOperationEntry[],
+        opMap: Map<string, LoadOperationEntry>,
+    ): Promise<void> {
+        for (const result of results) {
+            const { operationId, exists, owned } = result;
+
+            if (exists && !owned) {
+                // Conflict: the operationId is owned by another user.
+                // Generate a new operationId, update local, and save to cloud.
+                const conflictOp = localOnlyOps.find(op => op.operationId === operationId);
+                if (!conflictOp) continue;
+
+                const newOperationId = generateUUID();
+                this.logger.warn(
+                    `Operation "${conflictOp.name}" (${operationId}) is owned by another account. ` +
+                    `Re-assigning to new ID: ${newOperationId}`
+                );
+
+                // Delete old local entry
+                await this.dbService.deleteOperation(operationId);
+
+                // Build the serialized operation with the new ID
+                const serialized: SerializedOperation = {
+                    operationId: newOperationId,
+                    name: conflictOp.name,
+                    note: conflictOp.note,
+                    timestamp: conflictOp.timestamp,
+                    forces: conflictOp.forces.map(f => ({
+                        instanceId: f.instanceId,
+                        alignment: f.alignment,
+                        timestamp: f.timestamp,
+                    })),
+                };
+
+                // Save locally with new ID
+                await this.dbService.saveOperation(serialized);
+                // Save to cloud with new ID
+                await this.saveOperationCloud(serialized);
+
+                // Update the opMap entry so callers see the new ID
+                opMap.delete(operationId);
+                conflictOp.operationId = newOperationId;
+                conflictOp.cloud = true;
+                opMap.set(newOperationId, conflictOp);
+            }
+            // If !exists: the operation was deleted elsewhere, leave it local-only.
+            // It will be pushed to cloud if the user explicitly loads it.
+        }
     }
 
     /**
