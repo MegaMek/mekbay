@@ -881,6 +881,10 @@ span {
             background-color: var(--background-highlight);
         }
 
+        &[aria-expanded='true'] {
+            background-color: var(--background-highlight);
+        }
+
         &:disabled {
             color: var(--text-color-tertiary);
             cursor: not-allowed;
