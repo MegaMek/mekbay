@@ -165,6 +165,7 @@
             <div class="chassis-view-grid" [class.has-sort-slot]="chassisSortSlotHeader()">
                 <div class="chassis-view-header">
                     <div class="chassis-view-th chassis-view-th-count">#</div>
+                    <div class="chassis-view-th chassis-view-th-icon"></div>
                     <div class="chassis-view-th chassis-view-th-chassis">Chassis</div>
                     <div class="chassis-view-th chassis-view-th-value">{{ gameService.isAlphaStrike() ? 'PV' : 'BV' }}</div>
                     @if (chassisSortSlotHeader(); as sortHeader) {
@@ -174,6 +175,7 @@
                 @for (group of groupedUnits(); track group.chassis + group.type) {
                 <div class="chassis-view-row" (click)="onCompactGroupClick(group)">
                     <div class="chassis-view-td chassis-view-td-count">{{ group.variantCount }}</div>
+                    <div class="chassis-view-td chassis-view-td-icon"><unit-icon [unit]="group.representativeUnit" [size]="28"></unit-icon></div>
                     <div class="chassis-view-td chassis-view-td-chassis">{{ group.chassis }}</div>
                     <div class="chassis-view-td chassis-view-td-value">{{ gameService.isAlphaStrike()
                         ? (group.minPV === group.maxPV ? '' + group.minPV : group.minPV + '–' + group.maxPV)

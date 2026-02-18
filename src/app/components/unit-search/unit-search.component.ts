@@ -80,6 +80,9 @@ export interface ChassisGroup {
     chassis: string;
     type: UnitType;
     displayType: string;
+    icon: string;
+    /** A representative unit (first encountered) for icon display */
+    representativeUnit: Unit;
     variantCount: number;
     minBV: number;
     maxBV: number;
@@ -201,6 +204,9 @@ export class UnitSearchComponent {
                     chassis: unit.chassis,
                     type: unit.type,
                     displayType: unit._displayType,
+                    icon: unit.icon,
+                    /** Store a representative unit for the icon component */
+                    representativeUnit: unit,
                     variantCount: 0,
                     minBV: Infinity,
                     maxBV: -Infinity,

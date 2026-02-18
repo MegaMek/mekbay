@@ -337,9 +337,9 @@
 /* Compact Chassis-Grouped View */
 .chassis-view-grid {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto 36px 1fr auto;
     align-content: start;
-    gap: 0 8px;
+    gap: 0 4px;
     overflow-y: auto;
     flex: 1;
     min-height: 0;
@@ -348,7 +348,7 @@
     container-name: chassis-grid;
 
     &.has-sort-slot {
-        grid-template-columns: auto 1fr auto auto;
+        grid-template-columns: auto 36px 1fr auto auto;
     }
 }
 
@@ -374,7 +374,8 @@
     white-space: nowrap;
 }
 
-.chassis-view-th-count { text-align: center; min-width: 32px; }
+.chassis-view-th-count { text-align: center; }
+.chassis-view-th-icon { text-align: center; }
 .chassis-view-th-chassis { text-align: left; }
 .chassis-view-th-value { text-align: center; }
 
@@ -384,7 +385,6 @@
     grid-column: 1 / -1;
     align-items: center;
     padding: 6px;
-    gap: 12px;
     cursor: pointer;
     border-bottom: 1px solid #444;
     transition: background-color 0.15s;
@@ -405,6 +405,13 @@
     white-space: nowrap;
 }
 
+.chassis-view-td-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
 .chassis-view-td-chassis {
     font-weight: bold;
     min-width: 0;
@@ -421,7 +428,6 @@
     font-weight: bold;
     font-size: 0.9em;
     text-align: center;
-    min-width: 32px;
 
     &::after {
         content: '\00d7'; /* multiplication sign */
