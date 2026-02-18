@@ -58,6 +58,46 @@ export interface ForceQueryParams {
     instance: string | null;
 }
 
+export interface UnitShareLinks {
+    httpsUrl: string;
+    appUrl: string;
+}
+
+export function buildProtocolShareUrlFromWebUrl(webUrl: string): string | null {
+    try {
+        const parsed = new URL(webUrl);
+        return `web+mekbay://share?${parsed.searchParams.toString()}`;
+    } catch {
+        return null;
+    }
+}
+
+export function buildShareTextPayload(title: string, httpsUrl: string, appUrl?: string | null): string {
+    if (appUrl) {
+        return `${title}\nWeb: ${httpsUrl}\nApp: ${appUrl}`;
+    }
+    return `${title}\n${httpsUrl}`;
+}
+
+export function buildUnitShareLinks(
+    origin: string,
+    pathname: string,
+    gameSystem: GameSystem,
+    unitName: string,
+    tab: string,
+): UnitShareLinks {
+    const params = new URLSearchParams({
+        gs: gameSystem,
+        shareUnit: unitName,
+        tab,
+    });
+
+    const httpsUrl = `${origin}${pathname}?${params.toString()}`;
+    const appUrl = `web+mekbay://share?${params.toString()}`;
+
+    return { httpsUrl, appUrl };
+}
+
 /**
  * Builds URL query parameters from a Force's current state.
  */

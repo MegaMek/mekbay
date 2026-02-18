@@ -60,6 +60,7 @@ import { TaggingService } from '../../services/tagging.service';
 import { UrlStateService } from '../../services/url-state.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
+import { buildShareTextPayload, buildUnitShareLinks } from '../../utils/force-url.util';
 
 /*
  * Author: Drake
@@ -438,23 +439,28 @@ export class UnitDetailsDialogComponent {
     }
 
     onShare() {
-        const domain = window.location.origin + window.location.pathname;
-        const unitName = encodeURIComponent(this.unit.name);
-        const tab = encodeURIComponent(this.activeTab());
-        const shareUrl = `${domain}?gs=${this.currentGameSystem()}&shareUnit=${unitName}&tab=${tab}`;
-        const shareText = `${this.unit.chassis} ${this.unit.model}`;
+        const { httpsUrl, appUrl } = buildUnitShareLinks(
+            window.location.origin,
+            window.location.pathname,
+            this.currentGameSystem(),
+            this.unit.name,
+            this.activeTab(),
+        );
+        const shareTitle = `${this.unit.chassis} ${this.unit.model}`;
+        const shareText = buildShareTextPayload(shareTitle, httpsUrl, appUrl);
         if (navigator.share) {
             navigator.share({
-                title: shareText,
-                url: shareUrl
+                title: shareTitle,
+                text: shareText,
+                url: httpsUrl,
             }).catch(() => {
                 // fallback if user cancels or error
-                copyTextToClipboard(shareUrl);
-                this.toastService.showToast('Unit link copied to clipboard.', 'success');
+                copyTextToClipboard(shareText);
+                this.toastService.showToast('Unit links copied to clipboard.', 'success');
             });
         } else {
             copyTextToClipboard(shareText);
-            this.toastService.showToast('Unit link copied to clipboard.', 'success');
+            this.toastService.showToast('Unit links copied to clipboard.', 'success');
         }
     }
 

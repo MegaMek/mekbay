@@ -25,7 +25,13 @@
       "origin": "https://next.mekbay.com"
     }
   ],
-  "launch_handler": {
-    "client_mode": "auto"
-  }
+    "protocol_handlers": [
+      {
+        "protocol": "web+mekbay",
+        "url": "/?protocolLink=%s"
+      }
+    ],
+    "launch_handler": {
+      "client_mode": "auto"
+    }
 }

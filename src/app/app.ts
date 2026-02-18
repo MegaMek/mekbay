@@ -116,6 +116,10 @@ export class App {
     protected updateAvailable = signal(false);
     protected showInstallButton = signal(false);
     private deferredPrompt: any;
+    private urlAtLastBlur = this.getCurrentAppUrl();
+    private lastHandledCapturedUrl: string | null = null;
+    private lastHandledCapturedUrlAt = 0;
+    private readonly capturedUrlDedupWindowMs = 2000;
 
 
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
@@ -151,6 +155,11 @@ export class App {
         window.addEventListener('appinstalled', this.appInstalledHandler);
         document.addEventListener('contextmenu', this.contextMenuHandler);
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
+        window.addEventListener('blur', this.onBlur);
+        window.addEventListener('popstate', this.historyNavigationHandler);
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', this.serviceWorkerMessageHandler);
+        }
         
         if (this.swUpdate.isEnabled) {
             this.swUpdate.versionUpdates
@@ -250,9 +259,12 @@ export class App {
             if (this.dataService.isDataReady() && !initialShareHandled) {
                 initialShareHandled = true;
                 // Use UrlStateService to get initial URL params (captured before any routing effects)
+                const hasProtocolLink = this.urlStateService.hasInitialParam('protocolLink');
                 const sharedUnitName = this.urlStateService.getInitialParam('shareUnit');
                 const tab = this.urlStateService.getInitialParam('tab') ?? undefined;
-                if (sharedUnitName) {
+                if (hasProtocolLink) {
+                    void this.handleCapturedUrl(window.location.href, 'protocol');
+                } else if (sharedUnitName) {
                     const unit = this.dataService.getUnitByName(sharedUnitName);
                     if (unit) {
                         this.showSingleUnitDetails(unit, tab);
@@ -277,6 +289,11 @@ export class App {
             window.removeEventListener('beforeinstallprompt', this.beforeInstallPromptHandler);
             window.removeEventListener('appinstalled', this.appInstalledHandler);
             document.removeEventListener('contextmenu', this.contextMenuHandler);
+            window.removeEventListener('blur', this.onBlur);
+            window.removeEventListener('popstate', this.historyNavigationHandler);
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.removeEventListener('message', this.serviceWorkerMessageHandler);
+            }
         });
     }
 
@@ -289,7 +306,53 @@ export class App {
     }
 
     onFocus() {
+        this.processFocusedCapturedUrl();
         void this.checkForUpdate();
+    }
+
+    private onBlur = () => {
+        this.urlAtLastBlur = this.getCurrentAppUrl();
+    };
+
+    private getCurrentAppUrl(): string {
+        return `${window.location.pathname}${window.location.search}`;
+    }
+
+    private processFocusedCapturedUrl(): void {
+        const currentUrl = this.getCurrentAppUrl();
+        if (currentUrl === this.urlAtLastBlur) {
+            return;
+        }
+        this.logger.info('[PWA] Focus detected URL change: ' + currentUrl);
+        this.urlAtLastBlur = currentUrl;
+        void this.handleCapturedUrl(window.location.href, 'focus');
+    }
+
+    private serviceWorkerMessageHandler = (event: MessageEvent) => {
+        const data = event.data as { type?: string; url?: string } | undefined;
+        if (data?.type !== 'NAVIGATE' || !data.url) {
+            return;
+        }
+        this.logger.info('[PWA] Received NAVIGATE message from service worker: ' + data.url);
+        this.urlAtLastBlur = this.getCurrentAppUrl();
+        void this.handleCapturedUrl(data.url, 'service-worker');
+    };
+
+    private historyNavigationHandler = () => {
+        this.logger.info('[PWA] History navigation detected, evaluating URL');
+        void this.handleCapturedUrl(window.location.href, 'history');
+    };
+
+    private shouldSkipDuplicateCapturedUrl(parsed: URL): boolean {
+        const normalizedUrl = `${parsed.pathname}${parsed.search}`;
+        const now = Date.now();
+        if (this.lastHandledCapturedUrl === normalizedUrl && (now - this.lastHandledCapturedUrlAt) < this.capturedUrlDedupWindowMs) {
+            this.logger.info('[PWA] Skipping duplicate captured URL: ' + normalizedUrl);
+            return true;
+        }
+        this.lastHandledCapturedUrl = normalizedUrl;
+        this.lastHandledCapturedUrlAt = now;
+        return false;
     }
 
     private startPeriodicUpdateChecks() {
@@ -360,7 +423,8 @@ export class App {
      *   A) No loaded forces → load the force directly.
      *   B) Forces loaded → offer to LOAD (replace), ADD (friendly/enemy), or DISMISS.
      */
-    private async handleCapturedUrl(url: string): Promise<void> {
+    private async handleCapturedUrl(url: string, source: 'focus' | 'service-worker' | 'history' | 'protocol' = 'focus'): Promise<void> {
+        this.logger.info(`[PWA] Handling captured URL from ${source}: ${url}`);
         let parsed: URL;
         try {
             parsed = new URL(url, window.location.origin);
@@ -369,7 +433,46 @@ export class App {
             return;
         }
 
+        if (parsed.origin !== window.location.origin) {
+            this.logger.warn('[PWA] Ignoring captured URL from different origin: ' + parsed.origin);
+            return;
+        }
+
+        if (this.shouldSkipDuplicateCapturedUrl(parsed)) {
+            return;
+        }
+
         const params = parsed.searchParams;
+
+        const encodedProtocolLink = params.get('protocolLink');
+        if (encodedProtocolLink) {
+            const decodedProtocolLink = (() => {
+                try {
+                    return decodeURIComponent(encodedProtocolLink);
+                } catch {
+                    return encodedProtocolLink;
+                }
+            })();
+
+            let protocolUrl: URL;
+            try {
+                protocolUrl = new URL(decodedProtocolLink);
+            } catch {
+                this.logger.error('[PWA] Failed to parse protocolLink payload: ' + decodedProtocolLink);
+                return;
+            }
+
+            if (protocolUrl.protocol !== 'web+mekbay:') {
+                this.logger.warn('[PWA] Ignoring unsupported protocol payload: ' + protocolUrl.protocol);
+                return;
+            }
+
+            const translatedParams = protocolUrl.searchParams.toString();
+            const translatedUrl = `${window.location.origin}${window.location.pathname}${translatedParams ? `?${translatedParams}` : ''}`;
+            this.logger.info('[PWA] Translated protocol link to app URL: ' + translatedUrl);
+            await this.handleCapturedUrl(translatedUrl, 'protocol');
+            return;
+        }
 
         // Update browser URL bar (no reload)
         window.history.replaceState(null, '', parsed.pathname + parsed.search);

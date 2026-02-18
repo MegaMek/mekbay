@@ -41,7 +41,7 @@ import { ToastService } from '../../services/toast.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { Force } from '../../models/force.model';
 import { GameSystem } from '../../models/common.model';
-import { buildForceQueryParams } from '../../utils/force-url.util';
+import { buildForceQueryParams, buildProtocolShareUrlFromWebUrl, buildShareTextPayload } from '../../utils/force-url.util';
 import { firstValueFrom } from 'rxjs';
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
@@ -470,18 +470,23 @@ export class ShareForceDialogComponent {
     }
 
     async share(url: string) {
+        const appUrl = buildProtocolShareUrlFromWebUrl(url);
+        const shareTitle = this.force.name || 'Shared MekBay Force';
+        const shareText = buildShareTextPayload(shareTitle, url, appUrl);
+
         if (navigator.share) {
             navigator.share({
-                title: this.force.name || 'Shared MekBay Force',
+                title: shareTitle,
+                text: shareText,
                 url: url
             }).catch(() => {
                 // fallback if user cancels or error
-                copyTextToClipboard(url);
-                this.toastService.showToast('Link copied to clipboard.', 'success');
+                copyTextToClipboard(shareText);
+                this.toastService.showToast('Links copied to clipboard.', 'success');
             });
         } else {
-            copyTextToClipboard(url);
-            this.toastService.showToast('Link copied to clipboard.', 'success');
+            copyTextToClipboard(shareText);
+            this.toastService.showToast('Links copied to clipboard.', 'success');
         }
     }
 

@@ -43,6 +43,7 @@ import { UnitSearchFiltersService } from '../../services/unit-search-filters.ser
 import { GameService } from '../../services/game.service';
 import { GameSystem } from '../../models/common.model';
 import { DialogsService } from '../../services/dialogs.service';
+import { buildProtocolShareUrlFromWebUrl, buildShareTextPayload } from '../../utils/force-url.util';
 
 /*
  * Author: Drake
@@ -261,18 +262,23 @@ export class ShareSearchDialogComponent {
     }
 
     async share(url: string) {
+        const appUrl = buildProtocolShareUrlFromWebUrl(url);
+        const shareTitle = 'Shared MekBay Search Results';
+        const shareText = buildShareTextPayload(shareTitle, url, appUrl);
+
         if (navigator.share) {
             navigator.share({
-                title: 'Shared MekBay Search Results',
+                title: shareTitle,
+                text: shareText,
                 url: url
             }).catch(() => {
                 // fallback if user cancels or error
-                copyTextToClipboard(url);
-                this.toastService.showToast('Link copied to clipboard.', 'success');
+                copyTextToClipboard(shareText);
+                this.toastService.showToast('Links copied to clipboard.', 'success');
             });
         } else {
-            copyTextToClipboard(url);
-            this.toastService.showToast('Link copied to clipboard.', 'success');
+            copyTextToClipboard(shareText);
+            this.toastService.showToast('Links copied to clipboard.', 'success');
         }
     }
 
