@@ -166,6 +166,7 @@ export class ForceLoadDialogComponent {
     operations = signal<LoadOperationEntry[]>([]);
     selectedOperation = signal<LoadOperationEntry | null>(null);
     operationsLoading = signal<boolean>(false);
+    private operationsLoaded = signal<boolean>(false);
     filteredOperations = computed<LoadOperationEntry[]>(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
         if (tokens.length === 0) return this.operations();
@@ -190,7 +191,7 @@ export class ForceLoadDialogComponent {
 
         // Load operations when tab changes to Operations
         effect(() => {
-            if (this.activeTab() === 'Operations' && this.operations().length === 0 && !this.operationsLoading()) {
+            if (this.activeTab() === 'Operations' && !this.operationsLoaded() && !this.operationsLoading()) {
                 this.loadOperations();
             }
         });
@@ -230,9 +231,30 @@ export class ForceLoadDialogComponent {
         this.operationsLoading.set(true);
         try {
             const result = await this.dataService.listOperations();
+            // Enrich any operation forces that are missing metadata
+            // using the already-loaded forces list (covers cloud-only forces
+            // that aren't in local IndexedDB).
+            const forceMap = new Map<string, LoadForceEntry>();
+            for (const f of this.forces()) {
+                if (f.instanceId) forceMap.set(f.instanceId, f);
+            }
+            for (const op of (result || [])) {
+                for (const fi of op.forces) {
+                    if (!fi.name && forceMap.has(fi.instanceId)) {
+                        const entry = forceMap.get(fi.instanceId)!;
+                        fi.name = entry.name;
+                        fi.type = entry.type;
+                        fi.bv = entry.bv;
+                        fi.pv = entry.pv;
+                        fi.forceTimestamp = entry.timestamp;
+                        fi.exists = true;
+                    }
+                }
+            }
             this.operations.set(result || []);
         } finally {
             this.operationsLoading.set(false);
+            this.operationsLoaded.set(true);
         }
     }
 
