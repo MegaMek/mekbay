@@ -1303,9 +1303,13 @@ export class ForceBuilderService {
 
     /** URL params representing ALL loaded forces, including the operation ID. */
     queryParameters = computed<ForceQueryParams>(() => {
-        const params = buildMultiForceQueryParams(this.loadedForces());
         const op = this.currentOperation();
-        return { ...params, operation: op?.operationId ?? null };
+        if (op) {
+            // Operation loaded: only emit the operation ID, no force-level params
+            return { gs: null, units: null, name: null, instance: null, operation: op.operationId };
+        }
+        const params = buildMultiForceQueryParams(this.loadedForces());
+        return { ...params, operation: null };
     });
 
     private loadUnitsFromUrlOnStartup() {
