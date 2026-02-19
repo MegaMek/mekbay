@@ -884,7 +884,7 @@ export class ForceBuilderService {
         
         const dialogRef = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
             data: {
-                title: 'Clone Force',
+                title: 'Clone/Convert Force',
                 message: 'Create a separate, editable copy of this force. The original will remain unchanged.',
                 buttons: [
                     { label: 'CLONE', value: 'clone', class: 'primary' },
