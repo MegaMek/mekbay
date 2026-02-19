@@ -33,6 +33,7 @@
 
 import { Injectable, signal, computed, effect, inject, untracked } from '@angular/core';
 import { Unit } from '../models/units.model';
+import { Era } from '../models/eras.model';
 import { DataService } from './data.service';
 import { CountOperator, MultiState, MultiStateSelection, MultiStateOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getForcePacks } from '../models/forcepacks.model';
@@ -1503,31 +1504,42 @@ export class UnitSearchFiltersService {
                 if (conf.external) {
                     const contextUnitIds = new Set(contextUnits.filter(u => u.id !== -1).map(u => u.id));
                     if (conf.key === 'era') {
-                        const selectedFactionsAvailableEraIds: Set<number> = new Set(
-                            this.dataService.getFactions()
-                                .filter(faction => selectedFactionNames.includes(faction.name))
-                                .flatMap(faction =>
-                                    Object.entries(faction.eras)
-                                        .filter(([_, unitIds]) => unitIds.size > 0)
-                                        .map(([eraId]) => Number(eraId))
-                                )
-                        );
-                        availableOptions = this.dataService.getEras()
-                            .filter(era => {
-                                if (selectedFactionsAvailableEraIds.size > 0) {
-                                    if (!selectedFactionsAvailableEraIds.has(era.id)) return false;
+                        const selectedFactionsAvailableEraIds = new Set<number>();
+                        for (const name of selectedFactionNames) {
+                            const faction = this.dataService.getFactionByName(name);
+                            if (faction) {
+                                for (const [eraId, unitIds] of Object.entries(faction.eras)) {
+                                    if ((unitIds as Set<number>).size > 0) {
+                                        selectedFactionsAvailableEraIds.add(Number(eraId));
+                                    }
                                 }
-                                return setHasAny(era.units as Set<number>, contextUnitIds);
-                            }).map(era => ({ name: era.name, img: era.img }));
+                            }
+                        }
+                        // When factions are selected, only check their specific eras
+                        const erasToCheck = selectedFactionsAvailableEraIds.size > 0
+                            ? Array.from(selectedFactionsAvailableEraIds, id => this.dataService.getEraById(id)).filter((e): e is Era => !!e)
+                            : this.dataService.getEras();
+                        availableOptions = erasToCheck
+                            .filter(era => setHasAny(era.units as Set<number>, contextUnitIds))
+                            .map(era => ({ name: era.name, img: era.img }));
                     } else 
                     if (conf.key === 'faction') {
-                        const selectedEraIds: Set<number> = new Set(this.dataService.getEras().filter(e => selectedEraNames.includes(e.name)).map(e => e.id));
+                        const selectedEraIds = new Set<number>();
+                        for (const eraName of selectedEraNames) {
+                            const era = this.dataService.getEraByName(eraName);
+                            if (era) selectedEraIds.add(era.id);
+                        }
                         availableOptions = this.dataService.getFactions()
                             .filter(faction => {
-                                for (const eraIdStr in faction.eras) {
-                                    if (selectedEraIds.size > 0) {
-                                        if (!selectedEraIds.has(Number(eraIdStr))) continue;
+                                if (selectedEraIds.size > 0) {
+                                    // Only check the selected eras
+                                    for (const eraId of selectedEraIds) {
+                                        const unitIds = faction.eras[eraId] as Set<number> | undefined;
+                                        if (unitIds && setHasAny(unitIds, contextUnitIds)) return true;
                                     }
+                                    return false;
+                                }
+                                for (const eraIdStr in faction.eras) {
                                     if (setHasAny(faction.eras[eraIdStr] as Set<number>, contextUnitIds)) return true;
                                 }
                                 return false;
