@@ -33,7 +33,7 @@
 
 import { Injectable, signal, effect, computed, Injector, inject, untracked, DestroyRef, ApplicationRef } from '@angular/core';
 import { Unit } from '../models/units.model';
-import { Force, UnitGroup } from '../models/force.model';
+import { Force, UnitGroup, MAX_GROUPS, MAX_UNITS } from '../models/force.model';
 import { ForceUnit } from '../models/force-unit.model';
 import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
@@ -1556,6 +1556,29 @@ export class ForceBuilderService {
             return;
         }
 
+        // Handle insert mode: copy groups/units into the current force
+        if (mode === 'insert') {
+            const targetForce = this.smartCurrentForce();
+            if (!targetForce || targetForce.readOnly()) {
+                this.toastService.showToast('No editable force to insert into.', 'error');
+                return;
+            }
+            if (result instanceof LoadForceEntry) {
+                const sourceForce = await this.dataService.getForce(result.instanceId, true);
+                if (!sourceForce) {
+                    this.toastService.showToast('Failed to load force.', 'error');
+                    return;
+                }
+                await this.insertForceInto(sourceForce, targetForce);
+            } else {
+                const pack = result as ResolvedPack;
+                if (pack.units && pack.units.length > 0) {
+                    await this.insertPackInto(pack, targetForce);
+                }
+            }
+            return;
+        }
+
         const isAdd = mode === 'add';
         const addAlignment: ForceAlignment = alignment ?? 'friendly';
 
@@ -1626,6 +1649,158 @@ export class ForceBuilderService {
             for (const entry of units) {
                 if (!entry?.unit) continue;
                 this.addUnit(entry.unit, undefined, undefined, group);
+            }
+        }
+    }
+
+    /**
+     * Copies groups and units from a source force into the target force.
+     * If the game systems differ, units are converted automatically.
+     * Validates MAX_GROUPS and MAX_UNITS limits before inserting.
+     */
+    private async insertForceInto(sourceForce: Force, targetForce: Force): Promise<boolean> {
+        const sourceGroups = sourceForce.groups();
+        const sourceUnitCount = sourceForce.units().length;
+        const targetGroupCount = targetForce.groups().length;
+        const targetUnitCount = targetForce.units().length;
+
+        const newGroupCount = targetGroupCount + sourceGroups.length;
+        const newUnitCount = targetUnitCount + sourceUnitCount;
+
+        if (newGroupCount > MAX_GROUPS) {
+            await this.dialogsService.showError(
+                `Cannot insert: the result would have ${newGroupCount} groups, exceeding the limit of ${MAX_GROUPS}.`,
+                'Insert Failed',
+            );
+            return false;
+        }
+        if (newUnitCount > MAX_UNITS) {
+            await this.dialogsService.showError(
+                `Cannot insert: the result would have ${newUnitCount} units, exceeding the limit of ${MAX_UNITS}.`,
+                'Insert Failed',
+            );
+            return false;
+        }
+
+        const needsConversion = sourceForce.gameSystem !== targetForce.gameSystem;
+        let insertedCount = 0;
+
+        for (const sourceGroup of sourceGroups) {
+            const newGroup = targetForce.addGroup(sourceGroup.name());
+            newGroup.formation.set(sourceGroup.formation());
+            newGroup.formationLock = sourceGroup.formationLock;
+
+            for (const sourceUnit of sourceGroup.units()) {
+                if (needsConversion) {
+                    const converted = this.convertUnitForForce(sourceUnit, sourceForce, targetForce);
+                    if (converted) {
+                        newGroup.insertUnit(converted);
+                        insertedCount++;
+                    }
+                } else {
+                    // Same game system: look up fresh unit data and copy pilot info
+                    const unitName = sourceUnit.getUnit()?.name;
+                    if (!unitName) continue;
+                    const allUnits = this.dataService.getUnits();
+                    const unitData = allUnits.find(u => u.name === unitName);
+                    if (!unitData) continue;
+
+                    const newForceUnit = targetForce.addUnit(unitData, newGroup);
+                    newForceUnit.disabledSaving = true;
+                    try {
+                        this.transferPilotDataSameSystem(sourceUnit, newForceUnit, targetForce.gameSystem);
+                    } finally {
+                        newForceUnit.disabledSaving = false;
+                    }
+                    insertedCount++;
+                }
+            }
+
+            this.assignFormationIfNeeded(newGroup);
+        }
+
+        this.generateFactionAndForceNameIfNeeded(targetForce);
+        const systemNote = needsConversion ? ' (units were converted)' : '';
+        this.toastService.showToast(
+            `Inserted ${insertedCount} unit(s) from "${sourceForce.name}" into "${targetForce.name}"${systemNote}.`,
+            'success'
+        );
+        return true;
+    }
+
+    /**
+     * Inserts units from a force pack into the target force as a new group.
+     * Validates MAX_UNITS limit before inserting.
+     */
+    private async insertPackInto(pack: ResolvedPack, targetForce: Force): Promise<boolean> {
+        const packUnitCount = pack.units.filter(u => !!u?.unit).length;
+        const targetUnitCount = targetForce.units().length;
+        const targetGroupCount = targetForce.groups().length;
+
+        if (targetGroupCount + 1 > MAX_GROUPS) {
+            await this.dialogsService.showError(
+                `Cannot insert: the force already has ${targetGroupCount} groups, adding another would exceed the limit of ${MAX_GROUPS}.`,
+                'Insert Failed'
+            );
+            return false;
+        }
+        if (targetUnitCount + packUnitCount > MAX_UNITS) {
+            await this.dialogsService.showError(
+                `Cannot insert: the result would have ${targetUnitCount + packUnitCount} units, exceeding the limit of ${MAX_UNITS}.`,
+                'Insert Failed'
+            );
+            return false;
+        }
+
+        const newGroup = targetForce.addGroup();
+        for (const entry of pack.units) {
+            if (!entry?.unit) continue;
+            targetForce.addUnit(entry.unit, newGroup);
+        }
+
+        this.assignFormationIfNeeded(newGroup);
+        this.generateFactionAndForceNameIfNeeded(targetForce);
+        this.toastService.showToast(
+            `Inserted ${packUnitCount} unit(s) from pack "${pack.name}" into "${targetForce.name}".`,
+            'success'
+        );
+        return true;
+    }
+
+    /**
+     * Transfers pilot/crew data between ForceUnits of the same game system.
+     * CBT: copies crew names, gunnery, and piloting skills.
+     * AS:  copies pilot name, skill, and abilities.
+     */
+    private transferPilotDataSameSystem(sourceUnit: ForceUnit, targetUnit: ForceUnit, gameSystem: GameSystem): void {
+        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+            const asSource = sourceUnit as ASForceUnit;
+            const asTarget = targetUnit as ASForceUnit;
+            const pilotName = asSource.alias();
+            if (pilotName) {
+                asTarget.setPilotName(pilotName);
+            }
+            asTarget.setPilotSkill(asSource.pilotSkill());
+            const abilities = asSource.pilotAbilities();
+            if (abilities && abilities.length > 0) {
+                asTarget.setPilotAbilities([...abilities]);
+            }
+        } else {
+            // Classic BattleTech
+            const fromCrew = sourceUnit.getCrewMembers();
+            const toCrew = targetUnit.getCrewMembers();
+            const crewCount = Math.min(fromCrew.length, toCrew.length);
+            for (let i = 0; i < crewCount; i++) {
+                const fromMember = fromCrew[i];
+                const toMember = toCrew[i];
+                if (fromMember && toMember) {
+                    const name = fromMember.getName();
+                    if (name) {
+                        toMember.setName(name);
+                    }
+                    toMember.setSkill('gunnery', fromMember.getSkill('gunnery'));
+                    toMember.setSkill('piloting', fromMember.getSkill('piloting'));
+                }
             }
         }
     }

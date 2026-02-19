@@ -52,7 +52,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
 import { CustomizeForcePackDialogComponent, CustomizeForcePackDialogData, CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
 import { ForceAlignment } from '../../models/force-slot.model';
-import { AlignmentPickerDialogComponent } from '../alignment-picker-dialog/alignment-picker-dialog.component';
+import { ForceAddModePickerDialogComponent, ForceAddModePickerData, ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 
 /*
@@ -83,7 +83,7 @@ export class FormatTimestamp implements PipeTransform {
     }
 }
 
-export type ForceLoadMode = 'load' | 'add' | 'operation';
+export type ForceLoadMode = 'load' | 'add' | 'insert' | 'operation';
 
 export interface ForceLoadDialogEnvelope {
     result: LoadForceEntry | ResolvedPack | LoadOperationEntry;
@@ -361,10 +361,24 @@ export class ForceLoadDialogComponent {
     }
 
     async onAdd() {
-        const ref = this.dialogsService.createDialog<ForceAlignment | null>(AlignmentPickerDialogComponent);
-        const alignment = await firstValueFrom(ref.closed);
-        if (!alignment) return;
-        await this.closeWithMode('add', alignment);
+        const currentForce = this.forceBuilderService.smartCurrentForce();
+        const showInsert = !!currentForce && currentForce.owned();
+        const ref = this.dialogsService.createDialog<ForceAddModePickerResult>(
+            ForceAddModePickerDialogComponent,
+            {
+                data: {
+                    showInsert,
+                    currentForceName: currentForce?.name,
+                } as ForceAddModePickerData
+            }
+        );
+        const result = await firstValueFrom(ref.closed);
+        if (!result) return;
+        if (result === 'insert') {
+            await this.closeWithMode('insert', 'friendly');
+        } else {
+            await this.closeWithMode('add', result);
+        }
     }
 
     async onLoadOperation() {

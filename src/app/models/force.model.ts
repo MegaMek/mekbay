@@ -52,8 +52,8 @@ import { getForceSizeName } from '../utils/force-type.util';
 /*
  * Author: Drake
  */
-const MAX_GROUPS = 50;
-const MAX_UNITS = 100;
+export const MAX_GROUPS = 50;
+export const MAX_UNITS = 100;
 
 export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     private _forceRef = signal<Force>(null!);
