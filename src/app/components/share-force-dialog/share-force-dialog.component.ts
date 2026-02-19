@@ -47,6 +47,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CleanModelStringPipe } from '../force-load-dialog/force-load-dialog.component';
 import { OptionsService } from '../../services/options.service';
+import { CommonModule } from '@angular/common';
 
 /*
  * Author: Drake
@@ -60,7 +61,7 @@ export interface ShareForceDialogData {
     selector: 'share-force-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [UnitIconComponent, CleanModelStringPipe],
+    imports: [CommonModule, UnitIconComponent, CleanModelStringPipe],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
@@ -78,9 +79,9 @@ export interface ShareForceDialogData {
                         {{ force.gameSystem === GameSystem.ALPHA_STRIKE ? 'AS' : 'CBT' }}
                     </span>
                     @if (force.gameSystem === GameSystem.ALPHA_STRIKE) {
-                        <span class="force-bv">PV: {{ force.totalBv() }}</span>
+                        <span class="force-bv">PV: {{ force.totalBv() | number }}</span>
                     } @else {
-                        <span class="force-bv">BV: {{ force.totalBv() }}</span>
+                        <span class="force-bv">BV: {{ force.totalBv() | number}}</span>
                     }
                 </span>
             </div>
