@@ -111,29 +111,26 @@ export interface RenameGroupDialogResult {
               aria-label="Pick random formation"
             ></button>
           </div>
+          @if (selectedFormation(); as formation) {
+            @if (!isNoFormation(formation)) {
+            @if (!isSelectedFormationValid()) {
+            <div class="formation-warning">
+              Formation does not match the current group composition
+            </div>
+            }
+            <details class="selected-formation-accordion">
+              <summary class="selected-formation-summary">
+                <span>Formation details</span>
+                <svg class="expand-icon" width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
+              </summary>
+              <div class="selected-formation-details">
+                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length"></formation-info>
+              </div>
+            </details>
+            }
+          }
         </div>
 
-        @if (selectedFormation(); as formation) {
-          @if (!isNoFormation(formation)) {
-          @if (!isSelectedFormationValid()) {
-          <div class="formation-warning">
-            <svg fill="currentColor" width="16px" height="16px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-              <path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/>
-            </svg>
-            Formation does not match the current group composition
-          </div>
-          }
-          <details class="selected-formation-accordion">
-            <summary class="selected-formation-summary">
-              <span>Formation details</span>
-              <svg class="expand-icon" width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
-            </summary>
-            <div class="selected-formation-details">
-              <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length"></formation-info>
-            </div>
-          </details>
-          }
-        }
       </div>
       <div class="wide-dialog-actions">
         <button (click)="submit()" class="bt-button">CONFIRM</button>
