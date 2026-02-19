@@ -574,14 +574,10 @@ export class ForceBuilderService {
      * Loads a force by replacing all currently loaded forces with the new one.
      */
     async loadForce(force: Force): Promise<boolean> {
-        const shouldContinue = await this.checkAllForcesPromptSaveForceIfNeeded();
-        if (!shouldContinue) {
-            return false; // User cancelled, do not load new force
-        }
-        
         this.urlStateInitialized.set(false);
         try {
-            await this.clear();
+            const cleared = await this.clear();
+            if (!cleared) return false; // User cancelled operation/force save prompt
             this.addLoadedForce(force, 'friendly', { activate: true });
         } finally {
             this.urlStateInitialized.set(true);
