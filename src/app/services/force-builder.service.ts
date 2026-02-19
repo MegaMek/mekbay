@@ -1529,6 +1529,7 @@ export class ForceBuilderService {
             instanceId: slot.force.instanceId() || '',
             alignment: slot.alignment,
             type: slot.force.gameSystem,
+            factionId: slot.force.faction()?.id,
             bv: slot.force.gameSystem !== 'as' ? slot.force.totalBv() : undefined,
             pv: slot.force.gameSystem === 'as' ? slot.force.totalBv() : undefined,
         }));
