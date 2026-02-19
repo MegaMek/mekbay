@@ -405,13 +405,16 @@ export class ForceLoadDialogComponent {
         const result = await firstValueFrom(ref.closed);
         if (!result) return;
 
+        // Remove forces that no longer exist (not enriched)
+        const existingForces = op.forces.filter(f => f.exists);
+
         // Reconstruct SerializedOperation with updated name/note
         const updatedOp: SerializedOperation = {
             operationId: op.operationId,
             name: result.name,
             note: result.note,
             timestamp: op.timestamp,
-            forces: op.forces.map(f => ({
+            forces: existingForces.map(f => ({
                 instanceId: f.instanceId,
                 alignment: f.alignment,
                 timestamp: f.timestamp,
@@ -423,6 +426,7 @@ export class ForceLoadDialogComponent {
         // Update the local list reactively
         op.name = result.name;
         op.note = result.note;
+        op.forces = existingForces;
         this.operations.set([...this.operations()]);
     }
 
