@@ -73,6 +73,9 @@
     background: #0003;
     cursor: pointer;
     transition: border-color 0.2s, background 0.2s;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .force-entry:hover {
@@ -87,9 +90,10 @@
 
 .force-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
-    margin-bottom: 0.7em;
+    gap: 8px;
 }
 
 .game-type-badge {
@@ -111,6 +115,23 @@
     display: flex;
     flex-direction: column;
     text-align: right;
+    margin-left: auto;
+}
+
+.faction-name-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-direction: row;
+    flex: 1 1 0;
+    min-width: 200px;
+}
+
+.faction-icon {
+    width: 1.2em;
+    height: 1.2em;
+    object-fit: contain;
+    flex-shrink: 0;
 }
 
 .force-name {

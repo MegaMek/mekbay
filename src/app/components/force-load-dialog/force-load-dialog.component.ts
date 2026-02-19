@@ -53,6 +53,7 @@ import { ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
 import { CustomizeForcePackDialogComponent, CustomizeForcePackDialogData, CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
 import { ForceAlignment } from '../../models/force-slot.model';
 import { AlignmentPickerDialogComponent } from '../alignment-picker-dialog/alignment-picker-dialog.component';
+import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 
 /*
  * Author: Drake
@@ -100,7 +101,7 @@ export interface ForceLoadDialogData {
     selector: 'force-load-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, UnitIconComponent, OpPreviewComponent],
+    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, UnitIconComponent, OpPreviewComponent, FactionImgPipe],
     templateUrl: './force-load-dialog.component.html',
     styleUrls: ['./force-load-dialog.component.css']
 })
@@ -131,7 +132,7 @@ export class ForceLoadDialogComponent {
         if (!sel?.instanceId) return false;
         return this.forceBuilderService.loadedForces().some(s => s.force.instanceId() === sel.instanceId);
     });
-    gameTypeFilter = signal<'all' | 'cbt' | 'as'>('all');
+    gameTypeFilter = signal<'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE>('all');
     
     filteredForces = computed<LoadForceEntry[]>(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -169,8 +170,15 @@ export class ForceLoadDialogComponent {
     private operationsLoaded = signal<boolean>(false);
     filteredOperations = computed<LoadOperationEntry[]>(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
-        if (tokens.length === 0) return this.operations();
+        const typeFilter = this.gameTypeFilter();
         return this.operations().filter(op => {
+            // Game type filter: check if any of the operation's game types match
+            if (typeFilter !== 'all') {
+                const types = op.gameTypes;
+                if (types.length > 0 && !types.includes(typeFilter)) return false;
+            }
+            // Text search filter
+            if (tokens.length === 0) return true;
             const hay = [
                 op.name || '',
                 op.note || '',
@@ -317,7 +325,7 @@ export class ForceLoadDialogComponent {
         this.clearFilteredOutSelections();
     }
 
-    onGameTypeFilter(type: 'all' | 'cbt' | 'as') {
+    onGameTypeFilter(type: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE) {
         this.gameTypeFilter.set(type);
         this.clearFilteredOutSelections();
     }

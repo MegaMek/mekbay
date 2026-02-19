@@ -21,11 +21,11 @@
                     [class.active]="gameTypeFilter() === 'all'" 
                     (click)="onGameTypeFilter('all')">All</button>
                 <button class="filter-btn" 
-                    [class.active]="gameTypeFilter() === 'cbt'" 
-                    (click)="onGameTypeFilter('cbt')">Battletech</button>
+                    [class.active]="gameTypeFilter() === GameSystem.CLASSIC" 
+                    (click)="onGameTypeFilter(GameSystem.CLASSIC)">Battletech</button>
                 <button class="filter-btn" 
-                    [class.active]="gameTypeFilter() === 'as'" 
-                    (click)="onGameTypeFilter('as')">Alpha Strike</button>
+                    [class.active]="gameTypeFilter() === GameSystem.ALPHA_STRIKE" 
+                    (click)="onGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
             </div>
             @if (loading()) {
                 <div class="loading-spinner">Loading forces...</div>
@@ -38,7 +38,12 @@
                     <div class="force-entry" [class.selected]="selectedForce() === force" (click)="selectForce(force)"
                         tabindex="0">
                         <div class="force-header">
-                            <span class="force-name">{{ force.name }}</span>
+                            <div class="faction-name-wrapper">
+                                @if (force.factionId | factionImg; as factionImgUrl) {
+                                    <img [src]="factionImgUrl" class="faction-icon" />
+                                }
+                                <div class="force-name">{{ force.name }}</div>
+                            </div>
                             <div class="force-info">                                
                                 <span class="force-timestamp">
                                     <span class="game-type-badge" [class.as]="force.type === 'as'">{{ getGameTypeLabel(force.type) }}</span>
@@ -142,6 +147,17 @@
             }
         }
         @if (activeTab() === 'Operations') {
+            <div class="filter-bar">
+                <button class="filter-btn" 
+                    [class.active]="gameTypeFilter() === 'all'" 
+                    (click)="onGameTypeFilter('all')">All</button>
+                <button class="filter-btn" 
+                    [class.active]="gameTypeFilter() === GameSystem.CLASSIC" 
+                    (click)="onGameTypeFilter(GameSystem.CLASSIC)">Battletech</button>
+                <button class="filter-btn" 
+                    [class.active]="gameTypeFilter() === GameSystem.ALPHA_STRIKE" 
+                    (click)="onGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
+            </div>
             @if (operationsLoading()) {
                 <div class="loading-spinner">Loading operations...</div>
             } @else if (filteredOperations().length === 0) {

@@ -70,6 +70,7 @@ export class LoadForceEntry {
         this.cloud = data.cloud ?? false;
         this.local = data.local ?? false;
         this.name = data.name ?? '';
+        this.factionId = data.factionId ?? undefined;
         this.bv = data.bv ?? undefined;
         this.pv = data.pv ?? undefined;
         this.groups = data.groups ?? [];

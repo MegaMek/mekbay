@@ -1445,6 +1445,7 @@ export class DataService {
                         instanceId: raw.instanceId,
                         name: raw.name,
                         type: raw.type,
+                        factionId: raw.factionId,
                         bv: raw.bv ?? undefined,
                         pv: raw.pv ?? undefined,
                         timestamp: raw.timestamp,

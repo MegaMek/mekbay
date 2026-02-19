@@ -4,6 +4,9 @@
         <div class="op-force-list">
             @for (f of friendlyForces(); track f.instanceId) {
                 <div class="op-force" [class.missing]="f.exists === false">
+                    @if (f.factionId | factionImg; as factionImgUrl) {
+                        <img [src]="factionImgUrl" class="op-faction-icon" />
+                    }
                     <span class="op-force-name">{{ f.name || f.instanceId }}</span>
                     @if (f.type === 'as') {
                         <span class="op-force-val">PV: {{ (f.pv || f.bv || 0) | number }}</span>
@@ -34,6 +37,9 @@
         <div class="op-force-list">
             @for (f of enemyForces(); track f.instanceId) {
                 <div class="op-force" [class.missing]="f.exists === false">
+                    @if (f.factionId | factionImg; as factionImgUrl) {
+                        <img [src]="factionImgUrl" class="op-faction-icon" />
+                    }
                     <span class="op-force-name">{{ f.name || f.instanceId }}</span>
                     @if (f.type === 'as') {
                         <span class="op-force-val">PV: {{ (f.pv || f.bv || 0) | number }}</span>

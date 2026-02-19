@@ -35,6 +35,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { CommonModule } from '@angular/common';
 import { ForceAlignment } from '../../models/force-slot.model';
 import { GameSystem } from '../../models/common.model';
+import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 
 /*
  * Author: Drake
@@ -51,6 +52,7 @@ export interface OpPreviewForce {
     type?: GameSystem;
     bv?: number;
     pv?: number;
+    factionId?: number;
     exists?: boolean;
 }
 
@@ -58,7 +60,7 @@ export interface OpPreviewForce {
     selector: 'op-preview',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [CommonModule, FactionImgPipe],
     templateUrl: './op-preview.component.html',
     styleUrls: ['./op-preview.component.scss']
 })
