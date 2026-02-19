@@ -1396,6 +1396,30 @@ export class ForceBuilderService {
             return false;
         }
 
+        // Offer to switch sides when:
+        // a) we don't own the operation
+        // b) we own at least one force
+        // c) ALL our owned forces are on the enemy side
+        if (!entry.owned) {
+            const slots = this.loadedForces();
+            const ownedSlots = slots.filter(s => s.force.owned());
+            if (ownedSlots.length > 0 && ownedSlots.every(s => s.alignment === 'enemy')) {
+                const switchSides = await this.dialogsService.requestConfirmation(
+                    'Your forces are currently assigned to the opposing side in this operation. Would you like to switch sides?',
+                    'Switch Sides?',
+                    'info'
+                );
+                if (switchSides) {
+                    this.loadedForces.update(slots =>
+                        slots.map(s => ({
+                            ...s,
+                            alignment: s.alignment === 'friendly' ? 'enemy' as ForceAlignment : 'friendly' as ForceAlignment
+                        }))
+                    );
+                }
+            }
+        }
+
         this.currentOperation.set(entry);
         return true;
     }
