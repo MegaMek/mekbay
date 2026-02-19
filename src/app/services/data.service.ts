@@ -141,6 +141,7 @@ export class DataService {
     private eraNameMap = new Map<string, Era>();
     private eraIdMap = new Map<number, Era>();
     private factionNameMap = new Map<string, Faction>();
+    private factionIdMap = new Map<number, Faction>();
     private unitTypeMaxStats: UnitTypeMaxStats = {};
     private quirksMap = new Map<string, Quirk>();
     private sourcebooksMap = new Map<string, Sourcebook>();
@@ -248,8 +249,12 @@ export class DataService {
             putInLocalStorage: async (data: Factions) => this.dbService.saveFactions(data),
             preprocess: (data: Factions): Factions => {
                 this.factionNameMap.clear();
+                this.factionIdMap.clear();
                 for (const faction of data.factions) {
                     this.factionNameMap.set(faction.name, faction);
+                    if (faction.id !== undefined) {
+                        this.factionIdMap.set(faction.id, faction);
+                    }
                     for (const eraId in faction.eras) {
                         faction.eras[eraId] = new Set(faction.eras[eraId]) as any; // Convert to Set for faster lookups
                     }
@@ -506,6 +511,10 @@ export class DataService {
 
     public getFactionByName(name: string): Faction | undefined {
         return this.factionNameMap.get(name);
+    }
+
+    public getFactionById(id: number): Faction | undefined {
+        return this.factionIdMap.get(id);
     }
 
     public getEras(): Era[] {

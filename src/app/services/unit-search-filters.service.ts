@@ -854,7 +854,7 @@ export class UnitSearchFiltersService {
         const era = this.dataService.getEraByName(eraName);
         if (!era) return false;
         
-        const extinctFaction = this.dataService.getFactions().find(f => f.id === FACTION_EXTINCT);
+        const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT);
         const extinctUnitIdsForEra = extinctFaction?.eras[era.id] as Set<number> || new Set<number>();
         
         // Unit must be in the era's unit set and not extinct
@@ -891,7 +891,7 @@ export class UnitSearchFiltersService {
         if (!selectedEraNames || selectedEraNames.length === 0) return null;
         const unitIds = new Set<number>();
 
-        const extinctFaction = this.dataService.getFactions().find(f => f.id === FACTION_EXTINCT);
+        const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT);
 
         for (const eraName of selectedEraNames) {
             const era = this.dataService.getEraByName(eraName);

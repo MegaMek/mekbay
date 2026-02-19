@@ -49,7 +49,7 @@ export class FactionImgPipe implements PipeTransform {
 
     transform(factionId: number | undefined | null): string | undefined {
         if (factionId == null) return undefined;
-        const faction = this.dataService.getFactions().find(f => f.id === factionId);
+        const faction = this.dataService.getFactionById(factionId);
         return faction?.img || undefined;
     }
 }

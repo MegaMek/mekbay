@@ -605,7 +605,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
             // Resolve faction from factionId
             if (sanitizedData.factionId != null) {
-                const faction = this.dataService.getFactions()?.find(f => f.id === sanitizedData.factionId) ?? null;
+                const faction = this.dataService.getFactionById(sanitizedData.factionId) ?? null;
                 this.faction.set(faction);
             }
 
@@ -669,7 +669,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
             // Resolve faction from factionId
             if (sanitizedData.factionId != null) {
-                const faction = this.dataService.getFactions()?.find(f => f.id === sanitizedData.factionId) ?? null;
+                const faction = this.dataService.getFactionById(sanitizedData.factionId) ?? null;
                 this.faction.set(faction);
             } else {
                 this.faction.set(null);
