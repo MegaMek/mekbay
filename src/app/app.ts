@@ -581,7 +581,7 @@ export class App {
                         'danger'
                     );
                     if (accepted) {
-                        await this.forceBuilderService.removeAllForces();
+                        await this.forceBuilderService.clear();
                         this.unitSearchFiltersService.applySearchParamsFromUrl(params);
                         this.gameService.setOverride(requestedGs);
                     }
