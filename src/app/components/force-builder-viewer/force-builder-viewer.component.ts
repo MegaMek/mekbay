@@ -46,6 +46,7 @@ import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
 import { isNoFormation } from '../../utils/formation-type.model';
+import { FormationNamerUtil } from '../../utils/formation-namer.util';
 
 
 /*
@@ -771,6 +772,14 @@ export class ForceBuilderViewerComponent {
         return group.name()?.toLowerCase().includes(formationDisplayName) || false;
     }
 
+    /** Check whether the group's current formation matches its composition. */
+    isFormationMatching(group: UnitGroup): boolean {
+        const formation = group.formation();
+        if (!formation || isNoFormation(formation)) return true;
+        const matchingDefs = FormationNamerUtil.getAvailableFormationDefinitions(group);
+        return matchingDefs.some(d => d.id === formation.id);
+    }
+
     shareForce() {
         this.forceBuilderService.shareForce();
     }
@@ -781,6 +790,11 @@ export class ForceBuilderViewerComponent {
         if (group.units().length === 0) {
             this.forceBuilderService.removeGroup(group);
         }
+    }
+
+    removeGroup(event: MouseEvent, group: UnitGroup) {
+        event.stopPropagation();
+        this.forceBuilderService.removeGroup(group);
     }
 
     /** Connected group drop list IDs for group drag-drop (only non-readonly forces) */

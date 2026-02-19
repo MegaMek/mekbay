@@ -32,7 +32,7 @@
  */
 
 
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-interop';
@@ -43,6 +43,7 @@ import { FormationInfoComponent } from '../formation-info/formation-info.compone
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FormationDropdownPanelComponent, FormationDisplayItem } from './formation-dropdown-panel.component';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
+import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 /*
  * Author: Drake
  */
@@ -92,6 +93,11 @@ export interface RenameGroupDialogResult {
                 @if (isNoFormation(formation)) {
                   <span class="placeholder">No Formation</span>
                 } @else {
+                  @if (!isSelectedFormationValid()) {
+                    <svg class="formation-selector-warning" fill="currentColor" width="14px" height="14px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/>
+                    </svg>
+                  }
                   <span class="formation-selector-name">{{ getDisplayName(formation) }}</span>
                 }
               } @else {
@@ -109,6 +115,14 @@ export interface RenameGroupDialogResult {
 
         @if (selectedFormation(); as formation) {
           @if (!isNoFormation(formation)) {
+          @if (!isSelectedFormationValid()) {
+          <div class="formation-warning">
+            <svg fill="currentColor" width="16px" height="16px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/>
+            </svg>
+            Formation does not match the current group composition
+          </div>
+          }
           <details class="selected-formation-accordion">
             <summary class="selected-formation-summary">
               <span>Formation details</span>
@@ -152,6 +166,12 @@ export interface RenameGroupDialogResult {
 
         .formation-selector-name {
             font-weight: 600;
+        }
+
+        .formation-selector-warning {
+            color: orange;
+            flex-shrink: 0;
+            margin-right: 6px;
         }
 
         .placeholder {
@@ -215,6 +235,18 @@ export interface RenameGroupDialogResult {
             max-height: 40vh;
             overflow-y: auto;
         }
+
+        .formation-warning {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            margin-top: 4px;
+            font-size: 0.85em;
+            color: orange;
+            background: rgba(255, 165, 0, 0.08);
+            border-left: 3px solid orange;
+        }
     `]
 })
 
@@ -232,11 +264,25 @@ export class RenameGroupDialogComponent {
     /** Currently selected formation */
     selectedFormation = signal<FormationTypeDefinition | null>(this.data.group.formation());
 
-    /** Pre-computed formation display list for the dropdown panel */
-    formationDisplayList: FormationDisplayItem[] = FormationNamerUtil.getAvailableFormationDefinitions(this.data.group).map(def => ({
-            definition: def,
-            displayName: FormationNamerUtil.composeFormationDisplayName(def, this.data.group)
-        }));
+    /** All formation definitions with validity flag. */
+    formationDisplayList: FormationDisplayItem[] = (() => {
+        const validIds = new Set(FormationNamerUtil.getAvailableFormationDefinitions(this.data.group).map(d => d.id));
+        return FORMATION_DEFINITIONS
+            .filter(def => def.validator)
+            .map(def => ({
+                definition: def,
+                displayName: FormationNamerUtil.composeFormationDisplayName(def, this.data.group),
+                isValid: validIds.has(def.id),
+            }));
+    })();
+
+    /** Whether the currently selected formation is valid for the group. */
+    isSelectedFormationValid = computed<boolean>(() => {
+        const sel = this.selectedFormation();
+        if (!sel || isNoFormation(sel)) return true;
+        return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid);
+    });
+
     constructor() {}
 
     /** Expose isNoFormation to the template */

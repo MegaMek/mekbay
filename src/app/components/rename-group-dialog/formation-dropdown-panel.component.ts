@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { FormationTypeDefinition, NO_FORMATION, NO_FORMATION_ID, isNoFormation } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { GameSystem } from '../../models/common.model';
@@ -42,6 +42,7 @@ import { GameSystem } from '../../models/common.model';
 export interface FormationDisplayItem {
     definition: FormationTypeDefinition;
     displayName: string;
+    isValid: boolean;
 }
 
 @Component({
@@ -66,25 +67,56 @@ export interface FormationDisplayItem {
             </div>
             <hr class="divider"/>
 
-            @for (item of formations(); track item.definition.id) {
-                <div class="formation-option-wrapper" [class.active]="selectedFormationId() === item.definition.id">
-                    <div class="formation-option" (click)="onSelect(item.definition)">
-                        <span class="formation-option-name">{{ item.displayName }}</span>
-                        <button class="expand-btn"
-                                (click)="toggleExpand($event, item.definition.id)"
-                                [class.expanded]="expandedId() === item.definition.id"
-                                title="Show details">
-                            <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
-                                <path d="M3 1l5 4-5 4z"/>
-                            </svg>
-                        </button>
-                    </div>
-                    @if (expandedId() === item.definition.id) {
-                        <div class="formation-option-details">
-                            <formation-info [formation]="item.definition" [gameSystem]="gameSystem()"></formation-info>
+            @if (validFormations().length > 0) {
+                <div class="section-label">Valid Formations</div>
+                @for (item of validFormations(); track item.definition.id) {
+                    <div class="formation-option-wrapper" [class.active]="selectedFormationId() === item.definition.id">
+                        <div class="formation-option" (click)="onSelect(item.definition)">
+                            <span class="formation-option-name">{{ item.displayName }}</span>
+                            <button class="expand-btn"
+                                    (click)="toggleExpand($event, item.definition.id)"
+                                    [class.expanded]="expandedId() === item.definition.id"
+                                    title="Show details">
+                                <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
+                                    <path d="M3 1l5 4-5 4z"/>
+                                </svg>
+                            </button>
                         </div>
-                    }
-                </div>
+                        @if (expandedId() === item.definition.id) {
+                            <div class="formation-option-details">
+                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()"></formation-info>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+
+            @if (validFormations().length > 0 && otherFormations().length > 0) {
+                <hr class="divider"/>
+            }
+
+            @if (otherFormations().length > 0) {
+                <div class="section-label">Invalid Formations</div>
+                @for (item of otherFormations(); track item.definition.id) {
+                    <div class="formation-option-wrapper not-matching" [class.active]="selectedFormationId() === item.definition.id">
+                        <div class="formation-option" (click)="onSelect(item.definition)">
+                            <span class="formation-option-name">{{ item.displayName }}</span>
+                            <button class="expand-btn"
+                                    (click)="toggleExpand($event, item.definition.id)"
+                                    [class.expanded]="expandedId() === item.definition.id"
+                                    title="Show details">
+                                <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
+                                    <path d="M3 1l5 4-5 4z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        @if (expandedId() === item.definition.id) {
+                            <div class="formation-option-details">
+                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()"></formation-info>
+                            </div>
+                        }
+                    </div>
+                }
             }
         </div>
     `,
@@ -199,6 +231,23 @@ export interface FormationDisplayItem {
             border-top: 1px solid rgba(255, 255, 255, 0.06);
             overflow-y: auto;
         }
+
+        .section-label {
+            padding: 8px 12px 4px;
+            font-size: 0.75em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-color-tertiary);
+        }
+
+        .formation-option-wrapper.not-matching {
+            opacity: 0.6;
+        }
+
+        .formation-option-wrapper.not-matching .formation-option-name {
+            font-weight: 400;
+        }
     `]
 })
 export class FormationDropdownPanelComponent {
@@ -210,6 +259,16 @@ export class FormationDropdownPanelComponent {
 
     expandedId = signal<string | null>(null);
     readonly noFormationId = NO_FORMATION_ID;
+
+    /** Formations that are valid for the current group. */
+    validFormations = computed<FormationDisplayItem[]>(() => {
+        return this.formations().filter(f => f.isValid);
+    });
+
+    /** Formations that are NOT valid for the current group. */
+    otherFormations = computed<FormationDisplayItem[]>(() => {
+        return this.formations().filter(f => !f.isValid);
+    });
 
     toggleExpand(event: MouseEvent, id: string): void {
         event.stopPropagation();

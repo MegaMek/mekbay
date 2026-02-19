@@ -329,19 +329,31 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         this.deduplicateIds();
     }
 
-    public removeGroup(group: UnitGroup<TUnit>) {
+    public removeGroup(group: UnitGroup<TUnit>, relocateUnits: boolean = false): void {
         const groups = [...this.groups()];
         const idx = groups.findIndex(g => g.id === group.id);
         if (idx === -1) return;
         const removed = groups.splice(idx, 1)[0];
-        // Move removed units into previous group or create default
-        if (groups.length === 0) {
-            const defaultGroup = this.addGroup();
-            defaultGroup.units.set(removed.units());
+        if (relocateUnits) {
+            // Move removed units into previous group or create default
+            if (groups.length === 0) {
+                const defaultGroup = this.addGroup();
+                defaultGroup.units.set(removed.units());
+            } else {
+                const targetIdx = Math.max(0, idx - 1);
+                const targetGroup = groups[targetIdx];
+                targetGroup.units.set([...targetGroup.units(), ...removed.units()]);
+            }
         } else {
-            const targetIdx = Math.max(0, idx - 1);
-            const group = groups[targetIdx];
-            group.units.set([...group.units(), ...removed.units()]);
+            // Destroy all units in the group and clean up C3 networks
+            const currentNetworks = this._c3Networks();
+            for (const unit of removed.units()) {
+                if (currentNetworks.length > 0 && C3NetworkUtil.isUnitConnected(unit.id, currentNetworks)) {
+                    const result = C3NetworkUtil.removeUnitFromAllNetworks(currentNetworks, unit.id);
+                    this._c3Networks.set(result.networks);
+                }
+                unit.destroy();
+            }
         }
         this.groups.set(groups);
         if (this.instanceId()) this.emitChanged();

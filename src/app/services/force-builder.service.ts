@@ -1105,12 +1105,15 @@ export class ForceBuilderService {
         if (!targetForce) return;
         const formation = group.formation();
         if (!formation || isNoFormation(formation)) return;
+        const matchingDefs = FormationNamerUtil.getAvailableFormationDefinitions(group);
+        const isValid = matchingDefs.some(d => d.id === formation.id);
         this.dialogsService.createDialog(FormationInfoDialogComponent, {
             data: {
                 formation,
                 gameSystem: targetForce.gameSystem,
                 formationDisplayName: group.formationDisplayName(),
                 unitCount: group.units().length,
+                isValid,
             } as FormationInfoDialogData
         });
     }
@@ -1132,10 +1135,28 @@ export class ForceBuilderService {
         return false;
     }
 
-    public removeGroup(group: UnitGroup) {
+    public async removeGroup(group: UnitGroup): Promise<void> {
         const force = group.force;
         if (!force) {
             return;
+        }
+        const unitCount = group.units().length;
+        if (unitCount > 0) {       
+            const groupLabel = group.name() || group.formationDisplayName() || 'this group';
+            const confirmed = await this.dialogsService.requestConfirmation(
+                `"${groupLabel}" contains ${unitCount} unit${unitCount > 1 ? 's' : ''}. Removing the group will permanently delete all units inside it.`,
+                'Remove Group',
+                'danger'
+            );
+            if (!confirmed) {
+                return;
+            }
+        }
+        // If selected unit is in this group, move selection
+        const selectedUnit = this.selectedUnit();
+        if (selectedUnit && group.units().some(u => u.id === selectedUnit.id)) {
+            const otherUnits = force.units().filter(u => !group.units().some(gu => gu.id === u.id));
+            this.selectedUnit.set(otherUnits[0] ?? null);
         }
         force.removeGroup(group);
     }
@@ -2050,11 +2071,10 @@ export class ForceBuilderService {
             } as RenameGroupDialogData
         });
         const result = await firstValueFrom(dialogRef.closed);
-
+        console.log(result);
         if (result !== null && result !== undefined) {
             // Apply formation change
             group.formation.set(result.formation);
-            this.assignFormationIfNeeded(group);
 
             // Apply name change
             if (result.name === '' || result.name === null) {

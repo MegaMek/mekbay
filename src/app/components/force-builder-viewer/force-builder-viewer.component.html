@@ -41,7 +41,7 @@
                         <button class="bt-button btn-clone primary" (click)="forceBuilderService.requestCloneForce(slotForce)">CLONE FORCE TO EDIT</button>
                     }
                     <div class="force-total">Total {{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ slotForce.totalBv() | number }}</div>
-                    <button class="btn-remove-force" (click)="removeForceFromSlot($event, slotForce)" title="Remove force">
+                    <button class="btn-remove" (click)="removeForceFromSlot($event, slotForce)" title="Remove force">
                         <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
                             <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
                         </svg>
@@ -83,9 +83,15 @@
                                         @if (!groupNameContainsFormation(group)) {
                                             <span class="group-formation" (click)="promptChangeGroupName(group)">{{ group.formationDisplayName() }}</span>
                                         }
+                                        @if (isFormationMatching(group)) {
                                         <button class="btn-formation-info" (click)="showFormationInfo($event, group)" title="Formation info">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                                         </button>
+                                        } @else {
+                                        <button class="btn-formation-info formation-mismatch" (click)="showFormationInfo($event, group)" title="Formation does not match group composition">
+                                            <svg fill="currentColor" width="14" height="14" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/></svg>
+                                        </button>
+                                        }
                                     </span>
                                     }
                                 }
@@ -93,6 +99,13 @@
                             <div class="group-footer">
                                 <span class="group-bv">{{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
                             </div>
+                            @if (!isReadOnly) {
+                            <button class="btn-remove group-remove" (click)="removeGroup($event, group)" title="Remove group">
+                                <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                                </svg>
+                            </button>
+                            }
                         </div>
                     } @else {
                         @if (gi !== 0) {
