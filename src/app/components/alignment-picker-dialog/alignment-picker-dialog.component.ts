@@ -55,7 +55,7 @@ export interface AlignmentPickerDialogData {
     },
     template: `
     <div class="content">
-        <h2>Add as…</h2>
+        <h2>ADD FORCE TO OPERATION</h2>
 
         @if (force) {
         <force-preview [force]="force"></force-preview>

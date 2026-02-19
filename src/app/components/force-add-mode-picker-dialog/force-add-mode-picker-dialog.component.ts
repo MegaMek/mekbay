@@ -57,7 +57,7 @@ export interface ForceAddModePickerData {
     },
     template: `
     <div class="content">
-        <h2>Add as…</h2>
+        <h2>ADD FORCE</h2>
         <div class="alignment-options">
             <button class="bt-button alignment-btn friendly" (click)="pick('friendly')">
                 <svg fill="currentColor" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
