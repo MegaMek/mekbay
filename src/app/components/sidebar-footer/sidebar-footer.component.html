@@ -137,17 +137,40 @@
     <ng-template #operationsPopupMenu>
         <div class="popup-menu glass framed-borders has-shadow" cdkMenu>
 
-            <button class="menu-item" cdkMenuItem (click)="addExternalForce('friendly')">Add Friendly Force...</button>
-            <button class="menu-item" cdkMenuItem (click)="addExternalForce('enemy')">Add Opposing Force...</button>
+            <button class="menu-item" cdkMenuItem (click)="addExternalForce()">
+                <span class="icon"><svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path fill-rule="evenodd" clip-rule="evenodd"
+                            d="M11.25 12.75V18H12.75V12.75H18V11.25H12.75V6H11.25V11.25H6V12.75H11.25Z" />
+                    </svg></span> Add Force...</button>
             @if (forceBuilderService.canSaveOperation()) {
-                <button class="menu-item" cdkMenuItem (click)="saveOperation()">Save Operation...</button>
+                <button class="menu-item" cdkMenuItem (click)="saveOperation()">
+                    <span class="icon"><svg width="16px" height="16px" viewBox="0 0 24 24" fill="currentColor"
+                            xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true">
+                            <path d="M17 3H5C3.89 3 3 3.9 3 5V19C3 20.1 3.89 21 5 21H19C20.1 21 21 20.1 21 19V7L17 3ZM12 19C10.34 19 9 17.66 9 16C9 14.34 10.34 13 12 13C13.66 13 15 14.34 15 16C15 17.66 13.66 19 12 19ZM15 9H5V5H15V9Z" />
+                        </svg></span> Save Operation...</button>
             }
             @if (forceBuilderService.canUpdateOperation()) {
-                <button class="menu-item" cdkMenuItem (click)="updateOperation()">Update Operation...</button>
+                <button class="menu-item" cdkMenuItem (click)="updateOperation()">
+                    <span class="icon">
+                        <svg width="16px" height="16px" viewBox="0 -0.5 21 21" fill="currentColor"><path d="M61.9,258.010643 L45.1,258.010643 L45.1,242.095788 L53.5,242.095788 L53.5,240.106431 L43,240.106431 L43,260 L64,260 L64,250.053215 L61.9,250.053215 L61.9,258.010643 Z M49.3,249.949769 L59.63095,240 L64,244.114985 L53.3341,254.031929 L49.3,254.031929 L49.3,249.949769 Z" transform="translate(-43, -240)"/></svg>
+                    </span> Update Operation...</button>
             } 
-            <button class="menu-item" cdkMenuItem (click)="loadOperation()">Load Operation...</button>
+            <button class="menu-item" cdkMenuItem (click)="loadOperation()">
+                <span class="icon">
+                    <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="m572.501 747-254.933 815.893-101.867-31.786 278.507-890.774h1105.813v-320H783.808L612.181 107H.021v1546.667c0 88.213 71.787 160 160 160h1388.054c75.946 0 141.973-54.08 156.906-128.64L1892.608 747H572.501Z"
+                            fill-rule="evenodd" />
+                    </svg></span> Load Operation...</button>
             @if (forceBuilderService.hasOperation()) {
-                <button class="menu-item" cdkMenuItem (click)="closeOperation()">Exit Operation</button>
+                <button class="menu-item" cdkMenuItem (click)="closeOperation()">
+                    <span class="icon"><svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <path d="M5 2C3.89543 2 3 2.89543 3 4V20C3 21.1046 3.89543 22 5 22H13V20H5V4H13V2H5Z" />
+                            <path d="M17.1716 8.17157L15.7574 9.58579L17.1716 11H9V13H17.1716L15.7574 14.4142L17.1716 15.8284L21 12L17.1716 8.17157Z" />
+                        </svg></span> Exit Operation</button>
             } 
         </div>
     </ng-template>

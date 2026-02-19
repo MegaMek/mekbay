@@ -32,23 +32,35 @@
  */
 
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { DialogRef } from '@angular/cdk/dialog';
+import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceAlignment } from '../../models/force-slot.model';
+import { Force } from '../../models/force.model';
+import { ForcePreviewComponent } from '../force-preview/force-preview.component';
 
 /*
  * Author: Drake
  */
 
+export interface AlignmentPickerDialogData {
+    force: Force;
+}
+
 @Component({
     selector: 'alignment-picker-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [ForcePreviewComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
     template: `
     <div class="content">
         <h2>Add as…</h2>
+
+        @if (force) {
+        <force-preview [force]="force"></force-preview>
+        }
+
         <div class="alignment-options">
             <button class="bt-button alignment-btn friendly" (click)="pick('friendly')">
                 <svg fill="currentColor" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
@@ -68,13 +80,18 @@ import { ForceAlignment } from '../../models/force-slot.model';
     styles: [`
         .content {
             display: block;
-            max-width: 400px;
+            max-width: 600px;
             text-align: center;
         }
 
         h2 {
             margin-top: 8px;
             margin-bottom: 16px;
+        }
+
+        force-preview {
+            margin-bottom: 16px;
+            text-align: left;
         }
 
         .alignment-options {
@@ -143,6 +160,13 @@ import { ForceAlignment } from '../../models/force-slot.model';
 })
 export class AlignmentPickerDialogComponent {
     private dialogRef = inject(DialogRef<ForceAlignment | null>);
+    private data: AlignmentPickerDialogData | null = inject(DIALOG_DATA, { optional: true });
+
+    force: Force | null;
+
+    constructor() {
+        this.force = this.data?.force ?? null;
+    }
 
     pick(alignment: ForceAlignment) {
         this.dialogRef.close(alignment);

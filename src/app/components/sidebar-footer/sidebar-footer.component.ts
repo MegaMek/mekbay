@@ -1,11 +1,12 @@
 
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, signal, ElementRef, viewChildren } from '@angular/core';
-import { Subscription } from 'rxjs';
+import { Subscription, firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
 import { OptionsDialogComponent } from '../options-dialog/options-dialog.component';
 import { ToastService } from '../../services/toast.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { DataService } from '../../services/data.service';
 import { ForceAlignment } from '../../models/force-slot.model';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
 import { CompactModeService } from '../../services/compact-mode.service';
@@ -29,6 +30,7 @@ export class SidebarFooterComponent {
     toastService = inject(ToastService);
     forceBuilderService = inject(ForceBuilderService);
     dialogsService = inject(DialogsService);
+    dataService = inject(DataService);
     compactModeService = inject(CompactModeService);
     menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 
@@ -124,15 +126,50 @@ export class SidebarFooterComponent {
         this.forceBuilderService.showForcePackDialog();
     }
 
-    async addExternalForce(alignment: ForceAlignment): Promise<void> {
-        const instanceId = await this.dialogsService.prompt(
+    async addExternalForce(): Promise<void> {
+        const input = await this.dialogsService.prompt(
             'Enter the Force Instance ID or a MekBay URL:',
-            alignment === 'friendly' ? 'Add Friendly Force' : 'Add Opposing Force',
+            'Add Force',
             '',
             'You can paste an Instance ID or a full MekBay URL containing one.'
         );
-        if (!instanceId) return;
-        await this.forceBuilderService.addForceById(instanceId.trim(), alignment);
+        if (!input) return;
+
+        const instanceId = this.extractInstanceId(input.trim());
+
+        // Check if already loaded
+        if (this.forceBuilderService.loadedForces().some(s => s.force.instanceId() === instanceId)) {
+            this.toastService.showToast('This force is already loaded.', 'info');
+            return;
+        }
+
+        const force = await this.dataService.getForce(instanceId);
+        if (!force) {
+            this.toastService.showToast('Force not found.', 'error');
+            return;
+        }
+
+        // Show alignment picker with force preview
+        const { AlignmentPickerDialogComponent } = await import('../alignment-picker-dialog/alignment-picker-dialog.component');
+        const ref = this.dialogsService.createDialog<ForceAlignment | null>(AlignmentPickerDialogComponent, {
+            data: { force }
+        });
+        const alignment = await firstValueFrom(ref.closed);
+        if (!alignment) return;
+
+        this.forceBuilderService.addLoadedForce(force, alignment);
+        this.toastService.showToast(`Force "${force.name}" added.`, 'success');
+    }
+
+    private extractInstanceId(input: string): string {
+        try {
+            const url = new URL(input);
+            const instance = url.searchParams.get('instance');
+            if (instance) return instance;
+        } catch {
+            // Not a valid URL: treat as a plain instance ID
+        }
+        return input;
     }
 
     async requestClear(): Promise<void> {

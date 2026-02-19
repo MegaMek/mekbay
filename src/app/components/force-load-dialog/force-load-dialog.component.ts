@@ -54,21 +54,11 @@ import { CustomizeForcePackDialogComponent, CustomizeForcePackDialogData, Custom
 import { ForceAlignment } from '../../models/force-slot.model';
 import { ForceAddModePickerDialogComponent, ForceAddModePickerData, ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
+import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 
 /*
  * Author: Drake
  */
-        
-@Pipe({
-    name: 'cleanModelString',
-    pure: true // Pure pipes are only called when the input changes
-})
-export class CleanModelStringPipe implements PipeTransform {
-    transform(model: string | undefined): string {
-        if (!model) return '';
-        return model.replace(/\s*\(.*?\)\s*/g, '').trim();
-    }
-}
 
 @Pipe({
     name: 'formatTimestamp',
