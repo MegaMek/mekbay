@@ -93,7 +93,7 @@
     flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 8px;
+    gap: 4px;
 }
 
 .game-type-badge {
@@ -116,15 +116,15 @@
     flex-direction: column;
     text-align: right;
     margin-left: auto;
+    padding-top: 0.2em;
 }
 
 .faction-name-wrapper {
     display: flex;
-    align-items: center;
+    align-items: start;
     gap: 4px;
     flex-direction: row;
     flex: 1 1 0;
-    min-width: 200px;
 }
 
 .faction-icon {
@@ -136,7 +136,7 @@
 
 .force-name {
     font-weight: bold;
-    font-size: 1.1em;
+    min-width: 120px;
 }
 
 .variant-name {
@@ -296,7 +296,7 @@
 
 .operation-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     margin-bottom: 0.5em;
 }
@@ -313,7 +313,6 @@
     align-items: center;
     gap: 6px;
     font-weight: bold;
-    font-size: 1.1em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -334,6 +333,8 @@
     gap: 6px;
     font-size: 0.8em;
     color: var(--text-color-secondary);
+    margin-left: auto;
+    padding-top: 0.2em;
 }
 
 .operation-timestamp {
