@@ -135,8 +135,8 @@ export class SidebarFooterComponent {
         await this.forceBuilderService.addForceById(instanceId.trim(), alignment);
     }
 
-    async requestRemoveAllForces(): Promise<void> {
-        if (await this.forceBuilderService.removeAllForces()) {
+    async requestClear(): Promise<void> {
+        if (await this.forceBuilderService.clear()) {
             this.layoutService.closeMenu();
         }
     }
@@ -149,6 +149,14 @@ export class SidebarFooterComponent {
 
     async saveOperation(): Promise<void> {
         await this.forceBuilderService.saveOperation();
+    }
+
+    async updateOperation(): Promise<void> {
+        await this.forceBuilderService.updateOperation();
+    }
+
+    async closeOperation(): Promise<void> {
+        await this.forceBuilderService.clear();
     }
 
     loadOperation(): void {

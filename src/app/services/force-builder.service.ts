@@ -132,6 +132,12 @@ export class ForceBuilderService {
     /** Emits when a force is updated remotely via WS, with the force and its alignment. */
     public remoteForceUpdated$ = new Subject<{ force: Force; alignment: ForceAlignment }>();
 
+    /** The currently loaded operation, if any. */
+    public currentOperation = signal<LoadOperationEntry | null>(null);
+
+    /** Whether an operation is currently loaded. */
+    hasOperation = computed<boolean>(() => this.currentOperation() !== null);
+
     /** Loaded forces filtered by the current alignment filter. */
     filteredLoadedForces = computed<ForceSlot[]>(() => {
         const filter = this.alignmentFilter();
@@ -377,6 +383,19 @@ export class ForceBuilderService {
         // Now safe to tear down and remove from the list
         this.teardownForceSlot(slot);
         this.loadedForces.update(slots => slots.filter(s => s !== slot));
+
+        // If the last force was removed, clear the operation too
+        if (this.loadedForces().length === 0) {
+            this.currentOperation.set(null);
+        }
+    }
+
+    async clear(): Promise<boolean> {
+        const cleared = await this.removeAllForces();
+        if (cleared) {
+            this.currentOperation.set(null);
+        }
+        return cleared;
     }
 
     async removeAllForces(): Promise<boolean> {
@@ -421,6 +440,7 @@ export class ForceBuilderService {
         }
         await this.removeLoadedForce(force, { skipPrompt: true });
         if (this.loadedForces().length === 0) {
+            this.currentOperation.set(null);
             this.clearForceUrlParams();
         }
     }
@@ -487,7 +507,7 @@ export class ForceBuilderService {
         alignment: ForceAlignment = 'friendly'
     ): Promise<boolean> {
         if (mode === 'replace') {
-            await this.removeAllForces();
+            await this.clear();
         }
         return this.loadForceParamsCore(params, alignment);
     }
@@ -555,7 +575,7 @@ export class ForceBuilderService {
         
         this.urlStateInitialized.set(false);
         try {
-            await this.removeAllForces();
+            await this.clear();
             this.addLoadedForce(force, 'friendly', { activate: true });
         } finally {
             this.urlStateInitialized.set(true);
@@ -1509,7 +1529,7 @@ export class ForceBuilderService {
     /**
      * Whether we can save an operation (need at least 2 loaded forces).
      */
-    canSaveOperation = computed<boolean>(() => this.loadedForces().length >= 2);
+    canSaveOperation = computed<boolean>(() => this.loadedForces().length >= 2 && !this.hasOperation());
 
     /**
      * Saves the current loaded force composition as an Operation.
@@ -1585,6 +1605,94 @@ export class ForceBuilderService {
     }
 
     /**
+     * Updates the currently loaded operation with the current forces, name, and note.
+     * Opens the save-operation dialog pre-filled with the current operation's data.
+     */
+    async updateOperation(): Promise<boolean> {
+        const currentOp = this.currentOperation();
+        if (!currentOp) {
+            this.toastService.showToast('No operation loaded to update.', 'error');
+            return false;
+        }
+
+        const slots = this.loadedForces();
+        if (slots.length < 2) {
+            this.toastService.showToast('Need at least 2 forces to update an operation.', 'error');
+            return false;
+        }
+
+        // Build force preview data from currently loaded forces
+        const dialogForces: OpPreviewForce[] = slots.map(slot => ({
+            name: slot.force.name,
+            instanceId: slot.force.instanceId() || '',
+            alignment: slot.alignment,
+            type: slot.force.gameSystem,
+            factionId: slot.force.faction()?.id,
+            bv: slot.force.gameSystem !== 'as' ? slot.force.totalBv() : undefined,
+            pv: slot.force.gameSystem === 'as' ? slot.force.totalBv() : undefined,
+        }));
+
+        // Open the dialog pre-filled with current operation data
+        const dialogData: OperationDialogData = {
+            title: 'Update Operation',
+            name: currentOp.name || '',
+            note: currentOp.note || '',
+            forces: dialogForces,
+        };
+        const ref = this.dialogsService.createDialog<OperationDialogResult | null>(
+            SaveOperationDialogComponent,
+            { data: dialogData }
+        );
+        const result = await firstValueFrom(ref.closed);
+        if (!result) return false; // User cancelled
+
+        // Ensure all forces are saved first
+        for (const slot of slots) {
+            if (!slot.force.instanceId()) {
+                const saved = await this.saveForceWithNameConfirmation(slot.force);
+                if (!saved) {
+                    this.toastService.showToast('All forces must be saved before updating an operation.', 'info');
+                    return false;
+                }
+            }
+        }
+
+        const forces: OperationForceRef[] = slots.map(slot => ({
+            instanceId: slot.force.instanceId()!,
+            alignment: slot.alignment,
+            timestamp: slot.force.timestamp || new Date().toISOString(),
+        }));
+
+        const op: SerializedOperation = {
+            operationId: currentOp.operationId,
+            name: result.name,
+            note: result.note,
+            timestamp: Date.now(),
+            forces,
+        };
+
+        try {
+            await this.dataService.saveOperation(op);
+            // Update the tracked operation with the new data
+            currentOp.name = result.name;
+            currentOp.note = result.note;
+            currentOp.timestamp = op.timestamp;
+            currentOp.forces = forces.map(f => ({
+                instanceId: f.instanceId,
+                alignment: f.alignment,
+                timestamp: f.timestamp,
+            }));
+            this.currentOperation.set(currentOp);
+            this.toastService.showToast('Operation updated.', 'success');
+            return true;
+        } catch (error) {
+            this.logger.error('Failed to update operation: ' + error);
+            this.toastService.showToast('Failed to update operation.', 'error');
+            return false;
+        }
+    }
+
+    /**
      * Loads an operation: clears all current forces and loads each force
      * from the operation with its saved alignment.
      * Falls back to local storage if cloud doesn't have a force.
@@ -1627,6 +1735,8 @@ export class ForceBuilderService {
                 return false;
             }
 
+            // Track the loaded operation
+            this.currentOperation.set(entry);
             return true;
         } finally {
             this.urlStateInitialized.set(true);
