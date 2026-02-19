@@ -1089,6 +1089,69 @@ export class DataService {
     }
 
     /**
+     * Retrieve a single operation by ID.
+     * Fetches from both local storage and cloud in parallel, then keeps
+     * whichever is newer (mirroring `getForce()` behaviour).
+     * Returns a LoadOperationEntry enriched with force metadata, or null if not found.
+     */
+    public async getOperation(operationId: string): Promise<LoadOperationEntry | null> {
+        const localPromise = this.getOperationLocal(operationId);
+        let cloudEntry: LoadOperationEntry | null = null;
+        let triedCloud = false;
+
+        try {
+            const ws = await this.canUseCloud();
+            if (ws) {
+                try {
+                    cloudEntry = await this.getOperationCloud(operationId);
+                    triedCloud = true;
+                } catch {
+                    cloudEntry = null;
+                }
+            }
+        } catch {
+            // cloud unavailable
+        }
+
+        const localEntry = await localPromise;
+
+        if (localEntry && cloudEntry) {
+            // Keep the newer one, but always use cloud's owned flag
+            const result = cloudEntry.timestamp > localEntry.timestamp ? cloudEntry : localEntry;
+            result.owned = cloudEntry.owned;
+            return result;
+        } else if (!triedCloud && localEntry) {
+            return localEntry;
+        } else {
+            return cloudEntry || localEntry || null;
+        }
+    }
+
+    /**
+     * Retrieve a single operation from local IndexedDB.
+     * No force enrichment — callers that load the operation will fetch
+     * the actual forces via `getForce()` immediately after.
+     */
+    private async getOperationLocal(operationId: string): Promise<LoadOperationEntry | null> {
+        const serialized = await this.dbService.getOperation(operationId);
+        if (!serialized) return null;
+
+        return new LoadOperationEntry({
+            operationId: serialized.operationId,
+            name: serialized.name || '',
+            note: serialized.note || '',
+            timestamp: serialized.timestamp,
+            forces: serialized.forces.map(ref => ({
+                instanceId: ref.instanceId,
+                alignment: ref.alignment,
+                timestamp: ref.timestamp,
+                exists: false,
+            })),
+            local: true,
+        });
+    }
+
+    /**
      * Delete an operation locally and from the cloud.
      */
     public async deleteOperation(operationId: string): Promise<void> {
@@ -1349,6 +1412,7 @@ export class DataService {
             name: raw.name || '',
             note: raw.note || '',
             timestamp: raw.timestamp,
+            owned: raw.owned ?? true,
             forces: (raw.forces || []).map((f: any) => ({
                 instanceId: f.instanceId,
                 alignment: f.alignment,
@@ -1363,6 +1427,33 @@ export class DataService {
             } as OperationForceInfo)),
             cloud: true,
         }));
+    }
+
+    private async getOperationCloud(operationId: string): Promise<LoadOperationEntry | null> {
+        const ws = await this.canUseCloud();
+        if (!ws) return null;
+
+        const response = await this.wsService.sendAndWaitForResponse({
+            action: 'getOperation',
+            operationId,
+        });
+        const raw = response?.data;
+        if (!raw) return null;
+
+        return new LoadOperationEntry({
+            operationId: raw.operationId,
+            name: raw.name || '',
+            note: raw.note || '',
+            timestamp: raw.timestamp,
+            owned: raw.owned ?? false,
+            forces: (raw.forces || []).map((f: any) => ({
+                instanceId: f.instanceId,
+                alignment: f.alignment,
+                timestamp: f.timestamp,
+                exists: false,
+            })),
+            cloud: true,
+        });
     }
 
     private async saveOperationCloud(op: SerializedOperation): Promise<void> {

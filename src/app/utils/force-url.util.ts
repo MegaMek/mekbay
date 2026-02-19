@@ -56,6 +56,7 @@ export interface ForceQueryParams {
     units: string | null;
     name: string | null;
     instance: string | null;
+    operation: string | null;
 }
 
 export interface UnitShareLinks {
@@ -103,7 +104,7 @@ export function buildUnitShareLinks(
  */
 export function buildForceQueryParams(force: Force | null): ForceQueryParams {
     if (!force) {
-        return { gs: null, units: null, name: null, instance: null };
+        return { gs: null, units: null, name: null, instance: null, operation: null };
     }
     const instanceId = force.instanceId();
     const groups = force.groups() || [];
@@ -117,7 +118,8 @@ export function buildForceQueryParams(force: Force | null): ForceQueryParams {
         gs: force.gameSystem,
         units: groupParams.length > 0 ? groupParams.join('|') : null,
         name: forceName || null,
-        instance: instanceId || null
+        instance: instanceId || null,
+        operation: null
     };
 }
 
@@ -132,7 +134,7 @@ export function buildForceQueryParams(force: Force | null): ForceQueryParams {
  */
 export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams {
     if (slots.length === 0) {
-        return { gs: null, units: null, name: null, instance: null };
+        return { gs: null, units: null, name: null, instance: null, operation: null };
     }
 
     // Collect instance IDs from saved forces, with alignment prefix
@@ -167,7 +169,8 @@ export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams
         gs,
         units,
         name,
-        instance: instanceEntries.length > 0 ? instanceEntries.join(',') : null
+        instance: instanceEntries.length > 0 ? instanceEntries.join(',') : null,
+        operation: null
     };
 }
 

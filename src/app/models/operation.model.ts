@@ -106,6 +106,7 @@ export class LoadOperationEntry {
     forces: OperationForceInfo[];
     cloud: boolean;
     local: boolean;
+    owned: boolean;
 
     constructor(data: Partial<LoadOperationEntry>) {
         this.operationId = data.operationId ?? '';
@@ -115,6 +116,7 @@ export class LoadOperationEntry {
         this.forces = data.forces ?? [];
         this.cloud = data.cloud ?? false;
         this.local = data.local ?? false;
+        this.owned = data.owned ?? true;
     }
 
     /** Force infos grouped by alignment */

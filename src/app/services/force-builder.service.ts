@@ -601,7 +601,8 @@ export class ForceBuilderService {
         this.urlStateService.setParams({
             units: null,
             name: null,
-            instance: null
+            instance: null,
+            operation: null
         });
     }
 
@@ -1294,13 +1295,18 @@ export class ForceBuilderService {
                 gs: params.gs,
                 units: params.units,
                 name: params.name,
-                instance: params.instance
+                instance: params.instance,
+                operation: params.operation
             });
         });
     }
 
-    /** URL params representing ALL loaded forces. */
-    queryParameters = computed<ForceQueryParams>(() => buildMultiForceQueryParams(this.loadedForces()));
+    /** URL params representing ALL loaded forces, including the operation ID. */
+    queryParameters = computed<ForceQueryParams>(() => {
+        const params = buildMultiForceQueryParams(this.loadedForces());
+        const op = this.currentOperation();
+        return { ...params, operation: op?.operationId ?? null };
+    });
 
     private loadUnitsFromUrlOnStartup() {
         effect(() => {
@@ -1318,6 +1324,20 @@ export class ForceBuilderService {
 
     private async initializeFromUrl(): Promise<void> {
         const params = this.urlStateService.initialState.params;
+
+        // Handle operation= param (load entire operation by ID)
+        const operationId = params.get('operation');
+        if (operationId) {
+            const loaded = await this.loadOperationFromUrl(operationId);
+            if (loaded) {
+                this.urlStateInitialized.set(true);
+                this.urlStateService.markConsumerReady('force-builder');
+                return;
+            }
+            // Operation not found: fall through to normal force loading
+            this.logger.warn(`ForceBuilderService: Operation "${operationId}" not found, falling back to force params.`);
+        }
+
         const loadedAny = await this.loadForceParamsCore(params);
 
         // Show notice when ALL loaded forces are non-owned
@@ -1337,6 +1357,43 @@ export class ForceBuilderService {
         // Mark as initialized so the update effect can start running.
         this.urlStateInitialized.set(true);
         this.urlStateService.markConsumerReady('force-builder');
+    }
+
+    /**
+     * Load an operation by ID from the local DB or cloud.
+     * Used during URL-based initialization (no unsaved-changes prompt).
+     */
+    private async loadOperationFromUrl(operationId: string): Promise<boolean> {
+        const entry = await this.dataService.getOperation(operationId);
+        if (!entry) return false;
+
+        let loadedAny = false;
+        const failedForces: string[] = [];
+
+        for (const forceInfo of entry.forces) {
+            const force = await this.dataService.getForce(forceInfo.instanceId);
+            if (force) {
+                this.addLoadedForce(force, forceInfo.alignment, { activate: !loadedAny });
+                loadedAny = true;
+            } else {
+                failedForces.push(forceInfo.name || forceInfo.instanceId);
+            }
+        }
+
+        if (failedForces.length > 0) {
+            this.toastService.showToast(
+                `Could not find force(s): ${failedForces.join(', ')}`,
+                'error'
+            );
+        }
+
+        if (!loadedAny) {
+            this.toastService.showToast('No forces from this operation could be loaded.', 'error');
+            return false;
+        }
+
+        this.currentOperation.set(entry);
+        return true;
     }
 
     /**
@@ -1527,9 +1584,23 @@ export class ForceBuilderService {
      */
 
     /**
-     * Whether we can save an operation (need at least 2 loaded forces).
+     * Whether we can save a new operation (need at least 2 loaded forces,
+     * and either no operation loaded or the loaded one is not ours).
      */
-    canSaveOperation = computed<boolean>(() => this.loadedForces().length >= 2 && !this.hasOperation());
+    canSaveOperation = computed<boolean>(() => {
+        if (this.loadedForces().length < 2) return false;
+        const op = this.currentOperation();
+        // Allow save-as-new when no operation, or when viewing someone else's
+        return !op || !op.owned;
+    });
+
+    /**
+     * Whether we can update the currently loaded operation (must be owned).
+     */
+    canUpdateOperation = computed<boolean>(() => {
+        const op = this.currentOperation();
+        return !!op && op.owned && this.loadedForces().length >= 2;
+    });
 
     /**
      * Saves the current loaded force composition as an Operation.
@@ -1555,10 +1626,11 @@ export class ForceBuilderService {
         }));
 
         // Open the save-operation dialog
+        const currentOp = this.currentOperation();
         const dialogData: OperationDialogData = {
             title: 'Save Operation',
-            name: 'Operation',
-            note: '',
+            name: currentOp ? currentOp.name : 'Operation',
+            note: currentOp?.note || '',
             forces: dialogForces,
         };
         const ref = this.dialogsService.createDialog<OperationDialogResult | null>(
@@ -1595,6 +1667,21 @@ export class ForceBuilderService {
 
         try {
             await this.dataService.saveOperation(op);
+            // Track the newly saved operation
+            this.currentOperation.set(new LoadOperationEntry({
+                operationId: op.operationId,
+                name: op.name,
+                note: op.note,
+                timestamp: op.timestamp,
+                forces: forces.map(f => ({
+                    instanceId: f.instanceId,
+                    alignment: f.alignment,
+                    timestamp: f.timestamp,
+                })),
+                local: true,
+                cloud: true,
+                owned: true,
+            }));
             this.toastService.showToast('Operation saved.', 'success');
             return true;
         } catch (error) {

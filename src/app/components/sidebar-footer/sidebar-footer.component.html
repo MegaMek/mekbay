@@ -142,7 +142,7 @@
             @if (forceBuilderService.canSaveOperation()) {
                 <button class="menu-item" cdkMenuItem (click)="saveOperation()">Save Operation...</button>
             }
-            @if (forceBuilderService.hasOperation()) {
+            @if (forceBuilderService.canUpdateOperation()) {
                 <button class="menu-item" cdkMenuItem (click)="updateOperation()">Update Operation...</button>
             } 
             <button class="menu-item" cdkMenuItem (click)="loadOperation()">Load Operation...</button>
