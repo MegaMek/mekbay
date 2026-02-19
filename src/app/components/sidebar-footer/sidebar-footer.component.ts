@@ -156,7 +156,7 @@ export class SidebarFooterComponent {
     }
 
     async closeOperation(): Promise<void> {
-        await this.forceBuilderService.clear();
+        await this.forceBuilderService.closeOperation();
     }
 
     loadOperation(): void {

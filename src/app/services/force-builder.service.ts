@@ -384,13 +384,18 @@ export class ForceBuilderService {
         this.teardownForceSlot(slot);
         this.loadedForces.update(slots => slots.filter(s => s !== slot));
 
-        // If the last force was removed, clear the operation too
+        // If the last force was removed, silently clear the operation
+        // (no save prompt, there are no forces left to save)
         if (this.loadedForces().length === 0) {
             this.currentOperation.set(null);
         }
     }
 
     async clear(): Promise<boolean> {
+        // Prompt to save/update operation BEFORE removing forces
+        const opProceed = await this.promptSaveOperationIfNeeded();
+        if (!opProceed) return false;
+
         const cleared = await this.removeAllForces();
         if (cleared) {
             this.currentOperation.set(null);
@@ -440,6 +445,7 @@ export class ForceBuilderService {
         }
         await this.removeLoadedForce(force, { skipPrompt: true });
         if (this.loadedForces().length === 0) {
+            // Silently clear, no forces left, nothing to save
             this.currentOperation.set(null);
             this.clearForceUrlParams();
         }
@@ -1623,6 +1629,77 @@ export class ForceBuilderService {
     });
 
     /**
+     * Checks whether the currently loaded forces/alignments differ from those
+     * stored in the current operation snapshot.
+     */
+    private operationHasChanges(): boolean {
+        const op = this.currentOperation();
+        if (!op) return false;
+        const slots = this.loadedForces();
+        const savedForces = op.forces;
+        // Different number of forces
+        if (slots.length !== savedForces.length) return true;
+        // Compare each force by instanceId + alignment (order-sensitive)
+        for (let i = 0; i < slots.length; i++) {
+            const slot = slots[i];
+            const saved = savedForces[i];
+            if (slot.force.instanceId() !== saved.instanceId) return true;
+            if (slot.alignment !== saved.alignment) return true;
+        }
+        return false;
+    }
+
+    /**
+     * If an operation is loaded and has unsaved changes, prompts the user
+     * to save/update before proceeding.
+     * @returns true if the caller should proceed, false to cancel.
+     */
+    private async promptSaveOperationIfNeeded(): Promise<boolean> {
+        const op = this.currentOperation();
+        if (!op) return true;
+        if (!this.operationHasChanges()) return true;
+
+        if (op.owned && this.loadedForces().length >= 2) {
+            // Owned operation with changes → offer update
+            const result = await this.dialogsService.choose(
+                'Unsaved Operation Changes',
+                `The operation "${op.name}" has been modified. Do you want to update it before proceeding?`,
+                [
+                    { label: 'UPDATE', value: 'update', class: 'primary' },
+                    { label: 'DISCARD', value: 'discard', class: 'danger' },
+                    { label: 'CANCEL', value: 'cancel' }
+                ],
+                'cancel'
+            );
+            if (result === 'update') {
+                const saved = await this.updateOperation();
+                if (!saved) return false;
+            } else if (result === 'cancel') {
+                return false;
+            }
+        } else if (this.loadedForces().length >= 2) {
+            // Non-owned or new-able, offer save-as-new
+            const result = await this.dialogsService.choose(
+                'Unsaved Operation Changes',
+                `The operation has been modified. Do you want to save it as a new operation before proceeding?`,
+                [
+                    { label: 'SAVE AS NEW', value: 'save', class: 'primary' },
+                    { label: 'DISCARD', value: 'discard', class: 'danger' },
+                    { label: 'CANCEL', value: 'cancel' }
+                ],
+                'cancel'
+            );
+            if (result === 'save') {
+                const saved = await this.saveOperation();
+                if (!saved) return false;
+            } else if (result === 'cancel') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * Whether we can update the currently loaded operation (must be owned).
      */
     canUpdateOperation = computed<boolean>(() => {
@@ -1808,13 +1885,53 @@ export class ForceBuilderService {
     }
 
     /**
+     * Closes the current operation. Asks the user whether to keep the
+     * loaded forces or unload everything.
+     */
+    async closeOperation(): Promise<void> {
+        if (!this.currentOperation()) return;
+
+        // Check for unsaved operation changes first
+        const opProceed = await this.promptSaveOperationIfNeeded();
+        if (!opProceed) return;
+
+        const result = await this.dialogsService.choose(
+            'Exit Operation',
+            'Do you want to keep the currently loaded forces or unload everything?',
+            [
+                { label: 'KEEP FORCES', value: 'keep', class: 'primary' },
+                { label: 'UNLOAD ALL', value: 'unload', class: 'danger' },
+                { label: 'CANCEL', value: 'cancel' }
+            ],
+            'cancel'
+        );
+
+        if (result === 'keep') {
+            this.currentOperation.set(null);
+        } else if (result === 'unload') {
+            await this.removeAllForces();
+            this.currentOperation.set(null);
+        }
+    }
+
+    /**
      * Loads an operation: clears all current forces and loads each force
      * from the operation with its saved alignment.
      * Falls back to local storage if cloud doesn't have a force.
      */
     async loadOperation(entry: LoadOperationEntry): Promise<boolean> {
-        const shouldContinue = await this.checkAllForcesPromptSaveForceIfNeeded();
-        if (!shouldContinue) return false;
+        // Reloading the same operation: skip prompts, just reload
+        const currentOp = this.currentOperation();
+        const isSameOp = currentOp && currentOp.operationId === entry.operationId;
+
+        if (!isSameOp) {
+            // Prompt to save operation changes before switching
+            const opProceed = await this.promptSaveOperationIfNeeded();
+            if (!opProceed) return false;
+
+            const shouldContinue = await this.checkAllForcesPromptSaveForceIfNeeded();
+            if (!shouldContinue) return false;
+        }
 
         this.urlStateInitialized.set(false);
         try {
