@@ -83,9 +83,9 @@ export class ASForceUnit extends ForceUnit {
     }
 
     public async load() {
-        if (this.isLoaded) return;
+        if (this.isLoaded()) return;
         try {
-            this.isLoaded = true;
+            this.isLoaded.set(true);
         } finally {
         }
     }

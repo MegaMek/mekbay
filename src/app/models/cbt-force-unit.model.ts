@@ -119,14 +119,17 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     public async load() {
-        if (this.isLoaded) return;
+        if (this.isLoaded()) return;
         if (this.loadingPromise) {
             return this.loadingPromise;
         }
         this.loadingPromise = this.performLoad();
         try {
             await this.loadingPromise;
-            this.isLoaded = true;
+            if (!this.svg()) {
+                throw new Error(`Unit "${this.unit.name}" loaded but SVG is missing`);
+            }
+            this.isLoaded.set(true);
         } finally {
             // Clear the loading promise when done (success or failure)
             this.loadingPromise = null;

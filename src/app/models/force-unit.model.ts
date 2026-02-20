@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { signal, computed, Injector, Signal } from '@angular/core';
+import { signal, computed, Injector, Signal, WritableSignal } from '@angular/core';
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
@@ -62,7 +62,7 @@ export abstract class ForceUnit {
     protected dataService: DataService;
     protected unitInitializer: UnitInitializerService;
     protected injector: Injector;
-    protected isLoaded: boolean = false;
+    isLoaded: WritableSignal<boolean> = signal(false);
     public disabledSaving: boolean = false;
     phaseTrigger = signal(0); // Used to trigger change detection on phase changes
 

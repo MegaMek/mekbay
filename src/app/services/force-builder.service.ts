@@ -84,6 +84,7 @@ import { getPositiveFactionNamesFromFilter } from '../utils/faction-filter.util'
 import { SerializedOperation, LoadOperationEntry, OperationForceRef } from '../models/operation.model';
 import { SaveOperationDialogComponent, OperationDialogData, OperationDialogResult } from '../components/save-operation-dialog/save-operation-dialog.component';
 import { OpPreviewForce } from '../components/op-preview/op-preview.component';
+import { ForceLoadingOverlayComponent, ForceLoadingOverlayData, ForceLoadingProgress } from '../components/force-loading-overlay/force-loading-overlay.component';
 
 /*
  * Author: Drake
@@ -584,6 +585,7 @@ export class ForceBuilderService {
             const cleared = await this.clear();
             if (!cleared) return false; // User cancelled operation/force save prompt
             this.addLoadedForce(force, 'friendly', { activate: true });
+            this.loadAllUnitsWithOverlay([force]);
         } finally {
             this.urlStateInitialized.set(true);
         }
@@ -598,6 +600,7 @@ export class ForceBuilderService {
         this.urlStateInitialized.set(false);
         try {
             this.addLoadedForce(force, alignment);
+            this.loadAllUnitsWithOverlay([force]);
         } finally {
             this.urlStateInitialized.set(true);
         }
@@ -1474,6 +1477,10 @@ export class ForceBuilderService {
             }
         }
 
+        // Load all units across all loaded forces
+        const allForces = this.loadedForces().map(s => s.force);
+        this.loadAllUnitsWithOverlay(allForces);
+
         this.currentOperation.set(entry);
         return true;
     }
@@ -1553,6 +1560,12 @@ export class ForceBuilderService {
                 this.addLoadedForce(newForce, defaultAlignment, { activate: !loadedAny && isFirst });
                 loadedAny = true;
             }
+        }
+
+        // Load all units across all forces added during this call
+        if (loadedAny) {
+            const allForces = this.loadedForces().map(s => s.force);
+            this.loadAllUnitsWithOverlay(allForces);
         }
 
         return loadedAny;
@@ -1645,6 +1658,7 @@ export class ForceBuilderService {
                         if (!unit?.unit) continue;
                         newForce.addUnit(unit.unit, group);
                     }
+                    this.loadAllUnitsWithOverlay([newForce]);
                     this.selectedUnit.set(newForce.units()[0] ?? null);
                 } else {
                     const newForce = await this.createNewForce();
@@ -1657,6 +1671,7 @@ export class ForceBuilderService {
                         if (!unit?.unit) continue;
                         newForce.addUnit(unit.unit, group);
                     }
+                    this.loadAllUnitsWithOverlay([newForce]);
                     this.selectedUnit.set(newForce.units()[0] ?? null);
                 }
             }
@@ -2190,6 +2205,10 @@ export class ForceBuilderService {
                 return false;
             }
 
+            // Load all units across all loaded forces
+            const allForces = this.loadedForces().map(s => s.force);
+            this.loadAllUnitsWithOverlay(allForces);
+
             // Track the loaded operation
             this.currentOperation.set(entry);
             return true;
@@ -2465,6 +2484,92 @@ export class ForceBuilderService {
             force.setNetwork(result.networks);
             this.toastService.showToast('C3 network configuration changed', 'success');
         }
+    }
+
+    /* ----------------------------------------
+     * Unit Bulk Loading with Overlay
+     * Loads all unloaded units across the given forces, showing a progress overlay.
+     * All unit loads fire in parallel. Each unit.load() sets the isLoaded signal,
+     * which the overlay picks up reactively via computed counts.
+     * If any units fail, the overlay shows a retry button; the user can retry or skip.
+     *
+     * @param forces The forces whose units should be loaded.
+     */
+    public async loadAllUnitsWithOverlay(forces: Force[]): Promise<void> {
+        // Collect forces that have unloaded units, with reactive progress
+        const entries: { force: Force; progress: ForceLoadingProgress }[] = [];
+        for (const force of forces) {
+            const units = force.units();
+            if (units.some(u => !u.isLoaded())) {
+                entries.push({
+                    force,
+                    progress: {
+                        forceName: force.name,
+                        factionImg: force.faction()?.img || null,
+                        loadedUnits: computed(() => units.filter(u => u.isLoaded()).length),
+                        totalUnits: units.length
+                    }
+                });
+            }
+        }
+
+        // Nothing to load — skip overlay entirely
+        if (entries.length === 0) return;
+
+        const failedCount = signal(0);
+        const loading = signal(true);
+        let retryResolve: (() => void) | null = null;
+        let skipped = false;
+
+        const overlayData: ForceLoadingOverlayData = {
+            forces: entries.map(e => e.progress),
+            failedCount,
+            loading,
+            onRetry: () => {
+                if (retryResolve) retryResolve();
+            },
+            onSkip: () => {
+                skipped = true;
+                if (retryResolve) retryResolve();
+            }
+        };
+
+        const dialogRef = this.dialogsService.createDialog<void>(ForceLoadingOverlayComponent, {
+            data: overlayData,
+            disableClose: true,
+            hasBackdrop: true,
+            backdropClass: 'cdk-overlay-dark-backdrop',
+            panelClass: 'force-loading-overlay-panel'
+        });
+
+        // Collect all unloaded units across all forces
+        const allUnits = entries.flatMap(e => e.force.units());
+        let unloaded = allUnits.filter(u => !u.isLoaded());
+
+        while (unloaded.length > 0) {
+            loading.set(true);
+            failedCount.set(0);
+
+            // Fire all loads in parallel
+            await Promise.allSettled(unloaded.map(u => u.load()));
+
+            // Re-check which units are still not loaded
+            unloaded = allUnits.filter(u => !u.isLoaded());
+            if (unloaded.length === 0) break;
+
+            // Some units failed — show retry/skip and wait for user action
+            failedCount.set(unloaded.length);
+            loading.set(false);
+
+            await new Promise<void>(resolve => {
+                retryResolve = resolve;
+            });
+            retryResolve = null;
+
+            if (skipped) break;
+        }
+
+        dialogRef.close();
     }
 
 }
