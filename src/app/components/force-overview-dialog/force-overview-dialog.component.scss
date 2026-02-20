@@ -260,7 +260,7 @@
     justify-content: flex-start;
     align-items: center;
     padding: 8px;
-    gap: 8px;
+    gap: 4px;
     background-color: var(--background-color-menu);
     border-top: 2px solid var(--border-color);
 }
@@ -309,7 +309,6 @@
 .view-toggle-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
 
     svg {
         flex-shrink: 0;

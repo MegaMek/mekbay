@@ -281,7 +281,7 @@
     .header {
         min-height: unset;
         padding: 0px 8px 0px 8px;
-        gap: 6px;
+        gap: 4px;
         font-size: 1.1em;
     }
 
