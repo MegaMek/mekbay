@@ -474,3 +474,8 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         ],
     },
 ];
+
+/** Pre-built lookup map: ability id → CommandAbility. */
+export const COMMAND_ABILITIES_BY_ID = new Map<string, CommandAbility>(
+    COMMAND_ABILITIES.map(a => [a.id, a])
+);

@@ -60,7 +60,7 @@ export class LanceTypeIdentifierUtil {
     ): boolean {
         // Validate parent chain first
         if (definition.parent) {
-            const parentDefinition = FORMATION_DEFINITIONS.find(d => d.id === definition.parent);
+            const parentDefinition = FORMATION_MAP.get(definition.parent);
             if (!parentDefinition) {
                 console.error(`Parent definition '${definition.parent}' not found for '${definition.id}'`);
                 return false;
