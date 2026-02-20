@@ -135,6 +135,9 @@ export interface RenameForceDialogResult {
             </div>
         </div>
       </div>
+      @if (!data.force.factionLock) {
+        <p class="faction-hint">The faction will change dynamically based on force composition. Confirm to lock it in.</p>
+      }
       <div class="wide-dialog-actions">
         <button (click)="submit()" class="bt-button">CONFIRM</button>
         @if (!data.hideUnset) {
@@ -243,6 +246,13 @@ export interface RenameForceDialogResult {
 
         .placeholder {
             color: #888;
+        }
+
+        .faction-hint {
+            font-size: 0.85em;
+            color: var(--text-color-tertiary);
+            margin: 4px 0 0;
+            text-align: center;
         }
     `]
 })
