@@ -70,7 +70,8 @@ import { ASForceUnit } from '../models/as-force-unit.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
-import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
+import { canAntiMech } from '../utils/infantry.util';
+import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { ResolvedPack } from '../utils/force-pack.util';
 import { buildMultiForceQueryParams, parseForceFromUrl, ForceQueryParams } from '../utils/force-url.util';
 import { CBTPrintUtil } from '../utils/cbtprint.util';
@@ -656,19 +657,8 @@ export class ForceBuilderService {
         if (gunnerySkill !== undefined || pilotingSkill !== undefined) {
             const crewMembers = newForceUnit.getCrewMembers();
             newForceUnit.disabledSaving = true;
-            if (unit.type === 'ProtoMek') {
-                // ProtoMeks have a fixed Piloting skill of 5
-                pilotingSkill = DEFAULT_PILOTING_SKILL;
-            } else
-            if (unit.type === 'Infantry') {
-                if (!canAntiMech(unit)) {
-                    if (unit.subtype.includes('Mechanized')) {
-                        pilotingSkill = DEFAULT_PILOTING_SKILL;
-                    } else
-                    if (unit.subtype.includes('Conventional Infantry')) {
-                        pilotingSkill = NO_ANTIMEK_SKILL;
-                    }
-                }
+            if (pilotingSkill !== undefined) {
+                pilotingSkill = getEffectivePilotingSkill(unit, pilotingSkill);
             }
             for (const crew of crewMembers) {
                 if (gunnerySkill !== undefined) {

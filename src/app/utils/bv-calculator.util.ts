@@ -31,9 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { DEFAULT_PILOTING_SKILL } from "../models/crew-member.model";
 import { Unit } from "../models/units.model";
-import { canAntiMech, NO_ANTIMEK_SKILL } from "./infantry.util";
+import { getEffectivePilotingSkill } from "./cbt-common.util";
 
 /*
  * Author: Drake
@@ -70,40 +69,13 @@ export class BVCalculatorUtil {
 
     /**
      * Calculate adjusted Battle Value based on pilot skills
-     * SKILL RATINGS
-     * When assembling a battle force, a player can elect to use
-     * different skill ratings for selected units. However, selecting
-     * better skill ratings correspondingly increases the BV of that
-     * unit. Conversely, selecting worse skill ratings will reduce the
-     * units’ overall BV.
-     * ProtoMek: Because ProtoMek pilots have no Piloting
-     * Skill, use the 5 column of the BV Skill Multiplier Table when
-     * determining skill modifiers for non-standard troops.
-     * Mechanized Infantry: Because they cannot perform anti-Mech
-     * attacks, mechanized infantry can only adjust their
-     * Gunnery Skill Rating (use the 5 column of the BV Skill Multi-
-     * plier Table for this purpose).
-     * Anti-Mech Default Skill: Unless the unit has an Anti-Mech
-     * Infantry Kit (see p. 155), all non-mechanized conventional
-     * infantry have a default Anti-Mech Skill Rating of 8, which can-
-     * not be improved.
      * @param unit - Unit object containing base Battle Value
      * @param gunnerySkill - Gunnery skill level (0-8+)
      * @param pilotingSkill - Piloting skill level (0-8+)
      * @returns Adjusted Battle Value rounded to nearest integer
      */
     static calculateAdjustedBV(unit: Unit, baseBv: number, gunnerySkill: number, pilotingSkill: number): number {
-        if (unit.type === 'Infantry') {
-            // Evaluate anti-mech capability for infantry units
-            if (!canAntiMech(unit)) {
-                if (unit.subtype.includes('Mechanized')) {
-                    pilotingSkill = DEFAULT_PILOTING_SKILL;
-                } else
-                if (unit.subtype.includes('Conventional Infantry')) {
-                    pilotingSkill = NO_ANTIMEK_SKILL;
-                }
-            }
-        }
+        pilotingSkill = getEffectivePilotingSkill(unit, pilotingSkill);
         const multiplier = this.getSkillMultiplier(gunnerySkill, pilotingSkill);
         if (multiplier === 1.0) {
             return baseBv;

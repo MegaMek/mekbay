@@ -51,7 +51,7 @@ import { filterStateToSemanticText, tokensToFilterState, WildcardPattern } from 
 import { parseSemanticQueryAST, ParseResult, ParseError, filterUnitsWithAST, EvaluatorContext, isComplexQuery, getMatchingTextForUnit } from '../utils/semantic-filter-ast.util';
 import { wildcardToRegex } from '../utils/string.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
-import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
+import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
@@ -3086,20 +3086,7 @@ export class UnitSearchFiltersService {
 
     getAdjustedBV(unit: Unit): number {
         const gunnery = this.pilotGunnerySkill();
-        let piloting = this.pilotPilotingSkill();
-        if (unit.type === 'ProtoMek') {
-            piloting = DEFAULT_PILOTING_SKILL; // ProtoMeks always use Piloting 5
-        } else
-        if (unit.type === 'Infantry') {
-            if (!canAntiMech(unit)) {
-                if (unit.subtype.includes('Mechanized')) {
-                    piloting = DEFAULT_PILOTING_SKILL;
-                } else
-                if (unit.subtype.includes('Conventional Infantry')) {
-                    piloting = NO_ANTIMEK_SKILL;
-                }
-            }
-        }
+        const piloting = getEffectivePilotingSkill(unit, this.pilotPilotingSkill());
         // Use default skills - no adjustment needed
         if (gunnery === DEFAULT_GUNNERY_SKILL && piloting === DEFAULT_PILOTING_SKILL) {
             return unit.bv;
