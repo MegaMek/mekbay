@@ -524,10 +524,12 @@ export class WeaponEquipment extends Equipment {
 
 export class AmmoEquipment extends Equipment {
     readonly ammo: AmmoData;
+    readonly munitionType: Set<string>;
 
     constructor(data: EquipmentRawData) {
         super({ ...data, type: 'ammo' });
         this.ammo = merge(AMMO_DEFAULTS, data.ammo);
+        this.munitionType = new Set(this.ammo.munitionType);
     }
 
     get ammoType(): AmmoType { return this.ammo.type; }
@@ -537,7 +539,6 @@ export class AmmoEquipment extends Equipment {
     get capital(): boolean { return this.ammo.capital; }
     get category(): AmmoCategory { return this.ammo.category; }
     get baseAmmo(): string | undefined { return this.ammo.baseAmmo; }
-    get munitionType(): string[] { return this.ammo.munitionType; }
     get mutatorName(): string | undefined { return this.ammo.mutatorName; }
 
     /** Returns true if kgPerShot was explicitly set (> 0) */
@@ -549,7 +550,7 @@ export class AmmoEquipment extends Equipment {
     }
 
     hasMunitionType(type: string): boolean {
-        return this.ammo.munitionType.includes(type);
+        return this.munitionType.has(type);
     }
 
     equalsAmmoTypeOnly(other: AmmoEquipment): boolean {

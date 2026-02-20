@@ -44,6 +44,7 @@ import { CBTForceUnitState } from './cbt-force-unit-state.model';
 import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
+import { AmmoEquipment } from './equipment.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { getMotiveModesOptionsByUnit, MotiveModeOption } from './motiveModes.model';
 import { PSRCheck, TurnState } from './turn-state.model';
@@ -433,12 +434,42 @@ export class CBTForceUnit extends ForceUnit {
 
     /* TARGET ACQUISITION GEAR (TAG)
     Any unit in the battle force equipped with TAG, Light TAG or a
-    C3 Master Computer adds BV equal to the BV of each ton of semi-
-    guided LRM ammunition carried in the force (use the ammo BV
+    C3 Master Computer (flag F_TAG)
+    adds BV equal to the BV of each ton of semi-
+    guided (flag M_SEMIGUIDED) LRM ammunition carried in the force (use the ammo BV
     for the appropriate-size LRM launcher). Units whose only such
     piece of equipment is rear-mounted add half the BV instead. */
     public tagBV = computed<number>(() => {
-        return 0;
+        const components = this.getUnit().comp;
+        const hasTag = components.some(c => c.eq?.hasFlag('F_TAG'));
+        if (!hasTag) return 0; // No TAG, no BV
+        // Figure out if it has ONLY rear mounted F_TAG equipment
+        const hasNonRearTag = components.some(c => c.eq?.hasFlag('F_TAG') && !c.rear);
+        const multiplier = hasNonRearTag ? 1 : 0.5;
+        // Calculate total BV of semi-guided LRM ammo across all units in the force.
+        // We must scan inventory/crits (not unit blueprints) because custom ammo may be loaded.
+        const allUnits = this.force.units();
+        let totalSemiGuidedBV = 0;
+        for (const forceUnit of allUnits) {
+            if (forceUnit.getUnit().type === 'Mek') {
+                // Check crit slots (Mek-type units where ammo swapping happens on crits)
+                const crits = forceUnit.getCritSlots();
+                for (const crit of crits) {
+                    if (crit.eq instanceof AmmoEquipment && crit.eq.hasMunitionType('M_SEMIGUIDED')) {
+                        totalSemiGuidedBV += crit.eq.bv;
+                    }
+                }
+            } else {
+                // Check direct inventory entries (vehicles, ProtoMeks, etc.)
+                const inventory = forceUnit.getInventory();
+                for (const item of inventory) {
+                    if (item.equipment instanceof AmmoEquipment && item.equipment.hasMunitionType('M_SEMIGUIDED')) {
+                        totalSemiGuidedBV += item.equipment.bv;
+                    }
+                }
+            }
+        }
+        return Math.round(multiplier * totalSemiGuidedBV);
     });
 
     public c3Tax = computed<number>(() => {
