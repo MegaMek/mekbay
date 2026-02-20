@@ -224,6 +224,8 @@ function forceUnitToCBTRow(forceUnit: ForceUnit, groupName: string): Record<stri
     
     // Insert force-specific fields
     const { chassis, model, ...rest } = baseRow;
+    const baseBvOfUnit = cbtUnit.getUnit().bv;
+    const baseBvOfCurrentUnit = cbtUnit.getBaseBv();
     return {
         group: groupName,
         chassis,
@@ -232,9 +234,9 @@ function forceUnitToCBTRow(forceUnit: ForceUnit, groupName: string): Record<stri
         gunnery: pilot?.getSkill('gunnery') ?? DEFAULT_GUNNERY_SKILL,
         piloting: pilot?.getSkill('piloting') ?? DEFAULT_PILOTING_SKILL,
         wounds: pilot?.getHits() ?? 0,
-        BV: cbtUnit.getUnit().bv,
-        C3BV: cbtUnit.c3Tax(),
+        BV: (baseBvOfUnit !== baseBvOfCurrentUnit) ? `${baseBvOfCurrentUnit} (${baseBvOfUnit})` : baseBvOfUnit,
         tagBV: cbtUnit.tagBV(),
+        C3BV: cbtUnit.c3Tax(),
         externalStoresBV: cbtUnit.externalStoresBv(),
         pilotBV: cbtUnit.pilotBV(),
         totalBV: cbtUnit.getBv(),

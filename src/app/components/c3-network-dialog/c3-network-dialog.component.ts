@@ -585,7 +585,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             if (!isClassic || !node) return {};
             const cbtUnit = node.unit as CBTForceUnit;
             const unit = cbtUnit.getUnit();
-            const baseBv = unit.bv;
+            const baseBv = cbtUnit.getBaseBv();
             const tagBv = cbtUnit.tagBV();
             const c3Bv = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, networks, allUnits);
             const externalStoresBv = cbtUnit.externalStoresBv();
@@ -718,7 +718,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const tagBv = cbtUnit.tagBV();
             const c3Bv = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, networks, allUnits);
             const externalStoresBv = cbtUnit.externalStoresBv();
-            const preSkillAdjustedBv = unit.bv + tagBv + c3Bv + externalStoresBv;
+            const preSkillAdjustedBv = cbtUnit.getBaseBv() + tagBv + c3Bv + externalStoresBv;
             const finalBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
             totalBaseBv += finalBv - c3Bv;
             totalTax += c3Bv;

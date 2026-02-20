@@ -285,7 +285,7 @@ export class UnitBlockComponent {
         if (!forceUnit || !unit) return null;
         if (!(forceUnit instanceof CBTForceUnit)) return null;
 
-        const baseBv = unit.bv;
+        const baseBv = forceUnit.getBaseBv();
         const totalBv = forceUnit.getBv();
         if (baseBv === totalBv) return null; // No adjustments
         const tagBv = forceUnit.tagBV();

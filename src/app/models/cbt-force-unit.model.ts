@@ -435,6 +435,10 @@ export class CBTForceUnit extends ForceUnit {
         return piloting;
     });
 
+    public getBaseBv = computed<number>(() => {
+        return this.unit.bv;
+    });
+
     /* TARGET ACQUISITION GEAR (TAG)
     Any unit in the battle force equipped with TAG, Light TAG or a
     C3 Master Computer (flag F_TAG)
@@ -503,11 +507,11 @@ export class CBTForceUnit extends ForceUnit {
 
     public pilotBV = computed<number>(() => {
         const finalBv = this.getBv();
-        return finalBv - this.unit.bv - this.tagBV() - this.c3Tax();
+        return finalBv - this.getBaseBv() - this.tagBV() - this.c3Tax();
     });
 
     getBv = computed<number>(() => {
-        const preSkillRatingBv = this.unit.bv + this.tagBV() + this.c3Tax();
+        const preSkillRatingBv = this.getBaseBv() + this.tagBV() + this.c3Tax();
         return BVCalculatorUtil.calculateAdjustedBV(
             this.getUnit(),
             preSkillRatingBv,

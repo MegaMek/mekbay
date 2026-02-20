@@ -141,6 +141,8 @@ export abstract class ForceUnit {
         ) ?? null;
     }
 
+    abstract getBaseBv: Signal<number>;
+
     abstract getBv: Signal<number>;
 
     abstract getPilotStats: Signal<any>;

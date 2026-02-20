@@ -89,18 +89,22 @@ export class ASForceUnit extends ForceUnit {
         } finally {
         }
     }
+    
+    public getBaseBv = computed<number>(() => {
+        return this.unit.as.PV;
+    });
 
     getBv = computed<number>(() => {
         const adjustedPv = this.adjustedPv();
         if (adjustedPv !== null) {
             return adjustedPv;
         }
-        return this.unit.pv;
+        return this.getBaseBv();
     })
 
     public adjustedPv = computed<number>(() => {
         return PVCalculatorUtil.calculateAdjustedPV(
-            this.unit.pv,
+            this.getBaseBv(),
             this.pilotSkill()
         );
     });
