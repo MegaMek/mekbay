@@ -34,7 +34,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, PilotAbilityLimits, getAbilityDetails } from '../../models/pilot-abilities.model';
+import { PILOT_ABILITIES, PILOT_ABILITIES_BY_ID, PilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, PilotAbilityLimits, getAbilityDetails } from '../../models/pilot-abilities.model';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
@@ -189,7 +189,7 @@ export class EditASPilotDialogComponent {
 
     getAbilityById(id: string | null): PilotAbility | undefined {
         if (!id) return undefined;
-        return PILOT_ABILITIES.find(a => a.id === id);
+        return PILOT_ABILITIES_BY_ID.get(id);
     }
 
     isAbilitySelected(id: string): boolean {

@@ -1615,3 +1615,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
     }
 ]
+
+/** Pre-built lookup map: ability id → PilotAbility. */
+export const PILOT_ABILITIES_BY_ID = new Map<string, PilotAbility>(
+    PILOT_ABILITIES.map(a => [a.id, a])
+);

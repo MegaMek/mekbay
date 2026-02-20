@@ -33,7 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { FormationTypeDefinition, FormationEffectGroup } from '../../utils/formation-type.model';
-import { PilotAbility, PILOT_ABILITIES, getAbilityDetails } from '../../models/pilot-abilities.model';
+import { PilotAbility, PILOT_ABILITIES_BY_ID, getAbilityDetails } from '../../models/pilot-abilities.model';
 import { CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { GameSystem, RulesReference } from '../../models/common.model';
 
@@ -392,7 +392,7 @@ export class FormationInfoComponent {
             // Resolve pilot abilities
             if (group.abilityIds) {
                 for (const id of group.abilityIds) {
-                    const pilot = PILOT_ABILITIES.find(a => a.id === id);
+                    const pilot = PILOT_ABILITIES_BY_ID.get(id);
                     if (pilot) {
                         const details = getAbilityDetails(pilot, this.gameSystem());
                         abilities.push({
