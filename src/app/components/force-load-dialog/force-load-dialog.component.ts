@@ -39,7 +39,7 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { Pipe, PipeTransform } from "@angular/core";
-import { LoadForceEntry } from '../../models/load-force-entry.model';
+import { LoadForceEntry, LoadForceGroup } from '../../models/load-force-entry.model';
 import { LoadOperationEntry } from '../../models/operation.model';
 import { SerializedOperation } from '../../models/operation.model';
 import { SaveOperationDialogComponent, OperationDialogData, OperationDialogResult } from '../save-operation-dialog/save-operation-dialog.component';
@@ -55,6 +55,8 @@ import { ForceAlignment } from '../../models/force-slot.model';
 import { ForceAddModePickerDialogComponent, ForceAddModePickerData, ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
+import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import { isNoFormation, NO_FORMATION_ID } from '../../utils/formation-type.model';
 
 /*
  * Author: Drake
@@ -340,6 +342,24 @@ export class ForceLoadDialogComponent {
 
     getGameTypeLabel(type: GameSystem | undefined): string {
         return (type || GameSystem.CLASSIC) === GameSystem.ALPHA_STRIKE ? 'AS' : 'CBT';
+    }
+
+    getGroupName(group: LoadForceGroup): string {
+        if (!group.name) {
+            return LanceTypeIdentifierUtil.getFormationName(group.formationId) || '';
+        }
+        return group.name;
+    }
+
+    getGroupFormationName(group: LoadForceGroup): string | null {
+        if (!group.formationId) return null;
+        if (group.formationId === NO_FORMATION_ID) return null;
+        if (!group.name) return null; // We handle it in getGroupName
+        const formationName = LanceTypeIdentifierUtil.getFormationName(group.formationId);
+        if (formationName && group.name.includes(formationName)) {
+            return null;
+        }
+        return formationName;
     }
 
     async onLoad() {

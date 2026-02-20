@@ -45,7 +45,7 @@ export interface LoadForceUnit {
 }
 
 export interface LoadForceGroup {
-    name: string;
+    name?: string;
     formationId?: string;
     units: LoadForceUnit[];
 }

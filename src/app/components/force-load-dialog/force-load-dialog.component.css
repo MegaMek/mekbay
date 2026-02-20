@@ -197,6 +197,18 @@
     color: var(--text-color-secondary);
 }
 
+.group-formation {
+    font-weight: 400;
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    transition: color 0.2s;
+
+    &::before {
+        content: '·';
+        margin-right: 4px;
+    }
+}
+
 .unit-group .units {
     display: flex;
     flex-direction: row;

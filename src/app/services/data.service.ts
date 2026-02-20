@@ -1526,7 +1526,8 @@ export class DataService {
                     if (raw.groups && Array.isArray(raw.groups)) {
                         for (const group of raw.groups as SerializedGroup[]) {
                             const loadGroup: LoadForceGroup = {
-                                name: group.name || 'Group',
+                                name: group.name,
+                                formationId: group.formationId,
                                 units: []
                             };
                             for (const unit of group.units as SerializedUnit[]) {

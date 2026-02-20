@@ -37,7 +37,10 @@ import { FormationTypeDefinition, NO_FORMATION, NO_FORMATION_ID } from './format
 import { FORMATION_DEFINITIONS } from './formation-definitions';
 import { UnitGroup } from '../models/force.model';
 
-export type { FormationTypeDefinition } from './formation-type.model';
+/** Pre-built map for O(1) formation lookups by id. */
+export const FORMATION_MAP: ReadonlyMap<string, FormationTypeDefinition> = new Map(
+    FORMATION_DEFINITIONS.map(d => [d.id, d])
+);
 
 /*
  * Author: Drake
@@ -103,13 +106,22 @@ export class LanceTypeIdentifierUtil {
     public static getDefinitionById(id: string, gameSystem?: GameSystem): FormationTypeDefinition | null {
         // Handle the "No Formation" sentinel
         if (id === NO_FORMATION_ID) return NO_FORMATION;
-        const def = FORMATION_DEFINITIONS.find(d => d.id === id);
+        const def = FORMATION_MAP.get(id) ?? null;
         if (!def) return null;
         // If a game system is specified, only return if the definition has a validator for it
         if (gameSystem !== undefined) {
             if (!def.validator) return null;
         }
         return def;
+    }
+
+    /**
+     * Returns the formation name for a given formation id, or null
+     * if the id is undefined, empty, or not found.
+     */
+    public static getFormationName(formationId: string | undefined): string | null {
+        if (!formationId || formationId === NO_FORMATION_ID) return null;
+        return FORMATION_MAP.get(formationId)?.name ?? null;
     }
 
     /**

@@ -34,8 +34,8 @@
 import { ForceUnit } from '../models/force-unit.model';
 import { Faction } from '../models/factions.model';
 import { GameSystem } from '../models/common.model';
-import { FormationTypeDefinition, LanceTypeIdentifierUtil } from './lance-type-identifier.util';
-import { ForceNamerUtil } from './force-namer.util';
+import { FormationTypeDefinition } from './formation-type.model';
+import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 import { ForceType, getForceSizeName } from './force-type.util';
 import { UnitGroup } from '../models/force.model';
 

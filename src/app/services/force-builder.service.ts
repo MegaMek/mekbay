@@ -2296,7 +2296,6 @@ export class ForceBuilderService {
             } as RenameGroupDialogData
         });
         const result = await firstValueFrom(dialogRef.closed);
-        console.log(result);
         if (result !== null && result !== undefined) {
             // Apply formation change
             group.formation.set(result.formation);
