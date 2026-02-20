@@ -2307,14 +2307,20 @@ export class ForceBuilderService {
         });
         const result = await firstValueFrom(dialogRef.closed);
         if (result !== null && result !== undefined) {
-            // Apply formation change
-            group.formation.set(result.formation);
-
-            // Apply name change
-            if (result.name === '' || result.name === null) {
+            if (result.action === 'unset') {
+                group.formationLock = false;
+                group.formation.set(null);
                 group.setName(undefined);
-            } else {
-                group.setName(result.name.trim());
+                this.assignFormationIfNeeded(group);
+            } else
+            if (result.action === 'confirm') {
+                group.formationLock = true;
+                group.formation.set(result.formation);
+                if (result.name === '' || result.name === null) {
+                    group.setName(undefined);
+                } else {
+                    group.setName(result.name.trim());
+                }
             }
         }
     }

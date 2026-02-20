@@ -56,6 +56,7 @@ export interface RenameGroupDialogResult {
     name: string;
     /** Selected formation definition, or null to clear. */
     formation: FormationTypeDefinition | null;
+    action: 'confirm' | 'unset';
 }
 
 @Component({
@@ -132,8 +133,12 @@ export interface RenameGroupDialogResult {
         </div>
 
       </div>
+      @if (!data.group.formationLock) {
+        <p class="formation-hint">The formation will change dynamically based on group composition. Confirm to lock it in.</p>
+      }
       <div class="wide-dialog-actions">
         <button (click)="submit()" class="bt-button">CONFIRM</button>
+        <button (click)="submitUnset()" class="bt-button">UNSET</button>
         <button (click)="close()" class="bt-button">DISMISS</button>
       </div>
     </div>
@@ -244,6 +249,13 @@ export interface RenameGroupDialogResult {
             background: rgba(255, 165, 0, 0.08);
             border-left: 3px solid orange;
         }
+
+        .formation-hint {
+            font-size: 0.85em;
+            color: var(--text-color-tertiary);
+            margin: 4px 0 0;
+            text-align: center;
+        }
     `]
 })
 
@@ -292,7 +304,11 @@ export class RenameGroupDialogComponent {
 
     submit(): void {
         const name = this.inputRef().nativeElement.textContent?.trim() || '';
-        this.dialogRef.close({ name, formation: this.selectedFormation() });
+        this.dialogRef.close({ name, formation: this.selectedFormation(), action: 'confirm' });
+    }
+
+    submitUnset(): void {
+        this.dialogRef.close({ name: '', formation: null, action: 'unset' });
     }
 
     fillRandomFormation(): void {
