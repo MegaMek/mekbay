@@ -435,8 +435,41 @@ export class CBTForceUnit extends ForceUnit {
         return piloting;
     });
 
+    public customAmmoBvVariation = computed<number>(() => {
+        if (!this.isLoaded()) return 0; // Ensure unit is loaded so that inventory and crits are available
+        const equipmentList = this.getAvailableEquipment();
+        let bvVariation = 0;
+        if (this.getUnit().type === 'Mek') {
+            const crits = this.getCritSlots();
+            for (const crit of crits) {
+                if (crit.eq instanceof AmmoEquipment && crit.originalName && crit.originalName !== crit.name) {
+                    const originalAmmo = equipmentList[crit.originalName] as AmmoEquipment | undefined;
+                    if (originalAmmo) {
+                        const originalBv = originalAmmo.bv;
+                        const currentBv = crit.eq.bv;
+                        bvVariation += currentBv - originalBv;
+                    }
+                }
+            }
+        } else {
+            const inventory = this.getInventory();
+            for (const item of inventory) {
+                if (item.equipment instanceof AmmoEquipment && item.ammo && item.ammo !== item.name) {
+                    const customAmmo = equipmentList[item.ammo] as AmmoEquipment | undefined;
+                    if (customAmmo) {
+                        const originalBv = item.equipment.bv;
+                        const currentBv = customAmmo.bv;
+                        bvVariation += currentBv - originalBv;
+                    }
+                }
+            }
+        }
+        return Math.round(bvVariation);
+    });
+
     public getBaseBv = computed<number>(() => {
-        return this.unit.bv;
+        const baseBv = this.unit.bv;
+        return Math.round(baseBv + this.customAmmoBvVariation());
     });
 
     /* TARGET ACQUISITION GEAR (TAG)

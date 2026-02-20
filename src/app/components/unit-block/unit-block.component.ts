@@ -285,7 +285,8 @@ export class UnitBlockComponent {
         if (!forceUnit || !unit) return null;
         if (!(forceUnit instanceof CBTForceUnit)) return null;
 
-        const baseBv = forceUnit.getBaseBv();
+        const baseBv = forceUnit.getUnit().bv;
+        const ammoBvVariation = forceUnit.customAmmoBvVariation();
         const totalBv = forceUnit.getBv();
         if (baseBv === totalBv) return null; // No adjustments
         const tagBv = forceUnit.tagBV();
@@ -295,6 +296,10 @@ export class UnitBlockComponent {
         const lines: TooltipLine[] = [];
         if (baseBv > 0) {
             lines.push({ label: 'Base', value: `${baseBv}` });
+        }
+        if (ammoBvVariation !== 0) {
+            const sign = ammoBvVariation > 0 ? '+' : '';
+            lines.push({ label: 'Custom Ammo', value: `${sign}${ammoBvVariation}` });
         }
         if (tagBv > 0) {
             lines.push({ label: 'TAG', value: `+${tagBv}` });
