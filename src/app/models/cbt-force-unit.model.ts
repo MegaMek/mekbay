@@ -454,6 +454,7 @@ export class CBTForceUnit extends ForceUnit {
         const allUnits = this.force.units();
         let totalSemiGuidedBV = 0;
         for (const forceUnit of allUnits) {
+            if (!forceUnit.isLoaded()) continue; // Ensure unit is loaded so that inventory and crits are available
             if (forceUnit.getUnit().type === 'Mek') {
                 // Check crit slots (Mek-type units where ammo swapping happens on crits)
                 const crits = forceUnit.getCritSlots();
