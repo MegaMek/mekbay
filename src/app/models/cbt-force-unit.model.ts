@@ -431,6 +431,16 @@ export class CBTForceUnit extends ForceUnit {
         return piloting;
     });
 
+    /* TARGET ACQUISITION GEAR (TAG)
+    Any unit in the battle force equipped with TAG, Light TAG or a
+    C3 Master Computer adds BV equal to the BV of each ton of semi-
+    guided LRM ammunition carried in the force (use the ammo BV
+    for the appropriate-size LRM launcher). Units whose only such
+    piece of equipment is rear-mounted add half the BV instead. */
+    public tagBV = computed<number>(() => {
+        return 0;
+    });
+
     public c3Tax = computed<number>(() => {
         const c3Networks = this.force.c3Networks();
         const c3Tax = C3NetworkUtil.calculateUnitC3Tax(
@@ -442,15 +452,31 @@ export class CBTForceUnit extends ForceUnit {
         return c3Tax;
     });
 
+    // TODO: To be completed
+    /* EXTERNAL STORES
+    Aerospace fighters, conventional aircraft and some Sup-
+    port Vehicles may carry additional weapons and equipment
+    on external hard points (see the Aerospace Weapons and
+    Equipment BV Table, p. 318). The BV of any external stores is
+    added to the base BV of a unit before the base BV is modified
+    for skill rating.
+    Aerospace fighters can carry a maximum of one bomb per 5
+    tons of mass. Support Vehicles can carry one bomb per hard-
+    point added during design. */
+    public externalStoresBv = computed<number>(() => {
+        return 0;
+    });
+
     public pilotBV = computed<number>(() => {
         const finalBv = this.getBv();
-        return finalBv - this.unit.bv - this.c3Tax();
+        return finalBv - this.unit.bv - this.tagBV() - this.c3Tax();
     });
 
     getBv = computed<number>(() => {
+        const preSkillRatingBv = this.unit.bv + this.tagBV() + this.c3Tax();
         return BVCalculatorUtil.calculateAdjustedBV(
             this.getUnit(),
-            this.unit.bv + this.c3Tax(),
+            preSkillRatingBv,
             this.gunnerySkill(),
             this.pilotingSkill()
         );

@@ -288,21 +288,25 @@ export class UnitBlockComponent {
         const baseBv = unit.bv;
         const totalBv = forceUnit.getBv();
         if (baseBv === totalBv) return null; // No adjustments
+        const tagBv = forceUnit.tagBV();
         const c3Tax = forceUnit.c3Tax();
-        const pilotDiff = totalBv - baseBv - c3Tax;
+        const pilotBv = forceUnit.pilotBV();
 
         const lines: TooltipLine[] = [];
         if (baseBv > 0) {
             lines.push({ label: 'Base', value: `${baseBv}` });
         }
+        if (tagBv > 0) {
+            lines.push({ label: 'TAG', value: `+${tagBv}` });
+        }
         if (c3Tax > 0) {
-            lines.push({ label: 'Network', value: `+${c3Tax}` });
+            lines.push({ label: 'C³', value: `+${c3Tax}` });
         }
-        if (pilotDiff !== 0) {
-            const sign = pilotDiff > 0 ? '+' : '';
-            lines.push({ label: 'Pilot', value: `${sign}${pilotDiff}` });
+        if (pilotBv !== 0) {
+            const sign = pilotBv > 0 ? '+' : '';
+            lines.push({ label: 'Pilot', value: `${sign}${pilotBv}` });
         }
-        if (c3Tax > 0 || pilotDiff !== 0) {
+        if (tagBv > 0 || c3Tax > 0 || pilotBv !== 0) {
             lines.push({ label: 'Total', value: `=${totalBv}` });
         }
 

@@ -234,6 +234,8 @@ function forceUnitToCBTRow(forceUnit: ForceUnit, groupName: string): Record<stri
         wounds: pilot?.getHits() ?? 0,
         BV: cbtUnit.getUnit().bv,
         C3BV: cbtUnit.c3Tax(),
+        tagBV: cbtUnit.tagBV(),
+        externalStoresBV: cbtUnit.externalStoresBv(),
         pilotBV: cbtUnit.pilotBV(),
         totalBV: cbtUnit.getBv(),
         armorDamage: totalArmorDamage,
