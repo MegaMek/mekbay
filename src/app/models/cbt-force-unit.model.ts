@@ -464,7 +464,8 @@ export class CBTForceUnit extends ForceUnit {
                 }
             }
         }
-        return Math.round(bvVariation * this.getUnit().offSpeedFactor);
+        const offSpeedFactor = this.getUnit().offSpeedFactor || 1;
+        return Math.round(bvVariation * offSpeedFactor);
     });
 
     public getBaseBv = computed<number>(() => {
