@@ -38,6 +38,7 @@ import { ForceUnit } from '../models/force-unit.model';
 import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
+import { Faction } from '../models/factions.model';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
 import { FormationTypeDefinition, isNoFormation } from '../utils/formation-type.model';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
@@ -76,6 +77,9 @@ import { CBTPrintUtil } from '../utils/cbtprint.util';
 import { ASPrintUtil } from '../utils/asprint.util';
 import { ForceSlot, ForceAlignment } from '../models/force-slot.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { UnitSearchFiltersService } from './unit-search-filters.service';
+import { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import { getPositiveFactionNamesFromFilter } from '../utils/faction-filter.util';
 import { SerializedOperation, LoadOperationEntry, OperationForceRef } from '../models/operation.model';
 import { SaveOperationDialogComponent, OperationDialogData, OperationDialogResult } from '../components/save-operation-dialog/save-operation-dialog.component';
 import { OpPreviewForce } from '../components/op-preview/op-preview.component';
@@ -679,13 +683,14 @@ export class ForceBuilderService {
         }
 
         this.selectUnit(newForceUnit);
-        if (targetForce.units().length === 1) {
+        const firstUnit = targetForce.units().length === 1;
+        if (firstUnit) {
             this.layoutService.openMenu();
         }
         const unitGroup = group ?? targetForce.groups().find(group => {
             return group.units().some(u => u.id === newForceUnit.id);
         });
-        this.generateFactionAndForceNameIfNeeded(targetForce);
+        this.generateFactionAndForceNameIfNeeded(targetForce, firstUnit);
         if (unitGroup) {
             this.assignFormationIfNeeded(unitGroup);
         }
@@ -1053,20 +1058,56 @@ export class ForceBuilderService {
         return newUnit;
     }
 
-    generateFactionAndForceNameIfNeeded(force: Force): void {
+    generateFactionAndForceNameIfNeeded(force: Force, respectFilter: boolean = false): void {
         if (!force || force.nameLock) {
             return;
         }
-        const randomFaction = ForceNamerUtil.pickRandomFaction(
-            force.units(),
-            this.dataService.getFactions(),
-            this.dataService.getEras()
-        );
-        force.faction.set(randomFaction);
+
+        // If respectFilter is true and a faction filter is active, prefer picking from those factions
+        let faction = respectFilter ? this.pickFactionFromFilter() : null;
+
+        if (!faction) {
+            faction = ForceNamerUtil.pickRandomFaction(
+                force.units(),
+                this.dataService.getFactions(),
+                this.dataService.getEras()
+            );
+        }
+
+        force.faction.set(faction);
         force.setName(
-            ForceNamerUtil.generateForceNameForFaction(randomFaction),
+            ForceNamerUtil.generateForceNameForFaction(faction),
             false
         );
+    }
+
+    /**
+     * Checks the active unit search faction filter and picks a random faction from it.
+     * Returns null if no faction filter is active or no matching factions are found.
+     */
+    private pickFactionFromFilter(): Faction | null {
+        try {
+            const filtersService = this.injector.get(UnitSearchFiltersService);
+            const filterState = filtersService.effectiveFilterState();
+            const factionFilter = filterState['faction'];
+            if (!factionFilter?.interactedWith || !factionFilter.value) {
+                return null;
+            }
+            const allFactionNames = this.dataService.getFactions().map(f => f.name);
+            const positiveFactions = getPositiveFactionNamesFromFilter(
+                factionFilter.value as MultiStateSelection,
+                allFactionNames,
+                factionFilter.wildcardPatterns
+            );
+            if (positiveFactions.length === 0) {
+                return null;
+            }
+            const pickedName = positiveFactions[Math.floor(Math.random() * positiveFactions.length)];
+            return this.dataService.getFactionByName(pickedName) ?? null;
+        } catch {
+            // UnitSearchFiltersService not available, fall through
+            return null;
+        }
     }
 
     public assignFormationIfNeeded(group: UnitGroup) {

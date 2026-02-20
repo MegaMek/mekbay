@@ -221,7 +221,6 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
             display: flex;
             flex-direction: row;
             align-items: center;
-            gap: 2px;
         }
 
         .era-icon {

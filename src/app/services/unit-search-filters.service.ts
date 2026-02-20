@@ -56,6 +56,7 @@ import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
 import { FACTION_EXTINCT } from '../models/factions.model';
+import { resolveFactionNamesFromFilter } from '../utils/faction-filter.util';
 import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterConfig, AdvFilterOptions, AdvFilterType, FilterState, DROPDOWN_FILTERS, RANGE_FILTERS, DropdownFilterConfig, RangeFilterConfig, SemanticDisplayItem, SerializedSearchFilter, SORT_OPTIONS } from './unit-search-filters.model';
 export * from './unit-search-filters.model';
 
@@ -936,16 +937,11 @@ export class UnitSearchFiltersService {
         return this.getUnitIdsForSelectedEras(contextEraNames) || new Set<number>();
     }
 
-    private getUnitIdsForSelectedFactions(selectedFactionEntries: MultiStateSelection, contextEraIds?: Set<number>): Set<number> | null {
-        const orFactions: string[] = [];
-        const andFactions: string[] = [];
-        const notFactions: string[] = [];
-        for (const [name, selection] of Object.entries(selectedFactionEntries)) {
-            if (!selection.state) continue;
-            if (selection.state === 'or') orFactions.push(selection.name);
-            else if (selection.state === 'and') andFactions.push(selection.name);
-            else if (selection.state === 'not') notFactions.push(selection.name);
-        }        
+    private getUnitIdsForSelectedFactions(selectedFactionEntries: MultiStateSelection, contextEraIds?: Set<number>, wildcardPatterns?: WildcardPattern[]): Set<number> | null {
+        const allFactionNames = this.dataService.getFactions().map(f => f.name);
+        const { or: orFactions, and: andFactions, not: notFactions } = resolveFactionNamesFromFilter(
+            selectedFactionEntries, allFactionNames, wildcardPatterns
+        );
         if (orFactions.length === 0 && andFactions.length === 0 && notFactions.length === 0) {
             return null;
         }
@@ -1005,9 +1001,11 @@ export class UnitSearchFiltersService {
 
         let eraUnitIds: Set<number> | null = null;
         let factionUnitIds: Set<number> | null = null;
-        if (Object.values(selectedFactionEntries).some(s => s.state)) {
+        const factionFilterState = state['faction'];
+        const factionWildcardPatterns = factionFilterState?.wildcardPatterns;
+        if (Object.values(selectedFactionEntries).some(s => s.state) || (factionWildcardPatterns && factionWildcardPatterns.length > 0)) {
             const selectedEraIds = new Set(this.dataService.getEras().filter(e => selectedEraNames.includes(e.name)).map(e => e.id));
-            factionUnitIds = this.getUnitIdsForSelectedFactions(selectedFactionEntries, selectedEraIds.size > 0 ? selectedEraIds : undefined);
+            factionUnitIds = this.getUnitIdsForSelectedFactions(selectedFactionEntries, selectedEraIds.size > 0 ? selectedEraIds : undefined, factionWildcardPatterns);
         } else
             if (selectedEraNames.length > 0) {
                 eraUnitIds = this.getUnitIdsForSelectedEras(selectedEraNames);

@@ -228,7 +228,6 @@ export interface RenameForceDialogResult {
             display: flex;
             flex-direction: row;
             align-items: center;
-            gap: 2px;
         }
 
         .faction-selector-era-icon {
