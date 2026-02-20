@@ -479,7 +479,6 @@ export class CBTForceUnit extends ForceUnit {
         const c3Networks = this.force.c3Networks();
         const c3Tax = C3NetworkUtil.calculateUnitC3Tax(
             this,
-            this.unit.bv,
             c3Networks,
             this.force.units()
         );

@@ -586,9 +586,12 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const cbtUnit = node.unit as CBTForceUnit;
             const unit = cbtUnit.getUnit();
             const baseBv = unit.bv;
-            const c3Tax = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, baseBv, networks, allUnits);
-            const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, baseBv+c3Tax, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
-            return { baseBv: (adjustedBv-c3Tax), c3Tax };
+            const tagBv = cbtUnit.tagBV();
+            const c3Bv = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, networks, allUnits);
+            const externalStoresBv = cbtUnit.externalStoresBv();
+            const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
+            const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
+            return { baseBv: (adjustedBv-c3Bv), c3Tax: c3Bv };
         };
 
         const buildNetworkVm = (network: SerializedC3NetworkGroup, isTopLevel: boolean): SidebarNetworkVm | null => {
@@ -712,14 +715,17 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         for (const node of nodes) {
             const cbtUnit = node.unit as CBTForceUnit;
             const unit = cbtUnit.getUnit();
-            const tax = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, unit.bv, networks, allUnits);
-            const finalBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv + tax, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
-            totalBaseBv += unit.bv;
-            totalTax += tax;
+            const tagBv = cbtUnit.tagBV();
+            const c3Bv = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, networks, allUnits);
+            const externalStoresBv = cbtUnit.externalStoresBv();
+            const preSkillAdjustedBv = unit.bv + tagBv + c3Bv + externalStoresBv;
+            const finalBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
+            totalBaseBv += finalBv - c3Bv;
+            totalTax += c3Bv;
             totalFinalBv += finalBv;
         }
         
-        return { totalBaseBv: totalFinalBv - totalTax, totalTax, grandTotal: totalFinalBv };
+        return { totalBaseBv: totalFinalBv, totalTax, grandTotal: totalFinalBv };
     });
 
     protected pinConnectionState = computed(() => {
