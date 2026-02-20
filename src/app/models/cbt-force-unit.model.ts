@@ -44,7 +44,7 @@ import { CBTForceUnitState } from './cbt-force-unit-state.model';
 import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { AmmoEquipment } from './equipment.model';
+import { AmmoEquipment, WeaponEquipment } from './equipment.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { getMotiveModesOptionsByUnit, MotiveModeOption } from './motiveModes.model';
 import { PSRCheck, TurnState } from './turn-state.model';
@@ -450,9 +450,6 @@ export class CBTForceUnit extends ForceUnit {
         const components = this.getUnit().comp;
         const hasTag = components.some(c => c.eq?.hasFlag('F_TAG'));
         if (!hasTag) return 0; // No TAG, no BV
-        // Figure out if it has ONLY rear mounted F_TAG equipment
-        const hasNonRearTag = components.some(c => c.eq?.hasFlag('F_TAG') && !c.rear);
-        const multiplier = hasNonRearTag ? 1 : 0.5;
         // Calculate total BV of semi-guided LRM ammo across all units in the force.
         // We must scan inventory/crits (not unit blueprints) because custom ammo may be loaded.
         const allUnits = this.force.units();
@@ -464,7 +461,24 @@ export class CBTForceUnit extends ForceUnit {
                 const crits = forceUnit.getCritSlots();
                 for (const crit of crits) {
                     if (crit.eq instanceof AmmoEquipment && crit.eq.hasMunitionType('M_SEMIGUIDED')) {
-                        totalSemiGuidedBV += crit.eq.bv;
+                        const ammo = crit.eq;
+                        const forceUnitComps = forceUnit.getUnit().comp;
+                        // Check if the unit carrying this ammo has any weapon that can use it (matching ammoType and rackSize)
+                        const hasMatchingWeapon = forceUnitComps.some(c =>
+                            c.eq instanceof WeaponEquipment &&
+                            c.eq.ammoType === ammo.ammoType &&
+                            c.eq.rackSize === ammo.rackSize
+                        );
+                        if (!hasMatchingWeapon) continue; // No weapon can use this ammo, skip
+                        // Determine if at least one matching weapon is front-mounted
+                        const hasNonRearWeapon = forceUnitComps.some(c =>
+                            c.eq instanceof WeaponEquipment &&
+                            c.eq.ammoType === ammo.ammoType &&
+                            c.eq.rackSize === ammo.rackSize &&
+                            !c.rear
+                        );
+                        const multiplier = hasNonRearWeapon ? 1 : 0.5;
+                        totalSemiGuidedBV += Math.round(multiplier * crit.eq.bv);
                     }
                 }
             } else {
@@ -477,7 +491,7 @@ export class CBTForceUnit extends ForceUnit {
                 }
             }
         }
-        return Math.round(multiplier * totalSemiGuidedBV);
+        return Math.round(totalSemiGuidedBV);
     });
 
     public c3Tax = computed<number>(() => {
