@@ -156,10 +156,6 @@
     color: var(--text-color);
     cursor: pointer;
     transition: color 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
     padding: 0 18px;
 }
 
@@ -167,7 +163,10 @@
     width: 1.2em;
     height: 1.2em;
     object-fit: contain;
-    flex-shrink: 0;
+    position: relative;
+    top: 0.3em;
+    margin-top: -0.3em;
+
 }
 
 .force-total {
