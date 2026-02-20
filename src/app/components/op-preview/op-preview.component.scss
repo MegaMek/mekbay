@@ -48,9 +48,9 @@
 .op-force {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: baseline;
     padding: 2px 6px;
-    gap: 8px;
+    gap: 4px;
 }
 
 .op-force.missing {
@@ -63,6 +63,7 @@
     height: 1.2em;
     object-fit: contain;
     flex-shrink: 0;
+    align-self: center;
 }
 
 .op-force-name {

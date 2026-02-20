@@ -109,13 +109,13 @@ import { CommonModule } from '@angular/common';
         .force-preview-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
+            align-items: first baseline;
+            margin-bottom: 8px;
         }
 
         .faction-name-wrapper {
             display: flex;
-            align-items: start;
+            align-items: first baseline;
             gap: 4px;
             flex-direction: row;
             flex: 1 1 0;
@@ -126,17 +126,19 @@ import { CommonModule } from '@angular/common';
             height: 1.2em;
             object-fit: contain;
             flex-shrink: 0;
+            align-self: flex-start;
         }
 
         .force-preview-name {
             font-weight: 600;
-            font-size: 1.1em;
+            font-size: 1em;
+            text-align: left;
         }
 
         .force-preview-info {
             display: flex;
             gap: 8px;
-            align-items: center;
+            align-items: first baseline;
             font-size: 0.85em;
             color: var(--text-color-secondary);
         }
@@ -149,7 +151,7 @@ import { CommonModule } from '@angular/common';
             color: #fff;
             text-transform: uppercase;
             flex-shrink: 0;
-            align-self: baseline;
+            align-self: center;
         }
 
         .game-type-badge.as {
@@ -185,6 +187,7 @@ import { CommonModule } from '@angular/common';
         .unit-group .group-name {
             font-size: 0.8em;
             color: var(--text-color-secondary);
+            text-align: left;
         }
 
         .unit-group .units {
