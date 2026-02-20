@@ -942,7 +942,8 @@ export class ForceBuilderService {
             ? new CBTForce(force.name, this.dataService, this.unitInitializer, this.injector)
             : new ASForce(force.name, this.dataService, this.unitInitializer, this.injector);
 
-        newForce.nameLock = force.nameLock;
+        newForce.faction.set(force.faction());
+        newForce.factionLock = force.factionLock;
         newForce.loading = true;
 
         try {
@@ -1052,7 +1053,7 @@ export class ForceBuilderService {
     }
 
     generateFactionAndForceNameIfNeeded(force: Force, respectFilter: boolean = false): void {
-        if (!force || force.nameLock) {
+        if (!force || force.factionLock) {
             return;
         }
 
@@ -1060,13 +1061,16 @@ export class ForceBuilderService {
         let faction = respectFilter ? this.pickFactionFromFilter() : null;
 
         if (!faction) {
-            faction = ForceNamerUtil.pickRandomFaction(
+            faction = ForceNamerUtil.pickBestFaction(
                 force.units(),
                 this.dataService.getFactions(),
-                this.dataService.getEras()
+                this.dataService.getEras(),
+                force.faction()
             );
         }
-
+        if (faction?.id === force.faction()?.id) {
+            return; // No change needed
+        }
         force.faction.set(faction);
         force.setName(
             ForceNamerUtil.generateForceNameForFaction(faction),
@@ -1731,6 +1735,8 @@ export class ForceBuilderService {
         const needsConversion = sourceForce.gameSystem !== targetForce.gameSystem;
         let insertedCount = 0;
 
+        const newGroups: UnitGroup[] = [];
+
         for (const sourceGroup of sourceGroups) {
             const newGroup = targetForce.addGroup(sourceGroup.name());
             newGroup.formation.set(sourceGroup.formation());
@@ -1761,11 +1767,13 @@ export class ForceBuilderService {
                     insertedCount++;
                 }
             }
-
-            this.assignFormationIfNeeded(newGroup);
+            newGroups.push(newGroup);
         }
 
         this.generateFactionAndForceNameIfNeeded(targetForce);
+        for (const group of newGroups) {
+            this.assignFormationIfNeeded(group);
+        }
         const systemNote = needsConversion ? ' (units were converted)' : '';
         this.toastService.showToast(
             `Inserted ${insertedCount} unit(s) from "${sourceForce.name}" into "${targetForce.name}"${systemNote}.`,
@@ -1804,8 +1812,8 @@ export class ForceBuilderService {
             targetForce.addUnit(entry.unit, newGroup);
         }
 
-        this.assignFormationIfNeeded(newGroup);
         this.generateFactionAndForceNameIfNeeded(targetForce);
+        this.assignFormationIfNeeded(newGroup);
         this.toastService.showToast(
             `Inserted ${packUnitCount} unit(s) from pack "${pack.name}" into "${targetForce.name}".`,
             'success'
@@ -2279,11 +2287,13 @@ export class ForceBuilderService {
      * the caller decides whether to save.
      */
     private applyRenameForceDialogResult(force: Force, result: RenameForceDialogResult): void {
-        if (result.name === '') {
-            force.nameLock = false;
+        if (result.action === 'unset') {
+            force.factionLock = false;
+            force.faction.set(null);
+            force.setName('');
             this.generateFactionAndForceNameIfNeeded(force);
         } else {
-            force.nameLock = true;
+            force.factionLock = true;
             force.faction.set(result.faction);
             force.setName(result.name.trim());
         }

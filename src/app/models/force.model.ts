@@ -47,7 +47,6 @@ import { Faction } from './factions.model';
 import { FormationTypeDefinition, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
-import { getForceSizeName } from '../utils/force-type.util';
 
 /*
  * Author: Drake
@@ -152,7 +151,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     gameSystem: GameSystem = GameSystem.CLASSIC;
     instanceId: WritableSignal<string | null> = signal(null);
     _name: WritableSignal<string>;
-    nameLock: boolean = false; // If true, the force name cannot be changed by the random generator
     timestamp: string | null = null;
     groups: WritableSignal<UnitGroup<TUnit>[]> = signal([]);
     _c3Networks: WritableSignal<SerializedC3NetworkGroup[]> = signal([]); // C3 network configurations
@@ -160,6 +158,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     cloud?: boolean = false; // Indicates if this force is stored in the cloud
     owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
     faction = signal<Faction | null>(null);
+    factionLock: boolean = false; // If true, the force faction cannot be changed by the random generator
     c3Networks = this._c3Networks.asReadonly();
     /** Emits after each debounced mutation: subscribe to react to force changes. */
     public readonly changed = new Subject<void>();
@@ -534,8 +533,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             instanceId: instanceId,
             type: this.gameSystem,
             name: this.name,
-            nameLock: this.nameLock || undefined,
             factionId: this.faction()?.id,
+            factionLock: this.factionLock || undefined,
             groups: serializedGroups,
             c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
         };
@@ -612,10 +611,10 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         this.loading = true;
         try {
             this.instanceId.set(sanitizedData.instanceId);
-            this.nameLock = sanitizedData.nameLock || false;
             this.owned.set(sanitizedData.owned !== false);
 
             // Resolve faction from factionId
+            this.factionLock = sanitizedData.factionLock || false;
             if (sanitizedData.factionId != null) {
                 const faction = this.dataService.getFactionById(sanitizedData.factionId) ?? null;
                 this.faction.set(faction);
@@ -676,10 +675,10 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         this.loading = true;
         try {
             if (this.name !== sanitizedData.name) this.setName(sanitizedData.name, false);
-            this.nameLock = sanitizedData.nameLock || false;
             this.timestamp = sanitizedData.timestamp ?? null;
 
             // Resolve faction from factionId
+            this.factionLock = sanitizedData.factionLock || false;
             if (sanitizedData.factionId != null) {
                 const faction = this.dataService.getFactionById(sanitizedData.factionId) ?? null;
                 this.faction.set(faction);

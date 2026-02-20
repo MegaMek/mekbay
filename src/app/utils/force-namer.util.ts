@@ -218,11 +218,11 @@ export class ForceNamerUtil {
 
     /**
      * Returns matching factions for a set of units.
-     * Map key is the faction name, value is the highest match percentage across eras.
+     * Map key is the Faction object, value is the highest match percentage across eras.
      * @param minPercentage Minimum match threshold (default: MIN_UNITS_PERCENTAGE = 0.7).
      *                      Pass 0 to include all factions with any match.
      */
-    public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[], minPercentage = MIN_UNITS_PERCENTAGE): Map<string, number> | null {
+    public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[], minPercentage = MIN_UNITS_PERCENTAGE): Map<Faction, number> | null {
         if (!units?.length) return null;
         const referenceYear = units.reduce(
             (max, u) => Math.max(max, u.getUnit().year),
@@ -233,7 +233,7 @@ export class ForceNamerUtil {
 
         const unitIds = units.map(u => u.getUnit().id);
         const totalUnits = units.length;
-        const results: Map<string, number> = new Map();
+        const results: Map<Faction, number> = new Map();
 
         for (const faction of factions) {
             if (faction.id === FACTION_EXTINCT) continue;
@@ -250,7 +250,7 @@ export class ForceNamerUtil {
                 }
             }
             if (highestPercentage > 0 && highestPercentage >= minPercentage) {
-                results.set(faction.name, highestPercentage);
+                results.set(faction, highestPercentage);
             }
         }
         return results;
@@ -263,25 +263,40 @@ export class ForceNamerUtil {
      */
     public static pickRandomFaction(units: ForceUnit[], factions: Faction[], eras: Era[]): Faction | null {
         const mercenary = factions.find(f => f.id === FACTION_MERCENARY) ?? null;
-        const availableFactions = this.getAvailableFactions(units, factions, eras);
+        const availableFactions = this.getAvailableFactions(units, factions, eras, MIN_UNITS_PERCENTAGE);
         if (!availableFactions || availableFactions.size === 0) return mercenary;
 
         const entries = Array.from(availableFactions.entries());
-        if (entries.length === 1) {
-            return factions.find(f => f.name === entries[0][0]) ?? null;
-        }
+        if (entries.length === 1) return entries[0][0];
 
         // Weighted random selection
         const totalWeight = entries.reduce((sum, [, pct]) => sum + pct, 0);
         const random = Math.random() * totalWeight;
         let cumulative = 0;
-        for (const [name, pct] of entries) {
+        for (const [faction, pct] of entries) {
             cumulative += pct;
-            if (random <= cumulative) {
-                return factions.find(f => f.name === name) ?? null;
-            }
+            if (random <= cumulative) return faction;
         }
-        return factions.find(f => f.name === entries[entries.length - 1][0]) ?? null;
+        return entries[entries.length - 1][0];
+    }
+
+    public static pickBestFaction(units: ForceUnit[], factions: Faction[], eras: Era[], currentFaction: Faction | null): Faction | null {
+        const mercenary = factions.find(f => f.id === FACTION_MERCENARY) ?? null;
+        const availableFactions = this.getAvailableFactions(units, factions, eras, MIN_UNITS_PERCENTAGE);
+        if (!availableFactions || availableFactions.size === 0) return mercenary;
+
+        // Find the highest match percentage
+        const entries = Array.from(availableFactions.entries());
+        const bestScore = Math.max(...entries.map(([, pct]) => pct));
+        const bestEntries = entries.filter(([, pct]) => pct === bestScore);
+
+        // If the current faction is among the best, keep it
+        if (currentFaction && bestEntries.some(([faction]) => faction === currentFaction)) {
+            return currentFaction;
+        }
+
+        // Pick a random faction from the best ones
+        return pick(bestEntries)[0];
     }
 
     /**
@@ -296,10 +311,15 @@ export class ForceNamerUtil {
     ): FactionDisplayInfo[] {
         const rawPctMap = this.getAvailableFactions(units, allFactions, eras, 0);
         const result: FactionDisplayInfo[] = [];
+        // Build a name-based lookup from the Faction-keyed map for the display loop
+        const pctByName = new Map<string, number>();
+        if (rawPctMap) {
+            for (const [faction, pct] of rawPctMap) pctByName.set(faction.name, pct);
+        }
 
         for (const faction of allFactions) {
             if (faction.id === FACTION_EXTINCT) continue;
-            const rawPct = rawPctMap?.get(faction.name) ?? 0;
+            const rawPct = pctByName.get(faction.name) ?? 0;
             result.push({
                 faction,
                 matchPercentage: rawPct,

@@ -58,6 +58,7 @@ export interface RenameForceDialogData {
 export interface RenameForceDialogResult {
     name: string;
     faction: Faction | null;
+    action: 'confirm' | 'unset';
 }
 
 @Component({
@@ -94,7 +95,7 @@ export interface RenameForceDialogResult {
         </div>
 
         <div class="form-fields">
-            <label class="field-label" for="faction">Faction @if (!data.force.nameLock) { <span class="unlock-icon" title="Name is unlocked (auto-naming enabled)">&#x1F513;</span> }</label>
+            <label class="field-label" for="faction">Faction</label>
             <div #factionTriggerWrapper class="input-wrapper">
               <button id="faction" #factionTrigger class="faction-selector bt-select" (click)="toggleFactionDropdown()">
                 @if (selectedFactionDisplay(); as display) {
@@ -137,7 +138,7 @@ export interface RenameForceDialogResult {
       <div class="wide-dialog-actions">
         <button (click)="submit()" class="bt-button">CONFIRM</button>
         @if (!data.hideUnset) {
-          <button (click)="submitEmpty()" class="bt-button">UNSET</button>
+          <button (click)="submitUnset()" class="bt-button">UNSET</button>
         }
         <button (click)="close()" class="bt-button">DISMISS</button>
       </div>
@@ -284,14 +285,16 @@ export class RenameForceDialogComponent {
         const value = this.inputRef().nativeElement.textContent?.trim() || '';
         this.dialogRef.close({
             name: value,
-            faction: this.selectedFaction()
+            faction: this.selectedFaction(),
+            action: 'confirm'
         });
     }
 
-    submitEmpty() {
+    submitUnset() {
         this.dialogRef.close({
             name: '',
-            faction: this.selectedFaction()
+            faction: null,
+            action: 'unset'
         });
     }
 
